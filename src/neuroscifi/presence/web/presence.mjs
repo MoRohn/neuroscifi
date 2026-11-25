@@ -335,6 +335,8 @@ export class Presence {
       ['Intensity', i.intensity >= 0.6 ? 'high' : i.intensity >= 0.25 ? 'moderate' : 'low'],
       ['Conditions', i.condition.length ? i.condition.join(', ').replaceAll('_', ' ') : 'healthy'],
       ['Composition', `${this.scene?.concept ?? '—'} (tier ${this.scene?.tier ?? '—'})`]];
+    // the owner's quiet switch (ADR-050), only while it is on
+    if (i.sources?.background === 'quiet') rows.splice(4, 0, ['Background work', 'quiet: nothing runs unless you ask']);
     this.facts.replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
   }
 

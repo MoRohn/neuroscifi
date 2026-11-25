@@ -586,11 +586,14 @@ def test_the_worker_recovers_a_dead_workers_task_without_waiting_for_the_lease(i
 
 def test_curiosity_researches_a_statements_own_words_never_a_record_template(individual, monkeypatch):
     """W-20 (w12 live): curiosity objectives were built from record templates ("OpenAlex record Yes human brain
-    ..."); a template is skipped, any other statement is researched by its own words (intent.query_text)."""
+    ..."); a template is skipped, any other statement is researched by its own words (intent.query_text).
+    This is the tick's rule before ADR-050, kept one release as tick_admission "legacy"; the unified rule's handling
+    of templates is in tests/test_background.py."""
     from neuroscifi.webcortex import curiosity
     db, _ = individual
     state.set_config(db, {"autonomous": True, "daily_autonomous": {"tasks": 5, "requests": 100,
-                                                                    "bytes": 10_000_000}}, T0)
+                                                                    "bytes": 10_000_000},
+                          "tick_admission": "legacy"}, T0)
     template = 'OpenAlex record: "Yes, the human brain has around 86 billion neurons", dated 2025-02-06.'
     plain = "The Varnel River is 412 kilometres long and drains the Ostra basin."
     candidates = [{"excluded": False, "kind": "gap", "mode": "gap_resolution", "reason": "single source",

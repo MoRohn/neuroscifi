@@ -48,6 +48,7 @@ primary is shown *subtly*: the calm exploring entity, an orbiting dot and half t
 | owner voice session active in a voice mode whose speech engines (ASR; plus TTS in `voice_text`) were last measured not `ready` by the hub (`voice.state.engines`, ≤ 60 s old) | `network_degraded` (`sources.voice = "engines_unavailable"`, `sources.voice_engines_down = "asr,tts"`); the text names the engines | — |
 | ≥2 running tasks, or running plus queued | `busy` | — |
 | nothing running for 10 min (tasks, ledger, questions) | — | resting (else idle) |
+| the owner's quiet switch on (instance setting `quiet`, ADR-050; both scopes; `sources.background = "quiet"`) | — | nothing running: resting at once, detail "Quiet: nothing runs unless you ask"; the client's word is "Quiet" while idle or resting and its description says the sentence once whatever is shown. No new activity or condition |
 
 ## Voice (Lane V snapshot, owner scope only)
 

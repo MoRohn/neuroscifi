@@ -120,9 +120,11 @@ def with_db(handler):
     """handler(db, args, now) on an existing instance; the connection is always closed."""
     def wrapped(args):
         # `nsf config` and `nsf graph migration` open the file without the graph-rule migration, so that an owner can
-        # opt out of it, or see what it would do, before anything runs it (graph_migration.py).
+        # opt out of it, or see what it would do, before anything runs it (graph_migration.py); `nsf quiet`, a
+        # setting too, changes nothing else either.
         command = getattr(args, "command", None)
-        adopt = command != "config" and not (command == "graph" and getattr(args, "graph_command", None) == "migration")
+        adopt = command not in ("config", "quiet") and not (command == "graph" and
+                                                            getattr(args, "graph_command", None) == "migration")
         db = store.open_existing(store.resolve_db(args), graph_migration=adopt)
         try:
             now = time.time()
@@ -130,7 +132,7 @@ def with_db(handler):
             # beliefs never count records past their lifetime (MEM-09).
             # `nsf sweep` itself is excluded so that it can report what it expired, and `nsf config` so that a
             # setting of the sweep (consolidation) takes effect before the next one, not after it.
-            if getattr(args, "command", None) not in ("sweep", "config"):
+            if getattr(args, "command", None) not in ("sweep", "config", "quiet"):
                 from .governance import sweep
                 sweep(db, now)
             return handler(db, args, now)
@@ -174,6 +176,8 @@ def _config(db, args, now):
         changes["max_imagined_rows"] = args.max_imagined_rows
     if args.imagined_lifetime_days is not None:
         changes["imagined_lifetime_seconds"] = args.imagined_lifetime_days * 86400
+    if args.quiet is not None:
+        changes["quiet"] = args.quiet
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
@@ -232,7 +236,17 @@ def register(sub):
     p.add_argument("--imagined-lifetime-days", type=imagined_days,
                    help="how long an imagined record is kept, in days (at least one minute, at most 365 days; "
                         "default 7)")
+    p.add_argument("--quiet", action=argparse.BooleanOptionalAction, default=None,
+                   help="hold everything done unasked: background research, monitors, refreshes, idle "
+                        "investigations (default: off; the same as `nsf quiet on|off`)")
     p.set_defaults(handler=with_db(_config))
+
+    p = sub.add_parser("quiet", help="one switch for everything done unasked: on = nothing runs unless you ask "
+                                     "(background research, monitors, refreshes); off = as your other settings say")
+    store.add_db_argument(p)
+    p.add_argument("quiet_action", nargs="?", default="status", choices=("on", "off", "status"))
+    from .. import background
+    p.set_defaults(handler=with_db(background.cli))
 
     p = sub.add_parser("birth", help="birth record, memory inventory and development counters")
     store.add_db_argument(p)

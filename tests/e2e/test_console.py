@@ -460,6 +460,24 @@ def test_the_overview_says_when_consolidated_readings_reach_their_limit(console,
     assert page.problems == []
 
 
+def test_the_overview_says_whether_background_work_is_quiet(console, new_page):
+    """ADR-050: the Regulation card names the owner's quiet switch in plain words, and the change shows on refresh."""
+    page = new_page(1280, 900)
+    page.goto(console.url)
+    expect(page.locator("#h-overview")).to_be_visible()
+    card = page.locator("#regulation")
+    expect(card).to_contain_text("Background work")
+    expect(card).to_contain_text("Runs as your autonomy and monitor settings say")
+    db = store.open_existing(console.path)
+    try:
+        store.set_config(db, {"quiet": True})
+    finally:
+        db.close()
+    page.locator("#refreshOverview").click()
+    expect(card).to_contain_text("Quiet: nothing runs unless you ask")
+    assert page.problems == []
+
+
 def test_locked_states_and_api_errors(console, new_page):
     page = new_page(1280, 900)
     requests = []

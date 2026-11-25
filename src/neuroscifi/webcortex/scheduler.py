@@ -19,9 +19,13 @@ daily budget when it starts (orchestrator._claim), claim_next holds autonomous t
 open, and work() asks autonomy.idle for one idle investigation when nothing is queued.
 
 2. only when config.autonomous: due predictions (refresh tasks) and the top curiosity candidates, restricted to
-   items already in knowledge or owner monitors, within config.daily_autonomous (tasks, requests and bytes of
-   origin curiosity/refresh in the last 24 h). Each autonomous task's request/byte budget is clamped at submit to
-   the allowance left (orchestrator.submit), so the cap is passed by at most the request in flight.
+   items already in knowledge or owner monitors and admitted by the one rule the idle investigator uses
+   (autonomy.admission, ADR-050; `tick_admission` "legacy" restores the earlier rule for one release), within
+   config.daily_autonomous (tasks, requests and bytes of origin curiosity/refresh in the last 24 h). Each
+   autonomous task's request/byte budget is clamped at submit to the allowance left (orchestrator.submit), so the
+   cap is passed by at most the request in flight.
+The owner's quiet (background.py, ADR-050) holds 1 and 2, the worker's claims of background tasks and its idle
+investigation; a background task already running stops at its next check.
 3. public-cache retention (services.prune_cache, at most hourly).
 4. a report of what ran, what was skipped and why.
 
@@ -401,7 +405,7 @@ def _over_cap(db, now, cfg, *, ignore_tasks=False):
 
 def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     """One timer pass: due monitors, then (autonomous only) predictions and curiosity. Returns what happened."""
-    from . import claims, curiosity, intent, orchestrator, predictions
+    from . import orchestrator, predictions
     report = {"at": now, "ran": [], "queued": [], "skipped": [], "findings": [], "predictions": []}
     cfg = state.get_config(db)
     if not cfg.enabled:
@@ -426,8 +430,12 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         report["ran"].append({"task_id": done["id"], "origin": origin, "status": done["status"]})
         return done
 
-    for (mid,) in db.execute("SELECT id FROM web_monitors WHERE status='active' AND next_run_at<=? "
-                             "ORDER BY next_run_at, id", (now,)).fetchall():
+    from .. import background as owner_switch
+    monitors, quiet = owner_switch.allowed(db, "tick.monitors")
+    if not monitors:            # the owner's quiet (ADR-050): due monitors stay due and run after it ends
+        report["skipped"].append({"what": "monitors", "reason": quiet})
+    for (mid,) in (db.execute("SELECT id FROM web_monitors WHERE status='active' AND next_run_at<=? "
+                              "ORDER BY next_run_at, id", (now,)).fetchall() if monitors else ()):
         mon = _monitor(db, mid)
         if budget_left <= 0:
             report["skipped"].append({"monitor_id": mid, "reason": f"max_tasks {max_tasks} reached"})
@@ -455,10 +463,13 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         report["skipped"].append({"what": "predictions and curiosity",
                                   "reason": "autonomous research is off (nsf web config --autonomous)"})
         return _retention(report, services, now)
+    refreshes, quiet = owner_switch.allowed(db, "tick.prediction_refresh")
+    if not refreshes:
+        report["skipped"].append({"what": "prediction refreshes", "reason": quiet})
     cap = _over_cap(db, now, cfg)
     room = max(0, cfg.daily_autonomous.get("tasks", 0) - autonomous_usage(db, now)["tasks"])
     limit = 0 if cap else max(0, min(room, budget_left, predictions.MAX_REFRESHES))
-    report["predictions"] = predictions.check_due(db, now, services, limit=limit)
+    report["predictions"] = predictions.check_due(db, now, services, limit=limit) if refreshes else []
     for action in report["predictions"]:
         if action["action"] == "skipped" and action["reason"].startswith("refresh limit"):
             action["reason"] = cap or (f"max_tasks {max_tasks} reached" if budget_left <= 0 else
@@ -480,33 +491,45 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
             continue
         budget_left -= 1
         report["ran"].append({"task_id": done["id"], "origin": "refresh", "status": done["status"]})
-    for candidate in curiosity.rank(db, now, limit=10):
-        if candidate["excluded"]:
-            report["skipped"].append({"target": candidate["target"], "reason": candidate["reason"]})
-            continue
-        if "knowledge_id" not in candidate["target"]:
-            report["skipped"].append({"target": candidate["target"], "reason": "autonomous research is limited to "
-                                      "items already in knowledge and owner monitors; propose it instead"})
-            continue
-        if candidate["kind"] == "prediction":
-            continue    # handled by predictions.check_due above
+    curious, quiet = owner_switch.allowed(db, "tick.curiosity")
+    if not curious:
+        report["skipped"].append({"what": "curiosity", "reason": quiet})
+        return _retention(report, services, now)
+    # One admission rule for both autonomy paths (ADR-050, autonomy.admission); `tick_admission` "legacy" restores
+    # the tick's rule before it for one release.
+    from . import autonomy
+    admitted = autonomy.admission(db, now, path="tick", limit=10,
+                                  rule="legacy" if cfg.tick_admission == "legacy" else "unified")
+    report["admission"] = admitted["rule"]
+    if admitted["gate"]:
+        report["skipped"].append({"what": "curiosity", "reason": admitted["gate"]})
+    for refused in admitted["refused"]:
+        report["skipped"].append({"target": refused.get("target") or {"key": refused.get("key"),
+                                                                        "knowledge_id": refused.get("knowledge_id")},
+                                  "reason": refused["reason"]})
+    for pick in admitted["chosen"]:
+        target = pick.get("target") or {"key": pick["key"], "knowledge_id": pick.get("knowledge_id")}
         cap = _over_cap(db, now, cfg)
         if cap or budget_left <= 0:
-            report["skipped"].append({"target": candidate["target"], "reason": cap or f"max_tasks {max_tasks} reached"})
+            report["skipped"].append({"target": target, "reason": cap or f"max_tasks {max_tasks} reached"})
             continue
-        statement = candidate["target"].get("statement") or ""
-        if claims.record_template(statement) is not None:
-            report["skipped"].append({"target": candidate["target"], "reason": "a structured record's template is "
-                                      "not a statement to research; the record is re-read by its own refresh"})
+        if admitted["rule"] == "unified" and pick["key"] in autonomy._recent(
+                db, now, float(autonomy.policy(db)["cooldown"])):
+            report["skipped"].append({"target": target, "reason": "investigated autonomously since the ranking "
+                                                                  "was read (cooldown)"})
             continue
-        objective = intent.query_text(statement)      # the statement's own words (W-20), never a template frame
-        if not objective:
-            report["skipped"].append({"target": candidate["target"], "reason": "nothing searchable in the statement"})
-            continue
+
+        def record(task, pick=pick):
+            # the rule that admitted it, with the task; under 'unified' also its subject (cooldown and lineage)
+            detail = ({"autonomy": autonomy.decision_inputs(pick, admitted)} if admitted["rule"] == "unified" else
+                      {"autonomy": "admitted by the legacy tick rule", "key": pick["key"],
+                       "admission": {"rule": "legacy", "path": "tick"}})
+            with store.write(db):
+                state.log_event(db, task["id"], "decision", detail, now)
         try:
-            launch(objective, mode=candidate["mode"], origin="curiosity")
+            launch(pick["objective"], mode=pick["mode"], origin="curiosity", before_run=record)
         except (ValidationError, WritesPaused) as exc:
-            report["skipped"].append({"target": candidate["target"], "reason": str(exc)})
+            report["skipped"].append({"target": target, "reason": str(exc)})
     return _retention(report, services, now)
 
 
@@ -538,10 +561,14 @@ def claim_next(db, holder, now, *, lease=None):
     AUTONOMOUS_DEFER, so a steady stream of questions never stops background work and a backlog of aged
     refreshes never runs ahead of the owner as a block. Returns (task_id, resume) or
     None."""
+    from .. import background as owner_switch
     from . import autonomy, orchestrator
     from .services import holder_alive
     lease = orchestrator.LEASE_SECONDS if lease is None else lease
     with store.write(db):
+        # The owner's quiet (ADR-050): no background task (curiosity, refresh, monitor run; not a proposal the
+        # owner confirmed) is claimed or resumed; it stays queued or interrupted until quiet is off.
+        held = "" if owner_switch.allowed(db, "worker.claim_background")[0] else f" AND NOT {owner_switch.HELD_SQL}"
         # D4: while `concurrent` autonomous investigations are open, queued autonomous tasks wait their turn; so do
         # they while resources.policy.background_gate refuses (RD-46: audio priority, critical memory pressure), and a
         # scope whose budget left is held by running tasks waits for them too (T5-02), without being cancelled.
@@ -559,19 +586,19 @@ def claim_next(db, holder, now, *, lease=None):
         aged_before = float("-inf") if recent else now - AUTONOMOUS_DEFER
         row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status='queued' AND "
                          "coalesce(stage,'')!='proposed' AND (lease_holder IS NULL OR lease_expires_at<?)"
-                         f"{waiting} ORDER BY ({autonomy.AUTONOMOUS_SQL} AND created_at>?), created_at, rowid "
+                         f"{waiting}{held} ORDER BY ({autonomy.AUTONOMOUS_SQL} AND created_at>?), created_at, rowid "
                          "LIMIT 1", (now, aged_before)).fetchone()
         resume = False
         if row is None:
             row = db.execute("SELECT id, lease_holder FROM web_tasks WHERE status IN ('discovering','reading',"
-                             "'evaluating','synthesizing') AND lease_expires_at IS NOT NULL AND lease_expires_at<? "
-                             "ORDER BY lease_expires_at LIMIT 1", (now,)).fetchone()
+                             "'evaluating','synthesizing') AND lease_expires_at IS NOT NULL AND lease_expires_at<?"
+                             f"{held} ORDER BY lease_expires_at LIMIT 1", (now,)).fetchone()
             resume = True
         if row is None:
             row = next((r for r in db.execute(
                 "SELECT id, lease_holder FROM web_tasks WHERE status IN ('queued','discovering','reading',"
                 "'evaluating','synthesizing') AND coalesce(stage,'')!='proposed' AND lease_holder IS NOT NULL "
-                "AND lease_expires_at>=? ORDER BY lease_expires_at LIMIT 50", (now,)).fetchall()
+                f"AND lease_expires_at>=?{held} ORDER BY lease_expires_at LIMIT 50", (now,)).fetchall()
                 if r[1] != holder and holder_alive(r[1]) is False), None)
             if row is not None:
                 resume = db.execute("SELECT status FROM web_tasks WHERE id=?", (row[0],)).fetchone()[0] != "queued"
@@ -693,9 +720,10 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=None, clock=time.tim
     decision event per pause, result["paused"] says why). While resources.policy.background_gate refuses (a voice
     session capturing or speaking, critical memory pressure) no new autonomous task is claimed or planned; tasks the
     owner asked for still run (one decision event when the deferral starts and one when it ends; RD-46)."""
+    from .. import background as owner_switch
     from . import orchestrator, services as service_builder
     db = store.open_existing(db_path)
-    done, svc, built_for, paused, deferred = [], None, None, None, None
+    done, svc, built_for, paused, deferred, quiet = [], None, None, None, None, None
     holder, beating = service_builder.holder_id(), threading.Event()
     if sleep is None or (stop is not None and getattr(sleep, "__self__", None) is stop):
         def sleep(seconds):
@@ -742,6 +770,13 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=None, clock=time.tim
                     state.log_event(db, None, "decision", {"worker": "deferring new autonomous research",
                                                            "reason": str(gate["reason"])[:300]} if deferred else
                                     {"worker": "autonomous research may start again"}, float(clock()))
+            hold = owner_switch.allowed(db, "worker.claim_background")[1]
+            if hold != quiet:       # one event when the owner's quiet starts and one when it ends (ADR-050)
+                quiet = hold
+                with store.write(db):
+                    state.log_event(db, None, "decision", {"worker": "holding background work: quiet is on",
+                                                           "reason": hold} if hold else
+                                    {"worker": "background work may run again: quiet is off"}, float(clock()))
             claimed = claim_next(db, svc.holder, float(clock()))
             if claimed is None and idle and gate["allowed"]:
                 # Nothing queued: an idle investigation when the owner enabled autonomy (autonomy.idle decides,

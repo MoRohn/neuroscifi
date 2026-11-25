@@ -96,6 +96,9 @@ class InstanceConfig:
     # for at most this long. Nothing writes to the store by default; these bound whatever mechanism does.
     max_imagined_rows: int = 1000
     imagined_lifetime_seconds: float = 7 * 86400
+    # The owner's one switch for everything done unasked (background.py, ADR-050): on = background research,
+    # monitors, refreshes and idle investigations are held; work the owner asks for is not. Off by default.
+    quiet: bool = False
 
     @classmethod
     def from_json(cls, text):
@@ -111,6 +114,10 @@ class InstanceConfig:
         # The same for the graph-rule migration: a damaged value never changes an individual's rules or graphs.
         if not isinstance(values.get("graph_rule_migration", True), bool):
             values["graph_rule_migration"] = False
+        # Quiet the other way round: a damaged value holds background work, the reading that cannot run work the
+        # owner may have stopped.
+        if not isinstance(values.get("quiet", False), bool):
+            values["quiet"] = True
         # A limit that is not a whole number from 0 up (a hand-edited "none", a -1, true) is not a limit: the default
         # stands, never "no limit" by accident. setting_problems() reports it.
         if "max_consolidated_rows" in values and not _row_limit(values["max_consolidated_rows"]):
@@ -273,6 +280,7 @@ _SETTABLE = {
     "max_imagined_rows": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= MAX_IMAGINED_ROWS,
     "imagined_lifetime_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
                                             and math.isfinite(v) and 60 <= v <= 365 * 86400),
+    "quiet": lambda v: isinstance(v, bool),
 }
 MAX_IMAGINED_ROWS = 100_000
 
@@ -304,7 +312,9 @@ def setting_problems(db):
              "max_imagined_rows": f"; the default limit of {InstanceConfig.max_imagined_rows} imagined records applies "
                                   "until it is set with `nsf config --max-imagined-rows N`",
              "imagined_lifetime_seconds": "; the default lifetime of imagined records applies until it is set with "
-                                          "`nsf config --imagined-lifetime-days D`"}
+                                          "`nsf config --imagined-lifetime-days D`",
+             "quiet": "; quiet is treated as on (background work held) until it is set with `nsf quiet on` or "
+                      "`nsf quiet off`"}
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
             for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
 

@@ -33,6 +33,20 @@ store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [na
 #   otherwise. `nsf config` is its CLI.
 #   Each real change adds a deletion_log row: target_kind "setting", target_id the name, effects {"from", "to",
 #   "state_version"} (from a restore: {"from", "to", "carried_by_restore": true}).
+#   ADR-050 adds InstanceConfig.quiet (bool, default false; owner-settable; carried by restore; a saved value that is
+#   not a JSON boolean reads as true and is listed by store.setting_problems()). `nsf quiet on|off|status` and
+#   `nsf config --quiet|--no-quiet` set it; store.regulation()["config"]["quiet"] shows it.
+#
+# The owner's quiet switch (ADR-050, `neuroscifi/background.py`):
+#   background.quiet(db) -> bool                       the setting now (False for a file without instance settings)
+#   background.allowed(db, activity) -> (bool, reason | None)   (False, QUIET_REASON) for a 'cognition' activity
+#                                                      while quiet is on; KeyError for an unregistered activity
+#   background.ACTIVITIES {name: {kind, what, sites}}  kinds cognition | maintenance | delivery | owner; RUNNERS
+#                                                      and UNITS name the callers and systemd units that run them
+#   background.held_task(db, task_id, origin) -> bool  origin curiosity, refresh:* or monitor:*, and not a
+#                                                      proposal the owner confirmed
+#   background.status(db) -> {quiet, changed_at, summary, held_while_quiet, keeps_running,
+#                             background_tasks_waiting?}   (`nsf quiet status`)
 #
 # Consolidation (ADR-044, schema 14). Additive fields, each absent while zero unless noted:
 #   beliefs.compute()["evidence"]["consolidated"]      learning readings that are consolidated (counted in "learning"
@@ -564,6 +578,31 @@ unaffected.
   `info_gain_as_read` (the gain of its forecast as read, which its `priority` uses) when the two differ. The
   `decision` event of a queued investigation carries `forecast_as_read` and `info_gain_as_read` when present.
 - No table, column or stored value is added or changed.
+
+**Quiet and the one admission rule (ADR-050).** Additive, nothing renamed or removed:
+- While the instance setting `quiet` is on: `scheduler.claim_next` claims and resumes no task of a background origin
+  (`curiosity`, `refresh:*`, `monitor:*`) unless the owner confirmed it as a proposal; `scheduler.tick` reports
+  `{"what": "monitors" | "prediction refreshes" | "curiosity", "reason": background.QUIET_REASON}` in `skipped` and
+  launches none of them (cache retention still runs); `autonomy.idle` returns `{"action": "quiet", "reason"}` and
+  writes no event; the worker logs one `decision` event `{"worker": "holding background work: quiet is on"}` when it
+  notices and `{"worker": "background work may run again: quiet is off"}` when it ends. A background task running
+  when quiet is turned on stops at its next check (before every network step; the run's gate answers the same to
+  its other threads) and ends `partial` with the limitation `background.STOPPED` and the event `{"stopped":
+  "quiet", "reason"}`; it is not consolidated.
+- Presence (`presence.aggregator.derive`, owner and family scope): `sources.background = "quiet"` while it is on
+  (absent otherwise); with nothing running the primary is `resting` with the detail "Quiet: nothing runs unless you
+  ask". The client says "Quiet" as the word and adds that sentence to its description.
+- `autonomy.admission(db, now, *, path: "idle" | "tick", rule="unified" | "legacy", limit=5) -> {rule, path, gate,
+  chosen, refused, min_gain?}`: the one admission rule both paths use. `autonomy.decision_inputs(pick, admitted)`.
+  `rule` "legacy" applies to path "tick" only (ValidationError otherwise).
+- `scheduler.tick` reports `admission` (the rule used). A tick-launched investigation's `decision` event is
+  `{"autonomy": {kind, key, mode, info_gain, cost, priority, signals, reason, ..., "admission": {"rule": "unified",
+  "path": "tick"}}}` (its key feeds the cooldown and the lineage, as the idle investigator's does), or under the
+  legacy rule `{"autonomy": "admitted by the legacy tick rule", "key", "admission": {"rule": "legacy", "path":
+  "tick"}}`. The idle investigator's event gains `admission: {"rule": "unified", "path": "idle"}`.
+- Web setting `tick_admission` ("unified" default | "legacy"; `nsf web config --set tick_admission='"legacy"'`),
+  kept for one release.
+- `autonomy.status` (`nsf web autonomy status`, console `GET /api/web/autonomy`) gains `quiet` (bool).
 
 **Web question budget.** `knowledge.web_question_load(db, now=None, cfg=None) -> {open, stale, counted, cap,
 stale_after_days, room}` and `knowledge.stale_web_questions(db, now, cfg=None) -> [{id, scope, question, created_at,
