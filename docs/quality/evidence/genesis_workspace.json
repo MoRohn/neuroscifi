@@ -2,7 +2,7 @@
  "benchmark": "genesis-workspace",
  "broadcast_access": {
   "log": {
-   "after_task_ms_median": 0.103,
+   "after_task_ms_median": 0.099,
    "findings": 10,
    "questions_opened": 10,
    "readers_per_broadcast": [
@@ -22,27 +22,27 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.017,
+       "read_ms": 0.015,
        "reads_it": true
       },
       "pocket_push": {
-       "read_ms": 0.01,
+       "read_ms": 0.008,
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.203,
+       "read_ms": 0.181,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 1.198,
+       "read_ms": 1.065,
        "reads_it": true
       },
       "state_version": {
-       "read_ms": 0.002,
+       "read_ms": 0.003,
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.003,
        "reads_it": true
       }
      },
@@ -55,7 +55,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.01,
+       "read_ms": 0.009,
        "reads_it": true
       },
       "pocket_push": {
@@ -63,11 +63,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.172,
+       "read_ms": 0.162,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.817,
+       "read_ms": 0.772,
        "reads_it": true
       },
       "state_version": {
@@ -75,7 +75,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.005,
+       "read_ms": 0.004,
        "reads_it": true
       }
      },
@@ -88,7 +88,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.011,
+       "read_ms": 0.01,
        "reads_it": true
       },
       "pocket_push": {
@@ -96,11 +96,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.166,
+       "read_ms": 0.161,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.792,
+       "read_ms": 0.751,
        "reads_it": true
       },
       "state_version": {
@@ -121,7 +121,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.012,
+       "read_ms": 0.011,
        "reads_it": true
       },
       "pocket_push": {
@@ -129,11 +129,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.168,
+       "read_ms": 0.16,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.8,
+       "read_ms": 0.772,
        "reads_it": true
       },
       "state_version": {
@@ -154,7 +154,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.013,
+       "read_ms": 0.012,
        "reads_it": true
       },
       "pocket_push": {
@@ -162,11 +162,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.167,
+       "read_ms": 0.162,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.8,
+       "read_ms": 0.787,
        "reads_it": true
       },
       "state_version": {
@@ -174,7 +174,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.005,
        "reads_it": true
       }
      },
@@ -195,11 +195,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.172,
+       "read_ms": 0.179,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.8,
+       "read_ms": 0.775,
        "reads_it": true
       },
       "state_version": {
@@ -228,11 +228,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.174,
+       "read_ms": 0.168,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.82,
+       "read_ms": 1.031,
        "reads_it": true
       },
       "state_version": {
@@ -240,7 +240,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.005,
+       "read_ms": 0.004,
        "reads_it": true
       }
      },
@@ -257,15 +257,15 @@
        "reads_it": true
       },
       "pocket_push": {
-       "read_ms": 0.018,
+       "read_ms": 0.003,
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.173,
+       "read_ms": 0.17,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.779,
+       "read_ms": 0.798,
        "reads_it": true
       },
       "state_version": {
@@ -273,7 +273,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.005,
+       "read_ms": 0.004,
        "reads_it": true
       }
      },
@@ -286,7 +286,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.017,
+       "read_ms": 0.018,
        "reads_it": true
       },
       "pocket_push": {
@@ -298,7 +298,7 @@
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.859,
+       "read_ms": 0.845,
        "reads_it": true
       },
       "state_version": {
@@ -306,7 +306,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.005,
        "reads_it": true
       }
      },
@@ -319,7 +319,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.019,
+       "read_ms": 0.02,
        "reads_it": true
       },
       "pocket_push": {
@@ -327,11 +327,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.183,
+       "read_ms": 0.191,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.837,
+       "read_ms": 0.778,
        "reads_it": true
       },
       "state_version": {
@@ -352,7 +352,7 @@
    ]
   },
   "off": {
-   "after_task_ms_median": 0.061,
+   "after_task_ms_median": 0.06,
    "findings": 10,
    "questions_opened": 10,
    "readers_per_broadcast": [
@@ -372,19 +372,19 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.02,
+       "read_ms": 0.018,
        "reads_it": true
       },
       "pocket_push": {
-       "read_ms": 0.012,
+       "read_ms": 0.009,
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.216,
+       "read_ms": 0.194,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 1.227,
+       "read_ms": 1.06,
        "reads_it": false
       },
       "state_version": {
@@ -392,7 +392,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.003,
        "reads_it": true
       }
      },
@@ -405,7 +405,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.011,
+       "read_ms": 0.01,
        "reads_it": true
       },
       "pocket_push": {
@@ -413,19 +413,19 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.169,
+       "read_ms": 0.176,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.906,
+       "read_ms": 0.799,
        "reads_it": false
       },
       "state_version": {
-       "read_ms": 0.005,
+       "read_ms": 0.004,
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.005,
+       "read_ms": 0.004,
        "reads_it": true
       }
      },
@@ -438,7 +438,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.011,
+       "read_ms": 0.01,
        "reads_it": true
       },
       "pocket_push": {
@@ -446,11 +446,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.166,
+       "read_ms": 0.161,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.776,
+       "read_ms": 1.059,
        "reads_it": false
       },
       "state_version": {
@@ -458,7 +458,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.005,
        "reads_it": true
       }
      },
@@ -471,7 +471,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.012,
+       "read_ms": 0.011,
        "reads_it": true
       },
       "pocket_push": {
@@ -479,11 +479,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.178,
+       "read_ms": 0.16,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.758,
+       "read_ms": 0.739,
        "reads_it": false
       },
       "state_version": {
@@ -504,7 +504,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.013,
+       "read_ms": 0.012,
        "reads_it": true
       },
       "pocket_push": {
@@ -512,11 +512,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.162,
+       "read_ms": 0.197,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.783,
+       "read_ms": 0.727,
        "reads_it": false
       },
       "state_version": {
@@ -545,11 +545,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.168,
+       "read_ms": 0.159,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.772,
+       "read_ms": 0.747,
        "reads_it": false
       },
       "state_version": {
@@ -570,7 +570,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.016,
+       "read_ms": 0.015,
        "reads_it": true
       },
       "pocket_push": {
@@ -578,11 +578,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.168,
+       "read_ms": 0.171,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.773,
+       "read_ms": 0.734,
        "reads_it": false
       },
       "state_version": {
@@ -590,7 +590,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.005,
+       "read_ms": 0.004,
        "reads_it": true
       }
      },
@@ -603,7 +603,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.017,
+       "read_ms": 0.016,
        "reads_it": true
       },
       "pocket_push": {
@@ -611,11 +611,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.171,
+       "read_ms": 0.165,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.777,
+       "read_ms": 0.78,
        "reads_it": false
       },
       "state_version": {
@@ -636,7 +636,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.018,
+       "read_ms": 0.017,
        "reads_it": true
       },
       "pocket_push": {
@@ -644,11 +644,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.184,
+       "read_ms": 0.176,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.756,
+       "read_ms": 0.735,
        "reads_it": false
       },
       "state_version": {
@@ -677,11 +677,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.178,
+       "read_ms": 0.172,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.805,
+       "read_ms": 0.741,
        "reads_it": false
       },
       "state_version": {
@@ -689,7 +689,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.005,
+       "read_ms": 0.004,
        "reads_it": true
       }
      },
@@ -702,7 +702,7 @@
    ]
   },
   "on": {
-   "after_task_ms_median": 0.094,
+   "after_task_ms_median": 0.093,
    "findings": 10,
    "questions_opened": 4,
    "readers_per_broadcast": [
@@ -735,7 +735,7 @@
        "reads_it": false
       },
       "self_description": {
-       "read_ms": 1.199,
+       "read_ms": 1.056,
        "reads_it": true
       },
       "state_version": {
@@ -743,7 +743,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.003,
        "reads_it": true
       }
      },
@@ -768,7 +768,7 @@
        "reads_it": false
       },
       "self_description": {
-       "read_ms": 0.798,
+       "read_ms": 0.761,
        "reads_it": true
       },
       "state_version": {
@@ -776,7 +776,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.005,
        "reads_it": true
       }
      },
@@ -801,7 +801,7 @@
        "reads_it": false
       },
       "self_description": {
-       "read_ms": 0.77,
+       "read_ms": 0.759,
        "reads_it": true
       },
       "state_version": {
@@ -822,19 +822,19 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.016,
+       "read_ms": 0.014,
        "reads_it": true
       },
       "pocket_push": {
-       "read_ms": 0.009,
+       "read_ms": 0.008,
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.173,
+       "read_ms": 0.17,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.787,
+       "read_ms": 0.778,
        "reads_it": true
       },
       "state_version": {
@@ -867,7 +867,7 @@
        "reads_it": false
       },
       "self_description": {
-       "read_ms": 0.788,
+       "read_ms": 0.777,
        "reads_it": true
       },
       "state_version": {
@@ -875,7 +875,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.005,
        "reads_it": true
       }
      },
@@ -888,7 +888,7 @@
     {
      "detail": {
       "console_questions": {
-       "read_ms": 0.01,
+       "read_ms": 0.009,
        "reads_it": true
       },
       "pocket_push": {
@@ -896,11 +896,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.169,
+       "read_ms": 0.167,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.788,
+       "read_ms": 0.774,
        "reads_it": true
       },
       "state_version": {
@@ -933,7 +933,7 @@
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.788,
+       "read_ms": 0.753,
        "reads_it": true
       },
       "state_version": {
@@ -966,7 +966,7 @@
        "reads_it": false
       },
       "self_description": {
-       "read_ms": 0.785,
+       "read_ms": 0.79,
        "reads_it": true
       },
       "state_version": {
@@ -999,7 +999,7 @@
        "reads_it": false
       },
       "self_description": {
-       "read_ms": 0.801,
+       "read_ms": 0.778,
        "reads_it": true
       },
       "state_version": {
@@ -1028,11 +1028,11 @@
        "reads_it": true
       },
       "presence": {
-       "read_ms": 0.187,
+       "read_ms": 0.173,
        "reads_it": true
       },
       "self_description": {
-       "read_ms": 0.778,
+       "read_ms": 0.825,
        "reads_it": true
       },
       "state_version": {
@@ -1040,7 +1040,7 @@
        "reads_it": true
       },
       "worker_wake": {
-       "read_ms": 0.004,
+       "read_ms": 0.005,
        "reads_it": true
       }
      },
@@ -1081,8 +1081,8 @@
  },
  "environment": {
   "cpu_count": 20,
-  "git_commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
-  "git_dirty": true,
+  "git_commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
+  "git_dirty": false,
   "machine": "aarch64",
   "numpy": "2.3.5",
   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
@@ -1096,8 +1096,8 @@
  "presence_states": {
   "declared_unused_before": 6,
   "derive_ms_median": {
-   "no_remote_files": 0.13,
-   "one_remote_file": 0.147
+   "no_remote_files": 0.129,
+   "one_remote_file": 0.146
   },
   "note": "before this lane the six activities appeared only in the vocabulary (audit-runtime \u00a76)",
   "shown_now": 6,
@@ -1114,15 +1114,15 @@
   "development": {
    "baseline": {
     "ablate": [],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 54550528,
-     "peak_rss_rise_bytes": 5558272,
+     "peak_rss_bytes": 54321152,
+     "peak_rss_rise_bytes": 5566464,
      "refused_connections": 0,
-     "wall_seconds": 0.115
+     "wall_seconds": 0.114
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "baseline",
     "per_probe": {
      "audio_active": {
@@ -1220,15 +1220,15 @@
    },
    "self_description": {
     "ablate": [],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 55861248,
+     "peak_rss_bytes": 55631872,
      "peak_rss_rise_bytes": 1310720,
      "refused_connections": 0,
-     "wall_seconds": 0.113
+     "wall_seconds": 0.111
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -1328,15 +1328,15 @@
     "ablate": [
      "capabilities"
     ],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 56025088,
+     "peak_rss_bytes": 55795712,
      "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.105
+     "wall_seconds": 0.103
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -1436,15 +1436,15 @@
     "ablate": [
      "decisions"
     ],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 55861248,
+     "peak_rss_bytes": 55795712,
      "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.105
+     "wall_seconds": 0.102
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -1544,15 +1544,15 @@
     "ablate": [
      "tools"
     ],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 56025088,
-     "peak_rss_rise_bytes": 163840,
+     "peak_rss_bytes": 55795712,
+     "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.103
+     "wall_seconds": 0.106
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -1652,15 +1652,15 @@
     "ablate": [
      "uncertainty"
     ],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 55861248,
+     "peak_rss_bytes": 55631872,
      "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.104
+     "wall_seconds": 0.103
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -1760,15 +1760,15 @@
   "held_out": {
    "baseline": {
     "ablate": [],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 56025088,
+     "peak_rss_bytes": 55795712,
      "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.169
+     "wall_seconds": 0.17
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "baseline",
     "per_probe": {
      "audio_active": {
@@ -1866,15 +1866,15 @@
    },
    "self_description": {
     "ablate": [],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 56025088,
+     "peak_rss_bytes": 55795712,
      "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.177
+     "wall_seconds": 0.179
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -1974,15 +1974,15 @@
     "ablate": [
      "capabilities"
     ],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 56352768,
+     "peak_rss_bytes": 55795712,
      "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.18
+     "wall_seconds": 0.182
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -2082,15 +2082,15 @@
     "ablate": [
      "decisions"
     ],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 56188928,
-     "peak_rss_rise_bytes": 163840,
+     "peak_rss_bytes": 55795712,
+     "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.179
+     "wall_seconds": 0.178
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -2190,15 +2190,15 @@
     "ablate": [
      "tools"
     ],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 56352768,
-     "peak_rss_rise_bytes": 163840,
+     "peak_rss_bytes": 55795712,
+     "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
      "wall_seconds": 0.181
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -2298,15 +2298,15 @@
     "ablate": [
      "uncertainty"
     ],
-    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "commit": "98f8df63334365c9cbafe29ebab2235aa24e9067",
     "cost": {
      "model_calls": 0,
-     "peak_rss_bytes": 56025088,
+     "peak_rss_bytes": 55795712,
      "peak_rss_rise_bytes": 0,
      "refused_connections": 0,
-     "wall_seconds": 0.181
+     "wall_seconds": 0.176
     },
-    "dirty": true,
+    "dirty": false,
     "mechanism": "self_description",
     "per_probe": {
      "audio_active": {
@@ -2406,8 +2406,8 @@
  },
  "self_description_over_time": {
   "build_ms": {
-   "max": 1.51,
-   "median": 1.38,
+   "max": 1.7,
+   "median": 1.37,
    "n": 36
   },
   "comparable_steps": 12,
