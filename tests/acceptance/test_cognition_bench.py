@@ -289,6 +289,7 @@ def test_registration_ablation_and_fallback(tmp_path):
             assert out["families"][family]["cost"]["refused_connections"] == 0
         diff = cognition.compare(ablated, out)
         assert diff["anticipation"]["summary.work_given_up_share.mean"]["better"] is False
+        assert cognition.compare({"development": ablated, "held_out": {}}, out) == diff   # the baseline file's shape
     finally:
         cognition._REGISTRY.pop(("anticipation", "test-holder"), None)
 

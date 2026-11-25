@@ -372,7 +372,10 @@ HEADLINES = {
 
 
 def compare(before: dict, after: dict) -> dict:
-    """Headline metrics of two outputs, family by family: {metric: {"before", "after", "better"}}."""
+    """Headline metrics of two outputs, family by family: {metric: {"before", "after", "better"}}. `before` may be
+    the recorded baseline file: its run of the same split as `after` is used."""
+    if "families" not in before:
+        before = before.get(after.get("split", "development")) or {}
     out = {}
     for family, metrics in HEADLINES.items():
         a = (before.get("families") or {}).get(family)
