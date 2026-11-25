@@ -134,6 +134,13 @@ def _tamper(path, sql, *args):
     ('{"enabled": true, "searxng_url": 5}', "wrong type"),
     ('{"enabled": true, "searxng_url": "http://0.0.0.0:8080"}', "not usable"),
     ('{"enabled": true, "searxng_url": "http://127.0.0.1:99999"}', "not usable"),
+    # a port the account that runs containers must not be made to take (review finding L6)
+    ('{"enabled": true, "searxng_url": "http://127.0.0.1:8811"}', "not allowed"),      # the answer model
+    ('{"enabled": true, "searxng_url": "http://127.0.0.1:18441"}', "not allowed"),     # the memory models
+    ('{"enabled": true, "searxng_url": "http://127.0.0.1:18431"}', "not allowed"),     # voice
+    ('{"enabled": true, "searxng_url": "http://127.0.0.1:8765"}', "not allowed"),      # Pocket
+    ('{"enabled": true, "searxng_url": "http://127.0.0.1:631"}', "not allowed"),       # privileged
+    ('{"enabled": true, "searxng_url": "http://127.0.0.1"}', "not allowed"),           # no port: 80
 ])
 def test_a_configuration_the_other_account_wrote_badly_is_an_error_not_a_crash_or_a_public_port(box, value, why):
     _tamper(box.db, "INSERT OR REPLACE INTO meta(key, value) VALUES ('webcortex', ?)", value)

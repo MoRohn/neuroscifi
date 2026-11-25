@@ -439,6 +439,11 @@ def _shared_config(path):
     return cfg
 
 
+# Host ports the other NeuroSciFi services publish or listen on (deploy/): the answer model, the memory models, the
+# voice services, Pocket, the console and the web search daemon. The read-only SearXNG path refuses them.
+SHARED_RESERVED_PORTS = frozenset({8811, 18441, 18442, 18431, 18432, 8765, 8766, 3210})
+
+
 def _searxng_shared(a):
     """`nsf web searxng start|stop|status` by an account that may read the instance database but not write it.
 
@@ -461,6 +466,13 @@ def _searxng_shared(a):
         container = _searxng_container(cfg)
     except ValueError as error:          # a port that is not one
         raise ValidationError(f"searxng_url is not usable: {error}"[:300]) from None
+    # The port comes from a database another account writes, and this account (which may run containers) publishes
+    # it: never a privileged port, and never one the other NeuroSciFi services listen on, so a changed searxng_url
+    # cannot make this account take the answer model's, the memory models', the voice services' or Pocket's port.
+    port = int(container.port)
+    if not 1024 <= port <= 65535 or port in SHARED_RESERVED_PORTS:
+        raise ValidationError(f"searxng_url's port {port} is not allowed here: choose a port from 1024 to 65535 that "
+                              "no other NeuroSciFi service uses (SearXNG's own default is 8888)")
     out = {"database": "read only (this account may not write it; nothing was written)"}
     if a.action == "start":
         if not cfg.enabled:
