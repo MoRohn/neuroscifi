@@ -309,7 +309,9 @@ def test_words_that_only_name_the_source_are_removed_as_0_7_0_removed_them(after
     "from Bank of", "by Ana Ruiz Jose Luis Maria Carmen Lopez",           # seven words
     "from ACME & Sons",
     "by Orbix Labs Retracted", "by Orbix Labs Withdrawn", "from the Orbix Archive Superseded",   # review round 2
-    "by Orbix Labs Disputed", "by Orbix Labs DEBUNKED", "by the Draft Orbix Board",                                                   # a sign between words: refused, kept simple
+    "by Orbix Labs Disputed", "by Orbix Labs DEBUNKED", "by the Draft Orbix Board",
+    "from Windows Users", "from Linux Administrators", "by Enterprise Customers",   # remaining items: a group of
+    "from Python Developers", "by Local Residents", "by Citizens Advice",             # people, source or scope                                                   # a sign between words: refused, kept simple
     "",
 ])
 def test_anything_else_after_the_source_word_is_not_a_name(after):
