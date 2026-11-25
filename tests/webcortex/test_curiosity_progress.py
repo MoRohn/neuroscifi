@@ -75,6 +75,15 @@ def test_a_confirming_refresh_is_progress_on_what_it_was_asked_to_settle(db):
     for expected in (0.1, 0.5, 1.0):
         factor, note, record = curiosity.progress(db, key, expected, T0 + 4 * DAY)
         assert factor == 1.0 and record["without_progress"] == 0 and note == ""
+    # and the futility streak, which reads the same rows, does not count them either while it is on (off: Wave 0)
+    assert curiosity._futility(db, key)[0] == 0.25
+    assert curiosity._futility(db, key, refresh_is_progress=True)[0] == 1.0
+    later = T0 + 400 * DAY
+    lp_on(db, False)
+    off = next(c for c in curiosity.rank(db, later) if c["target"].get("key") == key)
+    lp_on(db)
+    on = next(c for c in curiosity.rank(db, later) if c["target"].get("key") == key)
+    assert on["info_gain"] == pytest.approx(4 * off["info_gain"], abs=1e-5) and "irreducible" not in on["reason"]
 
 
 def test_progress_and_futility_take_the_stronger_never_the_product(db):

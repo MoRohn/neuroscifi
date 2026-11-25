@@ -92,13 +92,16 @@ def _ttl(cfg, cls):
     return float(temporal.ttl(cls, cfg.freshness_ttl or None))
 
 
-def _futility(db, key):
-    """(factor, note) from the key's realised feedback history."""
-    effects = db.execute("SELECT effect, info_gain FROM web_feedback WHERE key=? ORDER BY id DESC LIMIT 6",
-                         (key,)).fetchall()
+def _futility(db, key, *, refresh_is_progress=False):
+    """(factor, note) from the key's realised feedback history. With refresh_is_progress (learning progress on), a
+    confirming re-verification (consolidation's refresh, not a disagreement) ends the streak as progress() credits
+    it; off, every 'unchanged' look counts, as before ADR-051."""
+    effects = db.execute("SELECT effect, info_gain, json_extract(detail,'$.new_claims') IS NOT NULL AND "
+                         "coalesce(json_extract(detail,'$.contested'),0)=0 FROM web_feedback WHERE key=? "
+                         "ORDER BY id DESC LIMIT 6", (key,)).fetchall()
     streak = 0
-    for effect, gain in effects:
-        if effect == "unchanged" and abs(gain or 0.0) < FUTILE_GAIN:
+    for effect, gain, refresh in effects:
+        if effect == "unchanged" and abs(gain or 0.0) < FUTILE_GAIN and not (refresh_is_progress and refresh):
             streak += 1
         else:
             break
@@ -267,6 +270,7 @@ def rank(db, now, *, limit=10) -> list[dict]:
         record."""
         if not lp_on:
             return factor, futile, {}
+        factor, futile = _futility(db, key, refresh_is_progress=True)
         lp, note, record = progress(db, key, gain, now)
         if lp >= factor:
             return factor, futile, {"learning_progress": record}
