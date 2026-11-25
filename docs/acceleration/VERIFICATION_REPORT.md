@@ -1,7 +1,8 @@
 # Final system verification report
 
 Status: 2026-11-24, on the reference DGX Spark. Phases 1 and 2: branch `nvidia-acceleration-review` (based on
-`9e4570a`, 0.7.0), merged to `main` as `793a21f`. Phase 3: branch `open-items-round`, based on `793a21f`.
+`9e4570a`, 0.7.0), merged to `main` as `793a21f`. Phase 3: branch `open-items-round`, based on `793a21f`, merged
+to `main` as `c565c20`. Phase 4: branch `remaining-items-round`, based on `c565c20`.
 An item is marked done only with a test, a measurement or an inspection named beside it. Where the environment
 could not check something it is marked **unverified**, not passed.
 
@@ -42,6 +43,17 @@ could not check something it is marked **unverified**, not passed.
   critical finding (a path to root through the installer, on the branch only) and the others were fixed
   ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §5). Eight items were left open on purpose, with the reason (§5.3
   there).
+- **Phase 4: the remaining items.** The owner then asked for the list phase 3 left to be analysed and acted on, and
+  answered four questions: graphs migrate automatically, the TensorRT-LLM comparison prepared in the best way, real
+  systemd left unverified, voice stop as it is. Ten lanes: the guard's remaining gaps (stricter only, the
+  differential against `307b907` at 0 different); contradictions in other units and stated aliases, tested on a fresh
+  held-out set; forgetting of one kind of a name, of a forgotten task's settlements and of a forgotten dataset's
+  graphs (schema 15, ADR-048); belief computation without a pass over every reading and a restore that streams its
+  tombstones (schema 16); the graph-rule migration for existing individuals (ADR-047); the memory models without a
+  network; SearXNG in the two-account install and an unused voice session; read-ahead's robots.txt continuation and
+  two flaky tests; an offline outbox in Pocket; the TensorRT-LLM window scripted, with no downtime taken. Three
+  independent reviews, a first fix round, an independent re-review of the fixes and a second fix round followed
+  ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §7; what remains is its §6).
 
 ## 2. Definition of done
 
@@ -57,7 +69,7 @@ could not check something it is marked **unverified**, not passed.
 | Context and memory correctness validated | Done | Long-context recall 3 of 3; memory benchmark by class with held-out subjects (re-run in phase 2 and against the single memory server in phase 3: unchanged); contradictions in other words 31 of 43 found and 0 of 23 false pairs on held-out subjects (of a design revised once); the kept knowledge index identical to a fresh one over random sequences on two connections; the memory-answer check 86 of 96 and 1 of 288; provenance and timestamps untouched (the same rows, reordered). Phase 2: beliefs equal before and after the evidence lifetime, against a twin that never expires, over 80 randomised lives; forgetting exact and restores clean through a second generation (two independent fuzzes) |
 | Hardware utilisation measured and optimised where practical | Done | GPU 96 % at one stream; queue, prefill, decode, cache, power and temperature now reported; scheduling flags. No further headroom was found to recover: the limit is single-stream decode. Phase 2: the memory models' 4.6 GiB each measured by component and not reducible by settings; releasable when idle (7.9 to 9.4 GiB returned, measured). Phase 3: one server for both, 4.26 GiB against 9.33 GiB measured side by side, ready in 7 to 11 s against 54 to 69 s; an interactive embedding behind the largest accepted call 8.0 s → 390 ms |
 | Multimodal and distributed capabilities remain operational | Partly verifiable | Voice, Pocket and Presence pass their suites and the browser suite with synthetic media. **Unverified**: a real microphone, a real handset (as in 0.7.0) |
-| Existing features pass regression testing | Done | Phase 3, final code (`1ece09b`; later commits change only these reports): `bash scripts/check.sh` 4584 passed, 18 skipped, Node checks and 8 of 8 reproduction pass, all checks passed in 747 s (baseline 3337, phase 1 3483, phase 2 3996; the same 18 skipped); browser suite 198 passed, 1 skipped, 1 failed on a 30 s wait for the phone's enrol button, then three further full runs on the same tree 199 passed, 1 skipped each; acceptance exit 0; offline benchmark exit 0 with every metric equal to phase 2's; guard differential 1,808 inputs, 0 different; two-account check 49 of 49. Earlier phases' runs are in [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §1 |
+| Existing features pass regression testing | Done | Phase 4, final code: <<FINAL-RUN>>. Phase 3, final code (`1ece09b`; later commits change only these reports): `bash scripts/check.sh` 4584 passed, 18 skipped, Node checks and 8 of 8 reproduction pass, all checks passed in 747 s (baseline 3337, phase 1 3483, phase 2 3996; the same 18 skipped); browser suite 198 passed, 1 skipped, 1 failed on a 30 s wait for the phone's enrol button, then three further full runs on the same tree 199 passed, 1 skipped each; acceptance exit 0; offline benchmark exit 0 with every metric equal to phase 2's; guard differential 1,808 inputs, 0 different; two-account check 49 of 49. Earlier phases' runs are in [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §1 |
 | Edge cases and recovery scenarios pass | Done for those listed | [REGRESSION_REPORT.md](REGRESSION_REPORT.md) §4. **Unverified**: GPU memory exhaustion, a failed image upgrade and its rollback, days of autonomy. The two-account deployment is verified in a user namespace with two real uids and the real installer (46 checks, the root-escalation attack among them), not under systemd and polkitd (§5 item 3) |
 | New and existing services have observability | Done | `nsf resources`, `GET /api/resources`, the ledger, `nsf llm status`, `nsf web memory`, the `retrieval` and `memory_check` fields. Since phase 2 the memory models are services of the idle policy (`nsf resources`: timeouts, state, last use, events) and `nsf web memory` shows `asleep` or `refused`; a task's usage reports unused read-ahead; a report's `critique` says how many sentences were judged and why a call was skipped; `nsf config`, `nsf regulation` and `nsf memory consolidated` show the consolidation setting and readings; a changed instance setting leaves an audit row. Phase 3: the consolidation limit's warnings and the largest epoch's belief cost (`nsf regulation`, the console's overview), `nsf web status` questions with the stale ones, `nsf knowledge calibration` with the mapping per kind and how it would have fared, `nsf resources` with a shared memory container's names and effective timeout, the idle state's problems, `merged` and `held` on a pair found by meaning |
 | Improvements supported by reproducible evidence | Done | Scripts and evidence files; repeat runs for the engine flags; a dev and held-out split for memory. Phase 2: `accel_decisions_*.json`, `accel_consolidation_cost.json`; `scripts/bench_consolidation.py`, `scripts/bench_graph_learner.py`, `scripts/guard_differential.py`; repeat runs for the critique scope. Its times were taken under load and are marked indicative ([PERFORMANCE.md](PERFORMANCE.md) §7). Phase 3: `open_items_*.json`; `scripts/bench_knowledge.py`, `scripts/bench_calibration.py`, `scripts/two_account_check.py`; the guard's gap corpus with every label fixed before the change ([PERFORMANCE.md](PERFORMANCE.md) §8) |
@@ -77,10 +89,12 @@ could not check something it is marked **unverified**, not passed.
 | The soak run (`nsf-soak`) from an earlier session | Not touched; it runs a frozen copy of the 0.7.0 code and has no model configured |
 | The host's other tenants' containers | Not touched |
 | systemd | **Nothing installed.** The new units (the memory units, the wake path and service) and `deploy/install.sh --memory / --idle` were exercised as a dry run, as transient user units that ran for seconds and are gone, and inside a user namespace with a private `/etc` |
-| Images | None pulled in phases 2 and 3. Three anonymous registry manifest reads (for the lighter-server proposal); nothing of the project or the owner was sent |
+| Images | None pulled in phases 2 and 3. Three anonymous registry manifest reads (for the lighter-server proposal); nothing of the project or the owner was sent. Phase 4: TensorRT-LLM 1.3.0 and 1.4.0rc4 pulled from NGC without a login; 1.3.0 removed again, 1.4.0rc4 (53 GB) kept for the owner's window |
+| `neuroscifi-vllm` in phase 4 | Never stopped or changed; the TensorRT-LLM preparation and its dry runs only read its configuration, and it was healthy at the end |
+| Test containers of phase 4 | The lanes' memory servers, forwarders, small-model proxies and their networks (own names) were removed |
 | Model weights added | `~/.local/share/neuroscifi/models/qwen3-embedding-0.6b`, `qwen3-reranker-0.6b` (1.2 GB each, Apache-2.0, pinned revisions), from phase 1 |
 | Keys | `~/.config/neuroscifi/memory/api_key` created by `deploy/memory/run.sh` (0600), from phase 1; unchanged |
-| Git | Phases 1 and 2: committed on `nvidia-acceleration-review`, pushed and merged to `main` as `793a21f` with a merge commit on the owner's instruction (2026-11-23), so the hashes cited stay valid; the branch was deleted. Phase 3: committed on `open-items-round`; nothing pushed |
+| Git | Phases 1 and 2: committed on `nvidia-acceleration-review`, pushed and merged to `main` as `793a21f` with a merge commit on the owner's instruction (2026-11-23), so the hashes cited stay valid; the branch was deleted. Phase 3: committed on `open-items-round`, merged to `main` as `c565c20` on the owner's instruction. Phase 4: committed on `remaining-items-round`; pushed only on the owner's instruction |
 
 No owner instance exists on this host, so no individual's settings were changed; the measurements used temporary
 individuals. The new defaults apply to an individual when its services next start. For an individual created by
@@ -89,7 +103,12 @@ individuals. The new defaults apply to an individual when its services next star
 adds, on upgrade: the guard's new refusals; a limit of a million consolidated readings; web questions stale after 30
 days; the calibration mapping (the identity until 20 forecasts of a kind have settled); contradictions in other
 words once semantic memory and an answer model are configured; and `NSF_MEMORY_SERVER=single` for whoever starts the
-memory models next.
+memory models next. Phase 4 adds, on upgrade: schema 15 and 16 at the first open; at that open, once, the graph-rule
+migration (an individual still on `gate-v1` gets `best-learner-v1`; an active graph worse than no graph is archived;
+`nsf config --no-graph-rule-migration` before, `nsf graph migration undo --owner-approved` after) and the completion
+of datasets forgotten by an earlier version; the guard's further refusals; contradictions found across units;
+`NSF_MEMORY_EGRESS=none` for whoever starts the memory models next; an unused voice session stops holding off idle
+unloading after 30 minutes.
 
 ## 4. Independent review
 
@@ -200,69 +219,83 @@ web reading, knowledge, guard and calibration work; correctness of the runtime, 
   service-account steps now also run detached from root's terminal. These last fixes were not reviewed a further
   time; they rest on their tests and the final run of §2.
 
+**Phase 4** (`c565c20..remaining-items-round`) was read the same way, by three reviewers in parallel that wrote none
+of it: security and privacy across all of it; correctness of the web, knowledge and guard work; correctness of the
+instance, runtime and deployment work.
+
+- **First pass.** No critical finding. One **high**: knowledge stored before the change could be strengthened by a
+  statement that contradicts it, because stored values had been read by the earlier parser ("120 km/h" as 120 km)
+  and the new units put the two in different comparison groups. Medium: the TensorRT window left the answer model's
+  port free for another local account to take and receive the key; a test of migration 15 was broken by the schema
+  renumbering, so the upgrade from 14 was not checked; datasets forgotten by the previous release kept their graph
+  weights in the live file while a restore erased them; a pending graph migration made every open wait for the
+  write lock; an extra numbered name hid a contradiction; converted values had to match exactly; a role read as an
+  alias; `JOINED_APART` refused an ordinary fusion and was bypassed by putting the name first; the group-word rule
+  refused common publishers. Low: `INSERT OR REPLACE` past the graph triggers; an erased revision's weight hash
+  confirming a guessed dataset; WAL cleanup held back by a restore; unlimited scans under Pocket's lock; the
+  SearXNG port; the forwarder's documentation; four Pocket retry and graph-migration edge cases; three guard
+  over-refusals; unit spellings; masking; tie order. All fixed with tests that fail on the earlier code.
+- **Re-review of the fixes.** An independent reviewer re-ran every earlier reproduction (most fixed) and re-recorded
+  the guard's reference from `307b907` (0 different). It found that the fixes had added problems: a forgotten
+  question queued again by a later Pocket retry (a privacy regression of a first fix); the TensorRT script restarting
+  its callers while something else held the port, and taking the units' own processes for processes started by
+  hand; rates dropped, so different rates corroborated each other; a shared year hiding incomparable values; real
+  restrictions dropped by the guard's over-refusal fixes; files from the first build of migration 15 failing to
+  open; and smaller items. All were fixed in a second round, each with a test that fails on the earlier code
+  ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §7.3).
+- **Found sound:** every path that can write a consolidated reading keeps the copied-flag rule (multi-row updates,
+  `INSERT OR REPLACE`, upserts, changes of seq), and beliefs are bit for bit those of the earlier code; the streamed
+  tombstones inside one snapshot; an undo can never bring back a forgotten graph; Pocket's exactly-once within and
+  across processes; the conversion factors exact by definition and SI and IEC never equated; the read-ahead
+  continuation charges and gates every hop; change detection off changes nothing; no key in any file the TensorRT
+  script writes; no secret or personal data in anything added.
+- **Not reviewed again:** the second round's fixes rest on their tests, the lanes' full suites and the final run of §2.
+
 ## 5. Outstanding issues and residual risks
 
-Correctness first; the full list with reasons is [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §6, and what was left
-open on purpose is its §5.3.
+Correctness first; the full list with reasons is [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §6, as it stands after
+phase 4.
 
-1. **The sentence guard is lexical, and some gaps are still open**, each pinned as "open" in the gap corpus: an
-   exception written as a negated phrase; a bound of time; a group named as an advisory's author; a pronoun beside
-   a capitalised claim word; versions swapped between two clauses of one sentence; adverb, get-passive and cleft
-   forms of a role reversal; two attribution wordings; a restriction after character 600 of a claim. What a hostile page can do is unchanged in kind from
-   0.7.0: have its own weak claim shown word for word with the code's hedge, or have a faithful sentence refused.
-   The rules added in phase 3 refuse 7 faithful sentences of the corpus on purpose, and none of the benchmark's.
+1. **The sentence guard is lexical.** Open: a name swapped for a name in a fused sentence; by ruling, a bound of
+   time, two attribution wordings and citing right-to-left lines with direction marks. What a hostile page can do is
+   unchanged in kind from 0.7.0: have its own weak claim shown word for word with the code's hedge, or have a
+   faithful sentence refused. Phase 4's rules refuse a few faithful wordings on purpose ("by Stack Overflow
+   Developers", "by People"), and none of the benchmark's sentences.
 2. **Right-to-left text loses citations.** A line of Hebrew or Arabic that uses a direction mark or isolate is read
-   but never cited in an answer; a line or paragraph with a direction override is not read at all. A paragraph
-   dropped for one invisible control loses its other text with it (omission only, never addition).
-3. **The installed, two-account deployment is verified in a user namespace, not as installed.** Unverified: systemd
-   running the units as system units with `PrivateUsers=yes`, polkitd acting on the rule, the real root account, a
-   real second account, the idle timer, a real reload of the single memory server through the idle policy. Inside
-   the hardened units other accounts cannot be told apart, so the listener check refuses nobody there. In such an
-   install SearXNG's own commands need an account that may both run containers and write the instance database.
-4. **Read-ahead is new, concurrent and on by default** (four review passes in phase 2, a fifth in phase 3). What a
-   task sends is at most its budget plus an unused allowance of a tenth of it. A site that answers "slow down" to a
-   page fetched ahead removes the pages that lead onto it from the report. A query a metasearch daemon on this
-   computer already holds, and a dependency check's registry lookups, are outside the owner's stop. "One connection
-   per site" holds within one process. `nsf web config --set read_ahead=1` is the path of 0.7.0 with the stricter
-   stops.
-5. **Contradictions in other words** are found and asked, not decided: on held-out subjects 31 of 43 right and 0 of
-   23 false pairs, of a design revised once after a held-out failure; values in other units and aliases mostly go
-   undetected. Same-value pairs are not merged until a fresh test set supports it.
-6. **Consolidated readings** grow up to a limit (a million by default), with warnings from 80 %; belief computation
-   is linear in an epoch's readings below it. A root's name and a sample id stay in the file until the reading is
-   forgotten, and an individual upgraded from 0.7.0 gets that unless the owner opts out before the first sweep. A
-   restore still reads every tombstone into memory.
-7. **Graphs.** An existing individual on `gate-v1` still promotes a snapshot at twice the sparse learner's error at
-   96 and 128 populations, and a graph that is already active is not demoted. No shipped data source has more than
-   24 populations.
-8. **The memory server is new.** Its ranking equals the vLLM pair's on the benchmark, but the set of ten nearest
-   candidates differs for 26 of 130 questions (vLLM against itself: 10), a drift below what the benchmark can see.
-   `NSF_MEMORY_SERVER=vllm` restores the two servers. Its containers can open outbound connections; it opens none.
+   but never cited; a line or paragraph with a direction override is not read at all.
+3. **The answer model's key goes to whatever holds its port** while the model is stopped (an idle unload, a
+   TensorRT window): the product's inference clients do not check the listener. The TensorRT window keeps its callers
+   stopped until the model is back on its own port. Older than this review.
+4. **The installed, two-account deployment is verified in a user namespace, not as installed**, by the owner's
+   choice: systemd with `PrivateUsers=yes` (and the SearXNG drop-in), polkitd, a real root and second account, the
+   idle timer and a real reload of the memory server are **unverified**.
+5. **Read-ahead is concurrent and on by default.** What a task sends is at most its budget plus a tenth of it;
+   `nsf web config --set read_ahead=1` is the path of 0.7.0 with the stricter stops.
+6. **Comparing values.** A number from 1,000 to 2,999 written with a comma is read as a year (a fix changes stored
+   values: the owner's ruling); numbers as words and "pounds" are not read; one false pair remains on the fresh
+   held-out set, from before phase 4. Pairs found by meaning are asked, never merged.
+7. **Consolidated readings** grow up to a limit (a million by default), with warnings from 80 %. Tombstones and the
+   deletion log hold epoch names and event ids in clear, and the labels of forgotten cameras and partners can be
+   checked offline against guessed names, because their salt is in the same file.
+8. **The memory server's forwarder** carries the key and the memory texts and can reach outside; the model server
+   cannot. The vLLM pair still can.
 9. **Semantic retrieval's floor, the reranker's instruction and the contradiction thresholds were chosen on small
-   fictional English sets** (130 queries over 48 facts; 132 probes over 32 facts). The floor should be revisited on
-   the owner's real memory; `retrieval` in every result shows what was dropped.
-10. **Decisions resting on a model's judgement.** The memory-answer check can only withhold a memory answer (10 of
-    96 right facts refused; 1 wrong-property fact in 288 accepted, which must also pass the lexical test). The
-    contradiction pairing needs the answer model's confirmation. The self-critique's remaining marks are shown and
-    never acted on; no precision is measured.
-11. **Calibration's evidence is simulated**: no individual has settled predictions. It is the identity below 20
-    settlements, only ranks admitted research, and reads worse than stated for about 50 forecasts after a
-    forecaster's rule reverses.
-12. **Tombstones and the deletion log hold epoch names and event ids in clear**, and the labels of forgotten cameras
-    and partners can be checked offline against guessed names, because their salt is in the same file.
-13. **Unverified, because the environment could not check it:** GPU memory exhaustion; a failed image upgrade and
-    its rollback; days of autonomy; a container that never answers; a real microphone, a real handset, the live
-    internet; the 1024-population learner timings on a quiet host. Nothing here was validated by NVIDIA for this
-    operating system.
-14. **Two older tests are sensitive to a slow runner** (the cross-process race test, which now spawns its children
-    and passed 50 of 50 runs on a busy core; the hung-render test's 3 s allowance for a browser to die). Both kill
-    what outlives them, so a failure ends a CI job instead of hanging it.
+   fictional English sets.** The floor should be revisited on the owner's real memory.
+10. **Decisions resting on a model's judgement**: the memory-answer check (it can only withhold), the contradiction
+    pairing's confirmation, the self-critique's marks (shown, never acted on; no precision measured).
+11. **Calibration's evidence is simulated**, and after a forecaster's rule reverses about 50 forecasts read worse
+    than stated; the change detection that would help failed its held-out gate and ships off.
+12. **The TensorRT-LLM comparison is prepared, not run**: everything about the 30B model under TensorRT-LLM is
+    **unverified** until the owner's window.
+13. **Unverified, because the environment could not check it:** GPU memory exhaustion; a failed image upgrade and its
+    rollback; days of autonomy; a real microphone, a real handset (the Pocket outbox included), Safari and Firefox,
+    the live internet. Nothing here was validated by NVIDIA for this operating system.
 
 ## 6. Recommended next priorities
 
-In order: the guard gaps of §5 item 1, each with its own corpus entries and the differential as the gate; a run of
-the installed two-account deployment under real systemd and polkitd, as root, with two real accounts; a fresh set of
-subjects for the contradiction benchmark before same-value pairs are merged, and values in other units; the
-memory server's candidate drift measured on the owner's own memory; settled predictions of a real individual to
-check the calibration mapping; a TensorRT-LLM comparison with this review's harness if a faster decode is wanted
-more than the current model's exact quantisation.
+In order: the owner's ruling on numbers written with a comma; an ownership check in the inference clients before the
+key is sent; a run of the installed two-account deployment under real systemd and polkitd if the owner wants it; the
+TensorRT-LLM window when the owner can spare the answer model for about 45 minutes; the guard's name-for-name swaps,
+with their own corpus and the differential as the gate; the memory server's floor and drift measured on the owner's
+own memory; settled predictions of a real individual to check the calibration mapping; the Pocket outbox on a real
+handset.

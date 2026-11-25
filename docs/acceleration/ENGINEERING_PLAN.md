@@ -1,14 +1,17 @@
 # Engineering plan: what was changed, what was decided, and what is left
 
 Status: 2026-11-24. Phases 1 and 2 on `nvidia-acceleration-review` (based on `9e4570a`, 0.7.0), merged to `main` as
-`793a21f`; phase 3 on `open-items-round`, based on `793a21f`. Finding numbers refer to
+`793a21f`; phase 3 on `open-items-round`, based on `793a21f`, merged to `main` as `c565c20`; phase 4 on
+`remaining-items-round`, based on `c565c20`. Finding numbers refer to
 [ARCHITECTURE_AUDIT.md](ARCHITECTURE_AUDIT.md) §4; numbers to [PERFORMANCE.md](PERFORMANCE.md).
 
 This page covers three phases. Phase 1 ended with six decisions left to the owner (§4 as it then stood). The owner
 delegated them the same day ("analyze the decisions and proceed"); phase 2 decided each on a measurement, built it,
 and put it through independent reviews. Rows added in phase 2 say so. Phase 3 (2026-11-24) took the open items
 that phase 2 left ("analyze the open items … and proceed"): §5 says what was built, what the reviews found and what
-was left open on purpose; §6 is the list after it.
+was left open on purpose. Phase 4 (2026-11-24) took the list that phase 3 left ("analyze the remaining open items and
+proceed"): §7 says what was built, what the owner decided, what the reviews found and what stays open; §6 is the
+list after it.
 
 Order of priority applied: impact × confidence × feasibility ÷ (complexity + risk + maintenance), under the
 directive's hierarchy: correctness and identity first, then reasoning quality, memory, reliability and safety,
@@ -275,7 +278,7 @@ Each row has a test that fails on the code before the fix.
 
 | Item | Why |
 |---|---|
-| A TensorRT-LLM comparison | A multi-hour experiment that stops the answer model and changes its quantisation; a research prototype, not a fix ([NVIDIA_ASSESSMENT.md](NVIDIA_ASSESSMENT.md) §5) |
+| A TensorRT-LLM comparison | Needs the answer model stopped for the length of the run; a research prototype, not a fix. Prepared without downtime in phase 4: TensorRT-LLM 1.4.0rc4 serves the existing FP8 format on this GPU, so no requantisation is needed ([NVIDIA_ASSESSMENT.md](NVIDIA_ASSESSMENT.md) §5.1, §7.2 below) |
 | Voice continuity across a restart (R8) and an offline outbox in Pocket | Need a real handset and microphone to be validated |
 | Precision of the self-critique's remaining marks | Needs human labels; the marks are shown and never acted on |
 | The dense learner's divergence above about 100 populations; demotion of a graph already active | Changes what is promoted for existing individuals, and no data source exceeds 24 populations |
@@ -286,77 +289,159 @@ Each row has a test that fails on the code before the fix.
 
 ## 6. Next engineering priorities
 
-In the order of the directive's hierarchy: correctness first. Each item says why it is not done.
+What remains after phase 4, in the order of the directive's hierarchy: correctness first. Each item says why it is
+not done. Phase 4's own record is §7.
 
-1. **Gaps of the sentence guard still open**, each pinned as "open" in the gap corpus so that a fix shows up in
-   the differential: an exception written as a negated phrase ("for all users not on Windows"); a bound of time
-   ("until May 2027": left out of the restriction rule on purpose, because its loss generalises over time and
-   inverts nothing); a group named as an advisory's author ("according to the advisory from Windows Users");
-   a pronoun of the sentence's own beside a capitalised claim word; versions swapped between two clauses of one
-   sentence; adverb, get-passive and cleft forms of a role reversal; an "according to the cited sources" set between commas, and the attribution worded from
-   the sources counted before inline citations (both would change accepted text); a restriction after character
-   600 of a claim (production cuts claims at 420). Right-to-left text: a line that uses a direction mark or
-   isolate is read but never cited in an answer.
-2. **Unverified in the installed deployment**: systemd running the units as system units with `PrivateUsers=yes`;
-   polkitd acting on the rule (its JavaScript is evaluated in a test, not by polkitd); a real root and a real
-   second account beyond the user-namespace check; the idle timer; a real reload through the idle policy against
-   the single memory server. In a two-account install SearXNG's own commands write the instance database, which the
-   idle account may only read, so SearXNG needs an account with both; the installer does not arrange that.
-3. **Read-ahead** stays the first place to look if a research run behaves differently from 0.7.0, and
-   `read_ahead=1` is the comparison. Stated residues: for a site whose robots.txt redirects to another site's file
-   while that site is being read, robots.txt is sent twice (charged once); a continued fetch waits one extra
-   politeness interval; one connection per site holds within one process; a query a metasearch daemon on this
-   computer already holds and a dependency check's registry lookups are outside the owner's stop; unused traffic of
-   fetches in flight when the process exits is not recorded (charged traffic since the last checkpoint is lost the
-   same way).
-4. **Contradictions in other words**: values in other units (11 of 16 missed on the benchmark) and aliases (6 of 6)
-   go undetected; a first word that nothing writes inside a sentence is refused as a name; the held-out figure is
-   of a design revised once, so a fresh set of subjects is the clean test before same-value pairs are merged. The
-   pairing needs the answer model. A subject contained in another's name ("Paris, Texas") is stopped only by the
-   answer model's confirmation.
-5. **Graphs.** An existing individual on `gate-v1` still promotes, at 96 and 128 populations, a snapshot at twice
-   the sparse learner's error; only adopting `best-learner-v1` changes that. A graph already active and failing the
-   new check is not demoted. The dense learner's failure is not repaired. The other half of C6 is unchanged: no
-   real data source and no consumer of a promoted graph outside the core.
-6. **Consolidation.** Belief computation stays linear in an epoch's readings (bounded by the limit): an epoch whose
-   readings all carry sample ids pays about 0.3 s per million readings on every read even when nothing was recorded
-   twice. A restore still reads every tombstone of the live file into memory. The prototype's `legacy` status is not
-   bit-exact once readings are consolidated (tested to 1e-12). A camera forgotten while a partner of the same name
-   is held leaves the name in revision, question and decision text. Two files that both live on after a restore
-   issue positions independently, and a restore from a divergent lineage loses learning rather than keeping it.
-   Tombstones and the deletion log hold epoch names and event ids in clear, and the digest labels of forgotten
-   cameras and partners can be checked offline against guessed names.
-7. **The memory server**: against the vLLM pair the nearest statement is the same for 130 of 130 questions and the
-   reranker's best for 129, but the ten nearest candidates are the same set for 104 of 130 (vLLM against itself:
-   120), a drift below what the benchmark can see. Its containers can still open outbound connections (Docker
-   cannot publish a port from a network without egress); the server opens none. A client that keeps 32 connections
-   with prompt heads fills the cap until each head deadline (10 s) passes.
-8. **Calibration**: the evidence is simulated, because no individual has settled predictions yet; for about 50
-   forecasts after a forecaster's rule reverses, the reading is worse than the stated forecast (0.095 against
-   0.043); settlements are treated as independent. A prediction merely settled by a task that is later forgotten
-   keeps its outcome and still counts.
-9. **The knowledge index and the semantic vectors are per process**: another long-running process keeps a forgotten
-   statement's text until its own next query or exit; a repeated query still reads every live statement (172 ms at
-   100,000).
-10. **The critique's remaining marks** are a model's unconfirmed judgement on the 10 to 11 sentences it still reads
-    (4 or 5 marks a run); no precision is measured.
-11. **A TensorRT-LLM comparison** on this model with the harness of this review
-    ([NVIDIA_ASSESSMENT.md](NVIDIA_ASSESSMENT.md) §5).
-12. **Voice continuity across a restart (R8)** and an **offline outbox in Pocket**.
-13. **Left open from the reviews of phase 1**, each low in impact and stated so it is not rediscovered:
-    - *Voice.* Pressing stop on a reply also silences a reply to a question asked before that reply began to speak
-      (it is still shown). Whether stop should let the newer reply through is the owner's call. A final chunk
-      retried after the hub failed while closing the utterance is acknowledged as a duplicate.
-    - *Resource policy.* An open Pocket voice session counts as a session for as long as the phone keeps it open,
-      so a paired device can keep idle unloading from happening. Idle unloading is off by default.
-    - *Forgetting, older than this review.* A graph revision invalidated by `forget_dataset` keeps its weights and
-      metrics (the blob is immutable by trigger), and the dataset's digest survives.
-    - *Two older tests are sensitive to a slow runner*: the cross-process race test (now spawned, 50 of 50 runs) and
-      the hung-render test's 3 s allowance for a browser to die. Both kill what outlives them, so a failure ends a
-      CI job instead of hanging it.
+1. **The sentence guard is lexical, and some gaps stay open**, each pinned in the gap corpus so that a fix shows up
+   in the differential against `307b907`:
+   - A name swapped for a name ("Zephyr runs on ARM." for "Lumen runs on ARM and Zephyr runs on RISC-V"):
+     `JOINED_APART` needs a version or number on one side; names need their own corpus.
+   - Left out by ruling, because closing them would loosen or change accepted text: a bound of time ("until May
+     2027"), "according to the cited sources" between commas, an attribution counted before inline citations, and
+     citing a right-to-left line that uses a direction mark (such a line is read but never cited).
+   - Costs accepted on purpose: "by Stack Overflow Developers" and "by People" are refused as source names (a group
+     word at the head of a name, with no organisation noun followed by "of"); the nouns that may stand before "not
+     to" without restricting a claim are a closed list, so an unlisted one ("inclination") restricts.
+   - No live research run with the answer model was made in phase 4, so how often its rules refuse in live use is
+     not measured.
+2. **Comparing values in knowledge.**
+   - A number from 1,000 to 2,999 written with a comma ("2,900 residents") is read as a year. A fix changes stored
+     values everywhere, so it waits for the owner's ruling (it caused 4 misses on the fresh held-out set).
+   - Numbers written as words ("Four percent") and "pounds" as a mass are not read.
+   - One false pair remains on the fresh held-out set (a nature reserve's area paired with its island's area;
+     reranker 0.997, confirmed by the answer model); it predates phase 4. Same-value pairs found by meaning stay
+     reported, not merged.
+   - Aliases are found only when a statement states them; descriptions are not aliases, by design.
+   - A first word that nothing writes inside a sentence is refused as a name ("Fennick asks …").
+3. **The answer model's key goes to whatever holds its port.** The product's inference clients do not check that
+   the listener on 127.0.0.1:8811 is the answer model's container before sending the key (the run scripts' `wait`
+   does). A local account that binds the port while the model is stopped (an idle unload, a TensorRT window) receives
+   the key. The TensorRT window is guarded (its callers stay stopped until the model is back on its own port); the
+   clients are not. Older than this review.
+4. **Unverified in the installed deployment** (left so by the owner in phase 4): systemd running the units as
+   system units with `PrivateUsers=yes`, including the SearXNG drop-in; polkitd acting on the rule; a real root and
+   a real second account beyond the user-namespace check; the idle timer; a real reload of the single memory server
+   through the idle policy. Inside the hardened units other accounts cannot be told apart.
+5. **The memory server.** The model server has no network by default; the forwarder in front of it carries the key
+   and the memory texts in plain text, and its network has outbound access. The vLLM pair (`NSF_MEMORY_SERVER=vllm`)
+   still runs on a bridge with outbound access. A client holding the key can hold a slot for up to 30 s by sending
+   its body slowly.
+6. **The TensorRT-LLM comparison** is prepared, not run (§7.2). Unverified: whether TensorRT-LLM handles the 30B
+   model's expert layers in FP8 on SM 121, its load time and memory, every number on the real model, and the restore
+   against the real container.
+7. **Calibration.** The evidence is simulated, because no individual has settled predictions yet. After a
+   forecaster's rule reverses, about 50 forecasts read worse than stated (0.095 against 0.043); dropping the
+   settlements before a detected change was tried and failed its held-out gate, so it ships off. Settlements are
+   treated as independent. Calibration history recorded before a forget keeps its numbers (a past record of
+   aggregates, by ruling).
+8. **Consolidation and restores.** A bare mention of a camera's or partner's name stays while the other kind of the
+   name is held. Two files that both live on after a restore issue positions independently, and a restore from a
+   divergent lineage loses learning rather than keeping it. Tombstones and the deletion log hold epoch names and
+   event ids in clear, and the digest labels of forgotten cameras and partners can be checked offline against
+   guessed names (needs a key kept outside the file; the restore's replay depends on the tombstones). The
+   prototype's `legacy` status is not bit-exact once readings are consolidated (tested to 1e-12). An undo of the
+   graph-rule migration is not carried into a copy restored from an archive taken after it (the owner can run the
+   undo there).
+9. **Graphs.** The dense learner's divergence above about 100 populations is not repaired (ADR-045: the bit-exact
+   reproduction depends on its arithmetic). No real data source has more than 24 populations, and nothing outside
+   the core consumes a promoted graph.
+10. **Read-ahead.** One connection per site holds within one process. A query a metasearch daemon on this computer
+    already holds and a dependency check's registry lookups are outside the owner's stop. Unused traffic of fetches
+    in flight when the process exits is not recorded. If another fetch learns a robots.txt between a stopped fetch
+    ahead and its claim, the walk is not continued and its first robots request stays counted: one request within
+    the budget, no outcome changed.
+11. **The knowledge index and the semantic vectors are per process**: another long-running process keeps a
+    forgotten statement's text until its own next query or exit; a repeated query reads every live statement
+    (172 ms at 100,000).
+12. **The critique's remaining marks** are a model's unconfirmed judgement (4 or 5 marks a run); no precision is
+    measured, because that needs human labels.
+13. **Needs real devices:** voice continuity across a restart (R8); the Pocket outbox on a real handset (network
+    changes, sleep, a killed tab), the leave-page prompt as a real browser shows it, Safari and Firefox.
+14. **Resource policy.** An open Pocket voice session stops holding off idle unloading after 30 minutes unused;
+    within that time it still does. Idle unloading is off by default.
+15. **Tests.** One browser test (pair, then forget the pairing) timed out once under heavy host load in phase 4 and
+    passed 6 of 6 alone afterwards.
 
-Done since phase 2 listed them: the guard gaps listed then; read-ahead's traffic bound and the stop for every
-request kind; contradictions in other words (proposed and asked, not merged); the kept knowledge index; stale web
-questions; the calibration loop where it changes no belief; the cap on consolidated readings and a restore's
-memory; the two-account install, the wake unit's start limit, readiness for TTS and SearXNG, the home folder at
-import, the key on `run.sh status`'s command line, a reload's time; one server for both memory models.
+Done in phase 4 (§7): the guard gaps listed after phase 3 (negated exceptions, a group as an advisory's author, a
+pronoun beside an acronym, versions joined across clauses, adverb and cleft role reversals, the whole claim read);
+values in other units, stated aliases and contained names in contradictions; forgetting one kind of a name, a
+forgotten task's settlements and a forgotten dataset's graphs; belief computation without a pass over every reading,
+and a restore that streams tombstones; the memory models without a network; SearXNG in the two-account install; an
+unused voice session; read-ahead's robots.txt continuation; the two timing-sensitive tests; the Pocket outbox; the
+graph-rule migration for existing individuals; the TensorRT-LLM window prepared. Voice stop: the owner ruled that
+stop silences every pending reply, as it does; closed.
+
+## 7. Phase 4: the remaining items
+
+On 2026-11-24 the owner asked for the items of §6, as phase 3 left it, to be analysed and acted on ("analyze the
+remaining open items and proceed"). Each item was ruled on before it was built, by its own lane in its own worktree;
+four questions were the owner's (§7.2). The lanes were merged on `remaining-items-round` and read by three
+independent reviews in parallel (security across all of it; correctness of the web, knowledge and guard work;
+correctness of the instance, runtime and deployment work). Their findings were fixed in a first round, an independent
+re-review read the fixes, and its findings were fixed in a second round.
+
+### 7.1 Built
+
+| Item (§6 before phase 4) | Ruling | What was built | Evidence | Back |
+|---|---|---|---|---|
+| Guard gaps (1) | Corpus labelled first; stricter-only against `307b907`; one commit per rule | Refused: an exception written as a negated phrase ("for all users not on Windows"), read over the whole claim; a group of people after a sentence's attribution taken as the source's name ("the advisory from Windows Users"); a pronoun of the sentence's own where the claim has its acronym ("US sanctions hit us"); a version joined in one clause with what the claims say of another version (`JOINED_APART`, wherever the sentence puts the name); role reversals with an adverb before the claim's verb or a cleft on the agent. After the reviews: "not only … but", "not to break" and "it" for "the IT department" accepted again, as `307b907` accepts them; "not to be renewed", "not only encrypted but also signed" and "by University Students" refused; the check before an "if" made linear | Differential over 1,937 inputs: 0 different, 1,688 identical, 232 stricter, 17 loosened (only the proven exact-restatement class). The 1,137 attack-suite inputs and the 248 benchmark sentences did not move at any commit; every gap corpus is met (`remaining_guard.json`) | Revert the rule's commit |
+| Contradictions in other words (4) | Precision first, on a fresh set of fictional subjects written before any change; same-value pairs stay reported | Each statement of a pair read in the other's units through a closed table of exact conversions (lengths, areas, masses, volumes, speeds, temperatures; SI and IEC prefixes never equated; a rate keeps its compound unit); an alias only when a stored statement states one, ending its aside, never a role or an "of" phrase; a longer name is another subject ("Paris, Texas"); names that differ only in their number are two subjects. After the reviews: stored values read again from their statement; values that share no comparison group, a shared year or date aside, are "incomparable": held, never strengthening | Fresh held-out set (78 probes): right 19 → 40 of 50, units 3 → 19 of 21, stated aliases 1 → 6 of 6, false pairs 6 → 1 of 28 (the remaining one predates the lane). Development set 72 of 86 right, 0 of 46 false pairs, unchanged by the review fixes. Offline research benchmark: no outcome changed (`remaining_knowledge.json`) | `nsf web memory config --no-contradictions` |
+| Forgetting (6, 8, 13) | Forgetting is the owner's act: erase what it names and nothing else, the same in a restore | Schema 15 (ADR-048): a camera forgotten while a partner of the same name is held (or the reverse) loses that kind of the name from revisions, questions and decisions (`forgotten_scopes`); a prediction settled by a forgotten task stops counting in calibration, the mapping and the metrics; `forget_dataset` erases the weights, metrics and effects of graph revisions learned from the dataset, sets the revision's weight hash to `erased`, removes the scores computed with its weights, and removes the dataset's digest. A dataset forgotten by an earlier version is finished once at the first writable open (logged `by: upgrade`) and by a repeated `forget_dataset` | 15 mentions and 13 summaries → 0, live and restored; 30 settlements → not counted; 247 bytes → 0 and 73 effects → 0; the live file and a restored copy agree (`remaining_forgetting.json`) | Restore the pre-upgrade checkpoint |
+| Calibration after a change of habits (8) | Ships only if no held-out stationary stream is worse by more than 0.002 Brier | Dropping the settlements before a detected change, selected on development streams only | Failed: one stationary stream worse by 0.002021, bursts by up to 0.006, both reversals better. Ships off; behaviour unchanged (`scripts/bench_calibration.py change`) | (off) |
+| Consolidation's cost (6) | Beliefs identical; no belief cache and no list to keep valid | Schema 16: a `copied` flag kept by the database's own triggers (of any two readings of a sample at least one is flagged; never cleared; a stale flag costs one lookup), so belief computation finds copied samples by key instead of grouping every reading. A restore applies the tombstones in batches inside one read snapshot | Belief computation at a million readings 465 → 118 ms, at 100,000 124 → 24 ms; restore peak 279 → 4.2 MiB; results identical on every path (randomised differential); 64 of 64 safeguards caught (`remaining_consolidation.json`) | Restore the pre-upgrade checkpoint |
+| Graphs (5) | The owner: migrate automatically (§7.2); nothing deleted, recorded, reversible | ADR-047: at the first open by this version, an individual whose newest rule is still `gate-v1` gets `best-learner-v1`, and an active graph that predicts worse than no graph is archived with a decision naming both errors. Once per file; skipped on a read-only open, a `query_only` connection or a held graph job, never waiting more than 200 ms for the lock | Old graphs kept at 24, 96 and 128 populations, archived at 160 and 256; the next graph promoted in every world (96 populations: held-out error 0.00835 → 0.00433); first open 1 to 31 ms, later opens 0.4 to 1.0 ms (`remaining_graphs.json`) | `nsf config --no-graph-rule-migration` before the open; `nsf graph migration undo --owner-approved` after |
+| The memory server (7) | No outbound connections for the process with the models and the key | `NSF_MEMORY_EGRESS=none` (default): the model server runs with `--network none` on two Unix sockets; a forwarder with no model, no GPU and no key file publishes the ports on loopback. Kept-alive connections go back to the queue instead of holding a slot. The top-10 drift against vLLM is bfloat16 rounding near ties: against single precision this server agrees on the ten nearest for 114 to 116 of 130 queries and vLLM for 111 to 112, so nothing was changed | Outbound connections refused inside the model server; benchmark equal in every class over 8 runs; the forwarder adds 2 to 2.6 ms; with 32 kept-alive connections, keyed calls served 0 → 15 of 15 (`remaining_memory_server.json`) | `NSF_MEMORY_EGRESS=bridge`, then `deploy/memory/run.sh restart` |
+| SearXNG in a two-account install (2) | No new right for the idle account | `nsf web searxng start`, `stop` and `status` read the database without writing it; `install.sh --idle --searxng` writes a drop-in that runs the unit as the idle account; the first start prints the one command the database's owner runs to set `searxng_url`; the port must be 1024 to 65535 and not one another service uses | Two-account check 55 of 55, 6 of them new (`remaining_deployment.json`) | `install.sh` without `--idle` |
+| A Pocket voice session holding off idle unloading (13) | An open session counts only while it is used | Audio, a typed turn, a capture or mode change, a reply fetched, an interruption or a confirmation is a use; a session unused longer than the `voice` setting (default 30 minutes) stops counting | Unused 5 or 29 minutes: blocks; 31 or 480 minutes: unloads (`remaining_deployment.json`) | `nsf resources idle --set voice=off` |
+| Read-ahead's residues (3) | No outcome changed | A fetch ahead stopped inside a robots.txt walk is continued by its claim instead of started again: no second robots request, no extra politeness interval | 1,800 random webs with redirecting robots.txt files: 0 differences from one page at a time, 0 tasks above budget plus allowance (`remaining_reading.json`) | `nsf web config --set read_ahead=1` |
+| Two timing-sensitive tests (13) | Robust without proving less | The race test waits for all six results against one deadline; the hung-render test gives Chromium 8 s to reach the hanging request and asserts that the render ended by its own timeout | 50 of 50 runs each, under load (`remaining_reading.json`) | — |
+| An offline outbox in Pocket (12) | Exactly once, by a key inside the signed body | A question that cannot be sent waits under "Waiting to send" (in the vault, encrypted, for 7 days, at most 10; without the vault, in the tab only) and is sent again on reconnect, on refresh, on a timer or by **Send now**, signed again each time. The Spark answers a known key with the task it queued ("replayed"), never queues or counts it twice, answers 410 only when the owner forgot that task, and keeps answering 410 for that key. Privacy-screen refusals have their own limit (20 an hour per family) | 6 browser tests with offline emulation, 6 of 6 in each of 7 runs; six concurrent retries of one key give one task (`remaining_pocket_outbox.json`) | Revert; the Spark keeps only the key's record (8 days) |
+| A TensorRT-LLM comparison (11) | The owner: "figure out the best way to proceed" (§7.2) | `scripts/trtllm_compare.py`: feasibility checked from primary sources, the image pulled, the window scripted with a dry run and a restore on every exit path | §7.2; `remaining_trtllm.json`; [NVIDIA_ASSESSMENT.md](NVIDIA_ASSESSMENT.md) §5.1 | — |
+
+### 7.2 The owner's answers
+
+Asked at the start of the round (2026-11-24):
+
+- **Graphs: "Migrate automatically."** Built as the "Graphs" row of §7.1, with an opt-out before the open and an undo
+  after it.
+- **TensorRT-LLM: "Figure out the best way to proceed."** The host's unified memory (about 121 GB, shared with other
+  tenants) cannot hold a second copy of the 30B model beside the running one, so a comparison needs the answer model
+  stopped. Everything that needs no downtime was done. TensorRT-LLM 1.3.0 cannot serve this FP8 format on GB10
+  (SM 121); 1.4.0rc4 can, so no requantised checkpoint is needed; its image is pulled (53 GB). A small-model proxy
+  (Qwen3-0.6B-FP8, each engine alone; a proxy, not the comparison), vLLM against TensorRT-LLM: decode 185 against
+  182 tokens/s, first token on a repeated prompt 143 against 27 ms, eight requests at once 194 against 248 tokens/s,
+  valid JSON 3 against 6 of 8, reasoning 8 against 6 of 16. The window is the owner's to schedule:
+  `python scripts/trtllm_compare.py --dry-run`, then `python scripts/trtllm_compare.py --yes`. It stops the services
+  that call the answer model, measures vLLM, stops it, runs TensorRT-LLM unprivileged on loopback with the same
+  limits, restores vLLM exactly, and starts the callers again only once the answer model is back on its own port.
+  Estimated 25 to 45 minutes in all, 15 to 35 of them with the answer model down (estimates, not measured on this
+  model). Adopt only on a measured gain with no loss of answer quality, and on a stable release.
+- **Real systemd and polkitd: "Leave unverified."** §6 item 4.
+- **Voice stop: "Stop silences everything."** Today's behaviour is the owner's ruling; the item is closed.
+
+### 7.3 Found by the reviews and the re-review, and fixed
+
+Each row has a test that fails on the code before the fix.
+
+| Finding | Fix |
+|---|---|
+| **High: knowledge stored before the change could be strengthened by a statement that contradicts it.** Stored values had been read by the earlier parser ("120 km/h" as 120 km), so a new "130 km/h" shared no comparison group with them and counted as the same | Stored values are read again from their statement; values that share no comparison group are incomparable and never strengthen. The re-review found two more paths (a shared year or date; rates, which the first fix dropped, so that "500 MB/s" corroborated "7000 MB/s"); both closed |
+| Medium, knowledge: an extra numbered name hid a contradiction; converted values had to match exactly at equal decimals (a marathon in miles and in km); "previously CEO of Orbix" was read as an alias | Different subjects only when the numbered names share none; agreement within the rounding of each written value across units; an alias only as a name ending the aside |
+| Medium, guard: `JOINED_APART` refused an ordinary fusion of two claims and was bypassed by putting the name first; the group-word rule refused "Consumer Reports"; "not only", "not to" and "it" for "IT" were read as restrictions | Fixed as in the first row of §7.1; the real restrictions that the re-review showed the first fix had dropped are refused again |
+| Medium: datasets forgotten by the previous release kept their graph weights in the live file, while a restore erased them | Finished once at the first writable open, and by a repeated forget |
+| Medium: a pending graph migration made every open wait for the write lock (3.03 s behind a writer) | Lease, writability and `query_only` checked first; at most 200 ms; a refused optional step never fails an open (0.00 s) |
+| Medium, security: during the TensorRT window another local account could take the answer model's port and receive the key; the first fix still restarted the callers in that case, and took the units' own processes for processes started by hand | The callers are stopped first and started again only when the model's own container is healthy on its port; the port's holder is named; unit processes are recognised by their cgroup; an answer model run by its systemd unit is refused; the TensorRT container runs unprivileged on its own network |
+| Medium, privacy: after Pocket answered a forgotten question with 410, a later retry with the same key queued it again (introduced by a first fix) | The 410 keeps the key's record, so every retry stays 410 |
+| Low, security: `INSERT OR REPLACE` passed the graph-identity triggers; an erased revision's weight hash could confirm a guessed dataset; a restore's long snapshot held back the WAL cleanup of a concurrent forget; screen refusals ran unlimited scans under Pocket's lock; the SearXNG port could take another service's port; the forwarder's documentation overstated what it holds | A trigger refuses deleting revisions; hash `erased` and scores removed; the WAL is truncated when the snapshot ends if the file changed; refusals limited; reserved and overridden ports refused; documentation corrected and the forwarder run on the standard library only |
+| Low: a Pocket retry refused by the screen though already queued; 410 after a restore from an older archive; a replay counted against the hourly limit; `--graph-rule-migration` after an undo; files from the first build of migration 15 failing to open | Replay before the screen; 410 only with a forget record; not counted; the help and `nsf config` say so; the triggers repaired at open |
+
+**Integration.** Two lanes each added a schema version and two an ADR: schema 15 is forgetting (ADR-048) and schema
+16 the copied flags; ADR-047 is the graph-rule migration. The test of `nsf start` raced in one run of ten (it stopped
+waiting at the summary line, before Pocket's line) and left its services running when it failed; it now waits for
+both lines and stops its services on failure, and the two service trees that failed runs had left were stopped.
+
+### 7.4 Left open on purpose
+
+The items of §6 that phase 4 did not close, each with its reason there. The owner left real systemd and polkitd
+unverified; the TensorRT-LLM window is the owner's to schedule; reading "2,900" as a number waits for the owner's
+ruling.

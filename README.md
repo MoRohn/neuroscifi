@@ -8,8 +8,8 @@
 ![Version](https://img.shields.io/badge/version-0.7.0-3A3437)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-3A3437)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-3A3437?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-4584%20passed-3A3437)
-![Browser](https://img.shields.io/badge/browser%20e2e-199%20passed-3A3437)
+![Tests](https://img.shields.io/badge/tests-<<TESTS>>%20passed-3A3437)
+![Browser](https://img.shields.io/badge/browser%20e2e-<<E2E>>%20passed-3A3437)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-3A3437)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-3A3437)
 
@@ -45,7 +45,7 @@ Web research enters memory only as dated, cited evidence that passes verificatio
 | 🤖 **Controlled autonomy** | Opt-in with a recorded owner enable and its own daily budget. Research is chosen from stored records by expected information gain; how past forecasts fared only orders it. |
 | 🎙️ **Voice Cortex** | Whisper and Kokoro behind a bridge in which NeuroSciFi stays authoritative. Three modes, barge-in, one capturing device at a time, and a **Voice check** for your own hardware. |
 | ✳️ **Presence Cortex** | A minimal, abstract, physics-driven entity at the centre of every view. Its light, geometry and motion follow what the individual is really doing and its surroundings, never invented activity. |
-| 📱 **Pocket** | A mobile-first web app over HTTPS with a private CA. Devices pair with one-use codes into families that share research; opt-in **push** sends an empty notification when research finishes. |
+| 📱 **Pocket** | A mobile-first web app over HTTPS with a private CA. Devices pair with one-use codes into families that share research; a question written while the Spark is out of reach waits on the device and is sent once when it is back; opt-in **push** sends an empty notification when research finishes. |
 | 🔏 **Signed research nodes** | The owner enrols a paired device after comparing key fingerprints. Nodes sign their requests and can hand off research sessions; Pocket checks the Spark's signature on every reply. |
 | ⚖️ **Resource scheduling** | One pressure level from memory and GPU data, audio first. Opt-in idle unloading of the model, speech, search and memory services; a reload is refused if it would not fit, and never holds a call past its timeout. |
 | 🧾 **Governed forgetting** | `nsf forget` cascades through every derived record, in-memory indexes included, and a checkpoint restore replays every forget, so forgotten records do not come back. |
@@ -288,7 +288,7 @@ A family holds at most 6 devices. `nsf pocket list-pairings` shows them and `nsf
 2. **Tablet:** the question appears within 10 seconds. **Open** follows it.
 3. **The report:** the model-written answer first (with a model configured), each sentence with its [n] citations and claim states; then the extractive summary with quoted evidence and dated sources.
 
-Any device of the family can cancel, continue or review a question. A family may submit 10 questions an hour. Pocket refuses questions that contain e-mail addresses, phone numbers, network addresses, file paths, secrets or names the owner marked private.
+Any device of the family can cancel, continue or review a question. If the phone loses its connection, the question waits under **Waiting to send** and goes out by itself, once, when the Spark can be reached again (or tap **Send now**). A family may submit 10 questions an hour. Pocket refuses questions that contain e-mail addresses, phone numbers, network addresses, file paths, secrets or names the owner marked private.
 
 ### Just exploring? (no phone)
 
@@ -396,7 +396,7 @@ nsf web memory                                               # the switch, healt
 nsf web memory config --disable                              # back to the word ranking
 ```
 
-By default one process serves both models (about 4.3 GiB, ready in about 10 s, a lookup in about 0.1 s); `NSF_MEMORY_SERVER=vllm` in `deploy/memory/memory.env` restores two vLLM servers ([evidence](docs/quality/evidence/open_items_memory_server.json)). No vector is written to disk, memory text never leaves the host without the owner's authorisation, and any failure falls back to the word ranking with the reason. Details: [Memory integration](docs/web-cortex/MEMORY_INTEGRATION.md).
+By default one process serves both models (about 4.3 GiB, ready in about 10 s, a lookup in about 0.1 s); `NSF_MEMORY_SERVER=vllm` in `deploy/memory/memory.env` restores two vLLM servers ([evidence](docs/quality/evidence/open_items_memory_server.json)). The process that holds the models and their key has no network at all; a small forwarder publishes its two ports on this computer (`NSF_MEMORY_EGRESS=bridge` goes back to one networked container; [evidence](docs/quality/evidence/remaining_memory_server.json)). No vector is written to disk, memory text never leaves the host without the owner's authorisation, and any failure falls back to the word ranking with the reason. Details: [Memory integration](docs/web-cortex/MEMORY_INTEGRATION.md).
 
 ### Voice (Whisper ASR and Kokoro TTS)
 
@@ -421,11 +421,28 @@ nsf resources                    # pressure, GPU temperature and power, the mode
 nsf resources idle --set vllm=30m --set asr=15m --set tts=15m --set embed=15m --set rerank=15m   # opt-in idle unloading
 ```
 
-Idle unloading never stops a service during a voice session, a running task or an in-flight request. A service it unloaded reloads on its next use; a memory lookup never waits for it and is answered from the word ranking meanwhile. Details: [Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md) and [Research policy](docs/autonomy/RESEARCH_POLICY.md).
+Idle unloading never stops a service during a voice session in use, a running task or an in-flight request; a voice session left open but unused for 30 minutes no longer holds it off (`--set voice=off` keeps any open session counting). A service it unloaded reloads on its next use; a memory lookup never waits for it and is answered from the word ranking meanwhile. Details: [Resource scheduling](docs/architecture/RESOURCE_SCHEDULING.md) and [Research policy](docs/autonomy/RESEARCH_POLICY.md).
 
 ### Run as system services
 
-`sudo bash deploy/install.sh` installs the systemd units, disabled; `--dry-run` shows the plan and writes nothing. Add `--searxng`, `--llm --llm-user USER`, `--memory --memory-user USER` (it installs the unit of the configured memory server) and `--idle` (the idle timer and the wake units). With `--idle`, the services' account and the account that runs the models share only what they must: every step inside the services' folder runs as that account, and a polkit rule lets the idle account start and stop exactly the model units. Re-running the installer keeps the arrangement. Plain steps: [Runbook](docs/operations/RUNBOOK.md); checked with two real accounts in a user namespace by `scripts/two_account_check.py`.
+`sudo bash deploy/install.sh` installs the systemd units, disabled; `--dry-run` shows the plan and writes nothing. Add `--searxng`, `--llm --llm-user USER`, `--memory --memory-user USER` (it installs the unit of the configured memory server) and `--idle` (the idle timer and the wake units). With `--idle`, the services' account and the account that runs the models share only what they must: every step inside the services' folder runs as that account, and a polkit rule lets the idle account start and stop exactly the model units. With `--idle --searxng`, SearXNG runs as the idle account and only reads the individual's file; its first start prints the one command to run as the services' account. Re-running the installer keeps the arrangement. Plain steps: [Runbook](docs/operations/RUNBOOK.md); checked with two real accounts in a user namespace by `scripts/two_account_check.py`.
+
+### Upgrading an individual you already have
+
+The file format is now schema 16. The first command that opens an individual made by older software upgrades it, so read [Migrations](docs/operations/MIGRATIONS.md) section 2 first and take a checkpoint. At that first open, once and recorded:
+
+- an individual still on the original graph rule (`gate-v1`) moves to `best-learner-v1`, and an active graph that predicts worse than no graph at all is archived (nothing is deleted);
+- datasets you forgot under an earlier version lose the graph weights learned from them, as a forget now does.
+
+```sh
+nsf graph migration status --db FILE                   # what it would do, without doing it
+nsf config --db FILE --no-graph-rule-migration         # opt out before that first open
+nsf graph migration undo --db FILE --owner-approved    # put the old rule and graphs back afterwards
+```
+
+### Comparing TensorRT-LLM (optional, owner-run)
+
+`scripts/trtllm_compare.py` measures TensorRT-LLM against the vLLM answer model on this machine. It needs the answer model stopped for 15 to 35 minutes (estimated), so it runs only when you start it: `python scripts/trtllm_compare.py --dry-run` shows the plan and stops nothing; `--yes` runs the window and always puts vLLM back as it was ([how it works](docs/acceleration/NVIDIA_ASSESSMENT.md)).
 
 ## Run a persistent instance
 
@@ -507,7 +524,7 @@ Pages are read four at a time, with identical outcomes to one at a time; a cance
 
 | Principle | How it holds |
 |---|---|
-| **Loopback by default** | The console listens on 127.0.0.1 with a one-time session token and Host and Origin checks. SearXNG (8888), vLLM (8811), ASR (18431), TTS (18432) and the memory server (18441, 18442) are published on 127.0.0.1 only; the run scripts refuse any other bind. Containers run read-only, without capabilities, from digest-pinned images; keys are generated outside git (0600). A key is never sent to a managed port that another account's process holds. |
+| **Loopback by default** | The console listens on 127.0.0.1 with a one-time session token and Host and Origin checks. SearXNG (8888), vLLM (8811), ASR (18431), TTS (18432) and the memory server (18441, 18442) are published on 127.0.0.1 only; the run scripts refuse any other bind. Containers run read-only, without capabilities, from digest-pinned images; keys are generated outside git (0600). The run scripts send a key only to their own container's port; the services do not yet check who holds the answer model's port while it is stopped ([open item](docs/acceleration/ENGINEERING_PLAN.md)). |
 | **Off until the owner says so** | Web access, autonomy, Pocket research, push, JavaScript rendering, remote inference, idle unloading and audio retention default to off. News rendering for a person's news question is on with web access (`--no-news-render`). |
 | **Paired devices are checked both ways** | HTTPS from a private CA limited to its names; each device pins the Spark's key and refuses any reply without a valid signature; a node signs its requests with a key the owner enrolled. |
 | **Consent before capture** | The microphone needs recorded consent per device, a visible indicator and the single capture lease; the server refuses audio otherwise. |
@@ -586,12 +603,12 @@ python scripts/guard_differential.py compare   # the answer guard against its at
 
 | Gate | Result |
 |---|---|
-| Quality gate (`bash scripts/check.sh`) | **4584 passed**, 18 skipped (live-service and platform tests), 0 failed |
-| Browser end-to-end (`tests/e2e`) | **199 passed**, 1 skipped (opt-in degraded-voice test) |
+| Quality gate (`bash scripts/check.sh`) | **<<TESTS>> passed**, <<SKIPPED>> skipped (live-service and platform tests), 0 failed |
+| Browser end-to-end (`tests/e2e`) | **<<E2E>> passed**, 1 skipped (opt-in degraded-voice test) |
 | Acceptance scenarios | 7 of 7 pass ([pre-registered](docs/quality/PREREGISTRATION_D1.md) D-1 redesign) |
 | Reproduction | 8 of 8 analyses within tolerance |
-| Answer guard differential | 1,808 inputs against the attack-tested reference: 0 unexplained differences, every change stricter or a proven exact restatement |
-| Two-account install (`scripts/two_account_check.py`) | 49 of 49 checks with two real accounts, planted-link attacks included |
+| Answer guard differential | 1,937 inputs against the attack-tested reference: 0 unexplained differences, every change stricter or a proven exact restatement |
+| Two-account install (`scripts/two_account_check.py`) | 55 of 55 checks with two real accounts, planted-link attacks included |
 
 CI runs the quality gate, the simulated milestones and the browser tests with an accessibility check on every push and pull request. Verified on the reference host without root: the units' sandbox enforced by the kernel ([hardening](docs/operations/HARDENING_VERIFICATION.md)), Pocket's TLS chain with negative controls ([TLS](docs/operations/TLS.md#3-verified-on-the-reference-host-2026-11-22)), LUKS2 storage and zram swap, a 7-day accelerated autonomy soak ([soak](docs/autonomy/RESEARCH_POLICY.md#9-soak-results)), a live remote-inference contract ([remote inference](docs/architecture/COGNITIVE_INFERENCE.md#8-remote-providers-live-contract-2026-11-22)) and push through Google's FCM.
 
@@ -641,8 +658,8 @@ neuroscifi/
 
 ## Known limitations
 
-- **The guard is lexical, not semantic.** It compares words, not meaning: a faithful paraphrase is refused, and some changes of meaning still pass (an exception written as a negated phrase, a bound of time, versions swapped across clauses). A hostile page can have its own weak claim shown word for word with the code's hedge, or a faithful sentence refused. In right-to-left text, a line with direction marks is read but never cited. Open items: [Engineering plan](docs/acceleration/ENGINEERING_PLAN.md).
-- **Contradictions in other words** were found for 31 of 43 on held-out subjects, with no false pair; values in other units and aliases mostly are not. Found pairs are asked, never decided.
+- **The guard is lexical, not semantic.** It compares words, not meaning: a faithful paraphrase is refused, and some changes of meaning still pass (a bound of time, one name swapped for another in a fused sentence). A hostile page can have its own weak claim shown word for word with the code's hedge, or a faithful sentence refused. In right-to-left text, a line with direction marks is read but never cited. Open items: [Engineering plan](docs/acceleration/ENGINEERING_PLAN.md).
+- **Contradictions in other words** were found for 40 of 50 on a fresh held-out set, values in other units and stated aliases included, with 1 false pair of 28. Found pairs are asked, never decided. A number like "2,900" is still read as a year, and numbers written as words are not read.
 - **News and sources.** A news page that needs more than 100 sub-requests renders incomplete, and answers about current events are usually single-source. DOI records all resolve through doi.org, so distinct papers fetched that way count as one source group.
 - **Voice on real hardware rests on the owner's Voice check.** Public corpora gave a Whisper WER of 2.1 % on clean speech and 18.6 % on accented conversational English; echo, rooms and phones were simulated. Barge-in favours a reliable spoken "stop" over false stops from loud music; without browser echo cancellation NeuroSciFi's own voice interrupts it; commands are English only ([voice validation](docs/voice/VOICE_VALIDATION.md)).
 - **General discovery is thin without a Brave key**, and Brave has offline tests only. Browser impersonation will not be enabled.
