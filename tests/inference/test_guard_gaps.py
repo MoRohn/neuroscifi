@@ -308,6 +308,9 @@ def test_the_exemption_needs_exactly_one_cited_claim_and_its_own_sources():
 @pytest.mark.parametrize("after", [
     "by Reuters", "from the NumPy security team", "by the Ostra Space Agency", "from Tessaly Statistics",
     "by a Reuters news desk", "from the Bank of England", "by The New York Times", "from ACME and Sons",
+    # a word for a group of people that does not head the name, or heads one with a noun of an organisation
+    "by Citizens Advice", "by Consumer Reports", "by the Orbix User Association", "by Reader's Digest",
+    "by the Institute of Electrical and Electronics Engineers", "by the Society of Orbix Users",
 ])
 def test_words_that_only_name_the_source_are_removed_as_0_7_0_removed_them(after):
     assert reasoning._names_the_source(after)
@@ -324,7 +327,8 @@ def test_words_that_only_name_the_source_are_removed_as_0_7_0_removed_them(after
     "by Orbix Labs Retracted", "by Orbix Labs Withdrawn", "from the Orbix Archive Superseded",   # review round 2
     "by Orbix Labs Disputed", "by Orbix Labs DEBUNKED", "by the Draft Orbix Board",
     "from Windows Users", "from Linux Administrators", "by Enterprise Customers",   # remaining items: a group of
-    "from Python Developers", "by Local Residents", "by Citizens Advice",             # people, source or scope                                                   # a sign between words: refused, kept simple
+    "from Python Developers", "by Local Residents", "by Stack Overflow Developers",   # people, source or scope
+    "by People", "from Premium Customers", "by the Linux Developers",                                                   # a sign between words: refused, kept simple
     "",
 ])
 def test_anything_else_after_the_source_word_is_not_a_name(after):

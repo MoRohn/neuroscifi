@@ -185,8 +185,11 @@ deprecated obsolete outdated archived rescinded revoked cancelled canceled debun
 refuted unverified unconfirmed alleged purported draft preliminary provisional pending invalid invalidated void
 erroneous incorrect wrong false fake forged hoax satire satirical parody""".split())
 # Words for a group of people that a sentence can be about as well as hear from: "the advisory from Windows Users"
-# names the source or says whom the advisory is for, and code cannot tell which. Refused in a name, capitalised or not
-# (a cost: "a survey by Citizens Advice" is refused too).
+# names the source or says whom the advisory is for, and code cannot tell which. Refused as the head (the last word)
+# of a name, capitalised or not, unless the name holds a noun of an organisation (_ORGANISATION_NAME_NOUNS: "the
+# Institute of Electrical and Electronics Engineers"); a group word inside a name is not its head ("Consumer
+# Reports", "Citizens Advice", "the Orbix User Association"). A cost: "a survey by Stack Overflow Developers" and
+# "a report by People" are refused.
 _PEOPLE_GROUPS = frozenset("""user users customer customers client clients consumer consumers resident residents
 citizen citizens developer developers maintainer maintainers administrator administrators admin admins engineer
 engineers operator operators owner owners member members subscriber subscribers patient patients student students
@@ -194,6 +197,9 @@ parent parents teacher teachers worker workers employee employees investor inves
 voters driver drivers passenger passengers traveller travellers traveler travelers player players gamer gamers reader
 readers viewer viewers listener listeners buyer buyers tenant tenants contributor contributors volunteer volunteers
 adult adults child children teen teens teenager teenagers people locals visitors visitor""".split())
+_ORGANISATION_NAME_NOUNS = frozenset("""institute institution association society union foundation federation league
+alliance coalition council committee board guild academy college university school agency bureau commission authority
+organisation organization club trust""".split())
 # head nouns of an organisation's name that are also verbs ("the NumPy security team", "the Reuters news desk")
 _ORGANISATION_NOUNS = frozenset("team staff board group panel desk press service office unit council committee "
                                 "project network watch monitor review".split())
@@ -207,7 +213,8 @@ def _names_the_source(after: str) -> bool:
     vetoed", "in no case"; "of" and "and" only between two capitalised words: "the Bank of England"), a
     negation, a word of scope, quantity, time or comparison ("Users Only", "NOT The City", "NumPy Two"), a word of
     what became of the source ("Orbix Labs Retracted", _SOURCE_STATUS), a group of people the sentence could be
-    about ("Windows Users", _PEOPLE_GROUPS) or a restriction (_restriction); and no word
+    about as the name's head ("Windows Users", _PEOPLE_GROUPS; not in a name that holds a noun of an organisation)
+    or a restriction (_restriction); and no word
     without a capital may be an -ed, -ing or -ly form or a verb (a head
     noun of an organisation's name excepted: "team", "desk", _ORGANISATION_NOUNS)."""
     lead = _NAMING_LEAD.match(after)
@@ -218,13 +225,15 @@ def _names_the_source(after: str) -> bool:
             " ".join(after[lead.end():].split()) != " ".join(words):
         return False
     capital = [any(ch.isupper() for ch in w) for w in words]
+    organisation = any(w.strip(".'’").casefold() in _ORGANISATION_NAME_NOUNS for w in words)
     for i, w in enumerate(words):
         low = w.strip(".'’").casefold()
         if low in ("of", "and") and 0 < i < len(words) - 1 and capital[i - 1] and capital[i + 1]:
             continue
         if low in T.STOPWORDS or low in _ENTAIL_NEG or low in _NEG_WORDS or low in _PREPOSITIONS or \
                 low in _NUMBER_WORDS or low in _SCOPE or low in _QUANTITY_WORDS or low in _TIME or \
-                low in _COMPARATIVE or low in _SOURCE_STATUS or low in _PEOPLE_GROUPS:
+                low in _COMPARATIVE or low in _SOURCE_STATUS or \
+                (low in _PEOPLE_GROUPS and i == len(words) - 1 and not organisation):
             return False
         if not capital[i] and (low.endswith(("ed", "ing", "ly")) or (low in _verbs() and low not in
                                                                      _ORGANISATION_NOUNS)):
