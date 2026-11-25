@@ -2575,11 +2575,13 @@ def _reason(db, run, report):
 
     # F6, N4: the plain note only for what the owner typed or said in the console, by voice or on Pocket. Any other
     # origin (the CLI, which the model's own web_research tool also uses; MCP; refresh-owner; monitors; the bench) may
-    # carry a statement the owner did not word: quoted. An autonomous task needs the owner's authorisation.
+    # carry a statement the owner did not word: quoted. An autonomous task needs the owner's authorisation: a proposal
+    # the owner confirmed, or a background task the owner resumed or queued again (review0b N12).
     asked = "owner" if run.origin in OWNER_NOTE_ORIGINS else "autonomous" if is_autonomous(run.origin) else "confirmed"
     if asked == "autonomous":
+        from ..background import OWNER_ASKED, OWNER_CONFIRMED
         try:
-            if any(e["kind"] == "decision" and e["detail"].get("decision") == "proposal authorised by the owner"
+            if any(e["kind"] == "decision" and e["detail"].get("decision") in (OWNER_CONFIRMED, OWNER_ASKED)
                    for e in state.events(db, run.id)):
                 asked = "confirmed"
         except sqlite3.Error:

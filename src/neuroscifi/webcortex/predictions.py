@@ -15,6 +15,7 @@ Predictions about hypotheses (hypothesis_id, knowledge_id NULL) are made and set
 """
 from __future__ import annotations
 
+from ..background import STOPPED
 from ..instance import store
 from ..instance.errors import Conflict, NotFound, ValidationError, WritesPaused
 from . import state
@@ -145,7 +146,8 @@ def check_due(db, now, services=None, *, limit=MAX_REFRESHES) -> list[dict]:
     """Submit refresh tasks for due predictions (at most `limit`) and settle those whose refresh finished.
 
     Never runs a task: the scheduler or the worker runs what this submits. While web access is disabled no refresh
-    is submitted and the prediction stays due (it is not settled 'inconclusive' for want of a refresh)."""
+    is submitted and the prediction stays due (it is not settled 'inconclusive' for want of a refresh); nor is it
+    settled by a refresh the owner's quiet stopped (ADR-050): that refresh is let go and the prediction stays due."""
     from . import knowledge
     actions = []
     enabled = state.get_config(db).enabled
@@ -155,7 +157,18 @@ def check_due(db, now, services=None, *, limit=MAX_REFRESHES) -> list[dict]:
                 task = state.task(db, pred["task_id"])
             except NotFound:
                 continue
-            if task["status"] in TERMINAL_STATES:
+            quieted = task["status"] in TERMINAL_STATES and (
+                STOPPED in ((task["result"] or {}).get("limitations") or []) or db.execute(
+                    "SELECT 1 FROM web_events WHERE task_id=? AND kind='decision' AND "
+                    "json_extract(detail,'$.stopped')='quiet' LIMIT 1", (task["id"],)).fetchone() is not None)
+            if quieted:
+                # the owner's quiet stopped the refresh before it consolidated anything: no verdict, still due
+                with store.write(db):
+                    db.execute("UPDATE web_predictions SET task_id=NULL WHERE id=?", (pred["id"],))
+                    store.bump_state_version(db)
+                actions.append({"prediction_id": pred["id"], "action": "skipped",
+                                "reason": "its refresh was stopped by quiet; the prediction stays due"})
+            elif task["status"] in TERMINAL_STATES:
                 settled = check(db, pred["id"], (task["result"] or {}) | {"task_id": task["id"]}, now)
                 actions.append({"prediction_id": pred["id"], "action": "checked", "outcome": settled["outcome"]})
             continue

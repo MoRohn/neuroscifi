@@ -254,6 +254,83 @@ def test_a_background_task_the_owner_resumes_or_requeues_is_never_held(individua
     assert decisions.count(background.OWNER_ASKED) == 3
 
 
+@pytest.mark.parametrize("decision", [background.OWNER_ASKED, background.OWNER_CONFIRMED, None])
+def test_a_background_task_the_owner_asked_for_is_labelled_so_in_its_answer(individual, site, monkeypatch, decision):
+    """review0b N12: a background task the owner resumed or queued again kept the "autonomous" label in the answer
+    note (no note at all), like one nobody saw; it now reads as owner-confirmed, as a proposal the owner said yes to."""
+    from neuroscifi.webcortex import reasoning
+    db, path = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification", origin="curiosity")
+    if decision is not None:
+        with store.write(db):
+            state.log_event(db, task["id"], "decision", {"decision": decision}, T0)
+    labels, real_apply, real_degraded = [], reasoning.apply, reasoning._degraded
+    monkeypatch.setattr(reasoning, "apply", lambda *a, **k: labels.append(k["asked"]) or real_apply(*a, **k))
+    monkeypatch.setattr(reasoning, "_degraded", lambda *a, **k: labels.append(k["asked"]) or real_degraded(*a, **k))
+    services = build(db, path, site)
+    try:
+        orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    assert labels and set(labels) == {"autonomous" if decision is None else "confirmed"}
+
+
+@pytest.mark.parametrize("stopped", ["limitation", "event", None])
+def test_a_refresh_stopped_by_quiet_leaves_its_prediction_due(individual, stopped):
+    """review0b N5: a refresh quiet stopped ends 'partial' with nothing consolidated; check_due settled its prediction
+    'inconclusive' ("the refresh found no evidence") and calibration counted it. The prediction now stays due and
+    the next check queues a new refresh."""
+    db, _ = individual
+    state.set_config(db, {"enabled": True}, T0)
+    with store.write(db):
+        db.execute("INSERT INTO web_knowledge(id,key,version,statement,status,confidence,uncertainty,freshness_class,"
+                   "first_verified_at,last_verified_at,created_at,updated_at) VALUES(1,?,1,?,'provisional',0.7,0.3,"
+                   "'stable',1,1,1,1)", (GOOD[1], GOOD[2]))
+    pid = predictions.add(db, 1, "it will still hold", T0 + 10, T0)
+    task = orchestrator.submit(db, "refresh the Ostra basin", T0 + 11, mode="quick_lookup", origin="refresh:1")
+    with store.write(db):
+        db.execute("UPDATE web_predictions SET task_id=? WHERE id=?", (task["id"], pid))
+        state.update_task(db, task["id"], T0 + 12, status="partial", finished_at=T0 + 12,
+                          result={"limitations": [background.STOPPED] if stopped == "limitation" else [],
+                                  "answer": []})
+        if stopped == "event":
+            state.log_event(db, task["id"], "decision", {"stopped": "quiet", "reason": background.QUIET_REASON},
+                            T0 + 12)
+    actions = predictions.check_due(db, T0 + 20)
+    row = db.execute("SELECT outcome, task_id FROM web_predictions WHERE id=?", (pid,)).fetchone()
+    if stopped is None:                       # the control: a refresh that ran and found nothing settles it
+        assert actions[0]["action"] == "checked" and row[0] == "inconclusive"
+        return
+    assert actions == [{"prediction_id": pid, "action": "skipped",
+                        "reason": "its refresh was stopped by quiet; the prediction stays due"}]
+    assert row == (None, None)
+    again = predictions.check_due(db, T0 + 21)
+    assert again[0]["action"] == "refresh_submitted" and again[0]["task_id"] != task["id"]
+
+
+@pytest.mark.parametrize("kind", ["stale", "hypothesis_prediction", "prediction"])
+def test_the_unified_tick_launches_a_pooled_subject_only_in_the_kind_the_timer_ranked(individual, monkeypatch,
+                                                                                     kind):
+    """review0b (tick dedupe, partial): candidates() keeps one item per subject, so a due prediction or a hypothesis
+    on a subject in the timer's pool could take it, and the tick launched it in a shape it never launched before
+    (a 'prediction' or a fact-verified hypothesis)."""
+    db, _ = individual
+    monkeypatch.setattr(curiosity, "rank", ranked(GOOD))
+    item = {"kind": kind, "key": GOOD[1], "statement": GOOD[2], "objective": "Ostra basin area",
+            "mode": "fact_verification", "info_gain": 0.9, "cost": 1.0, "priority": 1.0, "signals": {},
+            "knowledge_id": GOOD[0], "owner": False, "depth": 0, "reason": "test"}
+    monkeypatch.setattr(autonomy, "candidates", lambda db, now, limit=10: {"chosen": [item], "refused": [],
+                                                                          "min_gain": 0.0})
+    monkeypatch.setattr(predictions, "check_due", lambda *a, **k: [])
+    autonomy.enable(db, T0)
+    report = scheduler.tick(db, T0, None, queue=True)
+    launched = [q for q in report["queued"] if q["origin"] == "curiosity"]
+    if kind == "stale":                       # the control: the timer's own kind is launched
+        assert len(launched) == 1
+        return
+    assert launched == [] and any(s.get("target", {}).get("key") == GOOD[1] for s in report["skipped"])
+
+
 def test_background_origins_are_matched_with_case_everywhere(individual):
     """review0 note: ORIGIN_SQL matched with LIKE (no case) where held_origin and is_autonomous match with case."""
     db, _ = individual
@@ -318,12 +395,15 @@ def _origin_is_fixed(node) -> bool:
     return isinstance(node, ast.JoinedStr) and bool(node.values) and isinstance(node.values[0], ast.Constant)
 
 
-def launch_sites(tree, module):
+def launch_sites(tree, module, direct=None):
     """{"module:qualname"} of every function in `tree` that creates a task of a background origin, passes on an origin
     it did not write out (a variable, an attribute: it may be a background one), or refers to a background entry
     point (autonomy.idle, scheduler.tick / work, check_due, claim_next) - called, handed to a thread or
-    functools.partial, or imported under another name - and the activities passed to allowed() there (review0 L8)."""
+    functools.partial, or imported under another name - and the activities passed to allowed() there (review0 L8).
+    `direct`, a set when given, also collects the functions found for a background origin written out or an entry
+    point, not for a forwarded origin alone: a forwarder (background.FORWARDERS) may be nothing else (review0b N7)."""
     sites, checks = set(), set()
+    direct = set() if direct is None else direct
     owners = {name: name for name in ENTRY_MODULES}     # local name -> the entry module it is bound to
     entries = set(ENTRY_ANYWHERE) | ({"idle"} if module.endswith(".autonomy") else set())
     for node in ast.walk(tree):
@@ -358,20 +438,23 @@ def launch_sites(tree, module):
                 if any(kw.arg == "origin" and (_origin_is_background(kw.value) or not _origin_is_fixed(kw.value))
                        for kw in child.keywords):
                     sites.add(f"{module}:{scope}")
+                if any(kw.arg == "origin" and _origin_is_background(kw.value) for kw in child.keywords):
+                    direct.add(f"{module}:{scope}")
                 if name == "allowed" and len(child.args) >= 2 and isinstance(child.args[1], ast.Constant):
                     checks.add(child.args[1].value)
             if refers(child):
                 sites.add(f"{module}:{scope}")
+                direct.add(f"{module}:{scope}")
             visit(child, inner, in_function or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)))
     visit(tree, "")
     return sites, checks
 
 
-def _scan():
+def _scan(direct=None):
     sites, checks = set(), set()
     for path in sorted(SRC.rglob("*.py")):
         module = "neuroscifi." + ".".join(path.relative_to(SRC).with_suffix("").parts)
-        found, asked = launch_sites(ast.parse(path.read_text()), module.removesuffix(".__init__"))
+        found, asked = launch_sites(ast.parse(path.read_text()), module.removesuffix(".__init__"), direct)
         sites |= found
         checks |= asked
     return sites, checks
@@ -399,13 +482,27 @@ def test_the_scanner_finds_a_launch_nobody_registered():
               "def owner(db):\n    orchestrator.submit(db, 'x', 0, origin=None)\n")
     sites, _ = launch_sites(ast.parse(sample), "neuroscifi.new")
     assert sites == {f"neuroscifi.new:{f}" for f in ("spawn", "later", "renamed", "drift", "forward", "stored")}
+    # review0b N7: a function that forwards an origin and also launches work itself is not only a forwarder
+    sample = ("def forward(db, origin):\n    orchestrator.submit(db, 'x', 0, origin=origin)\n"
+              "def forward_and_wander(db, origin):\n    orchestrator.submit(db, 'x', 0, origin=origin)\n"
+              "    return autonomy.idle(db, 0)\n"
+              "def forward_and_wonder(db, origin):\n    orchestrator.submit(db, 'x', 0, origin=origin)\n"
+              "    orchestrator.submit(db, 'y', 0, origin='curiosity')\n")
+    direct = set()
+    sites, _ = launch_sites(ast.parse(sample), "neuroscifi.new", direct)
+    assert sites == {f"neuroscifi.new:{f}" for f in ("forward", "forward_and_wander", "forward_and_wonder")}
+    assert direct == {"neuroscifi.new:forward_and_wander", "neuroscifi.new:forward_and_wonder"}
 
 
 def test_every_launch_site_in_the_source_is_registered_and_every_registered_site_exists():
-    sites, checks = _scan()
-    registered = ({s for spec in background.ACTIVITIES.values() for s in spec["sites"]} | set(background.RUNNERS)
-                  | set(background.FORWARDERS))
+    direct = set()
+    sites, checks = _scan(direct)
+    launching = {s for spec in background.ACTIVITIES.values() for s in spec["sites"]} | set(background.RUNNERS)
+    registered = launching | set(background.FORWARDERS)
     assert sites - registered == set(), "unregistered background launch sites: register them in background.py"
+    # review0b N7: a forwarder is exempt only for what it forwards; a background origin it writes out, or an entry
+    # point it calls, must be registered as an activity's site or a runner
+    assert direct - launching == set(), "a forwarder also launches background work itself: register that site"
     for site_name in registered:          # the registry names real functions (no stale entry)
         module, _, qualname = site_name.partition(":")
         path = SRC.joinpath(*module.split(".")[1:]).with_suffix(".py")

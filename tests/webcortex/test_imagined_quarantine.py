@@ -81,7 +81,11 @@ FORBIDDEN = ["webcortex/knowledge.py", "webcortex/claims.py", "webcortex/consoli
              "webcortex/evolution.py", "webcortex/predictions.py", "webcortex/semantic.py",
              "webcortex/memory_gate.py", "webcortex/reasoning.py", "webcortex/state.py", "webcortex/temporal.py",
              "instance/beliefs.py", "instance/evidence.py", "instance/executive.py", "instance/memory.py",
-             "instance/datasets.py", "instance/graphs.py", "instance/learner.py", "instance/recall.py"]
+             "instance/datasets.py", "instance/graphs.py", "instance/learner.py", "instance/recall.py",
+             # review0b N1: the orchestrator builds the report the answer model is sent (_reason); curiosity and
+             # autonomy choose what is investigated. A scenario's outcome reaches them only as a settled prediction
+             # error, through the ordinary prediction records, never by reading the store.
+             "webcortex/orchestrator.py", "webcortex/autonomy.py", "webcortex/curiosity.py"]
 
 
 def _store_uses(source):
@@ -159,6 +163,12 @@ def test_the_allow_lists_are_well_formed():
         assert module not in seen, f"{module} is an evidence path: it may never read the imagined store"
     assert not (WRITE_API | DISPLAY_API) & {"purge", "purge_orphans", "expire", "bound", "replay", "section", "*",
                                             "SQL"}
+
+
+def test_what_is_investigated_and_what_the_model_is_sent_never_read_the_store():
+    """review0b N1: the first fix's allow-list lost these three from the old evidence paths, so a lane could list the
+    orchestrator as a display and feed listed records into the report the answer model reads."""
+    assert {"webcortex/orchestrator.py", "webcortex/autonomy.py", "webcortex/curiosity.py"} <= set(FORBIDDEN)
 
 
 def test_the_scan_would_see_a_use():

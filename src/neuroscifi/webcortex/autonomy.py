@@ -678,8 +678,10 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
     'unified' (the default; ADR-050): the owner's recorded enable (enabled()), then every candidate through
     candidates(): min_gain on the stated forecast, derivation depth and relevance to the owner's subject, the
     cooldown, record templates, claim shapes and searchable words, ranked by goal-weighted priority. The tick keeps
-    its own pool on top, exactly as before (knowledge items among curiosity.rank's ten best, due predictions left
-    to its refreshes), so it can only admit fewer subjects than the legacy rule, never others.
+    its own pool on top, exactly as before (knowledge items among curiosity.rank's ten best, each of the kind the
+    ranking gave it; due predictions left to its refreshes), so it can only admit fewer subjects than the legacy
+    rule, never others, and none of another kind or mode (a subject a due prediction or a hypothesis took in
+    candidates() is refused).
     'legacy' (path 'tick' only, kept one release: `nsf web config --set tick_admission="legacy"`): the tick's rule
     before ADR-050 - curiosity.rank's own floor (curiosity.MIN_GAIN), knowledge items only, no goal weighting, no
     lineage, no cooldown, no recorded enable (the `autonomous` switch suffices), the statement's own words as the
@@ -713,7 +715,7 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
     pool = None
     if path == "tick":       # the tick's own pool, as before: knowledge items among curiosity.rank's top ten
         from . import curiosity
-        pool = {c["target"].get("key") for c in curiosity.rank(db, now, limit=10)
+        pool = {c["target"].get("key"): c["kind"] for c in curiosity.rank(db, now, limit=10)
                 if not c["excluded"] and "knowledge_id" in c["target"] and c["kind"] != "prediction"}
     ranked = candidates(db, now, limit=10 ** 6 if path == "tick" else limit)
     out["min_gain"], out["refused"] = ranked["min_gain"], ranked["refused"]
@@ -723,6 +725,14 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
                                           "a due prediction is refreshed by predictions.check_due"
                                           if item["kind"] == "prediction" else
                                           "not among the timer's ten best curiosity candidates (curiosity.rank)"})
+            continue
+        if pool is not None and item["kind"] != pool[item["key"]]:
+            # candidates() keeps one item per subject: a due prediction or a hypothesis on a pooled subject may have
+            # taken it, in a shape the timer never launched (review0b): the refresh or the idle investigator has it
+            out["refused"].append(item | {"reason": "a due prediction is refreshed by predictions.check_due"
+                                          if item["kind"] == "prediction" else
+                                          f"the timer investigates this subject as {pool[item['key']]}, not as "
+                                          f"{item['kind']} (the idle investigator's)"})
             continue
         out["chosen"].append(item)
     out["chosen"] = out["chosen"][:limit]
