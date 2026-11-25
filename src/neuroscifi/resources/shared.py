@@ -89,11 +89,30 @@ def open_file(path, flags) -> int:
 READ_LIMIT = 4 << 20                 # bytes read from one file of the folder at most
 
 
-def read_text(path, *, limit=READ_LIMIT, tail=False) -> str:
+class NotOwned(OSError):
+    """The file belongs to an account other than the ones allowed to write it (owners=)."""
+
+
+def writers(db_path) -> set[int]:
+    """The accounts whose files of `<db>.resources/` this process trusts: its own, and the instance database's owner
+    (the service account of a two-account install). A file the other account of the folder created is not theirs."""
+    out = {os.getuid(), os.geteuid()}
+    try:
+        out.add(os.stat(db_path).st_uid)
+    except (OSError, TypeError, ValueError):
+        pass
+    return out
+
+
+def read_text(path, *, limit=READ_LIMIT, tail=False, owners=None) -> str:
     """The file's text, read without following a link and without blocking (NotAFile for anything but a plain
     file). At most `limit` bytes: a larger file is refused (ValueError), or with `tail` its last `limit` bytes are
-    read, from the first whole line in them."""
+    read, from the first whole line in them. owners: the uids allowed to own the file (writers()); a file of any
+    other account is refused (NotOwned)."""
     fd = _regular(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), path)
+    if owners is not None and os.fstat(fd).st_uid not in owners:
+        os.close(fd)
+        raise NotOwned(f"{path} belongs to another account")
     try:
         size = os.fstat(fd).st_size
         if size > limit:
@@ -115,13 +134,25 @@ def read_text(path, *, limit=READ_LIMIT, tail=False) -> str:
         os.close(fd)
 
 
+def _no_constant(name):
+    raise ValueError(f"{name} is not a number")
+
+
+def _finite(text):
+    value = float(text)
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError(f"{text} is not a finite number")
+    return value
+
+
 def loads(text):
     """json.loads for text another account wrote: anything that is not JSON raises ValueError, including text nested
     deeply enough to exhaust the parser's recursion (a state file of 200,000 '[' raised RecursionError, which the
-    callers' ValueError handlers did not catch: review L4c)."""
+    callers' ValueError handlers did not catch: review L4c), and a number that is not finite (NaN, Infinity, 1e400:
+    Python's json accepts them, and one NaN in the internal-state history made every reader raise: review1 S2)."""
     import json
     try:
-        return json.loads(text)
+        return json.loads(text, parse_constant=_no_constant, parse_float=_finite)
     except RecursionError:
         raise ValueError("nested too deeply to be read") from None
 
@@ -219,6 +250,6 @@ def table(db, name) -> bool:
     return row is not None and row[0] == "table"
 
 
-__all__ = ["NotAFile", "PRIVATE_FILE", "PRIVATE_FOLDER", "READ_LIMIT", "SHARED_FILE", "ensure_folder", "file_mode",
+__all__ = ["NotAFile", "NotOwned", "PRIVATE_FILE", "PRIVATE_FOLDER", "READ_LIMIT", "SHARED_FILE", "ensure_folder", "file_mode",
            "is_shared", "loads", "open_file", "read_database", "read_json", "read_text", "table", "touch",
-           "write_text"]
+           "write_text", "writers"]

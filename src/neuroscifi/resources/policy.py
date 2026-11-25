@@ -189,7 +189,10 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
     elif predictive_on(db_path):
         from .. import internal_state
         from . import forecast
-        verdict = forecast.assess(internal_state.history(db_path), now=time.time())
+        try:
+            verdict = forecast.assess(internal_state.history(db_path), now=time.time())
+        except Exception:          # noqa: BLE001 - fail open: a forecast may only add a hold, a broken one adds none
+            verdict = {"hold": False}
         if verdict["hold"]:
             reason, why = verdict["reason"], "forecast"
     return {"allowed": reason is None, "reason": reason, "why": why, "level": s["level"], "audio": audio}

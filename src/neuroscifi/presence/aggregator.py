@@ -178,15 +178,29 @@ def _predictions_made(db, now):
                       (now - FINISHED_WINDOW,)).fetchone()
 
 
+IMAGINED_WORDS = {"simulation": ("simulation", "simulations"), "speculation": ("possibility", "possibilities"),
+                  "inference": ("inference", "inferences")}
+
+
 def _imagined_made(db, now):
-    """(count, newest time) of imagined records written in the last moments (instance/imagined.py: simulation,
-    speculation, inference; never evidence), owner scope only; (0, None) before schema 17."""
+    """(count, newest time, counts by kind) of imagined records written in the last moments (instance/imagined.py:
+    simulation, speculation, inference; never evidence), owner scope only; (0, None, {}) before schema 17."""
     from ..instance import imagined
     try:
         made = imagined.counts(db, since=now - FINISHED_WINDOW)
     except sqlite3.OperationalError:
-        return 0, None
-    return made["total"], made["newest"]
+        return 0, None, {}
+    return made["total"], made["newest"], {k: n for k, n in made["counts"].items() if n}
+
+
+def _imagined_detail(by_kind) -> str:
+    """What was written, in the past tense and by kind (review1 A14): "Recorded 1 simulation and 2 inferences"."""
+    parts = []
+    for kind, n in by_kind.items():
+        one, many = IMAGINED_WORDS.get(kind, (kind, kind + "s"))
+        parts.append(f"{n} {one if n == 1 else many}")
+    listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    return f"Recorded {listed}; imagined, not evidence"
 
 
 def _graph_jobs(db, now):
@@ -436,10 +450,10 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
         if made:
             cands.append(_candidate("predicting", subsystem="web_cortex", priority="background", since=at,
                                     detail=f"Recorded {made} prediction{'s' if made != 1 else ''} to check later"))
-        made, at = _imagined_made(db, now)
+        made, at, by_kind = _imagined_made(db, now)
         if made:
             cands.append(_candidate("simulating", subsystem="imagination", priority="background", since=at,
-                                    detail="Imagining a what-if; imagined, not evidence"))
+                                    detail=_imagined_detail(by_kind)))
         for context, holder, expires in _graph_jobs(db, now):
             job = str(holder or "").split(":", 1)[0]
             job = job.removeprefix("graphs.") if job.startswith("graphs.") else "graph job"

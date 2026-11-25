@@ -147,19 +147,34 @@ def _model_calls(db_path, now) -> tuple[dict | None, float | None]:
              "mean_first_token_ms": None if ttft is None else round(ttft, 1)}, newest)
 
 
-def _knowledge(db, now) -> tuple[dict | None, dict | None]:
-    """(staleness, disagreement) of the live web knowledge."""
+STALENESS_CHECKED = 2000      # live knowledge items whose staleness is computed at most (the oldest ids first)
+
+
+def _knowledge(db, now, staleness=True) -> tuple[dict | None, dict | None]:
+    """(staleness, disagreement) of the live web knowledge. The counts are SQL counts; the staleness rule (a TTL by
+    freshness class and later observations, knowledge.staleness) is computed per item for the first
+    STALENESS_CHECKED, and only with `staleness` (the self-description leaves it out: review1 A2, 187 ms at 10,000
+    items in a request path)."""
     if not _has(db, "web_knowledge"):
         return None, None
     from .webcortex import knowledge, state
-    cfg = state.get_config(db)
-    live = knowledge.rows(db, f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})", state.LIVE_KNOWLEDGE)
-    stale = sum(1 for item in live[:2000] if knowledge.staleness(item, now, cfg, db)[0])
-    contradicted = sum(1 for item in live if item["contradicting"])
+    live_sql = f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})"
+    live = db.execute(f"SELECT count(*) FROM web_knowledge WHERE {live_sql}", state.LIVE_KNOWLEDGE).fetchone()[0]
+    # knowledge.rows decodes `contradicting` as a JSON list: an item is contradicted when that list is not empty
+    contradicted = db.execute(f"SELECT count(*) FROM web_knowledge WHERE {live_sql} AND json_valid(contradicting) AND "
+                              "json_array_length(contradicting) > 0", state.LIVE_KNOWLEDGE).fetchone()[0]
     contested = db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:contested:%'"
                            ).fetchone()[0]
-    return ({"live_items": len(live), "stale_items": stale, "checked": min(len(live), 2000)},
-            {"contradicted_knowledge": contradicted, "open_contested_questions": contested})
+    out = {"live_items": live, "stale_items": None, "checked": 0}
+    if staleness:
+        cfg = state.get_config(db)
+        items = knowledge.rows(db, f"id IN (SELECT id FROM web_knowledge WHERE {live_sql} ORDER BY id LIMIT "
+                                   f"{STALENESS_CHECKED})", state.LIVE_KNOWLEDGE)
+        out |= {"stale_items": sum(1 for item in items if knowledge.staleness(item, now, cfg, db)[0]),
+                "checked": len(items)}
+    else:
+        out["note"] = "staleness is not computed here; `nsf internal-state` computes it"
+    return out, {"contradicted_knowledge": contradicted, "open_contested_questions": contested}
 
 
 def _prediction_errors(db, now) -> dict:
@@ -177,9 +192,10 @@ def _prediction_errors(db, now) -> dict:
 
 # ---- the snapshot ----------------------------------------------------------------------------------------------------
 
-def snapshot(db, db_path, now=None, *, gateway=False, history_limit=0) -> dict:
+def snapshot(db, db_path, now=None, *, gateway=False, history_limit=0, staleness=True) -> dict:
     """The record (see the module doc). gateway=True also asks the model endpoint for its health (a network call to
-    the owner-configured endpoint, as `nsf llm status` makes); history_limit > 0 includes that many recent samples."""
+    the owner-configured endpoint, as `nsf llm status` makes); history_limit > 0 includes that many recent samples;
+    staleness=False leaves the per-item knowledge staleness out (the self-description's copy)."""
     from . import background
     from .instance import store
     from .resources import forecast, idle, monitor, policy
@@ -218,14 +234,14 @@ def snapshot(db, db_path, now=None, *, gateway=False, history_limit=0) -> dict:
         health = Gateway.from_db(db, db_path).health()
         fields["model_endpoint"] = _field({k: health.get(k) for k in ("state", "reason", "model", "latency_ms")},
                                           "inference.gateway.Gateway.health", time.time(), now)
-    staleness, disagreement = _knowledge(db, now)
-    fields["knowledge_staleness"] = _field(staleness, "webcortex.knowledge.staleness", now, now)
+    stale, disagreement = _knowledge(db, now, staleness)
+    fields["knowledge_staleness"] = _field(stale, "webcortex.knowledge.staleness", now, now)
     fields["prediction_errors"] = _field(_prediction_errors(db, now), "web_predictions; pending (kind calibrate)",
                                          now, now)
     fields["internal_disagreement"] = _field(disagreement, "web_knowledge.contradicting; pending web:contested",
                                              now, now)
     fields["quiet"] = _field(background.quiet(db), "background.quiet (the owner's switch)", now, now)
-    samples = history(db_path)
+    samples, ignored, problem = _read_history(db_path, now=now)
     cfg = store.config(db)
     out = {"schema": SCHEMA, "version": 1, "at": now, "fields": fields,
            "settings": {"internal_state_history": cfg.internal_state_history,
@@ -233,7 +249,7 @@ def snapshot(db, db_path, now=None, *, gateway=False, history_limit=0) -> dict:
            "history": {"file": str(folder(db_path) / HISTORY_FILE) if db_path else None, "samples": len(samples),
                        "oldest_at": samples[0]["at"] if samples else None,
                        "newest_at": samples[-1]["at"] if samples else None, "kept": HISTORY_KEPT,
-                       "every_seconds": RECORD_EVERY},
+                       "every_seconds": RECORD_EVERY, "ignored_samples": ignored, "unreadable": problem},
            "forecast": forecast.assess(samples, now=now)}
     if history_limit:
         out["history"]["recent"] = samples[-int(history_limit):]
@@ -315,26 +331,50 @@ def record_quietly(db_path, now=None) -> None:
         pass
 
 
-def history(db_path, limit=HISTORY_KEPT) -> list[dict]:
-    """The persisted samples, oldest first (at most `limit`, the newest ones); [] without a file."""
+FUTURE_SECONDS = 60.0         # a sample dated later than now + this is ignored
+
+
+def _read_history(db_path, limit=HISTORY_KEPT, now=None) -> tuple[list[dict], int, str | None]:
+    """(samples oldest first, lines ignored, why the file could not be read or None). The file is in a folder another
+    account may write (two accounts: 2770, the file 0660), so it is untrusted input (review1 S2, S4): a file that
+    account created is not read at all, and a line is ignored when it is not JSON, holds a number that is not finite,
+    or is dated after now + FUTURE_SECONDS. What the numbers say is checked again by resources.forecast."""
+    import math
     from .resources import shared
     where = folder(db_path)
     if where is None:
-        return []
+        return [], 0, None
+    now = time.time() if now is None else now
     try:
-        lines = shared.read_text(where / HISTORY_FILE, limit=READ_LIMIT, tail=True).splitlines()
+        lines = shared.read_text(where / HISTORY_FILE, limit=READ_LIMIT, tail=True,
+                                 owners=shared.writers(db_path)).splitlines()
+    except FileNotFoundError:
+        return [], 0, None
+    except shared.NotOwned:
+        return [], 0, "the history file belongs to another account; it is not read"
     except (OSError, ValueError):
-        return []
-    out = []
+        return [], 0, "the history file could not be read"
+    out, ignored = [], 0
     for line in lines[-limit:] if limit else lines:
         try:
             item = shared.loads(line)
         except ValueError:
+            ignored += 1
             continue
-        if isinstance(item, dict) and isinstance(item.get("at"), (int, float)):
-            out.append(item)
+        at = item.get("at") if isinstance(item, dict) else None
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at) \
+                or at > now + FUTURE_SECONDS:
+            ignored += 1
+            continue
+        out.append(item)
     out.sort(key=lambda item: item["at"])
-    return out
+    return out, ignored, None
+
+
+def history(db_path, limit=HISTORY_KEPT, now=None) -> list[dict]:
+    """The persisted samples, oldest first (at most `limit`, the newest ones); [] without a file, or when it cannot
+    be read or belongs to another account (_read_history)."""
+    return _read_history(db_path, limit, now)[0]
 
 
 def cli(args):

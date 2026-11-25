@@ -11,8 +11,14 @@ worker) is published, when the caller names the instance file (`publish=<db path
 `<db>.resources/inflight-<pid>.json` the way the audio beacon publishes audio state: written atomically when an entry
 starts or ends and at most every PUBLISH_EVERY seconds while tokens stream, removed when the process has none left.
 remote(db_path) reads the other processes' files: a file of a process that is gone, or older than STALE seconds, is
-ignored, so a killed worker never leaves a call on screen. The files hold no prompt or answer text: activity,
-subsystem, purpose, task id, start time and a token count.
+ignored, so a killed worker never leaves a call on screen. While a process has entries its file is rewritten every
+REFRESH seconds, so a call that streams nothing for longer than STALE stays on screen while it runs. The files hold no
+prompt or answer text: activity, subsystem, purpose, task id, start time and a token count.
+
+The folder may be one two accounts write (resources/shared.py), so a file is untrusted input (review1 S4, A11): it is
+read only when this process's account or the instance database's owner (the service account) owns it, when the pid in
+its name is the pid in its content, and when that process's start time (/proc/<pid>/stat) is the one the file
+records, so a reused pid or a forged file is not shown; a remote entry ranks at most as "tool" (REMOTE_PRIORITY_CAP).
 """
 from __future__ import annotations
 
@@ -29,9 +35,13 @@ _LOCK = threading.Lock()
 _ACTIVE: dict[int, dict] = {}
 _IDS = itertools.count(1)
 _PUBLISHED: dict[str, float] = {}       # db path -> monotonic time of the last write of this process's file
+_WRITE = threading.Lock()               # one write of this process's file at a time, each of the newest entries
+_TIMERS: dict[str, threading.Timer] = {}   # db path -> the pending rewrite while entries exist (under _WRITE)
 MAX_ENTRIES = 64
 PUBLISH_EVERY = 1.0                     # seconds between two writes while tokens stream
 STALE = 600.0                           # a file not rewritten for this long is ignored (a call's own deadline is less)
+REFRESH = STALE / 4                     # a process with entries rewrites its file at least this often
+REMOTE_PRIORITY_CAP = "tool"            # another process's entry never ranks above this (Presence's priority)
 MAX_FILES = 32
 FILE_LIMIT = 64 * 1024
 PRIORITIES = ("communication", "foreground", "tool", "background")
@@ -82,42 +92,73 @@ def _folder(db_path) -> Path:
 
 
 def _publish(db_path, *, force=False):
-    """Write (or remove) this process's file for `db_path`; never raises into the caller's work."""
-    now = time.monotonic()
+    """Write (or remove) this process's file for `db_path`; never raises into the caller's work. The entries are
+    read and written under one lock, so a late rate-limited write can never put back an entry that ended meanwhile
+    (review1 A11); while entries remain, a rewrite is scheduled REFRESH seconds on."""
     with _LOCK:
         last = _PUBLISHED.get(db_path)
-        if not force and last is not None and now - last < PUBLISH_EVERY:
+        if not force and last is not None and time.monotonic() - last < PUBLISH_EVERY:
             return
-        _PUBLISHED[db_path] = now
-        entries = [{k: e[k] for k in _PUBLIC} for e in _ACTIVE.values() if e["_publish"] == db_path]
     from ..resources import shared
     target = _folder(db_path) / f"inflight-{os.getpid()}.json"
-    try:
+    with _WRITE:
+        with _LOCK:
+            _PUBLISHED[db_path] = time.monotonic()
+            entries = [{k: e[k] for k in _PUBLIC} for e in _ACTIVE.values() if e["_publish"] == db_path]
+        try:
+            if entries:
+                shared.ensure_folder(target.parent)
+                shared.write_text(target, json.dumps({"pid": os.getpid(), "started": process_started(os.getpid()),
+                                                      "at": time.time(), "entries": entries}, allow_nan=False))
+            else:
+                try:
+                    os.unlink(target)
+                except FileNotFoundError:
+                    pass
+        except (OSError, ValueError):
+            pass
+        timer = _TIMERS.pop(db_path, None)
+        if timer is not None:
+            timer.cancel()
         if entries:
-            shared.ensure_folder(target.parent)
-            shared.write_text(target, json.dumps({"pid": os.getpid(), "at": time.time(), "entries": entries},
-                                                 allow_nan=False))
-        else:
-            try:
-                os.unlink(target)
-            except FileNotFoundError:
-                pass
-    except (OSError, ValueError):
-        pass
+            timer = threading.Timer(REFRESH, _publish, args=(db_path,), kwargs={"force": True})
+            timer.daemon = True
+            timer.name = "nsf-activity-refresh"
+            _TIMERS[db_path] = timer
+            timer.start()
 
 
-def _alive(pid) -> bool:
+def process_started(pid) -> int | None:
+    """The process's start time in clock ticks after boot (field 22 of /proc/<pid>/stat), or None when it cannot be
+    read (no such process, no /proc). With the pid it names one process: a reused pid has another start time."""
+    try:
+        with open(f"/proc/{int(pid)}/stat", "rb") as fh:
+            data = fh.read(4096)
+        return int(data[data.rindex(b")") + 2:].split()[19])
+    except (OSError, ValueError, IndexError, TypeError, OverflowError):
+        return None
+
+
+def _alive(pid, started=None) -> bool:
+    """The process `pid` exists and is the one that started at `started` (process_started; None where /proc cannot
+    say)."""
     try:
         os.kill(int(pid), 0)
     except PermissionError:
-        return True             # it exists, under another account
+        pass                    # it exists, under another account
     except (ProcessLookupError, ValueError, TypeError, OverflowError):
         return False
-    return True
+    return started == process_started(pid)
 
 
 def _number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _capped(priority) -> str:
+    """A remote entry's priority, at most REMOTE_PRIORITY_CAP (PRIORITIES runs from the highest rank down)."""
+    floor = PRIORITIES.index(REMOTE_PRIORITY_CAP)
+    return priority if priority in PRIORITIES[floor:] else REMOTE_PRIORITY_CAP
 
 
 def remote(db_path, now=None) -> list[dict]:
@@ -130,16 +171,20 @@ def remote(db_path, now=None) -> list[dict]:
         return []
     from ..resources import shared
     now = time.time() if now is None else now
+    owners = shared.writers(db_path)
     out = []
     for path in sorted(folder.glob("inflight-*.json"))[:MAX_FILES]:
         pid = path.stem.removeprefix("inflight-")
-        if not pid.isdigit() or int(pid) == os.getpid() or not _alive(pid):
+        if not pid.isdigit() or int(pid) == os.getpid():
             continue
         try:
-            data = shared.read_json(path, limit=FILE_LIMIT)
+            data = shared.read_json(path, limit=FILE_LIMIT, owners=owners)
         except (OSError, ValueError):
             continue
         if not isinstance(data, dict) or not _number(data.get("at")) or not 0 <= now - data["at"] <= STALE:
+            continue
+        started = data.get("started")
+        if data.get("pid") != int(pid) or not (started is None or _number(started)) or not _alive(pid, started):
             continue
         for e in (data.get("entries") or [])[:MAX_ENTRIES]:
             if not isinstance(e, dict) or not isinstance(e.get("activity"), str) or not _number(e.get("since")):
@@ -149,10 +194,10 @@ def remote(db_path, now=None) -> list[dict]:
                         "purpose": str(e.get("purpose") or "")[:64],
                         "task_id": e.get("task_id") if isinstance(e.get("task_id"), str) else None,
                         "since": e["since"], "tokens": int(tokens) if _number(tokens) and tokens >= 0 else 0,
-                        "priority": e.get("priority") if e.get("priority") in PRIORITIES else "tool",
+                        "priority": _capped(e.get("priority")),
                         "secondary": [s for s in (e.get("secondary") or []) if isinstance(s, str)][:4],
                         "process": int(pid)})
     return out
 
 
-__all__ = ["remote", "snapshot", "track"]
+__all__ = ["process_started", "remote", "snapshot", "track"]

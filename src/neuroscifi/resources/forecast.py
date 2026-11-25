@@ -25,6 +25,7 @@ MIN_POINTS recent samples) it says nothing. HORIZON_SECONDS is declared (about o
 measured on the host."""
 from __future__ import annotations
 
+import math
 from statistics import median
 
 from . import monitor
@@ -37,6 +38,7 @@ MAX_POINTS = 720             # samples read at most (the voice pattern looks thi
 MIN_POINTS = 4               # fewer recent samples than this: no forecast
 MAX_GAP_SECONDS = 600.0      # a longer gap between samples starts the series again (the worker was not running)
 STALE_SECONDS = 300.0        # a newest sample older than this: no forecast (the history is not current)
+FUTURE_SECONDS = 60.0        # a sample dated later than now + this is ignored (a clock cannot run that far ahead)
 VOICE_STARTS = 2             # voice session starts needed before a pattern is read from them
 VOICE_REGULARITY = 0.25      # ... whose intervals differ from their median by at most this share of it
 VOICE_JITTER = 0.05          # timing allowance around an expected start: at least this share of the period
@@ -44,18 +46,30 @@ GIB = 1024 ** 3
 
 
 def _number(value):
-    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    """A finite int or float, else None (the history is a file another account can write: review1 S2)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return value if math.isfinite(value) else None
+    except OverflowError:                       # an int too large for a float
+        return None
 
 
-def _points(history):
-    """The usable samples, oldest first: those with a time, available and total memory, and a running count."""
+def _points(history, now=None):
+    """The usable samples, oldest first: those with a time, available and total memory, and a running count. A
+    sample that cannot be true is ignored: a number that is not finite, a time after now + FUTURE_SECONDS, negative
+    memory or more available than in total, a negative or impossible running count."""
     out = []
     for h in history or ():
         if not isinstance(h, dict):
             continue
         at, avail, total = _number(h.get("at")), _number(h.get("available_bytes")), _number(h.get("total_bytes"))
         running = _number(h.get("background_running"))
-        if at is None or avail is None or not total:
+        if at is None or avail is None or not total or total <= 0 or not 0 <= avail <= total or total > 1 << 60:
+            continue
+        if now is not None and at > now + FUTURE_SECONDS:
+            continue
+        if running is not None and not 0 <= running <= 1024:
             continue
         out.append({"at": float(at), "available": float(avail), "total": float(total),
                     "running": int(running or 0), "audio": h.get("audio") is True})
@@ -124,9 +138,18 @@ def assess(history, *, now=None, horizon=HORIZON_SECONDS, slots=None, use_trend=
     because memory headroom is forecast to fall under the critical line within `horizon` seconds, or because a voice
     session is expected within it? See the module doc. `slots` defaults to policy.BACKGROUND_MODEL_SLOTS;
     use_trend / use_footprint / use_voice switch those parts off (the benchmark's ablations)."""
+    try:
+        return _assess(history, now=now, horizon=horizon, slots=slots, use_trend=use_trend,
+                       use_footprint=use_footprint, use_voice=use_voice)
+    except (ArithmeticError, TypeError, ValueError, KeyError):
+        # fail open: the forecast may only ever add a hold, and a history it cannot read adds none
+        return {"hold": False, "reason": None, "forecast": None, "note": "the history could not be read; no forecast"}
+
+
+def _assess(history, *, now, horizon, slots, use_trend, use_footprint, use_voice) -> dict:
     if slots is None:
         from .policy import BACKGROUND_MODEL_SLOTS as slots
-    points = _points(history)
+    points = _points(history, now)
     if len(points) < MIN_POINTS:
         return {"hold": False, "reason": None, "forecast": None,
                 "note": f"{len(points)} recent sample(s); a forecast needs {MIN_POINTS}"}
