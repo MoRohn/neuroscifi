@@ -2552,7 +2552,8 @@ and the measurements below are not scores of anything but the function they name
   record's own `confidence_note`: while no fitted map has 30 development items in 3 blocks (none of the shipped maps
   has), the confidence is null and the note says "not enough development data"; the field's source says why
   (reconciliation of review A6 with this record).
-- **Voice.** The follow-up is delivered once to the person's live session, claimed in the database; with
+- **Voice.** The follow-up is delivered at most once to the person's live session, claimed in the database (when
+  the person is live only on another process that does not follow it, into the asking transcript: review1b R3); with
   `resume_follow` off nothing is written; a new owner voice setting `status_questions` (default off) keeps "what are
   you doing?" starting research as before; "status report" and "status" are the status command (A9, A10, A15, S9).
 - **Broadcast.** With `log` or `on`, a finding is offered with the higher of its own salience and its candidate's;

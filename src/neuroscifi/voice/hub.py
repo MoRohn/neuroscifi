@@ -22,14 +22,17 @@ Audio requests do no database writes: chunks are buffered in memory, consent and
 provisional and final segments (with raw audio when retention is on, in the same transaction) are written by one
 writer thread, so an upload never waits behind the research worker's write transaction. Reply and research-follow
 threads are bounded (MAX_REPLY_WORKERS, MAX_FOLLOWERS); beyond that the hub answers busy.
-Research follow-ups (R8, review1 A9/A10/S9): the answer to a spoken research question is delivered once, to the
-person's session that is live when it is ready (looked up then, not the session that asked). With the owner's
+Research follow-ups (R8, review1 A9/A10/S9): the answer to a spoken research question is delivered at most once, to
+the person's session that is live when it is ready (looked up then, not the session that asked). With the owner's
 resume_follow on, the awaited task is kept in the session's context with the hub that follows it (follow_by), and
 the delivery is claimed in the database (transcripts.clear_follow), which takes it off every session of that person:
 two processes following the same task cannot both deliver it, and a later session does not replay it. A follower
 that gives up (FOLLOW_MAX) takes it off as well. A new session picks a follow up again only when no hub of this
 process follows it, never for a task that finished before the previous session ended while its follower lived, and
 never RESUME_MAX_AGE after the task finished; it says "before the restart" only when the hub that followed it is gone.
+When the person is live only on another process when the answer is ready, that process's follower (if it has one)
+gets ELSEWHERE_GRACE seconds to claim it; if none did, the answer goes into the asking session's transcript (review1b
+R3: it used to be left undelivered, and stayed awaited on the ended session).
 """
 from __future__ import annotations
 
@@ -71,6 +74,7 @@ FOLLOW_POLL = 1.0            # longest wait between two checks of a followed res
 FOLLOW_FIRST = 0.1           # the first wait; it doubles up to FOLLOW_POLL (follow_waits)
 FOLLOW_MAX = 3 * 3600.0
 RESUME_MAX_AGE = 24 * 3600.0  # a task that finished longer ago than this is not picked up by a new session
+ELSEWHERE_GRACE = 3 * FOLLOW_POLL  # how long another process's follower may claim an answer before this one does
 _LIVE_HUBS: set[str] = set()  # the follow_by tokens of this process's hubs that are not closed
 PROGRESS_SPEAK_EVERY = 30.0
 TERMINAL = ("completed", "partial", "failed", "cancelled")
@@ -1156,8 +1160,12 @@ class VoiceHub:
             if task["status"] in TERMINAL:
                 if kept:
                     with self.db() as db:
-                        if live is None and tx.active_elsewhere(db, s.principal.name, list(self.sessions)):
-                            return           # the person is on another process now: its follower tells them
+                        elsewhere = live is None and tx.active_elsewhere(db, s.principal.name, list(self.sessions))
+                    if elsewhere:            # the person is on another process now: its follower, if it has one,
+                        if self._closed.wait(ELSEWHERE_GRACE):     # tells them; if none claims it, this one
+                            return           # writes it into the asking transcript (review1b R3)
+                        live = self._live(s)
+                    with self.db() as db:
                         if not tx.clear_follow(db, s.principal.name, task_id):
                             return           # delivered by another follower, or forgotten meanwhile
                 target = live or s           # no open session: the answer still goes into the asking transcript

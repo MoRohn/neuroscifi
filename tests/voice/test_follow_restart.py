@@ -144,6 +144,34 @@ def test_two_processes_following_one_task_deliver_it_once(instance, monkeypatch)
         vstate.reset()
 
 
+def test_an_answer_is_not_lost_when_the_person_is_live_on_a_process_that_does_not_follow_it(instance, monkeypatch):
+    """review1b R3: the person is live in session B of another process (started before the question, so it never
+    picked the follow up); they asked in session A of this process, and A ended. When the task finishes, A's follower
+    used to return because the person is active elsewhere: nobody delivered, and the task stayed awaited on A. Now,
+    once no other follower claimed it within ELSEWHERE_GRACE, the answer goes into A's transcript, once."""
+    from neuroscifi.voice import hub as vhub
+    monkeypatch.setattr(vhub, "ELSEWHERE_GRACE", 0.2)
+    second = new_hub(instance)
+    first = new_hub(instance)
+    try:
+        other = second.start(OWNER, "console:dev5678", "Console", "text_only")["session"]
+        sid, task_id = ask(first, monkeypatch)
+        first.stop(sid, OWNER)
+        with closing(store.connect(instance)) as db:
+            orchestrator.cancel(db, task_id, time.time())
+        wait_for(lambda: answers(instance, task_id), timeout=10)
+        time.sleep(0.5)
+        assert [s for s, _ in answers(instance, task_id)] == [sid]                # once, to the asking transcript
+        assert awaiting(instance, task_id) == 0
+        assert not [e for e in events(second, other, "reply") if e["reply"]["intent"] == "research_result"]
+    finally:
+        for h in (first, second):
+            for s in list(h.sessions.values()):
+                h._end(s, "test")
+            h.close()
+        vstate.reset()
+
+
 def test_a_follower_that_gives_up_leaves_nothing_to_replay(hub, instance, monkeypatch):
     """review1 S9: after FOLLOW_MAX the follower stops; the task is taken off the sessions, so its answer is not
     spoken at the person's next session, possibly days later."""

@@ -92,7 +92,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | No cross-task working context; voice sessions, events and the follow of a spoken research answer are lost on restart (R8); console and Pocket are separate principals with no shared conversational context; in-flight model calls are process-local |
 | Baseline | none: the self-description family "cannot show continuity over a long-running process" |
 | Priority, lane | Wave 1, lane W (voice follow-up survives restart; a "What we were just doing" panel) |
-| Wave 1 (as shipped) | Lane W: voice `resume_follow` on, delivered once to the person's live session (tested with two hubs in one process; two real processes **unverified**; real microphone and handset **unverified**); worker model calls visible to Presence; `pocket_recent` off. No benchmark measures continuity |
+| Wave 1 (as shipped) | Lane W: voice `resume_follow` on, delivered at most once, to the person's live session (or, when they are live only on a process that does not follow it, into the asking transcript) (tested with two hubs in one process; two real processes **unverified**; real microphone and handset **unverified**); worker model calls visible to Presence; `pocket_recent` off. No benchmark measures continuity |
 
 ## 7. Adaptive motivation
 
