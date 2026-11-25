@@ -39,9 +39,14 @@ SPLITS = ("development", "held_out")
 def fit() -> dict:
     table = P.fit_tables()
     table = {"version": M.VERSION, "weights": M.WEIGHTS, **table,
+             "minimum": {"items": M.MIN_ITEMS, "blocks": M.MIN_BLOCKS},
              "note": "monotone maps (pool adjacent violators, Beta(1,1) per block) from the monitoring score to a "
                      "probability, fitted by scripts/bench_monitoring.py fit on the development split only; "
-                     "fictional offline corpus, not the open web"}
+                     "fictional offline corpus, not the open web. A map is applied only when fitted on at least "
+                     f"{M.MIN_ITEMS} items in at least {M.MIN_BLOCKS} blocks (\"applied\"); none is today, so the "
+                     "record says 'not enough development data' instead of a number. Claims use the unfitted score "
+                     "(the claim map is kept here only as the record of what the fit gave). The threshold applies "
+                     "only when both answer maps do."}
     M.CALIBRATION_FILE.write_text(json.dumps(table, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     M.calibration.cache_clear()
     return table
@@ -78,13 +83,29 @@ def family(split, mechanism="baseline", ablate=()) -> dict:
 
 
 def headline(result) -> dict:
+    """Brier with its decomposition and n; no 10-bin ECE (about ten items per split: Wave 1 review B5)."""
     cp = result["claim_probability"]
+    m = cp["murphy"] or {}
     return {"aurc": result["selective"]["aurc"], "auroc_answer": result["selective"]["auroc_confidence_for_correctness"],
             "coverage_at_risk_0.05": result["selective"]["coverage_at_risk_0.05"],
-            "answer_brier": result["answer_confidence_calibration"]["brier"],
-            "answer_ece_10": result["answer_confidence_calibration"]["ece_10_bins"],
-            "claim_brier": cp["murphy"]["brier"] if cp["murphy"] else None, "claim_ece_10": cp["ece_10_bins"],
-            "claim_auroc": cp["auroc"]}
+            "answer_items": result["items"], "answer_brier": result["answer_confidence_calibration"]["brier"],
+            "claim_items": cp["items"], "claim_brier": m.get("brier"), "claim_reliability": m.get("reliability"),
+            "claim_resolution": m.get("resolution"), "claim_uncertainty": m.get("uncertainty"),
+            "claim_auroc": cp["auroc"], "decision": result.get("decision")}
+
+
+def claim_map_comparison() -> dict:
+    """The fitted claim map against the unfitted score, per split: why claims ship unfitted (decided on development;
+    held-out reported)."""
+    out = {}
+    table = P.fit_tables()["strata"]["claim"]
+    for split in SPLITS:
+        rows = [r for r in P.rows(split) if r["category"] == "verification" and r["gold"] in ("supported", "disputed")]
+        s = [P._scores(r["record"], frozenset())[0] for r in rows]
+        y = [int(r["gold"] == "supported") for r in rows]
+        out[split] = {"n": len(rows), "fitted_map": scoring.murphy([M.calibrate(v, table) for v in s], y),
+                      "unfitted_score": scoring.murphy([M.calibrate(v, None) for v in s], y)}
+    return out
 
 
 def detail(result, split) -> dict:
@@ -111,11 +132,13 @@ def at_threshold(result, cut) -> dict:
 
 
 def calibration_section() -> dict:
-    out = {"baseline": {}, "monitoring": {}, "detail": {}, "ablation": {}}
+    out = {"baseline": {}, "monitoring": {}, "verdict_word_reference": {}, "detail": {}, "ablation": {},
+           "claim_map_fitted_vs_unfitted": claim_map_comparison()}
     for split in SPLITS:
         base, mon = family(split), family(split, "monitoring")
         out["baseline"][split] = headline(base)
         out["monitoring"][split] = headline(mon)
+        out["verdict_word_reference"][split] = headline(family(split, "verdict_word"))
         out["detail"][split] = {"baseline": detail(base, split), "monitoring": detail(mon, split)}
     mech = next(m for m in cognition.mechanisms() if m.family == "selective" and m.name == "monitoring")
     for component in mech.components:
@@ -124,15 +147,19 @@ def calibration_section() -> dict:
 
 
 def selective_section() -> dict:
-    """The threshold chosen on development for TARGET_RISK, applied unchanged to held-out; the baseline's own
-    confidence with a threshold chosen the same way is the ablation (no monitoring)."""
-    out = {"target_risk": M.TARGET_RISK}
-    for name in ("monitoring", "baseline"):
-        dev = family("development", name)
-        cut = M.threshold([0.5 if r["confidence"] is None else r["confidence"] for r in dev["per_item"]],
-                          [r["correct"] for r in dev["per_item"]], M.TARGET_RISK)
-        out[name] = {split: at_threshold(family(split, name), cut) for split in SPLITS}
-    out["shipped_threshold"] = (M.calibration().get("threshold") or {}).get("confidence")
+    """The product's selective decision (monitoring: by sufficiency for fact checks and wherever no map is applied,
+    which is everywhere today); the baseline's own confidence with a threshold chosen on development for TARGET_RISK
+    is the comparison (no monitoring)."""
+    out = {"target_risk": M.TARGET_RISK,
+           "monitoring": {split: family(split, "monitoring")["decision"] for split in SPLITS}}
+    dev = family("development", "baseline")
+    cut = M.threshold([0.5 if r["confidence"] is None else r["confidence"] for r in dev["per_item"]],
+                      [r["correct"] for r in dev["per_item"]], M.TARGET_RISK)
+    out["baseline_threshold_on_development"] = {split: at_threshold(family(split, "baseline"), cut) for split in SPLITS}
+    shipped = M.calibration()
+    out["shipped_threshold"] = (shipped.get("threshold") or {}).get("confidence")
+    out["shipped_threshold_applied"] = all(M.applied((shipped.get("strata") or {}).get(k))
+                                           for k in ("verdict", "answer"))
     return out
 
 

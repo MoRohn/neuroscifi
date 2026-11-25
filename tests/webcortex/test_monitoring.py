@@ -88,6 +88,77 @@ def test_selective_answering_leads_with_plain_words_and_keeps_the_quotes():
     assert len(report["answer"]) == 2                # only below the threshold
 
 
+def test_a_map_on_too_little_development_data_shows_no_number():
+    """Wave 1 review A6: the shipped fact-check map was one block of 15 items, so every fact check, an
+    "insufficient" verdict too, read 0.941. A map below MIN_ITEMS or MIN_BLOCKS is not applied: no number, the
+    plain note instead; one with enough data is applied."""
+    small = {"strata": {"verdict": {"x": [1.2], "y": [0.941176], "n": [15]}}}
+    supported, insufficient = _verdict("supported", 0.722, 2, 0), _verdict("insufficient", 0.6, 1, 0)
+    for report in (supported, insufficient):
+        record = M.assess(report, table=small)
+        assert record["confidence"] is None and record["confidence_note"] == M.NOT_ENOUGH_DATA
+        assert record["calibration"]["applied"] is False
+    enough = {"strata": {"verdict": {"x": [0.0, 1.0, 2.0], "y": [0.3, 0.6, 0.9], "n": [10, 10, 10]}}}
+    record = M.assess(supported, table=enough)
+    assert record["confidence"] is not None and record["confidence_note"] is None
+    assert M.assess(insufficient, table=enough)["confidence"] < record["confidence"]
+
+
+def test_claims_use_the_unfitted_score_whatever_map_is_shipped():
+    """Wave 1 review B5: the fitted claim map scored worse than the unfitted score on development (and held-out)."""
+    report = _verdict("supported", 0.722, 2, 0)
+    plain = M.assess(report, table={})
+    mapped = M.assess(report, table={"strata": {"claim": {"x": [-2.0, 2.0], "y": [0.1, 0.9], "n": [40, 40]}}})
+    assert plain["claim_probability"] == mapped["claim_probability"] == round(1 / (1 + 2.718281828459045 **
+                                                                                   -plain["score"]), 6)
+
+
+def test_the_models_wording_never_moves_the_confidence():
+    """Wave 1 review A5: at identical evidence, the guard refusing sentences or the model abstaining changes neither
+    the score nor the selective decision; both are shown in the record."""
+    report = _verdict("supported", 0.722, 2, 0)
+    worded = copy.deepcopy(report)
+    worded["reasoning"] = {"status": "model", "answer": [], "rejected": [{"reasons": ["no citation"]}] * 3,
+                           "abstained": True}
+    a, b = M.assess(report, table={}, selective=True), M.assess(worded, table={}, selective=True)
+    assert a["score"] == b["score"] and a["claim_probability"] == b["claim_probability"]
+    assert a["decision"] == b["decision"] == "answer" and b["components"]["guard"] == 0.0
+    assert b["signals"]["guard"]["abstained"] is True and b["sufficiency"]["shown"]
+    assert b["sufficiency"]["enough"] is True
+
+
+def test_a_fact_check_is_held_back_by_sufficiency_not_by_a_number():
+    """Wave 1 review A6: with selective answering on, an "insufficient" fact check is held back (the old fixed 0.941
+    never was), a verified one is answered, whatever threshold the file holds."""
+    table = {"strata": {"verdict": {"x": [1.2], "y": [0.941176], "n": [15]}}, "threshold": {"confidence": 0.49}}
+    held = M.assess(_verdict("insufficient", 0.6, 1, 0), table=table, selective=True)
+    assert held["decision"] == "not_enough_evidence" and held["selective_basis"] == "sufficiency"
+    assert "only one independent source states it" in held["note"]
+    assert M.assess(_verdict("supported", 0.722, 2, 0), table=table, selective=True)["decision"] == "answer"
+
+
+def test_a_monitoring_failure_is_logged_and_leaves_the_report_alone(monkeypatch):
+    """Wave 1 review A13: a display-only record must not add a line to what the owner reads."""
+    events = []
+
+    class Run:
+        documents, clusters, usage, budget, depth_stopped, escalated = (), (), Usage(), None, None, None
+
+        class cfg:
+            selective_answering = False
+
+        def event(self, kind, detail, *a):
+            events.append((kind, detail))
+
+    def boom(*a, **k):
+        raise RuntimeError("broken record")
+    monkeypatch.setattr(M, "assess", boom)
+    report = {"answer": [], "limitations": ["already here"]}
+    orchestrator._monitor(Run(), report)
+    assert report == {"answer": [], "limitations": ["already here"]}
+    assert events == [("error", {"stage": "monitoring", "error": "RuntimeError", "detail": "broken record"})]
+
+
 def test_escalation_needs_a_low_confidence_and_room_in_the_tasks_own_budget():
     record = {"below_threshold": True, "statement": "X is 4 m tall", "confidence": 0.3, "threshold": 0.5,
               "sufficiency": {"why": ["only one independent source states it"]}}
@@ -196,7 +267,9 @@ def test_defaults_record_only():
 def test_answer_monitoring_adds_the_record_and_changes_nothing_else(tmp_path, web):
     done, _ = _run(tmp_path, web, {"answer_monitoring": True})
     record = done["result"]["monitoring"]
-    assert record["kind"] == "verdict" and 0.0 < record["confidence"] < 1.0
+    assert record["kind"] == "verdict" and 0.0 < record["claim_probability"] < 1.0
+    assert record["confidence"] is None and record["confidence_note"] == M.NOT_ENOUGH_DATA   # the shipped maps
+    assert not any("monitoring" in line for line in done["result"].get("limitations") or [])
     assert record["depth"]["pages"] == done["usage"]["pages"]
     assert record["decision"] == "answer"
     assert all(a.get("status") != "not_enough_evidence" for a in done["result"]["answer"])

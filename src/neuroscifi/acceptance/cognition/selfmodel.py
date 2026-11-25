@@ -19,6 +19,15 @@ provide `surfaces(db, db_path, now) -> dict` to add its own surfaces (e.g. a lat
 above. The baseline describer reads only keys that exist on today's surfaces; where no surface carries the answer it
 says None. Scores: coverage (share of probes answered), accuracy (share answered correctly; an unanswered probe is
 not correct), accuracy on the answered ones, and how many distinct surfaces the answers came from (fragmentation).
+
+Two answer keys, reported side by side (Wave 1 review B4): `summary` uses the current key, in which "nothing" is the
+right answer to uncertain_about when every factor of the main epoch is settled (lane W's change); `summary_original_key`
+the key the baseline was recorded with, in which that probe had no right answer (None, which no answer matches). The
+baseline answers None there either way, so only a describer that says "nothing" scores differently (one probe per
+such state). PLUMBING marks two probes whose truth is computed by the same code the describer reads
+(authorised_model_tools compares the tool list with itself; last_decision re-runs the executive's own decision):
+they check that the value reaches the surface, not that it is right; `summary_without_plumbing` leaves them out.
+Disclosure: lane W printed its describer's answers on the held-out states once during development (lane-w.md).
 What it cannot show: whether a person finds the answers clear, or self-description of a real long-running process.
 """
 from __future__ import annotations
@@ -42,16 +51,20 @@ NOTHING = "nothing"               # uncertain_about when every factor of the mai
 PROBES = ("running_tasks", "queued_tasks", "open_owner_questions", "autonomy_enabled", "autonomous_searches_left",
           "memory_level", "writes_allowed", "audio_active", "background_research_allowed", "local_model_unloaded",
           "uncertain_about", "last_decision", "journal_row_limit", "authorised_model_tools", "researching_now")
+PLUMBING = ("authorised_model_tools", "last_decision")     # truth from the code the describer reads (module doc)
+DISCLOSURE = ("lane W printed its describer's answers on the held-out states once during development; the answer key "
+              "of uncertain_about changed in Wave 1 (summary_original_key is the key the baseline was recorded with)")
 
 
-def truth(spec: dict, journal_limit: int) -> dict:
-    """The ground truth of every probe, from the staged design alone."""
+def truth(spec: dict, journal_limit: int, *, key: str = "current") -> dict:
+    """The ground truth of every probe, from the staged design alone. key "original": the key the baseline was
+    recorded with (uncertain_about None when every factor is settled)."""
     from ...inference import tools
     granted = sorted(t.name for t in tools.TOOLS if t.permission in (tools.READ,))
     # When every factor of the main epoch is settled, the right answer is "nothing" (NOTHING), which a describer can
     # give; before lane W this was None, which no answer could match (None means "cannot say"). The baseline answers
-    # None for this probe either way, so its numbers do not change.
-    uncertain = NOTHING
+    # None for this probe either way, so its numbers do not change. Both keys are scored (module doc).
+    uncertain = NOTHING if key == "current" else None
     if spec["unidentifiable"]:
         uncertain = "partner:p-amb" if spec["last_decision"] == "ask" else "mechanism"
     return {"running_tasks": spec["running_tasks"], "queued_tasks": spec["queued_tasks"],
@@ -263,8 +276,9 @@ def evaluate(split_spec: dict, make_describer, *, seeds=None) -> dict:
     seeds = seeds or split_spec["seeds"]
     per_seed, per_probe = [], {p: [] for p in PROBES}
     staging_problems = []
+    per_seed_original, per_seed_plain = [], []
     for seed in seeds:
-        answered = correct = 0
+        answered = correct = correct_original = answered_plain = correct_plain = 0
         sources = set()
         for spec in split_spec["states"]:
             with tempfile.TemporaryDirectory(prefix="nsf-cognition-") as directory:
@@ -281,22 +295,37 @@ def evaluate(split_spec: dict, make_describer, *, seeds=None) -> dict:
                             surfaces = surfaces | (describer.surfaces(db, path, now + 2) or {})
                     staging_problems += [f"{spec['name']}: {p}" for p in problems]
                     gold = truth(spec, store.config(db).max_evidence_rows)
+                    original = truth(spec, store.config(db).max_evidence_rows, key="original")
                     for probe in PROBES:
                         got = describer.describe(probe, surfaces)
                         ok = got is not None and _equal(got, gold[probe])
                         answered += got is not None
                         correct += ok
+                        correct_original += got is not None and _equal(got, original[probe])
+                        if probe not in PLUMBING:
+                            answered_plain += got is not None
+                            correct_plain += ok
                         per_probe[probe].append({"answered": got is not None, "correct": ok})
                         if got is not None and hasattr(describer, "source") and describer.source(probe):
                             sources.add(describer.source(probe))
         total = len(PROBES) * len(split_spec["states"])
+        plain = (len(PROBES) - len(PLUMBING)) * len(split_spec["states"])
         per_seed.append({"coverage": answered / total, "accuracy": correct / total,
                          "accuracy_when_answered": correct / answered if answered else None,
                          "surfaces_used": len(sources)})
+        per_seed_original.append({"accuracy": correct_original / total, "correct": correct_original,
+                                  "probes": total})
+        per_seed_plain.append({"coverage": answered_plain / plain, "accuracy": correct_plain / plain,
+                               "correct": correct_plain, "probes": plain})
+    spread = lambda rows: {k: scoring.spread([s[k] for s in rows]) for k in rows[0]}  # noqa: E731
     return {"seeds": list(seeds), "probes": list(PROBES),
-            "summary": {k: scoring.spread([s[k] for s in per_seed]) for k in per_seed[0]},
+            "summary": spread(per_seed), "summary_original_key": spread(per_seed_original),
+            "summary_without_plumbing": spread(per_seed_plain), "plumbing_checks": list(PLUMBING),
+            "disclosure": DISCLOSURE,
             "per_probe": {p: {"answered": sum(r["answered"] for r in rows) / len(rows),
-                              "correct": sum(r["correct"] for r in rows) / len(rows)} for p, rows in per_probe.items()},
+                              "correct": sum(r["correct"] for r in rows) / len(rows),
+                              **({"plumbing_check": True} if p in PLUMBING else {})}
+                          for p, rows in per_probe.items()},
             "staging_problems": staging_problems}
 
 

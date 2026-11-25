@@ -2716,7 +2716,9 @@ def _reason(db, run, report):
 def _monitor(run, report):
     """ADR-054: report["monitoring"] (monitoring.assess and the depth record) and, with selective_answering, the
     plain "not enough evidence" line. A record only: verification states, the answer's quotes, the model's guarded
-    summary and what consolidation kept are unchanged. A failure here never fails the task."""
+    summary and what consolidation kept are unchanged. A failure here never fails the task and never changes the
+    report: it is logged as the task's "error" event (stage "monitoring"), not a line in the owner's report (Wave 1
+    review A13: a display-only record must not change what the owner reads)."""
     from . import monitoring
     try:
         record = monitoring.assess(report, documents=run.documents, clusters=run.clusters,
@@ -2727,7 +2729,10 @@ def _monitor(run, report):
         monitoring.apply_note(report, record)
         report["monitoring"] = record
     except Exception as exc:   # monitoring must never cost the owner the answer
-        report.setdefault("limitations", []).append(f"answer monitoring failed: {type(exc).__name__}")
+        try:
+            run.event("error", {"stage": "monitoring", "error": type(exc).__name__, "detail": str(exc)[:300]})
+        except Exception:      # noqa: BLE001 - a lost lease is seen by the task's own final update
+            pass
 
 
 def _sense_note(report, asked):

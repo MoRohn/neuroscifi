@@ -7,9 +7,14 @@ own truth:
 scm     Linear Gaussian structural causal models (chain, fork, collider, mediator) whose equations and observed
         values are given in the query. Rungs: observational E[Y | X = x], interventional E[Y | do(X = x)], and
         counterfactual "Y had X been x'" given every observed value (abduction of the noise, then the intervention).
-        A "confounded" model gives only the observational covariance of X and Y with a hidden common cause: the
-        effect of do(X) on Y is NOT identifiable, and the correct answer is to decline (scoring.answer_scores counts
-        abstention_correct). Scale for the relative error: the standard deviation of Y.
+        A "confounded" model gives the observed graph, the observational means and covariance, and names a hidden
+        common cause of X and Y. Back-door adjustment cannot identify the effect of do(X) on Y, but X reaches Y only
+        through an observed mediator (X0 -> X1 -> ... -> Y, the hidden cause touching only X0 and Y), so a
+        FRONT-DOOR adjustment does (Pearl 1995): these queries carry the exact interventional truth and are marked
+        identified_by="front_door". Until the Wave 1 review (B3) they were scored as unanswerable and a decline
+        counted as correct; now a decline is an honest abstention, neither right nor wrong, reported on its own line
+        (scoring.answer_scores front_door_*). With only two nodes there is no mediator and the query stays
+        unanswerable. Scale for the relative error: the standard deviation of Y.
 graph   The individual learns and promotes a graph on a lab.graph_bench world through the product path
         (datasets.simulate -> graphs.learn -> graphs.promote). Queries: population j's next target k steps after a
         held-out state, without an action or after pushing population i by u at the next step. Truth from the
@@ -22,6 +27,14 @@ belief  What-if on the belief model: "what would P(partner bit = 1) be had readi
 
 The answerer interface: `answer(query) -> {"value": float | None, "sd": float | None}`; value None = "cannot answer".
 A query carries no truth; graph and belief queries carry the individual's open database (read-only use expected).
+
+Scores (scoring.answer_scores; Wave 1 review B3): the headline is answered_within_tolerance, the share of answerable
+questions answered within scoring.TOLERANCE x scale of the truth, beside the interval score of the stated 95 %
+interval (a uselessly wide interval pays its width). Every score is also reported for three groups that measure
+different things and are never pooled in a claim (GROUPS): exact arithmetic on equations handed to the answerer
+(handed_equations), belief what-ifs whose truth is the same posterior recomputed on a copy (belief_what_if), and
+forecasts and actions on a graph the individual learned (learned_graph, the substantive group); the front-door
+questions are a fourth line (front_door). The old "coverage" (any answer counts) is kept as answered_share.
 The baseline is what the system can answer today: the active graph's one-step prediction (states @ A.T, as
 instance/recall.py:42-51 computes it), with sd = sqrt(validation MSE) from the promotion record; nothing else
 (no multi-step rollout, no action input in the graph, no SCM engine, no belief sandbox: audit-core Q5). Coverage is
@@ -126,7 +139,8 @@ def scm_queries(spec: dict, seed: int) -> list[dict]:
     sd_y = math.sqrt(_cov(lin[y], lin[y]))
     public = {k: scm[k] for k in ("order", "edges", "intercept", "noise_sd", "cause", "outcome")}
     rungs = (("observational", "interventional", "counterfactual") if spec["structure"] != "confounded"
-             else ("not_identifiable",))
+             else ("confounded",))
+    front_door = spec["structure"] == "confounded" and spec["nodes"] >= 3     # an observed mediator X1 exists
     out = []
     for i in range(spec["queries"]):
         rung = rungs[i % len(rungs)]
@@ -149,10 +163,14 @@ def scm_queries(spec: dict, seed: int) -> list[dict]:
             observed_cov = {a: {b: _cov(lin[a], lin[b]) for b in xs} for a in xs}
             q = {"rung": rung, "graph": {v: [p for p in scm["edges"][v] if p not in scm["hidden"]]
                                          for v in xs}, "hidden_common_cause": [x, y],
+                 "observational_mean": {v: lin[v][0] for v in xs},
                  "observational_covariance": observed_cov, "do": {x: value}, "ask": y}
-            truth = None
-        out.append({"kind": "scm", "structure": spec["structure"], "query": q, "truth": truth,
-                    "answerable": truth is not None, "scale": sd_y})
+            truth = _linear(scm, {x: value})[y][0] if front_door else None
+        row = {"kind": "scm", "structure": spec["structure"], "query": q, "truth": truth,
+               "answerable": truth is not None, "scale": sd_y}
+        if rung == "confounded" and front_door:
+            row["identified_by"] = "front_door"
+        out.append(row)
     return out
 
 
@@ -230,10 +248,24 @@ def belief_queries(spec: dict, seed: int, db) -> list[dict]:
 
 # ---- running a split -------------------------------------------------------------------------------------------------
 
+GROUPS = ("handed_equations", "belief_what_if", "learned_graph", "front_door")
+SUMMARY = ("answered_within_tolerance", "interval_score", "answered_share", "mean_relative_error",
+           "interval_coverage", "declined_confounded_share")
+GROUP_SUMMARY = ("answered_within_tolerance", "interval_score", "answered_share", "mean_relative_error",
+                 "front_door_declined", "front_door_within_tolerance")
+
+
+def group(row) -> str:
+    """Which of GROUPS a query belongs to (see the module doc)."""
+    if row.get("identified_by") == "front_door":
+        return "front_door"
+    return {"scm": "handed_equations", "belief": "belief_what_if", "graph": "learned_graph"}[row["kind"]]
+
+
 def evaluate(split_spec: dict, make_answerer, *, seeds=None) -> dict:
     seeds = seeds or split_spec["seeds"]
     by_kind: dict = {}
-    per_seed = []
+    per_seed, per_seed_group = [], []
     for seed in seeds:
         rows = []
         with tempfile.TemporaryDirectory(prefix="nsf-cognition-") as directory:
@@ -250,13 +282,18 @@ def evaluate(split_spec: dict, make_answerer, *, seeds=None) -> dict:
                         "action" if q["query"].get("action") else f"horizon {q['query'].get('horizon')}"
                         if q["kind"] == "graph" else "what-if"), "answerable": q["answerable"], "truth": q["truth"],
                         "value": None if value is None else float(value),
-                        "sd": None if got.get("sd") is None else float(got["sd"]), "scale": q["scale"]})
+                        "sd": None if got.get("sd") is None else float(got["sd"]), "scale": q["scale"],
+                        **({"identified_by": q["identified_by"]} if "identified_by" in q else {})})
         per_seed.append(scoring.answer_scores(rows))
+        per_seed_group.append({g: scoring.answer_scores([r for r in rows if group(r) == g]) for g in GROUPS})
         for r in rows:
             by_kind.setdefault(f"{r['kind']}:{r['rung']}", []).append(r)
-    summary = {k: scoring.spread([s[k] for s in per_seed]) for k in ("coverage", "mean_relative_error",
-                                                                      "interval_coverage", "abstention_correct")}
-    return {"seeds": list(seeds), "summary": summary, "per_seed": per_seed,
+    summary = {k: scoring.spread([s[k] for s in per_seed]) for k in SUMMARY}
+    by_group = {g: {k: scoring.spread([s[g][k] for s in per_seed_group]) for k in GROUP_SUMMARY} for g in GROUPS}
+    for g in GROUPS:
+        by_group[g]["questions_per_seed"] = per_seed_group[0][g]["queries"] if per_seed_group else 0
+    return {"seeds": list(seeds), "tolerance": scoring.TOLERANCE, "interval": "central 95 % normal interval",
+            "summary": summary, "summary_by_group": by_group, "per_seed": per_seed,
             "by_query_kind": {k: scoring.answer_scores(v) for k, v in sorted(by_kind.items())}}
 
 
@@ -274,6 +311,18 @@ class TodayAnswerer:
         value = float((np.asarray(query["state"]) @ matrix.T)[query["population"]])
         mse = (shown.get("metrics") or {}).get("validation_mse")
         return {"value": value, "sd": math.sqrt(mse) if mse is not None else None}
+
+
+class ZeroAnswerer:
+    """Reference only (the Wave 1 review's trivial mechanism): 0 with sd 1e6 for everything, declining only the
+    confounded questions. It scored coverage, interval coverage and abstention 1.0 under the old scores; its
+    answered_within_tolerance per group is the floor a real answerer has to clear (a long-horizon forecast decays
+    towards 0, so 0 is near the truth there)."""
+
+    def answer(self, query):
+        if "hidden_common_cause" in query:
+            return {"value": None, "sd": None}
+        return {"value": 0.0, "sd": 1e6}
 
 
 def run(split_spec: dict, make_answerer, *, seeds=None) -> dict:

@@ -83,6 +83,9 @@ WRITERS: dict[str, str] = {
                            "derived from the epoch and readings it names",
     "webcortex/reflection.py": "lane K (ADR-055): the optional model summary of a reflection report, stored as an "
                                "inference (reflection_model_summary, off); the report itself is not imagined",
+    "acceptance/cognition/adversarial.py": "the cognitive benchmark's adversarial case "
+                                          "system_made_content_never_enters_the_journal records one what-if in a "
+                                          "temporary individual to check it can never become a reading",
 }
 DISPLAYS: dict[str, str] = {
     "console/server.py": "lane W (ADR-053): the console's read-only 'Imagined, not evidence' panel (GET "

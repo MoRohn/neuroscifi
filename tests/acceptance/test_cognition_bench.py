@@ -76,15 +76,40 @@ def test_risk_coverage_and_auroc_by_hand():
 
 
 def test_answer_scores_by_hand():
-    rows = [{"answerable": True, "truth": 1.0, "value": 1.5, "sd": 0.5, "scale": 2.0},
-            {"answerable": True, "truth": 0.0, "value": None, "sd": None, "scale": 1.0},
-            {"answerable": True, "truth": 2.0, "value": 0.0, "sd": None, "scale": 1.0},
+    rows = [{"answerable": True, "truth": 1.0, "value": 1.5, "sd": 0.5, "scale": 2.0},     # 0.25 off: outside 0.1
+            {"answerable": True, "truth": 0.0, "value": None, "sd": None, "scale": 1.0},   # declined
+            {"answerable": True, "truth": 2.0, "value": 0.0, "sd": None, "scale": 1.0},    # a point, 2.0 off
+            {"answerable": True, "truth": 1.0, "value": 1.05, "sd": 0.0, "scale": 1.0},    # within tolerance
             {"answerable": False, "truth": None, "value": None, "sd": None, "scale": 1.0},
-            {"answerable": False, "truth": None, "value": 3.0, "sd": 1.0, "scale": 1.0}]
+            {"answerable": True, "truth": 0.5, "value": None, "sd": None, "scale": 1.0, "identified_by": "front_door"},
+            {"answerable": True, "truth": 0.5, "value": 0.52, "sd": 0.1, "scale": 1.0, "identified_by": "front_door"}]
     s = scoring.answer_scores(rows)
-    assert s["coverage"] == pytest.approx(2 / 3)
-    assert s["mean_relative_error"] == pytest.approx((0.25 + 2.0) / 2)
-    assert s["interval_coverage"] == 0.5 and s["abstention_correct"] == 0.5
+    assert s["answerable"] == 4 and s["tolerance"] == 0.1
+    assert s["answered_within_tolerance"] == pytest.approx(1 / 4)              # a decline is not within tolerance
+    z = 1.959963984540054
+    by_hand = [2 * z * 0.5 / 2.0, 2 / 0.05 * 2.0, 2 / 0.05 * 0.05]             # width / scale; 2/alpha x the miss
+    assert s["interval_score"] == pytest.approx(sum(by_hand) / 3) and s["interval_score_answered"] == 3
+    assert s["front_door"] == 2 and s["front_door_declined"] == 1 and s["front_door_within_tolerance"] == 0.5
+    assert s["unanswerable"] == 1
+    # the old scores, renamed: any answer counts, and declining the confounded questions is not a correctness score
+    assert s["answered_share"] == pytest.approx(3 / 4)
+    assert s["mean_relative_error"] == pytest.approx((0.25 + 2.0 + 0.05) / 3)
+    assert s["interval_coverage"] == pytest.approx(1 / 3)                       # sd 0 covers only an exact answer
+    assert s["declined_confounded_share"] == pytest.approx(2 / 3)
+    assert scoring.interval_score(0.0, 1e6, 1.0) > 3e6                          # a uselessly wide interval pays
+
+
+def test_a_trivial_answerer_scores_badly_on_the_headline():
+    """Wave 1 review B3: answering 0 with sd 1e6 (and declining only the confounded questions) scored coverage 1.0,
+    interval coverage 1.0 and abstention 1.0. On the headline and the interval score it is nowhere near the exact
+    answers, while the old scores still cannot tell it apart."""
+
+    spec = {**splits.COUNTERFACTUAL["development"], "seeds": (31,)}
+    zero = counterfactual.run(spec, counterfactual.ZeroAnswerer)["summary"]
+    assert zero["answered_share"]["mean"] == 1.0 and zero["interval_coverage"]["mean"] == 1.0
+    assert zero["declined_confounded_share"]["mean"] == 1.0                        # the old scores are fooled
+    assert zero["answered_within_tolerance"]["mean"] < 0.25
+    assert zero["interval_score"]["mean"] > 1e5
 
 
 def test_spread_and_rounding():
@@ -208,12 +233,26 @@ def test_information_value_oracle_bounds_and_noise():
     assert world["noise_share"] == 0.0 and world["realised_bits"] > 0
 
 
+def _front_door(q):
+    """E[Y | do(X = x)] from what a confounded query gives, by the front-door adjustment through X's observed child M:
+    slope = b(M ~ X) * b(Y ~ M | X), level from the observational means (Pearl 1995; linear Gaussian)."""
+    x, y = q["hidden_common_cause"]
+    m = next(v for v, parents in q["graph"].items() if x in parents)
+    c, mu = q["observational_covariance"], q["observational_mean"]
+    b_mx = c[m][x] / c[x][x]
+    b_ym_x = (c[y][m] * c[x][x] - c[y][x] * c[m][x]) / (c[m][m] * c[x][x] - c[m][x] ** 2)
+    return mu[y] + b_mx * b_ym_x * (q["do"][x] - mu[x])
+
+
 def test_counterfactual_truths_are_exact():
     """An exact solver for the given model answers every answerable SCM query with no error; the confounded queries
-    are not answerable; today's system answers only the one-step graph queries."""
+    are answered exactly by the front-door adjustment from what they give (so a decline there is an abstention, not
+    a correct answer); today's system answers only the one-step graph queries."""
 
     class Exact:
         def answer(self, q):
+            if "hidden_common_cause" in q:
+                return {"value": _front_door(q), "sd": 0.0}
             if q.get("rung") in ("observational", "interventional", "counterfactual"):
                 scm = {"order": q["model"]["order"], "edges": q["model"]["edges"],
                        "intercept": q["model"]["intercept"], "hidden": []}
@@ -230,18 +269,30 @@ def test_counterfactual_truths_are_exact():
                 return {"value": lin[y][0] + slope * (q["given"][x] - lin[x][0]), "sd": 0.0}
             return {"value": None, "sd": None}
 
-    spec = {"seeds": (31, 32), "scm": splits.COUNTERFACTUAL["development"]["scm"], "graph": (), "belief": ()}
-    out = counterfactual.run(spec, Exact)
-    for kind in ("scm:observational", "scm:interventional", "scm:counterfactual"):
-        assert out["by_query_kind"][kind]["coverage"] == 1.0
-        assert out["by_query_kind"][kind]["mean_relative_error"] < 1e-6
-    assert out["by_query_kind"]["scm:not_identifiable"]["answerable"] == 0
-    assert out["by_query_kind"]["scm:not_identifiable"]["abstention_correct"] == 1.0
-    today = counterfactual.run({"seeds": (31,), "scm": (), "belief": (),
+    for split in ("development", "held_out"):         # 3 and 4 nodes: a mediator on each
+        spec = {"seeds": (31, 32), "scm": splits.COUNTERFACTUAL[split]["scm"], "graph": (), "belief": ()}
+        out = counterfactual.run(spec, Exact)
+        for kind in out["by_query_kind"]:
+            if kind != "scm:confounded":
+                assert out["by_query_kind"][kind]["answered_share"] == 1.0
+                assert out["by_query_kind"][kind]["mean_relative_error"] < 1e-6
+        front = out["by_query_kind"]["scm:confounded"]
+        assert front["front_door"] == 4 * 2 and front["front_door_declined"] == 0
+        assert front["front_door_within_tolerance"] == 1.0
+        assert out["summary"]["answered_within_tolerance"]["mean"] == 1.0
+        assert out["summary_by_group"]["front_door"]["front_door_within_tolerance"]["mean"] == 1.0
+    today = counterfactual.run({"seeds": (31,), "scm": splits.COUNTERFACTUAL["development"]["scm"], "belief": (),
                                 "graph": splits.COUNTERFACTUAL["development"]["graph"]}, counterfactual.TodayAnswerer)
-    assert today["by_query_kind"]["graph:horizon 1"]["coverage"] == 1.0
-    assert today["by_query_kind"]["graph:horizon 3"]["coverage"] == 0.0
-    assert today["by_query_kind"]["graph:action"]["coverage"] == 0.0
+    assert today["by_query_kind"]["graph:horizon 1"]["answered_share"] == 1.0
+    assert today["by_query_kind"]["graph:horizon 3"]["answered_share"] == 0.0
+    assert today["by_query_kind"]["graph:action"]["answered_share"] == 0.0
+    assert today["summary_by_group"]["front_door"]["front_door_declined"]["mean"] == 4    # an honest abstention
+    assert set(today["summary_by_group"]) == set(counterfactual.GROUPS)
+
+
+def test_two_nodes_with_a_hidden_cause_stay_unanswerable():
+    rows = counterfactual.scm_queries({"structure": "confounded", "nodes": 2, "queries": 2}, 1)
+    assert all(not r["answerable"] and r["truth"] is None and "identified_by" not in r for r in rows)
 
 
 def test_self_description_staging_matches_its_design():
@@ -263,6 +314,55 @@ def test_adversarial_cases_today():
     assert out["failed"] == [], out["failed"]
     case = next(c for c in out["cases"] if c["id"] == "imagined_reading_moves_no_belief")
     assert "0.500 -> 0.500" in case["observed"] and "move it to 0.99" in case["observed"], case["observed"]
+    # reported by origin, never added up into an improvement (Wave 1 review)
+    origin = out["by_origin"]
+    assert (origin["original"]["passed"], origin["original"]["scored"]) == (13, 13)
+    assert "imagined_reading_moves_no_belief" in origin["original"]["redefined"]
+    assert (origin["added_wave1"]["scored"], origin["restored"]["scored"]) == (4, 1)
+    assert sum(len(ids) for ids in adversarial.ORIGIN.values()) == len(adversarial.CASES)
+
+
+def test_the_restored_case_fails_when_a_system_made_reading_gets_into_the_journal(monkeypatch):
+    """The restored case is not vacuous: a journal that lets the system-made reading in (here: laundered into a plain
+    observation before the checks) fails it. (The database's own CHECK and triggers refuse it too.)"""
+    from neuroscifi.instance import evidence
+    assert adversarial.system_made_content_never_enters_the_journal()["pass"] is True
+    real, n = evidence.observe, iter(range(100))
+
+    def leaky(db, record, now):
+        return real(db, dict(record, id=f"leak-{next(n)}", root="p", sample_id=None, provenance="observed"), now)
+    monkeypatch.setattr(evidence, "observe", leaky)
+    out = adversarial.system_made_content_never_enters_the_journal()
+    assert out["pass"] is False and "CHANGED" in out["observed"]
+
+
+def test_self_description_is_scored_under_both_answer_keys():
+    """Wave 1 review B4: the original key (uncertain_about None when everything is settled) beside lane W's, and the
+    two probes whose truth comes from the code the describer reads marked as plumbing checks."""
+
+    class SaysNothing(selfmodel.TodayDescriber):
+        def describe(self, probe, surfaces):
+            return selfmodel.NOTHING if probe == "uncertain_about" else super().describe(probe, surfaces)
+
+    spec = {"seeds": (41,), "states": splits.SELF_MODEL["development"]["states"][1:]}      # "quiet night": settled
+    out = selfmodel.run(spec, SaysNothing)
+    assert out["summary"]["accuracy"]["mean"] == pytest.approx(out["summary_original_key"]["accuracy"]["mean"]
+                                                               + 1 / len(selfmodel.PROBES))
+    assert out["plumbing_checks"] == ["authorised_model_tools", "last_decision"]
+    assert out["per_probe"]["last_decision"]["plumbing_check"] is True and "printed" in out["disclosure"]
+    assert out["summary_without_plumbing"]["correct"]["mean"] <= out["summary_without_plumbing"]["probes"]["mean"]
+
+
+def test_wide_seeds_are_disjoint_and_paired():
+    every = set(withheld.WITHHELD["seeds"])
+    for fam in (splits.ANTICIPATION, splits.INFO_VALUE, splits.COUNTERFACTUAL, splits.SELF_MODEL):
+        every |= set(fam["development"]["seeds"]) | set(fam["held_out"]["seeds"])
+    assert len(cognition.WIDE_SEEDS) == 12 and not set(cognition.WIDE_SEEDS) & every
+    out = cognition.wide_seeds("counterfactual", "development", "baseline", reference="baseline", seeds=(5001, 5002))
+    row = out["metrics"]["summary.answered_within_tolerance.mean"]
+    assert row["paired_difference"]["mean"] == 0.0 and row["seeds_equal"] == 2 and out["supplementary"]
+    with pytest.raises(ValueError):
+        cognition.wide_seeds("selective", "development", "baseline")
 
 
 # ---- the harness -----------------------------------------------------------------------------------------------------

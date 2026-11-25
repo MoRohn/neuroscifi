@@ -17,20 +17,28 @@ the open contradictions on the subject.
 Score (components()): a sum in log-odds units, each term named, its weight in WEIGHTS: the claims module's
 posterior as log-odds, plus or minus a fixed amount per signal. Nothing is fitted here.
 
-Calibration (calibrate()): the score becomes a probability through a monotone map per stratum ("claim": P(the
-statement is true); "verdict": P(the verification state given is right); "answer": P(the top quoted answer is
-right)), fitted by fit(): isotonic regression (pool adjacent violators) whose blocks each carry a Beta(1, 1) prior
-(the claims module's prior), so a block of 4 agreeing outcomes reads 5/6, never 1, interpolated linearly between
-block centres and flat beyond the ends. The maps in data/monitoring_calibration.json were fitted on the
-DEVELOPMENT split of the cognitive benchmark's selective family only (scripts/bench_monitoring.py fit); the
-held-out split was never used to fit or choose anything. They are fitted on a fictional offline corpus: on the open
-web they are a starting point, not a guarantee.
+Claim probability: the UNFITTED score, the logistic of the sum (Wave 1 review B5: the map fitted for claims scored
+worse than the unfitted score on the development split, Brier 0.034 against 0.016, and on held-out as well).
 
-Selective answering (WebConfig.selective_answering, off by default): when the answer's calibrated confidence is
-below the threshold chosen on the development split for TARGET_RISK, the answer opens with a plain "not enough
-evidence" line that says why; the quotes stay (they are what the sources say). Verification escalation
-(WebConfig.verification_escalation, off by default; orchestrator._Run.escalate_verification) reads one more
-independent source for the weakest statement first, inside the task's own budget.
+Answer confidence (calibrate()): a monotone map per stratum ("verdict": P(the verification state given is right);
+"answer": P(the top quoted answer is right)), fitted by fit(): isotonic regression (pool adjacent violators) whose
+blocks each carry a Beta(1, 1) prior (the claims module's prior), so a block of 4 agreeing outcomes reads 5/6, never
+1, interpolated linearly between block centres and flat beyond the ends. The maps in data/monitoring_calibration.json
+were fitted on the DEVELOPMENT split of the cognitive benchmark's selective family only (scripts/bench_monitoring.py
+fit); the held-out split was never used to fit or choose anything. A map is APPLIED only when it was fitted on at
+least MIN_ITEMS items in at least MIN_BLOCKS blocks (applied()); otherwise the record shows no number and says
+NOT_ENOUGH_DATA (Wave 1 review A6: the fact-check map was one block of 15 items, so every fact check, an
+"insufficient" verdict too, showed the same 0.941). The shipped maps are all below that minimum today, so the record
+carries no answer confidence. They are fitted on a fictional offline corpus: on the open web they would be a
+starting point, not a guarantee.
+
+Selective answering (WebConfig.selective_answering, off by default): for a fact check, and for any answer whose map is
+not applied, the decision reads sufficiency() (are there enough independent sources, fresh enough, from different
+families of sites); only an applied map with the threshold chosen on the development split for TARGET_RISK would
+decide by number. A weak answer opens with a plain "not enough evidence" line that says why; the quotes stay (they
+are what the sources say). Verification escalation (WebConfig.verification_escalation, off by default;
+orchestrator._Run.escalate_verification) reads one more independent source for the weakest statement first, inside
+the task's own budget.
 
 The depth record (depth()) says how many pages, queries and requests the task used and how many statements had
 two independent groups after each page, so the gain of each extra page can be read later
@@ -48,20 +56,25 @@ CALIBRATION_FILE = Path(__file__).resolve().parent / "data" / "monitoring_calibr
 TARGET_RISK = 0.10              # the selective threshold keeps development risk at or below this
 MIN_GROUPS = 2                  # independent groups for a statement to count as verified (claims CATEGORY_POLICY)
 EPSILON = 1e-4                  # probabilities are clipped to [EPSILON, 1 - EPSILON] before log-odds
+MIN_ITEMS = 30                  # a fitted map is applied only with this many development items ...
+MIN_BLOCKS = 3                  # ... in this many blocks (Wave 1 review A6)
+NOT_ENOUGH_DATA = "not enough development data"
 
 # Log-odds weight of each signal, fixed before the development split was scored and never fitted; the ablation in
 # docs/quality/evidence/genesis_monitoring.json switches each off. "critique" is the self-critique's share of
 # marked sentences: a weak input, and 0.0 because on the two recorded live-model runs the marks fell on 41 of 94 and
 # 46 of 90 kept sentences while 3 sentences stated a value the corpus marks false (precision 0.07, recall 1.0;
 # random marks would do as well with probability 0.08 and 0.13: genesis_monitoring.json "critique_marks"). It
-# stays a named, displayed signal.
+# stays a named, displayed signal. The guard's refusals and the model abstaining are 0.0 as well, shown only (Wave 1
+# review A5): the development data has no model calls, so nothing measured what they say about an answer, and with
+# a weight the confidence would move with the model's wording while the evidence stayed the same.
 WEIGHTS = {
     "state": {"supported": 1.0, "disputed": -1.0},  # other states: 0 (the posterior already says it)
     "per_contradiction": -0.25,                      # each open contradiction on the subject, at most 2
     "stale": -0.25,                                  # the question's freshness window is not met
     "per_dependent_group": -0.5,                     # a supporting group joined to another (family or citation)
-    "guard_refused_share": -0.5,                     # share of the model's sentences the guard refused
-    "model_abstained": -0.5,                         # the model wrote nothing the guard could keep
+    "guard_refused_share": 0.0,                      # share of the model's sentences the guard refused (shown only)
+    "model_abstained": 0.0,                          # the model wrote nothing the guard could keep (shown only)
     "critique": 0.0,                                 # share of kept sentences the self-critique marked
     "memory_agrees": 0.25,                           # memory held the statement and the web strengthened it
     "memory_disagrees": -0.25,                       # memory or another source contests it on record
@@ -214,6 +227,12 @@ def fit(scores, outcomes) -> dict:
             "n": [b[2] for b in merged]}
 
 
+def applied(table: dict | None) -> bool:
+    """Is a fitted map used? Only with at least MIN_ITEMS development items in at least MIN_BLOCKS blocks."""
+    return bool(table and table.get("x")) and sum(table.get("n") or ()) >= MIN_ITEMS and \
+        len(table["x"]) >= MIN_BLOCKS
+
+
 def calibrate(s: float, table: dict | None) -> float:
     """The probability of score s under a fitted map (linear between block centres, flat beyond the ends)."""
     if not table or not table.get("x"):
@@ -265,7 +284,9 @@ _PLAIN_STATE = {"disputed": "the sources contradict it", "conflicting": "the sou
 
 
 def sufficiency(sig: dict) -> dict:
-    """Is the evidence enough, in plain words: {"enough": bool, "why": [reasons]}."""
+    """Is the evidence enough, in plain words: {"enough": bool, "why": [reasons], "shown": [notes]}. Only the
+    sources decide; what the model did (it found nothing it could say) is a note shown beside them, never a reason
+    (Wave 1 review A5: the development data has no model calls)."""
     why = []
     state = sig.get("state")
     if sig.get("kind") == "none":
@@ -285,34 +306,47 @@ def sufficiency(sig: dict) -> dict:
     if sig.get("stale") and "the sources may be out of date for what is asked" not in why:
         why.append("no source is recent enough for what is asked")
     guard = sig.get("guard") or {}
-    if guard.get("abstained"):
-        why.append("the model found nothing it could say from the sources")
-    return {"enough": not why, "why": list(dict.fromkeys(why))}
+    shown = ["the model found nothing it could say from the sources"] if guard.get("abstained") else []
+    return {"enough": not why, "why": list(dict.fromkeys(why)), "shown": shown}
 
 
 def assess(report: dict, *, documents=(), clusters=(), consolidation=None, table: dict | None = None,
            selective: bool = False) -> dict:
     """The monitoring record of one report (see the module docstring). `table` defaults to the shipped calibration;
-    `selective` (WebConfig.selective_answering) makes `decision` "not_enough_evidence" below the threshold."""
+    `selective` (WebConfig.selective_answering) makes `decision` "not_enough_evidence" when the answer is weak:
+    for a fact check, or without an applied map, when sufficiency() says the evidence is not enough; with an applied
+    map and the development threshold (both strata applied), below the threshold. `below_threshold` is that
+    weakness, whichever basis (`selective_basis`) decided it."""
     table = calibration() if table is None else table
     sig = signals(report, documents=documents, clusters=clusters, consolidation=consolidation)
     parts = components(sig)
     s = score(parts)
     strata = table.get("strata") or {}
-    claim_p = calibrate(s, strata.get("claim")) if sig["kind"] != "none" else None
-    confidence = calibrate(answer_score(sig, s), strata.get(stratum(sig))) if sig["kind"] != "none" else None
+    kind = stratum(sig)
+    claim_p = calibrate(s, None) if sig["kind"] != "none" else None              # unfitted (module doc)
+    mapped = applied(strata.get(kind))
+    confidence = (calibrate(answer_score(sig, s), strata.get(kind)) if sig["kind"] != "none" and mapped
+                  else None)
     cut = (table.get("threshold") or {}).get("confidence")
-    below = confidence is None or (cut is not None and confidence < cut)
+    if not all(applied(strata.get(k)) for k in ("verdict", "answer")):
+        cut = None                                   # the threshold was chosen on confidences no map now gives
     enough = sufficiency(sig)
-    decision = "not_enough_evidence" if selective and cut is not None and below else "answer"
+    if kind == "answer" and cut is not None and sig["kind"] != "none":
+        basis, weak = "threshold", confidence < cut
+    else:
+        basis, weak = "sufficiency", not enough["enough"]
+    decision = "not_enough_evidence" if selective and weak else "answer"
     return {"version": VERSION, "kind": sig["kind"], "statement": sig.get("statement"),
             "confidence": None if confidence is None else round(confidence, 6),
+            "confidence_note": NOT_ENOUGH_DATA if sig["kind"] != "none" and not mapped else None,
             "claim_probability": None if claim_p is None else round(claim_p, 6),
+            "claim_probability_basis": "the unfitted score (logistic)",
             "score": round(s, 6), "components": {k: round(v, 6) for k, v in parts.items()},
             "signals": {k: v for k, v in sig.items() if k not in ("statement",)},
-            "sufficiency": enough, "threshold": cut, "below_threshold": bool(cut is not None and below),
+            "sufficiency": enough, "threshold": cut, "below_threshold": bool(weak), "selective_basis": basis,
             "target_risk": (table.get("threshold") or {}).get("target_risk"),
-            "calibration": {"stratum": stratum(sig), "fitted_on": table.get("fitted_on") or "none (logistic)"},
+            "calibration": {"stratum": kind, "applied": mapped,
+                            "fitted_on": table.get("fitted_on") or "none (logistic)"},
             "decision": decision, "note": note(enough) if decision == "not_enough_evidence" else None}
 
 

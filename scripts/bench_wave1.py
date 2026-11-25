@@ -19,8 +19,16 @@
   ablations  each registered component of a lane's mechanism switched off, one run each, the other settings as
              shipped.
 
+  idle_path  the idle investigator's curiosity path (info_value "autonomy") in each regime, always reported apart
+             from the timer's path (the info_value rows), never mixed into one number (Wave 1 review B2).
+  wide       SUPPLEMENTARY: 12 further seeds (cognition.WIDE_SEEDS) per paired comparison of WIDE_PLAN, each
+             mechanism against its reference seed by seed; the split's own seeds stay the official numbers.
+  rescore    the baseline re-run under the scoring the Wave 1 review asked for, beside the recorded numbers.
+
 Both splits; the withheld family is never run here (no --final). Usage:
   scripts/bench_wave1.py run [--split development|held_out ...] [--out FILE]
+  scripts/bench_wave1.py wide [--split ...] [--out FILE]
+  scripts/bench_wave1.py rescore [--split ...] [--out FILE]
   scripts/bench_wave1.py offline [--regime all_off|defaults|wave0]    (the offline research benchmark, one run)
   scripts/bench_wave1.py acceptance --regime all_off --out FILE       (`nsf acceptance --all` under a regime)
 """
@@ -133,8 +141,9 @@ def strip(tree):
     return tree
 
 
-def diff(a, b, path="", out=None, limit=200):
-    """Paths where two result trees differ (cost and timing keys excluded)."""
+def diff(a, b, path="", out=None, limit=200, added=None):
+    """Paths where two result trees differ (cost and timing keys excluded). A key only `b` has is a metric added
+    since `a` was written (the Wave 1 review's new scores): listed in `added` when given, never as a difference."""
     out = [] if out is None else out
     if len(out) >= limit:
         return out
@@ -142,17 +151,46 @@ def diff(a, b, path="", out=None, limit=200):
         for k in sorted(set(a) | set(b), key=str):
             if k in SKIP | DERIVED:
                 continue
-            if k not in a or k not in b:
+            if k not in a and added is not None:
+                added.append(f"{path}.{k}".lstrip("."))
+            elif k not in a or k not in b:
                 out.append({"path": f"{path}.{k}".lstrip("."), "before": a.get(k, "<absent>") if k in a else
                             "<absent>", "after": b.get(k) if k in b else "<absent>"})
             else:
-                diff(a[k], b[k], f"{path}.{k}", out, limit)
+                diff(a[k], b[k], f"{path}.{k}", out, limit, added)
     elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
         for i, (x, y) in enumerate(zip(a, b)):
-            diff(x, y, f"{path}[{i}]", out, limit)
+            diff(x, y, f"{path}[{i}]", out, limit, added)
     elif a != b:
         out.append({"path": path.lstrip("."), "before": a, "after": b})
     return out
+
+
+# The counterfactual family's metrics renamed by the Wave 1 review (B3), read under the new names in a result written
+# before it; "unanswerable" then counted the front-door questions too.
+LEGACY_NAMES = {"coverage": "answered_share", "abstention_correct": "declined_confounded_share",
+                "scm:not_identifiable": "scm:confounded"}
+
+
+def legacy(family, before, after):
+    """(before, after) made comparable on the metrics `before` has: the recorded tree's renamed keys under their new
+    names, and the new tree's "unanswerable" counted as before (with the front-door questions)."""
+    if family != "counterfactual":
+        return before, after
+
+    def rename(tree):
+        if isinstance(tree, dict):
+            return {LEGACY_NAMES.get(k, k): rename(v) for k, v in tree.items()}
+        return [rename(v) for v in tree] if isinstance(tree, list) else tree
+
+    def fold(tree):
+        if isinstance(tree, dict):
+            out = {k: fold(v) for k, v in tree.items()}
+            if isinstance(out.get("unanswerable"), int) and isinstance(out.get("front_door"), int):
+                out["unanswerable"] += out["front_door"]
+            return out
+        return [fold(v) for v in tree] if isinstance(tree, list) else tree
+    return rename(before), fold(after)
 
 
 def one(family, split, mechanism, ablate=(), regime_name="defaults"):
@@ -169,7 +207,7 @@ def one(family, split, mechanism, ablate=(), regime_name="defaults"):
 
 def headline(family, result):
     from neuroscifi.acceptance import cognition
-    return {dotted: cognition._lookup(result, dotted) for dotted, _ in cognition.HEADLINES[family]}
+    return {dotted: cognition.headline_value(result, dotted) for dotted, _ in cognition.HEADLINES[family]}
 
 
 def adversarial_cases(result):
@@ -192,12 +230,15 @@ def run(splits, *, ablations=True, references=True) -> dict:
         for family in FAMILIES:
             base = one(family, split, "baseline", regime_name="all_off")
             before = rec["families"][family]["result"]
+            added: list = []
             if family == "adversarial":         # the case list itself changed: compared case by case below
                 d = diff({k: v for k, v in strip(before).items() if k != "cases"},
-                         {k: v for k, v in strip(base["result"]).items() if k != "cases"})
+                         {k: v for k, v in strip(base["result"]).items() if k != "cases"}, added=added)
             else:
-                d = diff(strip(before), strip(base["result"]))
-            entry = {"differences": len(d), "first": d[:20], "headline": headline(family, base["result"]),
+                d = diff(*legacy(family, strip(before), strip(base["result"])), added=added)
+            entry = {"differences": len(d), "first": d[:20],
+                     "added_metrics": sorted({a.split("[")[0] for a in added})[:40],
+                     "headline": headline(family, base["result"]),
                      "recorded_headline": headline(family, before), "run_seconds": base["run_seconds"]}
             if family == "adversarial":
                 entry["cases_recorded"] = adversarial_cases(before)
@@ -213,14 +254,26 @@ def run(splits, *, ablations=True, references=True) -> dict:
                     section[name][family]["failed"] = r["result"].get("failed")
                 if family == "retention":
                     section[name][family]["failed_checks"] = _retention_failures(r["result"])
+        # the idle investigator's path (autonomy.candidates), always beside the timer's (curiosity.rank; the
+        # info_value rows above): the two paths are never mixed in one number (Wave 1 review B2)
+        section["idle_path"] = {}
+        for name in ("all_off", "defaults", "all_on"):
+            r = one("info_value", split, "autonomy", regime_name=name)
+            section["idle_path"][name] = {"mechanism": "autonomy", "headline": headline("info_value", r["result"]),
+                                          "run_seconds": r["run_seconds"]}
         if references:
             for name, refs in (("oracle", ("info_value",)), ("random", ("info_value",)),
                                ("autonomy", ("info_value",)), ("open", ("anticipation",))):
                 for family in refs:
                     r = one(family, split, name, regime_name="all_off")
                     before = recorded[f"{split}_references"][name]["result"]
-                    d = diff(strip(before), strip(r["result"]))
+                    d = diff(strip(before), strip(r["result"]), added=[])
                     section["references"][f"{family}/{name}"] = {"differences": len(d), "first": d[:10]}
+            # the Wave 1 review's two-line rule on the verdict word (no recorded run: added by the review)
+            r = one("selective", split, "verdict_word", regime_name="all_off")
+            section["references"]["selective/verdict_word"] = {"headline": headline("selective", r["result"])}
+            r = one("counterfactual", split, "zero", regime_name="all_off")
+            section["references"]["counterfactual/zero"] = {"headline": headline("counterfactual", r["result"])}
         if ablations:
             for mech in cognition.mechanisms():
                 if (mech.family, mech.name) not in LANE_MECHANISMS or not mech.components:
@@ -236,6 +289,10 @@ def run(splits, *, ablations=True, references=True) -> dict:
                     rows["full_failed"] = full["result"].get("failed")
                 if mech.family == "retention":
                     rows["full_failed_checks"] = _retention_failures(full["result"])
+                if key == "selective/monitoring":
+                    rows["untested_components"] = _untested_monitoring_components()
+                if key == "anticipation/instinct":
+                    rows["trend_share_of_avoided"] = _trend_share(section, rows)
                 section["ablations"][key] = rows
             for key in (("info_value", "knowledge_recheck"), ("retention", "knowledge_evolution"),
                         ("adversarial", "knowledge_evolution")):      # lane K: no components; the mechanism alone
@@ -244,6 +301,105 @@ def run(splits, *, ablations=True, references=True) -> dict:
                                                               "note": "no components: its ablation is the defaults "
                                                                       "run (mechanism off)"}
         out["splits"][split] = section
+    return out
+
+
+def _untested_monitoring_components():
+    """The monitoring score's terms that are 0 on every item of both splits: their ablation cannot change anything,
+    because the benchmark never exercises them (Wave 1 review B5)."""
+    from neuroscifi.acceptance.cognition import monitoring as P
+    from neuroscifi.webcortex import monitoring as M
+    seen = {c: 0 for c in M.COMPONENTS}
+    for split in ("development", "held_out"):
+        for r in P.rows(split):
+            sig = dict(r["record"].get("signals") or {}, statement=r["record"].get("statement"))
+            for c, v in M.components(sig).items():
+                seen[c] += v != 0
+    return {"components": sorted(c for c, n in seen.items() if not n),
+            "items_with_a_nonzero_term": seen,
+            "why": "0 on every item of the fictional corpus (no dependent sources, no answer model): untested here"}
+
+
+def _trend_share(section, rows):
+    """How much of the memory breaches avoided the forecaster's trend accounts for: (full - without trend) /
+    (full - baseline); the rest comes from reserving memory per background task (Wave 1 review B6)."""
+    key = "summary.memory.avoided_share.mean"
+    base = section["baseline_reproduced"]["anticipation"]["headline"].get(key)
+    full, minus = rows["full"].get(key), rows.get("-trend", {}).get(key)
+    if None in (base, full, minus) or full == base:
+        return None
+    return {"baseline": base, "full": full, "without_trend": minus, "share": round((full - minus) / (full - base), 4)}
+
+
+# (label, family, mechanism, its regime, reference, the reference's regime): the paired comparisons of the wide-seeds
+# run. The timer's and the idle investigator's curiosity paths are separate rows (Wave 1 review B2).
+WIDE_PLAN = (
+    ("anticipation: predictive regulation (lane I) vs the reactive gate", "anticipation", "instinct", "defaults",
+     "baseline", "all_off"),
+    ("info_value, timer path: as shipped (learning progress on) vs every Wave 1 setting off", "info_value",
+     "baseline", "defaults", "baseline", "all_off"),
+    ("info_value, idle path: as shipped vs every Wave 1 setting off", "info_value", "autonomy", "defaults",
+     "autonomy", "all_off"),
+    ("info_value, timer path: lane I instinct (information-v1 core, learning progress) vs all off", "info_value",
+     "instinct", "defaults", "baseline", "all_off"),
+    ("info_value, idle path: lane I instinct-idle vs all off", "info_value", "instinct-idle", "defaults", "autonomy",
+     "all_off"),
+    ("info_value: every Wave 1 chooser on (re-check first) vs all off", "info_value", "wave1_all_on", "all_on",
+     "baseline", "all_off"),
+    ("counterfactual: imagination (lane M) vs today's answerer", "counterfactual", "imagination", "defaults",
+     "baseline", "all_off"),
+    ("self_model: one self-description record (lane W) vs today's surfaces", "self_model", "self_description",
+     "defaults", "baseline", "all_off"),
+)
+
+
+def wide(splits) -> dict:
+    """The supplementary wide-seeds run (cognition.wide_seeds, seeds cognition.WIDE_SEEDS) for every row of
+    WIDE_PLAN on each split. The split's own seeds stay the official numbers."""
+    from neuroscifi.acceptance import cognition
+    cognition.load_plugins()
+    _register_all_on()
+    out = {"benchmark": "cognition, Wave 1: supplementary wide-seeds run", "environment": cognition.environment(),
+           "seeds": list(cognition.WIDE_SEEDS),
+           "note": "supplementary: reported beside the frozen split's own 3 seeds, which stay the official numbers; "
+                   "the worlds are the split's, only the seeds differ; the withheld family is never run",
+           "splits": {}}
+    for split in splits:
+        rows = {}
+        for label, family, mech, mech_regime, ref, ref_regime in WIDE_PLAN:
+            started = time.perf_counter()
+            rows[label] = cognition.wide_seeds(family, split, mech, reference=ref,
+                                               contexts=(REGIMES[mech_regime], REGIMES[ref_regime]))
+            rows[label]["regimes"] = {"mechanism": mech_regime, "reference": ref_regime}
+            rows[label]["run_seconds"] = round(time.perf_counter() - started, 2)
+        out["splits"][split] = rows
+    return out
+
+
+def rescore(splits) -> dict:
+    """The BASELINE (every Wave 1 setting off) re-run under the scoring the Wave 1 review asked for, beside the
+    recorded numbers of docs/quality/evidence/genesis_baseline.json (which stays as it was, untouched)."""
+    from neuroscifi.acceptance import cognition
+    cognition.load_plugins()
+    recorded = json.loads((ROOT / "docs/quality/evidence/genesis_baseline.json").read_text())
+    out = {"benchmark": "cognition baseline, re-scored (Wave 1 review)", "environment": cognition.environment(),
+           "what": "the unchanged system's behaviour (every Wave 1 setting off, the baseline mechanisms) scored with "
+                   "the scoring added after the Wave 1 review: counterfactual answered_within_tolerance, the interval "
+                   "score, three groups and the front-door line (B3); self-description under both answer keys and "
+                   "without the two plumbing probes (B4); selective with the decision scoring and the verdict-word "
+                   "reference (B5); adversarial cases by origin. 'recorded' is the original baseline file's headline "
+                   "under the old scoring (renamed metrics read under their old names); that file is unchanged.",
+           "splits": {}}
+    for split in splits:
+        rows = {}
+        for family in ("counterfactual", "self_model", "selective", "adversarial"):
+            r = one(family, split, "baseline", regime_name="all_off")
+            before = recorded[split]["families"][family]["result"]
+            rows[family] = {"recorded_old_scoring": headline(family, before),
+                            "rescored": headline(family, r["result"]), "result": r["result"]}
+        r = one("selective", split, "verdict_word", regime_name="all_off")
+        rows["selective_reference_verdict_word"] = {"rescored": headline("selective", r["result"])}
+        out["splits"][split] = rows
     return out
 
 
@@ -301,11 +457,22 @@ def main(argv=None) -> int:
     a = sub.add_parser("acceptance")
     a.add_argument("--regime", default="all_off", choices=("all_off", "defaults", "all_on", "wave0"))
     a.add_argument("--out", required=True)
+    for name in ("wide", "rescore"):
+        w = sub.add_parser(name)
+        w.add_argument("--split", action="append", choices=("development", "held_out"))
+        w.add_argument("--out")
     args = p.parse_args(argv)
     if args.cmd == "acceptance":
         return acceptance(args.regime, args.out)
-    value = (run(args.split or ["development", "held_out"], ablations=not args.no_ablations) if args.cmd == "run"
-             else offline(args.regime))
+    splits = getattr(args, "split", None) or ["development", "held_out"]
+    if args.cmd == "run":
+        value = run(splits, ablations=not args.no_ablations)
+    elif args.cmd == "wide":
+        value = wide(splits)
+    elif args.cmd == "rescore":
+        value = rescore(splits)
+    else:
+        value = offline(args.regime)
     text = json.dumps(value, indent=1, sort_keys=False, default=str) + "\n"
     if args.out:
         Path(args.out).write_text(text)
