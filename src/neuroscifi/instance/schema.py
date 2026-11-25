@@ -39,9 +39,10 @@ _NO_IMAGINED = {
     "web_tasks": (("parent_id",), (), {}),
     "web_events": (("task_id",), (), {}),
     "web_sources": (("task_id",), (), {}),
-    "web_claims": (("id", "task_id"), (), {}),
+    "web_claims": (("id", "task_id", "source_id"), (), {}),
     "web_claim_links": (("src", "dst", "task_id"), (), {}),
-    "web_knowledge": (("task_id",), (), {"supporting": (), "contradicting": ("claim", "task")}),
+    "web_knowledge": (("task_id",), (), {"supporting": (), "contradicting": ("claim", "task", "claim_id")}),
+    "web_monitors": (("last_task_id",), (), {}),
     "web_mentions": (("claim_id", "knowledge_id", "task_id"), (), {}),
     "web_hypotheses": (("task_id", "knowledge_id", "parent_id"), (), {"claims": ()}),
     "web_predictions": (("task_id", "knowledge_id", "hypothesis_id"), (), {}),
@@ -106,6 +107,19 @@ _STORE_TRIGGERS_17 = {
 }
 _TRIGGERS_17 = _STORE_TRIGGERS_17 | NO_IMAGINED_TRIGGERS
 _INDEX_17 = "CREATE INDEX IF NOT EXISTS imagined_forgotten_age ON imagined_forgotten(forgotten_at)"
+# The reference triggers of the first build of 17 that the current build no longer has (by name: a trigger of that
+# name pattern a later migration adds is never dropped).
+_RETIRED_17 = ("web_metrics_no_imagined_i", "web_metrics_no_imagined_u")
+# An outcome today's imagined.observe() could not have written (review0b N3): text, a list or a nested object in what
+# was observed, a key that is not one of the record's payload keys, or evidence that is not among its references.
+# The first build wrote such outcomes; every record holding one goes with the one-time repair (ensure_triggers).
+_OUTCOME_UNSUPPORTED = """outcome IS NOT NULL AND (
+    EXISTS (SELECT 1 FROM json_tree(imagined.outcome, '$.observed') t WHERE t.type IN ('text', 'array')
+      OR (t.type = 'object' AND t.fullkey != '$.observed')
+      OR (t.fullkey != '$.observed' AND NOT EXISTS (SELECT 1 FROM json_each(imagined.payload) p WHERE p.key = t.key)))
+    OR EXISTS (SELECT 1 FROM json_each(imagined.outcome, '$.evidence') e WHERE NOT EXISTS (
+      SELECT 1 FROM imagined_refs r WHERE r.record_id = imagined.id AND r.ref_kind = json_extract(e.value, '$[0]')
+        AND r.ref_id = CAST(json_extract(e.value, '$[1]') AS TEXT))))"""
 
 MIGRATIONS = [
     # ---- version 1 ---------------------------------------------------------
@@ -736,13 +750,9 @@ def _as_stored(sql):
     return " ".join((sql or "").replace("IF NOT EXISTS ", "").split())
 
 
-def ensure_triggers(db):
-    """Bring the triggers of the two migrations amended while unreleased to their current statements: the graph
-    triggers of version 15 (_TRIGGERS_15) and the imagined store's of version 17 (_TRIGGERS_17, with
-    imagined_refs.observed and the tombstones' age index, and without a version-17 reference trigger the current build
-    no longer has). Returns the names changed ([] for a file that has them, which is every file but one migrated by a
-    first build of 15 or 17: two catalogue reads and no write). A file this connection cannot write keeps its triggers
-    until a writable open."""
+def _repairs(db):
+    """What ensure_triggers would change: (wanted triggers, stale names, retired names, observed column present,
+    tombstone age index missing)."""
     present = {name: (kind, _as_stored(sql)) for kind, name, sql in db.execute(
         "SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger','index','table')")}
     wanted = dict(_TRIGGERS_15)
@@ -751,9 +761,23 @@ def ensure_triggers(db):
         wanted |= _TRIGGERS_17
         observed = any(c[1] == "observed" for c in db.execute("PRAGMA table_info(imagined_refs)"))
     stale = [name for name, sql in wanted.items() if present.get(name) != ("trigger", _as_stored(sql))]
-    retired = sorted(name for name, (kind, _) in present.items() if kind == "trigger" and name not in wanted
-                     and name.endswith(("_no_imagined_i", "_no_imagined_u")))
+    retired = [name for name in _RETIRED_17 if name in present]
     index = "imagined_refs" in present and "imagined_forgotten_age" not in present
+    return wanted, stale, retired, observed, index
+
+
+def ensure_triggers(db):
+    """Bring the triggers of the two migrations amended while unreleased to their current statements: the graph
+    triggers of version 15 (_TRIGGERS_15) and the imagined store's of version 17 (_TRIGGERS_17, with
+    imagined_refs.observed and the tombstones' age index, and without the reference triggers the current build retired,
+    _RETIRED_17), for a file of either earlier build of 17. The same one-time repair removes, with a tombstone each,
+    every record observed under the first build of 17 (its outcomes kept text and evidence that no forget reached) and
+    any other outcome today's imagined.observe() could not have written (_OUTCOME_UNSUPPORTED). Returns the names
+    changed ([] for a file that has them, which is every file but one migrated by an earlier build of 15 or 17: two
+    catalogue reads and no write). The catalogue is read again once the write lock is held, so a second process
+    opening the same file meanwhile repairs only what is still missing. A file this connection cannot write keeps its
+    triggers until a writable open."""
+    _, stale, retired, observed, index = _repairs(db)
     if not stale and not retired and observed and not index:
         return []
     control = db.autocommit
@@ -766,6 +790,7 @@ def ensure_triggers(db):
                 return []
             raise
         try:
+            wanted, stale, retired, observed, index = _repairs(db)   # another process may have repaired it meanwhile
             if not observed:
                 db.execute("ALTER TABLE imagined_refs ADD COLUMN observed INTEGER NOT NULL DEFAULT 0 "
                            "CHECK(observed IN (0,1))")
@@ -776,6 +801,8 @@ def ensure_triggers(db):
             for name in stale:
                 db.execute(f"DROP TRIGGER IF EXISTS {name}")
                 db.execute(wanted[name])
+            if "imagined_never_rewritten" in wanted and (stale or retired or not observed or index):
+                _purge_unsupported_outcomes(db, "outcome IS NOT NULL" if not observed else _OUTCOME_UNSUPPORTED)
             db.execute("COMMIT")
         except BaseException:
             if db.in_transaction:
@@ -785,6 +812,18 @@ def ensure_triggers(db):
         db.autocommit = control
     return stale + retired + ([] if observed else ["imagined_refs.observed"]) + (["imagined_forgotten_age"] if index
                                                                                  else [])
+
+
+def _purge_unsupported_outcomes(db, where):
+    """Remove the observed records matching `where` and what derives from them, a tombstone each (a restore removes
+    them from an older copy too) and one deletion_log row when any went. Inside ensure_triggers' transaction."""
+    import time
+    from . import imagined
+    now = time.time()
+    ids, earliest = imagined._remove(db, where, (), "purged", now)
+    if ids:
+        imagined._log(db, "observed under an earlier build", len(ids) + imagined.purge_orphans(db, now),
+                      imagined._stale_checkpoints(db, earliest), now)
 
 
 def ensure_indexes(db):

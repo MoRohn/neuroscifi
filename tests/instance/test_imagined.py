@@ -5,13 +5,17 @@ Each safeguard here has a test that fails when it is removed (scripts/genesis_pr
 at a time). Web Cortex paths (retrieval, the answer bundle, the guard, web forgets) are in
 tests/webcortex/test_imagined_quarantine.py."""
 from contextlib import closing
+import importlib.util
 import json
+from pathlib import Path
 import sqlite3
+import subprocess
+import threading
 
 import pytest
 
 from neuroscifi.cli import main
-from neuroscifi.instance import checkpoints, datasets, governance, graphs, imagined, schema, store
+from neuroscifi.instance import checkpoints, datasets, evidence, governance, graphs, imagined, schema, store
 from neuroscifi.instance.errors import NotFound, ValidationError
 from neuroscifi import provenance
 from _seed import T0, add
@@ -96,17 +100,35 @@ def _all_triggers(db):
                                                                      "WHERE type='trigger'")}
 
 
+OBSERVED_FIRST = "imagined:" + "fedcba9876543210" * 2
+
+
+def _observed_as_the_first_build_did(db):
+    """A record observed under the first build: free text in the outcome, its evidence outside imagined_refs."""
+    db.execute("INSERT INTO imagined(id,kind,payload,assumptions,uncertainty,mechanism,mechanism_version,question,"
+               "created_at,expires_at,outcome,observed_at) VALUES(?,'speculation','{\"value\": 1}','[]','u','m','1',"
+               "'q',?,?,?,?)", (OBSERVED_FIRST, T0, T0 + DAY, json.dumps(
+                   {"observed": {"note": "alice-secret-name said yes"}, "evidence": [["evidence", "ev-gone"]]}), T0))
+    db.execute("INSERT INTO imagined_refs(record_id,ref_kind,ref_id) VALUES(?,'evidence','ev1')", (OBSERVED_FIRST,))
+
+
 def test_a_file_of_the_first_build_of_migration_17_gets_todays_store_and_triggers(tmp_path):
     path = tmp_path / "first17.sqlite"
     db = store.create(path, T0)
     add(db, "ev1")
     rid = make(db, 1, derived_from=[("evidence", "ev1")])
+    _observed_as_the_first_build_did(db)
+    make(db, 2, derived_from=[("imagined", OBSERVED_FIRST)])
     db.close()
     with closing(sqlite3.connect(path, isolation_level=None)) as raw:
         raw.executescript(_FIRST_BUILD_17)
         assert "observed" not in [c[1] for c in raw.execute("PRAGMA table_info(imagined_refs)")]
     db = store.open_existing(path)
     try:
+        # review0b N3: what the first build observed goes with the repair (and what derives from it), a tombstone each
+        assert db.execute("SELECT id FROM imagined").fetchall() == [(rid,)] and reasons(db) == ["forgotten", "purged"]
+        assert json.loads(db.execute("SELECT effects FROM deletion_log WHERE target_kind='imagined'").fetchone()[0])[
+            "imagined_removed"] == 2
         fresh = store.create(tmp_path / "fresh.sqlite", T0)
         try:
             assert _all_triggers(db) == _all_triggers(fresh)
@@ -122,6 +144,120 @@ def test_a_file_of_the_first_build_of_migration_17_gets_todays_store_and_trigger
         db.execute("INSERT INTO web_metrics(kind,value,computed_at) VALUES('calibration',?,1)", (json.dumps([IMG]),))
         imagined.observe(db, rid, observation={"value": 2}, evidence=[("evidence", "ev1")], now=T0 + 1)
         assert governance.forget_evidence(db, "ev1", T0 + 2)["effects"]["imagined_removed"] == 1
+    finally:
+        db.close()
+
+
+def test_two_processes_opening_a_first_build_file_together_both_open_it(tmp_path):
+    """review0b N2: the catalogue was read before the write lock and not again, so the second of two processes
+    opening a first-build file at once re-ran the repair and failed (duplicate column name: observed)."""
+    path = tmp_path / "first17.sqlite"
+    store.create(path, T0).close()
+    with closing(sqlite3.connect(path, isolation_level=None)) as raw:
+        raw.executescript(_FIRST_BUILD_17)
+    gate, reached, second = threading.Event(), threading.Event(), {}
+
+    class Waiting(sqlite3.Connection):        # has read the catalogue; waits before taking the write lock
+        def execute(self, sql, *args):
+            if sql.startswith("BEGIN IMMEDIATE"):
+                reached.set()
+                gate.wait(10)
+            return super().execute(sql, *args)
+
+    def open_second():
+        with closing(sqlite3.connect(path, factory=Waiting, timeout=10, autocommit=False)) as b:
+            try:
+                second["changed"] = schema.ensure_triggers(b)
+            except sqlite3.Error as error:
+                second["changed"] = error
+    thread = threading.Thread(target=open_second)
+    thread.start()
+    try:
+        assert reached.wait(10)
+        with closing(sqlite3.connect(path, timeout=10, autocommit=False)) as a:
+            assert "imagined_refs.observed" in schema.ensure_triggers(a)
+    finally:
+        gate.set()
+        thread.join(10)
+    assert second["changed"] == []
+
+
+def test_the_repair_drops_only_the_triggers_it_retired(instance):
+    """review0b N6: every *_no_imagined_i/_u trigger not in today's list was dropped at every repair, so a later
+    migration's trigger of that name would have been dropped too."""
+    db, _ = instance
+    db.execute("CREATE TRIGGER web_later_no_imagined_i BEFORE INSERT ON web_metrics BEGIN SELECT 1; END")
+    db.execute("DROP TRIGGER web_tasks_no_imagined_i")                 # something for the repair to do
+    assert schema.ensure_triggers(db) == ["web_tasks_no_imagined_i"]
+    assert "web_later_no_imagined_i" in _all_triggers(db)
+
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def _schema_of(commit, tmp_path):
+    """The schema module of an earlier, unreleased build, from the repository's history."""
+    try:
+        done = subprocess.run(["git", "show", f"{commit}:src/neuroscifi/instance/schema.py"], cwd=REPO,
+                              capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        done = None
+    if done is None or done.returncode != 0:
+        pytest.skip(f"needs commit {commit} of the repository's history (a shallow clone lacks it)")
+    path = tmp_path / f"schema_{commit}.py"
+    path.write_text(done.stdout)
+    spec = importlib.util.spec_from_file_location(f"neuroscifi.instance.schema_{commit}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _catalogue(db):
+    out = {}
+    for kind, name, sql in db.execute("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"):
+        out[kind, name] = (db.execute(f"PRAGMA table_xinfo({name})").fetchall() if kind == "table"
+                           else " ".join((sql or "").split()))
+    return out
+
+
+# The two earlier, unreleased builds of migration 17: the first (2aee516) and the one after the review0 fixes
+# (03cbece), each built from its own schema.py; the last case is a first-build file that 03cbece opened (and repaired
+# without removing what the first build observed) before today's build opens it.
+@pytest.mark.parametrize("builds", [("2aee516",), ("03cbece",), ("2aee516", "03cbece")],
+                         ids=["first", "second", "first-then-second"])
+def test_a_file_of_either_earlier_build_of_migration_17_is_repaired_to_todays(tmp_path, monkeypatch, builds):
+    old = [_schema_of(commit, tmp_path) for commit in builds]
+    path = tmp_path / "old17.sqlite"
+    with monkeypatch.context() as m:
+        m.setattr(store, "migrate", old[0].migrate)
+        db = store.create(path, T0)
+    add(db, "ev1")
+    add(db, "ev2", root="carol")
+    kept = make(db, 1, derived_from=[("evidence", "ev1")])
+    if builds[0] == "2aee516":
+        _observed_as_the_first_build_did(db)
+        gone = [OBSERVED_FIRST, make(db, 2, derived_from=[("imagined", OBSERVED_FIRST)])]
+    else:
+        observed = make(db, 3, derived_from=[("evidence", "ev1")])
+        imagined.observe(db, observed, observation={"value": 2}, evidence=[("evidence", "ev2")], now=T0 + 1)
+        gone = []
+    db.close()
+    for later in old[1:]:
+        with closing(sqlite3.connect(path, isolation_level=None)) as raw:
+            later.ensure_triggers(raw)
+            assert raw.execute("SELECT count(*) FROM imagined WHERE id=?", (OBSERVED_FIRST,)).fetchone()[0] == 1
+    db = store.open_existing(path)
+    try:
+        fresh = store.create(tmp_path / "fresh.sqlite", T0)
+        try:
+            assert _catalogue(db) == _catalogue(fresh)
+        finally:
+            fresh.close()
+        assert schema.ensure_triggers(db) == []
+        held = {i for (i,) in db.execute("SELECT id FROM imagined")}
+        assert kept in held and not held & set(gone) and len(held) == (1 if gone else 2)
+        assert reasons(db) == (["forgotten", "purged"] if gone else [])
+        assert governance.forget_evidence(db, "ev2", T0 + 2)["effects"].get("imagined_removed", 0) == (0 if gone else 1)
     finally:
         db.close()
 
@@ -217,6 +353,39 @@ def test_an_observation_is_refused_while_writes_are_paused(instance, monkeypatch
     assert imagined.show(db, rid)["outcome"] is None
 
 
+def test_an_observed_number_is_bounded_so_it_carries_no_text(instance):
+    """review0b N4: any finite integer was taken, so text fitted in its digits (a name and an address decoded from
+    one), and 10**400 raised OverflowError instead of ValidationError."""
+    db, _ = instance
+    rid = make(db, 1)
+    secret = int.from_bytes(b"alice-secret-name, 12 Elm St", "big")
+    for value in (secret, -secret, 10 ** 400, imagined.MAX_INT + 1, -imagined.MAX_INT - 1, float("inf")):
+        for observation in (value, {"value": value}):
+            with pytest.raises(ValidationError):
+                imagined.observe(db, rid, observation=observation, now=T0 + 1)
+    assert imagined.show(db, rid)["outcome"] is None
+    out = imagined.observe(db, rid, observation={"value": imagined.MAX_INT, "scenario": -1.5e300}, now=T0 + 2)
+    assert out["outcome"]["observed"] == {"value": 2 ** 53, "scenario": -1.5e300}
+
+
+def test_an_event_or_epoch_holding_an_imagined_id_is_refused_before_the_database_sees_it(instance):
+    """review0b N10: the belief revision's cause ("evidence:<id>") is checked in any case, so an event id such as
+    "Imagined:<32 hex>-retry" was refused with a raw IntegrityError, as was an epoch named like one at its forget."""
+    db, _ = instance
+    evidence.start_epoch(db, "e1", T0)
+    before = count(db, "evidence"), count(db, "belief_revisions"), count(db, "epochs")
+    plain = {"id": "ev-x", "epoch": "e1", "channel": "word", "action": 0, "bit": 1, "root": "bob"}
+    for field, value in (("id", "Imagined:" + HEX.upper() + "-retry"), ("id", f"retry {IMG}"), ("root", IMG.upper()),
+                         ("root", f" {IMG} "), ("sample_id", f"s-{IMG}")):
+        with pytest.raises(ValidationError, match="imagined"):
+            evidence.observe(db, plain | {field: value}, T0 + 1)
+    for name in (f"run {IMG}", "IMAGINED:" + HEX.upper()):
+        with pytest.raises(ValidationError, match="imagined"):
+            evidence.start_epoch(db, name, T0)
+    assert (count(db, "evidence"), count(db, "belief_revisions"), count(db, "epochs")) == before
+    assert evidence.observe(db, plain | {"id": "Reimagined: a book"}, T0 + 1)["status"] == "created"
+
+
 def test_a_record_names_only_sources_the_file_holds(instance):
     db, _ = instance
     for ref in (("evidence", "nope"), ("task", "t"), ("knowledge", 9), ("epoch", "e9"), ("partner", "nobody"),
@@ -240,7 +409,7 @@ REFERENCE_COLUMNS = {
     "web_tasks": {"parent_id": "whole"},
     "web_events": {"task_id": "whole"},
     "web_sources": {"task_id": "whole"},
-    "web_claims": {"id": "whole", "task_id": "whole"},
+    "web_claims": {"id": "whole", "task_id": "whole", "source_id": "whole"},
     "web_claim_links": {"src": "whole", "dst": "whole", "task_id": "whole"},
     "web_knowledge": {"task_id": "whole", "supporting": "list", "contradicting": "objects"},
     "web_mentions": {"claim_id": "whole", "knowledge_id": "whole", "task_id": "whole"},
@@ -248,6 +417,7 @@ REFERENCE_COLUMNS = {
     "web_predictions": {"task_id": "whole", "knowledge_id": "whole", "hypothesis_id": "whole"},
     "web_feedback": {"task_id": "whole", "knowledge_id": "whole"},
     "voice_segments": {"task_id": "whole"},
+    "web_monitors": {"last_task_id": "whole"},             # review0b N8
 }
 HEX = IMG.split(":")[1]
 # Each form an id may take in such a column (review0 L4: case, padding and a JSON escape used to hide one).
@@ -256,7 +426,8 @@ VALUES = {"whole": [IMG, IMG.upper(), f" {IMG}", f"{IMG}\n", f"\t{IMG} "],
           "list": [json.dumps([IMG]), f'[ "{IMG}" ]', json.dumps(["c1", IMG.upper()]),
                    '["\\u0069magined:' + HEX + '"]']}
 VALUES["objects"] = VALUES["list"] + [json.dumps([{"claim": IMG, "text": "q"}]),
-                                      json.dumps([{"claim": "c1", "task": f" {IMG}"}])]
+                                      json.dumps([{"claim": "c1", "task": f" {IMG}"}]),
+                                      json.dumps([{"claim_id": IMG.upper()}])]               # review0b N8
 BENIGN = {"whole": "Reimagined: a book", "inside": "evidence:imagined:not-an-id",
           "list": json.dumps(["Reimagined: x", "c1"]),
           "objects": json.dumps([{"claim": "c1", "task": "t1", "text": IMG, "url": f"http://a/{IMG}"}])}
@@ -286,6 +457,8 @@ def _seed_rows(db):
     db.execute("INSERT INTO web_predictions(knowledge_id,expectation,check_after,created_at) VALUES(1,'e',2,1)")
     db.execute("INSERT INTO web_feedback(key,effect,created_at) VALUES('k','new',1)")
     db.execute("INSERT INTO web_metrics(kind,computed_at) VALUES('calibration',1)")
+    db.execute("INSERT INTO web_monitors(topic,mode,interval_seconds,authorized_by,status,created_at,updated_at) "
+               "VALUES('t','continuous',3600,'owner','active',1,1)")
     db.execute("INSERT INTO voice_sessions(id,principal,device,mode,status,started_at,updated_at) "
                "VALUES('v','p','d','text_only','active',1,1)")
     db.execute("INSERT INTO voice_segments(session_id,utterance,seq,speaker,source,status,authority,text,started_at,"

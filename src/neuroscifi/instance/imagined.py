@@ -268,8 +268,12 @@ def record(db, kind, *, payload, assumptions, uncertainty, mechanism, mechanism_
     return record_id
 
 
+MAX_INT = 2 ** 53     # an observed integer's magnitude: a bigger one could carry text in its digits (review0b N4)
+
+
 def _scalar(value):
-    return value is None or isinstance(value, bool) or (isinstance(value, (int, float)) and math.isfinite(value))
+    return (value is None or isinstance(value, bool) or (isinstance(value, int) and -MAX_INT <= value <= MAX_INT)
+            or (isinstance(value, float) and math.isfinite(value)))
 
 
 def observe(db, record_id, *, observation, now, evidence=()):
@@ -277,9 +281,10 @@ def observe(db, record_id, *, observation, now, evidence=()):
     id], ...]}. The evidence named must be held by this file and is never another imagined record; it joins the
     record's references (imagined_refs, observed 1), so forgetting any of it removes the record as forgetting a
     source does. The observation is structured and carries no text of its own, so nothing a forget must remove can
-    survive in it: a number, true/false or null, or an object mapping some of the record's own top-level payload
-    keys to such values. Comparing the two is the caller's (a mechanism's) business; this store keeps both side by
-    side and never turns either into the other. Refused while regulation pauses writes."""
+    survive in it: a number (an integer within +-MAX_INT, or a finite float), true/false or null, or an object
+    mapping some of the record's own top-level payload keys to such values. Comparing the two is the caller's (a
+    mechanism's) business; this store keeps both side by side and never turns either into the other. Refused while
+    regulation pauses writes."""
     refs = list(dict.fromkeys(_ref(r, OBSERVATION_KINDS) for r in evidence))
     if len(refs) > MAX_REFS:
         raise ValidationError(f"evidence must be at most {MAX_REFS} (kind, id) pairs")
