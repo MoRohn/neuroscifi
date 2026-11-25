@@ -1351,6 +1351,71 @@ def independence_groups(claims, *, origins: dict | None = None) -> list[list[str
     return [groups[k] for k in sorted(groups)]
 
 
+def dependence(claims, documents=(), *, origins: dict | None = None) -> dict:
+    """How independent the groups of independence_groups really are (ADR-054, reporting only: it never changes a
+    posterior, a verification state or what consolidation keeps). Two groups are joined here, not there, when
+    they share a registrable site label (one family of sites: "docs.x.example" and "blog.x.example") or when a
+    document of one links to a page or the site of the other (one cites the other, so its statement may rest on
+    it). `documents` give the links; without them only families are seen.
+
+    {"groups": n (independence_groups), "effective_groups": m <= n, "families": [[site label, [hosts]]] of the
+     groups that share a label, "citations": [[citing host, cited host]], "one_family": the n >= 2 groups are all
+     one family, "circular": a citation joins two groups}."""
+    claims = [c for c in claims if c is not None]
+    groups = independence_groups(claims, origins=origins)
+    by_id = {c.id: c for c in claims}
+    from .extract import canonical_url
+    docs = {}
+    for d in documents or ():
+        for u in {d.canonical_url, d.final_url, d.url} - {None, ""}:
+            docs.setdefault(u, d)
+    hosts, labels, pages, links = [], [], [], []
+    for ids in groups:
+        members = [by_id[i] for i in ids if i in by_id]
+        hosts.append({_domain(c) for c in members})
+        labels.append({site_label(h) for h in hosts[-1]} - {""})
+        urls, out = set(), set()
+        for c in members:
+            urls.add(canonical_url(c.source_url))
+            doc = docs.get(c.source_url)
+            for link in (doc.links if doc is not None else ()) or ():
+                try:
+                    out.add(canonical_url(link))
+                except Exception:   # untrusted link text that is not a URL
+                    continue
+        pages.append(urls)
+        links.append(out)
+    parent = list(range(len(groups)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    citations = []
+    for i in range(len(groups)):
+        for j in range(len(groups)):
+            if i == j:
+                continue
+            if i < j and labels[i] & labels[j]:
+                parent[find(j)] = find(i)
+            cited = {_host(u) for u in links[i]} & hosts[j] or (links[i] & pages[j])
+            if cited:
+                parent[find(j)] = find(i)
+                citations.append([sorted(hosts[i])[0], sorted(hosts[j])[0]])
+    shared = {}
+    for i, ls in enumerate(labels):
+        for label in ls:
+            shared.setdefault(label, set()).update(hosts[i])
+    families = [[label, sorted(h)] for label, h in sorted(shared.items())
+                if sum(1 for ls in labels if label in ls) > 1]
+    effective = len({find(i) for i in range(len(groups))})
+    return {"groups": len(groups), "effective_groups": effective, "families": families, "citations": citations,
+            "one_family": len(groups) >= 2 and all(labels) and bool(set.intersection(*labels)),
+            "circular": bool(citations)}
+
+
 def _cue_conflict(ta: str, tb: str) -> str | None:
     for label, side_a, side_b in _CUE_PAIRS:
         a1, a2 = side_a.search(ta), side_b.search(ta)

@@ -1,0 +1,67 @@
+{
+ "fitted_on": "cognitive benchmark, selective family, development split (F01, F03, F05, F07, F09, F11, F13, F15, F17, F19, F21, F23, F25, F27, F29, A01, A03, A05, A07, A09, A11)",
+ "note": "monotone maps (pool adjacent violators, Beta(1,1) per block) from the monitoring score to a probability, fitted by scripts/bench_monitoring.py fit on the development split only; fictional offline corpus, not the open web",
+ "strata": {
+  "answer": {
+   "n": [
+    3,
+    2,
+    1
+   ],
+   "x": [
+    -0.582895,
+    0.278896,
+    1.538457
+   ],
+   "y": [
+    0.4,
+    0.5,
+    0.666667
+   ]
+  },
+  "claim": {
+   "n": [
+    4,
+    4
+   ],
+   "x": [
+    -2.341329,
+    1.766904
+   ],
+   "y": [
+    0.166667,
+    0.833333
+   ]
+  },
+  "verdict": {
+   "n": [
+    15
+   ],
+   "x": [
+    1.228862
+   ],
+   "y": [
+    0.941176
+   ]
+  }
+ },
+ "threshold": {
+  "confidence": 0.4931664700891562,
+  "target_risk": 0.1
+ },
+ "version": 1,
+ "weights": {
+  "critique": 0.0,
+  "guard_refused_share": -0.5,
+  "memory_agrees": 0.25,
+  "memory_disagrees": -0.25,
+  "model_abstained": -0.5,
+  "per_contradiction": -0.25,
+  "per_dependent_group": -0.5,
+  "stale": -0.25,
+  "state": {
+   "disputed": -1.0,
+   "supported": 1.0
+  }
+ }
+}
