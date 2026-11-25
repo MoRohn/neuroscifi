@@ -66,6 +66,10 @@ ACTIVITIES = {
     "tick.curiosity": {
         "kind": "cognition", "what": "the timer's curiosity investigations",
         "sites": ("neuroscifi.webcortex.scheduler:tick",)},
+    "tick.scenarios": {
+        "kind": "cognition", "what": "the timer's scenario records for open predictions and their comparison once "
+                                     "settled (imagined store only; off unless imagine_scenarios is on)",
+        "sites": ("neuroscifi.webcortex.scenarios:tick",)},
     "task.background_run": {
         "kind": "cognition", "what": "a background task already running: it stops at its next stop check, "
                                      "before any further network step",
@@ -156,7 +160,7 @@ MEASUREMENT_ONLY = ("neuroscifi.acceptance.cognition",)
 # systemd units that start something on their own (deploy/systemd), with the activities they run.
 UNITS = {
     "neuroscifi-webcortex-tick.timer": ("tick.monitors", "tick.prediction_refresh", "tick.curiosity",
-                                        "tick.cache_retention"),
+                                        "tick.cache_retention", "tick.scenarios"),
     "neuroscifi-checkpoint.timer": ("instance.sweep", "instance.checkpoint"),
     "neuroscifi-idle.timer": ("resources.idle_unload",),
     "neuroscifi-wake.path": ("resources.wake",),

@@ -253,12 +253,16 @@ def test_self_description_staging_matches_its_design():
 
 
 def test_adversarial_cases_today():
-    """Today's behaviour, measured: every staged case runs; the one known gap is that a reading labelled
-    provenance='simulated' moves a belief like an observation (ADR-014 labels it, nothing keeps it apart)."""
+    """Today's behaviour, measured: every staged case runs and passes. The baseline's one failure,
+    `simulated_reading_moves_no_belief`, was a mislabelled expectation (a reading of a simulated test environment is
+    an observation, ADR-014); ADR-052 §6 corrected it to `imagined_reading_moves_no_belief`: a what-if never reaches
+    the live belief, the journal or the state version."""
     out = adversarial.run()
     scored = [c for c in out["cases"] if c["pass"] is not None]
     assert len(scored) == len(adversarial.CASES) and all(isinstance(c["pass"], bool) for c in scored)
-    assert out["failed"] == ["simulated_reading_moves_no_belief"], out["failed"]
+    assert out["failed"] == [], out["failed"]
+    case = next(c for c in out["cases"] if c["id"] == "imagined_reading_moves_no_belief")
+    assert "0.500 -> 0.500" in case["observed"] and "move it to 0.99" in case["observed"], case["observed"]
 
 
 # ---- the harness -----------------------------------------------------------------------------------------------------

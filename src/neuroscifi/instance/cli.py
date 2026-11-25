@@ -12,7 +12,7 @@ from . import store
 from .errors import InstanceError
 
 SUBMODULES = ["neuroscifi.instance.cli_evidence", "neuroscifi.instance.cli_graphs", "neuroscifi.instance.cli_memory",
-              "neuroscifi.instance.cli_imagined"]
+              "neuroscifi.instance.cli_imagined", "neuroscifi.instance.cli_imagine"]
 
 
 def emit(value):
@@ -182,6 +182,13 @@ def _config(db, args, now):
                  "decision_information"):
         if getattr(args, name) is not None:
             changes[name] = getattr(args, name)
+    for name in store.IMAGINE_SWITCHES:
+        if getattr(args, name) is not None:
+            changes[name] = getattr(args, name)
+    if args.imagine_max_seconds is not None:
+        changes["imagine_max_seconds"] = args.imagine_max_seconds
+    if args.imagine_max_mib is not None:
+        changes["imagine_max_bytes"] = args.imagine_max_mib * 1024 * 1024
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
@@ -256,6 +263,20 @@ def register(sub):
     p.add_argument("--decision-information", action=argparse.BooleanOptionalAction, default=None,
                    help="`nsf decide` also shows each question's expected information gain and whether the decision "
                         "rests on a matched earlier setup (display only; default: on)")
+    for name, what in (("imagine_what_if", "`nsf imagine what-if` and `questions`: exact what-ifs on the beliefs "
+                                           "(default: on)"),
+                       ("imagine_forecast", "`nsf imagine forecast`: several steps ahead from an active graph "
+                                            "(default: on)"),
+                       ("imagine_retrospect", "`nsf imagine retrospect`: which reading most changed a belief "
+                                              "(default: on)"),
+                       ("imagine_scenarios", "scenario records for the Web Cortex's predictions, in the imagined "
+                                             "store only, compared once settled (default: off)")):
+        p.add_argument("--" + name.replace("_", "-"), dest=name, action=argparse.BooleanOptionalAction, default=None,
+                       help=what)
+    p.add_argument("--imagine-max-seconds", type=float,
+                   help="the longest an imagination question may run on its private copy (0.1 to 600; default 10)")
+    p.add_argument("--imagine-max-mib", type=bounded_int(1, 64 * 1024),
+                   help="the largest individual file imagination may copy, in MiB (default 512)")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("quiet", help="one switch for everything done unasked: on = nothing runs unless you ask "

@@ -339,12 +339,24 @@ def test_background_origins_are_matched_with_case_everywhere(individual):
         held_sql = db.execute(f"SELECT 1 FROM web_tasks WHERE id=? AND {background.HELD_SQL}", (tid,)).fetchone()
         assert (held_sql is not None) == background.held_origin(origin) == background.held_task(db, tid, origin), \
             origin
+def drive_tick_scenarios(db, path, site, monkeypatch):
+    from neuroscifi.webcortex import evolution
+    store.set_config(db, {"imagine_scenarios": True}, T0)
+    with store.write(db):
+        evolution.open_hypothesis(db, key="zephyr board release", statement="Zephyr board 3 is the latest release.",
+                                  origin="gap", verification={"confidence": 0.6}, claims=[], values=[], polarity=1,
+                                  now=T0)
+    quiet(db)
+    assert scheduler.tick(db, T0, None, queue=True)["scenarios"] == {"held": background.QUIET_REASON}
+    assert db.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
+    quiet(db, False)
+    assert scheduler.tick(db, T0, None, queue=True)["scenarios"] == {"settled": 0, "imagined": 1}
 
 
 DRIVERS = {"tick.monitors": drive_tick_monitors, "tick.prediction_refresh": drive_tick_prediction_refresh,
            "tick.curiosity": drive_tick_curiosity, "worker.idle_investigation": drive_worker_idle_investigation,
            "worker.claim_background": drive_worker_claim_background,
-           "task.background_run": drive_task_background_run}
+           "task.background_run": drive_task_background_run, "tick.scenarios": drive_tick_scenarios}
 
 
 def test_every_registered_cognition_activity_has_a_driver():

@@ -65,8 +65,9 @@ from . import splits, withheld
 FAMILIES = ("anticipation", "info_value", "counterfactual", "self_model", "selective", "retention", "adversarial",
             "withheld")
 DEFAULT_FAMILIES = FAMILIES[:-1]
-# dotted module names whose import registers mechanisms (later lanes append)
-PLUGINS: tuple[str, ...] = ("neuroscifi.acceptance.cognition.instinct",)
+PLUGINS: tuple[str, ...] = (       # dotted module names whose import registers mechanisms (later lanes append)
+    "neuroscifi.acceptance.cognition.instinct",
+    "neuroscifi.acceptance.cognition.imagination",)
 REPO = Path(__file__).resolve().parents[4]
 LEDGER = REPO / "docs" / "quality" / "evidence" / "genesis_final_uses.jsonl"
 BASELINE = REPO / "docs" / "quality" / "evidence" / "genesis_baseline.json"

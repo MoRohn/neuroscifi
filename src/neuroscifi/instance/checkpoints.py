@@ -203,7 +203,8 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
 # differ between an individual and its own archives, so they stay as the archive has them.
 CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds",
                     "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet",
-                    "internal_state_history", "predictive_regulation", "executive_rule", "decision_information")
+                    "internal_state_history", "predictive_regulation", "executive_rule", "decision_information",
+                    *store.IMAGINE_SWITCHES, "imagine_max_seconds", "imagine_max_bytes")
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
@@ -323,7 +324,7 @@ def _live_settings(db):
         if store.valid_setting(name, value):
             carried[name] = value
         elif name in ("consolidation", "graph_rule_migration", "quiet", "internal_state_history",
-                      "predictive_regulation", "decision_information"):
+                      "predictive_regulation", "decision_information", *store.IMAGINE_SWITCHES):
             carried[name] = effective[name]
             acts = "on" if effective[name] else "off"
             warnings.append(f"the live instance's saved {name} ({value!r}) is not true or false; it acts as "

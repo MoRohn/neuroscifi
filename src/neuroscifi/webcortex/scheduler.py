@@ -464,6 +464,10 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
                                         (task["id"],)):
                 changes = (state.loads(detail, {}) or {}).get("changes") or {}
                 report["findings"].append({"monitor_id": mid, "task_id": task["id"], "changes": changes})
+    from . import scenarios     # ADR-052: scenario records, imagined store only; None while imagine_scenarios is off
+    imagined_report = scenarios.tick(db, now)
+    if imagined_report is not None:
+        report["scenarios"] = imagined_report
     if not cfg.autonomous:
         report["skipped"].append({"what": "predictions and curiosity",
                                   "reason": "autonomous research is off (nsf web config --autonomous)"})
