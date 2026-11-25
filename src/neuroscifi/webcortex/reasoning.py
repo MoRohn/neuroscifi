@@ -2585,9 +2585,10 @@ _QUANTIFIED_EXCEPTION = re.compile(r"(?<![\w-])(?:every|all|each|any|no)(?:\s+(?
 # excepts nothing), and no punctuation ("every release, not only 2.5.5, ..." adds, it excepts nothing); after "not"
 # (and an optional "yet" or -ly adverb) a preposition or a participle. "not only", "not merely", "not simply", "not
 # solely", "not exclusively" and "not just" add ("all versions not only in Europe but worldwide"): no exception.
+# "to" is not among the prepositions: "not to" starts an infinitive ("made every effort not to break the API").
 _NEG_AUX = (r"is|are|was|were|be|been|being|am|do|does|did|has|have|had|can|could|will|would|may|might|must|should|"
             r"shall|cannot")
-_NEG_AFTER = (r"on|in|at|of|from|for|under|with|within|without|by|to|into|inside|outside|behind|among|"
+_NEG_AFTER = (r"on|in|at|of|from|for|under|with|within|without|by|into|inside|outside|behind|among|"
               r"\w+ing|\w+ed|" + "|".join(sorted(("built bought brought caught chosen done drawn driven given grown "
                                                    "held hidden kept known made paid run seen sent set shown sold "
                                                    "spent taken told written").split())))

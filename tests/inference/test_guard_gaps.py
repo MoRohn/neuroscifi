@@ -106,6 +106,8 @@ def test_a_restriction_is_found_by_its_closed_list_of_words(text, marker):
     "The recall covers every model not merely in the US but abroad",
     "Every plan not simply on paper but in practice was audited",
     "All tenants not just in the east wing but everywhere were told",
+    "Orbix 3.0 was released in May, and the team made every effort not to break the API",   # an infinitive
+    "Every member chose not to renew",
 ])
 def test_words_that_restrict_nothing_are_not_restrictions(text):
     assert reasoning._restriction(text) is None
