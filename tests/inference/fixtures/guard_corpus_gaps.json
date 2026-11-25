@@ -6931,14 +6931,14 @@
 "claims": [
 [
 "insufficient",
-"Orbix racquets are the best according to a poll by the Club Members"
+"Orbix racquets are the best according to a survey by the Club Members"
 ]
 ],
 "gap": "cut",
 "q": "Which racquets are the best?",
 "s": [
 [
-"Orbix racquets are the best according to a poll by the Club Members.",
+"Orbix racquets are the best according to a survey by the Club Members.",
 [
 "C1"
 ],
@@ -6971,14 +6971,14 @@
 "claims": [
 [
 "insufficient",
-"Orbix racquets are the best according to a poll by the Orbix Members Club"
+"Orbix racquets are the best according to a survey by the Orbix Members Club"
 ]
 ],
 "gap": "cut",
 "q": "Which racquets are the best?",
 "s": [
 [
-"Orbix racquets are the best according to a poll by the Orbix Members Club.",
+"Orbix racquets are the best according to a survey by the Orbix Members Club.",
 [
 "C1"
 ],
