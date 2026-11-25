@@ -34,10 +34,9 @@ Closed so far:
                spares words that only name the source ("by Reuters"); such a sentence gets 307b907's verdict
                and text again; words for a group of people ("from Windows Users") are no name, since the
                sentence may be about them. Still stricter only against 307b907.
-
-Labelled, not yet closed (UNMET counts them; each closes in a commit of its own):
-  role         a role reversal where the claim's verb has an adverb before it, a passive without its agent, a cleft
-               with an adverb, and a cleft on the agent ("It was by Acme Corp that Globex was acquired")
+  role         a role reversal in either voice (reasoning.PASSIVE_SWAP, ROLE_SWAP), with an adverb before the
+               claim's verb ("Globex quietly acquired ..."), a get-passive, a cleft, or a cleft on the agent ("It was
+               by Acme Corp that Globex was acquired"). Stricter only.
 """
 import importlib.util
 import json
@@ -57,7 +56,7 @@ GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording", "role"
 INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 419}
 SIZES = {"restriction": 133, "case": 54, "unseen": 37, "restatement": 68, "cut": 55, "wording": 33, "role": 39}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0, "role": 12}
+UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0, "role": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
@@ -66,9 +65,9 @@ PASSIVE_MARK = reasoning.PASSIVE_SWAP.split("'")[0]
 ROLE_MARK = reasoning.ROLE_SWAP.split("{")[0]
 JOINED_MARK = reasoning.JOINED_APART.split("'")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
-STRICTER = {"review": 24, "gap": 179}
+STRICTER = {"review": 24, "gap": 191}
 LOOSENED = {"review": 6, "gap": 11}
-REFUSED = {CUT_MARK: 46, RESTRICTION_MARK: 80, CASE_MARK: 27, UNSEEN_MARK: 18, PASSIVE_MARK: 23, ROLE_MARK: 12,
+REFUSED = {CUT_MARK: 46, RESTRICTION_MARK: 80, CASE_MARK: 27, UNSEEN_MARK: 18, PASSIVE_MARK: 37, ROLE_MARK: 21,
            JOINED_MARK: 7}
 
 

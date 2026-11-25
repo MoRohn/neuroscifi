@@ -413,6 +413,19 @@ def test_the_passive_swap_is_refused_through_the_answer_path():
      "labs orbix"),
     ("Mallory was robbed by Trent", "Trent was reportedly robbed.", "PASSIVE_SWAP", "robbed", "trent"),
     ("Mallory was robbed by Trent", "Trent got robbed.", "PASSIVE_SWAP", "robbed", "trent"),
+    # remaining items: the claim's verb with an adverb before it, and a cleft on the agent
+    ("Globex quietly acquired Acme Corp", "Acme Corp quietly acquired Globex.", "ROLE_SWAP", "acquired", "acme corp"),
+    ("Globex quietly acquired Acme Corp", "Globex was quietly acquired.", "PASSIVE_SWAP", "acquired", "globex"),
+    ("Globex quietly acquired Acme Corp", "It was Acme Corp that quietly acquired Globex.", "ROLE_SWAP", "acquired",
+     "acme corp"),
+    ("Globex acquired Acme Corp", "It was by Acme Corp that Globex was acquired.", "ROLE_SWAP", "acquired",
+     "acme corp"),
+    ("Acme Corp got acquired by Globex", "It was by Acme Corp that Globex got acquired.", "PASSIVE_SWAP", "acquired",
+     "globex"),
+    ("It was by Globex that Acme Corp was acquired", "Acme Corp acquired Globex.", "ROLE_SWAP", "acquired",
+     "acme corp"),
+    ("Orbix Labs thoroughly audited the library", "The library thoroughly audited Orbix Labs.", "ROLE_SWAP",
+     "audited", "library"),
 ])
 def test_roles_reversed_in_any_voice_are_refused(claim, sentence, template, verb, subject):
     found = reasoning._role_swaps_refused(sentence, [{"id": "C1", "text": claim}])
@@ -431,6 +444,10 @@ def test_roles_reversed_in_any_voice_are_refused(claim, sentence, template, verb
      "NumPy 2.5.5 is not affected by the parser flaw, but NumPy 2.5.4 is affected."),
     ("Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
      "Ilse Marten created the Kestrel programming language in 2019."),
+    ("Globex quietly acquired Acme Corp", "Acme Corp was quietly acquired by Globex."),
+    ("Globex quietly acquired Acme Corp", "It was Globex that quietly acquired Acme Corp."),
+    ("It was by Globex that Acme Corp was acquired", "Acme Corp was acquired by Globex."),
+    ("Acme Corp was quietly acquired in 2024", "In 2024 Acme Corp was quietly acquired."),
 ])
 def test_faithful_voices_are_not_role_swaps(claim, sentence):
     assert reasoning._role_swaps_refused(sentence, [{"id": "C1", "text": claim}]) == []
@@ -487,3 +504,10 @@ def test_a_version_joined_with_what_its_claims_say_of_another_is_refused(claims,
 ])
 def test_a_version_kept_with_what_its_claims_say_of_it_is_not_judged(claims, sentence):
     assert reasoning._joined_apart(sentence, claims_of(*claims)) == []
+
+
+def test_an_adverb_ends_no_name_but_a_name_is_no_adverb():
+    assert ("acquired", ["globex"], ["acme", "corp"]) in reasoning._roles("Globex quietly acquired Acme Corp")
+    assert ("acquired", ["kelly"], ["acme", "corp"]) in reasoning._roles("Kelly acquired Acme Corp")
+    assert ("acquired", ["acme", "corp"], ["globex"]) in reasoning._roles(
+        "It was by Acme Corp that Globex was acquired")

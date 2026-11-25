@@ -2740,6 +2740,23 @@ _ROLE_CUT = frozenset("and or but while whereas".split())   # a clause joined by
 # "It was Acme Corp that acquired Globex" says "Acme Corp acquired Globex": a cleft is read without its frame
 _CLEFT = re.compile(r"(?:^|(?<=[,;:]\s))(?:it|this)\s+(?:is|was)\s+(.{1,80}?)\s+(?:that|who|which)\s+",
                     re.IGNORECASE)
+# "It was by Acme Corp that Globex was acquired" says "Globex was acquired by Acme Corp": a cleft on the agent is read
+# with the agent put back after the participle
+_BY_CLEFT = re.compile(r"(?:^|(?<=[,;:]\s))(?:it|this)\s+(?:is|was)\s+by\s+(.{1,80}?)\s+(?:that|which)\s+"
+                       r"(.{1,120}?\b(?:is|are|was|were|be|been|being|get|gets|got|gotten|getting)\s+"
+                       r"(?:(?:\w+ly|not|never|also|still|already)\s+){0,2}\w+)", re.IGNORECASE)
+
+
+def _without_adverbs(words, names=frozenset()):
+    """`words` without the adverbs at their end ("quietly", "not", "also"): "globex quietly" (before "acquired") is
+    "globex". A word the text writes with a capital ("Kelly", `names`) is no adverb, and the first word stays."""
+    if words is None:
+        return None
+    words = list(words)
+    while len(words) > 1 and words[-1] not in names and (
+            (words[-1].endswith("ly") and words[-1] not in _NOT_ADVERB) or words[-1] in _ROLE_BETWEEN):
+        words.pop()
+    return words
 
 
 def _roles(text: str):
@@ -2750,8 +2767,12 @@ def _roles(text: str):
     Marten") is a reduced passive: its doer only. Active (the past form with neither): the words before it are the
     doer, the words after it up to the next stopword (a leading article skipped) the done-to. "Before" reaches back
     to the start of the clause or to the last "and", "or", "but", "while", "whereas" in it. A cleft is read without
-    its frame (_CLEFT). Words are plain (_e_plain): lower case, numbers kept."""
+    its frame (_CLEFT), a cleft on the agent with the agent after the participle (_BY_CLEFT). Adverbs at the end of
+    the words before the verb are not part of what they name ("Globex quietly acquired": the doer is "globex").
+    Words are plain (_e_plain): lower case, numbers kept."""
+    text = _BY_CLEFT.sub(lambda m: f"{m.group(2)} by {m.group(1)}", text)
     text = _CLEFT.sub(lambda m: m.group(1) + " ", text)
+    names = frozenset(_e_plain(m.group(0)) for m in _E_WORD.finditer(text) if m.group(0)[:1].isupper())
     cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
     toks = [(_e_plain(m.group(0)), sum(1 for c in cuts if c <= m.start())) for m in _E_WORD.finditer(text)]
     words = [w for w, _ in toks]
@@ -2794,6 +2815,10 @@ def _roles(text: str):
                 continue
             doer = words_before(i, clause)
             done_to = phrase_after(i + 1, clause) or None
+        if k < 0 or words[k] not in _BE and words[k] not in _GET:
+            doer = _without_adverbs(doer, names)        # an active verb: "Globex quietly acquired"
+        else:
+            done_to = _without_adverbs(done_to, names)  # a passive: "Globex quietly got acquired"
         out.append((w, doer, done_to))
     return out
 
