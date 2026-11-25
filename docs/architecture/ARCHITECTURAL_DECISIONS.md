@@ -1824,8 +1824,10 @@ stores such content.
    copied from a record is kept out by the code instead: an AST scan of every module under `src/neuroscifi` allows the
    store only to an allow-list (`tests/webcortex/test_imagined_quarantine.py`): the store and its lifecycle (schema,
    bounds, forgets and sweep, restore, the owner's commands); *writers*, which may call only its write API (`record`,
-   `observe`); and *displays*, which may list records labelled "imagined, not evidence" (`listing`, `show`), each
-   entry with its reason. No evidence path (knowledge, claims, consolidation, synthesis, evolution and calibration,
+   `observe`, and `written_by` to read back their own mechanism's records); and *displays*, which may list or count
+   records labelled "imagined, not evidence" (`listing`, `show`, `counts`), each entry with its reason. At the Wave 1
+   integration the writers are scenario records and kept imagination answers (lane M) and a reflection's model
+   summary (lane K); the displays are the console panel, the self-description and Presence's "simulating" (lane W). No evidence path (knowledge, claims, consolidation, synthesis, evolution and calibration,
    predictions, semantic memory, the memory gate, reasoning, web state, temporal reasoning, beliefs, evidence, the
    executive, memory, datasets, graphs, the learner, recall) may be put on any list, nor may the orchestrator (it
    builds the report the answer model is sent), curiosity or autonomy (they choose what is investigated): a
@@ -2292,8 +2294,9 @@ whatever such a mechanism keeps.
    futures (decisive and right `d q`, decisive and wrong `d (1-q)`, nothing decisive `1-d`), q the forecast as the
    ADR-046 mapping reads it, d the Laplace share of earlier settled predictions of the kind that were decisive; the
    assumptions are written with it. When the prediction settles the outcome slot is filled once (the prediction named
-   as the evidence) with the three-way Brier and log score and the plain forecast's Brier; `errors()` reports them per
-   mechanism on read, and the next template's d already includes the settled prediction. The timer runs it
+   as the evidence) with which future happened (its index: an outcome holds no text, ADR-049 as amended in Wave 0);
+   the three-way Brier and log score and the plain forecast's Brier are computed from it on read, and `errors()`
+   reports them per mechanism; the next template's d already includes the settled prediction. The timer runs it
    (`scheduler.tick`, activity `tick.scenarios`, held by quiet). Settlement is pulled from the stored outcomes, so
    `evolution.py` is not touched and a failure here can never roll back a settlement. No model writes scenarios: a
    model-written pilot was not built, since no offline ablation can show a gain (research.md: preliminary). No blending

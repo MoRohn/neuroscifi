@@ -720,7 +720,8 @@ its direction marks, embeddings and isolates in `text`.
 `neuroscifi/provenance.py` (vocabulary) and `instance/imagined.py` (owner of `imagined`, `imagined_refs`,
 `imagined_forgotten`). Nothing in the evidence, knowledge, claims, verification, calibration, belief or retrieval code
 reads or writes these tables (an allow-list in tests/webcortex/test_imagined_quarantine.py: the store's lifecycle,
-WRITERS that may call `record`/`observe`, DISPLAYS that may call `listing`/`show`); the database refuses an id of the
+WRITERS that may call `record`/`observe`/`written_by`, DISPLAYS that may call `listing`/`show`/`counts`); the
+database refuses an id of the
 form `imagined:` + 32 hex digits (any case, padded) in a reference column of the evidence side, never in free text
 (`schema._NO_IMAGINED`; sqlite3.IntegrityError "an imagined record is never evidence"; INSERT OR REPLACE of a held
 record: "an imagined record is never rewritten").
@@ -744,6 +745,9 @@ imagined.observe(db, id, *, observation, now, evidence=[(ref_kind, id)]) -> show
 imagined.listing(db, now, *, kind=None, limit=100) -> {"label", "counts" {kind: n}, "items": [{"id", "kind", "label",
                  "mechanism", "mechanism_version", "model", "question", "created_at", "expires_at", "observed"}]}
 imagined.show(db, id) -> item + {"payload", "assumptions", "uncertainty", "derived_from", "outcome", "observed_at"}
+imagined.counts(db, *, since=None) -> {"label", "counts" {kind: n}, "total", "newest"}   # numbers only (displays)
+imagined.written_by(db, mechanism, *, derived_from=None, observed=None) -> [show() items], oldest first
+#   one mechanism's own records (a writer filling its outcome slots); derived_from=(ref_kind, id), observed=True/False
 imagined.purge(db, now, *, record_id=None, kind=None) -> {"status": "purged"|"absent", "effects": {"imagined_removed",
                "checkpoints_stale", "state_version", "wal_checkpoint"}}   # neither given: everything
 imagined.section(records) -> {"label": "imagined, not evidence", "items": [{"kind", "payload", "assumptions",
@@ -785,7 +789,8 @@ imagine.what_if(db, epoch, *, flip=[id | "#SEQ"], drop=[...], add=[{"factor": "c
   -> {"before", "after": {"mechanism": {"p_inverted", "identifiable"}, "camera:R"|"partner:P": {..., "n"},
       "change"?}, "difference": {factor: after - before}, "changes", "question", "exact": True, "cost", ...}
 imagine.question_values(db, epoch, *, now=None) -> {"before", "candidates": [{"factor", "p_reading": {0, 1},
-                "after": {0, 1}, "expected_change": {factor}, "information_bits": {factor}, "information_bits_total"}]}
+                "after": {0, 1}, "expected_change": {factor}, "information_bits": {factor}, "information_bits_total",
+                "information_bits_joint"}]}   # joint: lane I's information.gains with one reading; None for a reference
 imagine.retrospect(db, epoch, factor="mechanism", *, limit=200, top=10) -> {"belief_now", "tried", "most",
                 "ranked": [{"what": "readings", "factor", "reading", "influence", "count", "readings"} |
                            {"what": "owner answer", "answer", "influence"}]}       # influence = now - without it
@@ -797,6 +802,8 @@ forecast.model(db, context) ; forecast.action_support(model, population) -> (boo
 causal.answer(query) -> {"rung", "value" | None, "sd", "identified", "why", ...}   # ValueError for a malformed query
 scenarios.futures(db, prediction_id) ; scenarios.imagine(db, prediction_id, now) -> record id
 scenarios.settle(db, now) -> [{"record_id", "prediction_id", "outcome", "brier_3way"}] ; scenarios.errors(db)
+#   the outcome slot holds {"futures": index into scenarios.FUTURES} (no text, imagined.observe); the comparison is
+#   computed on read: scenarios.compare(payload, scenarios.observed_future(record))
 scenarios.tick(db, now) -> None (off) | {"held"} | {"settled", "imagined"} | {"skipped"}
 ```
 

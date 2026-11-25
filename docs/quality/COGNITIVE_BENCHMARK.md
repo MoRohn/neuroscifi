@@ -263,3 +263,21 @@ these numbers measures "intelligence". They are task scores on synthetic worlds 
   `docs/quality/evidence/genesis_imagination.json`. The confounded structures of this family are identifiable by the
   front-door criterion through X1; "decline" is scored correct, which fits an engine without front-door adjustment
   (ADR-052, benchmark note). The splits are unchanged.
+
+## Wave 1 integration (lanes I, M, K, C, W on one tree)
+
+`scripts/bench_wave1.py run` measures the integrated tree on both splits (the withheld family is not run):
+`all_off` (every Wave 1 setting read as off: the baseline policy and the references, diffed against
+`genesis_baseline.json`), `defaults` (each family answered by the mechanism the shipped settings use), `all_on`
+(every Wave 1 setting that ships off switched on as well; strategy selection stays behind its gate and the
+reflection's model summary needs the model, so both stay off) and one run per registered component switched off.
+Results: `docs/quality/evidence/genesis_wave1.json`. With every Wave 1 setting off, every family's result equals the
+recorded baseline on both splits (0 differences; the four references too) except the adversarial family, whose case
+list changed:
+
+| Change to a benchmark definition | By | Effect on the recorded baseline |
+|---|---|---|
+| `selfmodel.truth`: `uncertain_about` is `"nothing"` when every factor is settled (was `None`, which no answer could match) | W | none: the baseline answers `None` (0.80 / 0.80 reproduced) |
+| adversarial `simulated_reading_moves_no_belief` relabelled `imagined_reading_moves_no_belief` (a what-if never reaches the live belief); ADR-052 §6 | M | the case that failed now passes: 12 → 13 of 13 on the old list |
+| four adversarial cases added (`no_self_confirmation_without_evidence`, `reflection_summary_is_never_evidence`, `recheck_and_reflection_stay_bounded`, `self_reported_success_earns_no_reward`); the "not staged: Excessive internal reflection" row is gone (the third case stages it) | K | 17 of 17 scored, all passing, in every regime |
+| frozen worlds for re-checking and strategy selection, `knowledge_splits.py` (own digest, pinned in its test) | K | a new file; `splits.py` and `withheld.py` and their pinned digests are unchanged |
