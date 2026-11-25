@@ -7,7 +7,8 @@
 #           `neuroscifi-memory`, serving both ports. `embed` and `rerank` are then two names for that one
 #           container: starting either starts it (a running one is left alone), stopping either stops it. With
 #           NSF_MEMORY_EGRESS=none (the default) it has no network, and `neuroscifi-memory-ports` (forward.py: no
-#           model, no key) publishes its ports; the two start and stop together.
+#           model, no key file; keyed calls and their texts pass through it) publishes its ports; the two start
+#           and stop together.
 #   vllm    two vLLM servers (pooling runner), one container each: twice the memory, vLLM's own batching.
 #
 #   deploy/memory/run.sh start [embed|rerank|all]   start detached (restart policy unless-stopped)
@@ -58,9 +59,12 @@ single() { [ "$NSF_MEMORY_SERVER" = single ]; }
 # single with NSF_MEMORY_EGRESS=none (the default): the container that holds the models and the key has no network
 # at all (`--network none`: no route to anywhere; checked on the reference host, docs/quality/evidence/
 # remaining_memory_server.json). It listens on two Unix sockets in SOCKET_DIR; a second container that holds neither
-# the models, the device nor the key (deploy/memory/forward.py) publishes the two ports on loopback and joins each
-# connection to its socket. Docker cannot publish a port from a container without a network, nor from an
-# `--internal` one, so the forwarder is what makes "no egress" possible. bridge: one container, as before.
+# the models, the device nor the key file (deploy/memory/forward.py) publishes the two ports on loopback and joins
+# each connection to its socket. Docker cannot publish a port from a container without a network, nor from an
+# `--internal` one, so the forwarder is what makes "no egress" possible for the model server. The forwarder itself
+# is on a network with outbound access, and every keyed call crosses it in plain text (the Bearer key and the
+# memory texts): it runs only the standard library (`python3 -I -S`), as an unprivileged user, read-only, with no
+# capability. bridge: one container, as before.
 isolated() { single && [ "${NSF_MEMORY_EGRESS:-none}" = none ]; }
 SOCKET_DIR="${NSF_MEMORY_SOCKET_DIR:-$NSF_MEMORY_CACHE_DIR/sockets}"
 
@@ -110,7 +114,8 @@ socket_dir() {
 
 # One process for both models: the image's own python3 runs server.py (mounted read-only) instead of vLLM. The
 # key is a read-only file in the container, not an environment variable (it is in no `docker inspect` output).
-# Isolated, PORT_ARGS is the forwarder's container: no device, no model, no key, the sockets' folder read-only.
+# Isolated, PORT_ARGS is the forwarder's container: no device, no model, no key file, the sockets' folder read-only
+# (keyed calls still pass through it; see above).
 single_args() {
   local embed="$NSF_MEMORY_EMBED_MODEL_DIR" rerank="$NSF_MEMORY_RERANK_MODEL_DIR" health
   local -a where listen
@@ -133,7 +138,7 @@ single_args() {
       -v "$SOCKET_DIR:/run/nsf-memory:ro" -v "$HERE/forward.py:/opt/neuroscifi/forward.py:ro"
       -e PYTHONDONTWRITEBYTECODE=1 --no-healthcheck
       --entrypoint python3
-      "$NSF_MEMORY_IMAGE" /opt/neuroscifi/forward.py --container --host 0.0.0.0
+      "$NSF_MEMORY_IMAGE" -I -S /opt/neuroscifi/forward.py --container --host 0.0.0.0
       --listen 8000=/run/nsf-memory/embed.sock --listen 8001=/run/nsf-memory/rerank.sock)
   else
     # shellcheck disable=SC2207
@@ -181,8 +186,8 @@ drop_other() {
 # A network of the memory containers' own (review L8): a bridge with traffic between its containers off, so no
 # other container (SearXNG, a tenant's) can reach them at a container address; the ports are published on loopback
 # as before. Docker cannot publish a port from `--network none`, nor from an `--internal` network (checked on the
-# reference host: the published port did not answer). So with NSF_MEMORY_EGRESS=none only the forwarder, which
-# holds nothing worth sending, is on this network, and the model server is on none; with bridge (and for the vLLM
+# reference host: the published port did not answer). So with NSF_MEMORY_EGRESS=none only the forwarder is on this
+# network (it holds no key file, but keyed calls and their texts cross it), and the model server is on none; with bridge (and for the vLLM
 # pair) the model containers are on it and outbound traffic stays possible, though they make none (offline model
 # loading, no telemetry). NSF_MEMORY_NETWORK= (empty) keeps Docker's default bridge.
 ensure_network() {

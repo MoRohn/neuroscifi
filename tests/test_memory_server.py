@@ -421,8 +421,10 @@ def test_run_sh_starts_the_server_with_the_key_as_a_read_only_file_and_both_port
     assert " -p 127.0.0.1:18441:8000 -p 127.0.0.1:18442:8001 " in ports and "0.0.0.0:18" not in ports
     assert "--name neuroscifi-memory-ports --network neuroscifi-memory " in ports
     assert "/sockets:/run/nsf-memory:ro " in ports and "forward.py:/opt/neuroscifi/forward.py:ro" in ports
-    for absent in ("api_key", "--device", "/models/", "server.py", "--env-file"):     # nothing worth taking
+    for absent in ("api_key", "--device", "/models/", "server.py", "--env-file"):     # no key file, model or device
         assert absent not in ports, absent
+    # keyed calls cross it in plain text, so it runs the standard library only (no site-packages, no .pth hook)
+    assert "--entrypoint python3 " in ports and " -I -S /opt/neuroscifi/forward.py " in ports
     for flag in ("--read-only", "--cap-drop ALL", "--security-opt no-new-privileges", "--user ", "--memory 256m",
                  "--container --host 0.0.0.0", "--listen 8000=/run/nsf-memory/embed.sock",
                  "--listen 8001=/run/nsf-memory/rerank.sock"):

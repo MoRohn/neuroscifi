@@ -9,8 +9,13 @@ server's socket for that port, byte for byte, in both directions:
 
   forward.py --container --listen 8000=/run/nsf-memory/embed.sock --listen 8001=/run/nsf-memory/rerank.sock
 
-It holds no model, no device and no key, reads no request (the server parses, authenticates and limits
-everything), and logs nothing about a connection. A client's end of sending is passed on to the server (a half
+It holds no model, no device and no key file, reads no request (the server parses, authenticates and limits
+everything), and logs nothing about a connection. It is not a place where nothing of value passes, though: every
+keyed call crosses it in plain text, the `Authorization: Bearer` key and the individual's memory texts with it,
+and its container is on a network with outbound access (Docker publishes ports only from such a network). The
+"no egress" guarantee is the model server's; for the forwarder it rests on this file and the interpreter that runs
+it, which is why run.sh starts it as `python3 -I -S` (the standard library only: no site-packages, no `.pth` hook
+of the image, no PYTHON* variable, not the current folder). A client's end of sending is passed on to the server (a half
 close). Once the server has ended its side (an answer with `Connection: close`, its 503, a head too slow, the
 door's eviction of the oldest waiting connection), nothing the client sends can be answered any more: the
 connection is not joined any longer, and what the client still sends is read and discarded for at most
