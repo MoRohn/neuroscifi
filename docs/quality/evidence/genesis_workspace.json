@@ -1,0 +1,2577 @@
+{
+ "benchmark": "genesis-workspace",
+ "broadcast_access": {
+  "log": {
+   "after_task_ms_median": 0.103,
+   "findings": 10,
+   "questions_opened": 10,
+   "readers_per_broadcast": [
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6,
+    6
+   ],
+   "readers_per_local": [],
+   "rows": [
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.017,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.01,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.203,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 1.198,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 0,
+     "outcome": "delivered",
+     "pending_id": 1,
+     "readers": 6,
+     "salience": 0.2212
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.01,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.172,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.817,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.005,
+       "reads_it": true
+      }
+     },
+     "finding": 1,
+     "outcome": "delivered",
+     "pending_id": 2,
+     "readers": 6,
+     "salience": 0.2212
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.011,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.166,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.792,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 2,
+     "outcome": "delivered",
+     "pending_id": 3,
+     "readers": 6,
+     "salience": 0.4512
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.012,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.168,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.8,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.005,
+       "reads_it": true
+      }
+     },
+     "finding": 3,
+     "outcome": "delivered",
+     "pending_id": 4,
+     "readers": 6,
+     "salience": 0.6988
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.013,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.167,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.8,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 4,
+     "outcome": "delivered",
+     "pending_id": 5,
+     "readers": 6,
+     "salience": 0.2212
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.014,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.172,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.8,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 5,
+     "outcome": "delivered",
+     "pending_id": 6,
+     "readers": 6,
+     "salience": 0.5276
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.015,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.174,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.82,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.005,
+       "reads_it": true
+      }
+     },
+     "finding": 6,
+     "outcome": "delivered",
+     "pending_id": 7,
+     "readers": 6,
+     "salience": 0.5726
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.017,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.018,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.173,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.779,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.005,
+       "reads_it": true
+      }
+     },
+     "finding": 7,
+     "outcome": "delivered",
+     "pending_id": 8,
+     "readers": 6,
+     "salience": 0.2212
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.017,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.175,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.859,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 8,
+     "outcome": "delivered",
+     "pending_id": 9,
+     "readers": 6,
+     "salience": 0.4512
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.019,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.183,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.837,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 9,
+     "outcome": "delivered",
+     "pending_id": 10,
+     "readers": 6,
+     "salience": 0.8347
+    }
+   ]
+  },
+  "off": {
+   "after_task_ms_median": 0.061,
+   "findings": 10,
+   "questions_opened": 10,
+   "readers_per_broadcast": [
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5,
+    5
+   ],
+   "readers_per_local": [],
+   "rows": [
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.02,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.012,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.216,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 1.227,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 0,
+     "outcome": "delivered",
+     "pending_id": 1,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.011,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.169,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.906,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.005,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.005,
+       "reads_it": true
+      }
+     },
+     "finding": 1,
+     "outcome": "delivered",
+     "pending_id": 2,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.011,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.166,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.776,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 2,
+     "outcome": "delivered",
+     "pending_id": 3,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.012,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.178,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.758,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 3,
+     "outcome": "delivered",
+     "pending_id": 4,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.013,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.162,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.783,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 4,
+     "outcome": "delivered",
+     "pending_id": 5,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.014,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.168,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.772,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 5,
+     "outcome": "delivered",
+     "pending_id": 6,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.016,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.168,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.773,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.005,
+       "reads_it": true
+      }
+     },
+     "finding": 6,
+     "outcome": "delivered",
+     "pending_id": 7,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.017,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.171,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.777,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 7,
+     "outcome": "delivered",
+     "pending_id": 8,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.018,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.184,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.756,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 8,
+     "outcome": "delivered",
+     "pending_id": 9,
+     "readers": 5,
+     "salience": null
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.019,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.178,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.805,
+       "reads_it": false
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.005,
+       "reads_it": true
+      }
+     },
+     "finding": 9,
+     "outcome": "delivered",
+     "pending_id": 10,
+     "readers": 5,
+     "salience": null
+    }
+   ]
+  },
+  "on": {
+   "after_task_ms_median": 0.094,
+   "findings": 10,
+   "questions_opened": 4,
+   "readers_per_broadcast": [
+    6,
+    6,
+    6,
+    6
+   ],
+   "readers_per_local": [
+    3,
+    3,
+    3,
+    3,
+    3,
+    3
+   ],
+   "rows": [
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "pocket_push": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "presence": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "self_description": {
+       "read_ms": 1.199,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 0,
+     "outcome": "local",
+     "pending_id": null,
+     "readers": 3,
+     "salience": 0.2212
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "pocket_push": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "presence": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "self_description": {
+       "read_ms": 0.798,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 1,
+     "outcome": "local",
+     "pending_id": null,
+     "readers": 3,
+     "salience": 0.2212
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "pocket_push": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "presence": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "self_description": {
+       "read_ms": 0.77,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 2,
+     "outcome": "local",
+     "pending_id": null,
+     "readers": 3,
+     "salience": 0.4512
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.016,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.009,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.173,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.787,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.005,
+       "reads_it": true
+      }
+     },
+     "finding": 3,
+     "outcome": "broadcast",
+     "pending_id": 1,
+     "readers": 6,
+     "salience": 0.6988
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "pocket_push": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "presence": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "self_description": {
+       "read_ms": 0.788,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 4,
+     "outcome": "local",
+     "pending_id": null,
+     "readers": 3,
+     "salience": 0.2212
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.01,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.169,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.788,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 5,
+     "outcome": "broadcast",
+     "pending_id": 2,
+     "readers": 6,
+     "salience": 0.5276
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.01,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.171,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.788,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 6,
+     "outcome": "broadcast",
+     "pending_id": 3,
+     "readers": 6,
+     "salience": 0.5726
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "pocket_push": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "presence": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "self_description": {
+       "read_ms": 0.785,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 7,
+     "outcome": "local",
+     "pending_id": null,
+     "readers": 3,
+     "salience": 0.2212
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "pocket_push": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "presence": {
+       "read_ms": 0.0,
+       "reads_it": false
+      },
+      "self_description": {
+       "read_ms": 0.801,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 8,
+     "outcome": "local",
+     "pending_id": null,
+     "readers": 3,
+     "salience": 0.4512
+    },
+    {
+     "detail": {
+      "console_questions": {
+       "read_ms": 0.012,
+       "reads_it": true
+      },
+      "pocket_push": {
+       "read_ms": 0.003,
+       "reads_it": true
+      },
+      "presence": {
+       "read_ms": 0.187,
+       "reads_it": true
+      },
+      "self_description": {
+       "read_ms": 0.778,
+       "reads_it": true
+      },
+      "state_version": {
+       "read_ms": 0.002,
+       "reads_it": true
+      },
+      "worker_wake": {
+       "read_ms": 0.004,
+       "reads_it": true
+      }
+     },
+     "finding": 9,
+     "outcome": "broadcast",
+     "pending_id": 4,
+     "readers": 6,
+     "salience": 0.8347
+    }
+   ]
+  },
+  "reader_poll": {
+   "console_questions": {
+    "period_seconds": null,
+    "what": "console Questions view: on open and on refresh (owner action)"
+   },
+   "pocket_push": {
+    "period_seconds": 5.0,
+    "what": "pocket.push.POLL (push collector)"
+   },
+   "presence": {
+    "period_seconds": 0.35,
+    "what": "presence.routes.POLL_STEP (console long-poll re-derive)"
+   },
+   "self_description": {
+    "period_seconds": null,
+    "what": "built on request (console overview, nsf self, MCP, voice, Pocket)"
+   },
+   "state_version": {
+    "period_seconds": null,
+    "what": "console header (every reload)"
+   },
+   "worker_wake": {
+    "period_seconds": 0.1,
+    "what": "webcortex.scheduler data_version wait"
+   }
+  }
+ },
+ "environment": {
+  "cpu_count": 20,
+  "git_commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+  "git_dirty": true,
+  "machine": "aarch64",
+  "numpy": "2.3.5",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "python": "3.12.16",
+  "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39",
+  "sqlite": "3.53.1",
+  "withheld_sha256": "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
+ },
+ "label": "offline, temporary individuals through the real modules; functional measurements only, never a score of anything but the function named",
+ "lane": "W",
+ "presence_states": {
+  "declared_unused_before": 6,
+  "derive_ms_median": {
+   "no_remote_files": 0.13,
+   "one_remote_file": 0.147
+  },
+  "note": "before this lane the six activities appeared only in the vocabulary (audit-runtime \u00a76)",
+  "shown_now": 6,
+  "states": {
+   "analyzing": true,
+   "executing": true,
+   "interpreting": true,
+   "planning": true,
+   "predicting": true,
+   "simulating": true
+  }
+ },
+ "self_description_family": {
+  "development": {
+   "baseline": {
+    "ablate": [],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 54550528,
+     "peak_rss_rise_bytes": 5558272,
+     "refused_connections": 0,
+     "wall_seconds": 0.115
+    },
+    "dirty": true,
+    "mechanism": "baseline",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.8,
+      "mean": 0.8,
+      "min": 0.8,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.8,
+      "mean": 0.8,
+      "min": 0.8,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 4.0,
+      "mean": 4.0,
+      "min": 4.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "self_description": {
+    "ablate": [],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 55861248,
+     "peak_rss_rise_bytes": 1310720,
+     "refused_connections": 0,
+     "wall_seconds": 0.113
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "without_capabilities": {
+    "ablate": [
+     "capabilities"
+    ],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 56025088,
+     "peak_rss_rise_bytes": 0,
+     "refused_connections": 0,
+     "wall_seconds": 0.105
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "authorised_model_tools": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "local_model_unloaded": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "memory_level": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.8,
+      "mean": 0.8,
+      "min": 0.8,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.8,
+      "mean": 0.8,
+      "min": 0.8,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "without_decisions": {
+    "ablate": [
+     "decisions"
+    ],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 55861248,
+     "peak_rss_rise_bytes": 0,
+     "refused_connections": 0,
+     "wall_seconds": 0.105
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "without_tools": {
+    "ablate": [
+     "tools"
+    ],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 56025088,
+     "peak_rss_rise_bytes": 163840,
+     "refused_connections": 0,
+     "wall_seconds": 0.103
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "without_uncertainty": {
+    "ablate": [
+     "uncertainty"
+    ],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 55861248,
+     "peak_rss_rise_bytes": 0,
+     "refused_connections": 0,
+     "wall_seconds": 0.104
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   }
+  },
+  "held_out": {
+   "baseline": {
+    "ablate": [],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 56025088,
+     "peak_rss_rise_bytes": 0,
+     "refused_connections": 0,
+     "wall_seconds": 0.169
+    },
+    "dirty": true,
+    "mechanism": "baseline",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.8,
+      "mean": 0.8,
+      "min": 0.8,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.8,
+      "mean": 0.8,
+      "min": 0.8,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 4.0,
+      "mean": 4.0,
+      "min": 4.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "self_description": {
+    "ablate": [],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 56025088,
+     "peak_rss_rise_bytes": 0,
+     "refused_connections": 0,
+     "wall_seconds": 0.177
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "without_capabilities": {
+    "ablate": [
+     "capabilities"
+    ],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 56352768,
+     "peak_rss_rise_bytes": 0,
+     "refused_connections": 0,
+     "wall_seconds": 0.18
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "authorised_model_tools": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "local_model_unloaded": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "memory_level": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.8,
+      "mean": 0.8,
+      "min": 0.8,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.8,
+      "mean": 0.8,
+      "min": 0.8,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "without_decisions": {
+    "ablate": [
+     "decisions"
+    ],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 56188928,
+     "peak_rss_rise_bytes": 163840,
+     "refused_connections": 0,
+     "wall_seconds": 0.179
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "without_tools": {
+    "ablate": [
+     "tools"
+    ],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 56352768,
+     "peak_rss_rise_bytes": 163840,
+     "refused_connections": 0,
+     "wall_seconds": 0.181
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   },
+   "without_uncertainty": {
+    "ablate": [
+     "uncertainty"
+    ],
+    "commit": "76d67c0c0da5af7c736ad3623b5bd3ee0a46fbad",
+    "cost": {
+     "model_calls": 0,
+     "peak_rss_bytes": 56025088,
+     "peak_rss_rise_bytes": 0,
+     "refused_connections": 0,
+     "wall_seconds": 0.181
+    },
+    "dirty": true,
+    "mechanism": "self_description",
+    "per_probe": {
+     "audio_active": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "authorised_model_tools": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomous_searches_left": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "autonomy_enabled": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "background_research_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "journal_row_limit": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "last_decision": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "local_model_unloaded": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "memory_level": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "open_owner_questions": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "queued_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "researching_now": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "running_tasks": {
+      "answered": 1.0,
+      "correct": 1.0
+     },
+     "uncertain_about": {
+      "answered": 0.0,
+      "correct": 0.0
+     },
+     "writes_allowed": {
+      "answered": 1.0,
+      "correct": 1.0
+     }
+    },
+    "staging_problems": [],
+    "summary": {
+     "accuracy": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "accuracy_when_answered": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     },
+     "coverage": {
+      "max": 0.933333,
+      "mean": 0.933333,
+      "min": 0.933333,
+      "n": 2,
+      "sd": 0.0
+     },
+     "surfaces_used": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 2,
+      "sd": 0.0
+     }
+    }
+   }
+  }
+ },
+ "self_description_over_time": {
+  "build_ms": {
+   "max": 1.51,
+   "median": 1.38,
+   "n": 36
+  },
+  "comparable_steps": 12,
+  "consistent_steps": 12,
+  "steps": [
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: no research is running."
+    ],
+    "state_version": 2,
+    "step": "fresh individual"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 0 research tasks running and 2 queued."
+    ],
+    "state_version": 4,
+    "step": "owner asks two questions"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued."
+    ],
+    "state_version": 4,
+    "step": "the worker reads sources for the first"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would ask for a known reference test."
+    ],
+    "state_version": 9,
+    "step": "an epoch with camera readings and no reference"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued; 1 question waiting for you.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would ask for a known reference test."
+    ],
+    "state_version": 10,
+    "step": "the executive decides and asks"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued; 1 question waiting for you.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would ask for a known reference test."
+    ],
+    "state_version": 12,
+    "step": "autonomy switched on"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued; 1 question waiting for you.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would ask for a known reference test.",
+     "Note: memory is getting tight."
+    ],
+    "state_version": 12,
+    "step": "memory pressure rises"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued; 1 question waiting for you.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would ask for a known reference test.",
+     "Note: memory is nearly full."
+    ],
+    "state_version": 12,
+    "step": "memory nearly full"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued; 1 question waiting for you.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would ask for a known reference test.",
+     "Note: quiet is on, so nothing runs unless you ask."
+    ],
+    "state_version": 13,
+    "step": "quiet switched on"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued; 1 question waiting for you.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would wait.",
+     "Note: writes are paused to protect storage; quiet is on, so nothing runs unless you ask."
+    ],
+    "state_version": 13,
+    "step": "storage full"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued; 1 question waiting for you.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would ask for a known reference test.",
+     "Note: quiet is on, so nothing runs unless you ask."
+    ],
+    "state_version": 14,
+    "step": "cancel requested for the running task (it stops at its next check)"
+   },
+   {
+    "checks": 12,
+    "comparable": true,
+    "mismatches": [],
+    "short": [
+     "Right now: 1 research task running and 1 queued; 1 question waiting for you.",
+     "I'm least certain about the mechanism in epoch day.",
+     "Next I would ask for a known reference test."
+    ],
+    "state_version": 15,
+    "step": "quiet switched off"
+   }
+  ],
+  "total_steps": 12
+ },
+ "self_description_staged_consistency": {
+  "comparable": 8,
+  "consistent": 8,
+  "field_checks": 96,
+  "mismatches": [],
+  "records": 8
+ },
+ "version": 1,
+ "voice_follow_after_restart": {
+  "devices": "unverified: speech engines and microphone are test doubles (FakeEngines)",
+  "start_commit_2aee516": "answer not delivered: 0 of 1 (the same test fails with the start commit's voice/hub.py)",
+  "test": "tests/voice/test_follow_restart.py::test_the_answer_reaches_the_next_session_after_a_restart",
+  "with_this_lane": "answer delivered to the next session: 1 of 1 (test passes)"
+ },
+ "wall_seconds": 2.4
+}

@@ -49,6 +49,8 @@ def test_inventory_carries_the_record_only_when_asked(console):
     assert status == 200 and inv["self"]["schema"] == sd.SCHEMA and inv["self_short"]
     assert inv["self"]["state_version"] == inv["state_version"]
     assert get(srv, "/api/inventory?selfish=1")[0] == 400
+    status, quick = get(srv, "/api/resources?quick=1")     # the overview's Resources card: no subprocess
+    assert status == 200 and quick["gpu"] is None and quick["containers"] is None and "policy" in quick
 
 
 def test_imagined_view_is_read_only_and_labelled(console):

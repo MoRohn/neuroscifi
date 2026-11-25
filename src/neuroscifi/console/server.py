@@ -620,7 +620,9 @@ def _resources(c, p, q, b):
     """Memory/GPU/container use, the pressure level and what the scheduling policies decide now (RD-46;
     resources.status). ?cold_start=1 also reads each neuroscifi-* container's last start-to-ready time."""
     from .. import resources
-    q = _query(q, ("cold_start",))
+    q = _query(q, ("cold_start", "quick"))
+    if q.get("quick") in ("1", "true"):     # the overview's Resources card (ADR-053): memory and policies only, no
+        return resources.status(c.path, full=False)    # subprocess (as `nsf resources --quick`)
     return resources.status(c.path, full=True, cold_start=q.get("cold_start") in ("1", "true"))
 
 

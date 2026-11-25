@@ -465,8 +465,9 @@ function renderSelf(rec, short) {
     : empty('No questions yet from any of your devices.'));
 }
 
-async function loadResources() {
-  const r = await load('resources', [$('resources')], () => api('GET', '/api/resources'));
+// quick: memory and the policies only (no subprocess); the button measures GPU, containers and the model server too.
+async function loadResources(full = false) {
+  const r = await load('resources', [$('resources')], () => api('GET', full ? '/api/resources' : '/api/resources?quick=1'));
   if (!r) return;
   const level = { ok: 'Memory is fine', elevated: 'Memory is getting tight', critical: 'Memory is nearly full' }[r.level] ?? `Memory: ${r.level}`;
   const bg = r.policy?.background_research ?? {};
@@ -477,14 +478,16 @@ async function loadResources() {
       ['Background research', bg.allowed ? 'allowed' : `waits: ${bg.reason ?? 'held'}`],
       ['Voice', r.audio_active ? 'a voice session is using audio' : 'no voice audio now'],
       ['Background model slots', r.policy?.background_model_slots ?? '—'],
-      ['Model services', services.length ? services.map(([name, svc]) => `${name}: ${svc?.state ?? 'running'}`).join('; ') : '—'],
+      ['Model services', services.length ? services.map(([name, svc]) => `${name}: ${svc?.state ?? 'no unload recorded'}`).join('; ') : '—'],
     ]),
     technical(kv([
       ['Available memory', mem.available_bytes != null ? `${fmtBytes(mem.available_bytes)} of ${fmtBytes(mem.total_bytes)}` : '—'],
       ['Reasons', (r.reasons ?? []).join('; ') || 'none'],
       ['GPU', r.gpu ? JSON.stringify(r.gpu) : 'not measured'],
       ['Measured', fmtTime(r.measured_at)],
-    ])));
+    ])),
+    full ? null : h('button', { type: 'button', text: 'Measure GPU, containers and the model server',
+      onclick: () => loadResources(true) }));
 }
 
 const IMAGINED_KIND = { simulation: 'what-if', speculation: 'possibility', inference: 'model conclusion' };
