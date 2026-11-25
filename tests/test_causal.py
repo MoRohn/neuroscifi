@@ -49,6 +49,22 @@ def test_a_hidden_common_cause_of_the_cause_is_declined_not_guessed():
     assert unconfounded["value"] == pytest.approx(1.0 + 2.0 * 1.5)
 
 
+def test_a_malformed_graph_question_is_refused_not_answered():
+    """review1 CL10: "X0" as hidden_common_cause was the set {'X', '0'} (the confounded cause read as unconfounded,
+    a confident wrong number); a node missing from the covariance raised KeyError."""
+    base = {"graph": {"X0": [], "X1": ["X0"]}, "observational_covariance": {"X0": {"X0": 1, "X1": 1},
+                                                                           "X1": {"X0": 1, "X1": 2}},
+            "means": {"X0": 0.0, "X1": 0.0}, "do": {"X0": 1.0}, "ask": "X1"}
+    with pytest.raises(ValueError, match="list of node names"):
+        causal.answer(base | {"hidden_common_cause": "X0"})
+    with pytest.raises(ValueError, match="not a node"):
+        causal.answer(base | {"hidden_common_cause": ["W"]})
+    with pytest.raises(ValueError, match="covariance and the means"):
+        causal.answer(base | {"observational_covariance": {"X0": {"X0": 1}}})
+    with pytest.raises(ValueError, match="not a node"):
+        causal.answer(base | {"ask": "Z"})
+
+
 def test_malformed_models_are_refused():
     for model, match in (({"order": ["X", "Y"], "edges": {"X": {"Y": 1.0}}}, "causal order"),
                          ({"order": ["X"], "noise_sd": 0}, "noise_sd"), ({"order": []}, "order")):

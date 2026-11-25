@@ -36,6 +36,7 @@ MAX_HORIZON = 12
 INPUT_SHARE = 0.05          # the least share of a population's next-state variance the recorded inputs must explain
 FEEDBACK_SE = 4.0           # |correlation| above this many standard errors (1/sqrt(T)) = the inputs follow the past
 HOLDS_RATIO = 1.5           # validation one-step state error at most this many times the training one
+MIN_ROWS_PER_POPULATION = 3  # training rows per population below which no carry-over is learned
 
 
 def _require(db):
@@ -78,6 +79,12 @@ def model(db, context):
                       "imported graph): how a state carries over to the next step cannot be learned for it")
     states, targets = datasets.load(db, train)
     vstates, vtargets = datasets.load(db, validation)
+    n = states.shape[1]
+    if len(states) < MIN_ROWS_PER_POPULATION * n or len(vstates) < 3:
+        # review1 CL11: the carry-over has 2 parameters per population and Q is n x n, both from rows - 1 steps
+        raise Refused(f"graph revision {revision}'s trajectories are too short to learn how a state carries over "
+                      f"(training {len(states)} rows, validation {len(vstates)}; {n} populations need at least "
+                      f"{MIN_ROWS_PER_POPULATION * n} training rows and 3 validation rows)")
     c, g, r = _fit_step(states, targets)
     m = np.diag(c) + g[:, None] * a
     e = states[1:] - states[:-1] @ m.T
@@ -129,6 +136,8 @@ def _assumptions(mdl, horizon, action):
            "a state carries over to the next step as on the graph's training trajectory (rows are consecutive time "
            f"steps): next state = c x + g y + an input with mean zero; spectral radius of the carry-over "
            f"{mdl['rho']:.3f}",
+           "the trajectories' rows are consecutive time steps of one run: assumed, not checked (a dataset records no "
+           "time index)",
            "nothing else acts on the populations over the horizon beyond inputs like the recorded ones (mean zero)",
            "the parameters are taken as estimated: the interval covers the process noise, not estimation error"]
     if action is not None:

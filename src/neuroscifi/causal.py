@@ -135,9 +135,21 @@ def _backdoor(query):
     adjusting for the cause's observed parents. Declined when a hidden common cause touches the cause (no observed
     set blocks that back-door path) and when the means needed for a value are not given."""
     graph, cov = query.get("graph") or {}, query.get("observational_covariance") or {}
+    if not isinstance(graph, dict) or not all(isinstance(v, list) for v in graph.values()):
+        raise ValueError("a graph maps each node to the list of its parents")
+    if not isinstance(query["do"], dict) or len(query["do"]) != 1:
+        raise ValueError("do names exactly one node and its value")
     (cause, value), = query["do"].items()
     ask = query["ask"]
-    hidden = set(query.get("hidden_common_cause") or ())
+    # review1 CL10: a string here was read as a set of its characters, a confident wrong answer
+    hidden_list = query.get("hidden_common_cause") or []
+    if not isinstance(hidden_list, list) or not all(isinstance(n, str) for n in hidden_list):
+        raise ValueError("hidden_common_cause is a list of node names")
+    nodes = set(graph) | {p for parents in graph.values() for p in parents}
+    unknown = sorted({cause, ask, *hidden_list} - nodes)
+    if unknown:
+        raise ValueError(f"not a node of the graph: {', '.join(map(str, unknown))}")
+    hidden = set(hidden_list)
     if cause in hidden:
         raise NotIdentified(f"a hidden common cause acts on {cause}: no observed set blocks that back-door path, so "
                             f"the effect of do({cause}) on {ask} is not identified by back-door adjustment (front-door "
@@ -148,10 +160,14 @@ def _backdoor(query):
                             "value without the means")
     adjust = [p for p in graph.get(cause, []) if p != cause]
     names = [cause, *adjust]
-    sxx = np.array([[cov[a][b] for b in names] for a in names])
-    sxy = np.array([cov[a][ask] for a in names])
+    try:
+        sxx = np.array([[float(cov[a][b]) for b in names] for a in names])
+        sxy = np.array([float(cov[a][ask]) for a in names])
+        centre = float(means[ask]), float(means[cause])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"the covariance and the means must give every node the adjustment uses ({error})") from None
     beta = np.linalg.solve(sxx, sxy)
-    out = means[ask] + beta[0] * (value - means[cause])
+    out = centre[0] + beta[0] * (float(value) - centre[1])
     return float(out), None
 
 

@@ -125,6 +125,24 @@ def test_the_stated_horizon_limit_and_unbounded_errors_are_refused(world, tmp_pa
         assert forecast.forecast(grow, "grow", [0.1] * n, 1)["horizon"] == 1
 
 
+def test_a_trajectory_too_short_to_learn_a_carry_over_is_refused(tmp_path):
+    """review1 CL11: the carry-over (2 numbers per population and an n x n covariance) was fitted from any rows."""
+    db = store.create(tmp_path / "s.sqlite", T0)
+    rng = np.random.default_rng(5)
+    n = 4
+    with closing(db):
+        ids = {}
+        for split in datasets.SPLITS:
+            s = rng.normal(0, 1, (2 * n, n))
+            ids[split] = datasets.add(db, "short", split, s, s @ (0.3 * np.eye(n)) + rng.normal(0, 0.1, (2 * n, n)),
+                                      "simulated", T0)
+        revision = graphs.learn(db, "short", T0 + 2, train=ids["train"], validation=ids["validation"], holder="t")
+        with store.write(db):      # the gate would not promote so little data; the forecast must not rely on that
+            db.execute("UPDATE graph_revisions SET status='active' WHERE id=?", (revision,))
+        with pytest.raises(imagine.Refused, match="too short"):
+            forecast.forecast(db, "short", [0.1] * n, 2)
+
+
 def test_forecasts_are_read_only_and_behind_their_switch(world):
     db, ids, a = world
     version = store.state_version(db)
