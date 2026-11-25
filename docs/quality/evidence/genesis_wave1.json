@@ -1,7 +1,7 @@
 {
  "what": "Wave 1 of Project Cognitive Genesis on the reconciled tree (gen-rec1: the integration 3c2a3bc plus fix lanes A, B and C and the reconciliation). Cognitive benchmark (scripts/bench_wave1.py run, both splits; the withheld family NOT run, no --final): every Wave 1 setting off (diffed against the recorded genesis_baseline.json), as shipped, everything on, an ablation per registered component with the other settings as shipped, the idle curiosity path apart; the offline research benchmark and `nsf acceptance --all` against Wave 0 (15b0f03, its own source); the shipped defaults on a new individual. Learning progress ships off after lane B's rework (genesis_fix1b.json; its runs repeated on this tree with identical numbers). Earlier versions of this file are kept below, labelled.",
  "environment": {
-  "git_commit": "04ebecd0370d6c9ee531560662ed67abbde1982b",
+  "git_commit": "1c6cf1e30584de95b7d7ce265224f6379632ac0a",
   "git_dirty": true,
   "python": "3.12.16",
   "numpy": "2.3.5",
@@ -12,7 +12,7 @@
   "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39",
   "withheld_sha256": "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
  },
- "code_commit": "197533d (benchmark run at 04ebecd plus the reconciliation's then uncommitted edits, all in 197533d; the cognitive benchmark does not exercise the gate change in 197533d)",
+ "code_commit": "gen-fix1e: 1c6cf1e plus the re-review's counterfactual scoring change (src/neuroscifi/acceptance/cognition: scoring.py, counterfactual.py, __init__.py), run with that change uncommitted and committed with this file; no product code changed",
  "settings": {
   "all_off": {
    "instance": {
@@ -116,7 +116,7 @@
       "summary.false_alarm_share.mean": 0.0,
       "summary.work_given_up_share.mean": 0.022664
      },
-     "run_seconds": 0.08
+     "run_seconds": 0.09
     },
     "info_value": {
      "differences": 0,
@@ -136,59 +136,63 @@
       "web_mean.noise_share": 0.375,
       "web_mean.stale_share": 0.194444
      },
-     "run_seconds": 0.51
+     "run_seconds": 0.52
     },
     "counterfactual": {
      "differences": 0,
      "first": [],
      "added_metrics": [
+      "by_query_kind.belief:what-if.answerable_with_front_door",
+      "by_query_kind.belief:what-if.answered_within_strict_tolerance",
       "by_query_kind.belief:what-if.answered_within_tolerance",
+      "by_query_kind.belief:what-if.answered_within_tolerance_without_front_door",
       "by_query_kind.belief:what-if.front_door",
       "by_query_kind.belief:what-if.front_door_declined",
       "by_query_kind.belief:what-if.front_door_within_tolerance",
       "by_query_kind.belief:what-if.interval_score",
       "by_query_kind.belief:what-if.interval_score_answered",
+      "by_query_kind.belief:what-if.max_relative_error",
+      "by_query_kind.belief:what-if.strict_tolerance",
       "by_query_kind.belief:what-if.tolerance",
+      "by_query_kind.graph:action.answerable_with_front_door",
+      "by_query_kind.graph:action.answered_within_strict_tolerance",
       "by_query_kind.graph:action.answered_within_tolerance",
+      "by_query_kind.graph:action.answered_within_tolerance_without_front_door",
       "by_query_kind.graph:action.front_door",
       "by_query_kind.graph:action.front_door_declined",
       "by_query_kind.graph:action.front_door_within_tolerance",
       "by_query_kind.graph:action.interval_score",
       "by_query_kind.graph:action.interval_score_answered",
+      "by_query_kind.graph:action.max_relative_error",
+      "by_query_kind.graph:action.strict_tolerance",
       "by_query_kind.graph:action.tolerance",
+      "by_query_kind.graph:horizon 1.answerable_with_front_door",
+      "by_query_kind.graph:horizon 1.answered_within_strict_tolerance",
       "by_query_kind.graph:horizon 1.answered_within_tolerance",
+      "by_query_kind.graph:horizon 1.answered_within_tolerance_without_front_door",
       "by_query_kind.graph:horizon 1.front_door",
       "by_query_kind.graph:horizon 1.front_door_declined",
       "by_query_kind.graph:horizon 1.front_door_within_tolerance",
       "by_query_kind.graph:horizon 1.interval_score",
       "by_query_kind.graph:horizon 1.interval_score_answered",
+      "by_query_kind.graph:horizon 1.max_relative_error",
+      "by_query_kind.graph:horizon 1.strict_tolerance",
       "by_query_kind.graph:horizon 1.tolerance",
+      "by_query_kind.graph:horizon 3.answerable_with_front_door",
+      "by_query_kind.graph:horizon 3.answered_within_strict_tolerance",
       "by_query_kind.graph:horizon 3.answered_within_tolerance",
-      "by_query_kind.graph:horizon 3.front_door",
-      "by_query_kind.graph:horizon 3.front_door_declined",
-      "by_query_kind.graph:horizon 3.front_door_within_tolerance",
-      "by_query_kind.graph:horizon 3.interval_score",
-      "by_query_kind.graph:horizon 3.interval_score_answered",
-      "by_query_kind.graph:horizon 3.tolerance",
-      "by_query_kind.scm:confounded.answered_within_tolerance",
-      "by_query_kind.scm:confounded.front_door",
-      "by_query_kind.scm:confounded.front_door_declined",
-      "by_query_kind.scm:confounded.front_door_within_tolerance",
-      "by_query_kind.scm:confounded.interval_score",
-      "by_query_kind.scm:confounded.interval_score_answered",
-      "by_query_kind.scm:confounded.tolerance",
-      "by_query_kind.scm:counterfactual.answered_within_tolerance",
-      "by_query_kind.scm:counterfactual.front_door",
-      "by_query_kind.scm:counterfactual.front_door_declined",
-      "by_query_kind.scm:counterfactual.front_door_within_tolerance",
-      "by_query_kind.scm:counterfactual.interval_score"
+      "by_query_kind.graph:horizon 3.answered_within_tolerance_without_front_door"
      ],
      "headline": {
-      "summary.answered_within_tolerance.mean": 0.083333,
+      "summary.answered_within_tolerance.mean": 0.072917,
+      "summary.answered_within_strict_tolerance.mean": 0.072917,
       "summary.interval_score.mean": 1.952521,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.083333,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.259259,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.259259,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
       "summary_by_group.learned_graph.interval_score.mean": 1.952521,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -199,10 +203,14 @@
      },
      "recorded_headline": {
       "summary.answered_within_tolerance.mean": null,
+      "summary.answered_within_strict_tolerance.mean": null,
       "summary.interval_score.mean": null,
+      "summary.answered_within_tolerance_without_front_door.mean": null,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": null,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": null,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": null,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": null,
+      "summary_by_group.learned_graph.max_relative_error.max": null,
       "summary_by_group.learned_graph.interval_score.mean": null,
       "summary_by_group.front_door.front_door_declined.mean": null,
       "summary_by_group.front_door.front_door_within_tolerance.mean": null,
@@ -262,7 +270,7 @@
       "claim_probability.murphy.reliability": 0.094804,
       "claim_probability.murphy.resolution": 0.25
      },
-     "run_seconds": 14.67
+     "run_seconds": 14.88
     },
     "retention": {
      "differences": 0,
@@ -276,7 +284,7 @@
       "all_scenarios_pass": true,
       "all_retained": null
      },
-     "run_seconds": 16.23
+     "run_seconds": 15.24
     },
     "adversarial": {
      "differences": 3,
@@ -314,7 +322,7 @@
       "by_origin.added_wave1.passed": null,
       "by_origin.restored.passed": null
      },
-     "run_seconds": 0.27,
+     "run_seconds": 0.28,
      "cases_recorded": {
       "imagined_text_not_knowledge": true,
       "simulated_reading_moves_no_belief": false,
@@ -381,11 +389,11 @@
       "summary.work_given_up_share.mean": 0.022664
      },
      "cost": {
-      "wall_seconds": 0.05,
+      "wall_seconds": 0.049,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 53899264,
-      "peak_rss_rise_bytes": 163840
+      "peak_rss_bytes": 53215232,
+      "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.06
     },
@@ -405,10 +413,10 @@
       "web_mean.stale_share": 0.194444
      },
      "cost": {
-      "wall_seconds": 0.471,
+      "wall_seconds": 0.472,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 61952000,
+      "peak_rss_bytes": 61190144,
       "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.48
@@ -422,11 +430,15 @@
       "reference": false
      },
      "headline": {
-      "summary.answered_within_tolerance.mean": 0.964286,
+      "summary.answered_within_tolerance.mean": 0.84375,
+      "summary.answered_within_strict_tolerance.mean": 0.822917,
       "summary.interval_score.mean": 2.378446,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.964286,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.814815,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
       "summary_by_group.learned_graph.interval_score.mean": 3.358086,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -436,11 +448,11 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "cost": {
-      "wall_seconds": 0.189,
+      "wall_seconds": 0.182,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 78925824,
-      "peak_rss_rise_bytes": 7270400
+      "peak_rss_bytes": 78299136,
+      "peak_rss_rise_bytes": 8040448
      },
      "run_seconds": 0.2
     },
@@ -460,13 +472,13 @@
       "summary.surfaces_used.mean": 1.0
      },
      "cost": {
-      "wall_seconds": 0.15,
+      "wall_seconds": 0.159,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 78954496,
+      "peak_rss_bytes": 78422016,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.18
+     "run_seconds": 0.17
     },
     "selective": {
      "mechanism": "monitoring",
@@ -485,13 +497,13 @@
       "claim_probability.murphy.resolution": 0.25
      },
      "cost": {
-      "wall_seconds": 15.445,
+      "wall_seconds": 14.339,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 355237888,
-      "peak_rss_rise_bytes": 30085120
+      "peak_rss_bytes": 379797504,
+      "peak_rss_rise_bytes": 53424128
      },
-     "run_seconds": 15.46
+     "run_seconds": 14.35
     },
     "retention": {
      "mechanism": "baseline",
@@ -506,13 +518,13 @@
       "all_retained": true
      },
      "cost": {
-      "wall_seconds": 15.22,
+      "wall_seconds": 15.288,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 355237888,
+      "peak_rss_bytes": 379797504,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 15.23,
+     "run_seconds": 15.3,
      "failed_checks": []
     },
     "adversarial": {
@@ -530,13 +542,13 @@
       "by_origin.restored.passed": 1
      },
      "cost": {
-      "wall_seconds": 0.272,
+      "wall_seconds": 0.275,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 375296000,
+      "peak_rss_bytes": 397373440,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.28,
+     "run_seconds": 0.29,
      "cases": {
       "imagined_text_not_knowledge": true,
       "imagined_reading_moves_no_belief": true,
@@ -583,13 +595,13 @@
       "summary.work_given_up_share.mean": 0.059798
      },
      "cost": {
-      "wall_seconds": 0.62,
+      "wall_seconds": 0.631,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 54063104,
-      "peak_rss_rise_bytes": 163840
+      "peak_rss_bytes": 53542912,
+      "peak_rss_rise_bytes": 327680
      },
-     "run_seconds": 0.63
+     "run_seconds": 0.65
     },
     "info_value": {
      "mechanism": "wave1_all_on",
@@ -607,10 +619,10 @@
       "web_mean.stale_share": 0.5
      },
      "cost": {
-      "wall_seconds": 0.543,
+      "wall_seconds": 0.542,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 62115840,
+      "peak_rss_bytes": 61353984,
       "peak_rss_rise_bytes": 163840
      },
      "run_seconds": 0.55
@@ -624,11 +636,15 @@
       "reference": false
      },
      "headline": {
-      "summary.answered_within_tolerance.mean": 0.964286,
+      "summary.answered_within_tolerance.mean": 0.84375,
+      "summary.answered_within_strict_tolerance.mean": 0.822917,
       "summary.interval_score.mean": 2.378446,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.964286,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.814815,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
       "summary_by_group.learned_graph.interval_score.mean": 3.358086,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -638,13 +654,13 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "cost": {
-      "wall_seconds": 0.186,
+      "wall_seconds": 0.179,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 78954496,
-      "peak_rss_rise_bytes": 28672
+      "peak_rss_bytes": 78422016,
+      "peak_rss_rise_bytes": 122880
      },
-     "run_seconds": 0.2
+     "run_seconds": 0.19
     },
     "self_model": {
      "mechanism": "self_description",
@@ -662,13 +678,13 @@
       "summary.surfaces_used.mean": 1.0
      },
      "cost": {
-      "wall_seconds": 0.148,
+      "wall_seconds": 0.138,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 78954496,
+      "peak_rss_bytes": 78422016,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.17
+     "run_seconds": 0.15
     },
     "selective": {
      "mechanism": "monitoring",
@@ -687,10 +703,10 @@
       "claim_probability.murphy.resolution": 0.25
      },
      "cost": {
-      "wall_seconds": 0.001,
+      "wall_seconds": 0.002,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 355237888,
+      "peak_rss_bytes": 379797504,
       "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.01
@@ -708,13 +724,13 @@
       "all_retained": true
      },
      "cost": {
-      "wall_seconds": 30.39,
+      "wall_seconds": 30.347,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 375296000,
-      "peak_rss_rise_bytes": 20058112
+      "peak_rss_bytes": 397373440,
+      "peak_rss_rise_bytes": 17575936
      },
-     "run_seconds": 30.4,
+     "run_seconds": 30.36,
      "failed_checks": []
     },
     "adversarial": {
@@ -732,13 +748,13 @@
       "by_origin.restored.passed": 1
      },
      "cost": {
-      "wall_seconds": 0.278,
+      "wall_seconds": 0.29,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 375296000,
+      "peak_rss_bytes": 397373440,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.29,
+     "run_seconds": 0.3,
      "cases": {
       "imagined_text_not_knowledge": true,
       "imagined_reading_moves_no_belief": true,
@@ -860,11 +876,15 @@
     "counterfactual/imagination": {
      "lane": "M",
      "full": {
-      "summary.answered_within_tolerance.mean": 0.964286,
+      "summary.answered_within_tolerance.mean": 0.84375,
+      "summary.answered_within_strict_tolerance.mean": 0.822917,
       "summary.interval_score.mean": 2.378446,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.964286,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.814815,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
       "summary_by_group.learned_graph.interval_score.mean": 3.358086,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -874,11 +894,15 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "-scm": {
-      "summary.answered_within_tolerance.mean": 0.392857,
+      "summary.answered_within_tolerance.mean": 0.34375,
+      "summary.answered_within_strict_tolerance.mean": 0.322917,
       "summary.interval_score.mean": 2.518564,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.392857,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.814815,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
       "summary_by_group.learned_graph.interval_score.mean": 3.358086,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -888,11 +912,15 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "-what_if": {
-      "summary.answered_within_tolerance.mean": 0.857143,
+      "summary.answered_within_tolerance.mean": 0.75,
+      "summary.answered_within_strict_tolerance.mean": 0.729167,
       "summary.interval_score.mean": 2.663859,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.857143,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.814815,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
       "summary_by_group.learned_graph.interval_score.mean": 3.358086,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -902,11 +930,15 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "-forecast": {
-      "summary.answered_within_tolerance.mean": 0.761905,
+      "summary.answered_within_tolerance.mean": 0.666667,
+      "summary.answered_within_strict_tolerance.mean": 0.666667,
       "summary.interval_score.mean": 1.919603,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.761905,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.259259,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.259259,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
       "summary_by_group.learned_graph.interval_score.mean": 1.952521,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -916,11 +948,15 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "-action": {
-      "summary.answered_within_tolerance.mean": 0.869048,
+      "summary.answered_within_tolerance.mean": 0.760417,
+      "summary.answered_within_strict_tolerance.mean": 0.75,
       "summary.interval_score.mean": 2.204362,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.869048,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.592593,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.555556,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
       "summary_by_group.learned_graph.interval_score.mean": 3.122557,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -1204,11 +1240,15 @@
     },
     "counterfactual/zero": {
      "headline": {
-      "summary.answered_within_tolerance.mean": 0.119048,
+      "summary.answered_within_tolerance.mean": 0.104167,
+      "summary.answered_within_strict_tolerance.mean": 0.083333,
       "summary.interval_score.mean": 11514595.900866,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.119048,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.020833,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.666667,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.111111,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.037037,
+      "summary_by_group.learned_graph.max_relative_error.max": 2.517794,
       "summary_by_group.learned_graph.interval_score.mean": 30028762.579018,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -1229,7 +1269,7 @@
       "web_mean.noise_share": 0.8125,
       "web_mean.stale_share": 0.0
      },
-     "run_seconds": 0.52
+     "run_seconds": 0.53
     },
     "defaults": {
      "mechanism": "autonomy",
@@ -1240,7 +1280,7 @@
       "web_mean.noise_share": 0.8125,
       "web_mean.stale_share": 0.0
      },
-     "run_seconds": 0.54
+     "run_seconds": 0.55
     },
     "all_on": {
      "mechanism": "autonomy",
@@ -1251,7 +1291,7 @@
       "web_mean.noise_share": 0.4375,
       "web_mean.stale_share": 0.111111
      },
-     "run_seconds": 0.54
+     "run_seconds": 0.55
     }
    }
   },
@@ -1279,7 +1319,7 @@
       "summary.false_alarm_share.mean": 0.008772,
       "summary.work_given_up_share.mean": 0.043759
      },
-     "run_seconds": 0.06
+     "run_seconds": 0.07
     },
     "info_value": {
      "differences": 0,
@@ -1299,59 +1339,63 @@
       "web_mean.noise_share": 0.5375,
       "web_mean.stale_share": 0.083333
      },
-     "run_seconds": 0.47
+     "run_seconds": 0.48
     },
     "counterfactual": {
      "differences": 0,
      "first": [],
      "added_metrics": [
+      "by_query_kind.belief:what-if.answerable_with_front_door",
+      "by_query_kind.belief:what-if.answered_within_strict_tolerance",
       "by_query_kind.belief:what-if.answered_within_tolerance",
+      "by_query_kind.belief:what-if.answered_within_tolerance_without_front_door",
       "by_query_kind.belief:what-if.front_door",
       "by_query_kind.belief:what-if.front_door_declined",
       "by_query_kind.belief:what-if.front_door_within_tolerance",
       "by_query_kind.belief:what-if.interval_score",
       "by_query_kind.belief:what-if.interval_score_answered",
+      "by_query_kind.belief:what-if.max_relative_error",
+      "by_query_kind.belief:what-if.strict_tolerance",
       "by_query_kind.belief:what-if.tolerance",
+      "by_query_kind.graph:action.answerable_with_front_door",
+      "by_query_kind.graph:action.answered_within_strict_tolerance",
       "by_query_kind.graph:action.answered_within_tolerance",
+      "by_query_kind.graph:action.answered_within_tolerance_without_front_door",
       "by_query_kind.graph:action.front_door",
       "by_query_kind.graph:action.front_door_declined",
       "by_query_kind.graph:action.front_door_within_tolerance",
       "by_query_kind.graph:action.interval_score",
       "by_query_kind.graph:action.interval_score_answered",
+      "by_query_kind.graph:action.max_relative_error",
+      "by_query_kind.graph:action.strict_tolerance",
       "by_query_kind.graph:action.tolerance",
+      "by_query_kind.graph:horizon 1.answerable_with_front_door",
+      "by_query_kind.graph:horizon 1.answered_within_strict_tolerance",
       "by_query_kind.graph:horizon 1.answered_within_tolerance",
+      "by_query_kind.graph:horizon 1.answered_within_tolerance_without_front_door",
       "by_query_kind.graph:horizon 1.front_door",
       "by_query_kind.graph:horizon 1.front_door_declined",
       "by_query_kind.graph:horizon 1.front_door_within_tolerance",
       "by_query_kind.graph:horizon 1.interval_score",
       "by_query_kind.graph:horizon 1.interval_score_answered",
+      "by_query_kind.graph:horizon 1.max_relative_error",
+      "by_query_kind.graph:horizon 1.strict_tolerance",
       "by_query_kind.graph:horizon 1.tolerance",
+      "by_query_kind.graph:horizon 2.answerable_with_front_door",
+      "by_query_kind.graph:horizon 2.answered_within_strict_tolerance",
       "by_query_kind.graph:horizon 2.answered_within_tolerance",
-      "by_query_kind.graph:horizon 2.front_door",
-      "by_query_kind.graph:horizon 2.front_door_declined",
-      "by_query_kind.graph:horizon 2.front_door_within_tolerance",
-      "by_query_kind.graph:horizon 2.interval_score",
-      "by_query_kind.graph:horizon 2.interval_score_answered",
-      "by_query_kind.graph:horizon 2.tolerance",
-      "by_query_kind.graph:horizon 5.answered_within_tolerance",
-      "by_query_kind.graph:horizon 5.front_door",
-      "by_query_kind.graph:horizon 5.front_door_declined",
-      "by_query_kind.graph:horizon 5.front_door_within_tolerance",
-      "by_query_kind.graph:horizon 5.interval_score",
-      "by_query_kind.graph:horizon 5.interval_score_answered",
-      "by_query_kind.graph:horizon 5.tolerance",
-      "by_query_kind.scm:confounded.answered_within_tolerance",
-      "by_query_kind.scm:confounded.front_door",
-      "by_query_kind.scm:confounded.front_door_declined",
-      "by_query_kind.scm:confounded.front_door_within_tolerance",
-      "by_query_kind.scm:confounded.interval_score"
+      "by_query_kind.graph:horizon 2.answered_within_tolerance_without_front_door"
      ],
      "headline": {
-      "summary.answered_within_tolerance.mean": 0.071429,
+      "summary.answered_within_tolerance.mean": 0.0625,
+      "summary.answered_within_strict_tolerance.mean": 0.03125,
       "summary.interval_score.mean": 1.923651,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.071429,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.222222,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.111111,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.086469,
       "summary_by_group.learned_graph.interval_score.mean": 1.923651,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -1362,10 +1406,14 @@
      },
      "recorded_headline": {
       "summary.answered_within_tolerance.mean": null,
+      "summary.answered_within_strict_tolerance.mean": null,
       "summary.interval_score.mean": null,
+      "summary.answered_within_tolerance_without_front_door.mean": null,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": null,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": null,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": null,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": null,
+      "summary_by_group.learned_graph.max_relative_error.max": null,
       "summary_by_group.learned_graph.interval_score.mean": null,
       "summary_by_group.front_door.front_door_declined.mean": null,
       "summary_by_group.front_door.front_door_within_tolerance.mean": null,
@@ -1425,7 +1473,7 @@
       "claim_probability.murphy.reliability": 0.122376,
       "claim_probability.murphy.resolution": 0.24
      },
-     "run_seconds": 13.87
+     "run_seconds": 14.12
     },
     "retention": {
      "differences": 0,
@@ -1439,7 +1487,7 @@
       "all_scenarios_pass": true,
       "all_retained": null
      },
-     "run_seconds": 15.2
+     "run_seconds": 15.21
     },
     "adversarial": {
      "differences": 3,
@@ -1544,10 +1592,10 @@
       "summary.work_given_up_share.mean": 0.043759
      },
      "cost": {
-      "wall_seconds": 0.047,
+      "wall_seconds": 0.056,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.06
@@ -1568,13 +1616,13 @@
       "web_mean.stale_share": 0.083333
      },
      "cost": {
-      "wall_seconds": 0.476,
+      "wall_seconds": 0.484,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.49
+     "run_seconds": 0.5
     },
     "counterfactual": {
      "mechanism": "imagination",
@@ -1585,11 +1633,15 @@
       "reference": false
      },
      "headline": {
-      "summary.answered_within_tolerance.mean": 1.0,
+      "summary.answered_within_tolerance.mean": 0.875,
+      "summary.answered_within_strict_tolerance.mean": 0.8125,
       "summary.interval_score.mean": 2.427536,
+      "summary.answered_within_tolerance_without_front_door.mean": 1.0,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.777778,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.091655,
       "summary_by_group.learned_graph.interval_score.mean": 3.340354,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -1599,13 +1651,13 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "cost": {
-      "wall_seconds": 0.197,
+      "wall_seconds": 0.196,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.2
+     "run_seconds": 0.21
     },
     "self_model": {
      "mechanism": "self_description",
@@ -1623,10 +1675,10 @@
       "summary.surfaces_used.mean": 1.0
      },
      "cost": {
-      "wall_seconds": 0.22,
+      "wall_seconds": 0.221,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.23
@@ -1651,7 +1703,7 @@
       "wall_seconds": 0.001,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.01
@@ -1669,13 +1721,13 @@
       "all_retained": true
      },
      "cost": {
-      "wall_seconds": 15.162,
+      "wall_seconds": 15.056,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 15.17,
+     "run_seconds": 15.06,
      "failed_checks": []
     },
     "adversarial": {
@@ -1693,13 +1745,13 @@
       "by_origin.restored.passed": 1
      },
      "cost": {
-      "wall_seconds": 0.273,
+      "wall_seconds": 0.301,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.28,
+     "run_seconds": 0.31,
      "cases": {
       "imagined_text_not_knowledge": true,
       "imagined_reading_moves_no_belief": true,
@@ -1746,13 +1798,13 @@
       "summary.work_given_up_share.mean": 0.106172
      },
      "cost": {
-      "wall_seconds": 0.66,
+      "wall_seconds": 0.646,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.67
+     "run_seconds": 0.66
     },
     "info_value": {
      "mechanism": "wave1_all_on",
@@ -1770,10 +1822,10 @@
       "web_mean.stale_share": 0.25
      },
      "cost": {
-      "wall_seconds": 0.546,
+      "wall_seconds": 0.55,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.56
@@ -1787,11 +1839,15 @@
       "reference": false
      },
      "headline": {
-      "summary.answered_within_tolerance.mean": 1.0,
+      "summary.answered_within_tolerance.mean": 0.875,
+      "summary.answered_within_strict_tolerance.mean": 0.8125,
       "summary.interval_score.mean": 2.427536,
+      "summary.answered_within_tolerance_without_front_door.mean": 1.0,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.777778,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.091655,
       "summary_by_group.learned_graph.interval_score.mean": 3.340354,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -1801,10 +1857,10 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "cost": {
-      "wall_seconds": 0.195,
+      "wall_seconds": 0.2,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.21
@@ -1825,13 +1881,13 @@
       "summary.surfaces_used.mean": 1.0
      },
      "cost": {
-      "wall_seconds": 0.215,
+      "wall_seconds": 0.23,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.23
+     "run_seconds": 0.24
     },
     "selective": {
      "mechanism": "monitoring",
@@ -1850,10 +1906,10 @@
       "claim_probability.murphy.resolution": 0.24
      },
      "cost": {
-      "wall_seconds": 0.002,
+      "wall_seconds": 0.001,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
      "run_seconds": 0.01
@@ -1871,13 +1927,13 @@
       "all_retained": true
      },
      "cost": {
-      "wall_seconds": 30.988,
+      "wall_seconds": 30.489,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 31.0,
+     "run_seconds": 30.5,
      "failed_checks": []
     },
     "adversarial": {
@@ -1895,13 +1951,13 @@
       "by_origin.restored.passed": 1
      },
      "cost": {
-      "wall_seconds": 0.284,
+      "wall_seconds": 0.272,
       "model_calls": 0,
       "refused_connections": 0,
-      "peak_rss_bytes": 422203392,
+      "peak_rss_bytes": 422510592,
       "peak_rss_rise_bytes": 0
      },
-     "run_seconds": 0.29,
+     "run_seconds": 0.28,
      "cases": {
       "imagined_text_not_knowledge": true,
       "imagined_reading_moves_no_belief": true,
@@ -2023,11 +2079,15 @@
     "counterfactual/imagination": {
      "lane": "M",
      "full": {
-      "summary.answered_within_tolerance.mean": 1.0,
+      "summary.answered_within_tolerance.mean": 0.875,
+      "summary.answered_within_strict_tolerance.mean": 0.8125,
       "summary.interval_score.mean": 2.427536,
+      "summary.answered_within_tolerance_without_front_door.mean": 1.0,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.777778,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.091655,
       "summary_by_group.learned_graph.interval_score.mean": 3.340354,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -2037,11 +2097,15 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "-scm": {
-      "summary.answered_within_tolerance.mean": 0.428571,
+      "summary.answered_within_tolerance.mean": 0.375,
+      "summary.answered_within_strict_tolerance.mean": 0.3125,
       "summary.interval_score.mean": 2.505266,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.428571,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.777778,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.091655,
       "summary_by_group.learned_graph.interval_score.mean": 3.340354,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -2051,11 +2115,15 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "-what_if": {
-      "summary.answered_within_tolerance.mean": 0.892857,
+      "summary.answered_within_tolerance.mean": 0.78125,
+      "summary.answered_within_strict_tolerance.mean": 0.71875,
       "summary.interval_score.mean": 2.71884,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.892857,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.777778,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.091655,
       "summary_by_group.learned_graph.interval_score.mean": 3.340354,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -2065,11 +2133,15 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "-forecast": {
-      "summary.answered_within_tolerance.mean": 0.75,
+      "summary.answered_within_tolerance.mean": 0.65625,
+      "summary.answered_within_strict_tolerance.mean": 0.625,
       "summary.interval_score.mean": 1.988339,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.75,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.222222,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.111111,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.086469,
       "summary_by_group.learned_graph.interval_score.mean": 1.923651,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -2079,11 +2151,15 @@
       "summary.declined_confounded_share.mean": 1.0
      },
      "-action": {
-      "summary.answered_within_tolerance.mean": 0.892857,
+      "summary.answered_within_tolerance.mean": 0.78125,
+      "summary.answered_within_strict_tolerance.mean": 0.75,
       "summary.interval_score.mean": 2.26113,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.892857,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.666667,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.555556,
+      "summary_by_group.learned_graph.max_relative_error.max": 0.086469,
       "summary_by_group.learned_graph.interval_score.mean": 3.103404,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -2367,11 +2443,15 @@
     },
     "counterfactual/zero": {
      "headline": {
-      "summary.answered_within_tolerance.mean": 0.25,
+      "summary.answered_within_tolerance.mean": 0.21875,
+      "summary.answered_within_strict_tolerance.mean": 0.125,
       "summary.interval_score.mean": 10829484.983903,
+      "summary.answered_within_tolerance_without_front_door.mean": 0.25,
       "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.083333,
       "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.666667,
       "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.407407,
+      "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.148148,
+      "summary_by_group.learned_graph.max_relative_error.max": 1.914636,
       "summary_by_group.learned_graph.interval_score.mean": 28901104.295503,
       "summary_by_group.front_door.front_door_declined.mean": 4.0,
       "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -2392,7 +2472,7 @@
       "web_mean.noise_share": 0.8,
       "web_mean.stale_share": 0.0
      },
-     "run_seconds": 0.51
+     "run_seconds": 0.5
     },
     "defaults": {
      "mechanism": "autonomy",
@@ -2403,7 +2483,7 @@
       "web_mean.noise_share": 0.8,
       "web_mean.stale_share": 0.0
      },
-     "run_seconds": 0.53
+     "run_seconds": 0.52
     },
     "all_on": {
      "mechanism": "autonomy",
@@ -2414,14 +2494,281 @@
       "web_mean.noise_share": 0.65,
       "web_mean.stale_share": 0.083333
      },
-     "run_seconds": 0.55
+     "run_seconds": 0.52
+    }
+   }
+  }
+ },
+ "scoring_corrected": {
+  "what": "re-review of the Wave 1 fix round, benchmark issues 1 and 2: the counterfactual headline answered_within_tolerance now counts every answerable question, the 4 front-door questions per seed included, and a decline of an answerable question is not within tolerance (before: the front-door questions were left out of the denominator, now answered_within_tolerance_without_front_door, a secondary figure); answered_within_strict_tolerance (scoring.STRICT_TOLERANCE = 0.05, added at the re-review, reported always) and max_relative_error beside it; `summary` pools the groups and is marked 'reported, not a claim' (summary_is). Every metric of every other family is unchanged from the previous version of this file (0 leaf differences outside the counterfactual family, timings excluded).",
+  "before_rereview_counterfactual": {
+   "development": {
+    "baseline_reproduced": {
+     "summary.answered_within_tolerance.mean": 0.083333,
+     "summary.interval_score.mean": 1.952521,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.259259,
+     "summary_by_group.learned_graph.interval_score.mean": 1.952521,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 0.107143,
+     "summary.mean_relative_error.mean": 0.045223,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "defaults": {
+     "summary.answered_within_tolerance.mean": 0.964286,
+     "summary.interval_score.mean": 2.378446,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+     "summary_by_group.learned_graph.interval_score.mean": 3.358086,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 1.0,
+     "summary.mean_relative_error.mean": 0.011076,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "all_on": {
+     "summary.answered_within_tolerance.mean": 0.964286,
+     "summary.interval_score.mean": 2.378446,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+     "summary_by_group.learned_graph.interval_score.mean": 3.358086,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 1.0,
+     "summary.mean_relative_error.mean": 0.011076,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "references/zero": {
+     "summary.answered_within_tolerance.mean": 0.119048,
+     "summary.interval_score.mean": 11514595.900866,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.020833,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.666667,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.111111,
+     "summary_by_group.learned_graph.interval_score.mean": 30028762.579018,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 1.0,
+     "summary.mean_relative_error.mean": 0.560501,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "ablations": {
+     "lane": "M",
+     "full": {
+      "summary.answered_within_tolerance.mean": 0.964286,
+      "summary.interval_score.mean": 2.378446,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+      "summary_by_group.learned_graph.interval_score.mean": 3.358086,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 1.0,
+      "summary.mean_relative_error.mean": 0.011076,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     },
+     "-scm": {
+      "summary.answered_within_tolerance.mean": 0.392857,
+      "summary.interval_score.mean": 2.518564,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+      "summary_by_group.learned_graph.interval_score.mean": 3.358086,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 0.428571,
+      "summary.mean_relative_error.mean": 0.025844,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     },
+     "-what_if": {
+      "summary.answered_within_tolerance.mean": 0.857143,
+      "summary.interval_score.mean": 2.663859,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.888889,
+      "summary_by_group.learned_graph.interval_score.mean": 3.358086,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 0.892857,
+      "summary.mean_relative_error.mean": 0.012405,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     },
+     "-forecast": {
+      "summary.answered_within_tolerance.mean": 0.761905,
+      "summary.interval_score.mean": 1.919603,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.259259,
+      "summary_by_group.learned_graph.interval_score.mean": 1.952521,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 0.785714,
+      "summary.mean_relative_error.mean": 0.006167,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     },
+     "-action": {
+      "summary.answered_within_tolerance.mean": 0.869048,
+      "summary.interval_score.mean": 2.204362,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.592593,
+      "summary_by_group.learned_graph.interval_score.mean": 3.122557,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 0.892857,
+      "summary.mean_relative_error.mean": 0.008016,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     }
+    }
+   },
+   "held_out": {
+    "baseline_reproduced": {
+     "summary.answered_within_tolerance.mean": 0.071429,
+     "summary.interval_score.mean": 1.923651,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.222222,
+     "summary_by_group.learned_graph.interval_score.mean": 1.923651,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 0.071429,
+     "summary.mean_relative_error.mean": 0.045098,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "defaults": {
+     "summary.answered_within_tolerance.mean": 1.0,
+     "summary.interval_score.mean": 2.427536,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.learned_graph.interval_score.mean": 3.340354,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 1.0,
+     "summary.mean_relative_error.mean": 0.010121,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "all_on": {
+     "summary.answered_within_tolerance.mean": 1.0,
+     "summary.interval_score.mean": 2.427536,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.learned_graph.interval_score.mean": 3.340354,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 1.0,
+     "summary.mean_relative_error.mean": 0.010121,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "references/zero": {
+     "summary.answered_within_tolerance.mean": 0.25,
+     "summary.interval_score.mean": 10829484.983903,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.083333,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.666667,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.407407,
+     "summary_by_group.learned_graph.interval_score.mean": 28901104.295503,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 1.0,
+     "summary.mean_relative_error.mean": 0.641265,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "ablations": {
+     "lane": "M",
+     "full": {
+      "summary.answered_within_tolerance.mean": 1.0,
+      "summary.interval_score.mean": 2.427536,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.interval_score.mean": 3.340354,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 1.0,
+      "summary.mean_relative_error.mean": 0.010121,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     },
+     "-scm": {
+      "summary.answered_within_tolerance.mean": 0.428571,
+      "summary.interval_score.mean": 2.505266,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.interval_score.mean": 3.340354,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 0.428571,
+      "summary.mean_relative_error.mean": 0.023615,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     },
+     "-what_if": {
+      "summary.answered_within_tolerance.mean": 0.892857,
+      "summary.interval_score.mean": 2.71884,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.interval_score.mean": 3.340354,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 0.892857,
+      "summary.mean_relative_error.mean": 0.011335,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     },
+     "-forecast": {
+      "summary.answered_within_tolerance.mean": 0.75,
+      "summary.interval_score.mean": 1.988339,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.222222,
+      "summary_by_group.learned_graph.interval_score.mean": 1.923651,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 0.75,
+      "summary.mean_relative_error.mean": 0.004295,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     },
+     "-action": {
+      "summary.answered_within_tolerance.mean": 0.892857,
+      "summary.interval_score.mean": 2.26113,
+      "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.666667,
+      "summary_by_group.learned_graph.interval_score.mean": 3.103404,
+      "summary_by_group.front_door.front_door_declined.mean": 4.0,
+      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+      "summary.answered_share.mean": 0.892857,
+      "summary.mean_relative_error.mean": 0.006159,
+      "summary.interval_coverage.mean": 1.0,
+      "summary.declined_confounded_share.mean": 1.0
+     }
     }
    }
   }
  },
  "wide_seeds": "docs/quality/evidence/genesis_wave1_wide.json (supplementary: 12 further seeds 5001-5012; the split seeds above stay the official numbers)",
  "baseline_rescored": "docs/quality/evidence/genesis_baseline_rescored.json (the unchanged behaviour under the new scoring, beside the recorded genesis_baseline.json, which is untouched)",
- "baseline_rescored_rerun": "scripts/bench_wave1.py rescore on this tree: 0 differences from genesis_baseline_rescored.json",
+ "baseline_rescored_rerun": "scripts/bench_wave1.py rescore on gen-fix1e: differs from the previous genesis_baseline_rescored.json only in the counterfactual answered_within_tolerance (now over every answerable question: 0.083 -> 0.073 development, 0.071 -> 0.063 held-out) and the metrics added at the re-review; the file is regenerated",
  "curiosity_remeasure": {
   "what": "lane B's runs (scratchpad fix1b/bench/run.py: bench_cognition.py --family info_value, mechanisms instinct (timer path) and instinct-idle (idle path), --ablate information_rule (learning progress on) or information_rule,learning_progress (off), split seeds and 5001-5012, both splits) repeated on this tree",
   "result": "identical to genesis_fix1b.json in every web_mean and per-world line (16 runs)",

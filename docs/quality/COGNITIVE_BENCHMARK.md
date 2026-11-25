@@ -156,10 +156,18 @@ product path on a `lab.graph_bench` world: "what follows k steps after this stat
 population (exact from the world's true matrix). Belief what-ifs: the posterior had one reading been the other bit
 (exact, on an in-memory copy).
 
-Scores (after the Wave 1 review, B3; `scoring.answer_scores`):
-- **Headline: `answered_within_tolerance`**, the share of answerable questions answered within 0.1 × the question's
-  scale of the truth (a tenth of the outcome's standard deviation; 0.1 for a probability). A decline is not within
-  tolerance. Stated before any answer was scored with it.
+Scores (after the Wave 1 review, B3, corrected at its re-review; `scoring.answer_scores`):
+- **Headline: `answered_within_tolerance`**, the share of every answerable question, the front-door ones included,
+  answered within 0.1 × the question's scale of the truth (`TOLERANCE`; a tenth of the outcome's standard deviation;
+  0.1 for a probability). A decline, or any non-answer, of an answerable question is not within tolerance, so an
+  answerer that declines one cannot score 1.0. Until the re-review the front-door questions were left out of the
+  denominator; that figure survives only as the secondary `answered_within_tolerance_without_front_door`. The
+  tolerance arrived in the same commit as the first results scored with it (`d5bdf23`), so it cannot be shown to
+  predate them.
+- **Always beside it:** `answered_within_strict_tolerance`, the same share at `STRICT_TOLERANCE` = 0.05 (added at the
+  re-review, after the results at 0.1 were known; reported always, never chosen per result), and
+  `max_relative_error`, the largest |answer − truth| / scale over the answered questions, which says how near the
+  tolerance's edge the answers sit.
 - **`interval_score`**: the interval score (Winkler; Gneiting and Raftery 2007, a proper scoring rule) of the stated
   95 % normal interval, in units of the scale, over the questions answered (`interval_score_answered` says how
   many). A uselessly wide interval pays its width; an overconfident one pays 40 × its miss. It compares answerers
@@ -169,20 +177,23 @@ Scores (after the Wave 1 review, B3; `scoring.answer_scores`):
 - **Three groups, always reported separately** (`summary_by_group`), never pooled in a claim: `handed_equations`
   (exact arithmetic on the equations the question hands over), `belief_what_if` (the truth is the same posterior
   function recomputed on a copy: a plumbing check), `learned_graph` (forecasts and pushes on a graph the individual
-  learned: **the substantive group**). The front-door questions are a fourth line, `front_door`: a decline there is
-  an honest abstention, neither right nor wrong (`front_door_declined`), an answer is scored for tolerance.
+  learned: **the substantive group**). The front-door questions are a fourth line, `front_door`: the declines are
+  counted (`front_door_declined`; the engine does no front-door adjustment) and an answer is scored for tolerance.
+  `summary` pools the groups and is marked so in every result (`summary_is`: "pooled ... reported, not a claim").
 - Kept for comparison with the recorded files under names that cannot be mistaken for the headline:
   `answered_share` (was `coverage`: any answer counts, however wrong), `mean_relative_error`, `interval_coverage`
   (within 2 stated sd) and `declined_confounded_share` (was `abstention_correct`: it is not a correctness score).
 - Reference `zero` (the review's trivial answerer: 0 with sd 1e6): under the old scores it reached coverage,
-  interval coverage and abstention 1.0; on the headline it scores 0.12 (development, one seed) and its interval
-  score is above 10^6 (held-out 0.25 overall and 0.41 on the learned graph: see Cannot show). A test keeps it that
-  way.
+  interval coverage and abstention 1.0; on the headline it scores 0.104 on the development split and 0.219 on
+  held-out (pooled), and its interval score is above 10^6 (0.41 on the held-out learned graph: see Cannot show;
+  `genesis_wave1.json`, `references`). A test keeps it below 0.25 on one development seed.
 
 **Cannot show:** causal validity on real-world questions; these models are small and fully specified. Within
 tolerance is a weak test for long horizons: a forecast 5 steps ahead decays towards 0, so 0 is near the truth there.
-The `zero` reference says how near: on held-out it is within tolerance on 0.407 of the learned-graph questions, more
-than today's one-step answerer (0.222, which answers only horizon 1); read every learned-graph figure against it.
+The `zero` reference says how near: on held-out it is within tolerance on 0.407 of the learned-graph questions (0.148
+within 0.05), more than today's one-step answerer (0.222, which answers only horizon 1); read every learned-graph
+figure against it, and against the largest error (`max_relative_error`), which says how near the tolerance's edge the
+answers sit.
 
 ### 4. Self-description (`selfmodel.py`)
 A staged individual and runtime state with ground truth: running and queued tasks, open owner questions, the autonomy
@@ -281,11 +292,13 @@ Renamed metrics keep their old values (`answered_share` = the old `coverage`, `d
 
 | Family | New metric | Development | Held-out |
 |---|---|---|---|
-| counterfactual | answered within tolerance, all answerable (28 per seed) | 0.083 | 0.071 |
+| counterfactual | answered within tolerance, all answerable (32 per seed, front door included; pooled, not a claim) | 0.073 | 0.063 |
+| | — without the 4 front-door questions per seed (28; the figure before the re-review) | 0.083 | 0.071 |
 | | — equations handed over (16) / belief what-ifs (3) / learned graph (9) | 0 / 0 / 0.259 | 0 / 0 / 0.222 |
-| | front-door questions declined (an honest abstention, 4 per seed) | 4 | 4 |
+| | — learned graph within 0.05 × sd; largest relative error | 0.259; 0.147 | 0.111; 0.086 |
+| | front-door questions declined (4 per seed; each is not within tolerance) | 4 | 4 |
 | | interval score of the answered (95 %, scale units; 3 / 2 answered) | 1.95 | 1.92 |
-| | reference `zero` (0, sd 1e6): within tolerance, all / learned graph; interval score | 0.119 / 0.111; > 10^7 | 0.250 / 0.407; > 10^7 |
+| | reference `zero` (0, sd 1e6): within tolerance, all / learned graph; interval score | 0.104 / 0.111; > 10^7 | 0.219 / 0.407; > 10^7 |
 | self_model | accuracy, original key / current key / without the 2 plumbing probes | 0.80 / 0.80 / 0.923 | 0.80 / 0.80 / 0.923 |
 | selective | claim Brier = reliability, resolution (n) — unchanged | 0.095, 0.250 (8) | 0.122, 0.240 (10) |
 | | reference `verdict_word`: claim Brier | 0.0025 | 0.0025 |
@@ -348,12 +361,17 @@ these numbers measures "intelligence". They are task scores on synthetic worlds 
 
 - **`imagination` (lane M, ADR-052; counterfactual, retention, adversarial).** Components `scm`, `what_if`,
   `forecast`, `action`. *As first recorded:* "coverage 1.0 on both splits (baseline 0.107 / 0.071)" — withdrawn as a
-  headline after the Wave 1 review (B3): coverage counted any answer. *Now:* answered within tolerance 0.964 / 1.000
-  (baseline 0.083 / 0.071; 12 further seeds on held-out 0.985 against 0.065), by group handed equations 1.0 / 1.0,
-  belief what-ifs 1.0 / 1.0 (plumbing), learned graph forecasts and actions 0.889 / 1.000 (baseline 0.259 / 0.222;
-  12 seeds 0.954 against 0.204); the front-door questions are declined (an honest abstention). Ablations, held-out
-  within tolerance: without the causal engine 0.429, without the what-if 0.893, without forecasts 0.750, without
-  pushes 0.893. The splits are unchanged.
+  headline after the Wave 1 review (B3): coverage counted any answer. *Now* (development / held-out, split seeds;
+  `genesis_wave1.json`, `genesis_wave1_wide.json`): over all answerable questions, the 4 front-door ones per seed
+  included and declined (pooled, not a claim), answered within tolerance 0.844 / 0.875 (baseline 0.073 / 0.063;
+  12 further seeds on held-out 0.862 against 0.057); answerable questions other than the 4 front-door ones per seed
+  0.964 / 1.000 (28 of 28 per seed on held-out; baseline 0.083 / 0.071; 12 seeds 0.985 against 0.065). By group:
+  handed equations 1.0 / 1.0, belief what-ifs 1.0 / 1.0 (plumbing), learned graph forecasts and actions 0.889 /
+  1.000 within 0.1 × sd (largest error 0.147 / 0.092; within 0.05: 0.815 / 0.778; the tolerance was set in the same
+  commit as the results; baseline 0.259 / 0.222; "answer 0" 0.111 / 0.407 at 0.1 and 0.037 / 0.148 at 0.05; 12 seeds
+  0.954 against 0.204). The engine does no front-door adjustment: it declines those questions. Ablations, held-out,
+  over all answerable (without the front-door ones in brackets): without the causal engine 0.375 (0.429), without the
+  what-if 0.781 (0.893), without forecasts 0.656 (0.750), without pushes 0.781 (0.893). The splits are unchanged.
 
 ## Wave 1 integration (lanes I, M, K, C, W on one tree)
 
@@ -372,6 +390,7 @@ list changed:
 | adversarial `simulated_reading_moves_no_belief` relabelled `imagined_reading_moves_no_belief` (a what-if never reaches the live belief); ADR-052 §6 | M | the case that failed now passes: 12 → 13 of 13 on the old list |
 | four adversarial cases added (`no_self_confirmation_without_evidence`, `reflection_summary_is_never_evidence`, `recheck_and_reflection_stay_bounded`, `self_reported_success_earns_no_reward`); the "not staged: Excessive internal reflection" row is gone (the third case stages it) | K | 4 new invariant cases pass in every regime (they pass with every Wave 1 setting off); reported as their own line, never as 12 → 17 |
 | counterfactual scoring (Wave 1 review B3): `answered_within_tolerance`, `interval_score`, three groups, the confounded questions relabelled answerable by the front door (their queries now also carry the observational means); `coverage` → `answered_share`, `abstention_correct` → `declined_confounded_share` | fix C | old metrics reproduced under their new names (0 differences); the re-scored baseline is a separate file |
+| counterfactual headline corrected at the re-review of the fix round: `answered_within_tolerance` counts every answerable question, the front-door ones included (a decline is not within tolerance); the old figure is `answered_within_tolerance_without_front_door`; `answered_within_strict_tolerance` (`STRICT_TOLERANCE` 0.05) and `max_relative_error` always beside it; `summary_is` marks the pooled summary "reported, not a claim" | fix E | old metrics still reproduced (0 differences); `genesis_baseline_rescored.json` regenerated: within tolerance 0.083 → 0.073 (development), 0.071 → 0.063 (held-out) |
 | self-description scored under both answer keys; two probes marked as plumbing checks (B4) | fix C | none (fields added) |
 | selective: decision scoring, reference `verdict_word`; no 10-bin ECE in any headline (B5) | fix C | none (fields added) |
 | adversarial: `system_made_content_never_enters_the_journal` restored; results by origin | fix C | the case list grows by one (it passes in every regime) |
@@ -386,10 +405,10 @@ said otherwise.
 |---|---|---|
 | web information gain 0.093 → 0.163 | B1 overstated | superseded by the learning-progress rework (ADR-051 amendment; `genesis_fix1b.json`, re-run on the reconciled tree with identical numbers). Timer path, off → on (reworked): split 0.093 → 0.134; wide **0.139 → 0.126** (paired −0.013, per-seed sd 0.14; 5 seeds better, 1 worse, 6 equal), so learning progress ships **off**. Everything on (the re-check's pick first): split 0.093 → 0.124, wide 0.139 → 0.196 (12 of 12 better), the re-check's row (ADR-055) |
 | noise share 0.537 / 0.800 → 0.375 "both paths" | B2 mixes two paths | paths apart, off → on (reworked): timer path noise share 0.537 → 0.512 on the split (wide 0.412 → 0.394); idle path 0.800 → 0.650 (wide 0.706 → 0.550), idle bits per budget −0.016 → 0.044 on the split (wide 0.094 → 0.144, 11 of 12 better) |
-| counterfactual coverage 0.071 → 1.0 | B3 not supported | answered within tolerance 0.071 → 1.000 (wide 0.065 → 0.985); handed equations 0 → 1.0 (exact arithmetic), belief what-ifs 0 → 1.0 (plumbing), learned graph forecasts and actions 0.222 → 1.000 (wide 0.204 → 0.954; the substantive part); front-door questions declined, an honest abstention |
+| counterfactual coverage 0.071 → 1.0 | B3 not supported | answerable questions other than the 4 front-door ones per seed: 0.071 → 1.000 (28 of 28 per seed; wide 0.065 → 0.985); over all answerable 0.063 → 0.875 (84 of 96, the front-door ones declined; wide 0.057 → 0.862; pooled, not a claim); handed equations 0 → 1.0 (exact arithmetic), belief what-ifs 0 → 1.0 (plumbing), learned graph forecasts and actions 0.222 → 1.000 within 0.1 × sd (largest error 0.092; 0.778 within 0.05; the tolerance was set in the same commit as the results; "answer 0" 0.407 at 0.1, 0.148 at 0.05; wide 0.204 → 0.954; the substantive part) |
 | self-description 0.80 → 1.00 | B4 sound with caveats | 29 of 30 under the original answer key, 30 of 30 under lane W's key (baseline 24 of 30); `authorised_model_tools` and `last_decision` are plumbing checks; the held-out states were printed once during development |
-| claim Brier 0.122 → 0.042, ECE 0.341 → 0.199 | B5 not a calibration gain | on 10 held-out claims, adding the verification state to the posterior lowers Brier 0.122 → 0.022 with the unfitted score now shipped (0.042 with the fitted map, no longer applied; the verdict-word rule 0.0025); no held-out evidence about selective answering; `-independence`, `-guard`, `-critique` untested (0 on every item) |
-| predictive regulation avoids 0.80 of memory breaches | B6 sound within the plant | within the simulated plant with declared constants: 0.80 (wide 0.80 ± 0.07 against 0.06 ± 0.11); the forecaster is fed directly (the wiring is covered by `tests/test_predictive_wiring.py`, not by the benchmark); on held-out the gain is mainly the per-task memory reserve (without the trend 0.80; on development 0.56 → 0.11 without it); background work given up 0.044 → 0.106, false alarms 0.009 → 0.043; not measured on the host |
+| claim Brier 0.122 → 0.042, ECE 0.341 → 0.199 | B5 not a calibration gain | on 10 held-out claims, adding the verification state to the posterior lowers Brier 0.122 → 0.022 with the unfitted score now shipped (0.042 with the fitted map, no longer applied; the verdict-word rule 0.0025); no held-out evidence of a gain from selective answering: turned on it would withhold 12 of 20 right held-out answers (development: 3 of 3 wrong and 12 of 18 right); on development the record shows no answer confidence, so it ranks nothing (AURC of a constant 0.143 against the baseline's 0.080); `-independence`, `-guard`, `-critique` untested (0 on every item) |
+| predictive regulation avoids 0.80 of memory breaches | B6 sound within the plant | within the simulated plant with declared constants: 0.80 (wide 0.80 ± 0.07 against 0.06 ± 0.11); the forecaster is fed directly (the wiring is covered by `tests/test_predictive_wiring.py`, not by the benchmark); on held-out the gain is mainly the per-task memory reserve (without the trend 0.80; on development 0.56 → 0.11 without it): on held-out the trend adds lead time (5.7 → 9.9 ticks) but avoids no further breaches and accounts for all the added false alarms (without it 0.009); background work given up 0.044 → 0.106, false alarms 0.009 → 0.043; not measured on the host |
 | retention holds | Other | holds for the shipped defaults; the first build of information-v1 failed `asks_only_while_partner_ambiguous`; amended after the review (it asks a partner only while its meaning is ambiguous), it passes with everything on (reconciled tree, both splits) |
 | adversarial 12 → 17 of 17 | Other: not an improvement | 13 of the original 13 under the redefinition in ADR-052 §6; 4 new invariant cases pass in every regime (they pass with every Wave 1 setting off); 1 restored case passes in every regime |
 | frozen worlds for re-checking and strategy selection, `knowledge_splits.py` (own digest, pinned in its test) | K | a new file; `splits.py` and `withheld.py` and their pinned digests are unchanged |

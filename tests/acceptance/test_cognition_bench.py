@@ -84,8 +84,13 @@ def test_answer_scores_by_hand():
             {"answerable": True, "truth": 0.5, "value": None, "sd": None, "scale": 1.0, "identified_by": "front_door"},
             {"answerable": True, "truth": 0.5, "value": 0.52, "sd": 0.1, "scale": 1.0, "identified_by": "front_door"}]
     s = scoring.answer_scores(rows)
-    assert s["answerable"] == 4 and s["tolerance"] == 0.1
-    assert s["answered_within_tolerance"] == pytest.approx(1 / 4)              # a decline is not within tolerance
+    assert s["answerable"] == 4 and s["answerable_with_front_door"] == 6 and s["tolerance"] == 0.1
+    # every answerable row counts, the front door's too; a decline is not within tolerance: 1.05 and 0.52 of 6
+    assert s["answered_within_tolerance"] == pytest.approx(2 / 6)
+    assert s["answered_within_tolerance_without_front_door"] == pytest.approx(1 / 4)    # the secondary figure
+    assert s["strict_tolerance"] == 0.05 and s["answered_within_strict_tolerance"] == pytest.approx(2 / 6)  # 0.05 is in
+    assert scoring.answer_scores(rows[:3] + [{**rows[3], "value": 1.06}])["answered_within_strict_tolerance"] == 0.0
+    assert s["max_relative_error"] == pytest.approx(2.0)
     z = 1.959963984540054
     by_hand = [2 * z * 0.5 / 2.0, 2 / 0.05 * 2.0, 2 / 0.05 * 0.05]             # width / scale; 2/alpha x the miss
     assert s["interval_score"] == pytest.approx(sum(by_hand) / 3) and s["interval_score_answered"] == 3
@@ -288,6 +293,42 @@ def test_counterfactual_truths_are_exact():
     assert today["by_query_kind"]["graph:action"]["answered_share"] == 0.0
     assert today["summary_by_group"]["front_door"]["front_door_declined"]["mean"] == 4    # an honest abstention
     assert set(today["summary_by_group"]) == set(counterfactual.GROUPS)
+
+
+def test_declining_an_answerable_question_cannot_score_one_on_the_headline():
+    """Re-review of the Wave 1 fixes, benchmark issue 1: the headline dropped the front-door questions (answerable)
+    from its denominator, so a system that declined all of them scored 1.0. An answerer exact on every question
+    except those, which it declines, must stay below 1.0 on the headline (and on the front-door group); the old
+    figure survives only under its own name."""
+
+    class ExactButNoFrontDoor:
+        def answer(self, q):
+            if "hidden_common_cause" in q:
+                return {"value": None, "sd": None}
+            scm = {"order": q["model"]["order"], "edges": q["model"]["edges"],
+                   "intercept": q["model"]["intercept"], "hidden": []}
+            x, y = q["model"]["cause"], q["model"]["outcome"]
+            if q["rung"] == "interventional":
+                return {"value": counterfactual._linear(scm, q["do"])[y][0], "sd": 0.0}
+            if q["rung"] == "counterfactual":
+                obs = q["observed"]
+                noise = {v: obs[v] - scm["intercept"][v] - sum(c * obs[p] for p, c in scm["edges"][v].items())
+                         for v in scm["order"]}
+                return {"value": counterfactual._solve(scm, noise, q["had"])[y], "sd": 0.0}
+            lin = counterfactual._linear(scm)
+            slope = counterfactual._cov(lin[y], lin[x]) / counterfactual._cov(lin[x], lin[x])
+            return {"value": lin[y][0] + slope * (q["given"][x] - lin[x][0]), "sd": 0.0}
+
+    spec = {"seeds": (31,), "scm": splits.COUNTERFACTUAL["held_out"]["scm"], "graph": (), "belief": ()}
+    out = counterfactual.run(spec, ExactButNoFrontDoor)
+    seed = out["per_seed"][0]
+    assert seed["front_door"] == 4 and seed["front_door_declined"] == 4
+    assert out["summary"]["answered_within_tolerance"]["mean"] < 1.0             # declines are not within tolerance
+    assert seed["answered_within_tolerance"] == pytest.approx(seed["answerable"] / seed["answerable_with_front_door"])
+    assert seed["answered_within_tolerance_without_front_door"] == 1.0           # the old, secondary figure
+    assert out["summary_by_group"]["front_door"]["answered_within_tolerance"]["mean"] == 0.0
+    assert out["summary_by_group"]["handed_equations"]["answered_within_tolerance"]["mean"] == 1.0
+    assert "not a claim" in out["summary_is"]
 
 
 def test_two_nodes_with_a_hidden_cause_stay_unanswerable():

@@ -48,10 +48,10 @@ the default.
 | self-description, Presence states | always (no switch) | `nsf self`, console `GET /api/self`, Pocket and voice `self_status`, MCP `self_status` (scope `agent`); Presence planning, predicting, simulating | read-only; self-description family §4.4 |
 | voice `resume_follow` | **on** | a spoken question's answer is followed across a restart and delivered once to the person's live session | R8 fix; deliver-once tested with two hubs in one process (review A9, A10) |
 | `curiosity_learning_progress` (web) | **off** | curiosity and derived hypotheses down-weight subjects whose looks realised nothing; the reduced gain is compared with admission's minimum | held-out 12 further seeds: timer path bits per budget 0.139 → 0.126 (§4.2); ADR-051 amendment |
-| `predictive_regulation` (instance) | **off** | the background gate also refuses NEW background research while the forecast says memory headroom or a regular voice session is near | simulated plant only: avoids 0.80 of memory breaches, costs background work given up 0.044 → 0.106 and false alarms 0.009 → 0.043 (§4.1) |
+| `predictive_regulation` (instance) | **off** | the background gate also refuses NEW background research while the forecast says memory headroom or a regular voice session is near | simulated plant only: avoids 0.80 of memory breaches, costs background work given up 0.044 → 0.106 and false alarms 0.009 → 0.043 (§4.1); on held-out the forecast's trend adds lead time (5.7 → 9.9 ticks) but avoids no further breaches and accounts for all the added false alarms (without it 0.009) |
 | `executive_rule` (instance) | **`rules-v1`** (`information-v1` opt-in) | `information-v1` replaces rules 5–7 by the subject with the greatest expected gain × P(informative) | rule versions are adopted by the owner, never changed in place; held-out core 0.092 → 0.105 bits per budget (§4.2) |
 | `imagine_scenarios` (instance) | **off** | each open web prediction gets a scenario record in the imagined store | no settled real predictions to measure it on (ADR-052) |
-| `selective_answering` (web) | **off** | a weak answer opens with a plain "not enough evidence" line (the quotes stay) | no wrong held-out answer exists to gain from (§4.5) |
+| `selective_answering` (web) | **off** | a weak answer opens with a plain "not enough evidence" line (the quotes stay) | no held-out evidence of a gain; turned on it would withhold 12 of 20 right held-out answers (development: 3 of 3 wrong and 12 of 18 right) (§4.5) |
 | `verification_escalation` (web) | **off** | one more independent source for the weakest statement, inside the task's budget | no metric change on the offline benchmark, more pages (ADR-054) |
 | `adaptive_depth` (web) | **off** | stop reading once the last pages added nothing | equal quality, 581 → 559 pages, wall time not lower; owner decision (ADR-054) |
 | `idle_recheck` (web) | **off** | the timer re-checks the knowledge most at risk of being stale before the due-order refreshes | retention under change within noise (0.695 against 0.693); information value 0.093 → 0.124 (§4.2); owner decision (ADR-055) |
@@ -77,6 +77,11 @@ family was not run (no `--final`); `splits.py`, `withheld.py` and their pinned d
 `docs/quality/evidence/genesis_wave1.json` (split seeds, all regimes and ablations, the offline research benchmark,
 acceptance, the defaults check), `genesis_wave1_wide.json` (wide seeds), `genesis_baseline_rescored.json` (the
 unchanged system under the review's scoring), `genesis_fix1b.json` (the curiosity re-measure and its development grid).
+The first three were regenerated (`run`, `wide`, `rescore`) after the re-review of the fix round corrected the
+counterfactual scoring (§4.3); outside the counterfactual family every number in them is unchanged (0 leaf
+differences from the previous versions, timings excluded), and the previous counterfactual headlines are kept in
+`genesis_wave1.json` under `scoring_corrected`. `genesis_imagination.json` (lane M's own runs) and the counterfactual
+lines of `genesis_baseline.json` predate the corrected scoring and were not changed.
 
 With every Wave 1 setting off the run reproduces `genesis_baseline.json`: 0 differences in anticipation,
 info_value, counterfactual (its old metrics under their new names), self_model, selective and retention, on both
@@ -106,7 +111,9 @@ only: the gate's holds equal the benchmark's on all 240 ticks of a staged trace)
 Ablations (split): without the footprint (the memory reserved per background task) memory avoided falls to 0.000 on
 both splits; without the trend it stays 0.796 on held-out (the trend's share of what is avoided: 0 on held-out, 0.8
 on development, 0.556 → 0.111); without the voice pattern the all-channel breach ticks are 163.7 / 181.0 against
-159.0 / 160.3. On held-out the gain is mainly the per-task memory reserve, not the forecast's trend.
+159.0 / 160.3. On held-out the gain is mainly the per-task memory reserve, not the forecast's trend: the trend adds
+lead time (5.7 → 9.9 ticks) but avoids no further breaches and accounts for all the added false alarms (without it
+0.009, the baseline's share; with it 0.043). Ablation rows `anticipation/instinct` in `genesis_wave1.json`.
 
 ### 4.2 Information value: curiosity (timer and idle paths apart), information-v1, the re-check
 
@@ -125,32 +132,41 @@ progress stays on only if neither path loses bits per budget there, so it ships 
 (its ablation) each path returns exactly to its baseline. The everything-on row is lane K's re-check: on the split
 seeds the re-check alone (`knowledge_recheck`) gives the same 0.222 / 0.124; the idle re-check ships off (§2).
 
-Core world, realised bits per investigation (higher) / noise share: `information-v1` (opt-in, amended after the
+Core world, realised bits per unit of budget (higher; `realised_bits_per_budget`) / noise share: `information-v1` (opt-in, amended after the
 review) against `rules-v1`: split held-out 0.092 → 0.105 / 0.095 → 0.071, development 0.014 → 0.014; wide held-out
 0.010 → 0.060 (12 of 12) / 0.054 → 0.030, development 0.092 → 0.094. The first build reached 0.118 on held-out but
 asked partners whose meaning was settled (noise share 0.31) and failed a retention check; the amended rule passes it.
 
 ### 4.3 Counterfactual answers: imagination (what-if, forecast, causal engine; on as commands)
 
-Headline: the share of answerable questions answered within a stated tolerance (|answer − truth| ≤ 0.1 × scale).
-The three groups are different things and are reported apart.
+Headline: the share of answerable questions answered within a stated tolerance (|answer − truth| ≤ 0.1 × scale),
+counting every answerable question; a decline is not within tolerance (corrected at the re-review of the fix round:
+before, the 4 front-door questions per seed, which are answerable, were left out of the denominator). The tolerance
+was set in the same commit as the first results scored with it; the share within 0.05 × scale is reported beside it.
+The three groups are different things and are reported apart; the first row pools them. Evidence:
+`genesis_wave1.json` (split seeds) and `genesis_wave1_wide.json` (wide seeds), both regenerated under this scoring.
 
 | Group | Split, development | Split, held-out | Wide, development | Wide, held-out |
 |---|---|---|---|---|
-| all answerable questions | 0.083 → 0.964 | 0.071 → 1.000 | 0.089 → 0.976 | 0.065 → 0.985 (12 of 12) |
+| all answerable questions, 32 per seed (pooled, not a claim) | 0.073 → 0.844 | 0.063 → 0.875 (84 of 96: every front-door question declined) | 0.078 → 0.854 | 0.057 → 0.862 (12 of 12) |
+| answerable questions other than the 4 front-door ones per seed (28) | 0.083 → 0.964 | 0.071 → 1.000 (28 of 28 per seed) | 0.089 → 0.976 | 0.065 → 0.985 |
 | handed equations (exact arithmetic on equations given to the engine) | 0 → 1.0 | 0 → 1.0 | 0 → 1.0 | 0 → 1.0 |
 | belief what-ifs (the same function run on a copy: plumbing) | 0 → 1.0 | 0 → 1.0 | 0 → 1.0 | 0 → 1.0 |
-| **learned-graph forecasts and actions (the substantive part)** | 0.259 → 0.889 | **0.222 → 1.000**; answering 0 scores **0.407** here | 0.278 → 0.926 | 0.204 → 0.954 (12 of 12) |
+| **learned-graph forecasts and actions (the substantive part)**, within 0.1 × sd | 0.259 → 0.889 (largest error 0.147) | **0.222 → 1.000** (largest error 0.092); answering 0 scores **0.407** here | 0.278 → 0.926 (largest error 0.299) | 0.204 → 0.954 (12 of 12; largest error 0.3665) |
+| learned graph, within 0.05 × sd | 0.259 → 0.815 | 0.111 → 0.778; answering 0 scores 0.148 | 0.241 → 0.843 | 0.167 → 0.843 (12 of 12) |
 | front-door questions (identifiable only by front-door adjustment) | 4 declined per seed | 4 declined per seed | declined | declined |
 
-The "answer 0" reference (`zero`: every answer 0 with sd 10^6) scores 0.407 on the held-out learned-graph questions
-and 0.111 on development (0.25 over all held-out questions; mean relative error 0.641 against the mechanism's 0.010):
-the learned-graph figure is to be read against that floor. Interval score (lower is better; it compares an
-expectation with the stated spread and is dominated by width) is not compared across answerers that answer different
-subsets: held-out 1.92 (baseline, 2 questions per seed) and 2.43 (mechanism, all). A front-door decline is neither
-right nor wrong: the engine does no front-door adjustment. Ablations (held-out split): without the causal engine
-0.428, without what-ifs 0.892, without forecasts 0.750 (learned graph 0.222), without actions 0.892 (learned graph
-0.667).
+On held-out the learned-graph 1.000 is within 0.1 × sd with the largest error 0.092, 0.778 within 0.05; the tolerance
+was set in the same commit as the results. The "answer 0" reference (`zero`: every answer 0 with sd 10^6) scores
+0.407 at 0.1 and 0.148 at 0.05 on the held-out learned-graph questions, 0.111 at 0.1 on development (0.219 over all
+held-out answerable questions; mean relative error 0.641 against the mechanism's 0.010): the learned-graph figure is
+to be read against that floor. Interval score (lower is better; it compares an expectation with the stated spread and
+is dominated by width) is not compared across answerers that answer different subsets: held-out 1.92 (baseline, 2
+questions per seed) and 2.43 (mechanism, every question it answers). The engine does no front-door adjustment, so it
+declines those 4 questions per seed; each decline counts as not within tolerance in the pooled row. Ablations
+(held-out split, pooled over all 32 answerable questions; in brackets the figure without the front-door ones): without
+the causal engine 0.375 (0.429), without what-ifs 0.781 (0.893), without forecasts 0.656 (0.750; learned graph 0.222),
+without actions 0.781 (0.893; learned graph 0.667).
 
 ### 4.4 Self-description (one record; no switch)
 
@@ -175,16 +191,18 @@ without the capabilities part 0.80, without uncertainty, decisions or tools 0.93
 | claim probability Brier, with the verification state (unfitted score, shipped) | 0.016 | 0.022 |
 | the fitted claim map (no longer applied; lane C's measurement) | 0.034 | 0.042 |
 | **a two-line rule on the verdict word** (reference) | **0.0025** | **0.0025** |
-| answer ranking, AURC (lower) | 0.080 → 0.143 | 0.000 → 0.000 (no wrong held-out answer) |
+| answer ranking, AURC (lower) | the record shows no answer confidence, so it ranks nothing (AURC of a constant 0.143 against the baseline's 0.080) | 0.000 → 0.000 (no wrong held-out answer) |
 
 On 10 held-out claims, all answered correctly, adding the verification state to the posterior lowers Brier
 0.122 → 0.022; the verdict word alone does better, so this is not shown as a calibration gain, and no 10-bin ECE is
 reported at these sizes. No answer confidence is shown: no fitted map has 30 development items in 3 blocks ("not
-enough development data", also in the self-description's `uncertain.answers`). There is no held-out evidence about
-selective answering (every held-out answer is right). Three terms of the score (source independence, guard refusals,
-self-critique) are 0 on every item of both splits: **untested**, their ablations change nothing. On development the
-record's answer ranking is worse than the baseline's (AURC 0.080 → 0.143); it is display-only and decides nothing at
-the defaults.
+enough development data", also in the self-description's `uncertain.answers`). Selective answering: no held-out
+evidence of a gain (every held-out answer is right); turned on it would withhold 12 of 20 right held-out answers
+(development: 3 of 3 wrong and 12 of 18 right; `genesis_monitoring.json`, `selective_answering.monitoring`). Three
+terms of the score (source independence, guard refusals, self-critique) are 0 on every item of both splits:
+**untested**, their ablations change nothing. On development the record shows no answer confidence, so it ranks
+nothing (AURC of a constant 0.143 against the baseline's 0.080); it is display-only and decides nothing at the
+defaults.
 
 ### 4.6 Retention and adversarial cases
 
@@ -223,8 +241,10 @@ Three independent reviews read the integrated tree: security (0 critical or high
 imagination, knowledge and curiosity (1 high, 4 medium, 12 low, 2 questions), runtime and UI correctness plus
 benchmark integrity (7 medium, 9 low in code; six benchmark claims). Three fix lanes closed them: A (security and
 runtime), B (core), C (benchmark integrity and the confidence record), cherry-picked in that order onto
-`genesis-wave1` (`04ebecd`) and reconciled on `gen-rec1`. Each fix has a test that fails on `3c2a3bc` (checked by
-each lane against an extract of that commit's source).
+`genesis-wave1` (`04ebecd`) and reconciled on `gen-rec1`. Each fix lane reports that its tests fail on `3c2a3bc`
+(checked by each lane against an extract of that commit's source; not re-checked here). The B5 monitoring tests that
+run the offline corpus (`test_cognition_monitoring.py`: 3 of its 6, among them
+`test_the_unfitted_claim_score_beats_the_fitted_map_on_development`) run only with `NSF_BENCH_COGNITION=1`.
 
 ### 6.1 Security review
 
@@ -286,7 +306,7 @@ each lane against an extract of that commit's source).
 | A16 "every factor is settled" with no readings | low | "nothing has been read yet" | `::test_no_readings_is_said_in_plain_words` |
 | B1 web information gain 0.093 → 0.163 overstated | claim | wide seeds; re-measured after the rework (§4) | `tests/acceptance/test_cognition_bench.py::test_wide_seeds_are_disjoint_and_paired` |
 | B2 noise share mixed two paths | claim | the paths reported apart everywhere | `bench_wave1.py` `idle_path`; as B1 |
-| B3 "coverage" counted any answer (a 0 with sd 1e6 scored 1.0) | claim | headline = answered within a stated tolerance; interval score; three groups and the front door apart; reference `zero` | `test_a_trivial_answerer_scores_badly_on_the_headline`, `test_two_nodes_with_a_hidden_cause_stay_unanswerable`, `test_counterfactual_truths_are_exact` |
+| B3 "coverage" counted any answer (a 0 with sd 1e6 scored 1.0) | claim | headline = answered within a stated tolerance; interval score; three groups and the front door apart; reference `zero`. Corrected at the re-review: the headline counts every answerable question (a front-door decline is not within tolerance), the share within 0.05 and the largest error beside it | `test_a_trivial_answerer_scores_badly_on_the_headline`, `test_two_nodes_with_a_hidden_cause_stay_unanswerable`, `test_counterfactual_truths_are_exact`, `test_declining_an_answerable_question_cannot_score_one_on_the_headline` |
 | B4 self-description key changed; two plumbing probes | claim | both keys reported; plumbing probes marked; disclosure | `test_self_description_is_scored_under_both_answer_keys` |
 | B5 not a calibration gain (n = 10; fitted map worse) | claim | Brier, reliability, resolution and n; no 10-bin ECE; the verdict-word rule beside it; untested components named | `tests/acceptance/test_cognition_monitoring.py::test_no_shipped_map_is_applied_on_so_little_development_data`, `::test_the_unfitted_claim_score_beats_the_fitted_map_on_development` |
 | B6 predictive regulation: the gate's wiring not exercised | claim | a staged trace through the real sampler, history file and gate; holds equal the benchmark's on all 240 ticks | `tests/test_predictive_wiring.py` (2) |
@@ -320,7 +340,7 @@ salience and lane B's curiosity rework touch different functions of `autonomy.py
 | **Calibration needs real data:** no fitted map has enough development data, so no answer confidence is shown; the claim probability rests on 8 and 10 benchmark claims, and a two-line rule on the verdict word scores better; three score terms are untested | fix lane C |
 | **No settled real predictions:** scenario records, calibration and strategy selection have nothing real to learn from yet | ADR-052, ADR-055 |
 | **Nothing was run on the open web, a live answer model or real hardware:** every benchmark is synthetic and offline; the anticipation plant's constants are declared; timings are from this host under test load | all lanes |
-| **The front-door gap:** the causal engine declines questions identifiable only by front-door adjustment; it does no front-door adjustment | fix lane C, ADR-052 |
+| **The front-door gap:** the causal engine declines questions identifiable only by front-door adjustment (4 of the 32 answerable questions per seed); it does no front-door adjustment, so the pooled held-out figure is 0.875, not 1.000 | fix lane C, ADR-052 |
 | **The withheld family has not been run** for Wave 1; strategy selection's gate needs that run, and the withheld family has no strategy-selection world | §8; ADR-055 |
 | Re-check marks of an item superseded outside consolidation close at the next consolidation or forget, not at once; a kept retrospection over a large epoch often exceeds 64 sources and is refused (never truncated) | fix lane B |
 | The sandbox's one-step copy was measured on tmpfs only; a disk-backed file is unverified | fix lane B |

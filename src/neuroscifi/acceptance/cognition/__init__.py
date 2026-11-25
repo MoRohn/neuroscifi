@@ -434,10 +434,16 @@ HEADLINES = {
                    ("web_mean.stale_share", True)],
     # the interval score is over the questions each answerer answered: comparable only between answerers that
     # answered the same ones (answered_share beside it), so it is never called better or worse here
-    "counterfactual": [("summary.answered_within_tolerance.mean", True), ("summary.interval_score.mean", None),
+    # `summary` pools the groups (counterfactual.POOLED: reported, not a claim); a decline of an answerable question,
+    # front door included, is not within tolerance. The strict tolerance and the largest error are always beside it.
+    "counterfactual": [("summary.answered_within_tolerance.mean", True),
+                       ("summary.answered_within_strict_tolerance.mean", True), ("summary.interval_score.mean", None),
+                       ("summary.answered_within_tolerance_without_front_door.mean", None),
                        ("summary_by_group.handed_equations.answered_within_tolerance.mean", True),
                        ("summary_by_group.belief_what_if.answered_within_tolerance.mean", True),
                        ("summary_by_group.learned_graph.answered_within_tolerance.mean", True),
+                       ("summary_by_group.learned_graph.answered_within_strict_tolerance.mean", True),
+                       ("summary_by_group.learned_graph.max_relative_error.max", None),
                        ("summary_by_group.learned_graph.interval_score.mean", None),
                        ("summary_by_group.front_door.front_door_declined.mean", None),
                        ("summary_by_group.front_door.front_door_within_tolerance.mean", True),

@@ -194,6 +194,10 @@ def auroc(scores, labels) -> float | None:
 # <= TOLERANCE x the question's scale (a tenth of the outcome's standard deviation; 0.1 for a probability). The
 # interval scored is the central (1 - INTERVAL_ALPHA) interval of a normal with the answer's sd.
 TOLERANCE = 0.1
+# A second, stricter tolerance, reported always beside TOLERANCE and never chosen per result. Added at the re-review of
+# the Wave 1 fix round, after the results at TOLERANCE were known (held-out learned-graph errors reached 0.092 against
+# 0.1). Neither tolerance can be shown to predate the results: TOLERANCE arrived in the same commit as them.
+STRICT_TOLERANCE = 0.05
 INTERVAL_ALPHA = 0.05
 _Z = 1.959963984540054          # the normal's 0.975 quantile
 
@@ -214,13 +218,20 @@ def answer_scores(rows) -> dict:
     """rows: {"answerable": bool, "truth": float | None, "value": float | None, "sd": float | None, "scale": float,
     optional "identified_by": "front_door"}. value None = the system said it cannot answer.
 
-    Headline (Wave 1 review B3): answered_within_tolerance = share of the answerable queries answered with
-    |value - truth| <= TOLERANCE x scale (a decline is not within tolerance), and interval_score = the mean
-    interval_score() over the answered ones (with interval_score_answered, how many).
+    Headline (Wave 1 review B3, corrected at its re-review): answered_within_tolerance = share of EVERY answerable
+    query, the front-door ones included (answerable_with_front_door of them), answered with |value - truth| <=
+    TOLERANCE x scale; a decline, or any non-answer, of an answerable query is not within tolerance, so a system that
+    declines an answerable question cannot reach 1.0. answered_within_strict_tolerance is the same at
+    STRICT_TOLERANCE, reported always; max_relative_error is the largest |value - truth| / scale over every answered
+    query (how close the answers sit to the tolerance's edge). interval_score = the mean interval_score() over the
+    answered ones outside the front door (with interval_score_answered, how many).
 
     Rows marked identified_by="front_door" (a hidden common cause, but a front-door adjustment identifies the effect
-    from what the query gives) are kept apart: a decline there is an honest abstention, neither right nor wrong
-    (front_door_declined); an answer is scored for tolerance (front_door_within_tolerance, of all front-door rows).
+    from what the query gives) are also reported on their own: front_door_declined counts the declines (the engine
+    does no front-door adjustment), front_door_within_tolerance is the share of all front-door rows answered within
+    tolerance. answered_within_tolerance_without_front_door is the figure before the re-review: the share of the
+    answerable queries other than the front-door ones (`answerable` of them) answered within tolerance. It is a
+    secondary figure, never the headline: it leaves out answerable questions the engine cannot answer.
 
     Kept for comparison with the recorded files, under names that cannot be mistaken for the headline:
     answered_share (was "coverage": answerable queries answered at all, however wrong), mean_relative_error
@@ -237,9 +248,17 @@ def answer_scores(rows) -> dict:
     covered = [r["sd"] is not None and abs(r["value"] - r["truth"]) <= 2 * r["sd"] for r in answered]
     scores = [interval_score(r["value"], r["sd"], r["truth"], r["scale"]) for r in answered]
     front_answered = [r for r in front if r["value"] is not None]
-    return {"queries": len(rows), "answerable": len(answerable), "tolerance": TOLERANCE,
-            "answered_within_tolerance": (sum(e <= TOLERANCE + 1e-12 for e in errors) / len(answerable)
-                                          if answerable else None),
+    every = answerable + [r for r in front if r["answerable"]]            # every answerable query, front door too
+    every_errors = [rel(r) for r in every if r["value"] is not None]      # a decline has no error and is not within
+    within = lambda tol: (sum(e <= tol + 1e-12 for e in every_errors) / len(every)  # noqa: E731
+                          if every else None)
+    return {"queries": len(rows), "answerable": len(answerable), "answerable_with_front_door": len(every),
+            "tolerance": TOLERANCE, "strict_tolerance": STRICT_TOLERANCE,
+            "answered_within_tolerance": within(TOLERANCE),
+            "answered_within_strict_tolerance": within(STRICT_TOLERANCE),
+            "max_relative_error": max(every_errors) if every_errors else None,
+            "answered_within_tolerance_without_front_door": (sum(e <= TOLERANCE + 1e-12 for e in errors)
+                                                             / len(answerable) if answerable else None),
             "interval_score": statistics.fmean(scores) if scores else None,
             "interval_score_answered": len(scores),
             "answered_share": len(answered) / len(answerable) if answerable else None,

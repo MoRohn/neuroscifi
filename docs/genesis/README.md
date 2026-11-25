@@ -69,7 +69,7 @@ ablations, regression verification, updated architecture, the final evaluation) 
 | `docs/quality/evidence/genesis_final_uses.jsonl` | the ledger of `--final` runs of the withheld family (one entry: the baseline's) |
 | `docs/quality/evidence/genesis_provenance.json` | the imagined store: safeguards broken one at a time (42 of 42 caught), costs, both review rounds |
 | `docs/quality/evidence/genesis_safety.json` | quiet and admission: honour times, costs, the admission benchmark, safeguards (14 of 14 caught), both review rounds |
-| `docs/quality/evidence/genesis_wave1.json` | Wave 1 on the reconciled tree: every setting off (= the recorded baseline), as shipped, everything on, an ablation per component, both splits; the offline research benchmark and acceptance against Wave 0 |
+| `docs/quality/evidence/genesis_wave1.json` | Wave 1 on the reconciled tree: every setting off (= the recorded baseline), as shipped, everything on, an ablation per component, both splits; the offline research benchmark and acceptance against Wave 0; regenerated after the re-review of the fix round corrected the counterfactual headline (every answerable question counted) |
 | `docs/quality/evidence/genesis_wave1_wide.json` | the same comparisons on 12 further seeds (5001–5012), supplementary |
 | `docs/quality/evidence/genesis_{instinct,imagination,workspace,monitoring,knowledge}.json`, `genesis_fix1a.json`, `genesis_fix1b.json`, `genesis_baseline_rescored.json` | the lanes' own measurements, the fix lanes' re-measures, the baseline under the review's scoring |
 

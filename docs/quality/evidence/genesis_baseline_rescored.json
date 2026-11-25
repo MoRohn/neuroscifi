@@ -1,7 +1,7 @@
 {
  "benchmark": "cognition baseline, re-scored (Wave 1 review)",
  "environment": {
-  "git_commit": "9814c35b66b75db550c32a4940a9c26730d8547b",
+  "git_commit": "1c6cf1e30584de95b7d7ce265224f6379632ac0a",
   "git_dirty": true,
   "python": "3.12.16",
   "numpy": "2.3.5",
@@ -18,10 +18,14 @@
    "counterfactual": {
     "recorded_old_scoring": {
      "summary.answered_within_tolerance.mean": null,
+     "summary.answered_within_strict_tolerance.mean": null,
      "summary.interval_score.mean": null,
+     "summary.answered_within_tolerance_without_front_door.mean": null,
      "summary_by_group.handed_equations.answered_within_tolerance.mean": null,
      "summary_by_group.belief_what_if.answered_within_tolerance.mean": null,
      "summary_by_group.learned_graph.answered_within_tolerance.mean": null,
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": null,
+     "summary_by_group.learned_graph.max_relative_error.max": null,
      "summary_by_group.learned_graph.interval_score.mean": null,
      "summary_by_group.front_door.front_door_declined.mean": null,
      "summary_by_group.front_door.front_door_within_tolerance.mean": null,
@@ -31,11 +35,15 @@
      "summary.declined_confounded_share.mean": 1.0
     },
     "rescored": {
-     "summary.answered_within_tolerance.mean": 0.083333,
+     "summary.answered_within_tolerance.mean": 0.072917,
+     "summary.answered_within_strict_tolerance.mean": 0.072917,
      "summary.interval_score.mean": 1.952521,
+     "summary.answered_within_tolerance_without_front_door.mean": 0.083333,
      "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.259259,
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.259259,
+     "summary_by_group.learned_graph.max_relative_error.max": 0.147082,
      "summary_by_group.learned_graph.interval_score.mean": 1.952521,
      "summary_by_group.front_door.front_door_declined.mean": 4.0,
      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -51,9 +59,31 @@
       33
      ],
      "tolerance": 0.1,
+     "strict_tolerance": 0.05,
      "interval": "central 95 % normal interval",
      "summary": {
       "answered_within_tolerance": {
+       "mean": 0.072917,
+       "sd": 0.018042,
+       "min": 0.0625,
+       "max": 0.09375,
+       "n": 3
+      },
+      "answered_within_strict_tolerance": {
+       "mean": 0.072917,
+       "sd": 0.018042,
+       "min": 0.0625,
+       "max": 0.09375,
+       "n": 3
+      },
+      "max_relative_error": {
+       "mean": 0.099508,
+       "sd": 0.062851,
+       "min": 0.028258,
+       "max": 0.147082,
+       "n": 3
+      },
+      "answered_within_tolerance_without_front_door": {
        "mean": 0.083333,
        "sd": 0.02062,
        "min": 0.071429,
@@ -96,6 +126,7 @@
        "n": 3
       }
      },
+     "summary_is": "pooled over every group, the front-door questions included: reported, not a claim (the groups measure different things and are never pooled in a claim; see summary_by_group)",
      "summary_by_group": {
       "handed_equations": {
        "answered_within_tolerance": {
@@ -104,6 +135,20 @@
         "min": 0.0,
         "max": 0.0,
         "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
        },
        "interval_score": {
         "mean": null,
@@ -150,6 +195,20 @@
         "max": 0.0,
         "n": 3
        },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
        "interval_score": {
         "mean": null,
         "sd": null,
@@ -195,6 +254,20 @@
         "max": 0.333333,
         "n": 3
        },
+       "answered_within_strict_tolerance": {
+        "mean": 0.259259,
+        "sd": 0.06415,
+        "min": 0.222222,
+        "max": 0.333333,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.099508,
+        "sd": 0.062851,
+        "min": 0.028258,
+        "max": 0.147082,
+        "n": 3
+       },
        "interval_score": {
         "mean": 1.952521,
         "sd": 0.038514,
@@ -234,6 +307,20 @@
       },
       "front_door": {
        "answered_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
         "mean": null,
         "sd": null,
         "min": null,
@@ -282,8 +369,13 @@
       {
        "queries": 32,
        "answerable": 28,
+       "answerable_with_front_door": 32,
        "tolerance": 0.1,
-       "answered_within_tolerance": 0.107143,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.09375,
+       "answered_within_strict_tolerance": 0.09375,
+       "max_relative_error": 0.028258,
+       "answered_within_tolerance_without_front_door": 0.107143,
        "interval_score": 1.90805,
        "interval_score_answered": 3,
        "answered_share": 0.107143,
@@ -298,8 +390,13 @@
       {
        "queries": 32,
        "answerable": 28,
+       "answerable_with_front_door": 32,
        "tolerance": 0.1,
-       "answered_within_tolerance": 0.071429,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0625,
+       "answered_within_strict_tolerance": 0.0625,
+       "max_relative_error": 0.123184,
+       "answered_within_tolerance_without_front_door": 0.071429,
        "interval_score": 1.974995,
        "interval_score_answered": 3,
        "answered_share": 0.107143,
@@ -314,8 +411,13 @@
       {
        "queries": 32,
        "answerable": 28,
+       "answerable_with_front_door": 32,
        "tolerance": 0.1,
-       "answered_within_tolerance": 0.071429,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0625,
+       "answered_within_strict_tolerance": 0.0625,
+       "max_relative_error": 0.147082,
+       "answered_within_tolerance_without_front_door": 0.071429,
        "interval_score": 1.974518,
        "interval_score_answered": 3,
        "answered_share": 0.107143,
@@ -332,8 +434,13 @@
       "belief:what-if": {
        "queries": 9,
        "answerable": 9,
+       "answerable_with_front_door": 9,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -348,8 +455,13 @@
       "graph:action": {
        "queries": 9,
        "answerable": 9,
+       "answerable_with_front_door": 9,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -364,8 +476,13 @@
       "graph:horizon 1": {
        "queries": 9,
        "answerable": 9,
+       "answerable_with_front_door": 9,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.777778,
+       "answered_within_strict_tolerance": 0.777778,
+       "max_relative_error": 0.147082,
+       "answered_within_tolerance_without_front_door": 0.777778,
        "interval_score": 1.952521,
        "interval_score_answered": 9,
        "answered_share": 1.0,
@@ -380,8 +497,13 @@
       "graph:horizon 3": {
        "queries": 9,
        "answerable": 9,
+       "answerable_with_front_door": 9,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -396,8 +518,13 @@
       "scm:confounded": {
        "queries": 12,
        "answerable": 0,
+       "answerable_with_front_door": 12,
        "tolerance": 0.1,
-       "answered_within_tolerance": null,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": null,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": null,
@@ -412,8 +539,13 @@
       "scm:counterfactual": {
        "queries": 12,
        "answerable": 12,
+       "answerable_with_front_door": 12,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -428,8 +560,13 @@
       "scm:interventional": {
        "queries": 18,
        "answerable": 18,
+       "answerable_with_front_door": 18,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -444,8 +581,13 @@
       "scm:observational": {
        "queries": 18,
        "answerable": 18,
+       "answerable_with_front_door": 18,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -1111,10 +1253,14 @@
    "counterfactual": {
     "recorded_old_scoring": {
      "summary.answered_within_tolerance.mean": null,
+     "summary.answered_within_strict_tolerance.mean": null,
      "summary.interval_score.mean": null,
+     "summary.answered_within_tolerance_without_front_door.mean": null,
      "summary_by_group.handed_equations.answered_within_tolerance.mean": null,
      "summary_by_group.belief_what_if.answered_within_tolerance.mean": null,
      "summary_by_group.learned_graph.answered_within_tolerance.mean": null,
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": null,
+     "summary_by_group.learned_graph.max_relative_error.max": null,
      "summary_by_group.learned_graph.interval_score.mean": null,
      "summary_by_group.front_door.front_door_declined.mean": null,
      "summary_by_group.front_door.front_door_within_tolerance.mean": null,
@@ -1124,11 +1270,15 @@
      "summary.declined_confounded_share.mean": 1.0
     },
     "rescored": {
-     "summary.answered_within_tolerance.mean": 0.071429,
+     "summary.answered_within_tolerance.mean": 0.0625,
+     "summary.answered_within_strict_tolerance.mean": 0.03125,
      "summary.interval_score.mean": 1.923651,
+     "summary.answered_within_tolerance_without_front_door.mean": 0.071429,
      "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
      "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
      "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.222222,
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.111111,
+     "summary_by_group.learned_graph.max_relative_error.max": 0.086469,
      "summary_by_group.learned_graph.interval_score.mean": 1.923651,
      "summary_by_group.front_door.front_door_declined.mean": 4.0,
      "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
@@ -1144,9 +1294,31 @@
       1033
      ],
      "tolerance": 0.1,
+     "strict_tolerance": 0.05,
      "interval": "central 95 % normal interval",
      "summary": {
       "answered_within_tolerance": {
+       "mean": 0.0625,
+       "sd": 0.0,
+       "min": 0.0625,
+       "max": 0.0625,
+       "n": 3
+      },
+      "answered_within_strict_tolerance": {
+       "mean": 0.03125,
+       "sd": 0.03125,
+       "min": 0.0,
+       "max": 0.0625,
+       "n": 3
+      },
+      "max_relative_error": {
+       "mean": 0.053289,
+       "sd": 0.032754,
+       "min": 0.020979,
+       "max": 0.086469,
+       "n": 3
+      },
+      "answered_within_tolerance_without_front_door": {
        "mean": 0.071429,
        "sd": 0.0,
        "min": 0.071429,
@@ -1189,6 +1361,7 @@
        "n": 3
       }
      },
+     "summary_is": "pooled over every group, the front-door questions included: reported, not a claim (the groups measure different things and are never pooled in a claim; see summary_by_group)",
      "summary_by_group": {
       "handed_equations": {
        "answered_within_tolerance": {
@@ -1197,6 +1370,20 @@
         "min": 0.0,
         "max": 0.0,
         "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
        },
        "interval_score": {
         "mean": null,
@@ -1243,6 +1430,20 @@
         "max": 0.0,
         "n": 3
        },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
        "interval_score": {
         "mean": null,
         "sd": null,
@@ -1288,6 +1489,20 @@
         "max": 0.222222,
         "n": 3
        },
+       "answered_within_strict_tolerance": {
+        "mean": 0.111111,
+        "sd": 0.111111,
+        "min": 0.0,
+        "max": 0.222222,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.053289,
+        "sd": 0.032754,
+        "min": 0.020979,
+        "max": 0.086469,
+        "n": 3
+       },
        "interval_score": {
         "mean": 1.923651,
         "sd": 0.045239,
@@ -1327,6 +1542,20 @@
       },
       "front_door": {
        "answered_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
         "mean": null,
         "sd": null,
         "min": null,
@@ -1375,8 +1604,13 @@
       {
        "queries": 32,
        "answerable": 28,
+       "answerable_with_front_door": 32,
        "tolerance": 0.1,
-       "answered_within_tolerance": 0.071429,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0625,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": 0.086469,
+       "answered_within_tolerance_without_front_door": 0.071429,
        "interval_score": 1.892412,
        "interval_score_answered": 2,
        "answered_share": 0.071429,
@@ -1391,8 +1625,13 @@
       {
        "queries": 32,
        "answerable": 28,
+       "answerable_with_front_door": 32,
        "tolerance": 0.1,
-       "answered_within_tolerance": 0.071429,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0625,
+       "answered_within_strict_tolerance": 0.0625,
+       "max_relative_error": 0.020979,
+       "answered_within_tolerance_without_front_door": 0.071429,
        "interval_score": 1.903013,
        "interval_score_answered": 2,
        "answered_share": 0.071429,
@@ -1407,8 +1646,13 @@
       {
        "queries": 32,
        "answerable": 28,
+       "answerable_with_front_door": 32,
        "tolerance": 0.1,
-       "answered_within_tolerance": 0.071429,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0625,
+       "answered_within_strict_tolerance": 0.03125,
+       "max_relative_error": 0.052417,
+       "answered_within_tolerance_without_front_door": 0.071429,
        "interval_score": 1.975529,
        "interval_score_answered": 2,
        "answered_share": 0.071429,
@@ -1425,8 +1669,13 @@
       "belief:what-if": {
        "queries": 9,
        "answerable": 9,
+       "answerable_with_front_door": 9,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -1441,8 +1690,13 @@
       "graph:action": {
        "queries": 9,
        "answerable": 9,
+       "answerable_with_front_door": 9,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -1457,8 +1711,13 @@
       "graph:horizon 1": {
        "queries": 6,
        "answerable": 6,
+       "answerable_with_front_door": 6,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 0.5,
+       "max_relative_error": 0.086469,
+       "answered_within_tolerance_without_front_door": 1.0,
        "interval_score": 1.923651,
        "interval_score_answered": 6,
        "answered_share": 1.0,
@@ -1473,8 +1732,13 @@
       "graph:horizon 2": {
        "queries": 6,
        "answerable": 6,
+       "answerable_with_front_door": 6,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -1489,8 +1753,13 @@
       "graph:horizon 5": {
        "queries": 6,
        "answerable": 6,
+       "answerable_with_front_door": 6,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -1505,8 +1774,13 @@
       "scm:confounded": {
        "queries": 12,
        "answerable": 0,
+       "answerable_with_front_door": 12,
        "tolerance": 0.1,
-       "answered_within_tolerance": null,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": null,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": null,
@@ -1521,8 +1795,13 @@
       "scm:counterfactual": {
        "queries": 12,
        "answerable": 12,
+       "answerable_with_front_door": 12,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -1537,8 +1816,13 @@
       "scm:interventional": {
        "queries": 18,
        "answerable": 18,
+       "answerable_with_front_door": 18,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,
@@ -1553,8 +1837,13 @@
       "scm:observational": {
        "queries": 18,
        "answerable": 18,
+       "answerable_with_front_door": 18,
        "tolerance": 0.1,
+       "strict_tolerance": 0.05,
        "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
        "interval_score": null,
        "interval_score_answered": 0,
        "answered_share": 0.0,

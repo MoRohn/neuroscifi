@@ -12,8 +12,9 @@ scm     Linear Gaussian structural causal models (chain, fork, collider, mediato
         through an observed mediator (X0 -> X1 -> ... -> Y, the hidden cause touching only X0 and Y), so a
         FRONT-DOOR adjustment does (Pearl 1995): these queries carry the exact interventional truth and are marked
         identified_by="front_door". Until the Wave 1 review (B3) they were scored as unanswerable and a decline
-        counted as correct; now a decline is an honest abstention, neither right nor wrong, reported on its own line
-        (scoring.answer_scores front_door_*). With only two nodes there is no mediator and the query stays
+        counted as correct; now they are answerable questions: a decline is not within tolerance in the headline
+        (since the review's re-review) and is also counted on its own line (scoring.answer_scores front_door_*).
+        With only two nodes there is no mediator and the query stays
         unanswerable. Scale for the relative error: the standard deviation of Y.
 graph   The individual learns and promotes a graph on a lab.graph_bench world through the product path
         (datasets.simulate -> graphs.learn -> graphs.promote). Queries: population j's next target k steps after a
@@ -28,13 +29,17 @@ belief  What-if on the belief model: "what would P(partner bit = 1) be had readi
 The answerer interface: `answer(query) -> {"value": float | None, "sd": float | None}`; value None = "cannot answer".
 A query carries no truth; graph and belief queries carry the individual's open database (read-only use expected).
 
-Scores (scoring.answer_scores; Wave 1 review B3): the headline is answered_within_tolerance, the share of answerable
-questions answered within scoring.TOLERANCE x scale of the truth, beside the interval score of the stated 95 %
-interval (a uselessly wide interval pays its width). Every score is also reported for three groups that measure
-different things and are never pooled in a claim (GROUPS): exact arithmetic on equations handed to the answerer
-(handed_equations), belief what-ifs whose truth is the same posterior recomputed on a copy (belief_what_if), and
-forecasts and actions on a graph the individual learned (learned_graph, the substantive group); the front-door
-questions are a fourth line (front_door). The old "coverage" (any answer counts) is kept as answered_share.
+Scores (scoring.answer_scores; Wave 1 review B3, corrected at its re-review): the headline is
+answered_within_tolerance, the share of EVERY answerable question (the front-door ones included; a decline is not
+within tolerance) answered within scoring.TOLERANCE x scale of the truth, always beside the same share at
+scoring.STRICT_TOLERANCE and the largest relative error, and the interval score of the stated 95 % interval (a
+uselessly wide interval pays its width). Every score is reported for three groups that measure different things and
+are never pooled in a claim (GROUPS): exact arithmetic on equations handed to the answerer (handed_equations), belief
+what-ifs whose truth is the same posterior recomputed on a copy (belief_what_if), and forecasts and actions on a
+graph the individual learned (learned_graph, the substantive group); the front-door questions are a fourth line
+(front_door). `summary` pools the groups and is marked so in every result (`summary_is`: reported, not a claim). The
+old "coverage" (any answer counts) is kept as answered_share; the figure without the front-door questions as
+answered_within_tolerance_without_front_door (secondary, never the headline).
 The baseline is what the system can answer today: the active graph's one-step prediction (states @ A.T, as
 instance/recall.py:42-51 computes it), with sd = sqrt(validation MSE) from the promotion record; nothing else
 (no multi-step rollout, no action input in the graph, no SCM engine, no belief sandbox: audit-core Q5). Coverage is
@@ -249,10 +254,14 @@ def belief_queries(spec: dict, seed: int, db) -> list[dict]:
 # ---- running a split -------------------------------------------------------------------------------------------------
 
 GROUPS = ("handed_equations", "belief_what_if", "learned_graph", "front_door")
-SUMMARY = ("answered_within_tolerance", "interval_score", "answered_share", "mean_relative_error",
+SUMMARY = ("answered_within_tolerance", "answered_within_strict_tolerance", "max_relative_error",
+           "answered_within_tolerance_without_front_door", "interval_score", "answered_share", "mean_relative_error",
            "interval_coverage", "declined_confounded_share")
-GROUP_SUMMARY = ("answered_within_tolerance", "interval_score", "answered_share", "mean_relative_error",
-                 "front_door_declined", "front_door_within_tolerance")
+GROUP_SUMMARY = ("answered_within_tolerance", "answered_within_strict_tolerance", "max_relative_error",
+                 "interval_score", "answered_share", "mean_relative_error", "front_door_declined",
+                 "front_door_within_tolerance")
+POOLED = ("pooled over every group, the front-door questions included: reported, not a claim (the groups measure "
+          "different things and are never pooled in a claim; see summary_by_group)")
 
 
 def group(row) -> str:
@@ -292,8 +301,9 @@ def evaluate(split_spec: dict, make_answerer, *, seeds=None) -> dict:
     by_group = {g: {k: scoring.spread([s[g][k] for s in per_seed_group]) for k in GROUP_SUMMARY} for g in GROUPS}
     for g in GROUPS:
         by_group[g]["questions_per_seed"] = per_seed_group[0][g]["queries"] if per_seed_group else 0
-    return {"seeds": list(seeds), "tolerance": scoring.TOLERANCE, "interval": "central 95 % normal interval",
-            "summary": summary, "summary_by_group": by_group, "per_seed": per_seed,
+    return {"seeds": list(seeds), "tolerance": scoring.TOLERANCE, "strict_tolerance": scoring.STRICT_TOLERANCE,
+            "interval": "central 95 % normal interval", "summary": summary, "summary_is": POOLED,
+            "summary_by_group": by_group, "per_seed": per_seed,
             "by_query_kind": {k: scoring.answer_scores(v) for k, v in sorted(by_kind.items())}}
 
 

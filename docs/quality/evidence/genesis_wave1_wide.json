@@ -1,7 +1,7 @@
 {
  "benchmark": "cognition, Wave 1: supplementary wide-seeds run",
  "environment": {
-  "git_commit": "04ebecd0370d6c9ee531560662ed67abbde1982b",
+  "git_commit": "1c6cf1e30584de95b7d7ce265224f6379632ac0a",
   "git_dirty": true,
   "python": "3.12.16",
   "numpy": "2.3.5",
@@ -26,7 +26,7 @@
   5011,
   5012
  ],
- "note": "supplementary: reported beside the frozen split's own 3 seeds, which stay the official numbers; the worlds are the split's, only the seeds differ; the withheld family is never run; regenerated on the reconciled tree: learning progress is off as shipped, so the 'as shipped' rows equal 'all off'; lane I's rows switch learning progress on (reworked)",
+ "note": "supplementary: reported beside the frozen split's own 3 seeds, which stay the official numbers; the worlds are the split's, only the seeds differ; the withheld family is never run; regenerated on the reconciled tree: learning progress is off as shipped, so the 'as shipped' rows equal 'all off'; lane I's rows switch learning progress on (reworked); regenerated on gen-fix1e under the re-review's counterfactual scoring (every answerable question counted, a decline not within tolerance; strict tolerance 0.05 and the largest relative error beside it): only counterfactual metrics differ",
  "splits": {
   "development": {
    "anticipation: predictive regulation (lane I) vs the reactive gate": {
@@ -512,7 +512,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 2.97
+    "run_seconds": 3.0
    },
    "info_value, timer path: as shipped (learning progress off) vs every Wave 1 setting off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -921,7 +921,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.16
+    "run_seconds": 4.15
    },
    "info_value, idle path: as shipped vs every Wave 1 setting off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -1739,7 +1739,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.38
+    "run_seconds": 4.4
    },
    "info_value, idle path: lane I instinct-idle (learning progress on, reworked) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -2148,7 +2148,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.58
+    "run_seconds": 4.57
    },
    "info_value: every Wave 1 chooser on (re-check first) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -2557,7 +2557,7 @@
      "mechanism": "all_on",
      "reference": "all_off"
     },
-    "run_seconds": 4.74
+    "run_seconds": 4.41
    },
    "counterfactual: imagination (lane M) vs today's answerer": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -2583,74 +2583,150 @@
     "metrics": {
      "summary.answered_within_tolerance.mean": {
       "mechanism": {
-       "mean": 0.97619,
-       "sd": 0.027804,
-       "min": 0.928571,
-       "max": 1.0,
+       "mean": 0.854167,
+       "sd": 0.024328,
+       "min": 0.8125,
+       "max": 0.875,
        "n": 12
       },
       "reference": {
-       "mean": 0.089286,
-       "sd": 0.024079,
-       "min": 0.035714,
-       "max": 0.107143,
+       "mean": 0.078125,
+       "sd": 0.021069,
+       "min": 0.03125,
+       "max": 0.09375,
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.886905,
-       "sd": 0.013902,
-       "min": 0.857142,
-       "max": 0.892857,
+       "mean": 0.776042,
+       "sd": 0.012164,
+       "min": 0.75,
+       "max": 0.78125,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.964286,
-        "reference": 0.071429
+        "mechanism": 0.84375,
+        "reference": 0.0625
        },
        "5002": {
-        "mechanism": 1.0,
-        "reference": 0.107143
+        "mechanism": 0.875,
+        "reference": 0.09375
        },
        "5003": {
-        "mechanism": 1.0,
-        "reference": 0.107143
+        "mechanism": 0.875,
+        "reference": 0.09375
        },
        "5004": {
-        "mechanism": 0.928571,
-        "reference": 0.035714
+        "mechanism": 0.8125,
+        "reference": 0.03125
        },
        "5005": {
-        "mechanism": 0.964286,
-        "reference": 0.071429
+        "mechanism": 0.84375,
+        "reference": 0.0625
        },
        "5006": {
-        "mechanism": 1.0,
-        "reference": 0.107143
+        "mechanism": 0.875,
+        "reference": 0.09375
        },
        "5007": {
-        "mechanism": 1.0,
-        "reference": 0.107143
+        "mechanism": 0.875,
+        "reference": 0.09375
        },
        "5008": {
-        "mechanism": 0.964286,
-        "reference": 0.071429
+        "mechanism": 0.84375,
+        "reference": 0.0625
        },
        "5009": {
-        "mechanism": 1.0,
-        "reference": 0.107143
+        "mechanism": 0.875,
+        "reference": 0.09375
        },
        "5010": {
-        "mechanism": 1.0,
-        "reference": 0.107143
+        "mechanism": 0.875,
+        "reference": 0.09375
        },
        "5011": {
-        "mechanism": 0.964286,
-        "reference": 0.107143
+        "mechanism": 0.84375,
+        "reference": 0.09375
        },
        "5012": {
-        "mechanism": 0.928571,
-        "reference": 0.071429
+        "mechanism": 0.8125,
+        "reference": 0.0625
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.answered_within_strict_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.830729,
+       "sd": 0.033863,
+       "min": 0.78125,
+       "max": 0.875,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.067708,
+       "sd": 0.022429,
+       "min": 0.03125,
+       "max": 0.09375,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.763021,
+       "sd": 0.020892,
+       "min": 0.71875,
+       "max": 0.78125,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5002": {
+        "mechanism": 0.84375,
+        "reference": 0.09375
+       },
+       "5003": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5004": {
+        "mechanism": 0.78125,
+        "reference": 0.03125
+       },
+       "5005": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5006": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5007": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5008": {
+        "mechanism": 0.78125,
+        "reference": 0.03125
+       },
+       "5009": {
+        "mechanism": 0.8125,
+        "reference": 0.0625
+       },
+       "5010": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5011": {
+        "mechanism": 0.84375,
+        "reference": 0.09375
+       },
+       "5012": {
+        "mechanism": 0.78125,
+        "reference": 0.0625
        }
       },
       "seeds_better": 12,
@@ -2727,6 +2803,79 @@
        "5012": {
         "mechanism": 2.290981,
         "reference": 1.970347
+       }
+      }
+     },
+     "summary.answered_within_tolerance_without_front_door.mean": {
+      "mechanism": {
+       "mean": 0.97619,
+       "sd": 0.027804,
+       "min": 0.928571,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.089286,
+       "sd": 0.024079,
+       "min": 0.035714,
+       "max": 0.107143,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.886905,
+       "sd": 0.013902,
+       "min": 0.857142,
+       "max": 0.892857,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5004": {
+        "mechanism": 0.928571,
+        "reference": 0.035714
+       },
+       "5005": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5008": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5011": {
+        "mechanism": 0.964286,
+        "reference": 0.107143
+       },
+       "5012": {
+        "mechanism": 0.928571,
+        "reference": 0.071429
        }
       }
      },
@@ -2957,6 +3106,155 @@
       "seeds_better": 12,
       "seeds_worse": 0,
       "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.842593,
+       "sd": 0.120403,
+       "min": 0.666667,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.24074,
+       "sd": 0.079749,
+       "min": 0.111111,
+       "max": 0.333333,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.601852,
+       "sd": 0.074284,
+       "min": 0.444445,
+       "max": 0.666667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5002": {
+        "mechanism": 0.888889,
+        "reference": 0.333333
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5004": {
+        "mechanism": 0.666667,
+        "reference": 0.111111
+       },
+       "5005": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5007": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5008": {
+        "mechanism": 0.666667,
+        "reference": 0.111111
+       },
+       "5009": {
+        "mechanism": 0.777778,
+        "reference": 0.222222
+       },
+       "5010": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5011": {
+        "mechanism": 0.888889,
+        "reference": 0.333333
+       },
+       "5012": {
+        "mechanism": 0.666667,
+        "reference": 0.222222
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.max_relative_error.max": {
+      "mechanism": {
+       "mean": 0.11309,
+       "sd": 0.076783,
+       "min": 0.039194,
+       "max": 0.298806,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.08969,
+       "sd": 0.080596,
+       "min": 0.009009,
+       "max": 0.298806,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0234,
+       "sd": 0.039788,
+       "min": 0.0,
+       "max": 0.124202,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.103414,
+        "reference": 0.103414
+       },
+       "5002": {
+        "mechanism": 0.071179,
+        "reference": 0.009009
+       },
+       "5003": {
+        "mechanism": 0.039194,
+        "reference": 0.03452
+       },
+       "5004": {
+        "mechanism": 0.298806,
+        "reference": 0.298806
+       },
+       "5005": {
+        "mechanism": 0.158679,
+        "reference": 0.158679
+       },
+       "5006": {
+        "mechanism": 0.048654,
+        "reference": 0.029554
+       },
+       "5007": {
+        "mechanism": 0.056114,
+        "reference": 0.056114
+       },
+       "5008": {
+        "mechanism": 0.106498,
+        "reference": 0.106498
+       },
+       "5009": {
+        "mechanism": 0.062125,
+        "reference": 0.056884
+       },
+       "5010": {
+        "mechanism": 0.065724,
+        "reference": 0.065724
+       },
+       "5011": {
+        "mechanism": 0.14663,
+        "reference": 0.022428
+       },
+       "5012": {
+        "mechanism": 0.200063,
+        "reference": 0.13465
+       }
+      }
      },
      "summary_by_group.learned_graph.interval_score.mean": {
       "mechanism": {
@@ -3480,7 +3778,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 2.58
+    "run_seconds": 1.47
    },
    "self_model: one self-description record (lane W) vs today's surfaces": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -3889,7 +4187,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 1.93
+    "run_seconds": 1.77
    }
   },
   "held_out": {
@@ -4376,7 +4674,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 3.14
+    "run_seconds": 3.01
    },
    "info_value, timer path: as shipped (learning progress off) vs every Wave 1 setting off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -4785,7 +5083,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.0
+    "run_seconds": 4.02
    },
    "info_value, idle path: as shipped vs every Wave 1 setting off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -5194,7 +5492,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 5.06
+    "run_seconds": 4.24
    },
    "info_value, timer path: lane I instinct (information-v1 core, learning progress on, reworked) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -5603,7 +5901,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.26
+    "run_seconds": 4.24
    },
    "info_value, idle path: lane I instinct-idle (learning progress on, reworked) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -6012,7 +6310,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.45
+    "run_seconds": 4.5
    },
    "info_value: every Wave 1 chooser on (re-check first) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -6421,7 +6719,7 @@
      "mechanism": "all_on",
      "reference": "all_off"
     },
-    "run_seconds": 4.27
+    "run_seconds": 4.33
    },
    "counterfactual: imagination (lane M) vs today's answerer": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -6447,74 +6745,150 @@
     "metrics": {
      "summary.answered_within_tolerance.mean": {
       "mechanism": {
-       "mean": 0.985119,
-       "sd": 0.01839,
-       "min": 0.964286,
-       "max": 1.0,
+       "mean": 0.861979,
+       "sd": 0.016092,
+       "min": 0.84375,
+       "max": 0.875,
        "n": 12
       },
       "reference": {
-       "mean": 0.065477,
-       "sd": 0.013902,
-       "min": 0.035714,
-       "max": 0.071429,
+       "mean": 0.057292,
+       "sd": 0.012164,
+       "min": 0.03125,
+       "max": 0.0625,
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.919643,
-       "sd": 0.016152,
-       "min": 0.892857,
-       "max": 0.928572,
+       "mean": 0.804688,
+       "sd": 0.014133,
+       "min": 0.78125,
+       "max": 0.8125,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 1.0,
-        "reference": 0.071429
+        "mechanism": 0.875,
+        "reference": 0.0625
        },
        "5002": {
-        "mechanism": 0.964286,
-        "reference": 0.071429
+        "mechanism": 0.84375,
+        "reference": 0.0625
        },
        "5003": {
-        "mechanism": 0.964286,
-        "reference": 0.035714
+        "mechanism": 0.84375,
+        "reference": 0.03125
        },
        "5004": {
-        "mechanism": 1.0,
-        "reference": 0.071429
+        "mechanism": 0.875,
+        "reference": 0.0625
        },
        "5005": {
-        "mechanism": 1.0,
-        "reference": 0.071429
+        "mechanism": 0.875,
+        "reference": 0.0625
        },
        "5006": {
-        "mechanism": 0.964286,
-        "reference": 0.071429
+        "mechanism": 0.84375,
+        "reference": 0.0625
        },
        "5007": {
-        "mechanism": 0.964286,
-        "reference": 0.035714
+        "mechanism": 0.84375,
+        "reference": 0.03125
        },
        "5008": {
-        "mechanism": 1.0,
-        "reference": 0.071429
+        "mechanism": 0.875,
+        "reference": 0.0625
        },
        "5009": {
-        "mechanism": 1.0,
-        "reference": 0.071429
+        "mechanism": 0.875,
+        "reference": 0.0625
        },
        "5010": {
-        "mechanism": 1.0,
-        "reference": 0.071429
+        "mechanism": 0.875,
+        "reference": 0.0625
        },
        "5011": {
-        "mechanism": 1.0,
-        "reference": 0.071429
+        "mechanism": 0.875,
+        "reference": 0.0625
        },
        "5012": {
-        "mechanism": 0.964286,
-        "reference": 0.071429
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.answered_within_strict_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.830729,
+       "sd": 0.031131,
+       "min": 0.78125,
+       "max": 0.875,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.046875,
+       "sd": 0.021069,
+       "min": 0.0,
+       "max": 0.0625,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.783854,
+       "sd": 0.020892,
+       "min": 0.75,
+       "max": 0.8125,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5002": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5003": {
+        "mechanism": 0.84375,
+        "reference": 0.03125
+       },
+       "5004": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5005": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5006": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5007": {
+        "mechanism": 0.78125,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.8125,
+        "reference": 0.0625
+       },
+       "5009": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5010": {
+        "mechanism": 0.8125,
+        "reference": 0.03125
+       },
+       "5011": {
+        "mechanism": 0.78125,
+        "reference": 0.03125
+       },
+       "5012": {
+        "mechanism": 0.8125,
+        "reference": 0.03125
        }
       },
       "seeds_better": 12,
@@ -6591,6 +6965,79 @@
        "5012": {
         "mechanism": 2.344962,
         "reference": 1.798174
+       }
+      }
+     },
+     "summary.answered_within_tolerance_without_front_door.mean": {
+      "mechanism": {
+       "mean": 0.985119,
+       "sd": 0.01839,
+       "min": 0.964286,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.065477,
+       "sd": 0.013902,
+       "min": 0.035714,
+       "max": 0.071429,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.919643,
+       "sd": 0.016152,
+       "min": 0.892857,
+       "max": 0.928572,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5002": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5003": {
+        "mechanism": 0.964286,
+        "reference": 0.035714
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5006": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5007": {
+        "mechanism": 0.964286,
+        "reference": 0.035714
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5012": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
        }
       }
      },
@@ -6821,6 +7268,155 @@
       "seeds_better": 12,
       "seeds_worse": 0,
       "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.842593,
+       "sd": 0.110689,
+       "min": 0.666667,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.166666,
+       "sd": 0.074911,
+       "min": 0.0,
+       "max": 0.222222,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.675926,
+       "sd": 0.074284,
+       "min": 0.555556,
+       "max": 0.777778,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5002": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5003": {
+        "mechanism": 0.888889,
+        "reference": 0.111111
+       },
+       "5004": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5005": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5006": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5007": {
+        "mechanism": 0.666667,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.777778,
+        "reference": 0.222222
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5010": {
+        "mechanism": 0.777778,
+        "reference": 0.111111
+       },
+       "5011": {
+        "mechanism": 0.666667,
+        "reference": 0.111111
+       },
+       "5012": {
+        "mechanism": 0.777778,
+        "reference": 0.111111
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.max_relative_error.max": {
+      "mechanism": {
+       "mean": 0.100084,
+       "sd": 0.088228,
+       "min": 0.036031,
+       "max": 0.3665,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.080595,
+       "sd": 0.096079,
+       "min": 0.012686,
+       "max": 0.3665,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.019489,
+       "sd": 0.029414,
+       "min": 0.0,
+       "max": 0.095654,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.036031,
+        "reference": 0.036031
+       },
+       "5002": {
+        "mechanism": 0.046533,
+        "reference": 0.036042
+       },
+       "5003": {
+        "mechanism": 0.120158,
+        "reference": 0.120158
+       },
+       "5004": {
+        "mechanism": 0.080423,
+        "reference": 0.028203
+       },
+       "5005": {
+        "mechanism": 0.051927,
+        "reference": 0.023284
+       },
+       "5006": {
+        "mechanism": 0.10834,
+        "reference": 0.012686
+       },
+       "5007": {
+        "mechanism": 0.3665,
+        "reference": 0.3665
+       },
+       "5008": {
+        "mechanism": 0.071588,
+        "reference": 0.037315
+       },
+       "5009": {
+        "mechanism": 0.045067,
+        "reference": 0.045067
+       },
+       "5010": {
+        "mechanism": 0.075648,
+        "reference": 0.071972
+       },
+       "5011": {
+        "mechanism": 0.093761,
+        "reference": 0.093761
+       },
+       "5012": {
+        "mechanism": 0.105031,
+        "reference": 0.096122
+       }
+      }
      },
      "summary_by_group.learned_graph.interval_score.mean": {
       "mechanism": {
@@ -7344,7 +7940,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 1.52
+    "run_seconds": 1.56
    },
    "self_model: one self-description record (lane W) vs today's surfaces": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -7753,9 +8349,9 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 2.65
+    "run_seconds": 2.7
    }
   }
  },
- "code_commit": "197533d (benchmark run at 04ebecd plus the reconciliation's then uncommitted edits, all in 197533d; the cognitive benchmark does not exercise the gate change in 197533d)"
+ "code_commit": "gen-fix1e: 1c6cf1e plus the re-review's counterfactual scoring change (src/neuroscifi/acceptance/cognition: scoring.py, counterfactual.py, __init__.py), run with that change uncommitted and committed with this file; no product code changed"
 }
