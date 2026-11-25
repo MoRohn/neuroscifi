@@ -520,16 +520,26 @@ def knowledge_prediction_error(db, pred, item, reason, consolidation, now) -> di
 
 # ---- calibration --------------------------------------------------------------------------------------------
 
+def _counted(alias=""):
+    """SQL: the prediction's settlement still stands on an observation the individual holds. A task the owner
+    forgot takes its observation with it (governance._scrub_observations leaves {"forgotten": true}): the outcome
+    stays on the prediction (ADR-029), but it no longer counts as evidence of how the forecasts fare (ADR-047)."""
+    column = f"{alias}detail"
+    return (f"coalesce(CASE WHEN json_valid({column}) THEN json_extract({column},'$.observation.forgotten') END, 0)"
+            " IS NOT 1")
+
+
 def calibration(db, *, since=None) -> dict:
     """Brier score and reliability bins over every settled prediction with a forecast probability: outcome
     'confirmed' = 1, 'error' = 0 ('inconclusive' is excluded: nothing was observed). Skill against the base rate
-    (climatology) and the expected calibration error (bin-weighted |mean forecast - observed frequency|)."""
+    (climatology) and the expected calibration error (bin-weighted |mean forecast - observed frequency|).
+    A settlement whose observation went with a forgotten task does not count (_counted)."""
     since = state.finite(since, 0.0)
     rows = db.execute("SELECT probability, outcome FROM web_predictions WHERE outcome IN ('confirmed','error') AND "
-                      "probability IS NOT NULL AND coalesce(checked_at, 0)>=?", (since,)).fetchall()
+                      f"probability IS NOT NULL AND coalesce(checked_at, 0)>=? AND {_counted()}", (since,)).fetchall()
     n = len(rows)
     inconclusive = db.execute("SELECT count(*) FROM web_predictions WHERE outcome='inconclusive' AND "
-                              "coalesce(checked_at,0)>=?", (since,)).fetchone()[0]
+                              f"coalesce(checked_at,0)>=? AND {_counted()}", (since,)).fetchone()[0]
     out = {"n": n, "inconclusive": inconclusive, "brier": None, "base_rate": None, "brier_reference": None,
            "skill": None, "ece": None, "bins": []}
     if not n:
@@ -561,8 +571,8 @@ def calibration(db, *, since=None) -> dict:
 # shift = 0 and tilt = 0 is the forecast as stated, and that is where the estimate starts: it is the maximum of the
 # log-likelihood of the settled outcomes under a Gaussian prior on shift and tilt around 0, so a few settlements move
 # it little, and below RECALIBRATION_MINIMUM settlements it is not moved at all. Computed on read from the settled
-# rows of web_predictions (the rows calibration() reads): no stored parameter, so a prediction a forget removes
-# stops counting at once. docs/knowledge/KNOWLEDGE_EVOLUTION.md section 5 has the measurements behind the numbers.
+# rows of web_predictions (the rows calibration() reads): no stored parameter, so a prediction a forget removes, or
+# one whose settling task the owner forgot, stops counting at once. docs/knowledge/KNOWLEDGE_EVOLUTION.md section 5 has the measurements behind the numbers.
 
 RECALIBRATION_KINDS = ("knowledge", "hypothesis", "owner")   # one mapping per kind of forecaster
 # The four numbers below were chosen on the development streams of bench/calibration.py (the lowest mean distance
@@ -653,7 +663,7 @@ def settled_forecasts(db) -> dict:
     for kind, p, outcome in db.execute(
             f"SELECT {_KIND_SQL}, p.probability, p.outcome FROM web_predictions p LEFT JOIN web_hypotheses h ON "
             "h.id=p.hypothesis_id WHERE p.outcome IN ('confirmed','error') AND p.probability IS NOT NULL "
-            "ORDER BY coalesce(p.checked_at, 0), p.id"):
+            f"AND {_counted('p.')} ORDER BY coalesce(p.checked_at, 0), p.id"):
         out[kind].append((float(p), 1.0 if outcome == "confirmed" else 0.0))
     return out
 
@@ -759,7 +769,9 @@ def metrics(db, now, *, since=None, record=False) -> dict:
     clarified_h = one("SELECT count(*) FROM web_hypotheses WHERE origin IN ('conflicting','disputed') AND status IN "
                       "('supported','refuted','revised') AND resolved_at>=?", since)
     outcomes = dict(db.execute("SELECT outcome, count(*) FROM web_predictions WHERE outcome IS NOT NULL AND "
-                               "coalesce(checked_at,0)>=? GROUP BY outcome", (since,)).fetchall())
+                               f"coalesce(checked_at,0)>=? AND {_counted()} GROUP BY outcome", (since,)).fetchall())
+    uncounted = one("SELECT count(*) FROM web_predictions WHERE outcome IS NOT NULL AND coalesce(checked_at,0)>=? "
+                    f"AND NOT ({_counted()})", since)
     decided = outcomes.get("confirmed", 0) + outcomes.get("error", 0)
     finished = db.execute("SELECT usage, json_extract(result,'$.memory.answered_from_memory') FROM web_tasks WHERE "
                           "status IN ('completed','partial') AND coalesce(finished_at, updated_at)>=?",
@@ -778,6 +790,7 @@ def metrics(db, now, *, since=None, record=False) -> dict:
                         "inconclusive": outcomes.get("inconclusive", 0),
                         "open": one("SELECT count(*) FROM web_predictions WHERE outcome IS NULL"),
                         "accuracy": round(outcomes.get("confirmed", 0) / decided, 6) if decided else None,
+                        "settled_by_forgotten_tasks": uncounted,
                         "calibration": calibration(db, since=since)},
         "retrieval": ({"measurable": True, "finished_tasks": len(finished), "answered_from_memory": from_memory,
                        "memory_answer_rate": round(from_memory / len(finished), 6)} if finished else

@@ -1545,7 +1545,7 @@ it is still better (0.046 against 0.053).
   owner asking (CONTINUAL_LEARNING, kind 2b): bounded as above, shown, logged with each decision, and one setting
   away from off.
 - A prediction settled by a task that was later forgotten keeps its outcome (ADR-029: the observation is scrubbed,
-  the outcome stays) and so still counts, as it does in `calibration`.
+  the outcome stays). Since ADR-047 it no longer counts, here or in `calibration`.
 - Settlements are treated as independent draws. They are not (one source change can fail several predictions);
   the minimum and the prior are the only allowance for that.
 - Tests: `tests/webcortex/test_recalibration.py` (24; the fit against the objective written out and against a
@@ -1653,3 +1653,10 @@ erasing what it names is correct; nothing else may go, and a restore must end th
    stays until the last evidence of the name goes. The digest is recorded with its kind (`forgotten_scopes`, as
    `forgotten_roots` records whole roots), and a restore scrubs the same kind in its copy unless the copy holds
    evidence of that kind (a newer camera or partner of the name). `effects.scopes_forgotten` counts them.
+2. **A forgotten task's settlements stop counting.** A task the owner forgets takes its observation with it
+   (`governance._scrub_observations` leaves `{"forgotten": true}` on the prediction it settled). The outcome stays
+   on the prediction (ADR-029: the knowledge and hypotheses revised by it are not rolled back), but the settlement
+   no longer counts in `calibration`, in the mapping of ADR-046 or in the accuracy of `metrics`, which reports such
+   settlements as `settled_by_forgotten_tasks`. Computed on read, so it holds for forgets made before this change
+   and in a restored copy. Reopening the prediction instead was rejected: it would be checked again and could
+   start a second error analysis for the same failure.
