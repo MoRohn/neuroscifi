@@ -55,8 +55,8 @@ Security properties (each one has a test in tests/webcortex/test_net.py)
   A fetch ahead is started only when that room covers a typical fetch (TYPICAL_FETCH: robots.txt and the page),
   which it then holds from the start. One that runs out of room at a later request (a redirect chain) stops before
   that request; its claim replays what it sent and goes on from that hop on the task's own budget (nothing is
-  fetched twice; a stop inside a robots.txt walk that has already sent a request is the exception: that fetch is
-  not continued, and its claim fetches as usual). The unused part is what a fetch ahead sent before it became
+  fetched twice; a stop inside a hop's robots.txt walk, one that redirects, goes on from that walk's own hop too).
+  The unused part is what a fetch ahead sent before it became
   unusable (the policy changed, a back-off, cut by the reader reaching its site, a page the reader passed by).
   It has an allowance of its own (speculate(allowance=...), Budget.unused_allowance: a tenth of the budget, never
   less than a full window needs). Requests: what the task's fetches ahead have sent unused, plus what those not
@@ -488,8 +488,8 @@ class _OverBudget(BudgetExceeded):
     Stopped before a request, the fetch is continued by its claim: what it sent is replayed on the task's Usage and
     the walk goes on from that hop as the reader's own fetch, on the task's own budget (_fits, _commit). Stopped in
     a body, it is used only when a read made at that moment would stop at the same place, else fetched again.
-    Never raised out of a robots.txt walk that has sent a request: _fetch_robots turns that into _Abandoned (the
-    walk's own progress is not carried over, and going on from the page's hop would ask for the file twice)."""
+    Raised out of a robots.txt walk that has sent a request, the walk's own hop is kept (_Speculation.robots_walk)
+    and the claim goes on from it inside the page's hop, so the file's first request is not sent again."""
 
     def __init__(self, kind="requests"):
         super().__init__("read-ahead", kind, "budget")
@@ -520,6 +520,9 @@ class _Speculation:
         self.reserved = 0                 # requests held from the start (TYPICAL_FETCH), used before any more is taken
         self.recorded = 0                 # requests recorded so far
         self.hop = None                   # the redirect hop under way (_request): where a claim goes on from
+        self.robots_hop = None            # the hop under way of the robots.txt walk in progress, if any
+        self.robots_walk = None           # (robots key, hop): a robots.txt walk stopped after sending a request,
+                                          # where the claim goes on from inside the page's hop (_fetch_robots)
         self.lock = threading.Lock()
         self.finished = threading.Event()
         self.abandoned = False
@@ -1339,7 +1342,9 @@ class SafeFetcher:
                 current = self._robots.get(key)
             if current is not entry or now - entry.fetched_at >= ROBOTS_TTL:
                 return False
-        for key in spec.robots:
+        # the files it fetched, and the one whose walk it stopped in (robots_walk): a fetch made now would not ask
+        # for one known by now
+        for key in list(spec.robots) + ([spec.robots_walk[0]] if spec.robots_walk is not None else []):
             with self._lock:
                 current = self._robots.get(key)
             if current is not None and now - current.fetched_at < ROBOTS_TTL:
@@ -1388,7 +1393,8 @@ class SafeFetcher:
                 # on from that hop as the reader's own, on the task's budget, which refuses the request if a fetch
                 # made now would be refused it. Nothing is requested twice.
                 spec.release()
-                return self._fetch(spec.url, "GET", None, None, spec.purpose, True, budget, usage, resume=spec.hop)
+                return self._fetch(spec.url, "GET", None, None, spec.purpose, True, budget, usage, resume=spec.hop,
+                                   robots_walk=spec.robots_walk)
             if spec.error is not None:
                 raise spec.error
             return spec.result
@@ -1410,7 +1416,8 @@ class SafeFetcher:
         else:
             self.cache.put(result)
 
-    def _fetch(self, url, method, body, headers, purpose, conditional, budget, usage, resume=None) -> FetchResult:
+    def _fetch(self, url, method, body, headers, purpose, conditional, budget, usage, resume=None,
+               robots_walk=None) -> FetchResult:
         started = time.monotonic()
         deadline = started + self.policy.timeout
         host = _host(url)
@@ -1434,7 +1441,7 @@ class SafeFetcher:
                 if isinstance(usage, _Speculation):
                     usage.validators = cached
             response, final, redirects = self._request(parts, method, body, request_headers, purpose, budget, usage,
-                                                       {}, deadline, resume)
+                                                       {}, deadline, resume, robots_walk)
             now = self._clock()
             elapsed = time.monotonic() - started
             if response.status == 304 and cached is not None:
@@ -1471,10 +1478,13 @@ class SafeFetcher:
             self._count(host, "errors")
             raise
 
-    def _request(self, parts, method, body, headers, purpose, budget, usage, resolved, deadline, resume=None):
+    def _request(self, parts, method, body, headers, purpose, budget, usage, resolved, deadline, resume=None,
+                 robots_walk=None):
         """Follow redirects manually; returns (final _Response, final SplitResult, [redirect URLs]). `resume`: the
         hop a read-ahead fetch of `parts` had reached when it ran out of room (_Speculation.hop): the walk goes on
-        from there, with the redirects it had followed."""
+        from there, with the redirects it had followed. `robots_walk`: (robots key, hop) when it ran out of room
+        inside that hop's robots.txt walk after the walk had sent a request (_Speculation.robots_walk): that walk
+        goes on from its own hop too, so no robots.txt request is sent twice."""
         redirects = []
         current = parts
         origin = (parts.scheme, parts.hostname, parts.port)
@@ -1482,15 +1492,19 @@ class SafeFetcher:
             current, method, body, headers, redirects = resume[0], resume[1], resume[2], dict(resume[3]), \
                 list(resume[4])
         while True:
-            if isinstance(usage, _Speculation) and purpose != "robots":       # the page's walk, not a robots.txt's
-                usage.hop = (current, method, body, dict(headers), list(redirects))
+            if isinstance(usage, _Speculation):
+                if purpose != "robots":                                      # the page's walk
+                    usage.hop = (current, method, body, dict(headers), list(redirects))
+                else:                                                        # the walk of a robots.txt it needs
+                    usage.robots_hop = (current, method, body, dict(headers), list(redirects))
             host = current.hostname
             self._ask(usage, current.geturl())                # still wanted? before this hop's name lookup
             self._check_backoff(host, current.geturl(), usage)
             addresses = self._resolve(current, resolved)      # policy refusal precedes any robots request
             crawl_delay = 0.0
             if purpose in ROBOTS_PURPOSES:
-                entry = self._robots_entry(current, budget, usage, resolved, deadline)
+                entry = self._robots_entry(current, budget, usage, resolved, deadline, robots_walk)
+                robots_walk = None                            # only the hop the fetch ahead stopped in
                 if not entry.allowed(current.geturl()):
                     self._count(host, "robots_blocked")
                     raise FetchError("blocked_robots", _redact(current.geturl()), entry.reason or "disallowed")
@@ -1913,9 +1927,11 @@ class SafeFetcher:
         response.body = bytes(out)
         response.wire = wire
 
-    def _robots_entry(self, parts, budget, usage, resolved, deadline) -> _Robots:
+    def _robots_entry(self, parts, budget, usage, resolved, deadline, walk=None) -> _Robots:
         """The robots.txt entry of parts' origin: remembered, from the public cache, or fetched. A read-ahead fetch
-        (usage a _Speculation) records the entries it used and holds back the one it fetched (_commit writes it)."""
+        (usage a _Speculation) records the entries it used and holds back the one it fetched (_commit writes it).
+        `walk`: (key, hop) of a robots.txt walk a fetch ahead stopped in (_Speculation.robots_walk); when it is this
+        origin's and the file is still to be fetched, the fetch goes on from that hop."""
         key = _robots_key(parts)
         spec = usage if isinstance(usage, _Speculation) else None
         if spec is not None and key in spec.robots:       # fetched earlier in this read-ahead fetch (a redirect hop)
@@ -1940,7 +1956,8 @@ class SafeFetcher:
             if stored is not None and now - stored[1] < ROBOTS_TTL:
                 entry = _robots_from_text(stored[0], stored[1], user_agent=self.policy.user_agent)
             else:
-                entry = self._fetch_robots(parts, budget, usage, resolved, deadline)
+                entry = self._fetch_robots(parts, budget, usage, resolved, deadline,
+                                           walk[1] if walk is not None and walk[0] == key else None)
                 if spec is not None:
                     spec.robots[key] = entry
                     spec.hold(("robots", key, entry, spec.robots_text.pop(key, None)))
@@ -1951,7 +1968,7 @@ class SafeFetcher:
                 spec.robots_seen.setdefault(key, entry)
             return entry
 
-    def _fetch_robots(self, parts, budget, usage, resolved, deadline) -> _Robots:
+    def _fetch_robots(self, parts, budget, usage, resolved, deadline, resume=None) -> _Robots:
         key = _robots_key(parts)
         robots = urlsplit(urlunsplit((parts.scheme, parts.netloc, "/robots.txt", "", "")))
         headers = {"User-Agent": self.policy.user_agent, "Accept": "text/plain,*/*;q=0.5",
@@ -1960,16 +1977,16 @@ class SafeFetcher:
         sent_before = ahead.recorded if ahead is not None else 0
         try:
             response, _final, _redirects = self._request(robots, "GET", None, headers, "robots", budget, usage,
-                                                         resolved, deadline)
+                                                         resolved, deadline, resume)
         except (BudgetExceeded, FetchError) as error:
             if isinstance(error, _OverBudget) and error.kind != "bytes" and ahead.recorded > sent_before:
                 # a read-ahead fetch stopped before a request inside this robots.txt walk, after the walk had sent
-                # one (the file redirects). A claim goes on from the page's hop, where this file would have to be
-                # asked for again from its first request, so this stop is not one to go on from: the fetch is not
-                # used, what it sent counts as unused, and its claim fetches as usual
+                # one (the file redirects onto a busy site, or the room ran out at a later hop). Nothing of that
+                # request was sent. The claim goes on from the page's hop and, inside it, from this walk's hop
+                # (robots_walk), so each robots.txt request is sent once, as one page at a time sends it
                 with ahead.lock:
-                    ahead.stopped = ahead.stopped or "stopped inside a robots.txt walk"
-                raise _Abandoned("stopped inside a robots.txt walk") from None
+                    ahead.robots_walk = (key, ahead.robots_hop)
+                raise
             if isinstance(error, BudgetExceeded) or error.code in ("rate_limited", "timeout", "interrupted"):
                 raise
             return _robots_disallow_all(self._clock(), f"robots.txt unavailable ({error.code})")

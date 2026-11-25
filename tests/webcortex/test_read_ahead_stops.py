@@ -1395,7 +1395,7 @@ def test_each_source_read_is_its_own_progress_event_at_the_default_read_ahead(tm
         web.stop()
 
 
-# ---- third pass: a fetch ahead stopped inside a robots.txt walk is not continued (C1) ---------------------------
+# ---- third pass: a fetch ahead stopped inside a robots.txt walk (C1), continued from that walk's hop ------------
 
 def robots_on_another_site(web, release=None):
     """a.example serves its own robots.txt and b.example's: b.example/robots.txt redirects to
@@ -1410,11 +1410,12 @@ def robots_on_another_site(web, release=None):
         web.routes[("a.example", "/slow")] = Held("<p>slow</p>", release, "text/html")
 
 
-def test_a_fetch_ahead_stopped_inside_a_robots_txt_walk_is_fetched_again_not_continued(web, tmp_path):
+def test_a_fetch_ahead_stopped_inside_a_robots_txt_walk_is_continued_from_that_walks_hop(web, tmp_path):
     """b.example's robots.txt redirects onto a.example, where the reader's request is still being answered. The
-    fetch ahead has sent the first robots.txt request and stops at the busy site. Going on from the page's hop
-    would ask for robots.txt again and charge it twice (one request too many: at the request budget's edge the task
-    read one page fewer than one at a time). It is not used; the claim fetches as usual."""
+    fetch ahead has sent the first robots.txt request and stops at the busy site, before the second. Its claim goes
+    on from the page's hop and, inside it, from the robots.txt walk's own hop: b.example/robots.txt is asked for
+    once, as one page at a time asks for it, and nothing counts as unused. (Before, the fetch ahead was thrown away
+    and its claim asked for b.example/robots.txt a second time, one politeness interval later.)"""
     release = threading.Event()
     robots_on_another_site(web, release)
     budget = Budget()
@@ -1429,7 +1430,8 @@ def test_a_fetch_ahead_stopped_inside_a_robots_txt_walk_is_fetched_again_not_con
         spec = next(iter(fetcher._speculations.values()))
         assert spec.finished.wait(5) and spec.stopped == "host busy"
         assert [e[0] for e in spec.events] == ["request"]         # b.example/robots.txt, answered with the redirect
-        assert not isinstance(spec.error, FetchError) and getattr(spec.error, "kind", None) is None
+        assert getattr(spec.error, "kind", None) == "busy" and spec.robots_walk is not None
+        assert spec.robots_walk[1][0].geturl() == "http://a.example/robots-b.txt"
     finally:
         release.set()
     reader.join(5)
@@ -1437,9 +1439,92 @@ def test_a_fetch_ahead_stopped_inside_a_robots_txt_walk_is_fetched_again_not_con
     result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)
     assert result.body == b"<p>there</p>"
     # one page at a time: a's robots.txt and page, then b's robots.txt (two requests) and page
-    assert usage.requests == 5 and usage.prefetch_unused_requests == 1
-    assert len(web.log) - plain_web_log == usage.requests + usage.prefetch_unused_requests
+    assert usage.requests == 5 and usage.prefetch_unused_requests == 0
+    assert len(web.log) - plain_web_log == usage.requests
+    assert [r["path"] for r in web.log[plain_web_log:] if r["host"] == "b.example"] == ["/robots.txt", "/p"]
+    assert fetcher.robots_allowed("http://b.example/p") and fetcher.cache.robots("http~80~.b.example")
     assert fetcher._busy == {} and fetcher._ahead == {}
+
+
+def test_a_fetch_ahead_out_of_room_inside_a_robots_txt_walk_is_continued_from_that_walks_hop(web, tmp_path):
+    """The allowance has room for two requests: b.example's robots.txt and the hop it redirects to. The walk stops
+    before its third request (a second redirect). The claim replays the two and goes on from the third, on the
+    task's own budget: the same requests, charges and page as one page at a time, each request sent once."""
+    web.add("a.example", "/robots-b.txt", ROBOTS, content_type="text/plain")
+    web.add_redirect("b.example", "/robots.txt", "http://c.example/r1")
+    web.add_redirect("c.example", "/r1", "http://a.example/robots-b.txt")
+    web.add("b.example", "/p", "<p>there</p>")
+    budget = Budget(max_requests=10)
+    plain_fetcher, plain = fetcher_for(web, tmp_path / "plain"), Usage()
+    expected = plain_fetcher.fetch("http://b.example/p", budget=budget, usage=plain)
+    before = len(web.log)
+    assert before == plain.requests == 4
+    fetcher, usage = fetcher_for(web, tmp_path / "ahead"), Usage()
+    assert fetcher.speculate("http://b.example/p", usage=usage, budget=budget, allowance=(2, 1 << 20))
+    spec = next(iter(fetcher._speculations.values()))
+    assert spec.finished.wait(5) and getattr(spec.error, "kind", None) == "requests"
+    assert spec.robots_walk is not None and spec.robots_walk[1][0].geturl() == "http://a.example/robots-b.txt"
+    result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)
+    assert (result.body, result.final_url) == (expected.body, expected.final_url)
+    assert (usage.requests, usage.bytes, usage.prefetch_unused_requests) == (plain.requests, plain.bytes, 0)
+    assert [(r["host"], r["path"]) for r in web.log[before:]] == [(r["host"], r["path"]) for r in web.log[:before]]
+    assert fetcher._busy == {} and fetcher._ahead == {}
+
+
+def test_a_robots_txt_walk_known_by_the_claim_is_not_continued(web, tmp_path):
+    """The same stop, but by the claim the robots.txt it was walking to is known (the reader fetched it meanwhile):
+    a fetch made now would not ask for it, so the fetch ahead is not used and the claim fetches as usual."""
+    release = threading.Event()
+    robots_on_another_site(web, release)
+    budget = Budget()
+    fetcher, usage, out = fetcher_for(web, tmp_path / "ahead"), Usage(), {}
+    reader = threading.Thread(target=lambda: out.update(
+        slow=fetcher.fetch("http://a.example/slow", budget=budget, usage=usage)))
+    reader.start()
+    try:
+        arrived(web, "a.example", "/slow")
+        fetcher.speculate("http://b.example/p", usage=usage, budget=budget)
+        spec = next(iter(fetcher._speculations.values()))
+        assert spec.finished.wait(5) and spec.robots_walk is not None
+    finally:
+        release.set()
+    reader.join(5)
+    assert fetcher.robots_allowed("http://b.example/x", budget=budget, usage=usage)   # the reader learns the file
+    before = len(web.log)
+    result = fetcher.fetch("http://b.example/p", budget=budget, usage=usage)
+    assert result.body == b"<p>there</p>"
+    assert [r["path"] for r in web.log[before:]] == ["/p"]
+    assert usage.prefetch_unused_requests == 1 and fetcher._busy == {} and fetcher._ahead == {}
+
+
+def test_a_continued_robots_txt_walk_waits_no_extra_politeness_interval(tmp_path):
+    """With a politeness interval, the continued walk does not ask b.example again, so the claim's first request
+    to b.example (its page) is one interval after the walk's robots.txt request, not two."""
+    web = FixtureWeb()
+    release = threading.Event()
+    robots_on_another_site(web, release)
+    web.start()
+    try:
+        fetcher = SafeFetcher(NetPolicy(min_domain_interval=0.5), cache=PublicCache(tmp_path / "c.sqlite"),
+                              resolver=web.resolver, connector=web.connector)       # the real clock and sleep
+        budget, usage, out = Budget(), Usage(), {}
+        reader = threading.Thread(target=lambda: out.update(
+            slow=fetcher.fetch("http://a.example/slow", budget=budget, usage=usage)))
+        reader.start()
+        try:
+            arrived(web, "a.example", "/slow")
+            fetcher.speculate("http://b.example/p", usage=usage, budget=budget)
+            spec = next(iter(fetcher._speculations.values()))
+            assert spec.finished.wait(5) and spec.robots_walk is not None
+        finally:
+            release.set()
+        reader.join(5)
+        fetcher.fetch("http://b.example/p", budget=budget, usage=usage)
+        b = [r for r in web.log if r["host"] == "b.example"]
+        assert [r["path"] for r in b] == ["/robots.txt", "/p"]
+        assert b[1]["at"] - b[0]["at"] < 0.5 + 0.4     # one interval (plus scheduling), not two
+    finally:
+        web.stop()
 
 
 @pytest.mark.parametrize("max_requests", [None, 5])
