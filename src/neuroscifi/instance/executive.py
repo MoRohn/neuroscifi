@@ -105,11 +105,21 @@ def _segment_phrase(db, other, segments):
     return "".join(" " + part if i == 0 else " and " + part for i, part in enumerate(parts))
 
 
-def _policy(db, epoch, allowed, why, horizon):
-    """Return (decision, pending kind or None, scope, reason, question or None) before the ask budget."""
+def rule_version(db) -> str:
+    """The individual's rule version (InstanceConfig.executive_rule; store.RULE_VERSIONS). ADR-051."""
+    return store.config(db).executive_rule
+
+
+def _policy(db, epoch, allowed, why, horizon, rule="rules-v1", seen=None):
+    """Return (decision, pending kind or None, scope, reason, question or None) before the ask budget. `rule` is the
+    rule version: rules-v1 below; information-v1 (information.py) replaces rules 5-7. `seen`, a dict, receives the
+    assessment the policy read."""
     if not allowed:
         return "defer", None, None, f"writes are paused ({why}); defer until regulation allows new evidence", None
-    result = beliefs._assess(db, epoch, legacy=False)[0]
+    assessed = beliefs._assess(db, epoch, legacy=False)
+    result = assessed[0]
+    if seen is not None:
+        seen["assessed"] = assessed
     change = result["change"]
     through = f" (evidence through #{horizon})"
     if change["suspected"]:
@@ -160,6 +170,9 @@ def _policy(db, epoch, allowed, why, horizon):
                 f"({match['new_setup_posterior']:.3f}) and every other earlier configuration; ask whether this is "
                 "the earlier setup",
                 f"This looks like {best}{where}; continue with that calibration?{through}")
+    if rule == "information-v1":
+        from .information import information_policy
+        return information_policy(db, epoch, result, assessed, horizon, _answered)
     p = result["mechanism"]["p_inverted"]
     if not result["mechanism"]["identifiable"]:
         return ("test_reference", "test_reference", "mechanism",
@@ -220,7 +233,8 @@ def _decide(db, epoch, now, record, path):
                            + (" AND created_at>?" if window else ""),
                            (epoch, now - window) if window else (epoch,)).fetchone()[0]
     allowed, why = store.write_allowed(db, path)
-    decision, kind, scope, reason, question = _policy(db, epoch, allowed, why, _horizon(db, epoch))
+    rule, seen = rule_version(db), {}
+    decision, kind, scope, reason, question = _policy(db, epoch, allowed, why, _horizon(db, epoch), rule, seen)
     wanted = (kind, scope)  # the policy's own recommendation, before any budget conversion
     pending_id = _open_pending(db, epoch, kind, scope, now) if kind else None
     if decision == "ask" and pending_id is None and asks_used >= budget:
@@ -256,7 +270,16 @@ def _decide(db, epoch, now, record, path):
                    (epoch, version, decision, scope, reason, now))
     out = {"decision": decision, "scope": scope, "reason": reason, "pending_id": pending_id,
            "asks_used": asks_used, "ask_budget": budget, "ask_budget_window_seconds": window,
-           "closed_pending": closed, "expired_pending": expired}
+           "closed_pending": closed, "expired_pending": expired, "rule": rule}
+    if "assessed" in seen and cfg.decision_information:
+        # ADR-051, shown beside the decision and never changing it: the exact expected information gain of each
+        # question it could ask, and whether it rests on a matched earlier setup (habitual) or its own evidence
+        from . import information
+        assessed = seen["assessed"]
+        if assessed[0]["evidence"]["learning"]:
+            out["information"] = {"readings_per_question": information.READINGS,
+                                  "candidates": information.assessed_gains(assessed)}
+        out["processing"] = information.processing(db, epoch, assessed[0].get("change"))
     if window_warning:      # absent unless the saved window was unusable
         out["warnings"] = [window_warning]
     return out
