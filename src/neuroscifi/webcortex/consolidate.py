@@ -88,20 +88,62 @@ def _similar(a, b) -> float:
     return len(ta & tb) / len(ta | tb) if ta and tb else 0.0
 
 
+_LEADING_NUMBER = re.compile(r"(-?\d[\d.]*)(?: |$)")
+
+
+def _leading_number(value):
+    m = _LEADING_NUMBER.match(value or "")
+    try:
+        return float(m.group(1)) if m else None
+    except ValueError:
+        return None
+
+
+def _read_values(item) -> list:
+    """The stored item's values as this version reads its statement. claim_values are parsed once, when an item is
+    stored, and an older parser read some quantities otherwise: "120 km/h" as "120 km" before speeds were a unit,
+    "8 GiB" or "212 ℉" as a plain number. A stored value the statement no longer yields is read as the one value of
+    the statement, not stored, that writes the same number ("120 km" -> "120 km/h"); anything else stays as stored
+    (a value the statement does not yield at all, or one the number does not single out). An item without a
+    statement (a hypothesis's values, evolution._relation) is read as stored."""
+    from . import text
+    stored = list(item.get("claim_values") or [])
+    statement = item.get("statement")
+    if not stored or not statement:
+        return stored
+    fresh = text.values(statement)
+    if all(v in fresh for v in stored):
+        return stored
+    out = []
+    for v in stored:
+        number = _leading_number(v)
+        hits = [w for w in fresh if w not in stored and number is not None and _leading_number(w) == number]
+        out.append(v if v in fresh or len(hits) != 1 else hits[0])
+    return out
+
+
 def _compare(cluster_values, polarity, item):
-    """('same' | 'conflict' | 'series', reason) between a cluster and a knowledge item, by text.values_conflict
-    applied separately to temporal values (dates, years) and the other values. Both differing is a series
-    (text.values_conflict: another reference period, not a contradiction); one differing is a conflict."""
+    """('same' | 'conflict' | 'series' | 'incomparable', reason) between a cluster and a knowledge item, by
+    text.values_conflict applied separately to temporal values (dates, years) and the other values. Both differing
+    is a series (text.values_conflict: another reference period, not a contradiction); one differing is a conflict.
+    When both state values and no value of one can be compared with any of the other's (_comparable: "700 W"
+    against "3 kg"), the two are 'incomparable': the words that matched them do not make them one fact, and nothing
+    is strengthened by it (before, the absence of a disagreement read as 'same'). The item's values are read as this
+    version reads its statement (_read_values)."""
     from . import text
     if polarity != item["polarity"]:
         return "conflict", "opposite polarity (one source asserts, the other negates)"
+    item_values = _read_values(item)
+    if cluster_values and item_values and not _comparable(cluster_values, item_values):
+        return "incomparable", (f"values that cannot be compared: {', '.join(cluster_values)} vs "
+                                f"{', '.join(item_values)}")
     temporal_kinds = ("date", "year")
 
     def split(values):
         when = [v for v in values if text.value_kind(v)[0] in temporal_kinds]
         return when, [v for v in values if v not in when]
 
-    (new_when, new_other), (old_when, old_other) = split(list(cluster_values)), split(list(item["claim_values"]))
+    (new_when, new_other), (old_when, old_other) = split(list(cluster_values)), split(item_values)
     other = text.values_conflict(new_other, old_other)
     when = text.values_conflict(new_when, old_when)
     if other and when:
@@ -173,7 +215,7 @@ def _as_temporal(cluster, now, key):
 def _item_temporal(item):
     sources = item["sources"]
     published = [s.get("published_at") for s in sources if state.finite(s.get("published_at")) is not None]
-    return {"key": item["key"], "text": item["statement"], "values": item["claim_values"], "polarity": item["polarity"],
+    return {"key": item["key"], "text": item["statement"], "values": _read_values(item), "polarity": item["polarity"],
             "published_at": max(published) if published else None, "event_at": item["valid_from"],
             "retrieved_at": item["last_verified_at"], "valid_from": item["valid_from"]}
 
@@ -306,9 +348,10 @@ def _existing(db, cluster):
 
     def same_numbers(item):
         # a key holds no numbers, so "Drellis-11 orbits at 640 km" has the key of "Drellis-9 orbits at 780 km":
-        # two names that differ only in their number are two subjects
+        # two statements whose numbered names have none in common are about two subjects; one that names one more
+        # ("Drellis-9 ..., as does Drellis-8") is still about the name they share
         other = _numbered_names(item["statement"])
-        return not (numbered and other and numbered != other)
+        return not (numbered and other and not numbered & other)
     exact = [r for r in knowledge.rows(db, f"{_LIVE} AND key=?", (*state.LIVE_KNOWLEDGE, key)) if same_numbers(r)]
     if exact:
         return max(exact, key=lambda r: r["version"])
@@ -318,7 +361,8 @@ def _existing(db, cluster):
         score = _similar(key, other)
         if score >= SIMILAR_KEY:
             ranked.append((score, version, kid))
-    for _score, _version, kid in sorted(ranked, reverse=True):
+    # best score, then the latest version, then the item stored first (as the single pass before kept it)
+    for _score, _version, kid in sorted(ranked, key=lambda r: (-r[0], -r[1], r[2])):
         item = knowledge.row(db, kid)
         if same_numbers(item):
             return item
@@ -326,8 +370,17 @@ def _existing(db, cluster):
 
 
 def _numbered_names(statement) -> set:
-    """The names a statement writes with letters and digits ("Drellis-9", "H100", "GPT-4"), lower-cased."""
-    return {t.lower() for t in PAIR_NAME.findall(statement or "") if _name_by_form(t) and any(c.isdigit() for c in t)}
+    """The names a statement writes with letters and digits ("Drellis-9", "H100", "GPT-4"), lower-cased. A value
+    written against its unit ("4GB", "700W", "50mg") is a value, not a name."""
+    return {t.lower() for t in PAIR_NAME.findall(statement or "")
+            if _name_by_form(t) and any(c.isdigit() for c in t) and not _unit_value(t)}
+
+
+def _unit_value(token) -> bool:
+    """A token the value parser reads whole as a number with a unit, a magnitude or a currency ("4GB", "5M")."""
+    from . import text
+    m = text._VALUE_RE.fullmatch(token)
+    return bool(m and m.group("num") and (m.group("unit") or m.group("mag") or m.group("curw")))
 
 
 # ---- the same fact in other words (W2) ---------------------------------------------------------------------------
@@ -479,11 +532,29 @@ def _aliases(rows) -> list[dict]:
             start = statement.index(text, position)
             spans.append((words, text, start, start + len(text)))
             position = start + len(text)
-        for (x, x_text, _, x_end), (y, y_text, y_start, _) in zip(spans, spans[1:]):
-            if x != y and _ALIAS_BETWEEN.fullmatch(statement[x_end:y_start]):
+        for (x, x_text, _, x_end), (y, y_text, y_start, y_end) in zip(spans, spans[1:]):
+            if x != y and _ALIAS_BETWEEN.fullmatch(statement[x_end:y_start]) and _alias_name(y, y_text) \
+                    and _ALIAS_ENDS.match(statement, y_end):
                 out.append({"names": frozenset(x), "alias": frozenset(y), "name": x_text, "as": y_text,
                             "knowledge_id": row["id"]})
     return out
+
+
+# The alias is the whole of what the parenthetical says: it ends there ("X, previously Y, ..."; "X (formerly Y)").
+# "X, previously Y's parent company" or "X, previously Y Corp's ..." is a description that names Y, not an alias.
+_ALIAS_ENDS = re.compile(r"\s*(?:[,);.]|$)")
+# Words that say what someone or something was, not what it was called ("Ann Smith, previously CEO of Orbix").
+ROLE_WORDS = frozenset((
+    "ceo", "cto", "cfo", "coo", "cio", "president", "vice", "chair", "chairman", "chairwoman", "chairperson",
+    "director", "minister", "secretary", "governor", "mayor", "head", "chief", "founder", "cofounder", "co-founder",
+    "manager", "editor", "professor", "dean", "king", "queen", "prince", "princess", "captain", "general", "senator",
+    "ambassador", "chancellor", "commissioner", "owner", "partner", "member", "leader", "deputy", "acting"))
+
+
+def _alias_name(words, text) -> bool:
+    """Whether a phrase after an alias cue can be an alias: a name, not a role ("CEO", "President") and not a phrase
+    that names something else by its relation to it (" of ": "CEO of Orbix", "the Bank of England")."""
+    return not (words & ROLE_WORDS) and " of " not in f" {text.lower()} " and not re.search(r"['’]s\b", text)
 
 
 def stated_aliases(db) -> list[dict]:
@@ -578,15 +649,16 @@ def _admissible(statement, values, polarity, item, is_name=None, aliases=(), use
     """Why a stored item cannot be paired with a new statement by meaning, or None when it can: the tests of the
     comment above that are not the models' (same subject, comparable values, not a series). An alias that made
     the two subjects one is appended to `used`."""
-    if not values or not item["claim_values"]:
+    item_values = _read_values(item)
+    if not values or not item_values:
         return "no value to compare"
     if not _same_subject(statement, item["statement"], is_name, aliases, used):
         return "the two statements do not name the same subject"
-    if not _comparable(values, item["claim_values"]):
+    if not _comparable(values, item_values):
         return "their values are of different kinds"
     if _compare(values, polarity, item)[0] == "series":
         return "both the dates and the values differ (another reference period)"
-    if _binary_factor(values, item["claim_values"]):
+    if _binary_factor(values, item_values):
         return "two data sizes that differ by the factor between decimal and binary prefixes (1000 against 1024)"
     return None
 
@@ -1194,6 +1266,10 @@ def _contested_against(db, task_id, cluster, item, reason, now, summary, questio
     supporting side conflicts with the item, the item is contradicted by it (citing the supporting head)."""
     values, polarity = _values(cluster)
     relation, differ = _compare(values, polarity, item)
+    if relation == "incomparable":
+        summary["held"].append(_held(cluster, [f"{differ}: not taken for knowledge #{item['id']}, whose key the "
+                                               "words share"]))
+        return
     if relation != "same":
         _contradict(db, task_id, cluster, item, differ or reason, now, summary, questions)
         return
@@ -1205,7 +1281,7 @@ def _contested_against(db, task_id, cluster, item, reason, now, summary, questio
         if claim.id in support:
             continue
         other, why = _compare(list(claim.values or []), -1 if claim.polarity < 0 else 1, item)
-        if other != "same":
+        if other not in ("same", "incomparable"):
             _contradict(db, task_id, cluster, item, why or reason, now, summary, questions, head=claim,
                         weaken=False)
 
@@ -1338,7 +1414,7 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                     summary["held"].append(_held(cluster, [f"owner rejected this before (knowledge "
                                                            f"#{rejected['id']})"]))
                     continue
-                if relation == "same":
+                if relation in ("same", "incomparable"):    # (incomparable: _admissible already refuses it)
                     # Not merged: a pair found by meaning is a judgement, and strengthening would count the new
                     # sources as independent support of the stored item. A wrong pair of two properties that share
                     # a value (the held-out failures were of that kind) would inflate it. The statement is stored as
@@ -1367,6 +1443,10 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                 relation, differ = _compare(values, polarity, item)
                 if relation == "same":   # duplication: strengthen, never duplicate
                     _strengthen(db, task_id, cluster, item, now, summary, ids_by_key, verdict=verdict)
+                    continue
+                if relation == "incomparable":   # the words match, the values say nothing of one another
+                    summary["held"].append(_held(cluster, [f"{differ}: not taken for knowledge #{item['id']}, "
+                                                           "whose key the words share"]))
                     continue
                 if item.get("provenance") == "user_asserted":   # the owner's assertion is never overwritten
                     _contradict(db, task_id, cluster, item, f"{differ}; the owner asserted the stored statement",

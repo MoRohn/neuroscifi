@@ -459,10 +459,14 @@ _UNIT_SPELLINGS = {
     "µg": ("µg", "ug", "microgram", "micrograms"),
     "lb": ("lb", "lbs"),
     "km/h": ("km/h", "kph", "km/hr", "kilometre per hour", "kilometres per hour", "kilometer per hour",
-             "kilometers per hour"),
-    "mph": ("mph", "mile per hour", "miles per hour"),
+             "kilometers per hour", "km per hour", "km an hour", "kilometre an hour", "kilometres an hour",
+             "kilometer an hour", "kilometers an hour"),
+    "mph": ("mph", "mi/h", "mile per hour", "miles per hour", "mile an hour", "miles an hour"),
+    "km/s": ("km/s", "kilometre per second", "kilometres per second", "kilometer per second",
+             "kilometers per second"),
     "m/s": ("m/s", "metre per second", "metres per second", "meter per second", "meters per second"),
-    "kn": ("kn", "knot", "knots"),
+    # "kn" is left out: it is also kilonewtons ("50 kN"), and the parser reads units without regard to case
+    "kn": ("knot", "knots"),
     "ns": ("ns", "nanosecond", "nanoseconds"),
     "µs": ("µs", "us", "microsecond", "microseconds"),
     "ms": ("ms", "millisecond", "milliseconds"),
@@ -514,7 +518,8 @@ _DIMENSION = {
     "m³/s": ("flow", 1.0), "m³": ("volume", 1.0), "l": ("volume", 1e-3), "ml": ("volume", 1e-6),
     "µl": ("volume", 1e-9), "ft³": ("volume", 0.028316846592), "t": ("mass", 1e3), "kg": ("mass", 1.0),
     "g": ("mass", 1e-3), "mg": ("mass", 1e-6), "µg": ("mass", 1e-9), "lb": ("mass", 0.45359237),
-    "km/h": ("speed", 1 / 3.6), "mph": ("speed", 0.44704), "m/s": ("speed", 1.0), "kn": ("speed", 1852 / 3600),
+    "km/h": ("speed", 1 / 3.6), "mph": ("speed", 0.44704), "m/s": ("speed", 1.0), "km/s": ("speed", 1e3),
+    "kn": ("speed", 1852 / 3600),
     "ns": ("time", 1e-9), "µs": ("time", 1e-6), "ms": ("time", 1e-3), "s": ("time", 1.0),
     "min": ("time", 60.0), "h": ("time", 3600.0), "days": ("time", 86400.0), "weeks": ("time", 604800.0),
     "months": ("time", 2_629_800.0), "years": ("time", 31_557_600.0), "kb": ("data", 1e3), "mb": ("data", 1e6),
@@ -652,6 +657,8 @@ def _scan_values(s: str) -> list[tuple[str, str | None]]:
                 found.append((m.start(), f"{_CURRENCY_WORD[g['curw'].lower()]} {_fmt(x)}"))
                 continue
             unit = _unit(g["unit"] or "")
+            if unit and _DIMENSION.get(unit, ("",))[0] in _RATE_PRONE and _PER_OR_POWER.match(text, m.end()):
+                continue        # "5 MB/s", "9.8 m/s²": a rate or an acceleration, not a size, a length or a speed
             if unit:
                 numbers.append([m.start(), m.end(), x, unit, len(found), mag])
                 found.append((m.start(), _with_unit(x, unit)))
@@ -685,6 +692,9 @@ def _scan_values(s: str) -> list[tuple[str, str | None]]:
 
 
 _NEXT_WORD = re.compile(r"[ \t]+([^\W\d_][\w'’-]*)")
+# A unit of these dimensions followed by "/" and a letter, or by a power, is part of a unit the table does not hold.
+_RATE_PRONE = ("length", "data", "binary data", "speed")
+_PER_OR_POWER = re.compile(r"/[^\W\d_]|[²³]")
 
 def _quantity_key(g: dict):
     """(kind of quantity, unit as written, magnitude word as written) of one _VALUE_RE match, or None: the kind is a
@@ -730,6 +740,9 @@ def mask_quantities(s: str, like: str | None = None) -> str:
             unit, mag = want[key[0]]
             if g["money1"]:
                 return g["cur"] + g["m1"] + (" " + mag if mag else "")
+            # a currency the other statement writes as a symbol keeps its word here ("# million euros" -> "# bn
+            # euros"), so the currency is not lost from what the reranker reads
+            unit = unit or g["curw"]
             return g["num"] + (" " + mag if mag else "") + (" " + unit if unit else "")
         s = _VALUE_RE.sub(one, s)
     return re.sub(r"\d[\d.,]*\d|\d", "#", s)
@@ -838,9 +851,21 @@ def _same_number(kind: str, a, b, sa: str = "", sb: str = "") -> bool:
     if kind in ("version", "year") or kind.startswith("text"):
         return a == b
     if kind in _PRECISE_KINDS and _decimals(sa) and _decimals(sa) == _decimals(sb):
+        ua, ub = _written_unit(sa), _written_unit(sb)
+        if ua != ub and ua in _DIMENSION and ub in _DIMENSION:
+            # converted from other units ("60.5 mph", "97.4 km/h"): each value is exact only to half a unit in its
+            # last written place, and the conversion cannot be rounded away
+            half = 0.5 * 10 ** -_decimals(sa) * _DIMENSION[ua][1] + 0.5 * 10 ** -_decimals(sb) * _DIMENSION[ub][1]
+            return abs(a - b) <= half * (1 + 1e-9)
         return math.isclose(a, b, rel_tol=1e-9)
     scale = max(abs(a), abs(b))
     return scale == 0 or abs(a - b) / scale <= NUMERIC_TOLERANCE
+
+
+def _written_unit(v: str) -> str | None:
+    """The canonical unit a canonical value string is written in ("97.4 km/h" -> "km/h"), else None."""
+    m = re.fullmatch(r"-?[\d.e+]+ (.+)", v or "")
+    return _unit(m.group(1)) if m else None
 
 
 def _magnitude(v: str) -> int | None:
