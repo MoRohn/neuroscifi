@@ -19,7 +19,8 @@ samples DB and cache file sizes, Python heap (tracemalloc) and RSS. Checks at th
   reset        autonomous research resumes on every day after the first (the budget resets at 00:00 UTC)
   drift        96 ticks a simulated day; idle decisions at least idle_interval apart; every ledger row on the UTC
                day its task started
-  growth       DB size and heap grow at most linearly: the last day's growth <= 2 x the median daily growth (+1 MB)
+  growth       DB size and heap grow at most linearly: the last day's growth <= 2 x the median daily growth (+1 MB);
+               the heap is read after a garbage collection at each day's last sample (what is held)
   leases       no running task with an expired lease, no open ledger row of an ended task, no queued autonomous
                task older than a day
   decisions    every autonomous task that ran has its autonomy decision event (inputs) and a settled ledger row
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
+import gc
 from datetime import datetime, timezone
 import json
 import os
@@ -206,6 +208,11 @@ def run(days=7, db_dir=None):
             owner_asked += 1
         while marks["sample"] + HOUR <= now:
             marks["sample"] += HOUR
+            if day(marks["sample"]) != day(marks["sample"] - 1):
+                # the day's last sample, which the growth check reads: what is held, not cyclic garbage the collector
+                # has not reached yet (in a process holding many long-lived objects, a test suite's, full collections
+                # are rare and the uncollected garbage read as megabytes of growth)
+                gc.collect()
             current, peak = tracemalloc.get_traced_memory()
             samples.append({"at": marks["sample"], "db_bytes": file_bytes(path), "heap": current, "heap_peak": peak,
                             "rss_kB": rss_kb()})
