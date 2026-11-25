@@ -358,6 +358,39 @@ def show(db, record_id):
     return _item(db, row, full=True)
 
 
+def counts(db, *, since=None):
+    """How many records are held, by kind, and the newest one's time (records made at or after `since` only, when
+    given), labelled NOT_EVIDENCE: the numbers a display shows, never a record's content. Read-only."""
+    if not present(db):
+        return {"label": NOT_EVIDENCE, "counts": {k: 0 for k in KINDS}, "total": 0, "newest": None}
+    where, params = ("created_at>=?", (since,)) if since is not None else ("1", ())
+    rows = db.execute(f"SELECT kind, count(*), max(created_at) FROM imagined WHERE {where} GROUP BY kind",
+                      params).fetchall()
+    by_kind = {kind: n for kind, n, _ in rows}
+    return {"label": NOT_EVIDENCE, "counts": {k: by_kind.get(k, 0) for k in KINDS}, "total": sum(by_kind.values()),
+            "newest": max((t for _, _, t in rows), default=None)}
+
+
+def written_by(db, mechanism, *, derived_from=None, observed=None):
+    """The records one mechanism wrote, oldest first, in full: how a writer reads back its own records to fill their
+    outcome slots or report its own prediction errors (never another mechanism's). derived_from=(kind, id) keeps
+    those derived from that record; observed=True/False keeps those whose outcome is filled / still empty."""
+    if not isinstance(mechanism, str) or not mechanism:
+        raise ValidationError("mechanism must be a non-empty string")
+    if not present(db):
+        return []
+    where, params = ["mechanism=?"], [mechanism]
+    if observed is not None:
+        where.append("outcome IS NOT NULL" if observed else "outcome IS NULL")
+    if derived_from is not None:
+        kind, ref_id = derived_from
+        where.append("id IN (SELECT record_id FROM imagined_refs WHERE ref_kind=? AND ref_id=? AND observed=0)")
+        params += [kind, str(ref_id)]
+    rows = db.execute(f"SELECT {','.join(COLUMNS)} FROM imagined WHERE {' AND '.join(where)} "
+                      f"ORDER BY created_at, id", params).fetchall()
+    return [_item(db, r, full=True) for r in rows]
+
+
 def purge(db, now, *, record_id=None, kind=None):
     """The owner removes one record (record_id), every record of a kind, or all of them (neither given): rows and
     lineage deleted, tombstones kept (a restore removes them from older copies), checkpoints that may hold them made

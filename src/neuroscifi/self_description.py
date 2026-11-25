@@ -141,9 +141,9 @@ def _provenance_counts(db, now) -> dict:
                              "predictions": count("SELECT count(*) FROM web_predictions")}
     from .instance import imagined
     if imagined.present(db):
-        kinds = dict(db.execute("SELECT kind, count(*) FROM imagined GROUP BY kind").fetchall())
-        out["imagined"] = {k: kinds.get(k, 0) for k in imagined.KINDS}
-        out["imagined_label"] = imagined.NOT_EVIDENCE
+        held = imagined.counts(db)
+        out["imagined"] = held["counts"]
+        out["imagined_label"] = held["label"]
     return _f(out, "evidence, evidence_consolidated, web_* and imagined tables (provenance.mapping)", now, now)
 
 

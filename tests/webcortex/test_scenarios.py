@@ -62,9 +62,13 @@ def test_settlement_fills_the_outcome_once_and_the_error_is_reported_per_mechani
     consolidated(db, [two_sources(hosts=("c.example", "d.example"))], T0 + 20)     # confirms the prediction
     assert evolution.prediction(db, pid)["outcome"] == "confirmed"
     assert scenarios.tick(db, T0 + 30)["settled"] == 1
-    outcome = imagined.show(db, record_id)["outcome"]
+    shown = imagined.show(db, record_id)
+    outcome = shown["outcome"]
     assert outcome["evidence"] == [["prediction", str(pid)]]
-    c = outcome["observed"]["comparison"]
+    # No text in an outcome (imagined.observe): the slot holds which future happened, the comparison is computed.
+    assert outcome["observed"] == {"futures": scenarios.FUTURES.index("confirmed")}
+    assert scenarios.observed_future(shown) == "confirmed"
+    c = scenarios.compare(payload, scenarios.observed_future(shown))
     p = payload["futures"]
     assert c["brier_3way"] == pytest.approx((p["confirmed"]["p"] - 1) ** 2 + p["error"]["p"] ** 2
                                             + p["inconclusive"]["p"] ** 2)

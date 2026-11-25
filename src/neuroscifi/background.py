@@ -158,9 +158,13 @@ FORWARDERS = {
     "neuroscifi.voice.bridge:Bridge._continue_research": "a requeue by the owner's voice, with the principal's origin",
     "neuroscifi.webcortex.bench.live:_task": "a live benchmark's origin on its own temporary individual",
     "neuroscifi.acceptance.cognition.infovalue:_Web._consolidate": "benchmark: a staged task on a temporary individual",
+    "neuroscifi.acceptance.cognition.knowledge:_World._consolidate": "benchmark (lane K): a staged task on a "
+                                                                     "temporary individual",
     # not a task's origin at all: a hypothesis's (evolution.HYPOTHESIS_ORIGINS), a claim's sources, a Presence label
     "neuroscifi.webcortex.consolidate:run": "a hypothesis's origin (verdict state), not a task's",
     "neuroscifi.webcortex.consolidate:_research_opportunity": "a hypothesis's origin (verdict state), not a task's",
+    "neuroscifi.webcortex.evolution:open_hypothesis": "a hypothesis's origin to its recorded fields (lane K's "
+                                                      "_describe), not a task's",
     "neuroscifi.webcortex.claims:stamp_origins": "the list of feeds a claim came from (claim flags), not a task's",
     "neuroscifi.presence.aggregator:derive": "the class of a task's origin, shown on Presence (starts nothing)",
 }

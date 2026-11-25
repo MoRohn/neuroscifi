@@ -56,7 +56,7 @@ def _migration():
     return next(i for i, script in enumerate(schema.MIGRATIONS) if "CREATE TABLE IF NOT EXISTS imagined(" in script)
 
 
-def test_the_migration_is_the_last_and_changes_no_row_of_a_version_16_file(tmp_path):
+def test_the_migration_changes_no_row_of_a_version_16_file_and_later_ones_follow_it(tmp_path):
     number = _migration()       # later migrations (ADR-055) follow it; the file below migrates through all of them
     path = tmp_path / "old.sqlite"
     with closing(sqlite3.connect(path, isolation_level=None)) as raw:
@@ -70,6 +70,13 @@ def test_the_migration_is_the_last_and_changes_no_row_of_a_version_16_file(tmp_p
         assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION > number
         assert raw.execute("SELECT * FROM evidence").fetchall() == before
         assert raw.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
+
+
+def test_version_17_is_the_imagined_store_and_version_18_the_knowledge_tables_last():
+    """Wave 1 integration: the imagined store stays version 17 exactly as Wave 0 left it; lane K's migration (found by
+    its content) is appended after it as version 18, the last."""
+    k = next(i for i, script in enumerate(schema.MIGRATIONS) if "CREATE TABLE IF NOT EXISTS web_premises" in script)
+    assert _migration() + 1 == 17 and k + 1 == 18 == len(schema.MIGRATIONS) == schema.SCHEMA_VERSION
 
 
 # What the first, unreleased build of migration 17 left (review0 M2/L1/L4, M1): reference triggers that tested free
@@ -504,6 +511,31 @@ def test_free_text_may_read_like_an_imagined_id(instance, table):
     for column in FREE_TEXT[table]:
         for value in (IMG, json.dumps([{"url": "https://evil.example/p", "title": IMG}]), json.dumps({"claim": IMG})):
             db.execute(f"UPDATE {table} SET {column}=? WHERE rowid=?", (value, rowid))
+
+
+def test_a_display_counts_and_a_writer_reads_back_only_its_own_records(instance):
+    """Wave 1 integration: the displays that count (Presence, the self-description) and the writer that settles its
+    own records (webcortex/scenarios.py) use the store's API, never SQL on its tables (test_imagined_quarantine)."""
+    db, _ = instance
+    empty = imagined.counts(db)
+    assert empty == {"label": imagined.NOT_EVIDENCE, "counts": {k: 0 for k in imagined.KINDS}, "total": 0,
+                     "newest": None}
+    add(db, "seen")
+    first = make(db, 1, now=T0, derived_from=[("evidence", "seen")])
+    second = make(db, 2, now=T0 + 10, mechanism="other-mechanism")
+    third = make(db, 3, now=T0 + 20)
+    held = imagined.counts(db)
+    assert held["total"] == 3 and held["newest"] == T0 + 20 and sum(held["counts"].values()) == 3
+    assert imagined.counts(db, since=T0 + 10)["total"] == 2
+    assert imagined.counts(db, since=T0 + 21) == empty
+    assert [r["id"] for r in imagined.written_by(db, "test-generator")] == [first, third]
+    assert [r["id"] for r in imagined.written_by(db, "other-mechanism")] == [second]
+    assert [r["id"] for r in imagined.written_by(db, "test-generator", derived_from=("evidence", "seen"))] == [first]
+    imagined.observe(db, first, observation={"value": 1}, evidence=[("evidence", "seen")], now=T0 + 30)
+    assert [r["id"] for r in imagined.written_by(db, "test-generator", observed=True)] == [first]
+    assert [r["id"] for r in imagined.written_by(db, "test-generator", observed=False)] == [third]
+    with pytest.raises(ValidationError):
+        imagined.written_by(db, "")
 
 
 def test_every_reference_column_has_its_triggers(instance):

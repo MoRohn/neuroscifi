@@ -715,7 +715,7 @@ MIGRATIONS = [
     """ + ";\n".join(_STORE_TRIGGERS_17.values()) + """;
     -- No reference column of an evidence-side table may name an imagined record (schema._NO_IMAGINED).
     """ + ";\n".join(NO_IMAGINED_TRIGGERS.values()) + ";\n",
-    # ---- recursive knowledge evolution (lane K, ADR-055; webcortex/premises.py, reflection.py, strategies.py) -------
+    # ---- version 18 (recursive knowledge evolution, lane K, ADR-055; webcortex/premises.py, reflection.py, ...) ----
     """
     -- Hypothesis fields of directive 7.2, one row per hypothesis recorded after this migration (older hypotheses have
     -- none: nothing is invented for them): the assumptions it makes (template statements from its own records), the

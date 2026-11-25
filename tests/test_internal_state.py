@@ -198,6 +198,28 @@ def test_a_forecast_hold_never_holds_the_owners_work(individual):
     assert orchestrator.get(db, background["id"])["status"] == "queued"
 
 
+def test_the_gate_reads_the_setting_again_only_when_the_file_changed(individual, monkeypatch):
+    """Wave 1 integration: the gate opened a read-only connection on every call (0.47 ms with the setting off). The
+    value is reused while the file and its log are unchanged (and for at most PREDICTIVE_CACHE_SECONDS); a change of
+    the setting is seen on the next call."""
+    import sqlite3
+    db, path = individual
+    opened, real_connect = [], sqlite3.connect
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **k: opened.append(a[0]) or real_connect(*a, **k))
+    sample = {"level": "ok", "reasons": []}
+    assert policy.background_gate(path, sample=sample, audio=False)["allowed"] is True
+    for _ in range(50):
+        assert policy.background_gate(path, sample=sample, audio=False)["allowed"] is True
+    assert len(opened) <= 1
+    store.set_config(db, {"predictive_regulation": True}, T0)
+    assert policy.predictive_on(path) is True
+    store.set_config(db, {"predictive_regulation": False}, T0)
+    assert policy.predictive_on(path) is False
+    monkeypatch.setattr(policy.time, "monotonic", lambda: 1e12)        # past the lifetime: read again
+    before = len(opened)
+    assert policy.predictive_on(path) is False and len(opened) == before + 1
+
+
 def test_a_damaged_setting_reads_as_off(individual):
     db, path = individual
     with store.write(db):

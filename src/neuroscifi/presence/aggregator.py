@@ -181,11 +181,12 @@ def _predictions_made(db, now):
 def _imagined_made(db, now):
     """(count, newest time) of imagined records written in the last moments (instance/imagined.py: simulation,
     speculation, inference; never evidence), owner scope only; (0, None) before schema 17."""
+    from ..instance import imagined
     try:
-        return db.execute("SELECT count(*), max(created_at) FROM imagined WHERE created_at>=?",
-                          (now - FINISHED_WINDOW,)).fetchone()
+        made = imagined.counts(db, since=now - FINISHED_WINDOW)
     except sqlite3.OperationalError:
         return 0, None
+    return made["total"], made["newest"]
 
 
 def _graph_jobs(db, now):

@@ -16,9 +16,10 @@ The assumptions (independence of arrival and truth, the base rate, the forecast)
 writes anything here: the template is deterministic. A model-written pilot was not built (research.md grades scenario
 narration preliminary, and no offline ablation could show a gain; ADR-052).
 
-When the prediction settles, settle() fills the record's outcome slot once with what was observed (naming the
-prediction as the evidence) and the comparison: the three-way Brier and log score of the futures, and the plain
-forecast's Brier on a decisive outcome. errors() reports them per mechanism, computed on read. Nothing here is ever
+When the prediction settles, settle() fills the record's outcome slot once with which future happened (its index;
+naming the prediction as the evidence). compare() gives the three-way Brier and log score of the futures, and the
+plain forecast's Brier on a decisive outcome; errors() reports them per mechanism, computed on read. The store is
+read only through its API for writers (imagined.written_by: this mechanism's own records). Nothing here is ever
 read by knowledge, claims, verification, calibration or retrieval (the imagined store's quarantine, ADR-049): the
 records inform the owner and measure the template, nothing else.
 
@@ -27,7 +28,6 @@ owner's quiet is on (background.py, activity 'tick.scenarios').
 """
 from __future__ import annotations
 
-import json
 import math
 
 from .. import provenance
@@ -64,10 +64,8 @@ def decisive_rate(db, kind) -> dict:
 
 
 def _existing(db, prediction_id) -> str | None:
-    row = db.execute("SELECT i.id FROM imagined i JOIN imagined_refs r ON r.record_id=i.id WHERE r.ref_kind="
-                     "'prediction' AND r.ref_id=? AND i.mechanism=? ORDER BY i.created_at LIMIT 1",
-                     (str(prediction_id), MECHANISM)).fetchone()
-    return row[0] if row else None
+    found = imagined.written_by(db, MECHANISM, derived_from=("prediction", prediction_id))
+    return found[0]["id"] if found else None
 
 
 def futures(db, prediction_id) -> dict:
@@ -158,22 +156,28 @@ def compare(payload, outcome) -> dict:
     return out
 
 
+def observed_future(record) -> str | None:
+    """Which of the futures happened, from a record's outcome slot (None while it is empty). The slot holds the
+    future's index under the payload key "futures": an outcome in the imagined store carries no text of its own
+    (imagined.observe), so the comparison is computed on read from the payload and this index."""
+    outcome = record.get("outcome")
+    return None if outcome is None else FUTURES[outcome["observed"]["futures"]]
+
+
 def settle(db, now) -> list[dict]:
-    """Fill the outcome slot of every scenario record whose prediction has settled (once): the observed outcome,
-    the prediction named as the evidence, and compare()."""
+    """Fill the outcome slot of every scenario record whose prediction has settled (once): which future happened,
+    with the prediction named as the evidence; compare() gives the error."""
     done = []
-    rows = db.execute("SELECT i.id, i.payload, p.id, p.outcome, p.checked_at FROM imagined i JOIN imagined_refs r ON "
-                      "r.record_id=i.id AND r.ref_kind='prediction' JOIN web_predictions p ON p.id=CAST(r.ref_id AS "
-                      "INTEGER) WHERE i.mechanism=? AND i.outcome IS NULL AND p.outcome IS NOT NULL ORDER BY i.created_at",
-                      (MECHANISM,)).fetchall()
-    for record_id, payload, pid, outcome, checked_at in rows:
-        if outcome not in FUTURES:
+    for rec in imagined.written_by(db, MECHANISM, observed=False):
+        pid = rec["payload"]["prediction_id"]
+        row = db.execute("SELECT outcome FROM web_predictions WHERE id=?", (pid,)).fetchone()
+        if row is None or row[0] not in FUTURES:
             continue
-        comparison = compare(json.loads(payload), outcome)
-        imagined.observe(db, record_id, observation={"prediction_id": pid, "outcome": outcome,
-                                                     "settled_at": checked_at, "comparison": comparison},
+        outcome = row[0]
+        comparison = compare(rec["payload"], outcome)
+        imagined.observe(db, rec["id"], observation={"futures": FUTURES.index(outcome)},
                          evidence=[("prediction", pid)], now=now)
-        done.append({"record_id": record_id, "prediction_id": pid, "outcome": outcome,
+        done.append({"record_id": rec["id"], "prediction_id": pid, "outcome": outcome,
                      "brier_3way": comparison["brier_3way"]})
     return done
 
@@ -183,11 +187,9 @@ def errors(db) -> dict:
     three-way Brier and log loss, predicted against observed share of decisive outcomes, and the plain forecast's
     Brier on the decisive ones. For reference, three equal futures score a Brier of 2/3 and a log loss of ln 3."""
     out = {}
-    for mechanism, version, text in db.execute(
-            "SELECT mechanism, mechanism_version, outcome FROM imagined WHERE mechanism LIKE 'scenarios.%' AND "
-            "outcome IS NOT NULL ORDER BY created_at"):
-        c = json.loads(text)["observed"]["comparison"]
-        entry = out.setdefault(f"{mechanism} v{version}", {"n": 0, "brier": 0.0, "log_loss": 0.0,
+    for rec in imagined.written_by(db, MECHANISM, observed=True):
+        c = compare(rec["payload"], observed_future(rec))
+        entry = out.setdefault(f"{rec['mechanism']} v{rec['mechanism_version']}", {"n": 0, "brier": 0.0, "log_loss": 0.0,
                                                            "decisive_predicted": 0.0, "decisive_observed": 0,
                                                            "forecast_brier": [], })
         entry["n"] += 1

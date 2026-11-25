@@ -131,19 +131,47 @@ def voice_session_active(db_path=None, *, now=None, quiet=None) -> bool:
     return bool(beacon is not None and beacon.get("session") and _in_use(beacon.get("used_at"), now, quiet))
 
 
+PREDICTIVE_CACHE_SECONDS = 2.0     # longest a read of predictive_regulation is reused (time.monotonic)
+_predictive_cache: dict = {}       # db_path -> (file state, read at, value)
+
+
+def _file_state(db_path):
+    """(mtime_ns, size) of the database file and its write-ahead log: any committed change of a setting changes
+    one of them (a commit appends to the log; a checkpoint writes the file)."""
+    out = []
+    for name in (db_path, f"{db_path}-wal"):
+        try:
+            st = os.stat(name)
+            out.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append(None)
+    return tuple(out)
+
+
 def predictive_on(db_path) -> bool:
     """The owner's predictive_regulation setting (InstanceConfig, ADR-051), read with a read-only connection; False
-    without a database or when it cannot be read (the gate then behaves as before the setting existed)."""
+    without a database or when it cannot be read (the gate then behaves as before the setting existed). The value
+    read is reused while neither the file nor its log changed, for at most PREDICTIVE_CACHE_SECONDS: two stat calls
+    instead of a connection on every gate (Wave 1 integration; the gate runs on every background start)."""
     if not db_path:
         return False
+    key, now = str(db_path), time.monotonic()
+    state = _file_state(key)
+    cached = _predictive_cache.get(key)
+    if cached is not None and cached[0] == state and now - cached[1] < PREDICTIVE_CACHE_SECONDS:
+        return cached[2]
     import sqlite3
     from contextlib import closing
     try:
         with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2)) as db:
             row = db.execute("SELECT value FROM meta WHERE key='config'").fetchone()
-        return bool(row) and json.loads(row[0]).get("predictive_regulation") is True
+        value = bool(row) and json.loads(row[0]).get("predictive_regulation") is True
     except (sqlite3.Error, ValueError, AttributeError):
         return False
+    if len(_predictive_cache) > 64:
+        _predictive_cache.clear()
+    _predictive_cache[key] = (state, now, value)
+    return value
 
 
 def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
