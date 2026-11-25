@@ -197,3 +197,77 @@ def test_a_signed_node_resends_with_a_fresh_signature_and_is_replayed(spark, dev
     assert spark.req("research_submit", token=a, raw=forged, headers=sent, sign=False) == \
         (401, {"error": "signature_invalid"})
     assert len(tasks(spark)) == 1
+
+
+# ---- the order of the checks (review findings of the remaining-items round) ---------------------------------------
+
+def test_a_queued_key_is_replayed_even_if_the_screen_would_refuse_it_now(spark, devices, monkeypatch):
+    """The reply was lost, and the owner added a private term the question matches since: the phone must not be told
+    'refused' for a question the Spark already has."""
+    a, _, _ = devices
+    key = str(uuid.uuid4())
+    task = submit(spark, a, QUESTION, request=key)[1]["id"]
+    monkeypatch.setattr(orchestrator, "screen", lambda db, text, cfg: [{"kind": "term"}])
+    assert submit(spark, a, QUESTION, request=key) == (200, {"id": task, "replayed": True})
+    with closing(bridge.connect(spark.server.store.path)) as db, db:
+        db.execute("DELETE FROM outbox_requests")                       # and when found by its tag instead
+    assert submit(spark, a, QUESTION, request=key) == (200, {"id": task, "replayed": True})
+    assert submit(spark, a, QUESTION, request=str(uuid.uuid4())) == (400, {"error": "private_data"})
+
+
+def test_the_hourly_limit_comes_before_a_scan_of_the_individual(spark, devices, monkeypatch):
+    """A fresh key at the limit is refused without searching the family's tasks (a scan under the shared lock)."""
+    a, _, _ = devices
+    for n in range(bridge.SUBMISSIONS_PER_HOUR):
+        assert submit(spark, a, f"Zephyr compiler question {n}", mode="quick_lookup")[0] == 201
+    scans = []
+    real = orchestrator.by_request
+    monkeypatch.setattr(orchestrator, "by_request", lambda *args: scans.append(args) or real(*args))
+    for _ in range(5):
+        assert submit(spark, a, QUESTION, request=str(uuid.uuid4()))[0] == 429
+    assert scans == []
+
+
+def test_a_task_gone_without_a_forget_is_not_called_forgotten(spark, devices, monkeypatch):
+    """A restore from an archive older than the task removes it without a tombstone: the key is a new request, and the
+    stale record is replaced; only a forget the individual recorded answers 410."""
+    from neuroscifi.instance.errors import NotFound
+    a, _, _ = devices
+    key = str(uuid.uuid4())
+    old = submit(spark, a, QUESTION, request=key)[1]["id"]
+    with spark.owner() as db:
+        orchestrator.cancel(db, old, time.time())   # not in flight, so no identical question is merged into it
+    real_get = orchestrator.get
+
+    def get(db, ident, **kw):
+        if ident == old:
+            raise NotFound("restored away")
+        return real_get(db, ident, **kw)
+    monkeypatch.setattr(orchestrator, "get", get)
+    monkeypatch.setattr(orchestrator, "by_request", lambda *args: None)       # the restored copy has no such task
+    status, new = submit(spark, a, QUESTION, request=key)
+    assert status == 201 and new["id"] != old
+    with closing(bridge.connect(spark.server.store.path)) as db:
+        assert db.execute("SELECT task FROM outbox_requests").fetchall() == [(new["id"],)]
+
+
+def test_a_forgotten_answer_drops_the_record(spark, devices):
+    a, _, _ = devices
+    key = str(uuid.uuid4())
+    task = submit(spark, a, QUESTION, request=key)[1]["id"]
+    from neuroscifi.instance import governance
+    with spark.owner() as db:
+        governance.forget_research(db, task, time.time())
+    assert submit(spark, a, QUESTION, request=key) == (410, {"error": "forgotten"})
+    with closing(bridge.connect(spark.server.store.path)) as db:
+        assert db.execute("SELECT count(*) FROM outbox_requests").fetchone()[0] == 0
+
+
+def test_a_submit_that_replays_is_not_counted(spark, devices):
+    """Two Pocket processes on one individual: the key found inside the individual's own transaction counts nothing."""
+    a, _, _ = devices
+    store = spark.server.store
+    before = submissions(spark)
+    result = store.admit(store.family(a), lambda: {"id": "t1", "replayed": True}, request=str(uuid.uuid4()),
+                         replay=lambda known: None, lost=lambda: None)
+    assert result == {"id": "t1", "replayed": True} and submissions(spark) == before

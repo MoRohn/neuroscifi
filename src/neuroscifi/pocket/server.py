@@ -186,29 +186,51 @@ class Store:
         with closing(connect(self.path)) as db:
             return db.execute("SELECT count(*) FROM members WHERE family=?", (family,)).fetchone()[0] >= FAMILY_DEVICES
 
-    def admit(self, family, submit, request=None, replay=None):
+    def admit(self, family, submit, request=None, replay=None, lost=None, refuse=None):
         """Run `submit` unless the family already queued SUBMISSIONS_PER_HOUR tasks in the last hour.
 
-        With an outbox `request` key, `replay(task)` is asked first, under the same lock, with the task this family's
-        key queued before (None when this database has no record of it): a reply it returns is returned as it is,
-        nothing is counted and nothing is submitted. A new key is recorded with the task `submit` returned."""
+        In this order, under one lock (cheapest first, nothing counted before a task is queued):
+        1. With an outbox `request` key this database recorded, `replay(task)` with the task it queued: a reply it
+           returns (200 replayed, 410 forgotten) is returned as it is; on 410 the record goes. None means the task is
+           gone without having been forgotten (a restore from an older archive): the record goes and the key is new.
+        2. The hourly limit (None when it is reached): before any scan of the individual a new key would cost.
+        3. With a key, `lost()`: the task this key queued when this database lost its record (a crash between the
+           two commits); a reply it returns is returned as it is.
+        4. `refuse()`: a refusal it returns (the private-data screen) is returned as it is. A retry of a key already
+           queued is answered by 1 or 3 first, so a term added to the screen since never refuses a queued question.
+        5. `submit()`; a result reporting `replayed` (the key found inside the individual's own transaction, by
+           another process) is not counted. A new key is recorded with the task `submit` returned."""
         with _RATE_LOCK:
             now = self.clock()
             if request is not None:
                 with closing(connect(self.path)) as db:
                     row = db.execute("SELECT task FROM outbox_requests WHERE family=? AND request=?",
                                      (family, request)).fetchone()
-                answer = replay(row[0] if row else None)
-                if answer is not None:
-                    return answer
+                if row is not None:
+                    answer = replay(row[0])
+                    if answer is None or answer[0] == 410:
+                        with closing(connect(self.path)) as db, db:
+                            db.execute("DELETE FROM outbox_requests WHERE family=? AND request=?", (family, request))
+                    if answer is not None:
+                        return answer
             with closing(connect(self.path)) as db:
                 recent = db.execute("SELECT count(*) FROM submissions WHERE family=? AND at>?",
                                     (family, now - 3600)).fetchone()[0]
             if recent >= SUBMISSIONS_PER_HOUR:
                 return None
+            if request is not None and lost is not None:
+                answer = lost()
+                if answer is not None:
+                    return answer
+            if refuse is not None:
+                answer = refuse()
+                if answer is not None:
+                    return answer
             result = submit()
+            replayed = isinstance(result, dict) and result.get("replayed")
             with closing(connect(self.path)) as db, db:
-                db.execute("INSERT INTO submissions VALUES(?,?)", (family, now))
+                if not replayed:
+                    db.execute("INSERT INTO submissions VALUES(?,?)", (family, now))
                 if request is not None and isinstance(result, dict) and result.get("id"):
                     db.execute("INSERT OR IGNORE INTO outbox_requests VALUES(?,?,?,?)",
                                (family, request, result["id"], now))
@@ -529,6 +551,13 @@ def request_tag(family_digest, request):
     return hashlib.sha256(f"pocket-outbox:{family_digest}:{request}".encode()).hexdigest()[:32]
 
 
+def forgotten_task(db, task_id):
+    """Whether the owner forgot research task `task_id` (governance records a payload-free tombstone for it)."""
+    from ..instance import governance, store as instance_store
+    digest = governance.web_digest(instance_store.birth(db)["instance_id"], "task", task_id)
+    return db.execute("SELECT 1 FROM web_forgotten WHERE kind='task' AND digest=?", (digest,)).fetchone() is not None
+
+
 def research(server, token, route, data, raw=b"", headers=None):
     """Family-scoped research actions (ADR-028). Pocket queues and reads; the Spark's worker runs the task.
     `raw` and `headers` are the request's body bytes and headers, for a node's signature (ADR-042 draft)."""
@@ -558,31 +587,40 @@ def research(server, token, route, data, raw=b"", headers=None):
                 tag = None if request is None else request_tag(digest, request)
 
                 def replay(known):
-                    """A key this family used before: the task it queued (200, replayed), 410 when that task was
-                    forgotten since, else None (a new request)."""
-                    if known is not None:
-                        try:
-                            orchestrator.get(db, known, family=digest)
-                        except NotFound:
+                    """A key this family's Pocket record says queued `known`: that task (200, replayed); 410 only
+                    when the owner forgot it (its tombstone is in the individual); None when it is simply absent
+                    (a restore from an archive older than the task): the key is then a new request."""
+                    try:
+                        orchestrator.get(db, known, family=digest)
+                    except NotFound:
+                        if forgotten_task(db, known):
                             return 410, {"error": "forgotten"}
-                        return 200, {"id": known, "replayed": True}
-                    found = orchestrator.by_request(db, digest, tag)   # queued, but its record here was lost
+                        return None
+                    return 200, {"id": known, "replayed": True}
+
+                def lost():
+                    """The task this key queued although this database lost its record (found by its tag)."""
+                    found = orchestrator.by_request(db, digest, tag)
                     if found is None:
                         return None
                     server.store.remember_request(family, request, found)
                     return 200, {"id": found, "replayed": True}
                 cfg = state.get_config(db)
-                if orchestrator.screen(db, objective, cfg):
-                    return 400, {"error": "private_data"}
                 try:
                     task = server.store.admit(family, lambda: orchestrator.submit(
                         db, objective, time.time(), mode=mode, origin="pocket", family=digest, request=tag),
-                        request=request, replay=replay)
+                        request=request, replay=replay, lost=lost,
+                        refuse=lambda: (400, {"error": "private_data"}) if orchestrator.screen(db, objective, cfg)
+                        else None)
                 except autonomy.BudgetRefused:
                     return 429, {"error": "daily_budget"}   # the owner's daily research budget is spent (D4)
                 if isinstance(task, tuple):
                     return task
-                return (429, {}) if task is None else (201, {"id": task["id"]})
+                if task is None:
+                    return 429, {}
+                if task.get("replayed"):      # found inside the individual's transaction (another process queued it)
+                    return 200, {"id": task["id"], "replayed": True}
+                return 201, {"id": task["id"]}
             if route == "research_list":
                 if data:
                     raise ValueError()
