@@ -23,6 +23,14 @@ def box(tmp_path, monkeypatch, capsys):
                         {"started": True, "url": self.base_url})
     monkeypatch.setattr(sx.Container, "stop", lambda self: calls.append(("stop", self.port)) or {"stopped": True})
     monkeypatch.setattr(sx.Container, "status", lambda self: {"container": sx.CONTAINER_NAME, "running": True})
+    # The reserved ports read this account's NSF_..._PORT settings and its service overrides: none from the host.
+    for name in list(os.environ):
+        if name.startswith("NSF_") and (name.endswith("PORT") or name.endswith("_DIR")):
+            monkeypatch.delenv(name)
+    overrides = tmp_path / "config"
+    for variable, folder in (("NSF_INFERENCE_DIR", "inference"), ("NSF_MEMORY_DIR", "memory"),
+                             ("NSF_VOICE_DIR", "voice")):
+        monkeypatch.setenv(variable, str(overrides / folder))
     db = tmp_path / "individual.sqlite"
 
     def nsf(*argv):
@@ -35,7 +43,7 @@ def box(tmp_path, monkeypatch, capsys):
     class Box:
         pass
     b = Box()
-    b.db, b.calls, b.nsf = db, calls, nsf
+    b.db, b.calls, b.nsf, b.overrides = db, calls, nsf, overrides
     def lock():
         """What deploy/install.sh --idle-access leaves the other account: the database to read, and nothing to
         create beside it (the folder is the service account's)."""
@@ -139,6 +147,8 @@ def _tamper(path, sql, *args):
     ('{"enabled": true, "searxng_url": "http://127.0.0.1:18441"}', "not allowed"),     # the memory models
     ('{"enabled": true, "searxng_url": "http://127.0.0.1:18431"}', "not allowed"),     # voice
     ('{"enabled": true, "searxng_url": "http://127.0.0.1:8765"}', "not allowed"),      # Pocket
+    ('{"enabled": true, "searxng_url": "http://127.0.0.1:8812"}', "not allowed"),      # the TensorRT-LLM window
+    ('{"enabled": true, "searxng_url": "http://127.0.0.1:8814"}', "not allowed"),
     ('{"enabled": true, "searxng_url": "http://127.0.0.1:631"}', "not allowed"),       # privileged
     ('{"enabled": true, "searxng_url": "http://127.0.0.1"}', "not allowed"),           # no port: 80
 ])
@@ -161,3 +171,22 @@ def test_a_view_in_place_of_the_meta_table_or_a_fifo_beside_the_database_is_not_
     box.lock()
     code, err = box.nsf("web", "searxng", "start", "--db", str(box.db))
     assert code == 2 and "no meta table" in err and box.calls == []
+
+
+@pytest.mark.parametrize("how", ["environment", "override file"])
+def test_a_port_an_override_moved_a_service_to_is_refused_too(box, monkeypatch, how):
+    """Re-review (L6 residue): the answer model, memory or voice moved to another port by NSF_..._PORT (in the
+    environment, or in the owner's override that deploy/*/run.sh reads) is as reserved as its default."""
+    if how == "environment":
+        monkeypatch.setenv("NSF_VLLM_PORT", "18500")
+    else:
+        folder = box.overrides / "memory"
+        folder.mkdir(parents=True)
+        (folder / "memory.env").write_text("# moved\nNSF_MEMORY_SERVER=single\nexport NSF_MEMORY_EMBED_PORT='18500'\n")
+    assert box.nsf("web", "config", "--enable", "--set", 'searxng_url="http://127.0.0.1:18500"',
+                   "--db", str(box.db))[0] == 0
+    box.lock()
+    code, err = box.nsf("web", "searxng", "start", "--db", str(box.db))
+    assert code == 2 and "not allowed" in err and box.calls == []
+    assert 18080 not in wcli._reserved_ports()       # another port is still allowed
+

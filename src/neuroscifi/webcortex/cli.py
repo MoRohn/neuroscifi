@@ -16,8 +16,10 @@ import argparse
 import errno
 import json
 import os
+import re
 import sys
 import time
+from pathlib import Path
 
 from ..instance import store
 from ..instance.errors import ValidationError
@@ -440,8 +442,37 @@ def _shared_config(path):
 
 
 # Host ports the other NeuroSciFi services publish or listen on (deploy/): the answer model, the memory models, the
-# voice services, Pocket, the console and the web search daemon. The read-only SearXNG path refuses them.
-SHARED_RESERVED_PORTS = frozenset({8811, 18441, 18442, 18431, 18432, 8765, 8766, 3210})
+# voice services, Pocket, the console, the web search daemon and the TensorRT-LLM comparison window's servers
+# (scripts/trtllm_compare.py, 8812 to 8814). The read-only SearXNG path refuses them, and any port an override moved
+# one of those services to (_reserved_ports).
+SHARED_RESERVED_PORTS = frozenset({8811, 18441, 18442, 18431, 18432, 8765, 8766, 3210, 8812, 8813, 8814})
+_PORT_SETTING = re.compile(r"^\s*(?:export\s+)?(NSF_[A-Z0-9_]*PORT)\s*=\s*[\"']?(\d{1,5})[\"']?\s*(?:#.*)?$")
+# The owner's overrides of the services this account runs (deploy/*/run.sh read them; not in git). Only lines
+# setting an NSF_..._PORT are read; nothing else in these files is looked at.
+_PORT_OVERRIDES = (("NSF_INFERENCE_DIR", "inference", "vllm.env"), ("NSF_MEMORY_DIR", "memory", "memory.env"),
+                   ("NSF_VOICE_DIR", "voice", "voice.env"))
+
+
+def _reserved_ports(environ=None, home=None):
+    """SHARED_RESERVED_PORTS, plus every NSF_..._PORT this account's environment or its service overrides set."""
+    environ = os.environ if environ is None else environ
+    ports = set(SHARED_RESERVED_PORTS)
+    for name, value in environ.items():
+        if name.startswith("NSF_") and name.endswith("PORT") and value.strip().isdigit():
+            ports.add(int(value.strip()))
+    base = Path(home) if home is not None else Path.home()
+    for variable, folder, file in _PORT_OVERRIDES:
+        path = Path(environ.get(variable) or base / ".config" / "neuroscifi" / folder) / file
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                lines = handle.read(65536).splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            match = _PORT_SETTING.match(line)
+            if match:
+                ports.add(int(match.group(2)))
+    return ports
 
 
 def _searxng_shared(a):
@@ -470,7 +501,7 @@ def _searxng_shared(a):
     # it: never a privileged port, and never one the other NeuroSciFi services listen on, so a changed searxng_url
     # cannot make this account take the answer model's, the memory models', the voice services' or Pocket's port.
     port = int(container.port)
-    if not 1024 <= port <= 65535 or port in SHARED_RESERVED_PORTS:
+    if not 1024 <= port <= 65535 or port in _reserved_ports():
         raise ValidationError(f"searxng_url's port {port} is not allowed here: choose a port from 1024 to 65535 that "
                               "no other NeuroSciFi service uses (SearXNG's own default is 8888)")
     out = {"database": "read only (this account may not write it; nothing was written)"}
