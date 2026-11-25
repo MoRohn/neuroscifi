@@ -70,6 +70,12 @@ RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparativ
 MAX_OBJECTIVE = 300
 VERDICTS = ("supported", "disputed", "contested", "insufficient")
 SUBMISSIONS_PER_HOUR = 10   # per pairing family, kept in the Pocket database so a restart does not reset it
+# Pocket's outbox (research-ui.mjs, outbox.mjs): a question written while the Spark is out of reach waits on the
+# device for up to OUTBOX_DAYS and is sent with a `request` key (a UUID v4 made on the device). A request key the
+# family already used is answered with that task (200, replayed) and counts nothing again, so a retry after a lost
+# reply never queues a second task. The keys are kept REQUEST_DAYS here (a day more than the device keeps a question).
+OUTBOX_DAYS = 7
+REQUEST_DAYS = OUTBOX_DAYS + 1
 _RATE_LOCK = threading.Lock()
 
 
@@ -118,6 +124,9 @@ class Store:
                   family TEXT NOT NULL, sponsor TEXT, created INTEGER);
                 INSERT OR IGNORE INTO members(device,family) SELECT key,key FROM devices;
                 CREATE TABLE IF NOT EXISTS submissions(family TEXT NOT NULL, at REAL NOT NULL);
+                -- Outbox request keys (OUTBOX_DAYS): which task a family's request key queued; no question text.
+                CREATE TABLE IF NOT EXISTS outbox_requests(family TEXT NOT NULL, request TEXT NOT NULL,
+                  task TEXT NOT NULL, at REAL NOT NULL, PRIMARY KEY(family, request));
                 CREATE TABLE IF NOT EXISTS episodes(device TEXT REFERENCES devices(key) ON DELETE CASCADE,
                   id TEXT, body TEXT, until INTEGER,PRIMARY KEY(device,id));
                 CREATE TABLE IF NOT EXISTS retired_episodes(device TEXT REFERENCES devices(key) ON DELETE CASCADE,
@@ -174,10 +183,21 @@ class Store:
         with closing(connect(self.path)) as db:
             return db.execute("SELECT count(*) FROM members WHERE family=?", (family,)).fetchone()[0] >= FAMILY_DEVICES
 
-    def admit(self, family, submit):
-        """Run `submit` unless the family already queued SUBMISSIONS_PER_HOUR tasks in the last hour."""
+    def admit(self, family, submit, request=None, replay=None):
+        """Run `submit` unless the family already queued SUBMISSIONS_PER_HOUR tasks in the last hour.
+
+        With an outbox `request` key, `replay(task)` is asked first, under the same lock, with the task this family's
+        key queued before (None when this database has no record of it): a reply it returns is returned as it is,
+        nothing is counted and nothing is submitted. A new key is recorded with the task `submit` returned."""
         with _RATE_LOCK:
             now = self.clock()
+            if request is not None:
+                with closing(connect(self.path)) as db:
+                    row = db.execute("SELECT task FROM outbox_requests WHERE family=? AND request=?",
+                                     (family, request)).fetchone()
+                answer = replay(row[0] if row else None)
+                if answer is not None:
+                    return answer
             with closing(connect(self.path)) as db:
                 recent = db.execute("SELECT count(*) FROM submissions WHERE family=? AND at>?",
                                     (family, now - 3600)).fetchone()[0]
@@ -186,7 +206,15 @@ class Store:
             result = submit()
             with closing(connect(self.path)) as db, db:
                 db.execute("INSERT INTO submissions VALUES(?,?)", (family, now))
+                if request is not None and isinstance(result, dict) and result.get("id"):
+                    db.execute("INSERT OR IGNORE INTO outbox_requests VALUES(?,?,?,?)",
+                               (family, request, result["id"], now))
             return result
+
+    def remember_request(self, family, request, task):
+        """Record that `request` of `family` queued `task` (a task found by its key in the individual)."""
+        with closing(connect(self.path)) as db, db:
+            db.execute("INSERT OR IGNORE INTO outbox_requests VALUES(?,?,?,?)", (family, request, task, self.clock()))
 
     def pairings(self, instance=None):
         """(label, family tag, sponsor label or None, created epoch or None) per device, oldest first. `instance` is
@@ -227,6 +255,8 @@ class Store:
         db.execute("INSERT OR IGNORE INTO retired_episodes SELECT device,id FROM episodes WHERE until<=?", (now,))
         db.execute("DELETE FROM episodes WHERE until<=?",(now,))
         db.execute("DELETE FROM submissions WHERE at<=? OR family NOT IN (SELECT family FROM members)", (now - 3600,))
+        db.execute("DELETE FROM outbox_requests WHERE at<=? OR family NOT IN (SELECT family FROM members)",
+                   (now - REQUEST_DAYS * DAY,))
         db.execute("DELETE FROM push_seen WHERE at<=? OR (family!='' AND family NOT IN (SELECT family FROM members))",
                    (now - 2 * DAY,))
 
@@ -490,6 +520,12 @@ def family_tag(family, instance):
     return state.family_digest(instance, family)[:8]
 
 
+def request_tag(family_digest, request):
+    """The idempotency tag a task keeps for an outbox request key: bound to the family (instance-salted digest), so
+    one family's key never finds another family's task, and the key itself is not stored in the individual."""
+    return hashlib.sha256(f"pocket-outbox:{family_digest}:{request}".encode()).hexdigest()[:32]
+
+
 def research(server, token, route, data, raw=b"", headers=None):
     """Family-scoped research actions (ADR-028). Pocket queues and reads; the Spark's worker runs the task.
     `raw` and `headers` are the request's body bytes and headers, for a node's signature (ADR-042 draft)."""
@@ -509,20 +545,40 @@ def research(server, token, route, data, raw=b"", headers=None):
                 return refused
             if route == "research_submit":
                 objective, mode = data.get("objective"), data.get("mode")
-                if not {"objective"} <= set(data) <= {"objective", "mode"}:
+                if not {"objective"} <= set(data) <= {"objective", "mode", "request"}:
                     raise ValueError()
                 if "mode" in data and mode not in RESEARCH_MODES:
                     raise ValueError()
                 if not isinstance(objective, str) or not objective.strip() or len(objective) > MAX_OBJECTIVE:
                     raise ValueError()
+                request = event_id(data["request"]) if "request" in data else None
+                tag = None if request is None else request_tag(digest, request)
+
+                def replay(known):
+                    """A key this family used before: the task it queued (200, replayed), 410 when that task was
+                    forgotten since, else None (a new request)."""
+                    if known is not None:
+                        try:
+                            orchestrator.get(db, known, family=digest)
+                        except NotFound:
+                            return 410, {"error": "forgotten"}
+                        return 200, {"id": known, "replayed": True}
+                    found = orchestrator.by_request(db, digest, tag)   # queued, but its record here was lost
+                    if found is None:
+                        return None
+                    server.store.remember_request(family, request, found)
+                    return 200, {"id": found, "replayed": True}
                 cfg = state.get_config(db)
                 if orchestrator.screen(db, objective, cfg):
                     return 400, {"error": "private_data"}
                 try:
                     task = server.store.admit(family, lambda: orchestrator.submit(
-                        db, objective, time.time(), mode=mode, origin="pocket", family=digest))
+                        db, objective, time.time(), mode=mode, origin="pocket", family=digest, request=tag),
+                        request=request, replay=replay)
                 except autonomy.BudgetRefused:
                     return 429, {"error": "daily_budget"}   # the owner's daily research budget is spent (D4)
+                if isinstance(task, tuple):
+                    return task
                 return (429, {}) if task is None else (201, {"id": task["id"]})
             if route == "research_list":
                 if data:

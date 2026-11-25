@@ -369,24 +369,47 @@ def _context(context):
 
 
 def submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=None, authorization=None,
-           parent=None, proposed=False, context=None) -> dict:
+           parent=None, proposed=False, context=None, request=None) -> dict:
     """Queue a research task. The objective passes the privacy screen (private terms, evidence roots, e-mail
     addresses, phone numbers, ...) unless authorization == 'owner-approved-disclosure'. `proposed=True` creates a
     proposal the worker skips until the owner authorises it (pending scope web:research:<id>). `context` carries
     structured inputs the objective text cannot (`{"packages": [...]}` for registry and advisory lookups); it is
     kept in the checkpoint and merged into the assessment at discovery. WritesPaused while instance regulation
     pauses writes. An identical submission (objective, mode, origin, family, context) while one is queued or
-    running returns that task with `deduplicated: true` (duplicate()); nothing new is queued."""
+    running returns that task with `deduplicated: true` (duplicate()); nothing new is queued. `request` is a
+    sender's idempotency tag (Pocket's outbox: pocket/server.py request_tag): it is kept in the task's 'submitted'
+    event, and a submission whose tag a task of the same family already carries returns that task with
+    `replayed: true` (by_request()); nothing new is queued."""
+    if request is not None and (not isinstance(request, str) or not 0 < len(request) <= 64):
+        raise ValidationError("request must be a tag string")
     prepared = prepare(db, objective, now, mode=mode, budget=budget, origin=origin, family=family,
                        authorization=authorization, parent=parent, proposed=proposed, context=context)
+    prepared["request"] = request
     with store.write(db):
-        existing = None if prepared["proposed"] else duplicate(db, prepared)
-        if existing is None:
+        replayed = None if request is None else by_request(db, family, request)
+        if replayed is not None:
+            existing = None
+        else:
+            existing = None if prepared["proposed"] else duplicate(db, prepared)
+        if replayed is None and existing is None:
             task_id = insert(db, prepared, now)
             store.bump_state_version(db)
+    if replayed is not None:
+        return get(db, replayed) | {"replayed": True}
     if existing is not None:
         return get(db, existing) | {"deduplicated": True}
     return get(db, task_id)
+
+
+def by_request(db, family, request):
+    """The id of the task of `family` whose 'submitted' event carries the idempotency tag `request`, else None
+    (submit's `request`). A forgotten task takes its events with it, so its tag is no longer found here."""
+    if request is None:
+        return None
+    row = db.execute("SELECT t.id FROM web_tasks t JOIN web_events e ON e.task_id=t.id AND e.kind='submitted' "
+                     "WHERE t.family IS ? AND json_extract(e.detail,'$.request')=? ORDER BY e.id LIMIT 1",
+                     (family, request)).fetchone()
+    return row[0] if row else None
 
 
 def duplicate(db, prepared):
@@ -475,6 +498,8 @@ def insert(db, prepared, now) -> str:
               "proposed": prepared["proposed"], "disclosure_authorized": prepared["disclosure_authorized"]}
     if prepared["clamped"]:
         detail["clamped_to_daily_allowance"] = prepared["clamped"]
+    if prepared.get("request") is not None:
+        detail["request"] = prepared["request"]
     state.log_event(db, task_id, "submitted", detail, now)
     return task_id
 
