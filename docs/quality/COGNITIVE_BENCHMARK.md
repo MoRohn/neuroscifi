@@ -35,7 +35,8 @@ the recorded baseline file as BEFORE, it uses the baseline's run of AFTER's spli
 seed, so re-running the baseline gives the same numbers (only the cost differs).
 
 Options: `--seeds 11,12` replaces a split's seeds; `--quick` uses the offline corpus's quick subset (selective and
-retention); `--plugin dotted.module` imports a module that registers mechanisms; `--trace-memory` adds the peak of
+retention; retention then calls nothing retained or lost against the recorded full-corpus baseline, since the two
+corpora are not comparable); `--plugin dotted.module` imports a module that registers mechanisms; `--trace-memory` adds the peak of
 traced Python allocations (several times slower). The default suite runs the fast tests only; the full run is
 `NSF_BENCH_COGNITION=1 pytest tests/acceptance/test_cognition_bench.py`.
 
@@ -45,8 +46,12 @@ traced Python allocations (several times slower). The default suite runs the fas
 2. A gain counts only when (a) the full mechanism beats the baseline on held-out, across the split's seeds, by more
    than the spread reported for the baseline; (b) `--ablate` of the component removes the gain; (c) `retention`
    reports `all_retained: true` and every scenario passes; (d) no `adversarial` case that passes today fails.
-3. Run the withheld family once, at the end, with `--final`. Every such run is in the ledger; a second look is
-   visible there. Report it whatever it shows.
+3. Run the withheld family once, at the end, with `--final`. Every such run appends a line to the ledger
+   (`docs/quality/evidence/genesis_final_uses.jsonl`) before it scores anything; commit that line in the same commit
+   as the result, so a second look is visible in the history. Report it whatever it shows. The harness has no way to
+   write elsewhere (`run()` takes no ledger), but the rest of this guard is procedural: a script that imports
+   `withheld.WITHHELD` directly, or a ledger line left uncommitted, bypasses it, and only this rule and review stop
+   that.
 4. Report the cost beside every gain (`cost` per family: wall seconds, peak RSS and its rise, model calls).
 5. Nothing a mechanism imagines, predicts or infers may be used as ground truth: every score here compares an output
    with what the generator wrote before the system ran.
@@ -66,6 +71,9 @@ cognition.register("anticipation", "predictive", make, components=("trend", "aud
 `make(ablate)` returns a zero-argument callable that builds a fresh agent (called once per world and seed). The agent
 implements its family's interface (below). Any agent may also have `activate()`, a context manager that switches the
 mechanism on in the running system (a setting) while its family runs; retention and adversarial use only that.
+The offline corpus run that selective and retention share is cached per process; it is dropped when a mechanism is
+switched on and again when it is switched off, so a family with the mechanism on never reads a run made without it
+(nor a later family one made with it).
 Register under the same name in every family the mechanism affects; `--mechanism NAME` falls back to the baseline,
 and says so in the output, where it is not registered. Put the `register` calls in a module and append its name to
 `cognition.PLUGINS` (one line) or pass `--plugin`. An unknown `--ablate` component is refused, never silently

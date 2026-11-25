@@ -240,7 +240,21 @@ def _activation(make):
     if make == "oracle" or not callable(make):
         return nullcontext()
     agent = make()
-    return agent.activate() if hasattr(agent, "activate") else nullcontext()
+    return _switched_on(agent) if hasattr(agent, "activate") else nullcontext()
+
+
+@contextmanager
+def _switched_on(agent):
+    """agent.activate() for one family, with the offline corpus run that selective and retention share (cached per
+    process) dropped on the way in and out: a run cached without the mechanism is never read with it on, nor one made
+    with it read by a later family (review0 M3: retention under a mechanism read the baseline's run)."""
+    from . import selective
+    selective._CACHE.clear()
+    try:
+        with agent.activate():
+            yield
+    finally:
+        selective._CACHE.clear()
 
 
 def run_family(family: str, split: str, make, *, seeds=None, quick: bool = False, baseline_values=None) -> dict:
@@ -302,10 +316,11 @@ def _record_final(ledger: Path, entry: dict) -> list[dict]:
 
 
 def run(families=DEFAULT_FAMILIES, *, split: str = "development", mechanism: str = "baseline", ablate=(),
-        seeds=None, quick: bool = False, final: bool = False, ledger: Path | None = None,
-        baseline_output: dict | None = None, note: str = "", trace_memory: bool = False) -> dict:
+        seeds=None, quick: bool = False, final: bool = False, baseline_output: dict | None = None, note: str = "",
+        trace_memory: bool = False) -> dict:
     """Run the families for one mechanism (and ablation) on one split. See the module docstring. A final run is
-    written to the ledger before it starts, so a run that crashes still counts as a look."""
+    written to the repository's ledger (LEDGER; there is no other) before it starts, so a run that crashes still
+    counts as a look; the protocol (docs/quality/COGNITIVE_BENCHMARK.md) commits that line with the result."""
     if split not in ("development", "held_out"):
         raise ValueError("split must be 'development' or 'held_out'")
     families = list(families)
@@ -324,9 +339,9 @@ def run(families=DEFAULT_FAMILIES, *, split: str = "development", mechanism: str
     if final:
         entry = {"at": out["generated_at"], "commit": env["git_commit"], "dirty": env["git_dirty"],
                  "mechanism": mechanism, "ablate": sorted(ablate), "families": families, "note": note}
-        out["final_runs"] = _record_final(ledger or LEDGER, entry)
+        out["final_runs"] = _record_final(LEDGER, entry)
     from . import retention
-    baseline_values = retention.recorded(baseline_output)
+    baseline_values = retention.recorded(baseline_output, quick=quick)
     makers, fallbacks = {}, {}
     for family in [f for f in families if f != "withheld"] + (
             ["anticipation", "info_value", "counterfactual", "self_model"] if "withheld" in families else []):

@@ -27,14 +27,18 @@ def _at(tree, path):
     return node
 
 
-def recorded(baseline_output: dict | None) -> dict | None:
+def recorded(baseline_output: dict | None, *, quick: bool = False) -> dict | None:
     """{metric path: value} from a harness output that ran this family, or from the recorded baseline file (its
-    development run), else None."""
+    development run), else None. None too when that run read the other corpus (--quick against a full baseline, or
+    the reverse): the metrics are not comparable, so nothing is called retained or lost."""
     if isinstance(baseline_output, dict) and "development" in baseline_output:
         baseline_output = baseline_output["development"]
     try:
-        rows = baseline_output["families"]["retention"]["result"]["offline_metrics"]
+        result = baseline_output["families"]["retention"]["result"]
+        rows = result["offline_metrics"]
     except (KeyError, TypeError):
+        return None
+    if bool(result.get("quick_offline_run")) != bool(quick):
         return None
     return {path: row["value"] for path, row in rows.items()}
 

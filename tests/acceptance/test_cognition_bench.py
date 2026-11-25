@@ -112,17 +112,29 @@ def test_development_held_out_and_withheld_seeds_are_disjoint():
     assert not names("development") & names("held_out")
 
 
-def test_withheld_family_is_refused_without_final(tmp_path):
+def test_withheld_family_is_refused_without_final(tmp_path, monkeypatch):
+    monkeypatch.setattr(cognition, "LEDGER", tmp_path / "ledger.jsonl")
     with pytest.raises(cognition.Refused, match="final"):
-        cognition.run(["withheld"], ledger=tmp_path / "ledger.jsonl")
+        cognition.run(["withheld"])
     assert not (tmp_path / "ledger.jsonl").exists()
+
+
+def test_a_final_run_has_no_ledger_but_the_repositorys():
+    """review0 L7: run(["withheld"], final=True, ledger=<elsewhere>) scored the withheld family without a line in the
+    repository's ledger. The public API names no ledger; the rest of the protocol is procedural (the document)."""
+    import inspect
+    assert "ledger" not in inspect.signature(cognition.run).parameters
+    with pytest.raises(TypeError):
+        cognition.run(["withheld"], final=True, ledger=Path("elsewhere.jsonl"))
+    assert cognition.LEDGER == cognition.REPO / "docs" / "quality" / "evidence" / "genesis_final_uses.jsonl"
 
 
 def test_every_final_run_is_recorded(tmp_path, monkeypatch):
     ledger = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(cognition, "LEDGER", ledger)      # a test's ledger: the repository's stays untouched
     monkeypatch.setattr(withheld, "WITHHELD", _small_withheld())
-    first = cognition.run(["withheld"], final=True, ledger=ledger, seeds=(9001,), note="first")
-    again = cognition.run(["withheld"], final=True, ledger=ledger, seeds=(9001,), note="again")
+    first = cognition.run(["withheld"], final=True, seeds=(9001,), note="first")
+    again = cognition.run(["withheld"], final=True, seeds=(9001,), note="again")
     assert [r["note"] for r in first["final_runs"]] == ["first"]
     assert [r["note"] for r in again["final_runs"]] == ["first", "again"]
     assert len(ledger.read_text().splitlines()) == 2
@@ -292,6 +304,39 @@ def test_registration_ablation_and_fallback(tmp_path):
         assert cognition.compare({"development": ablated, "held_out": {}}, out) == diff   # the baseline file's shape
     finally:
         cognition._REGISTRY.pop(("anticipation", "test-holder"), None)
+
+
+def test_a_mechanism_switched_on_never_reads_a_corpus_run_cached_without_it(monkeypatch):
+    """review0 M3: the offline corpus run was cached per process by `quick` alone, so retention (and selective) under
+    a mechanism's activate() read the baseline's cached run: "retained" by construction."""
+    from contextlib import contextmanager
+    from neuroscifi.acceptance.cognition import selective
+    switched = []
+
+    class Agent:
+        @contextmanager
+        def activate(self):
+            switched.append("on")
+            yield
+            switched.append("off")
+    monkeypatch.setattr(selective, "_CACHE", {False: "a run made without the mechanism"})
+    with cognition._activation(lambda: Agent()):
+        assert selective._CACHE == {} and switched == ["on"]
+        selective._CACHE[False] = "a run made with the mechanism"
+    assert selective._CACHE == {} and switched == ["on", "off"]     # nor does a later family read the mechanism's
+    selective._CACHE[False] = "a baseline run"
+    with cognition._activation(lambda: object()):                     # no mechanism to switch on: the cache stands
+        assert selective._CACHE == {False: "a baseline run"}
+
+
+def test_retention_compares_only_with_a_baseline_of_the_same_corpus():
+    """review0 M3: a --quick run was compared with the recorded full-corpus baseline."""
+    from neuroscifi.acceptance.cognition import retention
+    recorded = {"families": {"retention": {"result": {"quick_offline_run": False, "offline_metrics": {
+        "a.b": {"value": 0.5}}}}}}
+    assert retention.recorded(recorded, quick=False) == {"a.b": 0.5}
+    assert retention.recorded(recorded, quick=True) is None
+    assert retention.recorded({"development": recorded}, quick=False) == {"a.b": 0.5}
 
 
 def test_command_line_lists_and_refuses(capsys):
