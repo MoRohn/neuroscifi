@@ -57,8 +57,10 @@ class InstinctChooser:
         self.staged = set()
 
     def _stage(self, view):
-        """Switch the mechanism on in the staged individual, once, as its owner would."""
-        if id(view["db"]) in self.staged:
+        """Switch the mechanism on in the staged individual, once, as its owner would: at a world's first step
+        (its history is empty), whatever the object's id, since CPython reuses the id of a closed database and the
+        withheld family runs without activate() (review1c)."""
+        if view["history"] and id(view["db"]) in self.staged:
             return
         self.staged.add(id(view["db"]))
         if view["world"] == "core" and "information_rule" not in self.ablate:

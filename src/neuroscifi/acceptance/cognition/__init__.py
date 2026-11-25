@@ -72,7 +72,8 @@ PLUGINS: tuple[str, ...] = (       # dotted module names whose import registers 
     "neuroscifi.acceptance.cognition.monitoring",
     "neuroscifi.acceptance.cognition.selfrecord",)
 REPO = Path(__file__).resolve().parents[4]
-LEDGER = REPO / "docs" / "quality" / "evidence" / "genesis_final_uses.jsonl"
+LEDGER_NAME = "docs/quality/evidence/genesis_final_uses.jsonl"
+LEDGER = REPO / LEDGER_NAME
 BASELINE = REPO / "docs" / "quality" / "evidence" / "genesis_baseline.json"
 LABEL = ("cognitive benchmark: synthetic, fictional worlds driven through the real modules; offline (loopback only); "
          "no answer model; simulated, not a measurement of the DGX Spark or of the open web")
@@ -306,8 +307,11 @@ def environment() -> dict:
     try:
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
                                 timeout=5).stdout.strip() or None
-        dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
-                                    timeout=5).stdout.strip()) if commit else None
+        # the ledger of final runs is a record, not code: a run's own line (appended before it scores) must not make
+        # the next run of the same look read as dirty (review1c)
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
+                                timeout=5).stdout.splitlines() if commit else None
+        dirty = any(line[3:].strip('"') != LEDGER_NAME for line in status if line.strip()) if commit else None
     except (OSError, subprocess.SubprocessError):
         pass
     import numpy

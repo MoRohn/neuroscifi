@@ -46,3 +46,25 @@ def test_switching_on_for_a_family_restores_the_product_afterwards():
     with instinct.switched_on():
         assert executive.rule_version(None) == "information-v1" and curiosity.learning_progress_on(None) is True
     assert (executive.rule_version, curiosity.learning_progress_on, policy.predictive_on) == before
+
+
+def test_the_chooser_stages_each_world_at_its_first_step_whatever_the_objects_id(tmp_path):
+    """review1c: staging was remembered by id(db), and CPython reuses the id of a closed database, so a later world
+    could run unstaged; only activate() hid that, and the withheld family runs without it."""
+    from contextlib import closing
+    from neuroscifi.acceptance.cognition.instinct import InstinctChooser
+    from neuroscifi.instance import store
+    chooser = InstinctChooser()
+    first = tmp_path / "a.sqlite"
+    with closing(store.create(first, 1.0)) as db:
+        chooser._stage({"world": "core", "db": db, "now": 2.0, "history": []})
+        assert store.config(db).executive_rule == "information-v1"
+        reused = id(db)
+    with closing(store.create(tmp_path / "b.sqlite", 1.0)) as db:
+        chooser.staged.add(id(db))                # as if this object had the first one's id
+        chooser.staged.add(reused)
+        chooser._stage({"world": "core", "db": db, "now": 2.0, "history": []})
+        assert store.config(db).executive_rule == "information-v1"
+        store.set_config(db, {"executive_rule": "rules-v1"}, 3.0)
+        chooser._stage({"world": "core", "db": db, "now": 4.0, "history": [{"step": 0}]})     # later steps: left alone
+        assert store.config(db).executive_rule == "rules-v1"

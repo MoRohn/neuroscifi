@@ -3,8 +3,10 @@
 Status: 2026-11-25. Wave 1 of Project Cognitive Genesis. Five lanes (I, M, W, C, K) were built from `2aee516`,
 integrated on `genesis-wave1` (`3c2a3bc`), read by three independent reviews, fixed by three lanes (A, B, C;
 `04ebecd`) and reconciled on `gen-rec1`. Sources: the lane reports, the integration report, the three reviews'
-findings, the fix reports, ADR-051 to ADR-055 and the evidence files named below. Every number here was measured on
-the reconciled tree unless a row says otherwise. Nothing here is a claim of consciousness, awareness or general
+findings, the fix reports, ADR-051 to ADR-055 and the evidence files named below. Every benchmark number here was
+measured on the reconciled tree (`1c6cf1e`) unless a row says otherwise, the counterfactual ones under the scoring
+corrected afterwards (§6.5); the code changed after that tree (§6.5) was checked by tests and by the re-runs on the
+final tree in §7. Nothing here is a claim of consciousness, awareness or general
 intelligence; the names describe functions.
 
 **Wave 1 as shipped changes no research outcome.** At the shipped defaults the offline research benchmark's
@@ -333,7 +335,7 @@ its new tests fail on `1c6cf1e`.
 
 | Finding | Severity | Fix | Test |
 |---|---|---|---|
-| R1 a JSON integer too large for a float passed `shared.loads` and raised in `nsf internal-state`, the owner's Presence, `resources.status` and the background gate, so the worker could not claim even the owner's task | medium | integers of more than 18 digits are refused when the shared folder's files are read; readers treat an overflow as not a number; the gate fails open when the audio check raises; the audio beacon is read only when the service account owns it | `tests/test_untrusted_history.py` (9 new tests) |
+| R1 a JSON integer too large for a float passed `shared.loads` and raised in `nsf internal-state`, the owner's Presence, `resources.status` and the background gate, so the worker could not claim even the owner's task | medium | integers of more than 18 digits are refused when the shared folder's files are read; readers treat an overflow as not a number; the gate fails open when the audio check raises; the audio beacon is read only when this account or the database's owner owns it | `tests/test_untrusted_history.py` (9 new tests) |
 | R2 files only the service account writes were group-writable in the two-account layout | low | in-flight files, the history and the audio beacon are created 0640; files both accounts write stay 0660 | `tests/test_deployment_accounts.py::test_files_only_the_service_account_writes_are_the_groups_to_read_not_to_write`; `scripts/two_account_check.py` |
 | R3 a spoken follow-up was lost when the person was live only on another process | low | after a 3 s grace the follower claims the answer once and writes it into the asking session's transcript | `tests/voice/test_follow_restart.py::test_an_answer_is_not_lost_when_the_person_is_live_on_a_process_that_does_not_follow_it` |
 | R4 the MCP agent scope listed a Pocket family's task ids with their monitoring decisions; MCP `web_knowledge` named a family's task | low | the agent scope lists the owner's own research only; the family's task id is blanked in an item. Knowledge itself stays shared by the whole individual (API_CONTRACTS) | `test_the_agent_scope_lists_monitoring_decisions_of_the_owners_own_research_only`, `test_mcp_web_knowledge_does_not_name_a_familys_task` |
@@ -349,6 +351,23 @@ its new tests fail on `1c6cf1e`.
 Not verified by the re-review or its fixes: a real second account writing into the shared folder, two real processes
 for the voice follow-up, systemd itself, and that either tolerance was chosen before the results were seen.
 
+A second independent reader then checked lanes D and E (`1c6cf1e..49c1234`): every finding above fixed, R5 in part,
+no regression in the product code (the 18-digit bound is below no value any writer of those files produces; every
+writer of the three 0640 files runs as the service account; the 3 s grace cannot deliver twice or hold up a
+shutdown), and more than 25 quoted numbers equal to the evidence. What it found was fixed before the withheld run:
+
+| Finding | Fix | Test |
+|---|---|---|
+| the withheld command's second run would have been recorded as run on a dirty tree, because the first run's own ledger line is a tracked file | the harness's dirty check leaves the ledger of final runs out; the command writes its output after each run and refuses another tree's source | `tests/acceptance/test_bench_wave1_final.py` (3 tests) |
+| the benchmark's information-value chooser remembered staged databases by object id, which CPython reuses; only `activate()` hid that, and the withheld family runs without it | staged at each world's first step. On both splits the results are the same with and without `activate()`, and the same as before the change (digests compared) | `test_the_chooser_stages_each_world_at_its_first_step_whatever_the_objects_id` |
+| R5: the spoken help still offered "what are you doing", which starts research at the default settings | the help offers "status report", which is the status command under either setting | `test_the_spoken_help_names_only_commands_that_work_with_the_default_settings` |
+| the strategy gate accepted a ledger line that said nothing of ablations | the line must record `"ablate": []` | `test_the_gate_refuses_a_final_run_that_never_evaluated_strategy_selection` |
+
+Left as they are: the pooled counterfactual figure is still ranked higher-is-better by `compare` (labelled "pooled, not
+a claim" everywhere); a one-word label of up to 64 characters from an evidence file can still reach the permanent
+ledger; an owner who sets a Web Cortex integer of 19 digits or more makes that configuration unreadable to the idle
+account (`nsf web searxng` reports it as malformed).
+
 ## 7. Validation
 
 <<WAVE1-VALIDATION>>
@@ -361,7 +380,7 @@ for the voice follow-up, systemd itself, and that either tolerance was chosen be
 
 | Item | Source |
 |---|---|
-| **S4 residual, narrowed by the re-review's R2 fix:** the files only the service account writes (in-flight model calls, the internal-state history, the audio beacon) are now created 0640, so the other account of a two-account install can read but not rewrite them. A file created 0660 before this change keeps that mode until it is replaced (the in-flight file and the beacon at every write; the history at its next trim, about every 6 hours), and the other account can still delete such a file (the folder is not sticky), which removes it but cannot change what it says. Checked with real uids in a user namespace, not with a real second account or systemd | fix lanes A and D |
+| **S4 residual, narrowed by the re-review's R2 fix:** the files only the service account writes (in-flight model calls, the internal-state history, the audio beacon) are now created 0640, so the other account of a two-account install can read but not rewrite them. A file created 0660 before this change keeps that mode until it is replaced (the in-flight file and the beacon at every write; the history at its next trim, about every 6 hours), and the other account can still delete such a file (the folder is not sticky), which cannot change what it says but removes it: deleting the audio beacon lifts the audio hold on background research until the beacon is written again. Checked with real uids in a user namespace, not with a real second account or systemd | fix lanes A and D |
 | **Two-process delivery is untested with real processes:** the voice follow-up's deliver-once is tested with two hubs in one process (the hub nonce); real processes rely on pid plus `/proc` start time, covered by the S4 tests of `process_started`, not by a two-process voice test | fix lane A |
 | **Calibration needs real data:** no fitted map has enough development data, so no answer confidence is shown; the claim probability rests on 8 and 10 benchmark claims, and a two-line rule on the verdict word scores better; three score terms are untested | fix lane C |
 | **No settled real predictions:** scenario records, calibration and strategy selection have nothing real to learn from yet | ADR-052, ADR-055 |

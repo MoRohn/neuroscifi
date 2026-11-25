@@ -429,8 +429,13 @@ def register_wave1():
                            description=f"Wave 1: {family}/{name}; a new individual has it {ships}")
 
 
-def final(note) -> dict:
+def final(note, out_path) -> dict:
+    """The two runs; `out_path` is written after each, so a crash in the second keeps the first one's result (its
+    ledger line counts as a look either way)."""
     from neuroscifi.acceptance import cognition
+    if os.environ.get("NSF_BENCH_SRC") or cognition.REPO.resolve() != ROOT.resolve():
+        raise SystemExit("final: run it on this checkout's own source (no NSF_BENCH_SRC, no installed copy), so the "
+                         "ledger line is written here and names this tree")
     register_wave1()
     env = cognition.environment()
     if env["git_dirty"] or not env["git_commit"]:
@@ -458,6 +463,7 @@ def final(note) -> dict:
                               "headline": {f: headline(f, fam["result"][f]) for f in families},
                               "result": fam["result"], "run_seconds": round(time.perf_counter() - started, 2)}
         out["final_runs"] = run_["final_runs"]
+        Path(out_path).write_text(json.dumps(out, indent=1, sort_keys=False, default=str) + "\n")
     return out
 
 
@@ -533,7 +539,7 @@ def main(argv=None) -> int:
     elif args.cmd == "rescore":
         value = rescore(splits)
     elif args.cmd == "final":
-        value = final(args.note)
+        value = final(args.note, args.out)
     else:
         value = offline(args.regime)
     text = json.dumps(value, indent=1, sort_keys=False, default=str) + "\n"

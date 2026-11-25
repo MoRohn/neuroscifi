@@ -634,6 +634,10 @@ def test_the_gate_refuses_a_final_run_that_never_evaluated_strategy_selection(db
     check = strategies.gate(baseline, ledger=final_ledger)["checks"]["withheld_by_main_session"]
     assert check["pass"] is False and "not a run of the strategy_selection mechanism" in check["detail"]
     assert strategies.gate(GOOD, ledger=final_ledger)["passed"] is True
+    silent = [lines[0], {k: v for k, v in lines[1].items() if k != "ablate"}]      # review1c: says nothing of ablations
+    final_ledger.write_text("\n".join(json.dumps(e) for e in silent))
+    check = strategies.gate(GOOD, ledger=final_ledger)["checks"]["withheld_by_main_session"]
+    assert check["pass"] is False and "no withheld run evaluated" in check["detail"]
 
 
 def test_an_installation_without_the_ledger_records_no_path(db, tmp_path, monkeypatch):

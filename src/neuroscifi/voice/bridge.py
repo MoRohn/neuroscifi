@@ -57,7 +57,7 @@ NODE_SIGNED = ("This device is a research node, so your Spark accepts research c
                "ask, cancel or continue; here I can read, show and explain research.")
 SESSION_OWNED = "Another of your devices is driving this research right now. Ask it to hand it over."
 HELP = ("You can ask a question or say: research followed by a topic, show evidence, explain more simply, "
-        "remember conclusions, what have you learned since yesterday, what was I researching, what are you doing, "
+        "remember conclusions, what have you learned since yesterday, what was I researching, status report, "
         "continue previous investigation, stop, "
         "stop speaking but keep researching, switch to text only, or speak your answers.")
 

@@ -101,3 +101,11 @@ def test_a_fuzzy_stop_acts_at_once_and_sensitive_commands_still_ask(db):
     forged = {"id": "x", "action": "intent", "args": {"kind": "forget", "arg": "conversation"}, "summary": "",
               "expires_at": time.time() + 60}
     assert bridge.execute(db, OWNER, {}, forged).intent == "error"       # only CONFIRM_IF_FUZZY kinds run this way
+
+
+def test_the_spoken_help_names_only_commands_that_work_with_the_default_settings():
+    """review1c: the help listed "what are you doing", which starts research unless the owner turned status_questions
+    on. Every phrase the help offers as a command must be that command as a new individual parses it."""
+    assert "what are you doing" not in vbridge.HELP and "status report" in vbridge.HELP
+    assert commands.parse("status report").kind == "self_status"
+    assert commands.parse("what are you doing").kind == "research"

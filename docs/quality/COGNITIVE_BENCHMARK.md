@@ -263,7 +263,7 @@ selective and retention are deterministic single runs). Full numbers, per world,
 | | audio / backlog / latency breach ticks (lower) | 10 / 25 / 125.7 | 33 / 41 / 89 | |
 | | false-alarm share of holds (lower) | 0.000 | 0.009 (0.015) | |
 | | background work given up (lower) | 0.023 | 0.044 | |
-| info_value, core | realised bits per investigation (higher) | 0.014 (per world sd 0.0) | 0.092 (0.24 / 0.08 per world) | oracle 0.035 / 0.119; random 0.037 / 0.083 |
+| info_value, core | realised bits per investigation (higher; one investigation costs one unit of budget in this world, so this is `realised_bits_per_budget`) | 0.014 (per world sd 0.0) | 0.092 (0.24 / 0.08 per world) | oracle 0.035 / 0.119; random 0.037 / 0.083 |
 | | share of budget on noise (lower) | 0.00 | 0.10 | oracle 0.00; random 0.26 |
 | info_value, web | realised bits per unit of budget (higher) | 0.161 | 0.093 | oracle 0.263 / 0.146; random 0.202 / 0.091; idle path -0.040 / -0.016 |
 | | share of budget on noise (lower) | 0.375 | 0.537 | oracle 0.00; random 0.21 / 0.30; idle path 0.81 / 0.80 |

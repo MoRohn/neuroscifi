@@ -34,8 +34,31 @@ def test_the_look_is_refused_on_a_dirty_tree_before_the_ledger_is_written(bench,
     monkeypatch.setattr(cognition, "LEDGER", ledger)      # a test's ledger: the repository's stays untouched
     monkeypatch.setattr(cognition, "environment", lambda: {"git_commit": "0" * 40, "git_dirty": True})
     with pytest.raises(SystemExit, match="clean"):
-        bench.final("a test")
+        bench.final("a test", tmp_path / "out.json")
     monkeypatch.setattr(cognition, "environment", lambda: {"git_commit": "0" * 40, "git_dirty": False})
     with pytest.raises(SystemExit, match="note"):
-        bench.final("")
-    assert not ledger.exists()
+        bench.final("", tmp_path / "out.json")
+    monkeypatch.setenv("NSF_BENCH_SRC", str(tmp_path))
+    with pytest.raises(SystemExit, match="own source"):
+        bench.final("a test", tmp_path / "out.json")
+    assert not ledger.exists() and not (tmp_path / "out.json").exists()
+
+
+def test_a_final_runs_own_ledger_line_does_not_make_the_tree_read_as_dirty(monkeypatch):
+    """review1c: the look is two runs; the first appends its line to the tracked ledger before the second reads the
+    tree's state, which must still say clean. Any other changed file is dirty."""
+    import subprocess
+
+    def status(lines):
+        def run(argv, **kwargs):
+            out = "0" * 40 + "\n" if argv[:2] == ["git", "rev-parse"] else "".join(lines)
+            return subprocess.CompletedProcess(argv, 0, stdout=out, stderr="")
+        return run
+    monkeypatch.setattr(cognition.subprocess, "run", status([f" M {cognition.LEDGER_NAME}\n"]))
+    assert cognition.environment()["git_dirty"] is False
+    monkeypatch.setattr(cognition.subprocess, "run", status([]))
+    assert cognition.environment()["git_dirty"] is False
+    monkeypatch.setattr(cognition.subprocess, "run", status([f" M {cognition.LEDGER_NAME}\n", " M src/x.py\n"]))
+    assert cognition.environment()["git_dirty"] is True
+    monkeypatch.setattr(cognition.subprocess, "run", status(["?? new.py\n"]))
+    assert cognition.environment()["git_dirty"] is True

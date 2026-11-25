@@ -239,7 +239,7 @@ def _final_run(ledger, line, run_id) -> str | None:
         entries.append(entry if isinstance(entry, dict) else None)
 
     def evaluated(entry):
-        return entry is not None and entry.get("mechanism") == FINAL_MECHANISM and entry.get("ablate") in ([], None) \
+        return entry is not None and entry.get("mechanism") == FINAL_MECHANISM and entry.get("ablate") == [] \
             and "withheld" in (entry.get("families") or ())
     if not any(evaluated(e) for e in entries):
         return "no withheld run evaluated strategy selection (no such line in the final-runs ledger)"
