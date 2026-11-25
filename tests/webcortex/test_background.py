@@ -616,7 +616,9 @@ def test_no_other_surface_can_change_quiet():
     from neuroscifi.webcortex import mcp
     assert "quiet" not in console.WEB_SWITCHES
     names = {t["name"] for t in mcp._tools()}
-    assert names == {"web_search", "web_research", "web_task", "web_evidence", "web_knowledge"}
+    # ADR-053 adds self_status, which only reads (it reports quiet, it cannot set it)
+    assert names == {"web_search", "web_research", "web_task", "web_evidence", "web_knowledge", "self_status"}
+    assert next(t for t in mcp._tools() if t["name"] == "self_status")["annotations"]["readOnlyHint"] is True
     assert not any(word in n for n in names for word in ("config", "forget", "quiet", "autonomy", "monitor"))
     pocket = (SRC / "pocket" / "server.py").read_text() + (SRC / "pocket" / "research_routes.py").read_text()
     assert "set_config" not in pocket and "quiet" not in pocket
