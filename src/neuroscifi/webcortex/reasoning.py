@@ -2697,15 +2697,20 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
       - when the claim's form stands in the sentence as well: a function word of the sentence's own beside it
         ("... from May to September, but this may be out of date": T.STOPWORDS and the guard's auxiliaries and
         hedge words), and nothing else ("Turkey raised tariffs on turkey" is refused); a personal pronoun is not
-        excused beside an acronym the claims write only in capitals ("US sanctions hit us", "IT staff patched it");
+        excused beside an acronym the claims write only in capitals ("US sanctions hit us", "IT staff patched it")
+        unless it stands for the claim's phrase that holds the acronym: the sentence's next word follows the
+        acronym within three words in a cited claim ("..., and it reported fewer outages" for "The IT department
+        reported fewer outages", _for_the_acronyms_phrase);
       - when it does not: a difference in the first letter alone where the claim's word starts its sentence, or
         the claim is written as a title is (_TITLE_LIKE).
     Only the cited claims say how a word is written: a source's title is a page's label and writes names as the
     site likes ("numpy | Snyk" beside a sentence about NumPy, kept live)."""
     folded, lenient = {}, set()          # casefold -> forms the claims write; forms whose first letter is free
+    claim_runs = []                      # each cited claim's runs of letters, in order
     for c in used:
         t = _clean(_norm(c["text"]))
         runs = list(_RUN.finditer(t))
+        claim_runs.append([m.group(0) for m in runs])
         capitals = sum(1 for m in runs if m.group(0)[:1].isupper())
         titled = len(runs) > 3 and capitals >= _TITLE_LIKE * len(runs)
         for m in runs:
@@ -2716,7 +2721,8 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
     own = _own_words(text, question)
     mine = {m.group(0) for m in _RUN.finditer(own)}
     out = []
-    for m in _RUN.finditer(own):
+    own_runs = list(_RUN.finditer(own))
+    for k, m in enumerate(own_runs):
         w = m.group(0)
         theirs = folded.get(w.casefold())
         if len(w) < 2 or not theirs or w in theirs or w in asked:
@@ -2728,13 +2734,28 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
             # the claim's form stands in the sentence too, so this is a second word, not the same one re-cased:
             # the sentence's own function word ("... but this may be out of date"), or another word altogether
             # ("Turkey raised tariffs on turkey")
-            if w.islower() and (w in T.STOPWORDS or w in _AUX or w in _ENTAIL_META) and \
-                    not (w in _PERSONAL_PRONOUNS and all(len(x) > 1 and x.isupper() for x in theirs)):
-                continue
+            if w.islower() and (w in T.STOPWORDS or w in _AUX or w in _ENTAIL_META):
+                if not (w in _PERSONAL_PRONOUNS and all(len(x) > 1 and x.isupper() for x in theirs)):
+                    continue
+                if k + 1 < len(own_runs) and _for_the_acronyms_phrase(w, own_runs[k + 1].group(0), claim_runs):
+                    continue            # "it" for "The IT department", where the claim goes on as the sentence does
         elif any(t in lenient for t in first_letter):
             continue                    # the claim's word starts its sentence there, or the claim is written as a title
         out.append(CASE_CHANGED.format(word=w, theirs="/".join(sorted(theirs))))
     return list(dict.fromkeys(out))
+
+
+def _for_the_acronyms_phrase(pronoun: str, after: str, claim_runs) -> bool:
+    """Whether a pronoun spelled as a claim's acronym stands for the claim's phrase that holds the acronym: in a cited
+    claim the word after the pronoun in the sentence (`after`) follows the acronym within three words ("it reported"
+    for "The IT department reported"). "US sanctions hit us in 2025" for "US sanctions hit the firm in 2025" is not:
+    "in" follows "the firm", not "US"."""
+    after = after.casefold()
+    for words in claim_runs:
+        for j, x in enumerate(words):
+            if x.isupper() and x.casefold() == pronoun and any(y.casefold() == after for y in words[j + 1:j + 4]):
+                return True
+    return False
 
 
 def _unseen_in_claims(used) -> list[str]:

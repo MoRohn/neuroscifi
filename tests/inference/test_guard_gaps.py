@@ -182,6 +182,8 @@ def claims_of(*texts):
     ("Turkey raised tariffs on poultry", "Turkey raised tariffs on turkey.", "turkey", "Turkey"),  # a second word
     ("US sanctions hit the firm in 2025", "US sanctions hit us in 2025.", "us", "US"),   # a pronoun of its own
     ("IT staff patched the servers in May", "IT staff patched it in May.", "it", "IT"),
+    ("The IT department audited the servers in May", "The IT department audited it in May.", "it", "IT"),
+    ("US officials met the delegation in June", "US officials met us in June.", "us", "US"),
 ])
 def test_a_word_of_the_claims_in_another_case_is_a_change(claim, sentence, word, theirs):
     assert reasoning._case_changed(sentence, claims_of(claim), "q") == [
@@ -207,6 +209,17 @@ def test_a_word_of_the_claims_in_another_case_is_a_change(claim, sentence, word,
 ])
 def test_what_the_case_rule_does_not_judge(claim, sentence, question):
     assert reasoning._case_changed(sentence, claims_of(claim), question) == []
+
+
+def test_a_pronoun_that_stands_for_the_acronyms_phrase_is_not_a_change():
+    """"it" for "The IT department": the claim goes on after the acronym as the sentence goes on after the pronoun."""
+    claims = claims_of("Acme's IT department migrated to Linux in 2024",
+                       "The IT department reported fewer outages after the migration")
+    assert reasoning._case_changed("Acme's IT department migrated to Linux in 2024, and it reported fewer outages "
+                                   "after the migration.", claims, "q") == []
+    assert reasoning._case_changed("The US Senate passed the bill in June, and it adjourned in July.",
+                                   claims_of("The US Senate passed the bill in June",
+                                             "The US Senate adjourned in July"), "q") == []
 
 
 def test_the_case_rule_reads_claims_only_and_never_the_codes_own_attribution():
