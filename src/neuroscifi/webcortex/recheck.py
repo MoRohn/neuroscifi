@@ -25,7 +25,7 @@ enable, min_gain on the stated forecast, lineage, cooldown, record templates, se
 loosened. A pick becomes a refresh task (knowledge.refresh, origin 'refresh:<id>': autonomous, charged to the daily
 autonomous allowance, claimed after the owner's work by claim_next), its due prediction is linked to it (so
 predictions.check_due settles it from that task), and its mark is 'queued' until the task's consolidation closes it
-(premises.close_for_task). Bounds: WebConfig.recheck_per_tick picks per timer pass, recheck_daily per UTC day, the
+(premises.close_for_task). Bounds: WebConfig.recheck_per_tick picks per timer pass, recheck_daily per rolling 24 h, the
 daily autonomous allowance and its concurrency (scheduler._over_cap, autonomy.full). Held by the owner's quiet
 (background activity 'tick.knowledge_recheck'). Setting: WebConfig.idle_recheck (off by default).
 """
@@ -64,6 +64,14 @@ def _staleness(item, now, cfg, db, marked) -> tuple[float, float, str]:
     return elapsed / ttl, 1.0 - (1.0 - math.exp(-elapsed / ttl)) / 2.0, why
 
 
+def _hypothesis_marks(db, knowledge_id) -> list[int]:
+    """Open ('marked') re-check marks of hypotheses resting on the knowledge item."""
+    return [mid for (mid,) in db.execute(
+        "SELECT r.id FROM web_rechecks r JOIN web_premises p ON p.dependent_kind='hypothesis' AND "
+        "p.dependent_id=r.subject_id AND p.premise_kind='knowledge' AND p.premise_id=? WHERE "
+        "r.subject_kind='hypothesis' AND r.status='marked' ORDER BY r.id", (str(knowledge_id),))]
+
+
 def rank(db, now, *, limit=MAX_POOL) -> list[dict]:
     """Live knowledge items the owner can refresh, highest value first, each as an autonomy candidate (kind 'recheck'):
     {kind, key, statement, mode, info_gain (from P(current), the stated forecast min_gain reads), signals,
@@ -79,7 +87,9 @@ def rank(db, now, *, limit=MAX_POOL) -> list[dict]:
         mark = premises.open_mark(db, "knowledge", item["id"]) if premises.present(db) else None
         if mark is not None and mark["status"] == "queued":
             continue                         # its re-verification is already on its way
-        staleness, p, why = _staleness(item, now, cfg, db, mark is not None)
+        # a hypothesis resting on the item is re-checked by re-verifying the item (premises.py, review1 CM3)
+        resting = _hypothesis_marks(db, item["id"]) if premises.present(db) else []
+        staleness, p, why = _staleness(item, now, cfg, db, mark is not None or bool(resting))
         importance = curiosity.IMPORTANCE["monitor"] if item["task_id"] in monitor_tasks else \
             curiosity.IMPORTANCE.get(item["status"], 0.7)
         deps = premises.live_dependents(db, item["id"]) if premises.present(db) else 0
@@ -107,33 +117,43 @@ def select(db, now, *, limit=1) -> dict:
 
 
 def used_today(db, now) -> int:
-    """Re-check tasks queued in the last 24 h (the recheck_daily share of the daily allowance)."""
+    """Re-check tasks queued in the last 24 h, a rolling window (the recheck_daily share of the daily allowance)."""
     return db.execute("SELECT count(*) FROM web_events WHERE kind='decision' AND created_at>=? AND "
                       "json_extract(detail,'$.autonomy.recheck') IS NOT NULL", (now - DAY,)).fetchone()[0]
 
 
 def submit(db, pick, admitted, now) -> dict:
     """Queue one admitted pick: a refresh task of the item (origin 'refresh:<id>'), its due prediction linked to the
-    task, its mark 'queued' (a new mark with reason 'idle' when it had none), and the decision event the cooldown and
-    lineage read. Returns the task."""
-    from . import autonomy, knowledge, premises
+    task, its mark 'queued' (a new mark with reason 'idle' when it had none) and the marks of hypotheses resting on
+    it, and the decision event the cooldown and lineage read, all in one transaction (review1 CL5). Conflict, and
+    nothing written, when the item's re-verification is already queued or running (a concurrent pass; CL7).
+    Returns the task."""
+    from ..instance.errors import Conflict
+    from . import autonomy, knowledge, orchestrator, premises
     kid = pick["knowledge_id"]
-    task = knowledge.refresh(db, kid, now, origin=f"refresh:{kid}")
+    item = knowledge.row(db, kid)
+    if item["status"] not in knowledge.REVIEWABLE:
+        raise Conflict(f"Knowledge item {kid} is {item['status']}; refresh the current version instead")
+    prepared = orchestrator.prepare(db, item["statement"], now, mode="fact_verification", origin=f"refresh:{kid}",
+                                    parent=item["task_id"])
     inputs = autonomy.decision_inputs(pick, admitted) | {"recheck": {"value": pick.get("value"),
                                                                      "p_current": pick.get("p_current"),
                                                                      "dependents": pick.get("dependents")}}
     with store.write(db):
-        state.log_event(db, task["id"], "decision", {"autonomy": inputs}, now)
+        found = premises.open_mark(db, "knowledge", kid)
+        if orchestrator.duplicate(db, prepared) is not None or (found is not None and found["status"] == "queued"):
+            raise Conflict(f"the re-verification of knowledge #{kid} is already queued")
+        task_id = orchestrator.insert(db, prepared, now)
+        state.log_event(db, task_id, "decision", {"autonomy": inputs}, now)
         db.execute("UPDATE web_predictions SET task_id=? WHERE knowledge_id=? AND outcome IS NULL AND task_id IS NULL "
-                   "AND check_after<=?", (task["id"], kid, now))
-        mid = pick.get("mark_id")
-        if mid is None:
-            mid = premises.mark(db, "knowledge", kid, "idle", {"kind": "knowledge", "id": str(kid)}, now)
-        if mid is not None:
+                   "AND check_after<=?", (task_id, kid, now))
+        mid = found["id"] if found is not None else \
+            premises.mark(db, "knowledge", kid, "idle", {"kind": "knowledge", "id": str(kid)}, now)
+        for queued in ([mid] if mid is not None else []) + _hypothesis_marks(db, kid):
             db.execute("UPDATE web_rechecks SET status='queued', task_id=?, updated_at=? WHERE id=?",
-                       (task["id"], now, mid))
+                       (task_id, now, queued))
         store.bump_state_version(db)
-    return task
+    return orchestrator.get(db, task_id)
 
 
 def run(db, now, *, limit=None, over_cap=None) -> dict:

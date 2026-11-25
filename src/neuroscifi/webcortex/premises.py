@@ -16,6 +16,16 @@ Bounds: at most MAX_MARKS_PER_CHANGE dependents are marked per changed premise, 
 cause is added to the open mark's cause list, never a second row), at most MAX_OPEN_MARKS open marks in all (the
 oldest open ones are dropped first, with the reason).
 
+A mark closes, with the reason recorded in its outcome (settle(), review1 CM3), when its question is answered by any
+normal path: the subject was re-verified after it was marked (a due refresh, a task the owner asked for, the idle
+re-check, a prediction's settlement: anything that sets the item's last_verified_at), the subject is no longer live
+(superseded, rejected, settled; a forgotten one is deleted), or its re-verification task ended without evidence
+MAX_ATTEMPTS times (dropped). A hypothesis is marked only while it rests on a live knowledge item (alternative_to):
+its re-check is that item's re-verification (recheck.rank counts the mark on the item), and it closes when that item
+is re-verified or the hypothesis settles. With idle_recheck off nothing queues a re-verification: a mark is a note the
+owner sees (`nsf knowledge rechecks`), and it still closes by those paths. settle() runs in every consolidation
+(after_consolidation) and every forget (purge).
+
 Forget: purge() (called in the forget's transaction, governance._web_finish, and after a restore's replay,
 governance.replay_web_forgets) marks the dependents of a premise that is gone with reason 'premise_forgotten' (the mark
 does not name what was forgotten), then deletes every premise row and mark that names a record no longer held.
@@ -35,6 +45,7 @@ MAX_MARKS_PER_CHANGE = 50
 MAX_OPEN_MARKS = 500
 MAX_CLOSED = 2000          # closed marks kept as history (the oldest go first)
 MAX_CAUSES = 10
+MAX_ATTEMPTS = 3           # re-verification tasks of one mark that may end without consolidating before it is dropped
 _TABLES = {"knowledge": "web_knowledge", "hypothesis": "web_hypotheses", "claim": "web_claims"}
 
 
@@ -92,6 +103,14 @@ def live_dependents(db, knowledge_id) -> int:
         (str(knowledge_id), *state.LIVE_KNOWLEDGE)).fetchone()[0]
 
 
+def knowledge_premises(db, hypothesis_id) -> list[int]:
+    """The live knowledge items a hypothesis rests on (its premises of kind knowledge)."""
+    return [int(i) for (i,) in db.execute(
+        "SELECT premise_id FROM web_premises WHERE dependent_kind='hypothesis' AND dependent_id=? AND "
+        "premise_kind='knowledge' ORDER BY premise_id", (int(hypothesis_id),))
+        if str(i).isdigit() and _held(db, "knowledge", int(i))]
+
+
 def _held(db, kind, record_id) -> bool:
     """A dependent worth re-checking: a live knowledge item or an open hypothesis."""
     if kind == "knowledge":
@@ -117,6 +136,8 @@ def mark(db, kind, subject_id, reason, cause, now) -> int | None:
     Never changes the subject. Caller owns the transaction."""
     if reason not in REASONS or kind not in DEPENDENT_KINDS or not _held(db, kind, subject_id):
         return None
+    if kind == "hypothesis" and not knowledge_premises(db, subject_id):
+        return None          # nothing could re-verify it: its re-check is that of the live knowledge it rests on
     cause = {k: v for k, v in dict(cause or {}).items() if k in ("kind", "id", "prediction_id", "task_id")}
     found = open_mark(db, kind, subject_id)
     if found is not None:
@@ -207,7 +228,7 @@ def after_consolidation(db, task_id, summary, now) -> dict:
         if s.get("outcome") == "error":
             out["marked"] += failed_prediction(db, {"id": s.get("prediction_id"),
                                                     "hypothesis_id": s.get("hypothesis_id")}, now)
-    out["closed"] = close_for_task(db, task_id, summary, now)
+    out["closed"] = close_for_task(db, task_id, summary, now) + settle(db, now)
     return out
 
 
@@ -225,19 +246,75 @@ def close_for_task(db, task_id, summary, now) -> list[int]:
                        "confirmed by new evidence" if sid in confirmed else "no evidence about it")
         else:
             settled = [s for s in summary.get("predictions_settled") or [] if s.get("hypothesis_id") == sid]
-            outcome = f"prediction {settled[0]['outcome']}" if settled else "no decisive evidence"
+            premise = [k for k in knowledge_premises(db, sid) if k in confirmed | superseded | contested]
+            outcome = (f"prediction {settled[0]['outcome']}" if settled else
+                       "its knowledge premise was re-verified" if premise else "no decisive evidence")
         db.execute("UPDATE web_rechecks SET status='done', outcome=?, updated_at=? WHERE id=?", (outcome, now, mid))
         closed.append(mid)
     return closed
 
 
 def release_stuck(db, now) -> int:
-    """Queued marks whose task ended without consolidating (failed, cancelled, partial by quiet) go back to 'marked'.
-    Caller owns the txn."""
-    return db.execute("UPDATE web_rechecks SET status='marked', task_id=NULL, updated_at=? WHERE status='queued' AND "
-                      "(task_id IS NULL OR NOT EXISTS (SELECT 1 FROM web_tasks t WHERE t.id=web_rechecks.task_id) OR "
-                      "EXISTS (SELECT 1 FROM web_tasks t WHERE t.id=web_rechecks.task_id AND t.status IN "
-                      "('failed','cancelled','completed','partial')))", (now,)).rowcount
+    """Queued marks whose task ended without consolidating (failed, cancelled, partial by quiet) go back to 'marked',
+    counting the attempt (cause["attempts"]); at MAX_ATTEMPTS the mark is dropped with that reason (review1 CL6: it
+    could be queued again for ever). Caller owns the txn."""
+    rows = db.execute("SELECT id, cause FROM web_rechecks WHERE status='queued' AND (task_id IS NULL OR NOT EXISTS "
+                      "(SELECT 1 FROM web_tasks t WHERE t.id=web_rechecks.task_id) OR EXISTS (SELECT 1 FROM web_tasks "
+                      "t WHERE t.id=web_rechecks.task_id AND t.status IN ('failed','cancelled','completed',"
+                      "'partial')))").fetchall()
+    for mid, cause in rows:
+        value = state.loads(cause, {})
+        attempts = int(value.get("attempts") or 0) + 1
+        value["attempts"] = attempts
+        if attempts >= MAX_ATTEMPTS:
+            db.execute("UPDATE web_rechecks SET status='dropped', task_id=NULL, cause=?, outcome=?, updated_at=? "
+                       "WHERE id=?", (state.dumps(value), f"its re-verification ended without evidence {attempts} "
+                                      "times: dropped", now, mid))
+        else:
+            db.execute("UPDATE web_rechecks SET status='marked', task_id=NULL, cause=?, updated_at=? WHERE id=?",
+                       (state.dumps(value), now, mid))
+    return len(rows)
+
+
+def _answered(db, kind, subject_id, since) -> str | None:
+    """Why an open mark made at `since` no longer asks anything, or None while it still does."""
+    if kind == "knowledge":
+        row = db.execute("SELECT status, last_verified_at FROM web_knowledge WHERE id=?", (subject_id,)).fetchone()
+        if row is None:
+            return None                     # forgotten: purge deletes it
+        if row[0] not in state.LIVE_KNOWLEDGE:
+            return f"closed: the item is {row[0]}"
+        if state.finite(row[1], 0.0) > since:
+            return "closed: re-verified since it was marked"
+        return None
+    row = db.execute("SELECT status FROM web_hypotheses WHERE id=?", (subject_id,)).fetchone()
+    if row is None:
+        return None
+    if row[0] != "open":
+        return f"closed: the hypothesis is {row[0]}"
+    held = knowledge_premises(db, subject_id)
+    if not held:
+        return "closed: no live knowledge premise is left to re-verify"
+    verified = db.execute(f"SELECT max(last_verified_at) FROM web_knowledge WHERE id IN ({','.join('?' * len(held))})",
+                          held).fetchone()[0]
+    if state.finite(verified, 0.0) > since:
+        return "closed: its knowledge premise was re-verified since it was marked"
+    return None
+
+
+def settle(db, now) -> list[int]:
+    """Close every open mark whose question some normal path answered (_answered; the module doc), with the reason
+    in its outcome. Caller owns the txn. Returns the ids closed."""
+    if not present(db):
+        return []
+    closed = []
+    for mid, kind, sid, created in db.execute("SELECT id, subject_kind, subject_id, created_at FROM web_rechecks "
+                                              "WHERE status IN ('marked','queued') ORDER BY id").fetchall():
+        why = _answered(db, kind, sid, created)
+        if why is not None:
+            db.execute("UPDATE web_rechecks SET status='done', outcome=?, updated_at=? WHERE id=?", (why, now, mid))
+            closed.append(mid)
+    return closed
 
 
 # ---- forget and restore --------------------------------------------------------------------------------------------------
@@ -270,7 +347,7 @@ def purge(db, now) -> dict:
     record no longer held is deleted, and a mark's cause that names one loses that cause. Caller owns the txn.
     Hypothesis details naming a removed record are pruned too. Returns {"premises_removed", "rechecks_removed",
     "marked", "details_removed"} (zeros when lane K's migration is absent)."""
-    out = {"premises_removed": 0, "rechecks_removed": 0, "marked": 0, "details_removed": 0}
+    out = {"premises_removed": 0, "rechecks_removed": 0, "marked": 0, "details_removed": 0, "rechecks_closed": 0}
     if not present(db):
         return out
     gone = db.execute(f"SELECT DISTINCT p.premise_kind, p.premise_id FROM web_premises p WHERE {_GONE_PREMISE}"
@@ -295,6 +372,7 @@ def purge(db, now) -> dict:
     db.execute("UPDATE web_rechecks SET task_id=NULL WHERE task_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM web_tasks "
                "t WHERE t.id=web_rechecks.task_id)")
     out["details_removed"] = _purge_details(db)
+    out["rechecks_closed"] = len(settle(db, now))
     return out
 
 
@@ -332,7 +410,8 @@ def _kept_cause(db, cause: dict) -> dict:
                                                        (c["task_id"],)).fetchone() is None:
             return False
         return True
-    out = {k: v for k, v in cause.items() if k != "also"} if alive(cause) else {"forgotten": True}
+    out = {k: v for k, v in cause.items() if k != "also"} if alive(cause) else \
+        {"forgotten": True} | ({"attempts": cause["attempts"]} if "attempts" in cause else {})
     also = [c for c in cause.get("also") or [] if alive(c)]
     if also:
         out["also"] = also

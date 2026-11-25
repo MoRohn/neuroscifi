@@ -187,7 +187,9 @@ def test_new_knowledge_and_hypotheses_record_what_they_rest_on(db):
                                                             "relation": "alternative_to"}]
 
 
-def test_a_superseded_premise_marks_its_dependents_and_changes_nothing_by_itself(db):
+def test_a_superseded_premise_leaves_no_mark_nothing_could_re_verify_and_changes_nothing(db):
+    """review1 CM3: a hypothesis is re-checked by re-verifying the live knowledge it rests on; once that item is
+    superseded nothing could, so no mark is made (it never closed before)."""
     _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
     kid = first["provisional"][0]
     hid = alternative(db, kid)
@@ -195,8 +197,7 @@ def test_a_superseded_premise_marks_its_dependents_and_changes_nothing_by_itself
     _, second = consolidated(db, [two_sources(published=T0 - DAY, text=OTHER, hosts=("c.example", "d.example"))],
                              T0 + DAY)
     assert second["superseded"][0]["old"] == kid
-    assert marks(db) == [("hypothesis", hid, "premise_superseded", "marked")]
-    assert second["rechecks"]["marked"]
+    assert marks(db) == [] and not (second.get("rechecks") or {}).get("marked")
     after = evolution.hypothesis(db, hid)
     assert {k: after[k] for k in ("status", "verification", "claims", "statement")} == \
         {k: before[k] for k in ("status", "verification", "claims", "statement")}
@@ -250,7 +251,7 @@ def test_forgetting_a_premise_marks_its_dependents_and_removes_every_reference_a
     path = __import__("pathlib").Path(db.execute("PRAGMA database_list").fetchone()[2])
     cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 3)
     out = governance.forget_knowledge(db, kid, T0 + 4)
-    assert out["effects"]["premises"]["marked"] == 1
+    assert out["effects"]["premises"]["marked"] == 0        # hid rested only on kid: nothing left to re-verify
     for conn in (db, None):
         if conn is None:
             checkpoints.restore(db, cp["id"], tmp_path / "restored.sqlite", T0 + 5)
@@ -261,9 +262,119 @@ def test_forgetting_a_premise_marks_its_dependents_and_removes_every_reference_a
                             (kid,)).fetchone()[0] == 0
         assert conn.execute("SELECT count(*) FROM web_rechecks WHERE cause LIKE ?", (f'%"{kid}"%',)).fetchone()[0] == 0
         if conn is db:
-            assert marks(db, subject_kind="hypothesis") == [("hypothesis", hid, "premise_forgotten", "marked")]
+            assert marks(db, subject_kind="hypothesis") == [] and hid
         else:
             conn.close()
+
+
+# ---- marks close (review1 CM3, CL6) ------------------------------------------------------------------------------------------
+
+def _contradicted(db, now=T0 + 1):
+    """Knowledge #kid, a hypothesis opened against it, and an older conflicting source that contradicts it."""
+    _, first = consolidated(db, [two_sources()])
+    kid = first["provisional"][0]
+    hid = alternative(db, kid)
+    _, out = consolidated(db, [two_sources(published=T0 - 3 * DAY, text="NumPy 2.2.0 is the latest NumPy release.",
+                                           hosts=("old1.example", "old2.example"))], now)
+    assert out["contested"][0]["knowledge_id"] == kid
+    return kid, hid
+
+
+def test_a_mark_closes_when_any_normal_path_re_verifies_its_subject_with_the_re_check_off(db):
+    kid, hid = _contradicted(db)
+    assert recheck.enabled(db) is False
+    assert marks(db) == [("hypothesis", hid, "premise_contradicted", "marked")]
+    assert recheck.rank(db, T0 + 2)[0]["why"] == "marked to re-check"      # its path: re-verify the premise
+    with store.write(db):
+        premises.mark(db, "knowledge", kid, "reflection", {}, T0 + 2)
+    consolidated(db, [two_sources(hosts=("c.example", "d.example"))], T0 + DAY)    # an owner's task confirms it
+    rows = db.execute("SELECT subject_kind, status, outcome FROM web_rechecks ORDER BY id").fetchall()
+    assert rows == [("hypothesis", "done", "closed: its knowledge premise was re-verified since it was marked"),
+                    ("knowledge", "done", "closed: re-verified since it was marked")]
+
+
+def test_a_mark_closes_when_its_subject_is_superseded_or_settled(db):
+    kid, hid = _contradicted(db)
+    with store.write(db):
+        premises.mark(db, "knowledge", kid, "reflection", {}, T0 + 2)
+    consolidated(db, [two_sources(published=T0 + DAY, text=OTHER, hosts=("c.example", "d.example"))], T0 + 2 * DAY)
+    assert knowledge.row(db, kid)["status"] == "superseded"
+    assert dict(db.execute("SELECT subject_kind, outcome FROM web_rechecks").fetchall()) == {
+        "knowledge": "closed: the item is superseded",
+        "hypothesis": "closed: no live knowledge premise is left to re-verify"}
+
+
+def test_a_hypothesis_resting_on_no_live_knowledge_is_not_marked(db):
+    _, first = consolidated(db, [undated_latest()])
+    hid = first["held"][0]["hypothesis_id"]
+    with store.write(db):
+        assert premises.mark(db, "hypothesis", hid, "reflection", {}, T0 + 1) is None
+    assert marks(db) == []
+
+
+def test_a_mark_whose_re_verification_keeps_failing_is_dropped(db):
+    """review1 CL6: release_stuck put it back to 'marked' for ever."""
+    _, first = consolidated(db, [two_sources()])
+    kid = first["provisional"][0]
+    with store.write(db):
+        mid = premises.mark(db, "knowledge", kid, "reflection", {}, T0 + 1)
+    for attempt in range(1, premises.MAX_ATTEMPTS + 1):
+        task = orchestrator.submit(db, f"What is the latest numpy release? (try {attempt})", T0 + attempt,
+                                   mode="quick_lookup", origin="console")["id"]
+        with store.write(db):
+            db.execute("UPDATE web_rechecks SET status='queued', task_id=? WHERE id=?", (task, mid))
+            db.execute("UPDATE web_tasks SET status='failed' WHERE id=?", (task,))
+            premises.release_stuck(db, T0 + attempt)
+    status, outcome, cause = db.execute("SELECT status, outcome, cause FROM web_rechecks WHERE id=?",
+                                        (mid,)).fetchone()
+    assert status == "dropped" and "3 times" in outcome and json.loads(cause)["attempts"] == premises.MAX_ATTEMPTS
+
+
+def test_marks_do_not_accumulate_over_a_long_run(db):
+    """review1 CM3: sixty days, each a new item contradicted (its hypothesis marked) and re-verified the next day by
+    an ordinary refresh, the idle re-check off throughout. Open marks stay bounded; before, every one stayed open."""
+    open_counts = []
+    for d in range(60):
+        name = f"Pkg{d}"
+        text = f"{name} 1.{d}.0 is the latest release of the {name.lower()} library."
+        key = f"{name.lower()} latest version"
+        at = T0 + d * DAY
+        _, first = consolidated(db, [two_sources(text=text, key=key, published=at - DAY)], at,
+                                objective=f"What is the latest {name} release?")
+        kid = first["provisional"][0]
+        with store.write(db):
+            evolution.open_hypothesis(db, key=f"alternative {d}", statement=f"{name} 9.9.0 is the latest.",
+                                      origin="insufficient", verification={"confidence": 0.4}, claims=[],
+                                      values=["v9.9.0"], polarity=1, now=at, knowledge_id=kid)
+            premises.premise_changed(db, "knowledge", kid, "premise_contradicted", at)
+        if d:
+            prev = f"Pkg{d - 1}"
+            consolidated(db, [two_sources(text=f"{prev} 1.{d - 1}.0 is the latest release of the {prev.lower()} "
+                                               "library.", key=f"{prev.lower()} latest version", published=at - DAY,
+                                          hosts=(f"r{d}a.example", f"r{d}b.example"))], at + 3600,
+                         objective=f"What is the latest {prev} release?")
+        open_counts.append(db.execute("SELECT count(*) FROM web_rechecks WHERE status IN ('marked','queued')"
+                                      ).fetchone()[0])
+    assert db.execute("SELECT count(*) FROM web_rechecks").fetchone()[0] == 60
+    assert max(open_counts) <= 2 and open_counts[-1] == 1
+
+
+def test_a_concurrent_re_check_pass_queues_no_second_task(db):
+    """review1 CL5/CL7: the task, the decision event, the prediction link and the mark are one transaction, and a
+    second pass for the same item writes nothing."""
+    a, _ = _two_items(db)
+    state.set_config(db, {"idle_recheck": True}, T0)
+    autonomy.enable(db, T0)
+    pick = next(p for p in recheck.rank(db, T0) if p["knowledge_id"] == a)
+    admitted = {"rule": "unified", "path": "recheck"}
+    task = recheck.submit(db, pick, admitted, T0)
+    tasks = db.execute("SELECT count(*) FROM web_tasks").fetchone()[0]
+    events = db.execute("SELECT count(*) FROM web_events WHERE kind='decision'").fetchone()[0]
+    with pytest.raises(Conflict, match="already queued"):
+        recheck.submit(db, pick, admitted, T0 + 1)
+    assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == tasks
+    assert db.execute("SELECT count(*) FROM web_events WHERE kind='decision'").fetchone()[0] == events
+    assert marks(db, status="queued") == [("knowledge", a, "idle", "queued")] and task["origin"] == f"refresh:{a}"
 
 
 # ---- 3. the idle re-check --------------------------------------------------------------------------------------------------
@@ -408,6 +519,36 @@ def test_an_optional_model_summary_is_an_inference_in_the_imagined_store_never_k
     assert record["kind"] == "inference" and out["summary"]["generated_by"] == "model:fake"
     assert db.execute("SELECT count(*) FROM web_knowledge").fetchone()[0] == knowledge_before
     assert "summary" not in reflection.show(db, out["id"])                  # the stored report has no model text
+
+
+def test_a_model_summary_goes_when_a_record_it_phrases_is_forgotten(db):
+    """review1 CL1: it was stored with no lineage and outlived the forget of what it phrased."""
+    kid, _, _ = _history(db)
+
+    class Gateway:
+        def guard(self):
+            return "local"
+
+        def chat(self, messages, **kw):
+            return type("Reply", (), {"text": "One item was superseded.", "model": "fake"})()
+
+    out = reflection.reflect(db, T0 + 2 * DAY, since=T0 - 1, phrase=True, gateway=Gateway())
+    rid = out["summary"]["imagined_id"]
+    assert ["knowledge", str(kid)] in imagined.show(db, rid)["derived_from"]
+    governance.forget_knowledge(db, kid, T0 + 3 * DAY)
+    assert db.execute("SELECT 1 FROM imagined WHERE id=?", (rid,)).fetchone() is None
+
+
+def test_a_scheduled_reflection_while_writes_are_paused_skips_and_the_tick_goes_on(db, monkeypatch):
+    """review1 CL2: WritesPaused aborted the whole timer tick on every pass."""
+    from neuroscifi.instance.errors import WritesPaused
+
+    def paused(_db):
+        raise WritesPaused("writes are paused: the journal is full")
+    state.set_config(db, {"reflection": True}, T0)
+    monkeypatch.setattr(state, "require_writable", paused)
+    out = reflection.scheduled(db, T0 + DAY)
+    assert "writes are paused" in out["skipped"]
 
 
 def test_forgetting_drops_the_reflection_lines_that_name_it(db):

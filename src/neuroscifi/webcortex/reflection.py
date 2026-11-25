@@ -205,6 +205,13 @@ def _summary(db, reflection, now, gateway=None) -> dict:
     """A local model's phrasing of the report, display-only, stored as an 'inference' in the imagined store; the
     report's lines stay the record. None of it is evidence."""
     from ..instance import imagined
+    # The summary phrases the report's lines, so it derives from every record they name: a forget of any removes it
+    # (imagined.purge_orphans; review1 CL1). Beyond what one record may name it is not made (never truncated).
+    refs = list(dict.fromkeys((k, str(i)) for s in SECTIONS for line in reflection["report"][s]
+                              for k, i in line.get("refs", []) if k in imagined.REF_KINDS))
+    if len(refs) > imagined.MAX_REFS:
+        return {"generated_by": None, "note": f"the report names {len(refs)} records; a stored summary may derive "
+                                              f"from at most {imagined.MAX_REFS}, so none is made"}
     try:
         if gateway is None:
             from ..inference.gateway import Gateway
@@ -221,7 +228,8 @@ def _summary(db, reflection, now, gateway=None) -> dict:
                               assumptions=["the model read only the report lines"],
                               uncertainty="a model's phrasing; the report lines are the record",
                               mechanism=MECHANISM, mechanism_version=MECHANISM_VERSION,
-                              question=f"summary of reflection #{reflection['id']}", now=now, model=reply.model)
+                              question=f"summary of reflection #{reflection['id']}", now=now, model=reply.model,
+                              derived_from=refs)
         return {"text": reply.text.strip(), "generated_by": f"model:{reply.model}", "imagined_id": rid,
                 "label": "display only: a model's phrasing, stored as an inference, never evidence"}
     except Exception as exc:          # degraded: the report stands
@@ -241,7 +249,11 @@ def scheduled(db, now) -> dict | None:
     last = db.execute("SELECT max(created_at) FROM web_reflections WHERE trigger='schedule'").fetchone()[0]
     if last is not None and now - last < float(cfg.reflection_interval_days) * DAY:
         return None
-    return reflect(db, now, trigger="schedule")
+    from ..instance.errors import InstanceError
+    try:
+        return reflect(db, now, trigger="schedule")
+    except InstanceError as exc:         # writes paused, a busy file: the tick goes on (review1 CL2)
+        return {"skipped": f"reflection not written: {exc}"[:300]}
 
 
 def show(db, reflection_id) -> dict:

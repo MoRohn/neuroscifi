@@ -152,7 +152,7 @@ class WebConfig:
     premise_recheck: bool = True
     # The timer's re-check of the knowledge most at risk of being stale (recheck.py; importance x staleness x
     # dependents), before the due-order refreshes, admitted by autonomy.admission, at most recheck_per_tick per pass
-    # and recheck_daily per UTC day inside the daily autonomous allowance; held by quiet. Off by default (ADR-055
+    # and recheck_daily per rolling 24 h inside the daily autonomous allowance; held by quiet. Off by default (ADR-055
     # has the measured numbers and why).
     idle_recheck: bool = False
     recheck_per_tick: int = 1
