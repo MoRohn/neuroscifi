@@ -219,12 +219,27 @@ graphs.promote(db, revision_id, now) -> {"promoted": bool, "decision": {...all n
 #       when learn() recorded metrics.beats_no_graph; a candidate learned before that has checks (a)-(e) and the
 #       decision record it always had.
 #   Pass: incumbent -> 'archived', candidate -> 'active'. Fail: candidate -> 'rejected'. Decision JSON stored either way.
+graphs.no_graph_check(db, rev) -> {"passed": bool|None, "validation_mse", "no_graph_validation_mse", "computed", "why"?}
+#   Check (f) for a revision already decided: what learn() recorded, else computed from its snapshot and its own
+#   validation dataset; None (with "why") for a founding or imported graph or one whose validation data is gone.
+graph_migration.apply(db, now) -> record|None   # run by store.open_existing(path, graph_migration=True) (ADR-047)
+#   Once per file (meta 'graph_rule_migration'): newest rule built-in gate-v1 and best-learner-v1 unregistered ->
+#   register best-learner-v1 (created_by 'migration'); every active graph failing no_graph_check -> 'archived' with
+#   decision {"action": "demote", "by": "migration", "check", "prior"}. Not for a file born by this software
+#   (status 'settled_at_birth'), with config.graph_rule_migration false, on a connection that cannot write, or while a
+#   lease is held (None: retried at the next open). Record: {"status": "applied", "rule": {"from","to"}|null,
+#   "rule_note", "demote", "keep", "not_judged": [{"revision","context","check"}], "state_version", "at"}.
+graph_migration.status(db) -> record | {"status": "pending"|"opted_out", "plan": {...}}   # `nsf graph migration status`
+graph_migration.undo(db, now) -> record with "status": "reversed", "undone", "not_undone"  # `... undo --owner-approved`
+#   Conflict unless applied; LeaseHeld while a graph job runs. Sets config.graph_rule_migration false (logged).
+store.inventory(db)["graph_rule_migration"]   # present once applied or reversed (`nsf birth`, console overview)
 graphs.reject(db, revision_id, now, reason) -> dict
 graphs.rollback(db, context, revision_id, now) -> dict       # re-activate an archived, non-invalidated revision
 graphs.invalidate_dependents(db, dataset_id, now) -> {"invalidated": [ids], "reactivated": id|None, "failure": str|None}
 #   Caller (governance) owns the transaction. Revisions trained or validated on the dataset -> 'invalidated'.
 #   If the active one was invalidated, re-activate the newest archived revision of that context whose lineage has no
-#   deleted dataset; if none, failure = "no eligible snapshot for context <c>".
+#   deleted dataset and that was not rolled back from or demoted (graphs.NOT_REVIVED); if none,
+#   failure = "no eligible snapshot for context <c>".
 graphs.lesion(db, revision_id, dataset_id, now) -> {"edges":[{"src","dst","delta_mse"}], "permuted_control_mse", "base_mse"}
 #   The change in MSE from zeroing each retained edge, stored in graph_effects(kind='lesion'). Zeroing one edge
 #   changes only its receiver's residual, so each delta is taken from its closed form (the mean of the per-step

@@ -357,6 +357,7 @@ async function loadOverview() {
     ['Encoders', b.encoders.map((e) => `${e.name} (${e.channels.join(', ')}; ${e.externally_trained ? 'externally trained' : 'not externally trained'})`).join('; ')],
     ['Initial graph', b.initial_graph ? `revision ${b.initial_graph.revision_id} (${b.initial_graph.context})` : 'none'],
     ['Note', b.note ?? '—'],
+    inv.graph_rule_migration ? ['Graph rules', migrationText(inv.graph_rule_migration)] : null,
   ]), h('h3', { text: 'Priors' }), kv(Object.entries(b.priors).map(([k, v]) => [k.replaceAll('_', ' '), v])));
   const r = inv.regulation;
   fill($('regulation'), h('p', {}, badge(r.writes_allowed ? 'Writes allowed' : 'Writes paused', r.writes_allowed ? 'ok' : 'warn'),
@@ -387,6 +388,16 @@ async function loadOverview() {
   fill($('development'), dev.length
     ? table('Development counters', ['Counter', { label: 'Value', num: true }], dev.map(([k, v]) => [k.replaceAll('_', ' '), v]))
     : empty('No development yet: record evidence or run a graph job.'));
+}
+
+// The graph-rule migration (ADR-047), present only for an individual made by older software that it reached.
+function migrationText(m) {
+  const parts = [];
+  if (m.rule) parts.push(`moved from ${m.rule.from} to ${m.rule.to} on ${fmtTime(m.at)}`);
+  else if (m.rule_note) parts.push(`rule kept: ${m.rule_note}`);
+  if (m.demote?.length) parts.push(`archived ${m.demote.map((e) => `revision ${e.revision} (${e.context})`).join(', ')}: worse than a graph with no edges`);
+  if (m.status === 'reversed') parts.push(`undone by the owner on ${fmtTime(m.reversed_at)}`);
+  return parts.join('; ') || 'checked, nothing to change';
 }
 
 const WEB_INVENTORY = { tasks: 'research tasks', open_tasks: 'research tasks still running or queued', sources: 'sources read',
@@ -996,7 +1007,9 @@ function renderDecisionChecklist(d) {
   const slot = $('graphDecision');
   if (!d) { fill(slot, h('h3', { text: 'Gate decision' }), empty('No decision yet. Evaluate, then run the promotion gate.')); return; }
   if (!d.checks) {
-    const text = d.action === 'reject' ? `Rejected by ${d.by ?? 'owner'}: ${d.reason}` : `${d.action} at ${fmtTime(d.decided_at)}`;
+    const text = d.action === 'reject' ? `Rejected by ${d.by ?? 'owner'}: ${d.reason}`
+      : d.action === 'demote' ? `Archived on ${fmtTime(d.decided_at)} by the graph-rule migration: ${d.check?.why ?? 'worse than a graph with no edges'}. Roll back to use it again.`
+      : `${d.action} at ${fmtTime(d.decided_at)}`;
     fill(slot, h('h3', { text: 'Decision' }), h('p', { id: 'gateSummary', text }), h('details', {}, h('summary', { text: 'Decision record' }), h('pre', { text: JSON.stringify(d, null, 2) })));
     return;
   }

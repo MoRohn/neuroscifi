@@ -666,3 +666,52 @@ def test_gate_rejects_a_graph_no_better_than_no_graph(tmp_path, new_page):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_the_graph_rule_migration_is_shown_on_the_overview_and_the_archived_graph(tmp_path, new_page):
+    """An individual made by older software (gate-v1 alone, an active graph worse than no graph, no migration record)
+    is migrated when the console first opens it (ADR-047); the overview names what changed and the archived graph's
+    detail says why."""
+    import json
+
+    import numpy as np
+
+    from neuroscifi.graph_store import decode, encode
+    from neuroscifi.instance import graph_migration
+
+    path = tmp_path / "older.sqlite"
+    db = store.create(path, time.time(), birth_rules=(store.GATE_V1,))
+    try:
+        now = time.time()
+        ids = datasets.simulate(db, "desk", now, seed=813240)
+        fitted = graphs.learn(db, "desk", now, train=ids["train"], validation=ids["validation"], holder="test")
+        shown = graphs.show(db, fitted)
+        blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (fitted,)).fetchone()[0]
+        with store.write(db):
+            db.execute("UPDATE graph_revisions SET status='rejected' WHERE id=?", (fitted,))
+            bad = graphs._insert_revision(db, context="desk", parent_id=None, status="active",
+                                          blob=encode(-np.asarray(decode(blob)), shown["degree"], shown["bits"]),
+                                          rule_version="gate-v1", origin="learner",
+                                          metrics={"validation_dataset": ids["validation"]}, now=now)
+            db.execute("UPDATE graph_revisions SET decision=? WHERE id=?", (json.dumps({"action": "promote"}), bad))
+            db.execute("DELETE FROM meta WHERE key=?", (graph_migration.MARKER,))
+    finally:
+        db.close()
+    server = ConsoleServer(path, 0, token=TOKEN)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        page = new_page(1280, 900)
+        page.goto(server.url)
+        expect(page.locator("#h-overview")).to_be_visible()
+        expect(page.locator("#birth")).to_contain_text("Graph rules")
+        expect(page.locator("#birth")).to_contain_text("moved from gate-v1 to best-learner-v1")
+        expect(page.locator("#birth")).to_contain_text(f"archived revision {bad} (desk): worse than a graph with no edges")
+        go(page, "graphs")
+        expect(page.locator('#revisionGroups [data-context="desk"]')).to_contain_text("archived")
+        open_graph(page, bad)
+        expect(page.locator("#gateSummary")).to_contain_text("by the graph-rule migration")
+        expect(page.locator("#gateSummary")).to_contain_text("Roll back to use it again.")
+        assert not page.problems, page.problems
+    finally:
+        server.shutdown()
+        server.server_close()

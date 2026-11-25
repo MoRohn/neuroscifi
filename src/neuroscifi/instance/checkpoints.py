@@ -198,7 +198,8 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
 # turn it off against the owner's later choice; the same goes, with less at stake, for the ask budget and its
 # window. The settings fixed at `nsf init` (lifetime, journal limit, free-space reserve, temperature limit) cannot
 # differ between an individual and its own archives, so they stay as the archive has them.
-CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds")
+CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds",
+                    "graph_rule_migration")
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
@@ -261,9 +262,9 @@ def _live_settings(db):
         value = raw.get(name, effective[name])
         if store.valid_setting(name, value):
             carried[name] = value
-        elif name == "consolidation":
+        elif name in ("consolidation", "graph_rule_migration"):
             carried[name] = effective[name]
-            warnings.append(f"the live instance's saved consolidation ({value!r}) is not true or false; it acts as "
+            warnings.append(f"the live instance's saved {name} ({value!r}) is not true or false; it acts as "
                             "off there, and off was carried into the copy")
         else:
             warnings.append(f"the live instance's saved {name} ({value!r}) is not a valid value and was not carried; "

@@ -461,7 +461,17 @@ A graph candidate is learned under the newest scoring rule of its individual and
 | Individual | Rules it has | What `nsf graph learn` packs |
 |---|---|---|
 | Created by this version or later | `gate-v1`, then `best-learner-v1` (both `created_by: birth`) | The smallest file within 2 % of the better learner: a cut of the dense fit, or the sparse learner's graph. Same thresholds and byte budget as gate-v1 |
-| Created earlier | `gate-v1`, plus whatever its owner added | A cut of the dense fit, as before. Nothing changes until its owner adds a rule |
+| Created earlier, still on `gate-v1` | `gate-v1`, then `best-learner-v1` (`created_by: migration`) from its first open by this version | As a new individual. See "The graph-rule migration" below |
+| Created earlier, owner chose a rule | whatever its owner added | The owner's choice is kept |
+
+**The graph-rule migration (ADR-047).** The first time this version opens an individual made by older software, it (1) adds `best-learner-v1` as the newest rule if the newest is still `gate-v1`, and (2) archives an active graph that predicts worse than a graph with no edges (decision `demote`, with both errors). Nothing is removed. A graph that cannot be judged (founding, imported, validation data gone) stays active. See what it would do, or did, and opt out before it runs:
+
+```
+nsf graph migration status --db DB             # "pending" with the plan, "applied", "reversed" or "opted_out"
+nsf config --no-graph-rule-migration --db DB   # before any other command or service opens the file
+```
+
+Reverse it (gate-v1 again as `gate-v1-restored`, demoted graphs re-activated where their context has no active graph since, and the migration turned off for good, also in copies restored later): `nsf graph migration undo --owner-approved --db DB`. What it could not reverse is listed with the reason; re-activate a single graph by hand with `nsf graph rollback CONTEXT REV`. A file opened read-only is migrated at its next writable open.
 
 **Adopt the rule on an older individual** (no file needed; services may stay up, the command takes one short write):
 

@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-from . import datasets, graphs, recall, rules, store
+from . import datasets, graph_migration, graphs, recall, rules, store
 from .errors import ValidationError
 
 
@@ -39,6 +39,12 @@ def _rules_add(db, args, now):
         version = rules.register(db, definition, now, created_by="owner")
         store.bump_state_version(db)
     return {"version": version, "definition": rules.get(db, version), "latest": rules.latest(db)}
+
+
+def _migration_undo(db, args, now):
+    if not args.owner_approved:
+        raise ValidationError("Undoing the graph-rule migration requires --owner-approved")
+    return graph_migration.undo(db, now)
 
 
 def register(sub, *, with_db, run):
@@ -130,3 +136,14 @@ def register(sub, *, with_db, run):
                         "for example to go back to gate-v1: --builtin gate-v1 --as gate-v1-again)")
     p.add_argument("--owner-approved", action="store_true", help="required: confirms the owner adds this rule")
     p.set_defaults(handler=with_db(_rules_add))
+
+    migration = cmds.add_parser("migration", help="the graph-rule migration of an individual made by older software")
+    migration_cmds = migration.add_subparsers(dest="migration_command", required=True, metavar="ACTION")
+    p = migration_cmds.add_parser("status", help="what was done (or, before it runs, what would be done)")
+    store.add_db_argument(p)
+    p.set_defaults(handler=with_db(lambda db, a, now: graph_migration.status(db)))
+    p = migration_cmds.add_parser("undo", help="reverse it: gate-v1 again as the newest rule, demoted graphs "
+                                               "re-activated, and the migration turned off for this individual")
+    store.add_db_argument(p)
+    p.add_argument("--owner-approved", action="store_true", help="required: confirms the owner reverses it")
+    p.set_defaults(handler=with_db(_migration_undo))

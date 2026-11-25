@@ -36,6 +36,12 @@ COLUMNS = ("id", "context", "parent_id", "status", "bits", "degree", "rows", "co
 CHECKS = ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact", "beats_no_graph")
 NEW_CONTEXT_ADVICE = "register as a new context; the incumbent still solves older data"
 REPLACED_BY_ROLLBACK = "replaced_by_rollback"
+# Set by the graph-rule migration (graph_migration.py) on an active graph that fails check (f): it was archived
+# because it predicts worse than no graph.
+DEMOTED = "demote"
+# Archived revisions the deletion cascade never re-activates on its own: one the owner rolled back from, and one
+# demoted for failing check (f). The owner can still re-activate either with rollback.
+NOT_REVIVED = (REPLACED_BY_ROLLBACK, DEMOTED)
 LESION_BLOCK = 32          # time steps per block for the lesion standard error
 COACTIVATION_LAGS = (1, 2, 3)
 
@@ -351,6 +357,32 @@ def _gate(db, cand, rule, now):
     return decision
 
 
+def no_graph_check(db, rev):
+    """Check (f) for a revision already decided: {"passed": True|False|None, ...}. What learn() recorded when it did
+    (metrics.beats_no_graph); otherwise, for a learned revision whose validation dataset is still stored, the same
+    comparison computed now from its snapshot (`computed`: true); otherwise None with `why` (a founding or imported
+    graph, or a revision whose validation data is gone, cannot be judged). Reads only."""
+    metrics = rev["metrics"]
+    if isinstance(metrics.get("beats_no_graph"), bool):
+        return {"passed": metrics["beats_no_graph"], "validation_mse": metrics.get("validation_mse"),
+                "no_graph_validation_mse": metrics.get("no_graph_validation_mse"), "computed": False}
+    if rev["origin"] != "learner":
+        return {"passed": None, "why": f"a {rev['origin']} graph has no validation data of its own"}
+    dataset_id = metrics.get("validation_dataset")
+    row = db.execute("SELECT cols, deleted_at IS NULL AND blob IS NOT NULL FROM datasets WHERE id=?",
+                     (dataset_id,)).fetchone() if isinstance(dataset_id, int) else None
+    if row is None or not row[1]:
+        return {"passed": None, "why": "its validation dataset is no longer stored"}
+    if row[0] != rev["cols"] or rev["rows"] != rev["cols"]:
+        return {"passed": None, "why": f"its validation dataset has {row[0]} populations, the graph is "
+                                       f"{rev['rows']}x{rev['cols']}"}
+    states, targets = datasets.load(db, dataset_id)
+    ours = float(learner.mse(_matrix(db, rev["id"]), states, targets))
+    none = float(np.mean(targets ** 2))
+    return {"passed": bool(ours < none), "validation_mse": ours, "no_graph_validation_mse": none,
+            "validation_dataset": dataset_id, "computed": True}
+
+
 def promote(db, revision_id, now):
     """Run the gate of the candidate's recorded rule; promote on a full pass, otherwise reject.
 
@@ -464,7 +496,7 @@ def invalidate_dependents(db, dataset_id, now):
         candidates = [r[0] for r in db.execute(
             "SELECT id, decision FROM graph_revisions WHERE context=? AND status='archived' "
             "ORDER BY created_at DESC, id DESC", (context,))
-            if (json.loads(r[1]) if r[1] else {}).get("action") != REPLACED_BY_ROLLBACK]
+            if (json.loads(r[1]) if r[1] else {}).get("action") not in NOT_REVIVED]
         chosen = next((r for r in candidates if _lineage_intact(db, r)), None)
         if chosen is None:
             failures.append(f"no eligible snapshot for context {context}")
