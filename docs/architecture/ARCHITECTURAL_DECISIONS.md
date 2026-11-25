@@ -2244,6 +2244,24 @@ worded more strongly than the evidence; these are the claims now made (`genesis_
   host, and its footprint estimate on the real host is unmeasured. `nsf config --predictive-regulation` turns it on.
 - Opt-in: information-v1 (it changes a retention scenario's rules-v1 property; existing individuals keep their rule).
 
+## Amendment (review1, before release)
+
+- **Learning progress reworked and now off by default.** A confirming re-verification (a refresh that found the item
+  still current) counts as progress on what it was asked to settle; learning progress and the futility down-weight
+  read the same `web_feedback` rows, so the stronger of the two applies, never their product; the down-weight halves
+  every 7 days after the subject's newest look and never goes below 0.05 (constants chosen on development only).
+  Re-measured on the held-out worlds with the split's seeds and 12 further ones (`genesis_fix1b.json`): on the wider
+  seeds the timer path's noise share fell (0.413 to 0.394) but its realised bits per budget fell too (0.139 to
+  0.126); the idle path gained (0.094 to 0.144, noise 0.706 to 0.550). The rule was to keep it on only if bits per
+  budget did not fall on both paths, so `curiosity_learning_progress` defaults to false. The reduced gain is what
+  admission compares with its minimum (`curiosity.MIN_GAIN`, `min_gain`): "ranking only" was wrong.
+- **information-v1 amended in place (unreleased).** A partner is scored by what its next words teach about its own
+  convention (`own_bits`), not the mechanism, and is asked only while its meaning is ambiguous by rule 6's test (at
+  least 4 words, |p - .5| < .37); `p_informative` is judged per mechanism segment (pooled, a reporter whose readings
+  flip exactly when the mechanism changed looked like a coin). With it on, `lifelong_correction` passes
+  `asks_only_while_partner_ambiguous`. Held-out (split seeds): 0.105 bits per budget (rules-v1 0.092, the first
+  build 0.118), noise share 0.071 (0.095, 0.307). It stays opt-in. A rules-v1 decision no longer carries `rule`.
+
 ## Alternatives rejected
 
 - A learned forecaster or learned salience weights: not transparent, and nothing external to train them against.

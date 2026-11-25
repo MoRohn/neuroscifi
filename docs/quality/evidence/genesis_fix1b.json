@@ -1,0 +1,2261 @@
+{
+ "lane": "fix1b (Wave 1 fix lane B: core, imagination, knowledge, curiosity)",
+ "label": "cognitive benchmark info_value family: synthetic worlds through the real modules, offline; simulated",
+ "learning_progress": {
+  "rework": "a confirming re-verification counts as progress; min(futility, learning progress) instead of their product; the down-weight halves every LP_HALF_LIFE after the newest look, never below LP_FLOOR",
+  "constants": {
+   "LP_HALF_LIFE_days": 7.0,
+   "LP_FLOOR": 0.05
+  },
+  "chosen_on": "development split only (its seeds 21-23 and 5001-5012); held-out run once afterwards",
+  "selection_rule": "among the decayed settings, the largest minimum over both paths of (development wide-seed bits per budget minus the learning-progress-off value), with the noise share below off on both paths; ties by the sum. 7 d and 14 d tie at +0.004 on the timer path; 7 d has the larger sum. The floor changes nothing at a finite half-life in this grid.",
+  "development_grid": {
+   "half-life 2 d floor 0": [
+    "timer/split noise 0.354 bpb 0.167 stale 0.222",
+    "timer/wide noise 0.370 bpb 0.163 stale 0.215",
+    "idle/split noise 0.625 bpb 0.079 stale 0.139",
+    "idle/wide noise 0.521 bpb 0.133 stale 0.083"
+   ],
+   "half-life 2 d floor 0.05": [
+    "timer/split noise 0.354 bpb 0.167 stale 0.222",
+    "timer/wide noise 0.370 bpb 0.163 stale 0.215",
+    "idle/split noise 0.625 bpb 0.079 stale 0.139",
+    "idle/wide noise 0.521 bpb 0.133 stale 0.083"
+   ],
+   "half-life 2 d floor 0.1": [
+    "timer/split noise 0.354 bpb 0.167 stale 0.222",
+    "timer/wide noise 0.370 bpb 0.163 stale 0.215",
+    "idle/split noise 0.625 bpb 0.079 stale 0.139",
+    "idle/wide noise 0.521 bpb 0.133 stale 0.083"
+   ],
+   "half-life 7 d floor 0": [
+    "timer/split noise 0.354 bpb 0.142 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.184 stale 0.132",
+    "idle/split noise 0.438 bpb 0.134 stale 0.111",
+    "idle/wide noise 0.401 bpb 0.232 stale 0.111"
+   ],
+   "half-life 7 d floor 0.05": [
+    "timer/split noise 0.354 bpb 0.142 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.184 stale 0.132",
+    "idle/split noise 0.438 bpb 0.134 stale 0.111",
+    "idle/wide noise 0.401 bpb 0.232 stale 0.111"
+   ],
+   "half-life 7 d floor 0.1": [
+    "timer/split noise 0.354 bpb 0.142 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.184 stale 0.132",
+    "idle/split noise 0.438 bpb 0.134 stale 0.111",
+    "idle/wide noise 0.401 bpb 0.232 stale 0.111"
+   ],
+   "half-life 14 d floor 0": [
+    "timer/split noise 0.354 bpb 0.142 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.184 stale 0.132",
+    "idle/split noise 0.438 bpb 0.237 stale 0.139",
+    "idle/wide noise 0.396 bpb 0.202 stale 0.118"
+   ],
+   "half-life 14 d floor 0.05": [
+    "timer/split noise 0.354 bpb 0.142 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.184 stale 0.132",
+    "idle/split noise 0.438 bpb 0.237 stale 0.139",
+    "idle/wide noise 0.396 bpb 0.202 stale 0.118"
+   ],
+   "half-life 14 d floor 0.1": [
+    "timer/split noise 0.354 bpb 0.142 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.184 stale 0.132",
+    "idle/split noise 0.438 bpb 0.237 stale 0.139",
+    "idle/wide noise 0.396 bpb 0.202 stale 0.118"
+   ],
+   "half-life 30 d floor 0": [
+    "timer/split noise 0.354 bpb 0.243 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.156 stale 0.132",
+    "idle/split noise 0.396 bpb 0.256 stale 0.167",
+    "idle/wide noise 0.323 bpb 0.206 stale 0.118"
+   ],
+   "half-life 30 d floor 0.05": [
+    "timer/split noise 0.354 bpb 0.243 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.156 stale 0.132",
+    "idle/split noise 0.396 bpb 0.256 stale 0.167",
+    "idle/wide noise 0.323 bpb 0.206 stale 0.118"
+   ],
+   "half-life 30 d floor 0.1": [
+    "timer/split noise 0.354 bpb 0.243 stale 0.139",
+    "timer/wide noise 0.370 bpb 0.156 stale 0.132",
+    "idle/split noise 0.438 bpb 0.251 stale 0.167",
+    "idle/wide noise 0.365 bpb 0.201 stale 0.118"
+   ],
+   "half-life 1e+09 d floor 0": [
+    "timer/split noise 0.188 bpb 0.209 stale 0.250",
+    "timer/wide noise 0.193 bpb 0.244 stale 0.250",
+    "idle/split noise 0.250 bpb 0.265 stale 0.250",
+    "idle/wide noise 0.208 bpb 0.258 stale 0.215"
+   ],
+   "half-life 1e+09 d floor 0.05": [
+    "timer/split noise 0.292 bpb 0.145 stale 0.222",
+    "timer/wide noise 0.307 bpb 0.190 stale 0.215",
+    "idle/split noise 0.250 bpb 0.265 stale 0.250",
+    "idle/wide noise 0.208 bpb 0.258 stale 0.215"
+   ],
+   "half-life 1e+09 d floor 0.1": [
+    "timer/split noise 0.292 bpb 0.145 stale 0.222",
+    "timer/wide noise 0.307 bpb 0.190 stale 0.215",
+    "idle/split noise 0.438 bpb 0.251 stale 0.167",
+    "idle/wide noise 0.354 bpb 0.182 stale 0.132"
+   ]
+  },
+  "measured": {
+   "timer/development/split": {
+    "off (Wave 0 futility only)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "web_mean": {
+      "realised_bits": 0.9664,
+      "realised_bits_per_budget": 0.1611,
+      "known_gain_bits": 0.8818,
+      "noise_share": 0.375,
+      "stale_share": 0.1944,
+      "idle_steps": 1.0
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.5,
+        "sd": 0.0,
+        "min": 0.5,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0901,
+        "sd": 0.0,
+        "min": 0.0901,
+        "max": 0.0901
+       },
+       "stale_share": {
+        "mean": 0.3333,
+        "sd": 0.0,
+        "min": 0.3333,
+        "max": 0.3333
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.25,
+        "sd": 0.25,
+        "min": 0.0,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2321,
+        "sd": 0.1158,
+        "min": 0.1637,
+        "max": 0.3658
+       },
+       "stale_share": {
+        "mean": 0.0556,
+        "sd": 0.0962,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    },
+    "on, lane I as integrated (3c2a3bc)": {
+     "commit": null,
+     "dirty": null,
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "web_mean": {
+      "realised_bits": 1.2544,
+      "realised_bits_per_budget": 0.2091,
+      "known_gain_bits": 1.3684,
+      "noise_share": 0.1875,
+      "stale_share": 0.25,
+      "idle_steps": 2.0
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.25,
+        "sd": 0.0,
+        "min": 0.25,
+        "max": 0.25
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.1422,
+        "sd": 0.0621,
+        "min": 0.0901,
+        "max": 0.2109
+       },
+       "stale_share": {
+        "mean": 0.3333,
+        "sd": 0.0,
+        "min": 0.3333,
+        "max": 0.3333
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.125,
+        "sd": 0.125,
+        "min": 0.0,
+        "max": 0.25
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.276,
+        "sd": 0.1082,
+        "min": 0.1667,
+        "max": 0.383
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.1667,
+        "min": 0.0,
+        "max": 0.3333
+       }
+      }
+     }
+    },
+    "on, reworked (this lane)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "web_mean": {
+      "realised_bits": 0.8543,
+      "realised_bits_per_budget": 0.1424,
+      "known_gain_bits": 1.2136,
+      "noise_share": 0.3542,
+      "stale_share": 0.1389,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.5,
+        "sd": 0.0,
+        "min": 0.5,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0145,
+        "sd": 0.305,
+        "min": -0.3377,
+        "max": 0.1906
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.2083,
+        "sd": 0.2602,
+        "min": 0.0,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2702,
+        "sd": 0.0998,
+        "min": 0.1667,
+        "max": 0.3658
+       },
+       "stale_share": {
+        "mean": 0.1111,
+        "sd": 0.0962,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    }
+   },
+   "timer/development/wide": {
+    "off (Wave 0 futility only)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 1.0816,
+      "realised_bits_per_budget": 0.1803,
+      "known_gain_bits": 1.008,
+      "noise_share": 0.375,
+      "stale_share": 0.2083,
+      "idle_steps": 1.0
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.5,
+        "sd": 0.0,
+        "min": 0.5,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.1602,
+        "sd": 0.1208,
+        "min": 0.0046,
+        "max": 0.2925
+       },
+       "stale_share": {
+        "mean": 0.3333,
+        "sd": 0.0,
+        "min": 0.3333,
+        "max": 0.3333
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.25,
+        "sd": 0.2384,
+        "min": 0.0,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2004,
+        "sd": 0.0741,
+        "min": 0.1145,
+        "max": 0.3434
+       },
+       "stale_share": {
+        "mean": 0.0833,
+        "sd": 0.087,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    },
+    "on, lane I as integrated (3c2a3bc)": {
+     "commit": null,
+     "dirty": null,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 1.4648,
+      "realised_bits_per_budget": 0.2441,
+      "known_gain_bits": 1.3901,
+      "noise_share": 0.1927,
+      "stale_share": 0.25,
+      "idle_steps": 2.3333
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.25,
+        "sd": 0.0,
+        "min": 0.25,
+        "max": 0.25
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2678,
+        "sd": 0.1427,
+        "min": 0.0901,
+        "max": 0.5085
+       },
+       "stale_share": {
+        "mean": 0.3333,
+        "sd": 0.0,
+        "min": 0.3333,
+        "max": 0.3333
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.1354,
+        "sd": 0.1245,
+        "min": 0.0,
+        "max": 0.25
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2205,
+        "sd": 0.0868,
+        "min": 0.1224,
+        "max": 0.3658
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.1589,
+        "min": 0.0,
+        "max": 0.3333
+       }
+      }
+     }
+    },
+    "on, reworked (this lane)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 1.1063,
+      "realised_bits_per_budget": 0.1844,
+      "known_gain_bits": 1.1833,
+      "noise_share": 0.3698,
+      "stale_share": 0.1319,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.5,
+        "sd": 0.0,
+        "min": 0.5,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2169,
+        "sd": 0.2087,
+        "min": -0.2601,
+        "max": 0.4495
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.2396,
+        "sd": 0.2411,
+        "min": 0.0,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.1518,
+        "sd": 0.2238,
+        "min": -0.5059,
+        "max": 0.3658
+       },
+       "stale_share": {
+        "mean": 0.0972,
+        "sd": 0.0858,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    }
+   },
+   "timer/held_out/split": {
+    "off (Wave 0 futility only)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "web_mean": {
+      "realised_bits": 0.4928,
+      "realised_bits_per_budget": 0.093,
+      "known_gain_bits": 0.6585,
+      "noise_share": 0.5375,
+      "stale_share": 0.0833,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.625,
+        "sd": 0.0,
+        "min": 0.625,
+        "max": 0.625
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0551,
+        "sd": 0.0,
+        "min": 0.0551,
+        "max": 0.0551
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.45,
+        "sd": 0.2598,
+        "min": 0.15,
+        "max": 0.6
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.131,
+        "sd": 0.1134,
+        "min": 0.0,
+        "max": 0.1965
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, lane I as integrated (3c2a3bc)": {
+     "commit": null,
+     "dirty": null,
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "web_mean": {
+      "realised_bits": 0.8426,
+      "realised_bits_per_budget": 0.1627,
+      "known_gain_bits": 0.8479,
+      "noise_share": 0.375,
+      "stale_share": 0.1667,
+      "idle_steps": 1.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.5,
+        "sd": 0.0,
+        "min": 0.5,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0581,
+        "sd": 0.0,
+        "min": 0.0581,
+        "max": 0.0581
+       },
+       "stale_share": {
+        "mean": 0.3333,
+        "sd": 0.0,
+        "min": 0.3333,
+        "max": 0.3333
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.25,
+        "sd": 0.0866,
+        "min": 0.15,
+        "max": 0.3
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2673,
+        "sd": 0.2292,
+        "min": 0.0819,
+        "max": 0.5236
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, reworked (this lane)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "web_mean": {
+      "realised_bits": 0.6993,
+      "realised_bits_per_budget": 0.1344,
+      "known_gain_bits": 0.7139,
+      "noise_share": 0.5125,
+      "stale_share": 0.0833,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.625,
+        "sd": 0.0,
+        "min": 0.625,
+        "max": 0.625
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0551,
+        "sd": 0.0,
+        "min": 0.0551,
+        "max": 0.0551
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.4,
+        "sd": 0.2291,
+        "min": 0.15,
+        "max": 0.6
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2136,
+        "sd": 0.2227,
+        "min": 0.0,
+        "max": 0.4444
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    }
+   },
+   "timer/held_out/wide": {
+    "off (Wave 0 futility only)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 0.7411,
+      "realised_bits_per_budget": 0.1387,
+      "known_gain_bits": 0.6642,
+      "noise_share": 0.4125,
+      "stale_share": 0.0833,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.625,
+        "sd": 0.0,
+        "min": 0.625,
+        "max": 0.625
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.095,
+        "sd": 0.1412,
+        "min": -0.0234,
+        "max": 0.3456
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.2,
+        "sd": 0.2954,
+        "min": 0.0,
+        "max": 0.6
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.1824,
+        "sd": 0.0575,
+        "min": 0.0,
+        "max": 0.2
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, lane I as integrated (3c2a3bc)": {
+     "commit": null,
+     "dirty": null,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 0.999,
+      "realised_bits_per_budget": 0.1845,
+      "known_gain_bits": 0.8089,
+      "noise_share": 0.3,
+      "stale_share": 0.1667,
+      "idle_steps": 0.7917
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.5,
+        "sd": 0.0,
+        "min": 0.5,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.1526,
+        "sd": 0.2175,
+        "min": -0.0204,
+        "max": 0.6875
+       },
+       "stale_share": {
+        "mean": 0.3333,
+        "sd": 0.0,
+        "min": 0.3333,
+        "max": 0.3333
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.1,
+        "sd": 0.1477,
+        "min": 0.0,
+        "max": 0.3
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2165,
+        "sd": 0.1024,
+        "min": 0.0819,
+        "max": 0.5236
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, reworked (this lane)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 0.6494,
+      "realised_bits_per_budget": 0.1261,
+      "known_gain_bits": 0.7058,
+      "noise_share": 0.3937,
+      "stale_share": 0.0833,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.625,
+        "sd": 0.0,
+        "min": 0.625,
+        "max": 0.625
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.038,
+        "sd": 0.2473,
+        "min": -0.6529,
+        "max": 0.3456
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.1625,
+        "sd": 0.2432,
+        "min": 0.0,
+        "max": 0.6
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2142,
+        "sd": 0.098,
+        "min": 0.0,
+        "max": 0.4444
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    }
+   },
+   "idle/development/split": {
+    "off (Wave 0 futility only)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "web_mean": {
+      "realised_bits": -0.2381,
+      "realised_bits_per_budget": -0.0397,
+      "known_gain_bits": 0.5217,
+      "noise_share": 0.8125,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.875,
+        "sd": 0.0,
+        "min": 0.875,
+        "max": 0.875
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.1315,
+        "sd": 0.0448,
+        "min": 0.1056,
+        "max": 0.1833
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.75,
+        "sd": 0.0,
+        "min": 0.75,
+        "max": 0.75
+       },
+       "realised_bits_per_budget": {
+        "mean": -0.2109,
+        "sd": 0.305,
+        "min": -0.387,
+        "max": 0.1413
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, lane I as integrated (3c2a3bc)": {
+     "commit": null,
+     "dirty": null,
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "web_mean": {
+      "realised_bits": 1.5881,
+      "realised_bits_per_budget": 0.2647,
+      "known_gain_bits": 1.5811,
+      "noise_share": 0.25,
+      "stale_share": 0.25,
+      "idle_steps": 3.1667
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.25,
+        "sd": 0.0,
+        "min": 0.25,
+        "max": 0.25
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2019,
+        "sd": 0.1077,
+        "min": 0.0901,
+        "max": 0.3048
+       },
+       "stale_share": {
+        "mean": 0.2778,
+        "sd": 0.0962,
+        "min": 0.1667,
+        "max": 0.3333
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.25,
+        "sd": 0.0,
+        "min": 0.25,
+        "max": 0.25
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.3274,
+        "sd": 0.0651,
+        "min": 0.2559,
+        "max": 0.383
+       },
+       "stale_share": {
+        "mean": 0.2222,
+        "sd": 0.0962,
+        "min": 0.1667,
+        "max": 0.3333
+       }
+      }
+     }
+    },
+    "on, reworked (this lane)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "web_mean": {
+      "realised_bits": 0.8049,
+      "realised_bits_per_budget": 0.1341,
+      "known_gain_bits": 1.2719,
+      "noise_share": 0.4375,
+      "stale_share": 0.1111,
+      "idle_steps": 0.1667
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.4583,
+        "sd": 0.0722,
+        "min": 0.375,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0235,
+        "sd": 0.3117,
+        "min": -0.3361,
+        "max": 0.2159
+       },
+       "stale_share": {
+        "mean": 0.1111,
+        "sd": 0.0962,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.4167,
+        "sd": 0.1443,
+        "min": 0.25,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2448,
+        "sd": 0.1062,
+        "min": 0.1666,
+        "max": 0.3658
+       },
+       "stale_share": {
+        "mean": 0.1111,
+        "sd": 0.0962,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    }
+   },
+   "idle/development/wide": {
+    "off (Wave 0 futility only)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 0.1544,
+      "realised_bits_per_budget": 0.0257,
+      "known_gain_bits": 0.6016,
+      "noise_share": 0.6823,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.875,
+        "sd": 0.0,
+        "min": 0.875,
+        "max": 0.875
+       },
+       "realised_bits_per_budget": {
+        "mean": -0.0446,
+        "sd": 0.2533,
+        "min": -0.4227,
+        "max": 0.1833
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.4896,
+        "sd": 0.229,
+        "min": 0.25,
+        "max": 0.75
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0961,
+        "sd": 0.1589,
+        "min": -0.387,
+        "max": 0.1666
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, lane I as integrated (3c2a3bc)": {
+     "commit": null,
+     "dirty": null,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 1.5462,
+      "realised_bits_per_budget": 0.2577,
+      "known_gain_bits": 1.402,
+      "noise_share": 0.2083,
+      "stale_share": 0.2153,
+      "idle_steps": 2.2083
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.2396,
+        "sd": 0.0361,
+        "min": 0.125,
+        "max": 0.25
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2785,
+        "sd": 0.1276,
+        "min": 0.1255,
+        "max": 0.4861
+       },
+       "stale_share": {
+        "mean": 0.2778,
+        "sd": 0.0821,
+        "min": 0.1667,
+        "max": 0.3333
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.1771,
+        "sd": 0.0644,
+        "min": 0.125,
+        "max": 0.25
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2369,
+        "sd": 0.078,
+        "min": 0.1637,
+        "max": 0.3658
+       },
+       "stale_share": {
+        "mean": 0.1528,
+        "sd": 0.1501,
+        "min": 0.0,
+        "max": 0.3333
+       }
+      }
+     }
+    },
+    "on, reworked (this lane)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 1.3928,
+      "realised_bits_per_budget": 0.2321,
+      "known_gain_bits": 1.1451,
+      "noise_share": 0.401,
+      "stale_share": 0.1111,
+      "idle_steps": 0.1667
+     },
+     "worlds": {
+      "stale important, noisy, fresh, gap": {
+       "noise_share": {
+        "mean": 0.4583,
+        "sd": 0.0615,
+        "min": 0.375,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2898,
+        "sd": 0.1201,
+        "min": 0.1121,
+        "max": 0.4822
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "contested settles, noisy persists": {
+       "noise_share": {
+        "mean": 0.3438,
+        "sd": 0.1207,
+        "min": 0.25,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.1744,
+        "sd": 0.0524,
+        "min": 0.1145,
+        "max": 0.2783
+       },
+       "stale_share": {
+        "mean": 0.0556,
+        "sd": 0.0821,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    }
+   },
+   "idle/held_out/split": {
+    "off (Wave 0 futility only)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "web_mean": {
+      "realised_bits": -0.0793,
+      "realised_bits_per_budget": -0.0159,
+      "known_gain_bits": 0.3057,
+      "noise_share": 0.8,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.6,
+        "sd": 0.2598,
+        "min": 0.3,
+        "max": 0.75
+       },
+       "realised_bits_per_budget": {
+        "mean": -0.0317,
+        "sd": 0.375,
+        "min": -0.4644,
+        "max": 0.1996
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, lane I as integrated (3c2a3bc)": {
+     "commit": null,
+     "dirty": null,
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "web_mean": {
+      "realised_bits": -0.0539,
+      "realised_bits_per_budget": -0.0166,
+      "known_gain_bits": 0.9575,
+      "noise_share": 0.375,
+      "stale_share": 0.1667,
+      "idle_steps": 2.1667
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.5,
+        "sd": 0.0,
+        "min": 0.5,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0581,
+        "sd": 0.0,
+        "min": 0.0581,
+        "max": 0.0581
+       },
+       "stale_share": {
+        "mean": 0.3333,
+        "sd": 0.0,
+        "min": 0.3333,
+        "max": 0.3333
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.25,
+        "sd": 0.0866,
+        "min": 0.15,
+        "max": 0.3
+       },
+       "realised_bits_per_budget": {
+        "mean": -0.0912,
+        "sd": 0.6349,
+        "min": -0.7444,
+        "max": 0.5236
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, reworked (this lane)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "web_mean": {
+      "realised_bits": 0.2467,
+      "realised_bits_per_budget": 0.0443,
+      "known_gain_bits": 0.7121,
+      "noise_share": 0.65,
+      "stale_share": 0.0833,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.75,
+        "sd": 0.0,
+        "min": 0.75,
+        "max": 0.75
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0505,
+        "sd": 0.0,
+        "min": 0.0505,
+        "max": 0.0505
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.55,
+        "sd": 0.0866,
+        "min": 0.45,
+        "max": 0.6
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0381,
+        "sd": 0.4409,
+        "min": -0.3825,
+        "max": 0.4968
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    }
+   },
+   "idle/held_out/wide": {
+    "off (Wave 0 futility only)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 0.4678,
+      "realised_bits_per_budget": 0.0936,
+      "known_gain_bits": 0.356,
+      "noise_share": 0.7063,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.4125,
+        "sd": 0.2035,
+        "min": 0.3,
+        "max": 0.75
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.1871,
+        "sd": 0.0155,
+        "min": 0.1696,
+        "max": 0.1996
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, lane I as integrated (3c2a3bc)": {
+     "commit": null,
+     "dirty": null,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 0.9529,
+      "realised_bits_per_budget": 0.1862,
+      "known_gain_bits": 0.9198,
+      "noise_share": 0.3438,
+      "stale_share": 0.1667,
+      "idle_steps": 1.75
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.5,
+        "sd": 0.0,
+        "min": 0.5,
+        "max": 0.5
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0432,
+        "sd": 0.257,
+        "min": -0.6499,
+        "max": 0.3889
+       },
+       "stale_share": {
+        "mean": 0.3333,
+        "sd": 0.0,
+        "min": 0.3333,
+        "max": 0.3333
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.1875,
+        "sd": 0.0678,
+        "min": 0.15,
+        "max": 0.3
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.3293,
+        "sd": 0.1129,
+        "min": 0.0991,
+        "max": 0.5236
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "on, reworked (this lane)": {
+     "commit": "f2ffd113ec3daf15338b72a6e4633c55ac5823ce",
+     "dirty": true,
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "web_mean": {
+      "realised_bits": 0.7517,
+      "realised_bits_per_budget": 0.1439,
+      "known_gain_bits": 0.6707,
+      "noise_share": 0.55,
+      "stale_share": 0.0833,
+      "idle_steps": 0.0
+     },
+     "worlds": {
+      "two noisy subjects beside a stale one": {
+       "noise_share": {
+        "mean": 0.75,
+        "sd": 0.0,
+        "min": 0.75,
+        "max": 0.75
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.0641,
+        "sd": 0.176,
+        "min": -0.3669,
+        "max": 0.341
+       },
+       "stale_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      },
+      "gap and contested beside noise": {
+       "noise_share": {
+        "mean": 0.35,
+        "sd": 0.0977,
+        "min": 0.3,
+        "max": 0.6
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.2237,
+        "sd": 0.0883,
+        "min": 0.1696,
+        "max": 0.4968
+       },
+       "stale_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    }
+   }
+  },
+  "default": "off",
+  "why": "held-out, 12 further seeds (5001-5012), timer path: realised bits per budget 0.1387 off -> 0.1261 on (falls) while the noise share falls 0.4125 -> 0.3937; the rule kept it on only if bits per budget did not fall on the wider seeds on both paths. Idle path: 0.0936 -> 0.1439 and noise 0.7063 -> 0.55."
+ },
+ "information_v1": {
+  "amendment": "a partner is scored by the information its next words carry about its own convention, and asked only while its meaning is ambiguous by rule 6's test (>= 4 words, |p - .5| < .37); P(informative) per mechanism segment",
+  "retention_lifelong_correction_with_rule_on": "pass (asks_only_while_partner_ambiguous holds)",
+  "default": "rules-v1 (information-v1 stays opt-in)",
+  "measured": {
+   "development/split": {
+    "rules-v1": {
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "core_mean": {
+      "realised_bits": 0.0843,
+      "realised_bits_per_budget": 0.0137,
+      "known_gain_bits": 0.3249,
+      "noise_share": 0.0,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "one noisy partner among two honest ones": {
+       "realised_bits_per_budget": {
+        "mean": 0.0022,
+        "sd": 0.0,
+        "min": 0.0022,
+        "max": 0.0022
+       },
+       "noise_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "a camera seen once, a partner seen often": {
+       "realised_bits_per_budget": {
+        "mean": 0.0252,
+        "sd": 0.0,
+        "min": 0.0252,
+        "max": 0.0252
+       },
+       "noise_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    },
+    "information-v1 as integrated (3c2a3bc)": {
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "core_mean": {
+      "realised_bits": 0.2551,
+      "realised_bits_per_budget": 0.035,
+      "known_gain_bits": 0.4929,
+      "noise_share": 0.125,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "one noisy partner among two honest ones": {
+       "realised_bits_per_budget": {
+        "mean": 0.0449,
+        "sd": 0.0701,
+        "min": 0.0044,
+        "max": 0.1259
+       },
+       "noise_share": {
+        "mean": 0.0833,
+        "sd": 0.1443,
+        "min": 0.0,
+        "max": 0.25
+       }
+      },
+      "a camera seen once, a partner seen often": {
+       "realised_bits_per_budget": {
+        "mean": 0.0252,
+        "sd": 0.0,
+        "min": 0.0252,
+        "max": 0.0252
+       },
+       "noise_share": {
+        "mean": 0.1667,
+        "sd": 0.0,
+        "min": 0.1667,
+        "max": 0.1667
+       }
+      }
+     }
+    },
+    "information-v1 amended (this lane)": {
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "core_mean": {
+      "realised_bits": 0.0843,
+      "realised_bits_per_budget": 0.0137,
+      "known_gain_bits": 0.3249,
+      "noise_share": 0.0,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "one noisy partner among two honest ones": {
+       "realised_bits_per_budget": {
+        "mean": 0.0022,
+        "sd": 0.0,
+        "min": 0.0022,
+        "max": 0.0022
+       },
+       "noise_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "a camera seen once, a partner seen often": {
+       "realised_bits_per_budget": {
+        "mean": 0.0252,
+        "sd": 0.0,
+        "min": 0.0252,
+        "max": 0.0252
+       },
+       "noise_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      }
+     }
+    }
+   },
+   "development/wide": {
+    "rules-v1": {
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "core_mean": {
+      "realised_bits": 0.5854,
+      "realised_bits_per_budget": 0.0924,
+      "known_gain_bits": 0.3321,
+      "noise_share": 0.0347,
+      "idle_share": 0.0347
+     },
+     "worlds": {
+      "one noisy partner among two honest ones": {
+       "realised_bits_per_budget": {
+        "mean": 0.0308,
+        "sd": 0.052,
+        "min": 0.0021,
+        "max": 0.1239
+       },
+       "noise_share": {
+        "mean": 0.0417,
+        "sd": 0.0615,
+        "min": 0.0,
+        "max": 0.125
+       }
+      },
+      "a camera seen once, a partner seen often": {
+       "realised_bits_per_budget": {
+        "mean": 0.1541,
+        "sd": 0.2332,
+        "min": 0.0252,
+        "max": 0.542
+       },
+       "noise_share": {
+        "mean": 0.0278,
+        "sd": 0.0649,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    },
+    "information-v1 as integrated (3c2a3bc)": {
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "core_mean": {
+      "realised_bits": 0.6936,
+      "realised_bits_per_budget": 0.106,
+      "known_gain_bits": 0.511,
+      "noise_share": 0.1354,
+      "idle_share": 0.0347
+     },
+     "worlds": {
+      "one noisy partner among two honest ones": {
+       "realised_bits_per_budget": {
+        "mean": 0.0575,
+        "sd": 0.08,
+        "min": 0.0042,
+        "max": 0.2475
+       },
+       "noise_share": {
+        "mean": 0.1458,
+        "sd": 0.0897,
+        "min": 0.0,
+        "max": 0.25
+       }
+      },
+      "a camera seen once, a partner seen often": {
+       "realised_bits_per_budget": {
+        "mean": 0.1546,
+        "sd": 0.2329,
+        "min": 0.0252,
+        "max": 0.542
+       },
+       "noise_share": {
+        "mean": 0.125,
+        "sd": 0.0754,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    },
+    "information-v1 amended (this lane)": {
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "core_mean": {
+      "realised_bits": 0.5992,
+      "realised_bits_per_budget": 0.0942,
+      "known_gain_bits": 0.3843,
+      "noise_share": 0.0347,
+      "idle_share": 0.0347
+     },
+     "worlds": {
+      "one noisy partner among two honest ones": {
+       "realised_bits_per_budget": {
+        "mean": 0.0342,
+        "sd": 0.0538,
+        "min": 0.0022,
+        "max": 0.1239
+       },
+       "noise_share": {
+        "mean": 0.0417,
+        "sd": 0.0615,
+        "min": 0.0,
+        "max": 0.125
+       }
+      },
+      "a camera seen once, a partner seen often": {
+       "realised_bits_per_budget": {
+        "mean": 0.1541,
+        "sd": 0.2332,
+        "min": 0.0252,
+        "max": 0.542
+       },
+       "noise_share": {
+        "mean": 0.0278,
+        "sd": 0.0649,
+        "min": 0.0,
+        "max": 0.1667
+       }
+      }
+     }
+    }
+   },
+   "held_out/split": {
+    "rules-v1": {
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "core_mean": {
+      "realised_bits": 0.7149,
+      "realised_bits_per_budget": 0.0924,
+      "known_gain_bits": 0.233,
+      "noise_share": 0.0952,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "two noisy partners and an under-observed honest one": {
+       "realised_bits_per_budget": {
+        "mean": 0.1357,
+        "sd": 0.2346,
+        "min": 0.0002,
+        "max": 0.4065
+       },
+       "noise_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "two cameras, one partner, one noisy": {
+       "realised_bits_per_budget": {
+        "mean": 0.0492,
+        "sd": 0.0809,
+        "min": 0.0025,
+        "max": 0.1426
+       },
+       "noise_share": {
+        "mean": 0.1905,
+        "sd": 0.3299,
+        "min": 0.0,
+        "max": 0.5714
+       }
+      }
+     }
+    },
+    "information-v1 as integrated (3c2a3bc)": {
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "core_mean": {
+      "realised_bits": 0.9089,
+      "realised_bits_per_budget": 0.1184,
+      "known_gain_bits": 0.796,
+      "noise_share": 0.3065,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "two noisy partners and an under-observed honest one": {
+       "realised_bits_per_budget": {
+        "mean": 0.1599,
+        "sd": 0.23,
+        "min": 0.0191,
+        "max": 0.4254
+       },
+       "noise_share": {
+        "mean": 0.375,
+        "sd": 0.125,
+        "min": 0.25,
+        "max": 0.5
+       }
+      },
+      "two cameras, one partner, one noisy": {
+       "realised_bits_per_budget": {
+        "mean": 0.0769,
+        "sd": 0.0741,
+        "min": 0.0239,
+        "max": 0.1615
+       },
+       "noise_share": {
+        "mean": 0.2381,
+        "sd": 0.2182,
+        "min": 0.0,
+        "max": 0.4286
+       }
+      }
+     }
+    },
+    "information-v1 amended (this lane)": {
+     "seeds": [
+      1021,
+      1022,
+      1023
+     ],
+     "core_mean": {
+      "realised_bits": 0.8055,
+      "realised_bits_per_budget": 0.1051,
+      "known_gain_bits": 0.5315,
+      "noise_share": 0.0714,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "two noisy partners and an under-observed honest one": {
+       "realised_bits_per_budget": {
+        "mean": 0.1403,
+        "sd": 0.2306,
+        "min": 0.0002,
+        "max": 0.4065
+       },
+       "noise_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "two cameras, one partner, one noisy": {
+       "realised_bits_per_budget": {
+        "mean": 0.0698,
+        "sd": 0.0795,
+        "min": 0.0239,
+        "max": 0.1615
+       },
+       "noise_share": {
+        "mean": 0.1429,
+        "sd": 0.2474,
+        "min": 0.0,
+        "max": 0.4286
+       }
+      }
+     }
+    }
+   },
+   "held_out/wide": {
+    "rules-v1": {
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "core_mean": {
+      "realised_bits": 0.0753,
+      "realised_bits_per_budget": 0.0103,
+      "known_gain_bits": 0.1372,
+      "noise_share": 0.0536,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "two noisy partners and an under-observed honest one": {
+       "realised_bits_per_budget": {
+        "mean": 0.0064,
+        "sd": 0.0091,
+        "min": 0.0002,
+        "max": 0.0189
+       },
+       "noise_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "two cameras, one partner, one noisy": {
+       "realised_bits_per_budget": {
+        "mean": 0.0142,
+        "sd": 0.0404,
+        "min": 0.0025,
+        "max": 0.1425
+       },
+       "noise_share": {
+        "mean": 0.1071,
+        "sd": 0.1736,
+        "min": 0.0,
+        "max": 0.4286
+       }
+      }
+     }
+    },
+    "information-v1 as integrated (3c2a3bc)": {
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "core_mean": {
+      "realised_bits": 0.7854,
+      "realised_bits_per_budget": 0.1055,
+      "known_gain_bits": 0.6757,
+      "noise_share": 0.2567,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "two noisy partners and an under-observed honest one": {
+       "realised_bits_per_budget": {
+        "mean": 0.0933,
+        "sd": 0.1464,
+        "min": 0.0191,
+        "max": 0.4065
+       },
+       "noise_share": {
+        "mean": 0.2396,
+        "sd": 0.1724,
+        "min": 0.0,
+        "max": 0.375
+       }
+      },
+      "two cameras, one partner, one noisy": {
+       "realised_bits_per_budget": {
+        "mean": 0.1178,
+        "sd": 0.1776,
+        "min": 0.0239,
+        "max": 0.4952
+       },
+       "noise_share": {
+        "mean": 0.2738,
+        "sd": 0.1423,
+        "min": 0.0,
+        "max": 0.5714
+       }
+      }
+     }
+    },
+    "information-v1 amended (this lane)": {
+     "seeds": [
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5011,
+      5012
+     ],
+     "core_mean": {
+      "realised_bits": 0.4269,
+      "realised_bits_per_budget": 0.0603,
+      "known_gain_bits": 0.3775,
+      "noise_share": 0.0298,
+      "idle_share": 0.0
+     },
+     "worlds": {
+      "two noisy partners and an under-observed honest one": {
+       "realised_bits_per_budget": {
+        "mean": 0.0099,
+        "sd": 0.011,
+        "min": 0.0002,
+        "max": 0.0323
+       },
+       "noise_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0
+       }
+      },
+      "two cameras, one partner, one noisy": {
+       "realised_bits_per_budget": {
+        "mean": 0.1107,
+        "sd": 0.1746,
+        "min": 0.0239,
+        "max": 0.475
+       },
+       "noise_share": {
+        "mean": 0.0595,
+        "sd": 0.0955,
+        "min": 0.0,
+        "max": 0.2857
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "sandbox_copy_under_a_busy_writer": {
+  "setup": "tmpfs, a writer connection committing one row every 2 ms, 5 copies each bounded by 10 s",
+  "paged (4096 pages, before)": {
+   "file_mib": 257.2,
+   "outcome": "5 of 5 timed out at 10 s"
+  },
+  "one step (after)": {
+   "file_mib": 257.6,
+   "outcome": "5 of 5 copied in 0.069-0.073 s"
+  },
+  "no writer": {
+   "paged_s": "0.076-0.083",
+   "one_step_s": "0.070-0.093"
+  }
+ }
+}
