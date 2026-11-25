@@ -190,7 +190,8 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
         from .. import internal_state
         from . import forecast
         try:
-            verdict = forecast.assess(internal_state.history(db_path), now=time.time())
+            now = time.time()          # one clock for reading the history (future samples ignored) and the forecast
+            verdict = forecast.assess(internal_state.history(db_path, now=now), now=now)
         except Exception:          # noqa: BLE001 - fail open: a forecast may only add a hold, a broken one adds none
             verdict = {"hold": False}
         if verdict["hold"]:

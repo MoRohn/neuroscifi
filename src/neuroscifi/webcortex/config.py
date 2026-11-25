@@ -168,13 +168,14 @@ class WebConfig:
     # never ranks by it.
     strategy_selection: str = "gate"
     # ADR-054 (monitoring.py), each its own switch. answer_monitoring: every research result carries
-    # report["monitoring"] (calibrated confidence, evidence sufficiency, source dependence, the depth record); a
-    # record only, it changes no verification state, answer or knowledge. selective_answering: an answer whose
-    # calibrated confidence is below the threshold chosen on development data opens with a plain "not enough
-    # evidence" line (the quotes stay). verification_escalation: before that, read one more independent source for
-    # the weakest statement when the task's own budget still allows it. adaptive_depth: stop reading once the last
+    # report["monitoring"] (the answer confidence, none with "not enough development data" while no fitted map has
+    # enough development items; the unfitted claim probability; evidence sufficiency, source dependence, the depth
+    # record); a record only, it changes no verification state, answer or knowledge. selective_answering: an answer
+    # judged weak (by evidence sufficiency while no fitted map applies) opens with a plain "not enough evidence"
+    # line (the quotes stay). verification_escalation: before that, read one more independent source for the
+    # weakest statement when the task's own budget still allows it. adaptive_depth: stop reading once the last
     # pages added no statement with two independent sources and no contradiction. Only the record is on by default
-    # (held-out calibration better, nothing else changes); the other three showed no held-out gain (ADR-054).
+    # (display only, nothing else changes); the other three showed no held-out gain (ADR-054).
     # Off: `nsf web config --set answer_monitoring=false`.
     answer_monitoring: bool = True
     selective_answering: bool = False

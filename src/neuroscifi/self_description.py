@@ -490,20 +490,25 @@ def _internal_state(db, path, now, *, agent=False) -> dict:
 
 
 def _answer_monitoring(db, now) -> dict:
-    """Lane C's monitoring record (ADR-054) of the latest research results that carry one: the calibrated confidence,
-    whether it was below the selective threshold, what was decided, and whether the evidence was enough."""
+    """Lane C's monitoring record (ADR-054) of the latest research results that carry one: the answer confidence
+    (none while no fitted map has enough development data, with the record's own "not enough development data"
+    note), whether the answer was weak, what was decided, and whether the evidence was enough."""
     latest = (f"SELECT id, updated_at, result FROM web_tasks WHERE status IN ({','.join('?' * len(TERMINAL))}) "
               "ORDER BY updated_at DESC LIMIT 50")            # the latest finished tasks only: never every report
     rows = db.execute(
         "SELECT id, updated_at, json_extract(result,'$.monitoring.confidence'), "
+        "json_extract(result,'$.monitoring.confidence_note'), "
         "json_extract(result,'$.monitoring.below_threshold'), json_extract(result,'$.monitoring.decision'), "
         f"json_extract(result,'$.monitoring.sufficiency') FROM ({latest}) WHERE json_valid(result) AND "
         "json_extract(result,'$.monitoring.version') IS NOT NULL ORDER BY updated_at DESC LIMIT ?",
         (*TERMINAL, MAX_ITEMS)).fetchall()
-    items = [{"task_id": tid, "at": at, "confidence": conf, "below_threshold": bool(below), "decision": decision,
-              "sufficiency": _json(enough)} for tid, at, conf, below, decision, enough in rows]
-    return _f(items, "web_tasks.result monitoring record (webcortex/monitoring.py, ADR-054; answer_monitoring)",
-              rows[0][1] if rows else None, now)
+    items = [{"task_id": tid, "at": at, "confidence": conf, "confidence_note": note, "below_threshold": bool(below),
+              "decision": decision, "sufficiency": _json(enough)}
+             for tid, at, conf, note, below, decision, enough in rows]
+    return _f(items, "web_tasks.result monitoring record (webcortex/monitoring.py, ADR-054; answer_monitoring). "
+              "confidence is null with confidence_note \"not enough development data\" while no fitted map has 30 "
+              "development items in 3 blocks (monitoring.applied; webcortex/data/monitoring_calibration.json): none "
+              "of the shipped maps has", rows[0][1] if rows else None, now)
 
 
 def _to_recheck(db, now) -> dict:

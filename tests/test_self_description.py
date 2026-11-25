@@ -140,8 +140,10 @@ def test_the_other_wave1_records_are_in_the_owner_record_with_source_and_age(ind
     "to re-check" marks and the improvement ledger (ADR-055) and the imagination settings (ADR-052), each a field with
     its source and age; none of them in Pocket's family scope."""
     from neuroscifi import internal_state
-    monitoring = {"version": 1, "confidence": 0.81, "below_threshold": False, "decision": "answer",
-                  "sufficiency": {"enough": True, "why": []}}
+    from neuroscifi.webcortex import monitoring as wmonitoring
+    # the record as shipped: no fitted map has enough development data, so no confidence number (review1 A6)
+    monitoring = {"version": 1, "confidence": None, "confidence_note": wmonitoring.NOT_ENOUGH_DATA,
+                  "below_threshold": False, "decision": "answer", "sufficiency": {"enough": True, "why": []}}
     with closing(store.connect(individual)) as db:
         task = orchestrator.submit(db, "Is the Okapi compiler 2.0 out yet?", T0, origin="console")
         with store.write(db):
@@ -159,9 +161,11 @@ def test_the_other_wave1_records_are_in_the_owner_record_with_source_and_age(ind
     assert internal["source"].startswith("internal_state.snapshot") and internal["age_seconds"] == 0
     assert internal["value"]["schema"] == internal_state.SCHEMA and "memory" in internal["value"]["fields"]
     answers = record["uncertain"]["answers"]
-    assert answers["value"] == [{"task_id": task["id"], "at": T0 + 1, "confidence": 0.81, "below_threshold": False,
+    assert answers["value"] == [{"task_id": task["id"], "at": T0 + 1, "confidence": None,
+                                 "confidence_note": "not enough development data", "below_threshold": False,
                                  "decision": "answer", "sufficiency": {"enough": True, "why": []}}]
     assert answers["age_seconds"] == 9 and "monitoring" in answers["source"]
+    assert "not enough development data" in answers["source"] and "monitoring_calibration.json" in answers["source"]
     marks = record["uncertain"]["to_recheck"]
     assert marks["value"] == {"open": 1, "by_kind": {"knowledge": {"premise_superseded": 1}}} and marks["at"] == T0 + 2
     ledger = sd.value(record, "decisions.improvement_ledger")

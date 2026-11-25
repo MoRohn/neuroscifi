@@ -20,11 +20,11 @@ class Wired:
 
     def __init__(self, db, path, monkeypatch, tasks):
         self.db, self.path, self.tasks, self.mp = db, str(path), tasks, monkeypatch
-        self.ticks = []
+        self.ticks, self.clock = [], None
 
     def decide(self, history):
         o = history[-1]
-        clock = T0 + o["seconds"]
+        clock = self.clock = T0 + o["seconds"]
         self.mp.setattr(monitor, "memory", lambda *a, **k: dict(o["memory"]))
         monitor.clear_cache()
         self.mp.setattr(policy, "time", SimpleNamespace(time=lambda: clock, monotonic=time.monotonic))
@@ -59,7 +59,9 @@ def test_history_file_to_gate_decision_matches_the_benchmark_forecaster(tmp_path
         db.close()
     ticks = wired.ticks
     assert len(ticks) == anticipation.TICKS and all(t["recorded"] for t in ticks)
-    assert len(internal_state.history(str(path))) == anticipation.TICKS          # every tick reached the file
+    # every tick reached the file; read as of the staged clock (T0 lies after the wall clock, and a sample dated after
+    # now + FUTURE_SECONDS is ignored as forged, review1 S2)
+    assert len(internal_state.history(str(path), now=wired.clock)) == anticipation.TICKS
     mismatched = [t["tick"] for t in ticks if (not t["gate"]["allowed"]) != t["benchmark_hold"]]
     assert mismatched == []
     forecast_holds = [t["tick"] for t in ticks if t["gate"]["why"] == "forecast"]
@@ -79,4 +81,4 @@ def test_with_the_setting_off_the_same_history_never_holds_by_forecast(tmp_path,
     finally:
         db.close()
     assert not [t for t in wired.ticks if t["gate"]["why"] == "forecast"]
-    assert len(internal_state.history(str(path))) == anticipation.TICKS
+    assert len(internal_state.history(str(path), now=wired.clock)) == anticipation.TICKS

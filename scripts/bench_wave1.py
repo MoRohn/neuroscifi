@@ -6,7 +6,8 @@
              environment and timestamps excluded). The adversarial family's case list changed in Wave 1 (lane M
              renamed one case, lane K added four), so its diff is reported case by case.
   defaults   every setting as shipped, each family answered by the mechanism the shipped settings use: anticipation
-             and info_value baseline (learning progress is on by default), counterfactual imagination (what-if and
+             and info_value baseline (learning progress is off by default since the review1 rework, so the timer
+             and idle paths read exactly as all_off), counterfactual imagination (what-if and
              forecast on), self_model self_description, selective monitoring (the record is on), retention and
              adversarial baseline (the code's defaults).
   all_on     every Wave 1 setting that ships off switched on as well (WAVE1_ON), and the lanes' behaviour-changing
@@ -336,14 +337,14 @@ def _trend_share(section, rows):
 WIDE_PLAN = (
     ("anticipation: predictive regulation (lane I) vs the reactive gate", "anticipation", "instinct", "defaults",
      "baseline", "all_off"),
-    ("info_value, timer path: as shipped (learning progress on) vs every Wave 1 setting off", "info_value",
+    ("info_value, timer path: as shipped (learning progress off) vs every Wave 1 setting off", "info_value",
      "baseline", "defaults", "baseline", "all_off"),
     ("info_value, idle path: as shipped vs every Wave 1 setting off", "info_value", "autonomy", "defaults",
      "autonomy", "all_off"),
-    ("info_value, timer path: lane I instinct (information-v1 core, learning progress) vs all off", "info_value",
-     "instinct", "defaults", "baseline", "all_off"),
-    ("info_value, idle path: lane I instinct-idle vs all off", "info_value", "instinct-idle", "defaults", "autonomy",
-     "all_off"),
+    ("info_value, timer path: lane I instinct (information-v1 core, learning progress on, reworked) vs all off",
+     "info_value", "instinct", "defaults", "baseline", "all_off"),
+    ("info_value, idle path: lane I instinct-idle (learning progress on, reworked) vs all off", "info_value",
+     "instinct-idle", "defaults", "autonomy", "all_off"),
     ("info_value: every Wave 1 chooser on (re-check first) vs all off", "info_value", "wave1_all_on", "all_on",
      "baseline", "all_off"),
     ("counterfactual: imagination (lane M) vs today's answerer", "counterfactual", "imagination", "defaults",
