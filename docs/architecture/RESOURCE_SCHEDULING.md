@@ -215,7 +215,7 @@ before). The model, once:
 |---|---|---|
 | `/var/lib/neuroscifi` (the state folder) | `neuroscifi:neuroscifi` 0710 (was 0700) | The group may pass through; only the owner may list or create. Everything else inside keeps its mode (0600, 0700) |
 | The instance database, with its `-wal` and `-shm` | `neuroscifi:neuroscifi` 0640 (was 0600) | The idle account reads it for one question: does a research task run (`Idle.running_tasks`). It cannot write it. SQLite gives the write-ahead log's files the database's mode when it creates them |
-| `<db>.resources/` | `neuroscifi:neuroscifi` 2770 (was 0700); the files in it 0660 | Both read and write: the service account its audio beacon, use markers, in-use and slot locks; the idle account the policy's settings, state, events and locks |
+| `<db>.resources/` | `neuroscifi:neuroscifi` 2770 (was 0700); the files in it 0660, those only the service account writes 0640 | Both read and write: the service account its audio beacon, use markers, in-use and slot locks; the idle account the policy's settings, state, events and locks |
 | `/var/lib/neuroscifi-wake` | idle account `:neuroscifi` 3770 | The service account leaves requests; the idle account removes them; sticky, so nobody removes another's |
 | `/etc/polkit-1/rules.d/49-neuroscifi-idle.rules` | `root` 0644 | The idle account may `start` and `stop` the model services' units, and nothing else (`systemctl --no-ask-password`, which the pass and the wake unit run without a terminal) |
 
@@ -226,8 +226,11 @@ before). The model, once:
   equals root on the host; the installer says so when it adds it.
 - *The folder's mode decides the files' mode* (`resources/shared.py`). In a folder that is setgid and
   group-writable a file this code creates is made 0660 on the open descriptor, because the units' `UMask=0077`
-  would remove the group's bits. Anywhere else (one account: `nsf start`, a checkout) the folder is created 0700
-  and its files 0600 as before. The code never changes the mode or owner of a folder, or of a file it did not
+  would remove the group's bits. A file only the service account writes (the audio beacon `audio.json`, the
+  in-flight files `inflight-<pid>.json`, the internal-state history) is made 0640 instead: the idle account reads
+  it and cannot rewrite what the service account wrote, which the readers' ownership check alone cannot tell
+  (review1b R2; a file created 0660 before this change keeps its mode until it is next replaced). Anywhere else
+  (one account: `nsf start`, a checkout) the folder is created 0700 and its files 0600 as before. The code never changes the mode or owner of a folder, or of a file it did not
   create in the same call. A use marker the other account created is set to "now" (a chosen time needs the
   file's owner).
 - *A database this account may not read is not "no task".* `Idle.running_tasks` gives None then, and the pass

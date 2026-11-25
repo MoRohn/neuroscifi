@@ -234,11 +234,11 @@ def test_a_late_write_cannot_put_back_a_call_that_ended(inst, monkeypatch):
     target = path.parent / f"{path.name}.resources" / f"inflight-{os.getpid()}.json"
     real, entered, gate = shared.write_text, threading.Event(), threading.Event()
 
-    def slow(where, text):
+    def slow(where, text, **kwargs):             # write_text takes group_write= (review1b R2)
         if threading.current_thread().name == "late":       # a token's publish that read the entries, then waits
             entered.set()
             gate.wait(5)
-        real(where, text)
+        real(where, text, **kwargs)
     monkeypatch.setattr(shared, "write_text", slow)
     with activity.track("generating", subsystem="reasoning", purpose="x", publish=path):
         late = threading.Thread(target=activity._publish, args=(str(path),), kwargs={"force": True}, name="late")

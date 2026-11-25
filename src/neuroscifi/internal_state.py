@@ -296,7 +296,7 @@ def append(db_path, item: dict) -> None:
     lock = shared.open_file(where / LOCK_FILE, os.O_RDWR)
     try:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        fd = shared.open_file(path, os.O_WRONLY | os.O_APPEND)
+        fd = shared.open_file(path, os.O_WRONLY | os.O_APPEND, group_write=False)   # the worker's alone (R2)
         with os.fdopen(fd, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(item, sort_keys=True) + "\n")
         try:
@@ -304,7 +304,7 @@ def append(db_path, item: dict) -> None:
         except (OSError, ValueError):
             lines = []
         if len(lines) > 2 * HISTORY_KEPT:
-            shared.write_text(path, "\n".join(lines[-HISTORY_KEPT:]) + "\n")
+            shared.write_text(path, "\n".join(lines[-HISTORY_KEPT:]) + "\n", group_write=False)
     finally:
         os.close(lock)
 
@@ -336,9 +336,9 @@ FUTURE_SECONDS = 60.0         # a sample dated later than now + this is ignored
 
 def _read_history(db_path, limit=HISTORY_KEPT, now=None) -> tuple[list[dict], int, str | None]:
     """(samples oldest first, lines ignored, why the file could not be read or None). The file is in a folder another
-    account may write (two accounts: 2770, the file 0660), so it is untrusted input (review1 S2, S4): a file that
-    account created is not read at all, and a line is ignored when it is not JSON, holds a number that is not finite,
-    or is dated after now + FUTURE_SECONDS. What the numbers say is checked again by resources.forecast."""
+    account may write (two accounts: 2770; the file 0640 since review1b R2, 0660 before), so it is untrusted input
+    (review1 S2, S4): a file that account created is not read at all, and a line is ignored when it is not JSON,
+    holds a number that is not finite or too large, or is dated after now + FUTURE_SECONDS. What the numbers say is checked again by resources.forecast."""
     import math
     from .resources import shared
     where = folder(db_path)

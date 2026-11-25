@@ -125,8 +125,38 @@ def test_the_policy_files_follow_the_folders_mode(fake):      # noqa: F811
         files = sorted(f.name for f in folder.iterdir())
         assert {"audio.json", "audio.lock", "idle.json", "idle-events.jsonl", "idle-used-vllm", "idle-inuse-vllm.lock",
                 "model-slot-0.lock"} <= set(files)
-        assert {f: oct(_mode(folder / f)) for f in files} == dict.fromkeys(files, "0o660")
+        # the beacon only the service account writes is the group's to read, not to rewrite (review1b R2)
+        assert {f: oct(_mode(folder / f)) for f in files} == {**dict.fromkeys(files, "0o660"), "audio.json": "0o640"}
         assert _mode(folder) == 0o2770
+    finally:
+        os.umask(old)
+
+
+def test_files_only_the_service_account_writes_are_the_groups_to_read_not_to_write(tmp_path):
+    """review1b R2: in the shared folder (2770) the in-flight files, the internal-state history and the audio beacon
+    are written by the service account alone; made 0660 the idle account could rewrite their content while the
+    ownership check still passed. They are 0640 there, and 0600 in a private folder as before."""
+    from neuroscifi import internal_state
+    from neuroscifi.presence import activity
+    from neuroscifi.resources import policy
+    old = os.umask(0o077)
+    try:
+        for folder_mode, file_mode in ((0o2770, 0o640), (0o700, 0o600)):
+            db = tmp_path / f"i{folder_mode:o}.sqlite"
+            folder = Path(f"{db}.resources")
+            folder.mkdir()
+            os.chmod(folder, folder_mode)
+            with activity.track("generating", subsystem="reasoning", purpose="check", publish=db):
+                assert _mode(folder / f"inflight-{os.getpid()}.json") == file_mode
+            internal_state.append(db, {"v": 1, "at": 1.0})
+            assert _mode(folder / internal_state.HISTORY_FILE) == file_mode
+            (folder / internal_state.HISTORY_FILE).unlink()
+            for _ in range(2 * internal_state.HISTORY_KEPT + 1):           # the last append trims: a rewrite
+                internal_state.append(db, {"v": 1, "at": 1.0})
+            assert _mode(folder / internal_state.HISTORY_FILE) == file_mode
+            policy.AudioBeacon(db).write(True, True)
+            assert _mode(folder / "audio.json") == file_mode
+            assert not list(folder.glob("*.tmp"))
     finally:
         os.umask(old)
 

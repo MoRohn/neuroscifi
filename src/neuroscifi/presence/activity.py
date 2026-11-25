@@ -109,7 +109,8 @@ def _publish(db_path, *, force=False):
             if entries:
                 shared.ensure_folder(target.parent)
                 shared.write_text(target, json.dumps({"pid": os.getpid(), "started": process_started(os.getpid()),
-                                                      "at": time.time(), "entries": entries}, allow_nan=False))
+                                                      "at": time.time(), "entries": entries}, allow_nan=False),
+                                  group_write=False)       # only this account writes it (review1b R2)
             else:
                 try:
                     os.unlink(target)

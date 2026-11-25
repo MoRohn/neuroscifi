@@ -90,6 +90,6 @@ class SharedAudioBeacon(AudioBeacon):
             sessions = [e for e in entries.values() if e["session"]]
             if sessions and all("used_at" in e for e in sessions):
                 record["used_at"] = max(e["used_at"] for e in sessions)
-            shared.write_text(self.path, json.dumps(record))
+            shared.write_text(self.path, json.dumps(record), group_write=False)   # the service's alone (R2)
         finally:
             os.close(lock)                             # releases the flock

@@ -279,7 +279,7 @@ class AudioBeacon:
         record = {"active": bool(active), "session": bool(session), "at": self.clock(), "pid": os.getpid()}
         if session and used_at is not None:
             record["used_at"] = used_at          # when an open session was last used (voice_session_active's quiet)
-        shared.write_text(self.path, json.dumps(record))
+        shared.write_text(self.path, json.dumps(record), group_write=False)   # the service's alone (R2)
 
     def tick(self) -> None:
         """Write when audio or an open session starts or stops and every BEACON_HEARTBEAT seconds while either is on;
