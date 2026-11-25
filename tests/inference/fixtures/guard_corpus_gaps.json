@@ -1147,8 +1147,8 @@
 [
 "C1"
 ],
-"open",
-"an exception written as a negated phrase, not as one of the listed words"
+"reject",
+"an exception written as a negated phrase ('not on Windows') dropped"
 ],
 [
 "The flaw is fixed for all users not on Windows.",
@@ -2147,8 +2147,8 @@
 [
 "C1"
 ],
-"open",
-"a pronoun of the sentence's own beside the claim's 'US': function words beside the claim's form are not judged"
+"reject",
+"a pronoun of the sentence's own beside the claim's 'US'"
 ],
 [
 "US sanctions hit the firm in 2025.",
@@ -3247,8 +3247,8 @@
 [
 "C1"
 ],
-"open",
-"two versions swapped between two clauses of one name: accepted at 0.7.0 too; found while writing this corpus, not closed here"
+"reject",
+"two versions swapped between two clauses of one claim"
 ]
 ]
 },
@@ -4525,8 +4525,8 @@
 [
 "C1"
 ],
-"open",
-"a group named as the advisory's author, shown without it as 0.7.0 showed it; whether it was the source or the scope, code cannot tell"
+"reject",
+"a group named as the advisory's author: whether it was the source or the scope, code cannot tell"
 ]
 ]
 },
@@ -5118,6 +5118,1027 @@
 "C1"
 ],
 "reject"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The patch applies to every release not built from source"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The patch applies to every release.",
+[
+"C1"
+],
+"reject",
+"a negated exception dropped"
+],
+[
+"The patch applies to every release built from source.",
+[
+"C1"
+],
+"reject",
+"a negated exception inverted"
+],
+[
+"The patch applies to every release not built from source.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The flaw is fixed for all users not on Windows"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The flaw is fixed for all users on Windows.",
+[
+"C1"
+],
+"reject",
+"a negated exception inverted"
+],
+[
+"The flaw is fixed for all users not on Windows.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every account not using two-factor login was locked on Monday"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"Every account was locked on Monday.",
+[
+"C1"
+],
+"reject",
+"a negated exception dropped"
+],
+[
+"Every account using two-factor login was locked on Monday.",
+[
+"C1"
+],
+"reject",
+"inverted"
+],
+[
+"Every account not using two-factor login was locked on Monday.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"All customers who are not on the legacy plan get the refund"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"All customers get the refund.",
+[
+"C1"
+],
+"reject",
+"a negated relative clause dropped"
+],
+[
+"All customers on the legacy plan get the refund.",
+[
+"C1"
+],
+"reject",
+"inverted"
+],
+[
+"All customers who are not on the legacy plan get the refund.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The fee is waived for any student not yet enrolled"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The fee is waived for any student.",
+[
+"C1"
+],
+"reject",
+"a negated exception dropped"
+],
+[
+"The fee is waived for any student not yet enrolled.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"All the tickets not sold by Friday go on sale again on Monday"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"All the tickets go on sale again on Monday.",
+[
+"C1"
+],
+"reject",
+"a negated exception dropped"
+],
+[
+"All the tickets not sold by Friday go on sale again on Monday.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every test passed, not counting the flaky network tests"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"Every test passed.",
+[
+"C1"
+],
+"reject",
+"an exception as 'not counting' dropped"
+],
+[
+"Every test passed, not counting the flaky network tests.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"All NumPy releases are not affected by the parser flaw, the maintainers said"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"All NumPy releases are not affected by the parser flaw.",
+[
+"C1"
+],
+"accept",
+"a negated verb is no exception"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every NumPy release, not only 2.5.5, is patched against the flaw"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"Every NumPy release is patched against the flaw.",
+[
+"C1"
+],
+"accept",
+"'not only' adds, it excepts nothing"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Not all users on Windows are affected by the flaw"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"Not all users on Windows are affected by the flaw.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Each user did not receive the update in May"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"Each user did not receive the update in May.",
+[
+"C1"
+],
+"accept",
+"an auxiliary before 'not': a negated verb"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The water treatment plant at the northern edge of the valley, which was commissioned in the late nineteen seventies by the regional authority and has since been expanded three times to serve the growing towns along the river, including the two new districts built on the former industrial land beside the old railway yards and the harbour, now supplies drinking water to the whole region and to the neighbouring islands across the strait during the summer months when the island reservoirs run low after weeks without rain, and it has done so reliably for more than forty years with only short interruptions for maintenance and the scheduled replacement of its oldest filter beds and pumps, every household except those on private wells"
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The water treatment plant at the northern edge of the valley now supplies drinking water to the whole region.",
+[
+"C1"
+],
+"reject",
+"a restriction after character 600 of the claim"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"NumPy 2.5.5 is secure according to the advisory from Linux Administrators"
+]
+],
+"gap": "cut",
+"s": [
+[
+"NumPy 2.5.5 is secure according to the advisory from Linux Administrators.",
+[
+"C1"
+],
+"reject",
+"a group named as the author: source or scope, code cannot tell"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The patch is safe according to the report by Enterprise Customers"
+]
+],
+"gap": "cut",
+"s": [
+[
+"The patch is safe according to the report by Enterprise Customers.",
+[
+"C1"
+],
+"reject",
+"a group named as the author"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The release is stable according to the survey from Python Developers"
+]
+],
+"gap": "cut",
+"s": [
+[
+"The release is stable according to the survey from Python Developers.",
+[
+"C1"
+],
+"reject",
+"a group named as the author"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The bridge is safe according to the report by Local Residents"
+]
+],
+"gap": "cut",
+"s": [
+[
+"The bridge is safe according to the report by Local Residents.",
+[
+"C1"
+],
+"reject",
+"a group named as the author"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Debt advice is free according to a survey by Citizens Advice"
+]
+],
+"gap": "cut",
+"s": [
+[
+"Debt advice is free according to a survey by Citizens Advice.",
+[
+"C1"
+],
+"lost",
+"faithful; a name built on a word for a group of people reads as a scope"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"NumPy 2.5.5 is secure according to the advisory from the NumPy Security Team"
+]
+],
+"gap": "cut",
+"s": [
+[
+"NumPy 2.5.5 is secure according to the advisory from the NumPy Security Team.",
+[
+"C1"
+],
+"accept",
+"an organisation names the source"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"NumPy 2.5.5 is secure according to the advisory from Red Hat"
+]
+],
+"gap": "cut",
+"s": [
+[
+"NumPy 2.5.5 is secure according to the advisory from Red Hat.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The launch slipped to May according to a report by the Ostra Space Agency"
+]
+],
+"gap": "cut",
+"s": [
+[
+"The launch slipped to May according to a report by the Ostra Space Agency.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"US officials met the delegation in June"
+]
+],
+"gap": "case",
+"s": [
+[
+"US officials met us in June.",
+[
+"C1"
+],
+"reject",
+"a pronoun of the sentence's own beside the claim's 'US'"
+],
+[
+"US officials met the delegation in June.",
+[
+"C1"
+],
+"accept"
+],
+[
+"In June US officials met the delegation.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"IT staff patched the servers in May"
+]
+],
+"gap": "case",
+"s": [
+[
+"IT staff patched it in May.",
+[
+"C1"
+],
+"reject",
+"a pronoun of the sentence's own beside the claim's 'IT'"
+],
+[
+"In May IT staff patched the servers.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"US sanctions hit the firm in 2025, and it lost its contracts"
+]
+],
+"gap": "case",
+"s": [
+[
+"US sanctions hit the firm in 2025, and it lost its contracts.",
+[
+"C1"
+],
+"accept",
+"the claim writes 'it' itself"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Zephyr 4.2 supports Windows.",
+[
+"C1"
+],
+"reject",
+"a version tied to what the claim says of the other"
+],
+[
+"Zephyr 4.1 supports Linux.",
+[
+"C1"
+],
+"reject",
+"a version tied to what the claim says of the other"
+],
+[
+"Zephyr 4.2 supports Linux and Zephyr 4.1 supports Windows.",
+[
+"C1"
+],
+"accept",
+"clauses reordered"
+],
+[
+"Zephyr 4.1 supports Windows.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Zephyr 4.2 supports Linux.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Lumen 3 runs on ARM and Lumen 4 runs on RISC-V"
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Lumen 4 runs on ARM and Lumen 3 runs on RISC-V.",
+[
+"C1"
+],
+"reject",
+"two versions swapped between two clauses"
+],
+[
+"Lumen 4 runs on ARM.",
+[
+"C1"
+],
+"reject",
+"a version tied to what the claim says of the other"
+],
+[
+"Lumen 3 runs on ARM and Lumen 4 runs on RISC-V.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Acme 2.0 ships in Berlin and Acme 3.0 ships in Paris"
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Acme 3.0 ships in Berlin and Acme 2.0 ships in Paris.",
+[
+"C1"
+],
+"reject",
+"two versions swapped between two clauses"
+],
+[
+"Acme 2.0 ships in Berlin.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Zephyr 4.1 supports Windows"
+],
+[
+"supported",
+"Zephyr 4.2 supports Linux"
+]
+],
+"gap": "restatement",
+"s": [
+[
+"Zephyr 4.2 supports Windows and Zephyr 4.1 supports Linux.",
+[
+"C1",
+"C2"
+],
+"reject",
+"versions swapped between two cited claims"
+],
+[
+"Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux.",
+[
+"C1",
+"C2"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Globex quietly acquired Acme Corp in 2024"
+]
+],
+"gap": "role",
+"q": "Who acquired Acme Corp?",
+"s": [
+[
+"Acme Corp quietly acquired Globex in 2024.",
+[
+"C1"
+],
+"reject",
+"an adverb before the verb: roles swapped"
+],
+[
+"Globex was quietly acquired by Acme Corp in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Globex got quietly acquired by Acme Corp in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Globex quietly got acquired by Acme Corp in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Globex was quietly acquired in 2024.",
+[
+"C1"
+],
+"reject",
+"a passive without its agent, the claim's doer made the done-to"
+],
+[
+"It was Acme Corp that quietly acquired Globex in 2024.",
+[
+"C1"
+],
+"reject",
+"a cleft with an adverb"
+],
+[
+"It was by Acme Corp that Globex was quietly acquired in 2024.",
+[
+"C1"
+],
+"reject",
+"a cleft on the agent"
+],
+[
+"Quietly, Acme Corp acquired Globex in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"In 2024 Acme Corp quietly acquired Globex.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Globex quietly acquired Acme Corp in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Acme Corp was quietly acquired by Globex in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Acme Corp got quietly acquired by Globex in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"It was Globex that quietly acquired Acme Corp in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"In 2024 Globex quietly acquired Acme Corp.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Acme Corp got acquired by Globex in 2024"
+]
+],
+"gap": "role",
+"q": "Who acquired Acme Corp?",
+"s": [
+[
+"Acme Corp acquired Globex in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Globex got acquired by Acme Corp in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Globex got acquired in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"It was Acme Corp that acquired Globex in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"It was by Acme Corp that Globex got acquired in 2024.",
+[
+"C1"
+],
+"reject",
+"a cleft on the agent of a get-passive"
+],
+[
+"Globex acquired Acme Corp in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Acme Corp got acquired by Globex in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Acme Corp was acquired by Globex in 2024.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"It was Globex that acquired Acme Corp in 2024"
+]
+],
+"gap": "role",
+"q": "Who acquired Acme Corp?",
+"s": [
+[
+"It was Acme Corp that acquired Globex in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Globex was acquired by Acme Corp in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"It was by Acme Corp that Globex was acquired in 2024.",
+[
+"C1"
+],
+"reject",
+"a cleft on the agent"
+],
+[
+"Globex acquired Acme Corp in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"It was Globex that acquired Acme Corp in 2024.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"It was by Globex that Acme Corp was acquired in 2024"
+]
+],
+"gap": "role",
+"q": "Who acquired Acme Corp?",
+"s": [
+[
+"Acme Corp acquired Globex in 2024.",
+[
+"C1"
+],
+"reject",
+"the claim's agent fronted in a cleft"
+],
+[
+"It was by Acme Corp that Globex was acquired in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Globex was acquired by Acme Corp in 2024.",
+[
+"C1"
+],
+"reject"
+],
+[
+"It was by Globex that Acme Corp was acquired in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Acme Corp was acquired by Globex in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Globex acquired Acme Corp in 2024.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Orbix Labs thoroughly audited the library in May"
+]
+],
+"gap": "role",
+"q": "Who audited the library?",
+"s": [
+[
+"The library thoroughly audited Orbix Labs in May.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Orbix Labs was thoroughly audited in May.",
+[
+"C1"
+],
+"reject"
+],
+[
+"Orbix Labs thoroughly audited the library in May.",
+[
+"C1"
+],
+"accept"
+],
+[
+"The library was thoroughly audited by Orbix Labs in May.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Acme Corp was quietly acquired in 2024"
+]
+],
+"gap": "role",
+"q": "Who was acquired?",
+"s": [
+[
+"Acme Corp was quietly acquired in 2024.",
+[
+"C1"
+],
+"accept"
+],
+[
+"In 2024 Acme Corp was quietly acquired.",
+[
+"C1"
+],
+"accept"
 ]
 ]
 }
