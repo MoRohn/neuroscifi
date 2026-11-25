@@ -2629,6 +2629,16 @@ _IF_BEFORE = re.compile(r"\b(?:even|as|what|or|whether|unclear|unknown|uncertain
                         r"checked|see|tell|doubt|doubts|doubted|say|says|said|state|specify|show)\s+$", re.IGNORECASE)
 
 
+def _if_excused(text: str, at: int) -> bool:
+    """Whether the "if" at `at` follows one of _IF_BEFORE's words, read from the words just before it: the
+    whitespace before "if" and at most twelve characters more (its longest word is nine letters), so that a claim of
+    any length with many "if"s is read in linear time (searching all of text[:at] for each was quadratic)."""
+    start = at
+    while start > 0 and text[start - 1].isspace():
+        start -= 1
+    return start < at and _IF_BEFORE.search(text, max(0, start - 12), at) is not None
+
+
 def _restriction(text: str) -> str | None:
     """The first restriction `text` carries, as written ("except", "unless", "only if", "when used", "if", "not on"),
     or None. A closed list (_EXCEPTION, _CONDITION, _QUANTIFIED_EXCEPTION, _NEGATED_EXCEPTION) and "if" where it is a
@@ -2638,7 +2648,7 @@ def _restriction(text: str) -> str | None:
     found = [(m.start(), m.group(0)) for m in _RESTRICTION.finditer(text or "")]
     found += [(m.start(m.lastindex), m.group(m.lastindex)) for m in _QUANTIFIED_EXCEPTION.finditer(text or "")]
     found += [(m.start(1), m.group(1)) for m in _NEGATED_EXCEPTION.finditer(text or "")]
-    found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _IF_BEFORE.search(text[:m.start()])]
+    found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _if_excused(text, m.start())]
     return _SPACE.sub(" ", min(found, key=lambda f: (f[0], -len(f[1])))[1]) if found else None   # longest first
 
 

@@ -497,6 +497,32 @@ def test_a_restriction_after_the_600th_character_of_a_claim_is_read():
     assert ok == [] and bad[0]["reasons"][0].startswith(reasoning.RESTRICTION_LOST.split("{")[0])
 
 
+@pytest.mark.parametrize("text, excused", [
+    ("The flaw is fixed if patched", False),
+    ("It is unclear if the flaw is fixed", True),
+    ("It is unclear\n\t  if the flaw is fixed", True),          # any run of white space before "if"
+    ("The vendor did not say if it is fixed", True),
+    ("Asked if it was fixed, the vendor declined", True),
+    ("The flaw, if patched, is fixed", False),                    # the word before is no asking word
+    ("The vendor will check, if asked", False),                   # a comma between
+    ("Even if patched, the flaw stays", True),
+])
+def test_an_if_is_excused_by_the_word_right_before_it(text, excused):
+    at = reasoning._IF.search(text).start()
+    assert reasoning._if_excused(text, at) is excused
+    assert (reasoning._IF_BEFORE.search(text[:at]) is not None) is excused       # as the whole-prefix search said
+
+
+def test_a_long_claim_with_many_ifs_is_read_in_linear_time():
+    """The whole claim is read (above), so the excuse of each "if" is looked for in the words just before it, not in
+    everything before it: 80,000 characters with 3,800 "if"s took seconds when every prefix was searched."""
+    import time
+    claim = " ".join(["the flaw is fixed if"] * 3800)
+    started = time.perf_counter()
+    assert reasoning._restriction(claim) == "if"
+    assert time.perf_counter() - started < 1.0
+
+
 # ---- a version joined with what its claims say of another (remaining items) ---------------------------------------
 
 @pytest.mark.parametrize("claims, sentence, a, b, other", [
