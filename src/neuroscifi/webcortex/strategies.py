@@ -202,8 +202,9 @@ def _final_run(ledger, line, run_id) -> str | None:
     too - is `run_id`; else why not (review1 CL4: the gate took any line number and run id on trust)."""
     if isinstance(line, bool) or not isinstance(line, int) or line < 1 or not isinstance(run_id, str) or not run_id:
         return "the withheld evidence names no ledger line (a positive integer) and run id"
-    if ledger is None:
-        from ..acceptance.cognition import LEDGER as ledger
+    if ledger is None:          # the repository's ledger (acceptance.cognition.LEDGER; that package is not imported)
+        from pathlib import Path
+        ledger = Path(__file__).resolve().parents[3] / "docs" / "quality" / "evidence" / "genesis_final_uses.jsonl"
     try:
         with open(ledger, encoding="utf-8") as fh:
             lines = [text for text in fh.read().splitlines() if text.strip()]
