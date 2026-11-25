@@ -2203,6 +2203,10 @@ each component ablated; constants chosen on development, held-out run once; the 
   adversarial 12 (baseline 12). With information-v1 on as well: `lifelong_correction` fails its check
   `asks_only_while_partner_ambiguous`, a property of rules-v1's order (information-v1 asks about whatever is most
   informative), so information-v1 stays the owner's choice.
+- **Cost on this host (aarch64, medians).** `decide` 1.31 ms without the display, 1.48 ms with it, 1.64 ms under
+  information-v1 (a 120-reading epoch); `snapshot` 0.69 ms; one history sample 0.60 ms; 720 samples 181 KB.
+  `background_gate` 0.47 ms with the setting off (it now reads the setting with a read-only connection) and 2.05 ms
+  with it on over a full history. Every benchmark family ran with 0 model calls and 0 refused connections.
 
 ## Defaults and why
 

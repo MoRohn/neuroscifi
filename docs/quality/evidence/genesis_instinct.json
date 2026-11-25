@@ -1,0 +1,1625 @@
+{
+ "benchmark": "cognition (lane I, Project Cognitive Genesis; ADR-051)",
+ "label": "synthetic, fictional worlds driven through the real modules; offline; no answer model. The anticipation plant's constants (12 GiB and 450 ms per background task, 6-tick tasks, 30 s ticks, the 2 GiB and 2.5 s breach lines) are declared by the benchmark (acceptance/cognition/anticipation.py), not measured on the DGX Spark.",
+ "tuning": "all constants were chosen on the development split before the held-out split was run once: forecast ALPHA 0.5, BETA 0.3, HORIZON 180 s, VOICE_STARTS 2 (first tried 3), VOICE_JITTER 0.05 (added after the first development run); curiosity PRIOR_RESOLVABLE 0.5, PROGRESS_CHANCE 0.8, PROGRESS_SHARE 0.5, LP_WINDOW 6 (first guess, unchanged); information MIN_SCORE 0.01 bits (first tried 0.05), READINGS 3, P_INFORMATIVE 0.5",
+ "environment": {
+  "git_commit": "c699e222b099889fa9b8a680272cf0d0c069b7c5",
+  "git_dirty": false,
+  "python": "3.12.16",
+  "machine": "aarch64",
+  "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39"
+ },
+ "anticipation": {
+  "development": {
+   "baseline (recorded, genesis_baseline.json)": {
+    "breach_ticks_all_channels": {
+     "mean": 202.666667,
+     "sd": 2.081666
+    },
+    "memory.breach_ticks": {
+     "mean": 42.0,
+     "sd": 0.0
+    },
+    "memory.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 4.333333,
+     "sd": 0.333333
+    },
+    "audio.breach_ticks": {
+     "mean": 10.0,
+     "sd": 0.0
+    },
+    "audio.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "latency.breach_ticks": {
+     "mean": 125.666667,
+     "sd": 2.081666
+    },
+    "backlog.breach_ticks": {
+     "mean": 25.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "work_given_up_share": {
+     "mean": 0.022664,
+     "sd": 0.000302
+    },
+    "hold_ticks": {
+     "mean": 92.333333,
+     "sd": 0.57735
+    }
+   },
+   "instinct": {
+    "breach_ticks_all_channels": {
+     "mean": 159.0,
+     "sd": 5.196152
+    },
+    "memory.breach_ticks": {
+     "mean": 3.0,
+     "sd": 3.464102
+    },
+    "memory.avoided_share": {
+     "mean": 0.555556,
+     "sd": 0.19245
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 8.444444,
+     "sd": 0.509175
+    },
+    "audio.breach_ticks": {
+     "mean": 5.333333,
+     "sd": 0.57735
+    },
+    "audio.avoided_share": {
+     "mean": 0.5,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": 9.166667,
+     "sd": 1.154701
+    },
+    "latency.breach_ticks": {
+     "mean": 125.666667,
+     "sd": 2.081666
+    },
+    "backlog.breach_ticks": {
+     "mean": 25.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.003584,
+     "sd": 0.006208
+    },
+    "work_given_up_share": {
+     "mean": 0.059798,
+     "sd": 0.000302
+    },
+    "hold_ticks": {
+     "mean": 92.0,
+     "sd": 2.645751
+    }
+   },
+   "instinct without trend": {
+    "breach_ticks_all_channels": {
+     "mean": 160.666667,
+     "sd": 3.511885
+    },
+    "memory.breach_ticks": {
+     "mean": 4.666667,
+     "sd": 2.309401
+    },
+    "memory.avoided_share": {
+     "mean": 0.111111,
+     "sd": 0.19245
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 6.333333,
+     "sd": 0.288675
+    },
+    "audio.breach_ticks": {
+     "mean": 5.333333,
+     "sd": 0.57735
+    },
+    "audio.avoided_share": {
+     "mean": 0.5,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": 9.166667,
+     "sd": 1.154701
+    },
+    "latency.breach_ticks": {
+     "mean": 125.666667,
+     "sd": 2.081666
+    },
+    "backlog.breach_ticks": {
+     "mean": 25.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "work_given_up_share": {
+     "mean": 0.056485,
+     "sd": 0.001812
+    },
+    "hold_ticks": {
+     "mean": 78.0,
+     "sd": 1.732051
+    }
+   },
+   "instinct without footprint": {
+    "breach_ticks_all_channels": {
+     "mean": 197.0,
+     "sd": 1.732051
+    },
+    "memory.breach_ticks": {
+     "mean": 41.0,
+     "sd": 0.0
+    },
+    "memory.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 8.444444,
+     "sd": 0.509175
+    },
+    "audio.breach_ticks": {
+     "mean": 5.333333,
+     "sd": 0.57735
+    },
+    "audio.avoided_share": {
+     "mean": 0.5,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": 9.166667,
+     "sd": 1.154701
+    },
+    "latency.breach_ticks": {
+     "mean": 125.666667,
+     "sd": 2.081666
+    },
+    "backlog.breach_ticks": {
+     "mean": 25.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.080556,
+     "sd": 0.01284
+    },
+    "work_given_up_share": {
+     "mean": 0.033647,
+     "sd": 0.000302
+    },
+    "hold_ticks": {
+     "mean": 82.666667,
+     "sd": 2.309401
+    }
+   },
+   "instinct without voice": {
+    "breach_ticks_all_channels": {
+     "mean": 163.666667,
+     "sd": 5.507571
+    },
+    "memory.breach_ticks": {
+     "mean": 3.0,
+     "sd": 3.464102
+    },
+    "memory.avoided_share": {
+     "mean": 0.555556,
+     "sd": 0.19245
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 8.444444,
+     "sd": 0.509175
+    },
+    "audio.breach_ticks": {
+     "mean": 10.0,
+     "sd": 0.0
+    },
+    "audio.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": null,
+     "sd": null
+    },
+    "latency.breach_ticks": {
+     "mean": 125.666667,
+     "sd": 2.081666
+    },
+    "backlog.breach_ticks": {
+     "mean": 25.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.004386,
+     "sd": 0.007597
+    },
+    "work_given_up_share": {
+     "mean": 0.050384,
+     "sd": 0.000302
+    },
+    "hold_ticks": {
+     "mean": 73.666667,
+     "sd": 2.081666
+    }
+   },
+   "instinct without trend+footprint+voice": {
+    "breach_ticks_all_channels": {
+     "mean": 199.333333,
+     "sd": 1.527525
+    },
+    "memory.breach_ticks": {
+     "mean": 38.666667,
+     "sd": 0.57735
+    },
+    "memory.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 6.333333,
+     "sd": 0.288675
+    },
+    "audio.breach_ticks": {
+     "mean": 10.0,
+     "sd": 0.0
+    },
+    "audio.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": null,
+     "sd": null
+    },
+    "latency.breach_ticks": {
+     "mean": 125.666667,
+     "sd": 2.081666
+    },
+    "backlog.breach_ticks": {
+     "mean": 25.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "work_given_up_share": {
+     "mean": 0.024407,
+     "sd": 0.000302
+    },
+    "hold_ticks": {
+     "mean": 47.333333,
+     "sd": 1.527525
+    }
+   },
+   "seeds": [
+    11,
+    12,
+    13
+   ],
+   "cost": {
+    "wall_seconds": 0.564,
+    "model_calls": 0,
+    "refused_connections": 0,
+    "peak_rss_bytes": 48660480,
+    "peak_rss_rise_bytes": 819200
+   }
+  },
+  "held_out": {
+   "baseline (recorded, genesis_baseline.json)": {
+    "breach_ticks_all_channels": {
+     "mean": 217.666667,
+     "sd": 4.041452
+    },
+    "memory.breach_ticks": {
+     "mean": 54.666667,
+     "sd": 2.081666
+    },
+    "memory.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 5.822222,
+     "sd": 0.768838
+    },
+    "audio.breach_ticks": {
+     "mean": 33.0,
+     "sd": 2.645751
+    },
+    "audio.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "latency.breach_ticks": {
+     "mean": 89.0,
+     "sd": 1.732051
+    },
+    "backlog.breach_ticks": {
+     "mean": 41.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.008772,
+     "sd": 0.015193
+    },
+    "work_given_up_share": {
+     "mean": 0.043759,
+     "sd": 0.001208
+    },
+    "hold_ticks": {
+     "mean": 152.0,
+     "sd": 0.0
+    }
+   },
+   "instinct": {
+    "breach_ticks_all_channels": {
+     "mean": 160.333333,
+     "sd": 6.429101
+    },
+    "memory.breach_ticks": {
+     "mean": 18.0,
+     "sd": 1.0
+    },
+    "memory.avoided_share": {
+     "mean": 0.796296,
+     "sd": 0.115648
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 9.914815,
+     "sd": 0.806328
+    },
+    "audio.breach_ticks": {
+     "mean": 16.333333,
+     "sd": 5.507571
+    },
+    "audio.avoided_share": {
+     "mean": 0.533333,
+     "sd": 0.057735
+    },
+    "audio.mean_lead_ticks": {
+     "mean": 9.333333,
+     "sd": 1.386843
+    },
+    "latency.breach_ticks": {
+     "mean": 89.0,
+     "sd": 1.732051
+    },
+    "backlog.breach_ticks": {
+     "mean": 37.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.043139,
+     "sd": 0.002874
+    },
+    "work_given_up_share": {
+     "mean": 0.106172,
+     "sd": 0.000523
+    },
+    "hold_ticks": {
+     "mean": 170.0,
+     "sd": 6.928203
+    }
+   },
+   "instinct without trend": {
+    "breach_ticks_all_channels": {
+     "mean": 160.333333,
+     "sd": 6.429101
+    },
+    "memory.breach_ticks": {
+     "mean": 18.0,
+     "sd": 1.0
+    },
+    "memory.avoided_share": {
+     "mean": 0.796296,
+     "sd": 0.115648
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 5.748148,
+     "sd": 0.571043
+    },
+    "audio.breach_ticks": {
+     "mean": 16.333333,
+     "sd": 5.507571
+    },
+    "audio.avoided_share": {
+     "mean": 0.533333,
+     "sd": 0.057735
+    },
+    "audio.mean_lead_ticks": {
+     "mean": 9.333333,
+     "sd": 1.386843
+    },
+    "latency.breach_ticks": {
+     "mean": 89.0,
+     "sd": 1.732051
+    },
+    "backlog.breach_ticks": {
+     "mean": 37.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.008772,
+     "sd": 0.015193
+    },
+    "work_given_up_share": {
+     "mean": 0.097629,
+     "sd": 0.001598
+    },
+    "hold_ticks": {
+     "mean": 145.666667,
+     "sd": 8.504901
+    }
+   },
+   "instinct without footprint": {
+    "breach_ticks_all_channels": {
+     "mean": 196.666667,
+     "sd": 7.094599
+    },
+    "memory.breach_ticks": {
+     "mean": 54.333333,
+     "sd": 1.527525
+    },
+    "memory.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 9.914815,
+     "sd": 0.806328
+    },
+    "audio.breach_ticks": {
+     "mean": 16.333333,
+     "sd": 5.507571
+    },
+    "audio.avoided_share": {
+     "mean": 0.533333,
+     "sd": 0.057735
+    },
+    "audio.mean_lead_ticks": {
+     "mean": 9.183333,
+     "sd": 1.351234
+    },
+    "latency.breach_ticks": {
+     "mean": 89.0,
+     "sd": 1.732051
+    },
+    "backlog.breach_ticks": {
+     "mean": 37.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.087832,
+     "sd": 0.01339
+    },
+    "work_given_up_share": {
+     "mean": 0.074268,
+     "sd": 0.003266
+    },
+    "hold_ticks": {
+     "mean": 163.0,
+     "sd": 8.544004
+    }
+   },
+   "instinct without voice": {
+    "breach_ticks_all_channels": {
+     "mean": 181.0,
+     "sd": 2.645751
+    },
+    "memory.breach_ticks": {
+     "mean": 18.0,
+     "sd": 1.0
+    },
+    "memory.avoided_share": {
+     "mean": 0.796296,
+     "sd": 0.115648
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 9.914815,
+     "sd": 0.806328
+    },
+    "audio.breach_ticks": {
+     "mean": 33.0,
+     "sd": 2.645751
+    },
+    "audio.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": null,
+     "sd": null
+    },
+    "latency.breach_ticks": {
+     "mean": 89.0,
+     "sd": 1.732051
+    },
+    "backlog.breach_ticks": {
+     "mean": 41.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.068214,
+     "sd": 0.006933
+    },
+    "work_given_up_share": {
+     "mean": 0.076883,
+     "sd": 0.003181
+    },
+    "hold_ticks": {
+     "mean": 107.666667,
+     "sd": 2.516611
+    }
+   },
+   "instinct without trend+footprint+voice": {
+    "breach_ticks_all_channels": {
+     "mean": 216.666667,
+     "sd": 4.041452
+    },
+    "memory.breach_ticks": {
+     "mean": 53.666667,
+     "sd": 2.081666
+    },
+    "memory.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "memory.mean_lead_ticks": {
+     "mean": 5.285185,
+     "sd": 0.359412
+    },
+    "audio.breach_ticks": {
+     "mean": 33.0,
+     "sd": 2.645751
+    },
+    "audio.avoided_share": {
+     "mean": 0.0,
+     "sd": 0.0
+    },
+    "audio.mean_lead_ticks": {
+     "mean": null,
+     "sd": null
+    },
+    "latency.breach_ticks": {
+     "mean": 89.0,
+     "sd": 1.732051
+    },
+    "backlog.breach_ticks": {
+     "mean": 41.0,
+     "sd": 0.0
+    },
+    "false_alarm_share": {
+     "mean": 0.019324,
+     "sd": 0.03347
+    },
+    "work_given_up_share": {
+     "mean": 0.044282,
+     "sd": 0.001208
+    },
+    "hold_ticks": {
+     "mean": 69.0,
+     "sd": 1.0
+    }
+   },
+   "seeds": [
+    1011,
+    1012,
+    1013
+   ],
+   "cost": {
+    "wall_seconds": 0.561,
+    "model_calls": 0,
+    "refused_connections": 0,
+    "peak_rss_bytes": 48795648,
+    "peak_rss_rise_bytes": 819200
+   }
+  }
+ },
+ "info_value": {
+  "development": {
+   "baseline (recorded): executive rules-v1, curiosity.rank (timer)": {
+    "core_mean": {
+     "realised_bits": 0.084329,
+     "realised_bits_per_budget": 0.013688,
+     "known_gain_bits": 0.3249,
+     "noise_share": 0.0,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 0.966379,
+     "realised_bits_per_budget": 0.161063,
+     "known_gain_bits": 0.881838,
+     "noise_share": 0.375,
+     "stale_share": 0.194444,
+     "idle_steps": 1.0
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.090077,
+      "noise_share": 0.5,
+      "stale_share": 0.333333,
+      "idle_steps": 2.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.23205,
+      "noise_share": 0.25,
+      "stale_share": 0.055556,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.0022,
+      "noise_share": 0.0
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025177,
+      "noise_share": 0.0
+     }
+    }
+   },
+   "reference: autonomy.candidates (idle) at this commit (learning progress on by default)": {
+    "core_mean": {
+     "realised_bits": 0.084329,
+     "realised_bits_per_budget": 0.013688,
+     "known_gain_bits": 0.3249,
+     "noise_share": 0.0,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 1.588128,
+     "realised_bits_per_budget": 0.264688,
+     "known_gain_bits": 1.581063,
+     "noise_share": 0.25,
+     "stale_share": 0.25,
+     "idle_steps": 3.166667
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.201945,
+      "noise_share": 0.25,
+      "stale_share": 0.277778,
+      "idle_steps": 2.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.327431,
+      "noise_share": 0.25,
+      "stale_share": 0.222222,
+      "idle_steps": 4.333333
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.0022,
+      "noise_share": 0.0
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025177,
+      "noise_share": 0.0
+     }
+    }
+   },
+   "reference: oracle": {
+    "core_mean": {
+     "realised_bits": 0.255634,
+     "realised_bits_per_budget": 0.035104,
+     "known_gain_bits": 0.495937,
+     "noise_share": 0.0,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 1.577798,
+     "realised_bits_per_budget": 0.262966,
+     "known_gain_bits": 1.587458,
+     "noise_share": 0.0,
+     "stale_share": 0.416667,
+     "idle_steps": 0.0
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.171815,
+      "noise_share": 0.0,
+      "stale_share": 0.333333,
+      "idle_steps": 0.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.354118,
+      "noise_share": 0.0,
+      "stale_share": 0.5,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.045008,
+      "noise_share": 0.0
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025201,
+      "noise_share": 0.0
+     }
+    }
+   },
+   "reference: random": {
+    "core_mean": {
+     "realised_bits": 0.268593,
+     "realised_bits_per_budget": 0.037027,
+     "known_gain_bits": 0.393969,
+     "noise_share": 0.263889,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 1.213509,
+     "realised_bits_per_budget": 0.202252,
+     "known_gain_bits": 1.027341,
+     "noise_share": 0.208333,
+     "stale_share": 0.361111,
+     "idle_steps": 0.0
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.132283,
+      "noise_share": 0.166667,
+      "stale_share": 0.444444,
+      "idle_steps": 0.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.27222,
+      "noise_share": 0.25,
+      "stale_share": 0.277778,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.046432,
+      "noise_share": 0.25
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.027621,
+      "noise_share": 0.277778
+     }
+    }
+   },
+   "instinct": {
+    "core_mean": {
+     "realised_bits": 0.255116,
+     "realised_bits_per_budget": 0.035037,
+     "known_gain_bits": 0.492864,
+     "noise_share": 0.125,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 1.254425,
+     "realised_bits_per_budget": 0.209071,
+     "known_gain_bits": 1.368392,
+     "noise_share": 0.1875,
+     "stale_share": 0.25,
+     "idle_steps": 2.0
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.142155,
+      "noise_share": 0.25,
+      "stale_share": 0.333333,
+      "idle_steps": 2.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.275986,
+      "noise_share": 0.125,
+      "stale_share": 0.166667,
+      "idle_steps": 2.0
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.044897,
+      "noise_share": 0.083333
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025177,
+      "noise_share": 0.166667
+     }
+    }
+   },
+   "instinct without information_rule": {
+    "core_mean": {
+     "realised_bits": 0.084329,
+     "realised_bits_per_budget": 0.013688,
+     "known_gain_bits": 0.3249,
+     "noise_share": 0.0,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 1.254425,
+     "realised_bits_per_budget": 0.209071,
+     "known_gain_bits": 1.368392,
+     "noise_share": 0.1875,
+     "stale_share": 0.25,
+     "idle_steps": 2.0
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.142155,
+      "noise_share": 0.25,
+      "stale_share": 0.333333,
+      "idle_steps": 2.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.275986,
+      "noise_share": 0.125,
+      "stale_share": 0.166667,
+      "idle_steps": 2.0
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.0022,
+      "noise_share": 0.0
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025177,
+      "noise_share": 0.0
+     }
+    }
+   },
+   "instinct without learning_progress": {
+    "core_mean": {
+     "realised_bits": 0.255116,
+     "realised_bits_per_budget": 0.035037,
+     "known_gain_bits": 0.492864,
+     "noise_share": 0.125,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 0.966379,
+     "realised_bits_per_budget": 0.161063,
+     "known_gain_bits": 0.881838,
+     "noise_share": 0.375,
+     "stale_share": 0.194444,
+     "idle_steps": 1.0
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.090077,
+      "noise_share": 0.5,
+      "stale_share": 0.333333,
+      "idle_steps": 2.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.23205,
+      "noise_share": 0.25,
+      "stale_share": 0.055556,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.044897,
+      "noise_share": 0.083333
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025177,
+      "noise_share": 0.166667
+     }
+    }
+   },
+   "instinct-idle": {
+    "core_mean": {
+     "realised_bits": 0.255116,
+     "realised_bits_per_budget": 0.035037,
+     "known_gain_bits": 0.492864,
+     "noise_share": 0.125,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 1.588128,
+     "realised_bits_per_budget": 0.264688,
+     "known_gain_bits": 1.581063,
+     "noise_share": 0.25,
+     "stale_share": 0.25,
+     "idle_steps": 3.166667
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.201945,
+      "noise_share": 0.25,
+      "stale_share": 0.277778,
+      "idle_steps": 2.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.327431,
+      "noise_share": 0.25,
+      "stale_share": 0.222222,
+      "idle_steps": 4.333333
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.044897,
+      "noise_share": 0.083333
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025177,
+      "noise_share": 0.166667
+     }
+    }
+   },
+   "instinct-idle without information_rule": {
+    "core_mean": {
+     "realised_bits": 0.084329,
+     "realised_bits_per_budget": 0.013688,
+     "known_gain_bits": 0.3249,
+     "noise_share": 0.0,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 1.588128,
+     "realised_bits_per_budget": 0.264688,
+     "known_gain_bits": 1.581063,
+     "noise_share": 0.25,
+     "stale_share": 0.25,
+     "idle_steps": 3.166667
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.201945,
+      "noise_share": 0.25,
+      "stale_share": 0.277778,
+      "idle_steps": 2.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": 0.327431,
+      "noise_share": 0.25,
+      "stale_share": 0.222222,
+      "idle_steps": 4.333333
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.0022,
+      "noise_share": 0.0
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025177,
+      "noise_share": 0.0
+     }
+    }
+   },
+   "instinct-idle without learning_progress": {
+    "core_mean": {
+     "realised_bits": 0.255116,
+     "realised_bits_per_budget": 0.035037,
+     "known_gain_bits": 0.492864,
+     "noise_share": 0.125,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": -0.238097,
+     "realised_bits_per_budget": -0.039683,
+     "known_gain_bits": 0.521731,
+     "noise_share": 0.8125,
+     "stale_share": 0.0,
+     "idle_steps": 0.0
+    },
+    "web_worlds": {
+     "stale important, noisy, fresh, gap": {
+      "realised_bits_per_budget": 0.131516,
+      "noise_share": 0.875,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     },
+     "contested settles, noisy persists": {
+      "realised_bits_per_budget": -0.210881,
+      "noise_share": 0.75,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "one noisy partner among two honest ones": {
+      "realised_bits_per_budget": 0.044897,
+      "noise_share": 0.083333
+     },
+     "a camera seen once, a partner seen often": {
+      "realised_bits_per_budget": 0.025177,
+      "noise_share": 0.166667
+     }
+    }
+   },
+   "cost": {
+    "wall_seconds": 0.544,
+    "model_calls": 0,
+    "refused_connections": 0,
+    "peak_rss_bytes": 57925632,
+    "peak_rss_rise_bytes": 8646656
+   }
+  },
+  "held_out": {
+   "baseline (recorded): executive rules-v1, curiosity.rank (timer)": {
+    "core_mean": {
+     "realised_bits": 0.71494,
+     "realised_bits_per_budget": 0.092444,
+     "known_gain_bits": 0.233,
+     "noise_share": 0.095238,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 0.492766,
+     "realised_bits_per_budget": 0.093042,
+     "known_gain_bits": 0.658467,
+     "noise_share": 0.5375,
+     "stale_share": 0.083333,
+     "idle_steps": 0.0
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.055111,
+      "noise_share": 0.625,
+      "stale_share": 0.166667,
+      "idle_steps": 0.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": 0.130973,
+      "noise_share": 0.45,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.135666,
+      "noise_share": 0.0
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.049222,
+      "noise_share": 0.190476
+     }
+    }
+   },
+   "reference: autonomy.candidates (idle) at this commit (learning progress on by default)": {
+    "core_mean": {
+     "realised_bits": 0.71494,
+     "realised_bits_per_budget": 0.092444,
+     "known_gain_bits": 0.233,
+     "noise_share": 0.095238,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": -0.053859,
+     "realised_bits_per_budget": -0.016581,
+     "known_gain_bits": 0.957466,
+     "noise_share": 0.375,
+     "stale_share": 0.166667,
+     "idle_steps": 2.166667
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.058088,
+      "noise_share": 0.5,
+      "stale_share": 0.333333,
+      "idle_steps": 3.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": -0.091249,
+      "noise_share": 0.25,
+      "stale_share": 0.0,
+      "idle_steps": 1.333333
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.135666,
+      "noise_share": 0.0
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.049222,
+      "noise_share": 0.190476
+     }
+    }
+   },
+   "reference: oracle": {
+    "core_mean": {
+     "realised_bits": 0.910215,
+     "realised_bits_per_budget": 0.118659,
+     "known_gain_bits": 0.809042,
+     "noise_share": 0.0,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 0.757586,
+     "realised_bits_per_budget": 0.145667,
+     "known_gain_bits": 1.190768,
+     "noise_share": 0.0,
+     "stale_share": 0.25,
+     "idle_steps": 0.0
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.058503,
+      "noise_share": 0.0,
+      "stale_share": 0.5,
+      "idle_steps": 0.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": 0.232831,
+      "noise_share": 0.0,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.159211,
+      "noise_share": 0.0
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.078107,
+      "noise_share": 0.0
+     }
+    }
+   },
+   "reference: random": {
+    "core_mean": {
+     "realised_bits": 0.656688,
+     "realised_bits_per_budget": 0.082689,
+     "known_gain_bits": 0.507323,
+     "noise_share": 0.261905,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 0.486087,
+     "realised_bits_per_budget": 0.091394,
+     "known_gain_bits": 0.882207,
+     "noise_share": 0.304167,
+     "stale_share": 0.222222,
+     "idle_steps": 0.0
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.058229,
+      "noise_share": 0.208333,
+      "stale_share": 0.444444,
+      "idle_steps": 0.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": 0.12456,
+      "noise_share": 0.4,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.155737,
+      "noise_share": 0.333333
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.00964,
+      "noise_share": 0.190476
+     }
+    }
+   },
+   "instinct": {
+    "core_mean": {
+     "realised_bits": 0.908904,
+     "realised_bits_per_budget": 0.118419,
+     "known_gain_bits": 0.795993,
+     "noise_share": 0.306548,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 0.842556,
+     "realised_bits_per_budget": 0.162702,
+     "known_gain_bits": 0.847921,
+     "noise_share": 0.375,
+     "stale_share": 0.166667,
+     "idle_steps": 1.0
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.058088,
+      "noise_share": 0.5,
+      "stale_share": 0.333333,
+      "idle_steps": 1.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": 0.267317,
+      "noise_share": 0.25,
+      "stale_share": 0.0,
+      "idle_steps": 1.0
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.159946,
+      "noise_share": 0.375
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.076891,
+      "noise_share": 0.238095
+     }
+    }
+   },
+   "instinct without information_rule": {
+    "core_mean": {
+     "realised_bits": 0.71494,
+     "realised_bits_per_budget": 0.092444,
+     "known_gain_bits": 0.233,
+     "noise_share": 0.095238,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 0.842556,
+     "realised_bits_per_budget": 0.162702,
+     "known_gain_bits": 0.847921,
+     "noise_share": 0.375,
+     "stale_share": 0.166667,
+     "idle_steps": 1.0
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.058088,
+      "noise_share": 0.5,
+      "stale_share": 0.333333,
+      "idle_steps": 1.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": 0.267317,
+      "noise_share": 0.25,
+      "stale_share": 0.0,
+      "idle_steps": 1.0
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.135666,
+      "noise_share": 0.0
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.049222,
+      "noise_share": 0.190476
+     }
+    }
+   },
+   "instinct without learning_progress": {
+    "core_mean": {
+     "realised_bits": 0.908904,
+     "realised_bits_per_budget": 0.118419,
+     "known_gain_bits": 0.795993,
+     "noise_share": 0.306548,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": 0.492766,
+     "realised_bits_per_budget": 0.093042,
+     "known_gain_bits": 0.658467,
+     "noise_share": 0.5375,
+     "stale_share": 0.083333,
+     "idle_steps": 0.0
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.055111,
+      "noise_share": 0.625,
+      "stale_share": 0.166667,
+      "idle_steps": 0.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": 0.130973,
+      "noise_share": 0.45,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.159946,
+      "noise_share": 0.375
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.076891,
+      "noise_share": 0.238095
+     }
+    }
+   },
+   "instinct-idle": {
+    "core_mean": {
+     "realised_bits": 0.908904,
+     "realised_bits_per_budget": 0.118419,
+     "known_gain_bits": 0.795993,
+     "noise_share": 0.306548,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": -0.053859,
+     "realised_bits_per_budget": -0.016581,
+     "known_gain_bits": 0.957466,
+     "noise_share": 0.375,
+     "stale_share": 0.166667,
+     "idle_steps": 2.166667
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.058088,
+      "noise_share": 0.5,
+      "stale_share": 0.333333,
+      "idle_steps": 3.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": -0.091249,
+      "noise_share": 0.25,
+      "stale_share": 0.0,
+      "idle_steps": 1.333333
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.159946,
+      "noise_share": 0.375
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.076891,
+      "noise_share": 0.238095
+     }
+    }
+   },
+   "instinct-idle without information_rule": {
+    "core_mean": {
+     "realised_bits": 0.71494,
+     "realised_bits_per_budget": 0.092444,
+     "known_gain_bits": 0.233,
+     "noise_share": 0.095238,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": -0.053859,
+     "realised_bits_per_budget": -0.016581,
+     "known_gain_bits": 0.957466,
+     "noise_share": 0.375,
+     "stale_share": 0.166667,
+     "idle_steps": 2.166667
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.058088,
+      "noise_share": 0.5,
+      "stale_share": 0.333333,
+      "idle_steps": 3.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": -0.091249,
+      "noise_share": 0.25,
+      "stale_share": 0.0,
+      "idle_steps": 1.333333
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.135666,
+      "noise_share": 0.0
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.049222,
+      "noise_share": 0.190476
+     }
+    }
+   },
+   "instinct-idle without learning_progress": {
+    "core_mean": {
+     "realised_bits": 0.908904,
+     "realised_bits_per_budget": 0.118419,
+     "known_gain_bits": 0.795993,
+     "noise_share": 0.306548,
+     "idle_share": 0.0
+    },
+    "web_mean": {
+     "realised_bits": -0.079318,
+     "realised_bits_per_budget": -0.015864,
+     "known_gain_bits": 0.305713,
+     "noise_share": 0.8,
+     "stale_share": 0.0,
+     "idle_steps": 0.0
+    },
+    "web_worlds": {
+     "two noisy subjects beside a stale one": {
+      "realised_bits_per_budget": 0.0,
+      "noise_share": 1.0,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     },
+     "gap and contested beside noise": {
+      "realised_bits_per_budget": -0.031727,
+      "noise_share": 0.6,
+      "stale_share": 0.0,
+      "idle_steps": 0.0
+     }
+    },
+    "core_worlds": {
+     "two noisy partners and an under-observed honest one": {
+      "realised_bits_per_budget": 0.159946,
+      "noise_share": 0.375
+     },
+     "two cameras, one partner, one noisy": {
+      "realised_bits_per_budget": 0.076891,
+      "noise_share": 0.238095
+     }
+    }
+   },
+   "cost": {
+    "wall_seconds": 0.564,
+    "model_calls": 0,
+    "refused_connections": 0,
+    "peak_rss_bytes": 57475072,
+    "peak_rss_rise_bytes": 8634368
+   }
+  }
+ },
+ "retention": {
+  "all three behaviour-changing pieces on": {
+   "all_scenarios_pass": false,
+   "all_retained": false,
+   "scenarios": {
+    "birth": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "grounding": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "lifelong_correction": {
+     "pass": false,
+     "failed_checks": [
+      "asks_only_while_partner_ambiguous"
+     ]
+    },
+    "graph_development": {
+     "pass": true,
+     "failed_checks": []
+    }
+   },
+   "offline_metrics": {
+    "verification.states.accuracy": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    },
+    "authoritative.answer_correct_top.rate": {
+     "value": 0.75,
+     "baseline": 0.75,
+     "retained": true
+    },
+    "authoritative.retrieval_success.rate": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    },
+    "contradictions.detector.all.f1": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    },
+    "citations.per_cited_source.precision": {
+     "value": 0.9948,
+     "baseline": 0.9948,
+     "retained": true
+    },
+    "budgets.ok": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    },
+    "time_sensitive.freshness_compliance.rate": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    }
+   }
+  },
+  "predictive regulation and learning progress on (information-v1 off)": {
+   "all_scenarios_pass": true,
+   "all_retained": true,
+   "scenarios": {
+    "birth": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "grounding": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "lifelong_correction": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "graph_development": {
+     "pass": true,
+     "failed_checks": []
+    }
+   },
+   "offline_metrics": {
+    "verification.states.accuracy": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    },
+    "authoritative.answer_correct_top.rate": {
+     "value": 0.75,
+     "baseline": 0.75,
+     "retained": true
+    },
+    "authoritative.retrieval_success.rate": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    },
+    "contradictions.detector.all.f1": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    },
+    "citations.per_cited_source.precision": {
+     "value": 0.9948,
+     "baseline": 0.9948,
+     "retained": true
+    },
+    "budgets.ok": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    },
+    "time_sensitive.freshness_compliance.rate": {
+     "value": 1.0,
+     "baseline": 1.0,
+     "retained": true
+    }
+   }
+  }
+ },
+ "adversarial": {
+  "all three behaviour-changing pieces on": {
+   "passed": 12,
+   "baseline_passed": 12
+  },
+  "predictive regulation and learning progress on (information-v1 off)": {
+   "passed": 12,
+   "baseline_passed": 12
+  }
+ },
+ "cost_on_this_host_ms": {
+  "decide_ms_rules_v1_display_off": 1.314,
+  "decide_ms_rules_v1_display_on": 1.483,
+  "decide_ms_information_v1_display_on": 1.637,
+  "internal_state_snapshot_ms": 0.685,
+  "internal_state_record_ms": 0.601,
+  "history_samples": 720,
+  "history_bytes": 180872,
+  "gate_ms_predictive_off": 0.466,
+  "gate_ms_predictive_on_full_history": 2.046
+ }
+}
