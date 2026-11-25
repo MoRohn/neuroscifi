@@ -110,7 +110,19 @@ RUNNERS = {
     "neuroscifi.console.server:ConsoleServer._work": "`nsf console --web-worker`",
     "neuroscifi.webcortex.bench.live:scenario_d": "a live benchmark on its own temporary individual",
     "neuroscifi.webcortex.bench.live:scenario_d_second": "its second tick, on the same temporary individual",
+    # The cognitive benchmark (scripts/bench_cognition.py): each stages its own temporary individual and runs the real
+    # entry points on it to measure them; no service, timer or product module imports this package.
+    "neuroscifi.acceptance.cognition.infovalue:_Web.investigate": "benchmark: curiosity on a staged individual",
+    "neuroscifi.acceptance.cognition.adversarial:spent_budget_refuses_autonomy": "benchmark: a spent budget",
+    "neuroscifi.acceptance.cognition.adversarial:critical_memory_stops_background_only": "benchmark: critical memory",
+    "neuroscifi.acceptance.cognition.adversarial:owner_stop_holds": "benchmark: the owner's stop",
+    "neuroscifi.acceptance.cognition.adversarial:owner_first_under_contention": "benchmark: owner work first",
 }
+
+# A package that only measures (its functions appear in RUNNERS): no module of the product outside it may import it,
+# so no service can start its work; scripts/bench_cognition.py is its one caller. tests/webcortex/test_background.py
+# checks it.
+MEASUREMENT_ONLY = ("neuroscifi.acceptance.cognition",)
 
 # systemd units that start something on their own (deploy/systemd), with the activities they run.
 UNITS = {

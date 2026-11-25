@@ -273,6 +273,35 @@ def test_every_launch_site_in_the_source_is_registered_and_every_registered_site
     assert set(COGNITION) <= checks and checks <= set(background.ACTIVITIES)
 
 
+def test_a_measurement_only_package_is_imported_by_nothing_else_in_the_product():
+    """The cognitive benchmark runs real entry points on staged individuals (RUNNERS). That is safe only while no
+    service, timer or other product module can reach it: nothing in src outside the package imports it."""
+    for package in background.MEASUREMENT_ONLY:
+        assert SRC.joinpath(*package.split(".")[1:]).is_dir(), package
+        inside = SRC.joinpath(*package.split(".")[1:])
+        parent, _, leaf = package.rpartition(".")
+        importers = []
+        for path in sorted(SRC.rglob("*.py")):
+            if inside in path.parents:
+                continue
+            module = "neuroscifi." + ".".join(path.relative_to(SRC).with_suffix("").parts)
+            module_package = module.removesuffix(".__init__") if path.name == "__init__.py" else module.rpartition(".")[0]
+            for node in ast.walk(ast.parse(path.read_text())):
+                if isinstance(node, ast.Import):
+                    names = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    base = node.module or ""
+                    if node.level:      # relative: resolve against this module's package
+                        parts = module_package.split(".")
+                        base = ".".join(parts[:len(parts) - node.level + 1] + ([base] if base else []))
+                    names = [base] + [f"{base}.{a.name}" for a in node.names]
+                else:
+                    continue
+                if any(n == package or n.startswith(package + ".") for n in names):
+                    importers.append(module)
+        assert importers == [], f"{package} is measurement only; imported by {importers}"
+
+
 def test_every_systemd_timer_and_path_unit_is_registered():
     units = {p.name for p in (ROOT / "deploy" / "systemd").iterdir() if p.suffix in (".timer", ".path")}
     assert units == set(background.UNITS)
