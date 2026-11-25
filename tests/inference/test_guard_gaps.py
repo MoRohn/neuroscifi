@@ -525,9 +525,27 @@ def test_a_version_joined_with_what_its_claims_say_of_another_is_refused(claims,
      "Zephyr 4.1 and 4.2 both support Windows."),
     (["NumPy 2.5.4 is affected by the parser flaw and NumPy 2.5.5 is not affected."],
      "NumPy 2.5.5 is not affected by the parser flaw, but NumPy 2.5.4 is affected."),
+    # the other claim's version is a bound: it ties nothing to that version alone
+    (["NumPy 2.5.5 fixes CVE-2026-1234", "CVE-2026-1234 affects Windows builds since NumPy 2.4.0"],
+     "NumPy 2.5.5 fixes CVE-2026-1234 in Windows builds."),
+    (["Lumen 3.2 patches the memory leak", "The memory leak affects ARM boards since Lumen 3.0"],
+     "Lumen 3.2 patches the memory leak on ARM boards."),
+    (["Orbix 7 drops the old importer", "The old importer has served Linux users from version 2"],
+     "Orbix 7 drops the old importer for Linux users."),
 ])
 def test_a_version_kept_with_what_its_claims_say_of_it_is_not_judged(claims, sentence):
     assert reasoning._joined_apart(sentence, claims_of(*claims)) == []
+
+
+@pytest.mark.parametrize("clause, bounds", [
+    ("CVE-2026-1234 affects Windows builds since NumPy 2.4.0", {"2.4.0"}),
+    ("The leak affects ARM boards from version 3 until 3.4", {"3", "3.4"}),
+    ("Zephyr 4.1 supports Windows", set()),
+    ("The service restored 12 regions in May", set()),
+    ("Support ended after 2 versions of 4.1", {"2"}),         # 4.1: a number stands between it and the bound word
+])
+def test_a_version_after_a_bound_word_is_a_bound(clause, bounds):
+    assert reasoning._bounded_numbers(clause) == bounds
 
 
 def test_an_adverb_ends_no_name_but_a_name_is_no_adverb():

@@ -2893,6 +2893,24 @@ def _role_swaps_refused(text: str, used) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+# Words that make the number after them a bound ("affects Windows builds since NumPy 2.4.0"): a clause holding a
+# bound says nothing of that version alone, so _joined_apart never takes it for the version a clause is about
+_BOUND_WORDS = frozenset("since from after before until till through".split())
+
+
+def _bounded_numbers(clause: str) -> set[str]:
+    """The numbers and versions of `clause` (as _ordered_numbers gives them) that stand as a bound: a bound word
+    (_BOUND_WORDS) at most two words before, with no number between ("since NumPy 2.4.0", "from version 3")."""
+    text = _DATE_PART.sub(" ", _V_PREFIX.sub("", clause or ""))
+    out = set()
+    for n, at in _number_positions(text):
+        before = text[:at].split()[-3:]
+        if any(w.casefold().strip("(\"'“‘") in _BOUND_WORDS and
+               not any(ch.isdigit() for x in before[i + 1:] for ch in x) for i, w in enumerate(before)):
+            out.add(n)
+    return out & set(_ordered_numbers(clause))
+
+
 def _joined_apart(text: str, used) -> list[str]:
     """JOINED_APART for each clause of the sentence (_coarse_clauses) that holds a version or number `a` and another
     anchor `b` (_anchors: a version, number or name) that no clause of the cited claims holds together, while a claim
@@ -2900,20 +2918,23 @@ def _joined_apart(text: str, used) -> list[str]:
     sentence's clause does not hold it. So "Zephyr 4.2 supports Windows" for "Zephyr 4.1 supports Windows and Zephyr
     4.2 supports Linux" (4.2 with Windows, which the claim says of 4.1). A sentence that joins two claims about
     different things ("NumPy 2.5.5 fixes the flaw that affects Windows builds" for "NumPy 2.5.5 fixes the flaw" and
-    "The flaw affects Windows builds") is not judged: the clause of "Windows" holds no version of its own."""
+    "The flaw affects Windows builds") is not judged: the clause of "Windows" holds no version of its own; nor is
+    one whose other version is a bound ("NumPy 2.5.5 fixes CVE-2026-1234 in Windows builds" for "... affects Windows
+    builds since NumPy 2.4.0": _bounded_numbers), which ties nothing to that version alone."""
     def words(clause):
         return _anchors(clause) | {_e_plain(w) for w in _E_WORD.findall(clause)}
-    theirs = [(_anchors(c), words(c)) for x in used for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
+    theirs = [(_anchors(c), words(c), _bounded_numbers(c))
+              for x in used for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
     out = []
     for clause in _coarse_clauses(_V_PREFIX.sub("", text)):
         mine, said = _anchors(clause), words(clause)
         for a in sorted(x for x in mine if any(ch.isdigit() for ch in x)):
             for b in sorted(mine - {a}):
-                if any(a in w and b in w for _, w in theirs):
+                if any(a in w and b in w for _, w, _ in theirs):
                     continue                    # a claim clause holds both, whatever their place in it
-                for _, here in (t for t in theirs if a in t[1]):
-                    for there, _ in (t for t in theirs if b in t[1]):
-                        other = sorted(o for o in there - here - said if any(ch.isdigit() for ch in o))
+                for _, here, _ in (t for t in theirs if a in t[1]):
+                    for there, _, bounds in (t for t in theirs if b in t[1]):
+                        other = sorted(o for o in there - here - said - bounds if any(ch.isdigit() for ch in o))
                         if other:
                             out.append(JOINED_APART.format(a=a, b=b, other=other[0]))
     return list(dict.fromkeys(out))
