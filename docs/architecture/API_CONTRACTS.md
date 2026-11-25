@@ -25,9 +25,11 @@ store.bump_state_version(db) -> int ; store.state_version(db) -> int
 store.bump(db, name, amount=1) ; store.counter(db, name) -> int
 store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch,
                                    ask_budget_window_seconds, consolidation, max_consolidated_rows,
-                                   max_thermal_celsius)
+                                   max_thermal_celsius, graph_rule_migration, max_imagined_rows,
+                                   imagined_lifetime_seconds)
 store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [names]}   # owner-settable settings only
-#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation, max_consolidated_rows); ValidationError
+#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation, max_consolidated_rows, graph_rule_migration,
+#   max_imagined_rows, imagined_lifetime_seconds); ValidationError
 #   otherwise. `nsf config` is its CLI.
 #   Each real change adds a deletion_log row: target_kind "setting", target_id the name, effects {"from", "to",
 #   "state_version"} (from a restore: {"from", "to", "carried_by_restore": true}).
@@ -663,3 +665,47 @@ process. Extraction (`webcortex/extract.py`, `text.as_seen`, `text.reorders`): a
 and `zero_width_removed` also counts characters that came out of character references. A raw-text element (title,
 textarea, script, style, xmp, …) holding a direction control loses its content. A line of right-to-left text keeps
 its direction marks, embeddings and isolates in `text`.
+
+## 11. Provenance kinds and the imagined store (schema 17, ADR-049)
+
+`neuroscifi/provenance.py` (vocabulary) and `instance/imagined.py` (owner of `imagined`, `imagined_refs`,
+`imagined_forgotten`). Nothing in the evidence, knowledge, claims, verification, calibration, belief or retrieval code
+reads or writes these tables; the database refuses an id of the form `imagined:` + 32 hex digits in their reference
+columns (`schema._NO_IMAGINED`; sqlite3.IntegrityError "an imagined record is never evidence").
+
+```python
+provenance.KINDS = ("evidence", "inference", "prediction", "simulation", "speculation")
+provenance.QUARANTINED = {"inference", "simulation", "speculation"} ; provenance.NOT_EVIDENCE = "imagined, not evidence"
+provenance.mapping() -> [{"record", "table", "kind", "basis"}]      # read-only; retags nothing
+imagined.record(db, kind, *, payload, assumptions: [str], uncertainty: str, mechanism: str, mechanism_version: str,
+                question: str, now, derived_from=[(ref_kind, id)], model=None, lifetime=None) -> "imagined:<32 hex>"
+#   kind in imagined.KINDS; ref_kind in imagined.REF_KINDS (task, knowledge, claim, source, hypothesis, prediction,
+#   evidence, consolidated, epoch, camera, partner, dataset, graph, imagined), each must name a held record
+#   (ValidationError); lifetime only shortens InstanceConfig.imagined_lifetime_seconds; at max_imagined_rows the oldest
+#   are evicted (deletion_log kind "imagined", target "evicted"); with max_imagined_rows 0 ValidationError;
+#   WritesPaused while regulation pauses writes
+imagined.observe(db, id, *, observation, now, evidence=[(ref_kind, id)]) -> show()  # once; never an imagined ref
+imagined.listing(db, now, *, kind=None, limit=100) -> {"label", "counts" {kind: n}, "items": [{"id", "kind", "label",
+                 "mechanism", "mechanism_version", "model", "question", "created_at", "expires_at", "observed"}]}
+imagined.show(db, id) -> item + {"payload", "assumptions", "uncertainty", "derived_from", "outcome", "observed_at"}
+imagined.purge(db, now, *, record_id=None, kind=None) -> {"status": "purged"|"absent", "effects": {"imagined_removed",
+               "checkpoints_stale", "state_version", "wal_checkpoint"}}   # neither given: everything
+imagined.section(records) -> {"label": "imagined, not evidence", "items": [{"kind", "payload", "assumptions",
+                 "uncertainty"}]}                                         # no ids: never citable
+imagined.example(seed, *, question=..., derived_from=()) -> record() keyword arguments  # writes nothing
+imagined.purge_orphans(db, now) -> int ; imagined.expire(db, now) -> int ; imagined.replay(copy, forgotten, now) -> int
+#   caller owns the transaction (governance forgets, governance.sweep, checkpoints._replay)
+```
+
+Additive fields, absent while zero unless noted: forget results `effects["imagined_removed"]` (every forget kind);
+`governance.sweep()["imagined_expired"]`; `checkpoints.restore()["imagined_removed"]` (always present).
+`reasoning.bundle` leaves out findings, answer items and sources whose `provenance` is quarantined;
+`reasoning.check_sentence` resolves no citation to a claim or source whose `provenance` is quarantined.
+
+| CLI | Result |
+|---|---|
+| `nsf imagined list [--kind K] [--limit N]` | `imagined.listing` |
+| `nsf imagined show ID` | `imagined.show` |
+| `nsf imagined purge --id ID \| --kind K \| --all` | `imagined.purge`, then the rewrite of the archives it made stale (as `nsf forget`) |
+| `nsf imagined kinds` | `{"kinds", "never_evidence", "records": provenance.mapping()}` |
+| `nsf config --max-imagined-rows N --imagined-lifetime-days D` | `store.set_config` (N 0–100,000; D one minute to 365 days) |

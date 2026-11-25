@@ -1768,3 +1768,102 @@ dataset kept its 247-byte blob, 2,407 bytes of metrics, 73 effects and the datas
 - Tests: `tests/instance/test_forget_one_kind.py`, `tests/instance/test_forget_dataset_erasure.py`,
   `tests/webcortex/test_recalibration.py` (the settlement of a forgotten task; the change detection, off).
 
+# ADR-049 (draft) Provenance kinds and the imagined store: nothing imagined is ever evidence. R (H for the schema)
+
+## Context
+
+Cognitive Genesis §5.5 asks for an imagination sandbox whose results "must never silently become factual memory", and
+§7.3 asks that evidence, inference, prediction, simulation and speculation be distinguished at the representation
+level. Before this change nothing stored simulated or model-inferred content apart from evidence, because no mechanism
+produced any: the only model text kept is the labelled answer in a task's report, never consolidated. The project's
+research review ranked provenance typing with a quarantine for imagined content as the largest single risk reduction
+(self-generated data erodes a store; poisoning agent memory works at very low rates) and as the prerequisite for every
+imagination mechanism. It must exist, with its guarantees enforced by the database and by tests, before any mechanism
+stores such content.
+
+## Decision
+
+1. **Five kinds, one vocabulary (`neuroscifi/provenance.py`).** `evidence` (observed or reported from outside, and
+   what the evidence pipeline's fixed rules derive from it), `inference` (a conclusion beyond the evidence that no
+   deterministic rule checked, such as model-written text), `prediction` (an expectation about a later observation,
+   with what settles it), `simulation` (a model run forward under stated assumptions) and `speculation` (a possibility
+   with neither evidence nor a model behind it). `inference`, `simulation` and `speculation` are quarantined.
+   `provenance.mapping()` maps today's record types to the kinds, read-only; no row is retagged. Claims, sources, the
+   evidence journal, consolidated readings, epoch streams and datasets are evidence; knowledge items are evidence in the
+   sense "what verified evidence supports"; hypotheses and predictions are prediction. Evidence and datasets with
+   provenance `simulated` are observations of a simulated environment (ADR-014), labelled since schema 1: evidence with
+   that label, never simulation. Two existing fields are model or template text and are named as such (the
+   model-written answer in a task's report: inference; a hypothesis's template alternatives: speculation); both were
+   already labelled and never consolidated, and they stay where they are.
+2. **One quarantined store (schema 17, `instance/imagined.py`).** Table `imagined` holds the kind, a structured JSON
+   payload, the assumptions, an uncertainty statement, the mechanism and its version, the model id when a model wrote
+   text, the question or goal served, the creation and expiry times, and an outcome slot for what was later observed.
+   `imagined_refs` holds what a record was derived from (kind and id; 14 kinds, from a task to a graph to another
+   imagined record) and `imagined_forgotten` holds payload-free tombstones. The kind CHECK admits only the three
+   quarantined kinds. Triggers make a record immutable except its outcome slot, which is filled once with an
+   observation that names held evidence and never another imagined record (imagine, observe, compare: the comparison
+   is the mechanism's; the store keeps both, apart).
+3. **Nothing on the evidence side can name a record.** An id is `imagined:` followed by 32 hex digits. Triggers on
+   insert and update refuse such an id in every reference column of evidence, consolidated readings, belief revisions,
+   web sources, claims, claim links, knowledge (supporting, contradicting, sources, verification), hypotheses,
+   predictions (with their settlement detail), feedback and calibration snapshots (`schema._NO_IMAGINED`). A test scans
+   the knowledge, claims, consolidation, synthesis, evolution and calibration, prediction, semantic, memory-gate,
+   reasoning, curiosity, autonomy, orchestrator, belief, evidence, executive, memory, dataset and graph modules: none
+   imports the store or names its tables.
+4. **The answer model never sees it as evidence.** `reasoning.bundle` drops findings, answer items and sources of a
+   quarantined kind. `reasoning.check_sentence`, the guard's only citation resolver, treats a quarantined claim or
+   source as unknown. `messages()` sends only the bundle's evidence keys, so a separate part built with
+   `imagined.section()` (labelled "imagined, not evidence", items without ids) reaches the model only if a later
+   change adds it on purpose, and it can never be cited. `guard_differential.py compare`: 0 different.
+5. **Retrieval never returns it.** `knowledge.query` (lexical and semantic), the memory gate and `memory.retrieve`
+   read other tables; `memory.KINDS` has no imagined kind.
+6. **Bounded and forgotten.** `InstanceConfig.max_imagined_rows` (default 1000; the oldest is evicted first; 0 = the
+   store takes nothing) and `imagined_lifetime_seconds` (default 7 days, from one minute to 365 days; a writer may only
+   shorten it) are owner-settable (`nsf config --max-imagined-rows`, `--imagined-lifetime-days`) and carried into a
+   restored copy. `governance.sweep` expires records. Every forget (evidence, epoch, partner, camera, consolidated
+   reading, dataset with its erased graphs, research task, knowledge item, source, voice session) removes in its own
+   transaction every record one of whose sources no longer resolves, to a fixed point (`imagined.purge_orphans`;
+   `effects.imagined_removed`, absent while zero). An epoch row outlives its forget, so an epoch counts as gone for a
+   record made before the epoch's deletion-log row. Every removal (forget, purge, expiry, eviction) leaves a
+   tombstone. Purge, expiry and eviction write a deletion-log row of kind `imagined` and make stale the checkpoints
+   written since the oldest removed record.
+7. **Checkpoints carry it; a restore never brings a removed record back.** An archive is a copy of the file, so the
+   store travels with its kinds. `checkpoints._replay` (restore and rewrite) runs `imagined.replay` last: the live
+   tombstones, expiry, and the orphans every other replay left. `imagined` is a rewritable kind (`REWRITABLE_KINDS`),
+   so the archives a purge made stale are rewritten in place.
+8. **Owner surface.** `nsf imagined list | show | purge | kinds`. Every listing carries each record's kind and
+   "imagined, not evidence"; `purge` takes `--id`, `--kind` or `--all` and rewrites the archives it made stale. The
+   console is not changed: its memory browser is driven by `memory.KINDS`, which must not list imagined records, and a
+   separate labelled panel needs a design pass. It is left to the workspace lane.
+9. **Default.** The store exists and is empty. No mechanism writes to it. `imagined.example(seed)` is a deterministic
+   generator for tests and measurements and writes nothing itself. With no record held, a forget costs one indexed
+   read more and the answer path is unchanged.
+
+## Measured
+
+`docs/quality/evidence/genesis_provenance.json` (`python scripts/genesis_provenance.py all`, 5 runs each, medians):
+20 safeguards, each broken alone in a copy of the source, were caught by a test (20 of 20; the unchanged copy passes).
+Costs: the triggers add 0.9 µs per evidence insert (20,000 rows: 0.077 to 0.095 s) and 3.8 µs per claim insert
+(5,000 rows: 0.029 to 0.048 s). With the store empty, a forget took 1.05 ms against 0.91 ms on the start commit and a
+sweep with nothing due 0.084 ms against 0.053 ms (15 runs each, measured separately). With 1,000 records derived from
+the forgotten event, the forget took 9.0 ms and removed all of them; writing a record 76 µs; listing 100 of 1,000
+1.2 ms; a restore replaying a purge of 1,000 records 11 ms. The empty store takes 6 pages.
+
+## Alternatives rejected
+
+- A provenance column on the existing tables: every evidence path would have to filter by it, and one forgotten filter
+  would let imagined content through. Separate tables need no filter.
+- Retagging existing rows (for example knowledge as inference): it changes no behaviour and rewrites the owner's data;
+  the mapping documents the kinds instead.
+- Refusing writes at the limit instead of evicting: imagined content is short-lived, and a full store must not stop a
+  mechanism from recording its newest result. Evictions are logged, tombstoned and replayed.
+
+## Consequences
+
+- Schema 17. Older software refuses the file. The migration only adds empty tables, indexes and triggers (IF NOT
+  EXISTS, so a file a test put back to an earlier version by hand migrates again); no row changes.
+- An evidence event id, root or sample id of the form `imagined:` + 32 hex digits is refused: the form is reserved.
+- Every forget runs one more query, and a loop to a fixed point when records derive from what it removed.
+- Tests: `tests/instance/test_imagined.py`, `tests/webcortex/test_imagined_quarantine.py`; mutations:
+  `scripts/genesis_provenance.py mutations`.
+

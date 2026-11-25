@@ -429,7 +429,7 @@ Idle unloading never stops a service during a voice session in use, a running ta
 
 ### Upgrading an individual you already have
 
-The file format is now schema 16. The first command that opens an individual made by older software upgrades it, so read [Migrations](docs/operations/MIGRATIONS.md) section 2 first and take a checkpoint. At that first open, once and recorded:
+The file format is now schema 17 (17 adds an empty store for imagined content, never evidence: [ADR-049](docs/architecture/ARCHITECTURAL_DECISIONS.md)). The first command that opens an individual made by older software upgrades it, so read [Migrations](docs/operations/MIGRATIONS.md) section 2 first and take a checkpoint. At that first open, once and recorded:
 
 - an individual still on the original graph rule (`gate-v1`) moves to `best-learner-v1`, and an active graph that predicts worse than no graph at all is archived (nothing is deleted);
 - datasets you forgot under an earlier version lose the graph weights learned from them, as a forget now does.

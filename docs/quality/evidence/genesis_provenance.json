@@ -1,0 +1,346 @@
+{
+  "baseline_comparison": {
+    "forget_evidence_ms": {
+      "start_commit": 0.905,
+      "this_change": 1.047
+    },
+    "measured_by": "an inline timing loop over governance.forget_evidence and governance.sweep, run once against each tree (not part of scripts/genesis_provenance.py)",
+    "sweep_with_nothing_due_ms": {
+      "start_commit": 0.053,
+      "this_change": 0.084
+    },
+    "what": "an empty store (the default) against the start commit 07a8728, same host, 15 runs each, a fresh individual per run; median wall time"
+  },
+  "costs": {
+    "empty_store_pages": 6,
+    "forget_evidence_seconds": {
+      "empty_store": {
+        "max": 0.0021,
+        "median": 0.001077,
+        "min": 0.001063,
+        "runs": 5
+      },
+      "store_of_1000_derived": {
+        "max": 0.008973,
+        "median": 0.008965,
+        "min": 0.00887,
+        "runs": 5
+      }
+    },
+    "inserts": {
+      "claim_rows": 5000,
+      "claim_seconds": {
+        "with_triggers": {
+          "max": 0.047866,
+          "median": 0.047766,
+          "min": 0.047345,
+          "runs": 5
+        },
+        "without": {
+          "max": 0.029124,
+          "median": 0.028861,
+          "min": 0.028663,
+          "runs": 5
+        }
+      },
+      "evidence_rows": 20000,
+      "evidence_seconds": {
+        "with_triggers": {
+          "max": 0.096392,
+          "median": 0.09458,
+          "min": 0.093075,
+          "runs": 5
+        },
+        "without": {
+          "max": 0.077174,
+          "median": 0.076678,
+          "min": 0.0759,
+          "runs": 5
+        }
+      },
+      "overhead_per_claim_row_us": 3.781,
+      "overhead_per_evidence_row_us": 0.895
+    },
+    "listing_100_of_1000_seconds": {
+      "max": 0.0012,
+      "median": 0.001187,
+      "min": 0.001139,
+      "runs": 5
+    },
+    "record_seconds_each": {
+      "max": 7.7e-05,
+      "median": 7.6e-05,
+      "min": 7.6e-05,
+      "runs": 5
+    },
+    "restore_replaying_a_purge_of_1000_seconds": {
+      "max": 0.01169,
+      "median": 0.011231,
+      "min": 0.011164,
+      "runs": 5
+    }
+  },
+  "host": {
+    "machine": "aarch64",
+    "python": "3.12.16",
+    "sqlite": "3.53.1"
+  },
+  "mutations": {
+    "caught": 20,
+    "control": {
+      "exit": 0,
+      "seconds": 1.45,
+      "summary": "83 passed in 1.32s"
+    },
+    "of": 20,
+    "results": [
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/schema.py",
+        "mutation": "trigger_table_dropped",
+        "safeguard": "no reference column of web_knowledge may name an imagined record",
+        "seconds": 0.36,
+        "summary": "1 failed, 19 passed in 0.25s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/schema.py",
+        "mutation": "trigger_json_form_blind",
+        "safeguard": "an imagined id inside a JSON reference column is refused",
+        "seconds": 0.35,
+        "summary": "1 failed, 18 passed in 0.23s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/schema.py",
+        "mutation": "kind_check_widened",
+        "safeguard": "the database takes only simulation, speculation and inference",
+        "seconds": 0.2,
+        "summary": "1 failed, 3 passed in 0.09s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/schema.py",
+        "mutation": "kind_relabel_allowed",
+        "safeguard": "a record's kind is never rewritten",
+        "seconds": 0.24,
+        "summary": "1 failed, 4 passed in 0.13s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/imagined.py",
+        "mutation": "record_kind_unchecked",
+        "safeguard": "record() refuses a kind that is not quarantined",
+        "seconds": 0.19,
+        "summary": "1 failed, 3 passed in 0.09s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/imagined.py",
+        "mutation": "lineage_unchecked",
+        "safeguard": "a record names only sources the file holds",
+        "seconds": 0.29,
+        "summary": "1 failed, 5 passed in 0.13s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/imagined.py",
+        "mutation": "observation_may_be_imagined",
+        "safeguard": "an observation never names an imagined record",
+        "seconds": 0.22,
+        "summary": "1 failed, 4 passed in 0.10s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/governance.py",
+        "mutation": "forgets_do_not_cascade",
+        "safeguard": "every forget removes what was imagined from what it removed",
+        "seconds": 0.63,
+        "summary": "1 failed, 35 passed in 0.47s",
+        "tests": [
+          "tests/instance/test_imagined.py",
+          "tests/webcortex/test_imagined_quarantine.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/governance.py",
+        "mutation": "web_forgets_do_not_cascade",
+        "safeguard": "a web forget removes what was imagined from what it removed",
+        "seconds": 0.54,
+        "summary": "1 failed, 29 passed in 0.42s",
+        "tests": [
+          "tests/webcortex/test_imagined_quarantine.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/imagined.py",
+        "mutation": "epoch_forget_missed",
+        "safeguard": "an epoch forgotten after a record was made removes it",
+        "seconds": 0.55,
+        "summary": "1 failed, 37 passed in 0.44s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/checkpoints.py",
+        "mutation": "restore_skips_store",
+        "safeguard": "a restore replays the store's removals",
+        "seconds": 0.74,
+        "summary": "1 failed, 42 passed in 0.60s",
+        "tests": [
+          "tests/instance/test_imagined.py",
+          "tests/webcortex/test_imagined_quarantine.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/imagined.py",
+        "mutation": "replay_ignores_tombstones",
+        "safeguard": "a restore removes what the live file purged, expired or evicted",
+        "seconds": 0.63,
+        "summary": "1 failed, 42 passed in 0.53s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/imagined.py",
+        "mutation": "no_tombstones",
+        "safeguard": "every removal leaves a tombstone",
+        "seconds": 0.5,
+        "summary": "1 failed, 32 passed in 0.38s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/imagined.py",
+        "mutation": "no_row_limit",
+        "safeguard": "the store keeps at most max_imagined_rows records",
+        "seconds": 0.59,
+        "summary": "1 failed, 32 passed in 0.38s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/governance.py",
+        "mutation": "no_expiry",
+        "safeguard": "the sweep expires records past their lifetime",
+        "seconds": 0.49,
+        "summary": "1 failed, 33 passed in 0.39s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/webcortex/reasoning.py",
+        "mutation": "bundle_takes_quarantined",
+        "safeguard": "the answer bundle never holds quarantined content",
+        "seconds": 0.59,
+        "summary": "1 failed, 26 passed in 0.44s",
+        "tests": [
+          "tests/webcortex/test_imagined_quarantine.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/webcortex/reasoning.py",
+        "mutation": "guard_resolves_quarantined",
+        "safeguard": "the guard never resolves a citation to quarantined content",
+        "seconds": 0.53,
+        "summary": "1 failed, 28 passed in 0.41s",
+        "tests": [
+          "tests/webcortex/test_imagined_quarantine.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/webcortex/consolidate.py",
+        "mutation": "consolidation_imports_store",
+        "safeguard": "no evidence path imports the store",
+        "seconds": 0.27,
+        "summary": "1 failed, 2 passed in 0.17s",
+        "tests": [
+          "tests/webcortex/test_imagined_quarantine.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/memory.py",
+        "mutation": "memory_lists_imagined",
+        "safeguard": "memory.retrieve has no imagined kind",
+        "seconds": 0.46,
+        "summary": "1 failed, 24 passed in 0.36s",
+        "tests": [
+          "tests/webcortex/test_imagined_quarantine.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/instance/imagined.py",
+        "mutation": "listing_unlabelled",
+        "safeguard": "every listing says 'imagined, not evidence'",
+        "seconds": 0.21,
+        "summary": "1 failed, 4 passed in 0.10s",
+        "tests": [
+          "tests/instance/test_imagined.py"
+        ]
+      }
+    ]
+  },
+  "suite": {
+    "start_commit": "5053 passed, 18 skipped",
+    "this_change": "5136 passed, 18 skipped (83 new)"
+  },
+  "what": "imagined store (ADR-049): safeguards broken one at a time, and costs"
+}

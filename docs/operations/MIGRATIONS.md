@@ -2,7 +2,7 @@
 
 ## 1. How the instance database is versioned
 
-The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (16 in this release; 13 in 0.7.0).
+The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (17 in this release; 13 in 0.7.0).
 
 - **Forward only.** Opening an instance with `nsf` applies every pending migration in order, each in one transaction that also sets `user_version`. The version is read again under the write lock, so two processes opening an old file at once apply each migration once; a migration that fails is rolled back. There are no down-migrations. A released migration is never edited; changes arrive as a new migration.
 - **Newer than the software is refused.** If `user_version` is greater than the software's version, the command stops with "Instance schema N is newer than this software (M)" and changes nothing. Do not run older software on a database an upgrade has opened.
@@ -32,6 +32,18 @@ second per million). Nothing else is written; no reading is added, removed or ch
 computation then finds the samples recorded more than once from the flagged readings instead of grouping every
 reading of the epoch by sample on every read. Software of an earlier schema refuses a version-16 file; rollback is a restore
 of the pre-upgrade checkpoint.
+
+**Version 17 (the imagined store, ADR-049).** It adds three empty tables: `imagined` (content the system produced
+itself that is not evidence: simulations, speculations, model-written inferences), `imagined_refs` (what each record
+was derived from) and `imagined_forgotten` (payload-free tombstones), with their indexes and triggers, and on eleven
+evidence-side tables (evidence, consolidated readings, belief revisions, web sources, claims, claim links, knowledge,
+hypotheses, predictions, feedback, calibration snapshots) a pair of triggers that refuse an id of the form `imagined:`
+plus 32 hex digits in a reference column. No existing row is read or written; the migration takes milliseconds. The
+store stays empty until a mechanism writes to it; nothing does in this release. Two settings come with it,
+`max_imagined_rows` (1000) and `imagined_lifetime_seconds` (7 days), changeable with `nsf config
+--max-imagined-rows N` and `--imagined-lifetime-days D`; a file saved by older software reads them as these
+defaults. `nsf imagined list` shows what is held. Software of an earlier schema refuses a version-17 file; rollback is
+a restore of the pre-upgrade checkpoint.
 
 ## 2. Upgrade procedure
 
