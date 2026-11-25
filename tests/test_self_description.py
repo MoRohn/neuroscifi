@@ -216,13 +216,21 @@ def test_nsf_self_prints_the_record_and_short_sentences(individual):
 
 
 def test_the_voice_command_reads_a_short_version(individual):
-    from neuroscifi.voice import bridge, commands
+    from neuroscifi.voice import bridge, commands, config as vconfig
     for text in ("what are you doing", "What are you working on right now?", "status report", "what's your status"):
-        assert commands.parse(text).kind == "self_status", text
+        assert commands.parse(text, status_questions=True).kind == "self_status", text
+    # review1 A15: a status question that used to start research still does unless the owner's setting says so; a
+    # phrase that never did ("status report") is the command either way
+    for text in ("what are you doing", "What are you working on right now?", "what's your status"):
+        assert commands.parse(text).kind == "research", text
+    assert commands.parse("status report").kind == "self_status"
     assert commands.parse("what are you researching about okapis today").kind == "research"
     owner = bridge.Principal(name="owner", owner=True, research=True)
     with closing(store.connect(individual)) as db:
         orchestrator.submit(db, "Where does the okapi live?", T0, origin="console")
+        assert vconfig.get(db)["status_questions"] is False
+        assert bridge.Bridge(lambda: T0 + 5).handle(db, owner, {}, "status report").intent == "self_status"
+        vconfig.update(db, {"status_questions": True})
         reply = bridge.Bridge(lambda: T0 + 5).handle(db, owner, {}, "what are you doing")
     assert reply.intent == "self_status" and reply.source == "template" and reply.speech
     assert "1 queued" in reply.text and reply.task_id is None

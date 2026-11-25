@@ -22,12 +22,21 @@ Audio requests do no database writes: chunks are buffered in memory, consent and
 provisional and final segments (with raw audio when retention is on, in the same transaction) are written by one
 writer thread, so an upload never waits behind the research worker's write transaction. Reply and research-follow
 threads are bounded (MAX_REPLY_WORKERS, MAX_FOLLOWERS); beyond that the hub answers busy.
+Research follow-ups (R8, review1 A9/A10/S9): the answer to a spoken research question is delivered once, to the
+person's session that is live when it is ready (looked up then, not the session that asked). With the owner's
+resume_follow on, the awaited task is kept in the session's context with the hub that follows it (follow_by), and
+the delivery is claimed in the database (transcripts.clear_follow), which takes it off every session of that person:
+two processes following the same task cannot both deliver it, and a later session does not replay it. A follower
+that gives up (FOLLOW_MAX) takes it off as well. A new session picks a follow up again only when no hub of this
+process follows it, never for a task that finished before the previous session ended while its follower lived, and
+never RESUME_MAX_AGE after the task finished; it says "before the restart" only when the hub that followed it is gone.
 """
 from __future__ import annotations
 
 from collections import deque
 from contextlib import contextmanager
 import hashlib
+import os
 import queue
 import re
 import secrets
@@ -61,6 +70,8 @@ SWEEP_EVERY = 60.0
 FOLLOW_POLL = 1.0            # longest wait between two checks of a followed research task
 FOLLOW_FIRST = 0.1           # the first wait; it doubles up to FOLLOW_POLL (follow_waits)
 FOLLOW_MAX = 3 * 3600.0
+RESUME_MAX_AGE = 24 * 3600.0  # a task that finished longer ago than this is not picked up by a new session
+_LIVE_HUBS: set[str] = set()  # the follow_by tokens of this process's hubs that are not closed
 PROGRESS_SPEAK_EVERY = 30.0
 TERMINAL = ("completed", "partial", "failed", "cancelled")
 STAGE_WORDS = {"discovering": "searching for sources", "reading": "reading sources", "evaluating":
@@ -142,6 +153,10 @@ class VoiceHub:
         self._replies = threading.BoundedSemaphore(MAX_REPLY_WORKERS)
         self._followers = threading.BoundedSemaphore(MAX_FOLLOWERS)
         self._following: dict[str, int] = {}  # task id -> followers of this hub watching it now (self.lock)
+        # who follows a task (kept with it in the session context): this process, its start time, this hub
+        from ..presence.activity import process_started
+        self.token = f"{os.getpid()}:{process_started(os.getpid())}:{secrets.token_hex(6)}"
+        _LIVE_HUBS.add(self.token)
         self._writes: queue.Queue = queue.Queue(WRITE_QUEUE)
         self._writer = None
         self._closed = threading.Event()      # close(): this hub's own threads end, and it starts none again
@@ -232,6 +247,7 @@ class VoiceHub:
         threads could only end with the process: one writer, and up to MAX_FOLLOWERS followers that each looked for
         up to FOLLOW_MAX. Closing is final: a write that comes later is made in the thread that asks for it
         (_write_later), so nothing can start a writer again."""
+        _LIVE_HUBS.discard(self.token)       # its followers stop: a task they awaited is "before the restart"
         with self.lock:                      # the lock of _write_later: nothing is queued behind the stop below
             self._closed.set()
             writer, self._writer = self._writer, None
@@ -280,11 +296,13 @@ class VoiceHub:
             mode = mode or cfg["mode"]
             if mode not in vconfig.MODES:
                 raise ValidationError("mode must be one of " + ", ".join(vconfig.MODES))
-            context = tx.last_context(db, principal.name)
+            previous = tx.last_session(db, principal.name)
             sid = tx.start_session(db, principal.name, device, mode, self.clock())
             # R8: the task a spoken question's answer was still awaited for when the last session's process ended
-            carried = ("last_task_id", "last_objective") + (("follow_task_id",) if cfg.get("resume_follow") else ())
-            context = {k: v for k, v in (context or {}).items() if k in carried and v is not None}
+            carried = ("last_task_id", "last_objective") + (("follow_task_id", "follow_by")
+                                                            if cfg.get("resume_follow") else ())
+            context = {k: v for k, v in ((previous or {}).get("context") or {}).items()
+                       if k in carried and v is not None}
             if context:
                 tx.update_session(db, sid, self.clock(), context=context)
         s = Session(sid, principal, device, label, mode)
@@ -300,23 +318,41 @@ class VoiceHub:
         self._state(s, mode=mode, session_active=True, capture_device=None, mic_capturing=False, speaking=False,
                     user_speaking=False, interrupted_at=None)
         self._wake(s, mode)
-        self._resume_follow(s, context.get("follow_task_id"))
+        self._resume_follow(s, context.get("follow_task_id"), context.get("follow_by"), previous)
         return self.public(s)
 
-    def _resume_follow(self, s: Session, task_id):
+    def _resume_follow(self, s: Session, task_id, by=None, previous=None):
         """R8: follow again a research task whose spoken answer the principal's previous session was still waiting
-        for when its process ended (nothing in this hub follows it): its answer is delivered to this session."""
+        for (nothing in this hub follows it): its answer is delivered to the person's live session. Not for a task
+        that finished before the previous session ended while the hub that followed it lived (it had its chance),
+        nor RESUME_MAX_AGE after it finished; "before the restart" only when that hub is gone (review1 A9, S9)."""
+        from ..webcortex import orchestrator
         if not task_id or not s.principal.research:
             return
         if not self._watch(task_id, unless_followed=True):
             return                   # this hub still follows it (a session that merely ended, not a restart)
-        if self._followers.acquire(blocking=False):
-            self._emit(s, "notice", text="Picking up the research you asked about before the restart.")
-            threading.Thread(target=self._follow, args=(s, task_id, True), daemon=True,
-                             name="nsf-voice-follow").start()
-        else:
+        alive = _hub_alive(by)
+        try:
+            with self.db() as db:
+                task = orchestrator.get(db, task_id, family=s.principal.family)
+        except InstanceError:
+            task = None
+        finished = task.get("finished_at") if task else None
+        ended = (previous or {}).get("ended_at")
+        stale = task is None or (task["status"] in TERMINAL and finished is not None and (
+            self.clock() - finished > RESUME_MAX_AGE or (alive is not False and ended is not None
+                                                          and finished < ended)))
+        if stale or not self._followers.acquire(blocking=False):
             with self.lock:
                 self._following.pop(task_id, None)
+            if stale:
+                with self.db() as db:
+                    tx.clear_follow(db, s.principal.name, task_id)
+            return
+        self._emit(s, "notice", text="Picking up the research you asked about before the restart." if alive is False
+                   else "Picking up the research you asked about earlier.")
+        threading.Thread(target=self._follow, args=(s, task_id, True, True), daemon=True,
+                         name="nsf-voice-follow").start()
 
     def _wake(self, s: Session, mode):
         """Load again the speech services this mode needs if the idle policy unloaded them; the client is told
@@ -887,13 +923,17 @@ class VoiceHub:
                     self._emit(s, "notice", text="There is nothing interrupted to continue.")
         if reply.follow and s.principal.research:
             if self._followers.acquire(blocking=False):
+                kept = False
                 with self.db() as db:      # R8: kept with the session, so a restarted process picks it up again
                     try:
-                        tx.update_session(db, s.id, self.clock(), context={"follow_task_id": reply.follow})
+                        if vconfig.get(db).get("resume_follow"):     # off: nothing is written (review1 A15)
+                            tx.update_session(db, s.id, self.clock(), context={"follow_task_id": reply.follow,
+                                                                              "follow_by": self.token})
+                            kept = True
                     except (NotFound, InstanceError):
                         pass
                 self._watch(reply.follow)
-                threading.Thread(target=self._follow, args=(s, reply.follow, True), daemon=True,
+                threading.Thread(target=self._follow, args=(s, reply.follow, True, kept), daemon=True,
                                  name="nsf-voice-follow").start()
             else:
                 self._emit(s, "notice", text="The research continues, but I can't follow more tasks right now; ask "
@@ -1065,12 +1105,13 @@ class VoiceHub:
         return {"events": items, "seq": s.seq, "active": s.active}
 
     # ---- long tasks ---------------------------------------------------------------------------------------------------
-    def _follow(self, s: Session, task_id, slot=False):
+    def _follow(self, s: Session, task_id, slot=False, kept=False):
         """Report truthful progress of a research task and deliver its answer. The task belongs to the research
         system: it keeps running when the voice session ends (only 'cancel the research' stops it); its answer
-        is still written to the transcript."""
+        is still written to the transcript. kept: the session context records the follow (resume_follow), so the
+        delivery is claimed there first."""
         try:
-            self._follow_task(s, task_id)
+            self._follow_task(s, task_id, kept)
         finally:
             with self.lock:          # counted by the caller before the thread started (_watch)
                 left = self._following.get(task_id, 1) - 1
@@ -1090,7 +1131,17 @@ class VoiceHub:
             self._following[task_id] = self._following.get(task_id, 0) + 1
             return True
 
-    def _follow_task(self, s: Session, task_id):
+    def _live(self, s: Session) -> Session | None:
+        """The person's session to tell now: `s` while it is open, else the newest open session of this hub for the
+        same principal and device (a Pocket session belongs to its device), else None."""
+        if s.active:
+            return s
+        with self.lock:
+            open_ = [x for x in self.sessions.values() if x.active and x.principal.name == s.principal.name
+                     and x.principal.node_device == s.principal.node_device and x.principal.family == s.principal.family]
+        return max(open_, key=lambda x: x.seen) if open_ else None
+
+    def _follow_task(self, s: Session, task_id, kept=False):
         from ..webcortex import orchestrator
         started = time.monotonic()
         last_stage, last_spoken = None, time.monotonic()
@@ -1101,25 +1152,38 @@ class VoiceHub:
                     task = orchestrator.get(db, task_id, family=s.principal.family)
             except InstanceError:
                 return
+            live = self._live(s)
             if task["status"] in TERMINAL:
+                if kept:
+                    with self.db() as db:
+                        if live is None and tx.active_elsewhere(db, s.principal.name, list(self.sessions)):
+                            return           # the person is on another process now: its follower tells them
+                        if not tx.clear_follow(db, s.principal.name, task_id):
+                            return           # delivered by another follower, or forgotten meanwhile
+                target = live or s           # no open session: the answer still goes into the asking transcript
                 reply = vbridge.compose_answer(task)
                 reply.actions.append({"kind": "context", "last_task_id": task_id, "follow_task_id": None})
-                self._emit(s, "task_done", task_id=task_id, status=task["status"])
-                self._deliver(s, reply)
+                self._emit(target, "task_done", task_id=task_id, status=task["status"])
+                self._deliver(target, reply)
                 return
             stage = task.get("stage") or task["status"]
+            target = live or s
             if stage != last_stage:
                 last_stage = stage
                 words = STAGE_WORDS.get(stage, stage)
-                self._emit(s, "progress", task_id=task_id, stage=stage, text=f"Research: {words}",
+                self._emit(target, "progress", task_id=task_id, stage=stage, text=f"Research: {words}",
                            elapsed=round(time.monotonic() - started, 1))
-                if s.active and time.monotonic() - last_spoken >= PROGRESS_SPEAK_EVERY and s.mode == "voice_text" \
-                        and not any(t.status == "speaking" for t in s.turns.values()):
+                if target.active and time.monotonic() - last_spoken >= PROGRESS_SPEAK_EVERY \
+                        and target.mode == "voice_text" and not any(t.status == "speaking"
+                                                                    for t in target.turns.values()):
                     last_spoken = time.monotonic()
-                    self._deliver(s, vbridge.Reply("progress", speech=[f"Still working: {words}."],
-                                                   text=f"Still working: {words}.", task_id=None))
+                    self._deliver(target, vbridge.Reply("progress", speech=[f"Still working: {words}."],
+                                                        text=f"Still working: {words}.", task_id=None))
             if self._closed.wait(next(waits)):       # the hub closed: nobody is left to tell
                 return
+        if kept:                                     # given up: no later session picks it up (review1 S9)
+            with self.db() as db:
+                tx.clear_follow(db, s.principal.name, task_id)
 
     # ---- transcripts -------------------------------------------------------------------------------------------------
     def transcripts(self, principal, *, session_id=None, query=None, limit=200) -> dict:
@@ -1158,6 +1222,23 @@ class VoiceHub:
             threading.Thread(target=run, daemon=True, name="nsf-checkpoint-rewrite").start()
             out = {k: v for k, v in out.items() if k != "next_steps"} | {"checkpoints_rewriting": stale}
         return out
+
+
+def _hub_alive(token) -> bool | None:
+    """Whether the hub that recorded `token` (VoiceHub.token: pid, process start, hub) still follows: True for an
+    open hub of this process or a live other process, False when its process ended or the hub closed, None when the
+    token is missing or unreadable (a context written before follow_by existed)."""
+    from ..presence.activity import process_started
+    try:
+        pid, started, _ = str(token).split(":")
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if str(process_started(pid)) != started:
+        return False                 # that process is gone (or its pid now names another)
+    if pid == os.getpid():
+        return token in _LIVE_HUBS
+    return True
 
 
 _NOISE = {"you", "thank you", "thanks for watching", "bye", "uh", "um", "hmm", "mm"}

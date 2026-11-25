@@ -1005,6 +1005,7 @@ def _forget_research_core(db, task_id, now):
     db.execute("UPDATE web_monitors SET last_task_id=NULL WHERE last_task_id=?", (task_id,))
     db.execute("UPDATE web_knowledge SET task_id=NULL WHERE task_id=?", (task_id,))
     _unlink_ledger(db, task_id)
+    _scrub_voice_context(db, task_id)
     db.execute("DELETE FROM web_tasks WHERE id=?", (task_id,))
     _web_tombstones(db, "task", [task_id], now)
     effects = _web_cascade(db, claim_ids, now)
@@ -1023,6 +1024,31 @@ def _unlink_ledger(db, task_id):
     db.execute("UPDATE autonomy_ledger SET task_id=?, opened_at=CAST(strftime('%s', day) AS REAL), "
                "settled_at=CASE WHEN settled_at IS NULL THEN NULL ELSE CAST(strftime('%s', day) AS REAL) END "
                "WHERE task_id=?", ("forgotten:" + secrets.token_hex(12), task_id))
+
+
+_VOICE_TASK_KEYS = {"last_task_id": ("last_task_id", "last_objective"), "follow_task_id": ("follow_task_id",
+                                                                                          "follow_by")}
+
+
+def _scrub_voice_context(db, task_id):
+    """Every voice session's context that names the task (the last research asked, the one whose answer a session
+    awaits: voice/hub.py) or quotes its question loses those keys, so a forgotten question is not carried into the
+    next session (review1 S3). Runs inside the forget's transaction and in every checkpoint replay
+    (_forget_research_core); the task row is still there to read its question from."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='voice_sessions'").fetchone() is None:
+        return
+    row = db.execute("SELECT objective FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+    objective = row[0] if row else None
+    rows = db.execute("SELECT id, context FROM voice_sessions WHERE json_valid(context) AND "
+                      "(json_extract(context,'$.last_task_id')=? OR json_extract(context,'$.follow_task_id')=? OR "
+                      "json_extract(context,'$.last_objective')=?)", (task_id, task_id, objective)).fetchall()
+    for sid, text in rows:
+        context = json.loads(text)
+        doomed = {k for key, keys in _VOICE_TASK_KEYS.items() if context.get(key) == task_id for k in keys}
+        if objective is not None and context.get("last_objective") == objective:
+            doomed |= set(_VOICE_TASK_KEYS["last_task_id"])
+        context = {k: v for k, v in context.items() if k not in doomed}
+        db.execute("UPDATE voice_sessions SET context=? WHERE id=?", (json.dumps(context, sort_keys=True), sid))
 
 
 def _forget_task_questions(db, task_id, now):

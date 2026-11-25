@@ -285,7 +285,12 @@ class Bridge:
 
     # -- entry points --------------------------------------------------------------------------------------------
     def handle(self, db, principal: Principal, ctx: dict, text: str, pending: dict | None = None) -> Reply:
-        intent = commands.parse(text)
+        from . import config as vconfig
+        try:
+            status_questions = vconfig.get(db).get("status_questions") is True
+        except ValueError:          # a damaged settings row: the grammar as it was before the setting
+            status_questions = False
+        intent = commands.parse(text, status_questions=status_questions)
         if intent.kind in ("confirm", "deny"):
             if not pending:
                 return _say(intent.kind, "There is nothing waiting for confirmation.")

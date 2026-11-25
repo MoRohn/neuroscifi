@@ -21,7 +21,11 @@ parse(text) -> Intent(kind, arg). Kinds:
   history                        "what was I researching", "what did I ask earlier", "show my recent research": the
                                  conversation's and the principal's own research history, never a web search (R2-07)
   self_status                    "what are you doing", "what's your status", "status report": a short reading of the
-                                 self-description record (self_description.short), never a web search (ADR-053)
+                                 self-description record (self_description.short), never a web search (ADR-053).
+                                 A phrase that started research before this command existed ("what are you working
+                                 on?", "what is your status") still does unless parse(status_questions=True): the
+                                 owner's voice setting status_questions, off by default (review1 A15); phrases that
+                                 never started research ("status report", "status") are this command either way
   research                       "research X", "look up X", "investigate X", "find out X" (arg X), or another
                                  utterance of at least MIN_QUESTION_WORDS words that asks for something: it ends
                                  with "?" or starts with a question word or an information request (_ASKS)
@@ -230,9 +234,9 @@ def _frame(canon: str):
     return None
 
 
-def _one(canon: str):
+def _one(canon: str, status=True):
     """A command from one canonical clause by grammar, synonym or frame (never 'confirm' here)."""
-    hit = _grammar(canon)
+    hit = _grammar(canon, status)
     if hit and hit.kind != "confirm":
         return hit
     if canon in _SYNONYM:
@@ -252,8 +256,10 @@ def canonical(norm: str) -> str:
     return " ".join(out)
 
 
-def _grammar(norm: str):
+def _grammar(norm: str, status=True):
     for kind, pattern in _COMPILED:
+        if not status and kind == "self_status":
+            continue
         if pattern.match(norm):
             if kind == "forget_conversation":
                 return Intent("forget", "conversation")
@@ -319,23 +325,34 @@ def _fuzzy(canon: str):
     return None
 
 
-def parse(text: str) -> Intent:
+def parse(text: str, *, status_questions: bool = False) -> Intent:
+    """The intent of a final utterance. status_questions (the owner's voice setting): a status question that used to
+    start research ("what are you working on?") is the self_status command; off, it still starts research."""
+    hit = _parse(text, True)
+    if hit.kind == "self_status" and not status_questions:
+        before = _parse(text, False)             # the grammar without the command (review1 A15)
+        if before.kind == "research":
+            return before
+    return hit
+
+
+def _parse(text: str, status: bool) -> Intent:
     text = _WAKE.sub("", text or "", count=1)
     norm = normalise(text)
     if not norm:
         return Intent("unclear")
-    hit = _grammar(norm)
+    hit = _grammar(norm, status)
     if hit:
         return hit
     canon = canonical(norm)
-    hit = _one(canon) if canon else None         # "confirm" only in the literal grammar's own words
+    hit = _one(canon, status) if canon else None         # "confirm" only in the literal grammar's own words
     if hit:
         return hit
     clauses = _clauses(text) if len(norm.split()) <= CLAUSE_MAX_WORDS else []
     if len(clauses) > 1:   # "hold on, stop reading that out": one clause is a command and no clause asks something
         # never "no" from inside a longer sentence ("No, I can't remember."): a refusal is the whole utterance
-        found = {(i.kind, i.arg) for i in map(_one, clauses) if i and i.kind != "deny"}
-        asks = any(_ASKS.match(c) or _RESEARCH.match(c) for c in clauses if not _one(c))
+        found = {(i.kind, i.arg) for i in (_one(c, status) for c in clauses) if i and i.kind != "deny"}
+        asks = any(_ASKS.match(c) or _RESEARCH.match(c) for c in clauses if not _one(c, status))
         if len(found) == 1 and not asks:
             kind, arg = found.pop()
             return Intent(kind, arg)
