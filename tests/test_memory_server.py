@@ -408,16 +408,38 @@ def test_run_sh_starts_the_server_with_the_key_as_a_read_only_file_and_both_port
     done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "print", "all"], capture_output=True,
                           text=True, env={"PATH": os.environ["PATH"], "HOME": str(tmp_path)}, timeout=60)
     assert done.returncode == 0, done.stderr
-    line = done.stdout
-    assert " -p 127.0.0.1:18441:8000 -p 127.0.0.1:18442:8001 " in line and "0.0.0.0:18" not in line
+    line, ports = done.stdout.splitlines()       # the model server; the forwarder that publishes its ports (§6.7)
+    assert " --network none " in line and " -p " not in line and "--unix-dir /run/nsf-memory " in line
+    assert "/sockets:/run/nsf-memory:rw " in line and "--unix-socket\\ /run/nsf-memory/embed.sock" in line
     assert "/api_key:/run/neuroscifi/api_key:ro" in line and "--key-file /run/neuroscifi/api_key" in line
     assert "--env-file" not in line and "API_KEY=" not in line        # the key is in no environment, no inspect
     assert "server.py:/opt/neuroscifi/server.py:ro" in line and "--entrypoint python3" in line
     for flag in ("--read-only", "--cap-drop ALL", "--security-opt no-new-privileges", "--user ", "--pids-limit 256",
-                 "--memory 8g", ":ro -v", "@sha256:", "--container --host 0.0.0.0"):
+                 "--memory 8g", ":ro -v", "@sha256:", "--device nvidia.com/gpu=all"):
         assert flag in line, flag
     assert f"{NAMES['embed']}:ro" in line and f"{NAMES['rerank']}:ro" in line
-    assert not (folder / "api_key").exists()                          # `print` creates nothing
+    assert " -p 127.0.0.1:18441:8000 -p 127.0.0.1:18442:8001 " in ports and "0.0.0.0:18" not in ports
+    assert "--name neuroscifi-memory-ports --network neuroscifi-memory " in ports
+    assert "/sockets:/run/nsf-memory:ro " in ports and "forward.py:/opt/neuroscifi/forward.py:ro" in ports
+    for absent in ("api_key", "--device", "/models/", "server.py", "--env-file"):     # nothing worth taking
+        assert absent not in ports, absent
+    for flag in ("--read-only", "--cap-drop ALL", "--security-opt no-new-privileges", "--user ", "--memory 256m",
+                 "--container --host 0.0.0.0", "--listen 8000=/run/nsf-memory/embed.sock",
+                 "--listen 8001=/run/nsf-memory/rerank.sock"):
+        assert flag in ports, flag
+    assert not (folder / "api_key").exists() and not (tmp_path / ".cache").exists()    # `print` creates nothing
+    with open(folder / "memory.env", "a") as fh:
+        fh.write("NSF_MEMORY_EGRESS=bridge\n")                       # the way back: one container, as before
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "print", "all"], capture_output=True,
+                          text=True, env={"PATH": os.environ["PATH"], "HOME": str(tmp_path)}, timeout=60)
+    assert done.returncode == 0 and len(done.stdout.splitlines()) == 1
+    assert " -p 127.0.0.1:18441:8000 -p 127.0.0.1:18442:8001 " in done.stdout and "--network none" not in done.stdout
+    assert "--container --host 0.0.0.0 --embed-port 8000 --rerank-port 8001" in done.stdout
+    with open(folder / "memory.env", "a") as fh:
+        fh.write("NSF_MEMORY_EGRESS=open\n")
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "print", "all"], capture_output=True,
+                          text=True, env={"PATH": os.environ["PATH"], "HOME": str(tmp_path)}, timeout=60)
+    assert done.returncode == 1 and "NSF_MEMORY_EGRESS must be none or bridge" in done.stderr
 
 
 # ---- review round: strict requests, bounded connections, turns per model (open-items review F8, F11, L3) ------------
@@ -731,3 +753,366 @@ def test_a_request_is_refused_before_any_forward_pass_when_too_large():
                     lambda ids, group: [0.0] * len(group))
     assert err.value.code == "request_too_large"
     assert [e for e in log if e[0] != "tokenize"] == []
+
+
+# ---- remaining-items round: kept connections hold no slot; no network for the server (ENGINEERING_PLAN §6.7) -------
+
+def _request_threads():
+    return [t for t in threading.enumerate() if t.name == "nsf-memory-request" and t.is_alive()]
+
+
+def _read_one_answer(sock) -> bytes:
+    """One whole response from a raw socket (head and the body its Content-Length announces)."""
+    got = b""
+    while b"\r\n\r\n" not in got:
+        got += sock.recv(65536)
+    head, _, body = got.partition(b"\r\n\r\n")
+    length = int([line.split(b":", 1)[1] for line in head.split(b"\r\n") if line.lower().startswith(b"content-length")][0])
+    while len(body) < length:
+        body += sock.recv(65536)
+    return head + b"\r\n\r\n" + body
+
+
+def test_kept_alive_keyed_connections_hold_no_slot_between_their_requests(running):
+    """§6.7: a client that kept 32 connections alive with the key held every keyed slot, each until the deadline of
+    its next request's head (10 s), and every other keyed call was answered 503. A kept connection now goes back to
+    the door after each answer: no slot, no thread, until the head of its next request is whole."""
+    _, service, ports, _ = running
+    kept = []
+    try:
+        for n in range(server.MAX_CONNECTIONS):
+            conn = http.client.HTTPConnection("127.0.0.1", ports["embed" if n % 2 else "rerank"], timeout=10)
+            conn.request("GET", "/v1/models", headers={"Authorization": f"Bearer {KEY}"})
+            resp = conn.getresponse()
+            resp.read()
+            assert resp.status == 200 and not resp.will_close
+            kept.append(conn)
+        for _ in range(100):
+            if not _request_threads():
+                break
+            threading.Event().wait(0.02)
+        assert _request_threads() == []                                      # no thread between two requests
+        results = [call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] for _ in range(15)]
+        assert results == [200] * 15, results
+        for conn in kept:                                                   # and every kept one still serves
+            conn.request("GET", "/v1/models", headers={"Authorization": f"Bearer {KEY}"})
+            resp = conn.getresponse()
+            resp.read()
+            assert resp.status == 200
+    finally:
+        for conn in kept:
+            conn.close()
+
+
+def test_a_kept_connection_with_half_of_its_next_head_holds_no_slot_and_is_closed_at_the_deadline(running,
+                                                                                                 monkeypatch):
+    import socket
+    _, _, ports, _ = running
+    monkeypatch.setattr(server, "HEAD_TIMEOUT", 0.6)
+    held = []
+    try:
+        for _ in range(server.MAX_CONNECTIONS):
+            sock = socket.create_connection(("127.0.0.1", ports["embed"]), timeout=5)
+            sock.sendall(b"GET /v1/models HTTP/1.1\r\nHost: x\r\n" + AUTH + b"\r\n")
+            assert status_of(_read_one_answer(sock)) == 200
+            sock.sendall(b"GET /v1/models HTTP/1.1\r\nHo")                 # half of the next head, never the rest
+            held.append(sock)
+        assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]})[0] == 200
+        threading.Event().wait(1.5)
+        for sock in held:                                                    # closed by the door's deadline
+            sock.settimeout(2)
+            assert sock.recv(65536) == b""
+    finally:
+        for sock in held:
+            sock.close()
+
+
+def test_pipelined_requests_on_one_connection_are_all_answered_in_order(running):
+    """What a client sent beyond one request is handed to the door with the connection, not lost in a buffer."""
+    models, _, ports, _ = running
+    body = b'{"input":["abc"]}'
+    post = (b"POST /v1/embeddings HTTP/1.1\r\nHost: x\r\n" + AUTH + b"Content-Type: application/json\r\n"
+            b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+    get = b"GET /v1/models HTTP/1.1\r\nHost: x\r\n" + AUTH + b"\r\n"
+    last = b"GET /v1/models HTTP/1.1\r\nHost: x\r\n" + AUTH + b"Connection: close\r\n\r\n"
+    answer, closed = raw_exchange(ports["embed"], post + get + post + last, wait=5)
+    statuses = [int(part.split(b" ", 1)[0]) for part in answer.split(b"HTTP/1.1 ")[1:]]
+    assert statuses == [200, 200, 200, 200] and closed
+    assert answer.count(b'"embedding":[') == 2 and answer.count(b'"max_model_len"') == 2
+    assert models.seen == [("embed", ["abc"]), ("embed", ["abc"])]
+
+
+def _unix_request(path, data: bytes, wait=5.0) -> bytes:
+    import socket
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(wait)
+    try:
+        sock.connect(str(path))
+        sock.sendall(data)
+        got = b""
+        while True:
+            try:
+                chunk = sock.recv(65536)
+            except socket.timeout:
+                return got
+            if not chunk:
+                return got
+            got += chunk
+    finally:
+        sock.close()
+
+
+def _load_forward():
+    spec = importlib.util.spec_from_file_location("nsf_memory_forward", ROOT / "deploy" / "memory" / "forward.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+forward = _load_forward()
+
+
+@pytest.fixture
+def unix_running(tmp_path):
+    """The server on two Unix sockets (as run.sh starts it in a container without a network), and forward.py
+    joining two free loopback ports to them -> (models, service, {"embed": port, "rerank": port}, folder,
+    forwarder)."""
+    import asyncio
+    folder = tmp_path / "sockets"
+    folder.mkdir(mode=0o700)
+    models, lines = FakeModels(), []
+    service = server.Service(models, KEY, NAMES, max_len=models.max_len, log=lines.append)
+    stop, ready, box = threading.Event(), threading.Event(), {}
+
+    serving = threading.Thread(target=server.serve, args=(service, None, 0, 0, stop),
+                               kwargs={"unix_dir": str(folder)}, daemon=True)
+    serving.start()
+    for _ in range(500):
+        if (folder / "embed.sock").exists() and (folder / "rerank.sock").exists():
+            break
+        threading.Event().wait(0.01)
+    fwd = forward.Forwarder({0: str(folder / "embed.sock")}, "127.0.0.1")
+    fwd2 = forward.Forwarder({0: str(folder / "rerank.sock")}, "127.0.0.1")
+    loop = asyncio.new_event_loop()
+
+    def run_loop():
+        asyncio.set_event_loop(loop)
+        box["ports"] = {"embed": loop.run_until_complete(fwd.start())[0],
+                        "rerank": loop.run_until_complete(fwd2.start())[0]}
+        ready.set()
+        loop.run_forever()
+
+    looping = threading.Thread(target=run_loop, daemon=True)
+    looping.start()
+    assert ready.wait(10)
+    try:
+        yield models, service, box["ports"], folder, fwd
+    finally:
+        models.gate.set()
+        for one in (fwd, fwd2):
+            asyncio.run_coroutine_threadsafe(one.close(), loop).result(10)
+        loop.call_soon_threadsafe(loop.stop)
+        looping.join(10)
+        loop.close()
+        stop.set()
+        serving.join(10)
+
+
+def test_the_server_on_unix_sockets_answers_and_keeps_them_the_owners_only(unix_running):
+    import stat
+    _, _, _, folder, _ = unix_running
+    for role in ("embed", "rerank"):
+        mode = (folder / f"{role}.sock").lstat().st_mode
+        assert stat.S_ISSOCK(mode) and stat.S_IMODE(mode) == 0o600
+    answer = _unix_request(folder / "embed.sock", b"GET /v1/models HTTP/1.1\r\nHost: x\r\n" + AUTH +
+                           b"Connection: close\r\n\r\n")
+    assert status_of(answer) == 200 and b"qwen3-embedding-0.6b" in answer
+    assert status_of(_unix_request(folder / "rerank.sock", b"GET /v1/models HTTP/1.1\r\nHost: x\r\n\r\n")) == 401
+
+
+def test_a_stale_socket_is_replaced_and_anything_else_at_its_path_is_refused(tmp_path):
+    import socket
+    service = server.Service(FakeModels(), KEY, NAMES, max_len=16, log=lambda m: None)
+    stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    stale.bind(str(tmp_path / "embed.sock"))
+    stale.close()                                         # left behind, as by a server that was killed
+    one = server.UnixListener(str(tmp_path / "embed.sock"), service, "embed")
+    one.server_close()
+    assert not (tmp_path / "embed.sock").exists()         # removed when the server stops
+    (tmp_path / "embed.sock").write_text("not a socket")
+    with pytest.raises(SystemExit):
+        server.UnixListener(str(tmp_path / "embed.sock"), service, "embed")
+    assert (tmp_path / "embed.sock").read_text() == "not a socket"
+    (tmp_path / "target").write_text("x")
+    (tmp_path / "rerank.sock").symlink_to(tmp_path / "target")
+    with pytest.raises(SystemExit):
+        server.UnixListener(str(tmp_path / "rerank.sock"), service, "rerank")
+    assert (tmp_path / "target").read_text() == "x" and (tmp_path / "rerank.sock").is_symlink()
+    service.close()
+
+
+def test_the_gateway_works_through_the_forwarder_as_it_does_on_the_ports(unix_running, tmp_path):
+    _, _, ports, _, fwd = unix_running
+    embedder = gateway(ports["embed"], "embed", tmp_path)
+    vectors = embedder.embed(["one", "three"], purpose="t")
+    assert vectors == [[3.0, 1.0, 0.0], [5.0, 1.0, 0.0]]
+    reranker = gateway(ports["rerank"], "rerank", tmp_path)
+    assert len(reranker.rerank("q", ["a", "bb"], purpose="t")) == 2
+    assert call(ports["embed"], "GET", "/health", key=None)[0] == 200
+    assert call(ports["embed"], "POST", "/v1/embeddings", {"input": ["a"]}, key="nsfm-wrong-key-0123456789")[0] == 401
+    for _ in range(100):                                  # every joined connection is let go
+        if fwd.open == 0:
+            break
+        threading.Event().wait(0.02)
+    assert fwd.open == 0
+
+
+def test_through_the_forwarder_a_refused_client_reads_its_503_and_a_kept_one_keeps_its_connection(unix_running):
+    """The server's half close (503, then reading the rest of a large body) and keep-alive pass through."""
+    _, service, ports, _, fwd = unix_running
+    for _ in range(server.MAX_CONNECTIONS - server.KEYLESS_SLOTS):
+        assert service.keyed.acquire(timeout=5)
+    try:
+        for size in (10, 200_000, server.MAX_BODY - 64):
+            body = b'{"input":["' + b"a" * size + b'"]}'
+            status, answer = call(ports["embed"], "POST", "/v1/embeddings", raw=body)
+            assert status == 503 and answer["error"]["code"] == "overloaded", size
+    finally:
+        for _ in range(server.MAX_CONNECTIONS - server.KEYLESS_SLOTS):
+            service.keyed.release()
+    conn = http.client.HTTPConnection("127.0.0.1", ports["embed"], timeout=10)
+    try:
+        for _ in range(3):
+            conn.request("GET", "/v1/models", headers={"Authorization": f"Bearer {KEY}"})
+            resp = conn.getresponse()
+            resp.read()
+            assert resp.status == 200 and not resp.will_close
+    finally:
+        conn.close()
+    for _ in range(200):
+        if fwd.open == 0:
+            break
+        threading.Event().wait(0.05)
+    assert fwd.open == 0
+
+
+def test_the_forwarder_ends_a_connection_when_the_server_is_down_and_beyond_its_cap(tmp_path):
+    import asyncio
+    import socket
+
+    async def nobody_behind():
+        fwd = forward.Forwarder({0: str(tmp_path / "missing.sock")}, "127.0.0.1")
+        port = (await fwd.start())[0]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n")
+        try:
+            got = await asyncio.wait_for(reader.read(), 5)         # the connection just ends (or is reset:
+        except ConnectionResetError:                               # what was sent is never read)
+            got = b""
+        writer.close()
+        await fwd.close()
+        return got, fwd.open
+
+    assert asyncio.run(nobody_behind()) == (b"", 0)
+
+    async def capped():
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        listener.bind(str(tmp_path / "slow.sock"))
+        listener.listen(8)
+        fwd = forward.Forwarder({0: str(tmp_path / "slow.sock")}, "127.0.0.1", max_connections=1)
+        port = (await fwd.start())[0]
+        first = await asyncio.open_connection("127.0.0.1", port)
+        await asyncio.sleep(0.2)
+        second_r, second_w = await asyncio.open_connection("127.0.0.1", port)
+        try:
+            ended = await asyncio.wait_for(second_r.read(), 5)
+        except ConnectionResetError:
+            ended = b""
+        open_then = fwd.open
+        first[1].close()
+        second_w.close()
+        listener.close()                       # its waiting connection ends: the forwarder lets the first one go
+        await fwd.close()
+        return ended, open_then
+
+    assert asyncio.run(capped()) == (b"", 1)
+
+
+def test_the_forwarder_listens_on_loopback_only_outside_a_container_and_checks_its_routes():
+    assert forward.check_bind("127.0.0.1", False) == "127.0.0.1"
+    with pytest.raises(SystemExit):
+        forward.check_bind("0.0.0.0", False)
+    assert forward.check_bind("0.0.0.0", True) == "0.0.0.0"
+    for bad in (["8000"], ["8000=relative.sock"], ["0=/x.sock"], ["70000=/x.sock"], []):
+        with pytest.raises(SystemExit):
+            forward.parse_routes(bad)
+    assert forward.parse_routes(["8000=/run/a.sock", "8001=/run/b.sock"]) == {8000: "/run/a.sock",
+                                                                               8001: "/run/b.sock"}
+
+
+def test_clients_the_server_is_done_with_never_hold_the_forwarders_room(unix_running):
+    """A client that asks without the key, is answered and closed by the server, and then neither reads nor closes
+    held a joined connection for seconds; enough of them filled the forwarder, and it closed every new connection,
+    keyed calls included (the server reached directly closes them and holds nothing). Such a connection is now only
+    drained, and a newcomer closes the oldest one drained when the forwarder is full."""
+    import asyncio
+    _, _, _, folder, _ = unix_running
+
+    async def scenario():
+        fwd = forward.Forwarder({0: str(folder / "embed.sock")}, "127.0.0.1", max_connections=8)
+        port = (await fwd.start())[0]
+        idle = []
+        for _ in range(8):
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.write(b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n")      # and never reads, never closes
+            idle.append(writer)
+        for _ in range(250):
+            if fwd.draining == 8:
+                break
+            await asyncio.sleep(0.02)
+        draining, full = fwd.draining, fwd.open
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"GET /v1/models HTTP/1.1\r\nHost: x\r\n" + AUTH + b"Connection: close\r\n\r\n")
+        try:
+            answer = await asyncio.wait_for(reader.read(), 5)
+        except ConnectionResetError:
+            answer = b""
+        writer.close()
+        for one in idle:
+            one.close()
+        await fwd.close()
+        return draining, full, answer
+
+    draining, full, answer = asyncio.run(scenario())
+    assert draining == 8 and full == 8
+    assert status_of(answer) == 200 and b"qwen3-embedding-0.6b" in answer
+
+
+def test_a_refused_clients_rest_is_drained_by_the_forwarder_within_its_bounds(unix_running, monkeypatch):
+    """After the server's 503 the forwarder no longer joins the connection: it reads and discards what the client
+    still sends for at most DRAIN_SECONDS, then closes, whatever the client does."""
+    import asyncio
+    _, service, _, folder, _ = unix_running
+    monkeypatch.setattr(forward, "DRAIN_SECONDS", 0.5)
+    for _ in range(server.MAX_CONNECTIONS - server.KEYLESS_SLOTS):
+        assert service.keyed.acquire(timeout=5)
+
+    async def scenario():
+        fwd = forward.Forwarder({0: str(folder / "embed.sock")}, "127.0.0.1")
+        port = (await fwd.start())[0]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        writer.write(b"POST /v1/embeddings HTTP/1.1\r\nHost: x\r\n" + AUTH + b"Content-Length: 1000000\r\n\r\n")
+        answer = await asyncio.wait_for(reader.readuntil(b"}}"), 5)       # the 503, while the body never comes
+        started = asyncio.get_running_loop().time()
+        ended = await asyncio.wait_for(reader.read(), 5)                    # then the forwarder closes
+        took = asyncio.get_running_loop().time() - started
+        writer.close()
+        await fwd.close()
+        return answer, ended, took, fwd.open
+
+    try:
+        answer, ended, took, still = asyncio.run(scenario())
+    finally:
+        for _ in range(server.MAX_CONNECTIONS - server.KEYLESS_SLOTS):
+            service.keyed.release()
+    assert status_of(answer) == 503 and ended == b"" and took < 3 and still == 0

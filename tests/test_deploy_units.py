@@ -162,9 +162,10 @@ def _memory_wait(tmp_path, warm_exit=0, health_exit=0, status="running", restart
     (each publishes its port 8000), or the one container of the single server (8000 embeddings, 8001 reranker)."""
     import os
     import subprocess
+    # single: the model server has no network; its forwarder, neuroscifi-memory-ports, publishes both ports
     published = ('case "$*" in *embed*) echo 127.0.0.1:18441 ;; *) echo 127.0.0.1:18442 ;; esac' if server == "vllm"
-                 else 'case "$*" in "port neuroscifi-memory 8000/tcp") echo 127.0.0.1:18441 ;; '
-                      '"port neuroscifi-memory 8001/tcp") echo 127.0.0.1:18442 ;; esac')
+                 else 'case "$*" in "port neuroscifi-memory-ports 8000/tcp") echo 127.0.0.1:18441 ;; '
+                      '"port neuroscifi-memory-ports 8001/tcp") echo 127.0.0.1:18442 ;; esac')
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(parents=True)
     (tmp_path / "restarts").write_text("\n".join(restarts) + "\n")
@@ -333,7 +334,7 @@ def test_memory_status_prints_one_line_per_service_running_or_not(tmp_path):
     env = _memory_env(tmp_path, "single", {"PATH": f"{bin_dir}:{os.environ['PATH']}"})      # one container, one line
     done = subprocess.run(["bash", script, "status"], capture_output=True, text=True, env=env, timeout=60)
     assert done.returncode == 0 and done.stdout.splitlines() == [     # and the other way's leftover, flagged (F9)
-        "neuroscifi-memory: not running",
+        "neuroscifi-memory: not running", "neuroscifi-memory-ports: not running",
         "/neuroscifi-memory-embed running health=healthy started=T (left by NSF_MEMORY_SERVER=vllm: it holds the "
         "same ports; run.sh stop removes it)"]
 
@@ -360,7 +361,7 @@ def _logging_docker(tmp_path, existing=(), icc="false"):
 
 
 @pytest.mark.parametrize("server,leftovers", [("single", ["neuroscifi-memory-embed", "neuroscifi-memory-rerank"]),
-                                              ("vllm", ["neuroscifi-memory"])])
+                                              ("vllm", ["neuroscifi-memory", "neuroscifi-memory-ports"])])
 def test_stop_also_removes_what_the_other_way_of_serving_left_running(tmp_path, server, leftovers):
     """F9: after a switch, the other way's containers kept both ports (restart unless-stopped) and `stop` did not
     see them."""
@@ -396,15 +397,20 @@ def test_the_memory_containers_run_on_a_network_of_their_own(tmp_path, server):
     assert create == ["network create --driver bridge -o com.docker.network.bridge.enable_icc=false "
                       "--label org.neuroscifi.purpose=memory-models neuroscifi-memory"]
     runs = [line for line in log if line.startswith("run ")]
-    assert runs and all(" --network neuroscifi-memory " in line for line in runs)
-    assert all("127.0.0.1:1844" in line and "0.0.0.0:" not in line for line in runs)
+    # single: the container of the models is on no network at all; only its forwarder is on the bridge (§6.7)
+    publishing = [line for line in runs if "--network none" not in line]
+    assert len(publishing) == (1 if server == "single" else 2) and len(runs) == 2
+    assert all(" --network neuroscifi-memory " in line for line in publishing)
+    assert all("127.0.0.1:1844" in line and "0.0.0.0:" not in line for line in publishing)
+    assert all("-p " not in line for line in runs if line not in publishing)
     with open(tmp_path / ".config" / "neuroscifi" / "memory" / "memory.env", "a") as fh:
         fh.write("NSF_MEMORY_NETWORK=\n")                                   # the way back: Docker's default bridge
     (tmp_path / "docker.log").unlink()
     done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "start", "all"], capture_output=True,
                           text=True, env=env, timeout=60)
     log = (tmp_path / "docker.log").read_text()
-    assert done.returncode == 0 and "network create" not in log and "--network" not in log
+    assert done.returncode == 0 and "network create" not in log
+    assert log.replace("--network none ", "").count("--network") == 0
     with open(tmp_path / ".config" / "neuroscifi" / "memory" / "memory.env", "a") as fh:
         fh.write("NSF_MEMORY_NETWORK=host\n")                               # a name, but never host or none:
     done = subprocess.run(["bash", str(ROOT / "deploy" / "memory" / "run.sh"), "start", "all"], capture_output=True,

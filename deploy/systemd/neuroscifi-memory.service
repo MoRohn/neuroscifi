@@ -1,6 +1,8 @@
 # NeuroSciFi memory search: the embedding model and the reranker in one server process (deploy/memory/server.py,
 # NSF_MEMORY_SERVER=single in deploy/memory/memory.env, the default): one Docker container from the digest-pinned
-# image of the answer model, both ports published on loopback only (127.0.0.1:18441 embeddings, :18442 reranker),
+# image of the answer model, without a network (NSF_MEMORY_EGRESS=none: a second container, neuroscifi-memory-ports,
+# deploy/memory/forward.py with no model and no key, publishes its two Unix sockets as ports and is started and
+# removed with it), both ports published on loopback only (127.0.0.1:18441 embeddings, :18442 reranker),
 # read-only weights, read-only root filesystem, no capabilities, generated API key outside git
 # (~/.config/neuroscifi/memory/api_key, 0600, mounted read-only). Optional: memory is ranked by its words without
 # it (docs/web-cortex/MEMORY_INTEGRATION.md §5.1). With NSF_MEMORY_SERVER=vllm use neuroscifi-memory-embed.service
