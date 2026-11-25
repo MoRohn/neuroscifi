@@ -60,7 +60,8 @@ def counterfactual():
 
 def others(full_retention):
     adversarial = cognition.run(["adversarial"], mechanism="imagination")["families"]["adversarial"]
-    retention = cognition.run(["retention"], mechanism="imagination", quick=not full_retention)
+    retention = cognition.run(["retention"], mechanism="imagination", quick=not full_retention,
+                              baseline_output=json.loads(cognition.BASELINE.read_text(encoding="utf-8")))
     return {"adversarial": {k: adversarial["result"][k] for k in ("passed", "scored", "failed")} |
             {"cases": [{k: c[k] for k in ("id", "pass", "observed")} for c in adversarial["result"]["cases"]
                        if c["pass"] is not None]},

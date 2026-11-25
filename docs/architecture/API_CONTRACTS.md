@@ -766,3 +766,46 @@ Additive fields, absent while zero unless noted: forget results `effects["imagin
 | `nsf imagined purge --id ID \| --kind K \| --all` | `imagined.purge`, then the rewrite of the archives it made stale (as `nsf forget`) |
 | `nsf imagined kinds` | `{"kinds", "never_evidence", "records": provenance.mapping()}` |
 | `nsf config --max-imagined-rows N --imagined-lifetime-days D` | `store.set_config` (N 0–100,000; D one minute to 365 days) |
+
+## 12. Imagination (ADR-052)
+
+Every answer carries `"label": "imagined, not evidence"`, `"kind": "simulation"`, `"mechanism"`,
+`"mechanism_version"`, `"assumptions": [str]` and `"uncertainty": str`. Nothing writes to the individual except
+`imagine.keep` and the scenario records, both into the imagined store (§11). A switch that is off raises
+`imagine.Refused` (an `InstanceError`, HTTP 409, CLI exit 2), as do a copy above `imagine_max_bytes`, work past
+`imagine_max_seconds`, a horizon beyond `forecast.MAX_HORIZON` (12), a horizon above 1 when the carry-over's spectral
+radius is >= 1, and a push the recorded trajectory does not identify.
+
+```python
+imagine.sandbox(db, *, max_bytes=None, max_seconds=None)    # context manager -> Box(db=<in-memory copy>, cost())
+imagine.what_if(db, epoch, *, flip=[id | "#SEQ"], drop=[...], add=[{"factor": "camera:R"|"partner:P"|"reference:R",
+                "reading": 0|1|"agree"|"disagree", "count": n}], now=None, detect=True)
+  -> {"before", "after": {"mechanism": {"p_inverted", "identifiable"}, "camera:R"|"partner:P": {..., "n"},
+      "change"?}, "difference": {factor: after - before}, "changes", "question", "exact": True, "cost", ...}
+imagine.question_values(db, epoch, *, now=None) -> {"before", "candidates": [{"factor", "p_reading": {0, 1},
+                "after": {0, 1}, "expected_change": {factor}, "information_bits": {factor}, "information_bits_total"}]}
+imagine.retrospect(db, epoch, factor="mechanism", *, limit=200, top=10) -> {"belief_now", "tried", "most",
+                "ranked": [{"what": "readings", "factor", "reading", "influence", "count", "readings"} |
+                           {"what": "owner answer", "answer", "influence"}]}       # influence = now - without it
+imagine.keep(db, answer, now, *, lifetime=None) -> "imagined:<32 hex>"   # derived from the epoch and named readings
+forecast.forecast(db, context, state, horizon, *, population=None, action={"population": i, "push": u} | None)
+  -> {"mean", "sd", "skill", "horizon", "revision_id", "limits": {"max_horizon", "spectral_radius"},
+      "action_support": {"supported", "reasons"} | None, ...}               # read-only
+forecast.model(db, context) ; forecast.action_support(model, population) -> (bool, [reason])
+causal.answer(query) -> {"rung", "value" | None, "sd", "identified", "why", ...}   # ValueError for a malformed query
+scenarios.futures(db, prediction_id) ; scenarios.imagine(db, prediction_id, now) -> record id
+scenarios.settle(db, now) -> [{"record_id", "prediction_id", "outcome", "brier_3way"}] ; scenarios.errors(db)
+scenarios.tick(db, now) -> None (off) | {"held"} | {"settled", "imagined"} | {"skipped"}
+```
+
+`scheduler.tick()` gains `"scenarios"` only while `imagine_scenarios` is on.
+
+| CLI | Result |
+|---|---|
+| `nsf imagine what-if EPOCH [--flip ID] [--drop ID] [--add FACTOR=READING[xN]] [--keep]` | `imagine.what_if` (+ `kept_as`) |
+| `nsf imagine questions EPOCH [--keep]` | `imagine.question_values` |
+| `nsf imagine retrospect EPOCH [FACTOR] [--limit N] [--top N] [--keep]` | `imagine.retrospect` |
+| `nsf imagine forecast CONTEXT --state JSON [--horizon K] [--population I] [--push I U]` | `forecast.forecast` |
+| `nsf imagine scm FILE.json` | `causal.answer` |
+| `nsf imagine scenarios [--prediction ID [--record]]` | `scenarios.errors` after `settle`, or one prediction's futures |
+| `nsf config --[no-]imagine-what-if --[no-]imagine-forecast --[no-]imagine-retrospect --[no-]imagine-scenarios --imagine-max-seconds S --imagine-max-mib M` | `store.set_config` |

@@ -2235,3 +2235,136 @@ each component ablated; constants chosen on development, held-out run once; the 
 - The worker writes one small file in `<db>.resources/`; lane W surfaces the record in the console.
 - Tests: `tests/test_internal_state.py`, `tests/instance/test_information.py`,
   `tests/webcortex/test_curiosity_progress.py`, `tests/acceptance/test_cognition_instinct.py`.
+
+# ADR-052 (draft) Imagination is computation whose answers can be checked: exact what-ifs on a sandbox, graph forecasts, a causal engine, and scenario records kept apart. R
+
+## Context
+
+Cognitive Genesis §5 asks for imagination that is "an active cognitive mechanism, not merely text generation":
+counterfactuals with explicit assumptions and uncertainty (§5.2), prospective simulation with bounded horizons (§5.3),
+an isolated sandbox (§5.5) and an imagine → predict → observe → compare loop (§5.6). The core audit found the substrate
+there and unused: the belief model's exact inference can score hypothetical readings, a promoted graph can be
+iterated, and the acceptance code already copies an individual into memory; the graph has no action input (audit-core
+Q5). The research review graded deterministic engines on declared models as established, and model-written scenario
+narration as preliminary (research.md 2.2, 2.3, 2.6). The cognitive benchmark measured today's counterfactual coverage
+at 0.107 (development) and 0.071 (held-out): one-step graph predictions only. ADR-049's imagined store exists for
+whatever such a mechanism keeps.
+
+## Decision
+
+1. **Sandbox (`instance/imagine.py: sandbox`).** A private in-memory copy of the individual (sqlite backup; the live
+   connection is only read). It is an in-memory database by construction and checked (`store.database_path(copy) is
+   None`), so nothing done to it reaches the file. Bounded: a file above `imagine_max_bytes` is not copied, and work on
+   the copy is interrupted after `imagine_max_seconds`. Tests: after writes into the sandbox the live file's bytes
+   (file and WAL), state version and journal are unchanged; a mutation that hands the live connection to the sandbox
+   fails both isolation tests.
+2. **Exact what-ifs on the beliefs (`what_if`, `nsf imagine what-if`).** Flip, drop or add readings (an evidence id,
+   `#SEQ` for a consolidated reading, or `FACTOR=READING[xN]`, where `agree`/`disagree` means the factor's most
+   probable next reading) on the copy, and read the belief model's own exact posterior. The answer carries the model's
+   assumptions, the stated changes, before and after, and the uncertainty "exact under the model". Tests check
+   equality with a hand-made copy and with actually observing the added readings.
+3. **Comparing next readings (`question_values`, `nsf imagine questions`).** For each reading the individual could take
+   next: the exact predictive probability of each outcome (a ratio of marginal likelihoods), the posterior after each,
+   the expected change and the mutual information with each hidden bit. It decides nothing; it is the function an
+   information-gain score may read (lane I). No executive rule changed.
+4. **Retrospection (`retrospect`, `nsf imagine retrospect`).** Exact leave-one-out on the copy over the latest readings
+   (journal and consolidated) and the owner's answers that shape the beliefs (confirmed and rejected changes, the link
+   to an earlier setup); interchangeable readings are grouped.
+5. **Forecasts from an active graph (`instance/forecast.py`, `nsf imagine forecast`).** How a state carries over is
+   learned from the graph's own training trajectory (x' = c x + g y + input, per population), giving k-step means
+   A M^(k-1) x with M = diag(c) + diag(g) A, and variances propagated from the residual covariance plus the graph's
+   validation error. Stated limit: 12 steps, and nothing beyond one step when the carry-over grows (spectral radius
+   >= 1: the error has no bound). Parameters are taken as estimated (the interval covers process noise only).
+6. **Consequences of an action, only where the data identifies them.** The belief model's recorded actions do not:
+   an action enters only as the declared inversion of a reading (bit XOR action), and nothing recorded says what an
+   action did to the world, so such questions are declined. On a graph, a push is answered only when the training
+   trajectory holds inputs that move a population by itself (at least 5 % of its next-state variance), those inputs do
+   not follow the state or themselves (|correlation| below 4/sqrt(T)), and the carry-over holds on the validation
+   trajectory (error at most 1.5 times the training one); otherwise it is declined with the reason. Tested on the
+   benchmark's worlds (answered, within the stated spread) and on worlds without inputs and with feedback (declined).
+7. **A linear-Gaussian causal engine (`neuroscifi/causal.py`, `nsf imagine scm FILE`).** Rungs 1-3 in closed form on a
+   declared model (conditioning; the mutilated model; abduction, action and prediction, with partial observation). A
+   question with only a graph and an observational covariance is answered by back-door adjustment, and declined when a
+   hidden common cause touches the cause. Front-door and other identification formulas are not implemented, so a
+   decline means "not identified by this engine" (see the benchmark note).
+8. **Scenario records for predictions (`webcortex/scenarios.py`).** For each open prediction one deterministic record of
+   kind `simulation` in the imagined store, derived from the prediction and its hypothesis or knowledge item: three
+   futures (decisive and right `d q`, decisive and wrong `d (1-q)`, nothing decisive `1-d`), q the forecast as the
+   ADR-046 mapping reads it, d the Laplace share of earlier settled predictions of the kind that were decisive; the
+   assumptions are written with it. When the prediction settles the outcome slot is filled once (the prediction named
+   as the evidence) with the three-way Brier and log score and the plain forecast's Brier; `errors()` reports them per
+   mechanism on read, and the next template's d already includes the settled prediction. The timer runs it
+   (`scheduler.tick`, activity `tick.scenarios`, held by quiet). Settlement is pulled from the stored outcomes, so
+   `evolution.py` is not touched and a failure here can never roll back a settlement. No model writes scenarios: a
+   model-written pilot was not built, since no offline ablation can show a gain (research.md: preliminary). No blending
+   generator.
+9. **The adversarial case about `provenance='simulated'` was mislabelled, and is corrected.** Evidence: the label is
+   written by the acceptance harness and the cognitive benchmark into individuals made for the test (every reading of
+   the case's individual carries it, the reference readings that pin the mechanism too), by `datasets.simulate`, and
+   by the owner's explicit `nsf observe --simulated` / `epoch stream --simulated`. ADR-014 and ADR-049
+   (`provenance.mapping`) define it as an observation of a simulated test environment, and the acceptance scenarios
+   learn from exactly such readings: excluding them from beliefs would break that suite and contradict both ADRs. What
+   the directive forbids is the system's own imagined content counting as an observation, and that cannot happen:
+   imagined readings exist only on a sandbox copy, and the evidence tables refuse imagined ids (ADR-049). The case is
+   now `imagined_reading_moves_no_belief`: a what-if of the same four readings must leave the live belief, the journal
+   and the state version unchanged (the what-if says 0.994 on the copy; the live belief stays 0.500); the old
+   observation is still reported (four observed environment readings move it to 0.994). Mixing simulated-environment
+   and real readings in one epoch is not refused: no product path does it unasked, and consolidated readings do not
+   keep their provenance, so an epoch-level rule needs a schema change. It is an open question for the owner. Existing
+   individuals see no change.
+
+## Settings (owner's, `nsf config`; carried into a restored copy)
+
+| Setting | Default | What it does |
+|---|---|---|
+| `imagine_what_if` | on | `what_if` and `question_values` (read-only; stored only with `--keep`) |
+| `imagine_forecast` | on | graph forecasts and pushes (read-only) |
+| `imagine_retrospect` | on | leave-one-out retrospection (read-only) |
+| `imagine_scenarios` | off | scenario records for predictions, written to the imagined store, compared once settled |
+| `imagine_max_seconds` | 10 | the longest a question may run on its copy (0.1 to 600) |
+| `imagine_max_bytes` | 512 MiB | the largest file a sandbox may copy (`--imagine-max-mib`) |
+
+A damaged switch reads as off and a damaged bound as its default (`setting_problems` says so). The three read-only
+switches are on: the benchmark shows the gain below, and they are reached only from `nsf imagine` and the library, so
+nothing existing changes. The scenario records write, and have no measurement on a real individual (no individual has
+settled predictions yet), so they stay off.
+
+## Evidence (`docs/quality/evidence/genesis_imagination.json`, `scripts/genesis_imagination.py`)
+
+Counterfactual family, each split's three seeds, mean (baseline rerun equals the recorded baseline):
+
+| | coverage dev | coverage held-out | rel. error dev | rel. error held-out |
+|---|---|---|---|---|
+| baseline | 0.107 | 0.071 | 0.045 | 0.045 |
+| imagination | 1.000 | 1.000 | 0.011 | 0.010 |
+| without the causal engine | 0.429 | 0.429 | 0.026 | 0.024 |
+| without the what-if | 0.893 | 0.893 | 0.012 | 0.011 |
+| without forecasts (and pushes) | 0.786 | 0.750 | 0.006 | 0.004 |
+| without pushes | 0.893 | 0.893 | 0.008 | 0.006 |
+
+Interval coverage (within 2 stated sd) 1.0 and correct abstention on the confounded questions 1.0 in every row.
+Adversarial 13 of 13 with the corrected case (the recorded 12 of 13 differs by the relabelled expectation, not by a
+mechanism). Retention (full, against the recorded baseline): every scenario passes, every metric retained. Cost: a what-if 5 ms at 1,000 readings and 24 ms at 50,000 (the copy is
+the whole file, 8 MiB there); retrospection over 200 readings 0.8 s at 50,000; a 5-step forecast on 24 populations
+2 ms. No model call, no network.
+
+## Benchmark note
+
+The family's "confounded" structures (hidden U → X0 and U → Y around the chain X0 → X1 → … → Y) are identifiable by the
+front-door criterion through X1, so "decline" is right only for an engine without front-door adjustment, as this one
+is. The frozen split is not changed. The causal engine's share of the coverage is exact arithmetic on declared models
+and says nothing about real-world causal questions; the core mechanisms' share is in the what-if, forecast and push
+rows. Interval coverage is a weak test here: the stated sd includes each population's own noise while the truth is
+the conditional mean.
+
+## Consequences
+
+- New owner commands `nsf imagine what-if | questions | retrospect | forecast | scm | scenarios`; every answer is
+  labelled "imagined, not evidence". `--keep` stores an answer in the imagined store derived from the epoch and the
+  readings it names, so forgetting those readings removes it.
+- No schema change, no migration, no new dependency, listener or daemon. `background.ACTIVITIES` gains
+  `tick.scenarios` (cognition: held by quiet), and the tick timer's unit lists it.
+- The cognitive benchmark registers the mechanism `imagination` (`acceptance/cognition/imagination.py`, in
+  `PLUGINS`) for the counterfactual, retention and adversarial families; the adversarial case is renamed as above.
+- Not done: model-written scenarios, conceptual blending, front-door identification, actions on the belief model,
+  parameter uncertainty in forecast intervals, a refusal of mixed simulated and real readings (owner question).

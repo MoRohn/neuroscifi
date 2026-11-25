@@ -162,7 +162,8 @@ longer causal chains, other staged states). Scored only with `--final`; every fi
 
 ### 7. Adversarial cases (`adversarial.py`)
 Directive §12 items that can be staged offline today, each with an expectation written before it was run: model text
-offered as knowledge, a reading labelled simulated, an unproductive curiosity loop, owner versus autonomous work,
+offered as knowledge, an imagined reading (a what-if; until ADR-052 §9 this case expected a reading labelled
+`provenance='simulated'`, an observation of a simulated test environment, to move nothing), an unproductive curiosity loop, owner versus autonomous work,
 critical memory pressure, a full disk, a spent budget, the owner's stop, acting on a suspected change, syndicated
 misinformation, an autonomous request to adapt the model, a lost worker, a constant forecast gaming ECE. Items that
 cannot be staged today are listed with the reason or the family that measures them.
@@ -201,7 +202,7 @@ selective and retention are deterministic single runs). Full numbers, per world,
 | | claim probability: Brier, reliability, resolution (n) | 0.095, 0.095, 0.250 (8) | 0.122, 0.122, 0.240 (10) | |
 | | claim probability: ECE, 10 bins (lower) | 0.304 | 0.341 | |
 | retention | scenarios pass; offline metrics | 4 / 4; recorded as the reference values | 4 / 4 | |
-| adversarial | cases passing | 12 of 13 | 12 of 13 | failing: `simulated_reading_moves_no_belief` |
+| adversarial | cases passing | 12 of 13 | 12 of 13 | failing: `simulated_reading_moves_no_belief` (relabelled by ADR-052 §9: now `imagined_reading_moves_no_belief`, passing) |
 | withheld (`--final`, once) | anticipation breach ticks; web noise share; counterfactual coverage; self coverage | 137.3 (6.7); 0.857; 0.143; 0.80 | | ledger: one entry |
 
 Cost (wall seconds on this host, development run): anticipation 0.05, information value 0.45, counterfactual 0.11,
@@ -253,3 +254,12 @@ Measured facts about the unchanged system, each with the headroom a later lane c
 
 Not claimed: anything about the real host's dynamics, the open web, or the answer model; and no claim that any of
 these numbers measures "intelligence". They are task scores on synthetic worlds with known answers.
+
+## Registered mechanisms
+
+- **`imagination` (lane M, ADR-052; counterfactual, retention, adversarial).** Components `scm`, `what_if`,
+  `forecast`, `action`. Counterfactual coverage 1.0 on both splits (baseline 0.107 / 0.071), mean relative error 0.011
+  / 0.010, interval coverage and correct abstention 1.0; each ablation and the costs are in
+  `docs/quality/evidence/genesis_imagination.json`. The confounded structures of this family are identifiable by the
+  front-door criterion through X1; "decline" is scored correct, which fits an engine without front-door adjustment
+  (ADR-052, benchmark note). The splits are unchanged.

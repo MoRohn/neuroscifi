@@ -1,0 +1,832 @@
+{
+ "what": "lane M, imagination (ADR-052): counterfactual family with ablations, adversarial and retention with the mechanism, costs",
+ "label": "cognitive benchmark: synthetic, fictional worlds driven through the real modules; offline (loopback only); no answer model; simulated, not a measurement of the DGX Spark or of the open web",
+ "environment": {
+  "git_commit": "c9df89230081408dbc74e97e0e5ca386eddc6481",
+  "git_dirty": true,
+  "python": "3.12.16",
+  "numpy": "2.3.5",
+  "sqlite": "3.53.1",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39",
+  "withheld_sha256": "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
+ },
+ "counterfactual": {
+  "development": {
+   "recorded_baseline": {
+    "summary": {
+     "coverage": {
+      "mean": 0.107143,
+      "sd": 0.0,
+      "min": 0.107143,
+      "max": 0.107143,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.045223,
+      "sd": 0.020744,
+      "min": 0.021278,
+      "max": 0.057728,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   },
+   "baseline_rerun": {
+    "summary": {
+     "coverage": {
+      "mean": 0.107143,
+      "sd": 0.0,
+      "min": 0.107143,
+      "max": 0.107143,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.045223,
+      "sd": 0.020744,
+      "min": 0.021278,
+      "max": 0.057728,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    },
+    "by_query_kind": {
+     "belief:what-if": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "graph:action": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "graph:horizon 1": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.045223,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:horizon 3": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "scm:counterfactual": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "scm:interventional": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "scm:not_identifiable": {
+      "coverage": null,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": 1.0
+     },
+     "scm:observational": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     }
+    },
+    "cost": {
+     "wall_seconds": 0.114,
+     "model_calls": 0,
+     "refused_connections": 0,
+     "peak_rss_bytes": 61468672,
+     "peak_rss_rise_bytes": 12845056
+    }
+   },
+   "imagination": {
+    "summary": {
+     "coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.011076,
+      "sd": 0.005013,
+      "min": 0.007201,
+      "max": 0.016738,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    },
+    "by_query_kind": {
+     "belief:what-if": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.0,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:action": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.036576,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:horizon 1": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.045223,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:horizon 3": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.021578,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "scm:counterfactual": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.0,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "scm:interventional": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.0,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "scm:not_identifiable": {
+      "coverage": null,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": 1.0
+     },
+     "scm:observational": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.0,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     }
+    },
+    "cost": {
+     "wall_seconds": 0.164,
+     "model_calls": 0,
+     "refused_connections": 0,
+     "peak_rss_bytes": 67403776,
+     "peak_rss_rise_bytes": 5935104
+    }
+   },
+   "without_scm": {
+    "summary": {
+     "coverage": {
+      "mean": 0.428571,
+      "sd": 0.0,
+      "min": 0.428571,
+      "max": 0.428571,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.025844,
+      "sd": 0.011698,
+      "min": 0.016803,
+      "max": 0.039056,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   },
+   "without_what_if": {
+    "summary": {
+     "coverage": {
+      "mean": 0.892857,
+      "sd": 0.0,
+      "min": 0.892857,
+      "max": 0.892857,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.012405,
+      "sd": 0.005615,
+      "min": 0.008065,
+      "max": 0.018747,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   },
+   "without_forecast": {
+    "summary": {
+     "coverage": {
+      "mean": 0.785714,
+      "sd": 0.0,
+      "min": 0.785714,
+      "max": 0.785714,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.006167,
+      "sd": 0.002829,
+      "min": 0.002902,
+      "max": 0.007872,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   },
+   "without_action": {
+    "summary": {
+     "coverage": {
+      "mean": 0.892857,
+      "sd": 0.0,
+      "min": 0.892857,
+      "max": 0.892857,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.008016,
+      "sd": 0.003868,
+      "min": 0.00399,
+      "max": 0.011703,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   }
+  },
+  "held_out": {
+   "recorded_baseline": {
+    "summary": {
+     "coverage": {
+      "mean": 0.071429,
+      "sd": 0.0,
+      "min": 0.071429,
+      "max": 0.071429,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.045098,
+      "sd": 0.037619,
+      "min": 0.011565,
+      "max": 0.085779,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   },
+   "baseline_rerun": {
+    "summary": {
+     "coverage": {
+      "mean": 0.071429,
+      "sd": 0.0,
+      "min": 0.071429,
+      "max": 0.071429,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.045098,
+      "sd": 0.037619,
+      "min": 0.011565,
+      "max": 0.085779,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    },
+    "by_query_kind": {
+     "belief:what-if": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "graph:action": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "graph:horizon 1": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.045098,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:horizon 2": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "graph:horizon 5": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "scm:counterfactual": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "scm:interventional": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     },
+     "scm:not_identifiable": {
+      "coverage": null,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": 1.0
+     },
+     "scm:observational": {
+      "coverage": 0.0,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": null
+     }
+    },
+    "cost": {
+     "wall_seconds": 0.118,
+     "model_calls": 0,
+     "refused_connections": 0,
+     "peak_rss_bytes": 69722112,
+     "peak_rss_rise_bytes": 28672
+    }
+   },
+   "imagination": {
+    "summary": {
+     "coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.010121,
+      "sd": 0.005369,
+      "min": 0.005379,
+      "max": 0.015951,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    },
+    "by_query_kind": {
+     "belief:what-if": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.0,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:action": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.043131,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:horizon 1": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.045098,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:horizon 2": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.024302,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "graph:horizon 5": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.007592,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "scm:counterfactual": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.0,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "scm:interventional": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.0,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     },
+     "scm:not_identifiable": {
+      "coverage": null,
+      "mean_relative_error": null,
+      "interval_coverage": null,
+      "abstention_correct": 1.0
+     },
+     "scm:observational": {
+      "coverage": 1.0,
+      "mean_relative_error": 0.0,
+      "interval_coverage": 1.0,
+      "abstention_correct": null
+     }
+    },
+    "cost": {
+     "wall_seconds": 0.183,
+     "model_calls": 0,
+     "refused_connections": 0,
+     "peak_rss_bytes": 69787648,
+     "peak_rss_rise_bytes": 65536
+    }
+   },
+   "without_scm": {
+    "summary": {
+     "coverage": {
+      "mean": 0.428571,
+      "sd": 0.0,
+      "min": 0.428571,
+      "max": 0.428571,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.023615,
+      "sd": 0.012529,
+      "min": 0.012552,
+      "max": 0.037219,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   },
+   "without_what_if": {
+    "summary": {
+     "coverage": {
+      "mean": 0.892857,
+      "sd": 0.0,
+      "min": 0.892857,
+      "max": 0.892857,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.011335,
+      "sd": 0.006014,
+      "min": 0.006025,
+      "max": 0.017865,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   },
+   "without_forecast": {
+    "summary": {
+     "coverage": {
+      "mean": 0.75,
+      "sd": 0.0,
+      "min": 0.75,
+      "max": 0.75,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.004295,
+      "sd": 0.003583,
+      "min": 0.001101,
+      "max": 0.008169,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   },
+   "without_action": {
+    "summary": {
+     "coverage": {
+      "mean": 0.892857,
+      "sd": 0.0,
+      "min": 0.892857,
+      "max": 0.892857,
+      "n": 3
+     },
+     "mean_relative_error": {
+      "mean": 0.006159,
+      "sd": 0.003655,
+      "min": 0.002521,
+      "max": 0.009831,
+      "n": 3
+     },
+     "interval_coverage": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     },
+     "abstention_correct": {
+      "mean": 1.0,
+      "sd": 0.0,
+      "min": 1.0,
+      "max": 1.0,
+      "n": 3
+     }
+    }
+   }
+  }
+ },
+ "adversarial": {
+  "passed": 13,
+  "scored": 13,
+  "failed": [],
+  "cases": [
+   {
+    "id": "imagined_text_not_knowledge",
+    "pass": true,
+    "observed": "0 knowledge row(s)"
+   },
+   {
+    "id": "imagined_reading_moves_no_belief",
+    "pass": true,
+    "observed": "what-if: 0.994 in the sandbox; live P(partner bit = 1) 0.500 -> 0.500, journal and state version unchanged; for reference, four OBSERVED readings of the simulated test environment (provenance='simulated', ADR-014) move it to 0.994"
+   },
+   {
+    "id": "noisy_curiosity_loop",
+    "pass": true,
+    "observed": "4 of 8 investigations; choices ['static', 'static', 'harbour', 'static', 'static', 'harbour', 'harbour', 'harbour']"
+   },
+   {
+    "id": "owner_first_under_contention",
+    "pass": true,
+    "observed": "claimed the owner task"
+   },
+   {
+    "id": "critical_memory_stops_background_only",
+    "pass": true,
+    "observed": "autonomous claimed: False; owner claimed: True"
+   },
+   {
+    "id": "full_disk_pauses_writes",
+    "pass": true,
+    "observed": "refused=True, decision=defer, questions 0->0"
+   },
+   {
+    "id": "spent_budget_refuses_autonomy",
+    "pass": true,
+    "observed": "refused at submission: daily autonomous research budget exhausted on 2027-01-15: searches: 20 used of 20"
+   },
+   {
+    "id": "owner_stop_holds",
+    "pass": true,
+    "observed": "1 candidate(s) ranked; idle -> off; tick queued 0; tasks 1->1"
+   },
+   {
+    "id": "no_act_on_a_suspected_change",
+    "pass": true,
+    "observed": "before: act; after: test_reference (mechanism)"
+   },
+   {
+    "id": "syndicated_copies_count_once",
+    "pass": true,
+    "observed": "1 group(s)"
+   },
+   {
+    "id": "model_adaptation_refused",
+    "pass": true,
+    "observed": "refused"
+   },
+   {
+    "id": "stale_worker_is_reported",
+    "pass": true,
+    "observed": "running = False"
+   },
+   {
+    "id": "constant_forecast_cannot_game_calibration",
+    "pass": true,
+    "observed": "ECE 0.0, resolution 0.0, Brier 0.25"
+   }
+  ]
+ },
+ "retention": {
+  "quick": false,
+  "all_scenarios_pass": true,
+  "all_retained": true,
+  "cost": {
+   "wall_seconds": 29.279,
+   "model_calls": 0,
+   "refused_connections": 0,
+   "peak_rss_bytes": 312705024,
+   "peak_rss_rise_bytes": 242724864
+  }
+ },
+ "costs": {
+  "belief_imagination": [
+   {
+    "readings": 100,
+    "copied_bytes": 589824,
+    "what_if_seconds": 0.0049,
+    "question_values_seconds": 0.0035,
+    "retrospect_200_seconds": 0.0125
+   },
+   {
+    "readings": 1000,
+    "copied_bytes": 720896,
+    "what_if_seconds": 0.0052,
+    "question_values_seconds": 0.0049,
+    "retrospect_200_seconds": 0.0408
+   },
+   {
+    "readings": 10000,
+    "copied_bytes": 2031616,
+    "what_if_seconds": 0.0095,
+    "question_values_seconds": 0.0195,
+    "retrospect_200_seconds": 0.1797
+   },
+   {
+    "readings": 50000,
+    "copied_bytes": 8032256,
+    "what_if_seconds": 0.0238,
+    "question_values_seconds": 0.0818,
+    "retrospect_200_seconds": 0.7942
+   }
+  ],
+  "graph_forecast": {
+   "populations": 24,
+   "train_steps": 1536,
+   "horizon_5_seconds": 0.0024,
+   "horizon_5_with_push_seconds": 0.0024
+  }
+ }
+}
