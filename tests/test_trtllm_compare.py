@@ -36,7 +36,8 @@ def container():
                            "RestartPolicy": {"Name": "unless-stopped"}, "Memory": 96 * 2**30,
                            "ShmSize": 8 * 2**30, "NanoCpus": 12 * 10**9, "PidsLimit": 4096},
             "Mounts": [{"Source": "/w/m", "Destination": "/models/m", "RW": False},
-                       {"Source": "/c", "Destination": "/cache", "RW": True}]}
+                       {"Source": "/c", "Destination": "/cache", "RW": True}],
+            "NetworkSettings": {"Ports": {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8811"}]}}}
 
 
 def test_the_running_container_is_reproduced_by_run_sh():
@@ -77,14 +78,22 @@ def test_it_refuses_to_stop_anything_without_yes():
 
 
 class FakeDocker:
-    """Records docker calls; the answer model's container exists and comes back healthy."""
+    """Records docker calls; the answer model's container exists and comes back healthy (running and publishing
+    127.0.0.1:8811 once started, unless `publishes` is False)."""
 
-    def __init__(self, gone=False, start_fails=False, unit_stop_fails=()):
+    def __init__(self, gone=False, start_fails=False, unit_stop_fails=(), publishes=True, stop_interrupted=()):
         self.calls, self.gone, self.start_fails, self.unit_stop_fails = [], gone, start_fails, set(unit_stop_fails)
+        self.running, self.publishes, self.stop_interrupted = True, publishes, set(stop_interrupted)
 
     def sh(self, cmd, check=True, capture=True, timeout=None):
         self.calls.append(cmd)
         rc = 1 if (cmd[:2] == ["docker", "start"] and self.start_fails) else 0
+        if cmd[:2] == ["docker", "start"] and not rc:
+            self.running = True
+        if cmd[:2] == ["docker", "stop"]:
+            self.running = False
+        if cmd[:3] == ["systemctl", "--no-ask-password", "stop"] and cmd[3] in self.stop_interrupted:
+            raise tc.Abort("signal SIGTERM")          # the owner's Ctrl-C while systemctl stops the unit
         if cmd[:3] == ["systemctl", "--no-ask-password", "stop"] and cmd[3] in self.unit_stop_fails:
             rc = 1
         if check and rc:
@@ -93,7 +102,11 @@ class FakeDocker:
 
     def inspect(self, name):
         if name == "neuroscifi-vllm" and not self.gone:
-            return container()
+            doc = container()
+            doc["State"]["Running"] = self.running
+            if not (self.running and self.publishes):
+                doc["NetworkSettings"]["Ports"] = {}
+            return doc
         return None
 
 
@@ -109,6 +122,7 @@ def restoring_run(monkeypatch, tmp_path, fake, *, port_held=False, stopped_servi
     run.vllm = {"name": "neuroscifi-vllm", "bind": "127.0.0.1", "port": 8811}
     run.original = container()
     run.stopped_vllm = True
+    fake.running = False                       # the window stopped it
     return run
 
 
@@ -210,7 +224,7 @@ def test_the_callers_are_paused_and_started_again_after_the_restore(monkeypatch,
 def test_a_unit_it_may_not_stop_refuses_the_run_and_restarts_what_it_stopped(monkeypatch, tmp_path):
     fake = FakeDocker(unit_stop_fails={"neuroscifi-console.service"})
     run = restoring_run(monkeypatch, tmp_path, fake)
-    run.stopped_vllm = False                                       # nothing stopped yet: the pause comes first
+    run.stopped_vllm, fake.running = False, True                   # nothing stopped yet: the pause comes first
     with pytest.raises(tc.Abort, match="--i-stopped-the-services"):
         run.pause_callers(["neuroscifi-webcortex.service", "neuroscifi-console.service"])
     run.restore()
@@ -247,3 +261,159 @@ def test_hand_started_neuroscifi_processes_are_found(tmp_path):
     finally:
         proc.kill()
         proc.wait()
+
+
+# ---- re-review of the fix round (S1, S2, S6, S7, S8, S9) --------------------------------------------------------
+
+def _starts(fake):
+    return [c[3] for c in fake.calls if c[:3] == ["systemctl", "--no-ask-password", "start"]]
+
+
+def test_the_callers_stay_stopped_while_something_else_holds_the_answer_models_port(monkeypatch, tmp_path):
+    """S1: the restore found a squatter on 8811; starting the callers again would send it the key."""
+    fake = FakeDocker(start_fails=True)
+    run = restoring_run(monkeypatch, tmp_path, fake, port_held=True)
+    units = ["neuroscifi-webcortex.service", "neuroscifi-console.service"]
+    run.pause_callers(units)
+    run.restore()
+    assert _starts(fake) == [] and run.paused == []
+    withheld = run.results["callers_withheld"]
+    assert withheld["units"] == units and "squatter" in withheld["why"]
+    assert run.results["steps"][-1]["step"] == "resume-withheld"
+
+
+def test_the_callers_stay_stopped_when_the_model_is_back_but_does_not_publish_its_port(monkeypatch, tmp_path):
+    """S1: healthy by its own wait, yet the container does not publish 127.0.0.1:8811: whatever answers there is not
+    the answer model. main() exits 5."""
+    fake = FakeDocker(publishes=False)
+    run = restoring_run(monkeypatch, tmp_path, fake)
+    run.pause_callers(["neuroscifi-pocket.service"])
+    run.restore()
+    assert run.restore_report["healthy"] and _starts(fake) == []
+    assert "does not publish 127.0.0.1:8811" in run.results["callers_withheld"]["why"]
+    fake2 = FakeDocker(publishes=False)
+    run2 = restoring_run(monkeypatch, tmp_path / "2", fake2)
+
+    def paused_then_done():
+        run2.pause_callers(["neuroscifi-pocket.service"])
+        return 0
+
+    monkeypatch.setattr(tc, "Run", lambda args: run2)
+    monkeypatch.setattr(run2, "run_main", paused_then_done)
+    assert tc.main(["--yes", "--out-dir", str(tmp_path / "2")]) == 5
+
+
+def test_a_signal_while_a_unit_is_stopped_still_starts_it_again(monkeypatch, tmp_path):
+    """S9: the unit is listed before systemctl stops it, so an interrupted stop is undone by the restore."""
+    fake = FakeDocker(stop_interrupted={"neuroscifi-console.service"})
+    run = restoring_run(monkeypatch, tmp_path, fake)
+    run.stopped_vllm, fake.running = False, True
+    with pytest.raises(tc.Abort, match="signal"):
+        run.pause_callers(["neuroscifi-webcortex.service", "neuroscifi-console.service"])
+    run.restore()
+    assert _starts(fake) == ["neuroscifi-console.service", "neuroscifi-webcortex.service"]
+
+
+def _proc(root, pid, argv, cgroup):
+    folder = root / str(pid)
+    folder.mkdir(parents=True)
+    (folder / "cmdline").write_bytes(b"\0".join(a.encode() for a in argv) + b"\0")
+    (folder / "cgroup").write_text(cgroup)
+
+
+def test_the_units_own_processes_are_not_counted_as_started_by_hand(monkeypatch, tmp_path):
+    """S2: the units run /opt/neuroscifi/venv/bin/nsf, which the kernel shows as [python3, .../nsf, ...]: by their
+    cgroup they are the units' (paused by the script), not processes started by hand."""
+    root = tmp_path / "proc"
+    nsf = ["/opt/neuroscifi/venv/bin/python3", "/opt/neuroscifi/venv/bin/nsf"]
+    _proc(root, 101, nsf + ["console", "--db", "x"], "0::/system.slice/neuroscifi-console.service\n")
+    _proc(root, 102, nsf + ["web", "work"], "0::/system.slice/neuroscifi-webcortex.service/worker\n")
+    _proc(root, 103, ["python3", "-m", "neuroscifi.cli", "pocket", "serve"],
+          "12:pids:/system.slice/neuroscifi-pocket.service\n0::/system.slice/neuroscifi-pocket.service\n")
+    _proc(root, 201, nsf + ["start"], "0::/user.slice/user-1000.slice/session-3.scope\n")          # a terminal
+    _proc(root, 202, nsf + ["web", "work"], "0::/system.slice/someone-elses.service\n")             # not paused
+    _proc(root, 203, ["sleep", "30"], "0::/system.slice/neuroscifi-console.service\n")              # not NeuroSciFi
+    monkeypatch.setattr(tc, "PROC", root)
+    assert sorted(p["pid"] for p in tc.caller_processes()) == [201, 202]
+    assert tc.unit_of(102) == "neuroscifi-webcortex.service" and tc.unit_of(201) is None
+
+
+def test_a_network_of_the_same_name_with_traffic_between_containers_on_is_refused(monkeypatch, tmp_path):
+    """S6: an existing network of the window's name is used only as the script makes it (bridge, ICC off)."""
+    answers = {}
+
+    def sh(cmd, check=True, capture=True, timeout=None):
+        out = answers.get("inspect", "")
+        rc = 0 if out else 1
+        if cmd[:3] == ["docker", "network", "inspect"]:
+            return subprocess.CompletedProcess(cmd, rc, stdout=out, stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    monkeypatch.setattr(tc, "sh", sh)
+    run = tc.Run(type("A", (), {"out_dir": str(tmp_path)})())
+    answers["inspect"] = 'bridge {"com.docker.network.bridge.enable_icc":"true"}'
+    with pytest.raises(tc.Abort, match="traffic between its containers on"):
+        run.ensure_network()
+    answers["inspect"] = "bridge {}"                       # Docker's default for a bridge: ICC on
+    with pytest.raises(tc.Abort):
+        run.ensure_network()
+    answers["inspect"] = 'bridge {"com.docker.network.bridge.enable_icc":"false"}'
+    run.ensure_network()
+    assert run.network_created is False                    # not ours to remove
+    answers["inspect"] = ""                                # none: created with ICC off
+    run.ensure_network()
+    assert run.network_created is True
+
+
+def test_the_proxy_vllm_server_is_on_the_windows_network_with_a_pids_limit(monkeypatch, tmp_path):
+    """S7: the small vLLM server of the proxy is as confined as the TensorRT-LLM one."""
+    model = tmp_path / "small"
+    model.mkdir()
+    (model / "config.json").write_text(json.dumps({"hidden_size": 64, "num_attention_heads": 4,
+                                                    "num_hidden_layers": 2, "num_key_value_heads": 2}))
+    calls = []
+
+    def sh(cmd, check=True, capture=True, timeout=None):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0 if cmd[:3] != ["docker", "network", "inspect"] else 1,
+                                           stdout="", stderr="")
+    monkeypatch.setattr(tc, "sh", sh)
+    monkeypatch.setattr(tc, "inspect", lambda name: None)
+    monkeypatch.setattr(tc, "mem_available_gb", lambda: 64.0)
+    args = type("A", (), {"out_dir": str(tmp_path / "out"), "proxy": str(model), "image": "trt@sha256:" + "c" * 64,
+                          "port": 8812, "proxy_min_free_gb": 20.0, "proxy_mem_gb": 8.0, "dry_run": False,
+                          "proxy_engines": "vllm", "health_timeout": 1, "scenarios": ""})()
+    run = tc.Run(args)
+    monkeypatch.setattr(run, "trt_probe", lambda image: {"tool_parsers": None, "ptxas_in_image": False,
+                                                         "missing_flags": []})
+
+    def unhealthy(name, base, timeout):
+        raise tc.Abort("not healthy")
+    monkeypatch.setattr(run, "wait_health", unhealthy)
+    monkeypatch.setattr(run, "save_log", lambda name: None)
+    assert run.run_proxy() == 0
+    started = next(c for c in calls if c[:2] == ["docker", "run"] and "neuroscifi-trtllm-proxy-vllm" in c)
+    line = shlex.join(started)
+    assert f"--network {tc.TRT_NETWORK}" in line and f"--pids-limit {tc.TRT_PIDS}" in line
+    assert "-p 127.0.0.1:8813:8000" in line
+
+
+def test_a_model_run_by_its_unit_refuses_the_window(monkeypatch, tmp_path):
+    """S8: neuroscifi-vllm.service (Restart=on-failure, docker run --rm) would start the model again mid-window."""
+    monkeypatch.setattr(tc, "unit_state", lambda unit: "active" if unit == tc.VLLM_UNIT else "inactive")
+    monkeypatch.setattr(tc, "mem_available_gb", lambda: 50.0)
+    monkeypatch.setattr(tc, "kv_tokens", lambda model_dir, kv_bytes: 1000)
+    monkeypatch.setattr(tc, "sh", lambda cmd, check=True, capture=True, timeout=None:
+                        subprocess.CompletedProcess(cmd, 1, stdout="", stderr=""))
+    args = type("A", (), {"out_dir": str(tmp_path / "out"), "image": "trt@sha256:" + "c" * 64, "port": 8812,
+                          "min_free_gb": 12.0, "need_gb": 48.0, "i_stopped_the_services": False, "dry_run": True})()
+    run = tc.Run(args)
+    run.out.mkdir(parents=True)
+    run.vllm = {"name": "neuroscifi-vllm", "bind": "127.0.0.1", "port": 8811, "served": "m",
+                "url": "http://127.0.0.1:8811/v1"}
+    monkeypatch.setattr(run, "preflight", lambda: (container(), [], "healthy"))
+    monkeypatch.setattr(run, "trt_probe", lambda image: {"tool_parsers": None, "ptxas_in_image": False,
+                                                         "missing_flags": []})
+    monkeypatch.setattr(run, "callers", lambda: {"units": [], "processes": []})
+    assert run.run_main() == 3
+    assert any(tc.VLLM_UNIT in b and "systemctl stop" in b for b in run.results["blockers"])
+

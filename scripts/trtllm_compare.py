@@ -11,7 +11,8 @@ script never stops the answer model unless `--yes` is given.
 
 What a real run does, in order:
   1. Preflight: Docker, the pinned TensorRT-LLM image, the model folder, the answer model's container running and
-     healthy, `trtllm-serve` accepting every flag used, enough free memory now (`--min-free-gb`).
+     healthy, `trtllm-serve` accepting every flag used, enough free memory now (`--min-free-gb`). A model run by
+     its unit (neuroscifi-vllm.service, which systemd would start again mid-window) is refused with what to do.
   2. Captures the answer model's container (`docker inspect`; values of secret-looking variables redacted in the
      written copy, kept unredacted only in memory) and checks that `deploy/vllm/run.sh print` reproduces it, so the
      fallback restore (`run.sh start`) would start the same server.
@@ -19,7 +20,8 @@ What a real run does, in order:
      units that call it or reload it (CALLER_UNITS: the research worker and its timer, the console, Pocket, the idle
      timer and the wake path) are stopped with `systemctl --no-ask-password` and started again after the restore.
      NeuroSciFi processes this script cannot stop (`nsf start` in a terminal, `nsf web work`) refuse the run, as
-     does a unit it may not stop, unless the owner says they are stopped (`--i-stopped-the-services`).
+     does a unit it may not stop, unless the owner says they are stopped (`--i-stopped-the-services`); the units'
+     own processes (found by their cgroup) are not counted as started by hand.
   4. Baseline: `scripts/bench_inference.py` (and `scripts/bench_pipeline.py` unless `--no-pipeline`) on vLLM.
   5. Stops the answer model (`docker stop`; the container is kept, so `docker start` restores it exactly).
   6. Starts `trtllm-serve` on the same weights with the same limits (max sequence 32768, max batch 8, 4096 tokens
@@ -28,9 +30,11 @@ What a real run does, in order:
   7. Runs the same harness with the same arguments against it.
   8. Always (normal end, error, Ctrl-C, SIGTERM, SIGHUP): removes the TensorRT-LLM container and its network, starts
      the answer model's own container again (or `run.sh start` if it no longer exists), waits for health, compares
-     its configuration with the capture, and starts the paused units again. If something else holds the answer
-     model's port meanwhile, the restore says what (`ss -ltnp`) instead of retrying blind. SIGKILL cannot be
-     caught: then run `deploy/vllm/run.sh start` and start the units by hand.
+     its configuration with the capture, and starts the paused units again, only once the answer model's own
+     container is healthy and publishes its port. If something else holds the answer model's port meanwhile, the
+     restore says what (`ss -ltnp`) instead of retrying blind, and the units stay stopped (they would send the key
+     to it): exit 4, or 5 when the model is back but does not publish its port; the log names the units to start by
+     hand. SIGKILL cannot be caught: then run `deploy/vllm/run.sh start` and start the units by hand.
 
 Results go to `--out-dir` (default ~/.cache/neuroscifi/trtllm-compare/<time>), 0700, written without following a
 link. Keys are never printed or written (environment values and `--api-key`-style arguments are redacted in every
@@ -75,6 +79,11 @@ SECRET_FLAG = re.compile(r"^--?(?:[\w.]+[-_])?(?:key|token|secret|password|passw
 CALLER_UNITS = ("neuroscifi-webcortex-tick.timer", "neuroscifi-idle.timer", "neuroscifi-wake.path",
                 "neuroscifi-webcortex-tick.service", "neuroscifi-idle.service", "neuroscifi-wake.service",
                 "neuroscifi-webcortex.service", "neuroscifi-console.service", "neuroscifi-pocket.service")
+# The answer model's own unit (deploy/systemd/neuroscifi-vllm.service: `run.sh foreground`, a `docker run --rm`
+# container, Restart=on-failure). While it runs the model, stopping the container would have systemd start it again
+# in the middle of the window, and the restore here (docker start / run.sh start) is not the unit's: refused.
+VLLM_UNIT = "neuroscifi-vllm.service"
+PROC = Path("/proc")       # where processes are read from (a test points it at a tree of its own)
 # A NeuroSciFi process started by hand (`nsf start`, `nsf web work`, `python -m neuroscifi.cli ...`).
 CALLER_MODULES = ("neuroscifi.cli", "neuroscifi.pocket", "neuroscifi.console", "neuroscifi.webcortex")
 CALLER_COMMANDS = ("nsf", "nsfs")
@@ -183,6 +192,26 @@ def unit_active(unit):
         return False
 
 
+def unit_state(unit):
+    """`systemctl is-active` of a system unit: active, activating (also a restart pending), inactive, failed, ...;
+    "unknown" without systemctl."""
+    try:
+        res = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    return (res.stdout or "").strip() or "unknown"
+
+
+def unit_of(pid):
+    """The systemd unit (a .service) whose cgroup holds `pid`, from /proc/<pid>/cgroup; None outside one."""
+    try:
+        text = (PROC / str(pid) / "cgroup").read_text()
+    except OSError:
+        return None
+    found = re.findall(r"/([^/\s]+\.service)(?=/|\s|$)", text)
+    return found[-1] if found else None
+
+
 def _ancestors(pid):
     seen = set()
     while pid > 1 and pid not in seen:
@@ -197,10 +226,14 @@ def _ancestors(pid):
 
 def caller_processes():
     """NeuroSciFi processes running outside the units (started by hand) that may call the answer model:
-    [{"pid", "args"}]. This script and its own ancestors are not listed."""
+    [{"pid", "args"}]. This script and its own ancestors are not listed, and neither are the processes of the
+    CALLER_UNITS (the units run `/opt/neuroscifi/venv/bin/nsf ...`, which looks like a hand-started `nsf`): the
+    script pauses those itself, so they must not make every real run need --i-stopped-the-services."""
     mine, found = _ancestors(os.getpid()), []
-    for entry in Path("/proc").iterdir():
+    for entry in PROC.iterdir():
         if not entry.name.isdigit() or int(entry.name) in mine:
+            continue
+        if unit_of(entry.name) in CALLER_UNITS:
             continue
         try:
             argv = (entry / "cmdline").read_bytes().split(b"\0")
@@ -233,6 +266,16 @@ def port_holder(port):
     except (OSError, subprocess.TimeoutExpired) as exc:
         return f"ss unavailable ({exc.__class__.__name__})"
     return res.stdout.strip() or "ss shows no listener"
+
+
+def answer_model_owns_port(name, bind, port):
+    """Whether the container `name` is running and publishes `bind:port` (as deploy/vllm/run.sh owns_port): only
+    then does a caller's key go to the answer model and not to whatever else holds the port."""
+    doc = inspect(name)
+    if not doc or not field(doc, ("State", "Running")):
+        return False
+    bindings = (field(doc, ("NetworkSettings", "Ports")) or {}).get("8000/tcp") or []
+    return any(b.get("HostIp") == bind and str(b.get("HostPort")) == str(port) for b in bindings)
 
 
 def vllm_settings():
@@ -470,10 +513,13 @@ class Run:
         be stopped aborts the run (the units already stopped are started again by restore), unless the owner said
         the services are stopped."""
         for unit in units:
+            # Listed before it is stopped: a signal between the stop and the listing would otherwise leave it
+            # stopped and never started again (a start of a unit still running changes nothing).
+            self.paused.append(unit)
             res = sh(["systemctl", "--no-ask-password", "stop", unit], check=False, timeout=120)
             if res.returncode == 0:
-                self.paused.append(unit)
                 continue
+            self.paused.remove(unit)
             why = (res.stderr or "").strip()[-200:]
             if self.args.i_stopped_the_services:
                 self.step("pause-skipped", unit=unit, error=why)
@@ -497,7 +543,19 @@ class Run:
             log(f"START THESE AGAIN BY HAND: {' '.join(failed)} (sudo systemctl start ...)")
 
     def ensure_network(self):
-        if sh(["docker", "network", "inspect", TRT_NETWORK], check=False).returncode == 0:
+        res = sh(["docker", "network", "inspect", "-f", "{{.Driver}} {{json .Options}}", TRT_NETWORK], check=False)
+        if res.returncode == 0:
+            # One left by an earlier window, or someone else's of the same name: used only if traffic between its
+            # containers is off, as this script creates it.
+            driver, _, options = (res.stdout or "").strip().partition(" ")
+            try:
+                icc = (json.loads(options or "{}") or {}).get("com.docker.network.bridge.enable_icc")
+            except ValueError:
+                icc = None
+            if driver != "bridge" or icc != "false":
+                raise Abort(f"a Docker network named {TRT_NETWORK} exists ({driver or '?'}, traffic between its "
+                            f"containers {'off' if icc == 'false' else 'on'}): remove it (docker network rm "
+                            f"{TRT_NETWORK}) and run again; this script creates it with that traffic off")
             return
         sh(["docker", "network", "create", "--driver", "bridge",
             "-o", "com.docker.network.bridge.enable_icc=false", TRT_NETWORK])
@@ -512,7 +570,32 @@ class Run:
                 sh(["docker", "network", "rm", TRT_NETWORK], check=False)
                 self.network_created = False
             if self.paused:
-                self.resume_callers()
+                back, why = self.answer_model_back()
+                if back:
+                    self.resume_callers()
+                else:
+                    self.withhold_callers(why)
+
+    def answer_model_back(self):
+        """(True, None) when the answer model's own container serves its port again; else (False, why). The callers
+        send the key to that port: they are started again only then (re-review S1)."""
+        report = self.restore_report or {}
+        if self.stopped_vllm:
+            held = report.get("port_held_by")
+            return False, "the answer model is not healthy again" + (
+                f" (port {self.vllm.get('port')} held by: {held})" if held else "")
+        name, bind, port = self.vllm["name"], self.vllm.get("bind", "127.0.0.1"), self.vllm.get("port", 8811)
+        if not answer_model_owns_port(name, bind, port):
+            return False, f"{name} does not publish {bind}:{port}: something else may hold the port"
+        return True, None
+
+    def withhold_callers(self, why):
+        units, self.paused = list(self.paused), []
+        self.results["callers_withheld"] = {"units": units, "why": why}
+        self.step("resume-withheld", units=units, why=why)
+        log(f"NOT STARTING AGAIN: {' '.join(units)} ({why}); they send the answer model's key to its port. Once "
+            f"`bash {RUN_SH} status` says the answer model is healthy on its port, start them by hand: "
+            f"sudo systemctl start {' '.join(reversed(units))}")
 
     def _restore_answer_model(self):
         for name in self.started:
@@ -565,6 +648,13 @@ class Run:
             log(f"ANSWER MODEL NOT HEALTHY: run `bash {RUN_SH} status` and `docker logs {name}`"
                 + (f"; port {port}: {report.get('port_held_by') or report.get('port_listener')}"))
 
+    def vllm_unit_blocker(self, state):
+        return (f"the answer model runs under {VLLM_UNIT} ({state}; Restart=on-failure, a `docker run --rm` "
+                "container): stopping its container would have systemd start it again in the middle of the window, "
+                "and this script restores with docker start / run.sh start, not the unit. Run the window with the "
+                f"model started by `bash {RUN_SH} start` (sudo systemctl stop {VLLM_UNIT} first), then go back to "
+                "the unit")
+
     # -- the two modes ------------------------------------------------------------------------------------------
     def preflight(self):
         self.out.mkdir(parents=True, exist_ok=True)
@@ -599,7 +689,8 @@ class Run:
                              ptxas=probe["ptxas_in_image"], mem_limit="96g")
         mem = mem_available_gb()
         callers = self.callers()
-        self.step("plan", limits=limits, trt_probe=probe, trt_run=shlex.join(argv), mem_available_now_gb=round(mem, 1),
+        vllm_unit = unit_state(VLLM_UNIT)
+        self.step("plan", vllm_unit=vllm_unit, limits=limits, trt_probe=probe, trt_run=shlex.join(argv), mem_available_now_gb=round(mem, 1),
                   min_free_gb=self.args.min_free_gb, need_after_stop_gb=self.args.need_gb,
                   callers_to_pause=callers["units"], callers_running_by_hand=callers["processes"])
         blockers = list(problems)
@@ -608,6 +699,8 @@ class Run:
                             "(its key would go to whatever holds its port during the window): pids "
                             f"{[p['pid'] for p in callers['processes']]}; stop them (Ctrl-C `nsf start`, ...) or pass "
                             "--i-stopped-the-services")
+        if vllm_unit in ("active", "activating", "reloading"):
+            blockers.append(self.vllm_unit_blocker(vllm_unit))
         if probe["missing_flags"]:
             blockers.append(f"trtllm-serve lacks {probe['missing_flags']}")
         if not doc["State"]["Running"] or health != "healthy":
@@ -635,6 +728,8 @@ class Run:
         if late and not self.args.i_stopped_the_services:
             raise Abort(f"NeuroSciFi processes started since the plan (pids {[p['pid'] for p in late]}): stop them "
                         "or pass --i-stopped-the-services; the answer model was not stopped")
+        if (unit := unit_state(VLLM_UNIT)) in ("active", "activating", "reloading"):
+            raise Abort(self.vllm_unit_blocker(unit) + "; the answer model was not stopped")
         log(f"stopping {self.vllm['name']} (the answer model is down from here until the restore)")
         self.stopped_vllm = True
         self.results["downtime_started"] = time.time()
@@ -675,6 +770,8 @@ class Run:
             ("vllm", "neuroscifi-trtllm-proxy-vllm", self.args.port + 1, [
                 "docker", "run", "-d", "--name", "neuroscifi-trtllm-proxy-vllm", "--device", "nvidia.com/gpu=all",
                 "-p", f"127.0.0.1:{self.args.port + 1}:8000", "--user", f"{os.getuid()}:{os.getgid()}",
+                # as the TensorRT-LLM server: its own network with traffic between containers off, a pids limit
+                "--network", TRT_NETWORK, "--pids-limit", str(TRT_PIDS),
                 # exec: Triton and Inductor load the kernels they compile from this cache (Docker's tmpfs is noexec).
                 "--read-only", "--tmpfs", "/tmp:rw,exec,size=4g,mode=1777", "--cap-drop", "ALL",
                 "--security-opt", "no-new-privileges", "--memory", "12g", "--shm-size", "2g",
@@ -781,6 +878,8 @@ def main(argv=None):
                 signal.signal(s, previous[s])
     if run.stopped_vllm:
         return 4
+    if "callers_withheld" in run.results:
+        return 5
     return code
 
 

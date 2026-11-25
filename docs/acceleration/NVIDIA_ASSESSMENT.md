@@ -145,17 +145,24 @@ one run on a host other tenants share.
    reload it (the research worker and its timer, the console, Pocket, the idle timer, the wake path) are stopped
    with `systemctl --no-ask-password` and started again after the restore. NeuroSciFi processes started by hand
    (`nsf start` in a terminal, `nsf web work`), or a unit this account may not stop, refuse the run unless the
-   owner passes `--i-stopped-the-services` after stopping them.
+   owner passes `--i-stopped-the-services` after stopping them. The units' own processes are told apart by their
+   cgroup, so they never count as started by hand. A model run by its unit (`neuroscifi-vllm.service`, which systemd
+   would start again in the middle of the window) is refused, with the commands to run the window on a model
+   started by `deploy/vllm/run.sh start` instead.
 4. Measures vLLM first.
 5. Stops the answer model, keeping its container.
 6. Starts `trtllm-serve` on the same weights with the same limits: 32,768 tokens, batch 8, 4,096 tokens per step, a
    KV cache of 141,994 tokens (vLLM's 13 GiB), the `qwen3` tool parser, xgrammar, and 127.0.0.1 only. The
    container runs as the owner's uid with a read-only root and one tmpfs, a pids limit of 4,096, no capability, on
    a network of its own with traffic between containers off (the server has no key option, so nothing else on
-   Docker's default bridge may reach it).
+   Docker's default bridge may reach it). A network of that name left from before is used only if it is a bridge
+   with that traffic off. The proxy's small vLLM server runs on the same network with the same pids limit.
 7. Runs the same `bench_inference.py` and `bench_pipeline.py`.
-8. Restarts the same container, compares its configuration with the capture, and starts the paused units again.
-   If something else listens on the answer model's port, the restore reports it (`ss -ltnp`) rather than retrying.
+8. Restarts the same container, compares its configuration with the capture, and starts the paused units again,
+   but only once the answer model's own container is healthy and publishes its port: the units send the key there.
+   If something else listens on the answer model's port, the restore reports it (`ss -ltnp`) rather than retrying,
+   and the units stay stopped; the log names them, to start by hand once `deploy/vllm/run.sh status` is healthy
+   (exit 4 when the model is not back, 5 when it is back without its port).
 
 Step 8 runs on every exit path: the normal end, an error, Ctrl-C, SIGTERM and SIGHUP. If too little memory frees up,
 the script aborts and restores. The restore logic is unit-tested with fakes (`tests/test_trtllm_compare.py`). The
