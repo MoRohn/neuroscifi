@@ -600,7 +600,13 @@ unaffected.
   "path": "tick"}}}` (its key feeds the cooldown and the lineage, as the idle investigator's does), or under the
   legacy rule `{"autonomy": "admitted by the legacy tick rule", "key", "admission": {"rule": "legacy", "path":
   "tick"}}`. The idle investigator's event gains `admission: {"rule": "unified", "path": "idle"}`.
-- Web setting `tick_admission` ("unified" default | "legacy"; `nsf web config --set tick_admission='"legacy"'`),
+- A background task the owner resumes (`nsf web resume`) or queues again (`orchestrator.requeue`: CLI, console,
+  Pocket, voice) gets a `decision` event `{"decision": "resumed or requeued by the owner"}`
+  (`background.asked_by_owner`): quiet does not hold it. A running background task asks quiet again before the model
+  call and before consolidation. `predictions.check_due`'s `refresh_submitted` actions gain `knowledge_id`; the
+  tick's unified curiosity skips a subject refreshed in the same tick (`scheduler.REFRESHED_THIS_TICK`).
+- Web setting `tick_admission` ("unified" default | "legacy"; `nsf web config --set tick_admission='"legacy"'`;
+  carried into a restored copy, `restore()["settings_carried"]["tick_admission"]`),
   kept for one release.
 - `autonomy.status` (`nsf web autonomy status`, console `GET /api/web/autonomy`) gains `quiet` (bool).
 
@@ -709,8 +715,11 @@ its direction marks, embeddings and isolates in `text`.
 
 `neuroscifi/provenance.py` (vocabulary) and `instance/imagined.py` (owner of `imagined`, `imagined_refs`,
 `imagined_forgotten`). Nothing in the evidence, knowledge, claims, verification, calibration, belief or retrieval code
-reads or writes these tables; the database refuses an id of the form `imagined:` + 32 hex digits in their reference
-columns (`schema._NO_IMAGINED`; sqlite3.IntegrityError "an imagined record is never evidence").
+reads or writes these tables (an allow-list in tests/webcortex/test_imagined_quarantine.py: the store's lifecycle,
+WRITERS that may call `record`/`observe`, DISPLAYS that may call `listing`/`show`); the database refuses an id of the
+form `imagined:` + 32 hex digits (any case, padded) in a reference column of the evidence side, never in free text
+(`schema._NO_IMAGINED`; sqlite3.IntegrityError "an imagined record is never evidence"; INSERT OR REPLACE of a held
+record: "an imagined record is never rewritten").
 
 ```python
 provenance.KINDS = ("evidence", "inference", "prediction", "simulation", "speculation")
@@ -724,6 +733,9 @@ imagined.record(db, kind, *, payload, assumptions: [str], uncertainty: str, mech
 #   are evicted (deletion_log kind "imagined", target "evicted"); with max_imagined_rows 0 ValidationError;
 #   WritesPaused while regulation pauses writes
 imagined.observe(db, id, *, observation, now, evidence=[(ref_kind, id)]) -> show()  # once; never an imagined ref
+#   observation: a number, true/false or null, or {payload key: such a value} (ValidationError otherwise: no text);
+#   the evidence (at most MAX_REFS) joins imagined_refs (observed 1), so forgetting it removes the record;
+#   WritesPaused while regulation pauses writes; derived_from in show() stays what the record was derived from
 imagined.listing(db, now, *, kind=None, limit=100) -> {"label", "counts" {kind: n}, "items": [{"id", "kind", "label",
                  "mechanism", "mechanism_version", "model", "question", "created_at", "expires_at", "observed"}]}
 imagined.show(db, id) -> item + {"payload", "assumptions", "uncertainty", "derived_from", "outcome", "observed_at"}
@@ -733,11 +745,14 @@ imagined.section(records) -> {"label": "imagined, not evidence", "items": [{"kin
                  "uncertainty"}]}                                         # no ids: never citable
 imagined.example(seed, *, question=..., derived_from=()) -> record() keyword arguments  # writes nothing
 imagined.purge_orphans(db, now) -> int ; imagined.expire(db, now) -> int ; imagined.replay(copy, forgotten, now) -> int
-#   caller owns the transaction (governance forgets, governance.sweep, checkpoints._replay)
+imagined.bound(db, now) -> int   # the current limits applied to the records held (store.set_config, replay)
+#   caller owns the transaction (governance forgets, governance.sweep, checkpoints._replay); expire also removes
+#   orphans whatever expired and drops tombstones older than store.MAX_IMAGINED_LIFETIME (365 days)
 ```
 
 Additive fields, absent while zero unless noted: forget results `effects["imagined_removed"]` (every forget kind);
-`governance.sweep()["imagined_expired"]`; `checkpoints.restore()["imagined_removed"]` (always present).
+`governance.sweep()["imagined_expired"]`; `checkpoints.restore()["imagined_removed"]` (always present);
+`store.set_config()["imagined_removed"]` (a lowered max_imagined_rows or imagined_lifetime_seconds).
 `reasoning.bundle` leaves out findings, answer items and sources whose `provenance` is quarantined;
 `reasoning.check_sentence` resolves no citation to a claim or source whose `provenance` is quarantined.
 
