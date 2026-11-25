@@ -143,3 +143,56 @@ def test_a_rate_or_another_unit_is_not_read_as_a_size_a_length_or_a_speed(text, 
 
 def test_masking_keeps_the_currency_when_the_other_statement_writes_a_symbol():
     assert "euros" in T.mask_quantities("610 million euros", like="€0.61 bn")
+
+
+# ---- fix round 2 (N1): a rate keeps its compound unit, so it compares only with the same rate ---------------------
+
+@pytest.mark.parametrize("text, value", [
+    ("The disk writes 5 MB/s.", "5 mb/s"),
+    ("Gravity is 9.8 m/s² here.", "9.8 m/s²"),
+    ("The link carries 10 Gb/s.", "10 gb/s"),
+    ("The drive reads 500 MiB/s.", "500 mib/s"),
+])
+def test_a_rate_is_read_with_its_compound_unit(text, value):
+    assert T.values(text) == [value]
+
+
+@pytest.mark.parametrize("a, b", [
+    ("The drive copies 500 MB/s.", "The drive copies 7000 MB/s."),
+    ("Gravity on the surface is 9.8 m/s².", "Gravity on the surface is 3.7 m/s²."),
+    ("The link carries 10 Gb/s.", "The link carries 1 Gb/s."),
+])
+def test_two_different_rates_conflict(a, b):
+    assert T.values_conflict(T.values(a), T.values(b)) is not None
+
+
+def test_equal_rates_agree_and_a_rate_never_compares_with_a_size():
+    assert T.values_agree(T.values("It copies 500 MB/s."), T.values("It copies 500 megabytes/s."))
+    assert T.values_equal("5 mb/s", "5 mb") is None
+    assert T.values_equal("5 mb/s", "9 mb/s") is False
+
+
+# ---- fix round 2 (N2): a shared year or date does not make the other values comparable ---------------------------
+
+@pytest.mark.parametrize("new, statement, stored", [
+    (["2024", "130 km/h"], "In 2024 the Orbix motorway limit was 120 km.", ["2024", "120 km"]),
+    (["2024", "8 gb"], "In 2024 the Orbix appliance shipped 16 GiB.", ["2024", "16 gib"]),
+    (["2024-03-01", "5 mb/s"], "On 1 March 2024 the Orbix disk held 5 MB.", ["2024-03-01", "5 mb"]),
+])
+def test_a_shared_date_does_not_make_incomparable_values_the_same(new, statement, stored):
+    item = {"statement": statement, "claim_values": stored, "polarity": 1}
+    assert consolidate._compare(new, 1, item)[0] == "incomparable"
+
+
+def test_a_shared_date_with_comparable_values_still_compares():
+    item = {"statement": "In 2024 the Orbix motorway was 120 km long.", "claim_values": ["2024", "120 km"],
+            "polarity": 1}
+    assert consolidate._compare(["2024", "120 km"], 1, item)[0] == "same"
+    assert consolidate._compare(["2024", "130 km"], 1, item)[0] == "conflict"
+    assert consolidate._compare(["2024"], 1, item)[0] == "same"          # one side without other values: as before
+
+
+def test_a_stored_size_is_not_strengthened_by_a_rate(db):
+    kid = known(db, "The Orbix cartridge holds 5 MB.")
+    _, out = consolidated(db, [sources("The Orbix cartridge holds 9 MB/s.")], T0 + 10, objective="What does it hold?")
+    assert kid not in out.get("strengthened", [])

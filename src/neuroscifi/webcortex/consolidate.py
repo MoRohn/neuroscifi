@@ -144,6 +144,10 @@ def _compare(cluster_values, polarity, item):
         return when, [v for v in values if v not in when]
 
     (new_when, new_other), (old_when, old_other) = split(list(cluster_values)), split(item_values)
+    if new_other and old_other and not _comparable(new_other, old_other):
+        # a shared year or date ("In 2024 ... 120 km" against "In 2024 ... 130 km/h") does not make the rest one fact
+        return "incomparable", (f"values that cannot be compared: {', '.join(new_other)} vs "
+                                f"{', '.join(old_other)}")
     other = text.values_conflict(new_other, old_other)
     when = text.values_conflict(new_when, old_when)
     if other and when:

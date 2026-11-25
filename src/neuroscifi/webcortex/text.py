@@ -657,8 +657,12 @@ def _scan_values(s: str) -> list[tuple[str, str | None]]:
                 found.append((m.start(), f"{_CURRENCY_WORD[g['curw'].lower()]} {_fmt(x)}"))
                 continue
             unit = _unit(g["unit"] or "")
-            if unit and _DIMENSION.get(unit, ("",))[0] in _RATE_PRONE and _PER_OR_POWER.match(text, m.end()):
-                continue        # "5 MB/s", "9.8 m/s²": a rate or an acceleration, not a size, a length or a speed
+            compound = _PER_OR_POWER.match(text, m.end()) if unit and _DIMENSION.get(unit, ("",))[0] in _RATE_PRONE \
+                else None
+            if compound:
+                # "5 MB/s", "9.8 m/s²": a rate or an acceleration, not a size, a length or a speed. It keeps its whole
+                # unit ("5 mb/s"), which no table holds, so it compares only with the same unit, exactly
+                unit = unit + compound.group(0).lower()
             if unit:
                 numbers.append([m.start(), m.end(), x, unit, len(found), mag])
                 found.append((m.start(), _with_unit(x, unit)))
@@ -692,9 +696,10 @@ def _scan_values(s: str) -> list[tuple[str, str | None]]:
 
 
 _NEXT_WORD = re.compile(r"[ \t]+([^\W\d_][\w'’-]*)")
-# A unit of these dimensions followed by "/" and a letter, or by a power, is part of a unit the table does not hold.
+# A unit of these dimensions followed by "/" and a unit word, or by a power, is part of a unit the table does not hold:
+# the value keeps the whole unit as written ("5 mb/s", "9.8 m/s²").
 _RATE_PRONE = ("length", "data", "binary data", "speed")
-_PER_OR_POWER = re.compile(r"/[^\W\d_]|[²³]")
+_PER_OR_POWER = re.compile(r"/[^\W\d_]{1,12}(?![\w])[²³]?|[²³]")
 
 def _quantity_key(g: dict):
     """(kind of quantity, unit as written, magnitude word as written) of one _VALUE_RE match, or None: the kind is a
