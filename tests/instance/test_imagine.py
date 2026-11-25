@@ -151,6 +151,27 @@ def test_question_values_are_exact_and_agree_with_what_if(individual):
     assert totals == sorted(totals, reverse=True) and out["candidates"][0]["factor"] == "camera:c"
 
 
+def test_the_joint_information_of_a_reading_is_lane_is_and_agrees_with_this_copys_prediction(individual):
+    """Wave 1 seam: lane I's exact information gain (information.gains, on the tallies) and this module's predictive
+    probability (on a sandbox copy) are two computations of the same quantity for one reading of a camera or a
+    partner: I(Y; hidden bits) = h(P(Y=1)) - h(reading error). question_values takes it from lane I's definition."""
+    from neuroscifi.instance import information
+    db, _ = individual
+    out = imagine.question_values(db, "e", now=T0 + 100)
+    lane_i = {c["subject"]: c["eig_bits"] for c in information.gains(db, "e", k=1)["candidates"]}
+    checked = 0
+    for c in out["candidates"]:
+        if c["factor"].startswith("reference:"):
+            assert c["information_bits_joint"] is None
+            continue
+        p1 = c["p_reading"][1]
+        from_prediction = information._h(p1) - information._noise_entropy("camera", 1)
+        assert c["information_bits_joint"] == lane_i[c["factor"]]
+        assert c["information_bits_joint"] == pytest.approx(from_prediction, abs=2e-6)
+        checked += 1
+    assert checked == 2                     # camera:c and partner:p
+
+
 # ---- retrospection ---------------------------------------------------------------------------------------------------
 
 def test_retrospection_is_exact_leave_one_out_and_groups_interchangeable_readings(individual):

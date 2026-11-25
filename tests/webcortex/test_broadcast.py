@@ -89,6 +89,31 @@ def test_on_broadcasts_a_salient_finding_and_names_the_winner_of_contention(indi
     assert aggregator.arbitrate(rows)[0]["scope"] == entry["contention"]["winner"]
 
 
+@pytest.mark.parametrize("carried", [0.9, 0.1, None])
+def test_a_finding_takes_the_salience_record_its_candidate_carried(individual, carried):
+    """Wave 1 seam: a task queued with lane I's salience record (ADR-051, salience.py) is offered with that score and
+    its explanation; one without a record keeps broadcast.score's local function (0.221 for one confirmed)."""
+    db, _ = individual
+    store.set_config(db, {"broadcast": "on"}, T0)
+    task = finished(db, [(7, "confirmed")])
+    if carried is not None:
+        record = {"score": carried, "signals": {"novelty": 1.0}, "weights": {"novelty": 0.15},
+                  "explanation": f"salience {carried:.3f} = test"}
+        with store.write(db):
+            state.log_event(db, task["id"], "decision", {"autonomy": {"kind": "stale", "key": "zephyr",
+                                                                      "salience": record}}, T0)
+    found = autonomy.after_task(db, task["id"], T0 + 5)
+    [entry] = decisions(db, task["id"], "broadcast")
+    if carried is None:
+        assert entry["salience"] == pytest.approx(0.2212, abs=1e-4) and entry["outcome"] == "local"
+        assert "source" not in (entry["inputs"] or {})
+        return
+    assert entry["salience"] == carried and entry["inputs"]["source"] == autonomy.SALIENCE_SOURCE
+    assert entry["inputs"]["explanation"] == record["explanation"]
+    assert entry["outcome"] == ("broadcast" if carried >= 0.5 else "local")
+    assert (found["pending_id"] is not None) == (carried >= 0.5)
+
+
 def test_the_hourly_limit_keeps_the_rest_local(individual, monkeypatch):
     db, _ = individual
     store.set_config(db, {"broadcast": "on", "broadcast_threshold": 0.0}, T0)

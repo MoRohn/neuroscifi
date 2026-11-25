@@ -309,7 +309,10 @@ def question_values(db, epoch, *, now=None):
     [{"factor", "p_reading": {0, 1}, "after": {0: beliefs, 1: beliefs}, "expected_change": {factor: E|change|},
     "information_bits": {factor: mutual information of the reading with that hidden bit}, "information_bits_total"}],
     sorted by information_bits_total, highest first. "information_bits_total" sums the per-bit mutual information
-    (not the joint information of all bits). A reading of an existing reference root informs the mechanism; a reading
+    (not the joint information of all bits); "information_bits_joint" is the joint one for a camera or partner, taken
+    from lane I's definition (information.gains with one reading: H(Y) - H(Y | hidden bits)), which equals
+    h(p_reading) - h(reading error) from this copy's own predictive probability (tests/instance/test_imagine.py).
+    A reading of an existing reference root informs the mechanism; a reading
     at a new reference root informs nothing (its polarity is unknown), so it is not listed. Decides nothing."""
     _require(db, "imagine_what_if")
     beliefs.require_epoch(db, epoch)
@@ -317,6 +320,8 @@ def question_values(db, epoch, *, now=None):
     with sandbox(db) as box:
         copy = box.db
         before, base = _state(copy, epoch)
+        from . import information          # lane I's exact information gain (ADR-051): one definition of it
+        joint = {c["subject"]: c["eig_bits"] for c in information.gains(copy, epoch, k=1)["candidates"]}
         candidates = [_scope(f) for f in _factors(before) if f != "mechanism"]
         candidates += [("reference", r) for r in _reference_roots(copy, epoch)]
         out = []
@@ -335,7 +340,9 @@ def question_values(db, epoch, *, now=None):
             out.append({"factor": _label(channel, root), "p_reading": p, "after": after,
                         "expected_change": {f: sum(p[x] * abs(_p(after[x], f) - _p(before, f)) for x in (0, 1))
                                             for f in factors},
-                        "information_bits": info, "information_bits_total": sum(info.values())})
+                        "information_bits": info, "information_bits_total": sum(info.values()),
+                        "information_bits_joint": None if channel == "reference" else
+                        joint.get(_label(channel, root))})
         cost = box.cost()
     out.sort(key=lambda c: (-c["information_bits_total"], c["factor"]))
     return {"label": provenance.NOT_EVIDENCE, "kind": provenance.SIMULATION, "mechanism": "imagine.question_values",

@@ -27,8 +27,9 @@ autonomy on for must not be dropped silently (R1-01); with "on" nothing is dropp
 listed by the self-description), but the owner is not interrupted for it.
 
 The salience seam: score(kind, signals) is a small local function over the producer's own counts (SIGNAL_WEIGHTS),
-1 - exp(-sum of weights). Lane I's salience record replaces it in the integration pass: a producer passes salience=
-(the record's value) and salience_inputs=, or score() is pointed at it; offer() and the log do not change.
+1 - exp(-sum of weights). Where a finding's task was queued with lane I's salience record (webcortex/salience.py,
+ADR-051), autonomy.after_task passes that record's score as salience= and its explanation and source as
+salience_inputs=; score() stays the fallback (a monitor's finding, a task queued without a record).
 """
 from __future__ import annotations
 

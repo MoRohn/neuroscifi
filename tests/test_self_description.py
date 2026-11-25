@@ -135,6 +135,42 @@ def test_uncertain_and_next_step_come_from_the_beliefs_and_the_executive(individ
     assert any("least certain about the mechanism" in s for s in sd.short(record))
 
 
+def test_the_other_wave1_records_are_in_the_owner_record_with_source_and_age(individual):
+    """Wave 1 seam: the internal-state record (ADR-051), the latest answers' monitoring records (ADR-054), the open
+    "to re-check" marks and the improvement ledger (ADR-055) and the imagination settings (ADR-052), each a field with
+    its source and age; none of them in Pocket's family scope."""
+    from neuroscifi import internal_state
+    monitoring = {"version": 1, "confidence": 0.81, "below_threshold": False, "decision": "answer",
+                  "sufficiency": {"enough": True, "why": []}}
+    with closing(store.connect(individual)) as db:
+        task = orchestrator.submit(db, "Is the Okapi compiler 2.0 out yet?", T0, origin="console")
+        with store.write(db):
+            state.update_task(db, task["id"], T0 + 1, status="completed", finished_at=T0 + 1,
+                              result={"answer": [], "monitoring": monitoring})
+            db.execute("INSERT INTO web_rechecks(subject_kind,subject_id,reason,cause,status,created_at,updated_at) "
+                       "VALUES('knowledge',1,'premise_superseded','{}','marked',?,?)", (T0 + 2, T0 + 2))
+            db.execute("INSERT INTO improvement_ledger(capability,level,change,evidence,generalisation,regressions,"
+                       "cost,reproducibility,decision,decided_by,created_at) VALUES('strategy_selection',3,'rank by "
+                       "outcomes','{}','{}','{}','{}','{}','revise','gate',?)", (T0 + 3,))
+        store.set_config(db, {"imagine_scenarios": True}, T0 + 4)
+        record = sd.build(db, individual, T0 + 10)
+        family = sd.build(db, individual, T0 + 10, scope="family", family="fam-a")
+    internal = record["internal_state"]
+    assert internal["source"].startswith("internal_state.snapshot") and internal["age_seconds"] == 0
+    assert internal["value"]["schema"] == internal_state.SCHEMA and "memory" in internal["value"]["fields"]
+    answers = record["uncertain"]["answers"]
+    assert answers["value"] == [{"task_id": task["id"], "at": T0 + 1, "confidence": 0.81, "below_threshold": False,
+                                 "decision": "answer", "sufficiency": {"enough": True, "why": []}}]
+    assert answers["age_seconds"] == 9 and "monitoring" in answers["source"]
+    marks = record["uncertain"]["to_recheck"]
+    assert marks["value"] == {"open": 1, "by_kind": {"knowledge": {"premise_superseded": 1}}} and marks["at"] == T0 + 2
+    ledger = sd.value(record, "decisions.improvement_ledger")
+    assert ledger["strategy_selection_active"] is False and [e["decision"] for e in ledger["latest"]] == ["revise"]
+    imagination = sd.value(record, "can.capabilities.imagination")
+    assert imagination["scenario_records"] is True and imagination["what_if"] is True
+    assert "internal_state" not in family and "imagination" not in family["can"]["capabilities"]
+
+
 def test_family_scope_carries_only_what_pocket_may_see(individual):
     with closing(store.connect(individual)) as db:
         mine = orchestrator.submit(db, "Is the Okapi compiler 2.0 out yet?", T0, origin="pocket", family="fam-a")

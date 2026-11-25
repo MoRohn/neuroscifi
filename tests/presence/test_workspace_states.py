@@ -60,6 +60,24 @@ def test_predicting_and_simulating_come_from_recorded_rows_only(inst):
     assert "predicting" not in acts(family) and "simulating" not in acts(family)
 
 
+def test_the_real_producers_drive_predicting_and_simulating(inst):
+    """Wave 1 seam: a hypothesis's prediction (evolution, the prediction code) shows 'predicting'; lane M's scenario
+    record for it (webcortex/scenarios.py, imagine_scenarios on) shows 'simulating'; neither while it is off."""
+    from neuroscifi.webcortex import evolution, scenarios
+    db, path = inst
+    with store.write(db):
+        evolution.open_hypothesis(db, key="zephyr board release", statement="Zephyr board 3 is the latest release.",
+                                  origin="gap", verification={"confidence": 0.6}, claims=[], values=[], polarity=1,
+                                  now=NOW - 2)
+    assert db.execute("SELECT count(*) FROM web_predictions").fetchone()[0] >= 1
+    assert "predicting" in acts(derive(db, path)) and "simulating" not in acts(derive(db, path))
+    assert scenarios.tick(db, NOW - 1) is None                     # imagine_scenarios off: nothing imagined
+    assert "simulating" not in acts(derive(db, path))
+    store.set_config(db, {"imagine_scenarios": True}, NOW - 1)
+    assert scenarios.tick(db, NOW - 1) == {"settled": 0, "imagined": 1}
+    assert "simulating" in acts(derive(db, path))
+
+
 def test_analyzing_while_a_graph_job_holds_its_lease(inst):
     db, path = inst
     with graphs.lease(db, "ctx-a", "graphs.learn:1:2", NOW):

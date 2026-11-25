@@ -861,6 +861,24 @@ def idle(db, now, *, worker=None) -> dict:
 
 # ---- meaningful findings -> the owner's pending questions ------------------------------------------------------------
 
+SALIENCE_SOURCE = "webcortex/salience.py: the salience record its candidate carried when it was queued"
+
+
+def _candidate_salience(db, task_id) -> tuple[float | None, dict | None]:
+    """(score, inputs) of the salience record (salience.py, ADR-051) that the task's decision event stored when it was
+    queued (decision_inputs), for selective broadcast; (None, None) when it has none (salience_record off, the legacy
+    tick rule, a task queued before the record existed): broadcast.score's local function applies then."""
+    for (detail,) in db.execute("SELECT detail FROM web_events WHERE task_id=? AND kind='decision' ORDER BY id DESC",
+                                (task_id,)):
+        picked = (state.loads(detail, {}) or {}).get("autonomy")
+        record = picked.get("salience") if isinstance(picked, dict) else None
+        score = state.finite(record.get("score")) if isinstance(record, dict) else None
+        if score is not None:
+            return score, {"source": SALIENCE_SOURCE, "explanation": record.get("explanation"),
+                           "signals": record.get("signals")}
+    return None, None
+
+
 def after_task(db, task_id, now) -> dict | None:
     """For a finished autonomous task: a notification (the owner's pending question web:autonomy:<task>) only for a
     meaningful finding - a new verified claim (knowledge candidate from a supported
@@ -903,10 +921,13 @@ def after_task(db, task_id, now) -> dict | None:
     signals = {"new_verified": len(findings["new_verified"]), "resolved_contradictions": len(resolved),
                "settled_predictions": sum(1 for s in settled if s.get("outcome") == "confirmed"),
                "prediction_errors": sum(1 for s in settled if s.get("outcome") == "error")}
+    salience, salience_inputs = _candidate_salience(db, task_id)
     with store.write(db):
-        # selective broadcast (ADR-053): mode off (the default) delivers exactly as before
+        # selective broadcast (ADR-053): mode off (the default) delivers exactly as before. The salience is the
+        # candidate's own salience record (ADR-051) when it carried one; broadcast.score's local one otherwise.
         offered = broadcast.offer(db, "autonomy.finding", now=now, signals=signals, scope=scope, task_id=task_id,
-                                  deliver=lambda: knowledge.open_question(db, scope, text, now))
+                                  deliver=lambda: knowledge.open_question(db, scope, text, now),
+                                  salience=salience, salience_inputs=salience_inputs)
         findings["pending_id"] = offered["pending_id"]
         delivered = findings["pending_id"] is not None
         kept = offered["outcome"] == "local"

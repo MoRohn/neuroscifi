@@ -11,13 +11,17 @@ Sections and the five questions they answer (record["answers"] lists the field p
   doing      What am I doing?            tasks (running, queued, with origins), goals, open questions, epoch, quiet
   knows      What do I know?             memory inventory, web knowledge counts
   uncertain  What am I uncertain about?  least certain factor of the current epoch's beliefs, open contradictions,
-                                         lowest-confidence knowledge in use, unsettled predictions
-  can        What can I do next?         capabilities available now (models, speech, search, devices), limits and
-                                         budgets left, authorised tools (model tools, MCP tools, voice commands)
+                                         lowest-confidence knowledge in use, unsettled predictions, the monitoring
+                                         record of the latest answers (ADR-054), open "to re-check" marks (ADR-055)
+  can        What can I do next?         capabilities available now (models, speech, search, devices, imagination
+                                         settings, ADR-052), limits and budgets left, authorised tools (model tools,
+                                         MCP tools, voice commands)
   decisions  What evidence supports that decision?  the executive's decision for the current epoch now (computed,
                                          not recorded) with its reason, the recorded decisions with their reasons and
-                                         state_version, autonomy decisions, selective-broadcast decisions
+                                         state_version, autonomy decisions, selective-broadcast decisions, the
+                                         improvement ledger's latest decisions (ADR-055)
   resources  host memory level and reasons, audio, background gate, idle-unloaded services (resources.status)
+  internal_state  the internal-state record (internal_state.snapshot, ADR-051), owner scope only
   provenance software and schema version, model ids, counts of records by provenance kind (imagined included)
   recent     what we were just doing: the latest research a person asked for, by reference (task id, objective,
              device, status); Pocket sees the owner's only when the owner switched pocket_recent on
@@ -378,6 +382,71 @@ def _broadcast_decisions(db, now) -> dict:
               now)
 
 
+# ---- the other Wave 1 records (integration): each read from its own module, with its source and age ----------------
+
+def _internal_state(db, path, now) -> dict:
+    """Lane I's internal-state record (ADR-051), numbers only; each of its fields carries its own source and age."""
+    from . import internal_state
+    snap = internal_state.snapshot(db, str(path) if path else None, now)
+    return _f(snap, "internal_state.snapshot (ADR-051; `nsf internal-state`)", snap.get("at"), now)
+
+
+def _answer_monitoring(db, now) -> dict:
+    """Lane C's monitoring record (ADR-054) of the latest research results that carry one: the calibrated confidence,
+    whether it was below the selective threshold, what was decided, and whether the evidence was enough."""
+    latest = (f"SELECT id, updated_at, result FROM web_tasks WHERE status IN ({','.join('?' * len(TERMINAL))}) "
+              "ORDER BY updated_at DESC LIMIT 50")            # the latest finished tasks only: never every report
+    rows = db.execute(
+        "SELECT id, updated_at, json_extract(result,'$.monitoring.confidence'), "
+        "json_extract(result,'$.monitoring.below_threshold'), json_extract(result,'$.monitoring.decision'), "
+        f"json_extract(result,'$.monitoring.sufficiency') FROM ({latest}) WHERE json_valid(result) AND "
+        "json_extract(result,'$.monitoring.version') IS NOT NULL ORDER BY updated_at DESC LIMIT ?",
+        (*TERMINAL, MAX_ITEMS)).fetchall()
+    items = [{"task_id": tid, "at": at, "confidence": conf, "below_threshold": bool(below), "decision": decision,
+              "sufficiency": _json(enough)} for tid, at, conf, below, decision, enough in rows]
+    return _f(items, "web_tasks.result monitoring record (webcortex/monitoring.py, ADR-054; answer_monitoring)",
+              rows[0][1] if rows else None, now)
+
+
+def _to_recheck(db, now) -> dict:
+    """Lane K's open "to re-check" marks (ADR-055) by subject kind and reason; marks change no belief."""
+    from .webcortex import premises
+    if not premises.present(db):
+        return _f(None, "web_rechecks (schema 18 not present)", None, now)
+    counts, newest = {}, None
+    for kind, reason, n, at in db.execute(
+            "SELECT subject_kind, reason, count(*), max(updated_at) FROM web_rechecks WHERE status IN "
+            f"({','.join('?' * len(premises.OPEN))}) GROUP BY subject_kind, reason", premises.OPEN):
+        counts.setdefault(kind, {})[reason] = n
+        newest = at if newest is None else max(newest, at)
+    total = sum(n for by in counts.values() for n in by.values())
+    return _f({"open": total, "by_kind": counts}, "web_rechecks (webcortex/premises.py, ADR-055; `nsf knowledge "
+              "rechecks`)", newest, now)
+
+
+def _improvement_ledger(db, now) -> dict:
+    """Lane K's improvement ledger (ADR-055): the latest decisions, and whether strategy selection ranks."""
+    from .webcortex import strategies
+    rows = [{k: e[k] for k in ("id", "capability", "level", "decision", "decided_by", "created_at")}
+            for e in strategies.ledger(db, limit=MAX_ITEMS)]
+    return _f({"strategy_selection_active": strategies.active(db), "latest": rows},
+              "improvement_ledger (webcortex/strategies.py, ADR-055; `nsf knowledge ledger`)",
+              rows[0]["created_at"] if rows else None, now)
+
+
+def _imagination(db, now) -> dict:
+    """Lane M's imagination settings (ADR-052): what can be asked, and its bounds."""
+    from .instance import store
+    cfg = store.config(db)
+    return _f({"what_if": cfg.imagine_what_if, "questions": cfg.imagine_what_if, "forecast": cfg.imagine_forecast,
+               "retrospect": cfg.imagine_retrospect, "scenario_records": cfg.imagine_scenarios,
+               "max_seconds": cfg.imagine_max_seconds, "max_bytes": cfg.imagine_max_bytes,
+               "commands": ["nsf imagine what-if", "nsf imagine questions", "nsf imagine forecast",
+                            "nsf imagine retrospect", "nsf imagine scm", "nsf imagine scenarios"],
+               "label": "answers are computed on a private copy and are imagined, not evidence"},
+              "InstanceConfig imagine_* (instance/imagine.py, ADR-052; `nsf config`)", now, now)
+
+
 def _json(text):
     try:
         value = json.loads(text) if text else None
@@ -453,13 +522,15 @@ def build(db, path, now, *, scope="owner", family=None) -> dict:
         if web:
             from .webcortex import state as wstate
             record["knows"]["knowledge"] = _f(wstate.counts(db), "webcortex.state.counts (web memory)", now, now)
+        record["internal_state"] = _internal_state(db, path, now)
         uncertain = {"beliefs": _beliefs(db, epoch, now)}
         if web:
             uncertain |= {"contradictions": _contradictions(db, now), "low_confidence": _low_confidence(db, now),
-                          "predictions": _predictions(db, now)}
+                          "predictions": _predictions(db, now), "answers": _answer_monitoring(db, now),
+                          "to_recheck": _to_recheck(db, now)}
         record["uncertain"] = uncertain
         record["can"] = {"capabilities": {"models": _models(db, path, resources, now), "speech": _speech(db, now),
-                                          "devices": _devices(db, path, now)},
+                                          "devices": _devices(db, path, now), "imagination": _imagination(db, now)},
                          "limits": limits, "tools": _tools(now)}
         if web:
             record["can"]["capabilities"]["search"] = _search(db, now)
@@ -467,7 +538,8 @@ def build(db, path, now, *, scope="owner", family=None) -> dict:
                                "executive_recorded": _executive_recorded(db, now)}
         if web:
             record["decisions"] |= {"autonomy": _autonomy_decisions(db, now),
-                                    "broadcast": _broadcast_decisions(db, now)}
+                                    "broadcast": _broadcast_decisions(db, now),
+                                    "improvement_ledger": _improvement_ledger(db, now)}
         from .inference import config as iconfig
         models = {p: (iconfig.get_config(db, p).model or None) for p in iconfig.PROVIDERS}
         record["provenance"] = {
