@@ -51,15 +51,37 @@ def dump(db):
     return "\n".join(repr(db.execute(f"SELECT * FROM {t}").fetchall()) for t in tables)
 
 
-# ---- by construction: the evidence code never reads the store -----------------------------------------------------
-
-# The knowledge, claims, consolidation, verification, calibration, belief, evidence and retrieval paths.
-EVIDENCE_PATHS = ["webcortex/knowledge.py", "webcortex/claims.py", "webcortex/consolidate.py", "webcortex/synthesis.py",
-                  "webcortex/evolution.py", "webcortex/predictions.py", "webcortex/semantic.py",
-                  "webcortex/memory_gate.py", "webcortex/reasoning.py", "webcortex/curiosity.py",
-                  "webcortex/autonomy.py", "webcortex/orchestrator.py", "webcortex/state.py", "webcortex/temporal.py",
-                  "instance/beliefs.py", "instance/evidence.py", "instance/executive.py", "instance/memory.py",
-                  "instance/datasets.py", "instance/graphs.py", "instance/learner.py", "instance/recall.py"]
+# ---- by construction: only the modules allowed here touch the store ------------------------------------------------
+#
+# An ALLOW-LIST (review0 L5): every module under src/neuroscifi is scanned, and a module not named below may neither
+# import the store nor carry SQL naming its tables. Each entry gives the reason it is allowed.
+#   STORE     the store, its schema and lifecycle (bounds, forgets, sweep, restore) and the owner's own commands:
+#             any use. Closed: a mechanism never goes here.
+#   WRITERS   a mechanism that records what it imagined: only the write API (WRITE_API), never SQL on the store.
+#   DISPLAYS  a surface that lists records, each labelled "imagined, not evidence": only DISPLAY_API, never SQL.
+# No evidence path (FORBIDDEN: knowledge, claims, consolidation, verification, calibration, beliefs, retrieval, the
+# answer bundle) may be added to any category: those modules may not read the store at all.
+#
+# How a lane adds itself: put its module (the path under src/neuroscifi) in WRITERS or DISPLAYS with a one-line reason
+# saying what it writes or shows, import the store as a module (`from ..instance import imagined`) and use only the
+# names its category allows. test_the_allow_lists_are_well_formed checks the entry; the scan below checks the use.
+STORE = {
+    "instance/imagined.py": "the store itself: records, lineage, bounds and removals",
+    "instance/schema.py": "creates the store's tables and triggers (migration 17)",
+    "instance/store.py": "a lowered max_imagined_rows or lifetime applies to the records held (imagined.bound)",
+    "instance/governance.py": "every forget removes what derives from what it removed; the sweep expires records",
+    "instance/checkpoints.py": "a restore replays the store's removals (tombstones, limits, orphans)",
+    "instance/cli_imagined.py": "the owner's `nsf imagined list|show|purge|kinds`, every item labelled",
+}
+WRITERS: dict[str, str] = {}
+DISPLAYS: dict[str, str] = {}
+WRITE_API = {"record", "observe", "example", "KINDS", "REF_KINDS", "OBSERVATION_KINDS", "MAX_REFS", "NOT_EVIDENCE"}
+DISPLAY_API = {"listing", "show", "present", "KINDS", "NOT_EVIDENCE"}
+FORBIDDEN = ["webcortex/knowledge.py", "webcortex/claims.py", "webcortex/consolidate.py", "webcortex/synthesis.py",
+             "webcortex/evolution.py", "webcortex/predictions.py", "webcortex/semantic.py",
+             "webcortex/memory_gate.py", "webcortex/reasoning.py", "webcortex/state.py", "webcortex/temporal.py",
+             "instance/beliefs.py", "instance/evidence.py", "instance/executive.py", "instance/memory.py",
+             "instance/datasets.py", "instance/graphs.py", "instance/learner.py", "instance/recall.py"]
 
 
 def _store_uses(source):
@@ -80,9 +102,63 @@ def _store_uses(source):
     return found
 
 
-@pytest.mark.parametrize("path", EVIDENCE_PATHS)
-def test_no_evidence_path_reads_or_writes_the_imagined_store(path):
-    assert _store_uses((SRC / path).read_text()) == [], path
+def _store_api(source):
+    """The names of the store a module uses: attributes of the module bound by `from ... import imagined [as x]`,
+    and names imported from it. "*" for any other reference (the module passed around, `instance.imagined`, a plain
+    `import`), "SQL" for SQL naming the store's tables: neither is in any category's API."""
+    tree = ast.parse(source)
+    aliases, names = set(), set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("imagined"):
+            names |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            aliases |= {a.asname or a.name for a in node.names if a.name == "imagined"}
+        elif isinstance(node, ast.Import) and any(a.name.endswith("imagined") for a in node.names):
+            names.add("*")
+    attributes = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in aliases:
+            names.add(node.attr)
+            attributes.add(id(node.value))
+        elif isinstance(node, ast.Attribute) and node.attr == "imagined":
+            names.add("*")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in aliases and id(node) not in attributes:
+            names.add("*")
+    if any(isinstance(n, ast.Constant) and isinstance(n.value, str) and re.search(
+            r"\b(?:FROM|JOIN|INTO|UPDATE)\s+imagined", n.value, re.IGNORECASE) for n in ast.walk(tree)):
+        names.add("SQL")
+    return names
+
+
+def test_only_an_allowed_module_touches_the_store_and_only_through_its_api():
+    wrong = {}
+    for file in sorted(SRC.rglob("*.py")):
+        path, source = str(file.relative_to(SRC)), file.read_text()
+        if path in STORE:
+            continue
+        used = _store_api(source)
+        allowed = WRITE_API if path in WRITERS else DISPLAY_API if path in DISPLAYS else set()
+        if not used <= allowed or (not allowed and _store_uses(source)):
+            wrong[path] = sorted(used - allowed) or _store_uses(source)
+    assert wrong == {}, ("these modules touch the imagined store outside their category: allow a mechanism in WRITERS "
+                         "or DISPLAYS with a reason, use only that category's API, or remove the use")
+
+
+def test_the_allow_lists_are_well_formed():
+    """Every entry names a real module and says why; no module is in two categories; no evidence path in any."""
+    lists = {"STORE": STORE, "WRITERS": WRITERS, "DISPLAYS": DISPLAYS}
+    seen = [m for allowed in lists.values() for m in allowed]
+    assert len(seen) == len(set(seen)), "a module is in two categories"
+    for name, allowed in lists.items():
+        for module, reason in allowed.items():
+            assert (SRC / module).is_file(), f"{name}: {module} does not exist"
+            assert isinstance(reason, str) and len(reason.split()) >= 4, f"{name}: {module} needs a reason"
+    for module in FORBIDDEN:
+        assert (SRC / module).is_file(), module
+        assert module not in seen, f"{module} is an evidence path: it may never read the imagined store"
+    assert not (WRITE_API | DISPLAY_API) & {"purge", "purge_orphans", "expire", "bound", "replay", "section", "*",
+                                            "SQL"}
 
 
 def test_the_scan_would_see_a_use():
@@ -91,6 +167,14 @@ def test_the_scan_would_see_a_use():
                    "X = 'SELECT id FROM imagined WHERE kind=?'\n", "X = 'DELETE FROM imagined_refs'\n"):
         assert _store_uses(source), source
     assert _store_uses("X = 'the imagined kinds are quarantined'\n") == []
+    assert _store_api("from ..instance import imagined\nimagined.record(db)\nimagined.listing(db, 0)\n") == {
+        "record", "listing"}
+    assert _store_api("from ..instance import imagined as i\nf(i)\n") == {"*"}
+    assert _store_api("from ..instance.imagined import purge\n") == {"purge"}
+    assert _store_api("from .. import instance\ninstance.imagined.show\n") == {"*"}
+    assert _store_api("X = 'SELECT payload FROM imagined'\n") == {"SQL"}
+    assert _store_api("from ..instance import imagined\nimagined.listing(db, 0)\n") <= DISPLAY_API
+    assert not _store_api("from ..instance import imagined\nimagined.listing(db, 0)\n") <= WRITE_API
 
 
 def test_consolidation_and_calibration_are_the_same_with_imagined_records_beside_them(tmp_path):
@@ -115,6 +199,30 @@ def test_consolidation_and_calibration_are_the_same_with_imagined_records_beside
     assert a[2] == b[2] and a[3]["items"] == b[3]["items"]
     assert [x.get("provisional") for x in a[:2]] == [x.get("provisional") for x in b[:2]]
     assert CANARY not in text                      # no evidence-side row of the file holds imagined text
+
+
+def test_a_page_titled_like_an_imagined_id_is_consolidated_like_any_other(db):
+    """review0 M2: the triggers matched an id anywhere in a JSON column, so a web page whose title (copied into
+    web_knowledge.sources) or quoted text (web_knowledge.contradicting) read "imagined:<32 hex>" aborted the whole
+    consolidation of its task, every time. Only reference columns are tested now."""
+    title = "imagined:" + "deadbeef" * 4
+    first = two_sources()
+    for c in first.claims:
+        c.title = title
+    tid, out = consolidated(db, [first])
+    assert len(out["provisional"]) == 1
+    kid = out["provisional"][0]
+    assert {s["title"] for s in knowledge.row(db, kid)["sources"]} == {title}
+    again = two_sources(hosts=("c.example", "d.example"))
+    for c in again.claims:
+        c.title = title.upper()
+    _, more = consolidated(db, [again], T0 + DAY)                  # the strengthening update rewrites the sources
+    assert more["strengthened"] == [kid] and len(knowledge.row(db, kid)["sources"]) == 4
+    against = two_sources(text=f"NumPy 2.4.0 ({title}) is the latest release of the NumPy library.",
+                          hosts=("e.example", "f.example"))
+    _, contested = consolidated(db, [against], T0 + 2 * DAY)       # quoted in `contradicting`, beside the claim id
+    assert [c["knowledge_id"] for c in contested["contested"]] == [kid]
+    assert title in knowledge.row(db, kid)["contradicting"][0]["text"]
 
 
 # ---- retrieval never returns it -----------------------------------------------------------------------------------

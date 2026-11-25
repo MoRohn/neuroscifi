@@ -37,20 +37,68 @@ WEB_TESTS = "tests/webcortex/test_imagined_quarantine.py"
 MUTATIONS = [
     ("trigger_table_dropped", "no reference column of web_knowledge may name an imagined record",
      "instance/schema.py",
-     '    "web_knowledge": (("task_id",), (), ("supporting", "contradicting", "sources", "verification")),\n', "",
+     '    "web_knowledge": (("task_id",), (), {"supporting": (), "contradicting": ("claim", "task")}),\n', "",
      [INSTANCE_TESTS]),
-    ("trigger_json_form_blind", "an imagined id inside a JSON reference column is refused", "instance/schema.py",
-     "_IMAGINED_JSON = '*\"' + _IMAGINED_ID + '\"*'", "_IMAGINED_JSON = _IMAGINED_ID", [INSTANCE_TESTS]),
+    ("trigger_json_list_blind", "an imagined id in a JSON list of ids (escaped, in an object's id key) is refused",
+     "instance/schema.py",
+     '            tests.append(f"EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(NEW.{c}) THEN NEW.{c} END) j "\n'
+     '                         f"WHERE {element})")\n', "", [INSTANCE_TESTS]),
+    # review0 (Wave 0 fix lane): each finding's safeguard
+    ("trigger_case_and_padding_blind", "an id in upper case or padded with white space is still refused (L4)",
+     "instance/schema.py", "return f\"lower(trim(coalesce({expr},''),char(32,9,10,11,12,13))) GLOB '{_IMAGINED_ID}'\"",
+     "return f\"coalesce({expr},'') GLOB '{_IMAGINED_ID}'\"", [INSTANCE_TESTS]),
+    ("trigger_column_missing", "web_mentions' claim, knowledge and task ids may not name a record (L4)",
+     "instance/schema.py", '    "web_mentions": (("claim_id", "knowledge_id", "task_id"), (), {}),\n', "",
+     [INSTANCE_TESTS]),
+    ("trigger_tests_free_text", "a page title or quoted text never trips the triggers (M2: consolidation aborted)",
+     "instance/schema.py", '{"supporting": (), "contradicting": ("claim", "task")}',
+     '{"supporting": (), "contradicting": ("claim", "task", "text"), "sources": ("title",)}',
+     [INSTANCE_TESTS, WEB_TESTS]),
+    ("record_replaceable", "INSERT OR REPLACE never rewrites a record (L1)", "instance/schema.py",
+     "WHEN EXISTS (SELECT 1 FROM imagined WHERE id=NEW.id)", "WHEN 0", [INSTANCE_TESTS]),
+    ("observation_refs_unrecorded", "the evidence an outcome names is forgotten with the record (M1)",
+     "instance/imagined.py",
+     '        db.executemany("INSERT INTO imagined_refs(record_id,ref_kind,ref_id,observed) VALUES(?,?,?,1)",\n'
+     '                       [(record_id, k, i) for k, i in refs if (k, i) not in held])\n', "", [INSTANCE_TESTS]),
+    ("observation_takes_text", "an observation holds no text of its own (M1)", "instance/imagined.py",
+     "    if not (_scalar(observation) or (isinstance(observation, dict) and all(map(_scalar, observation.values())))):",
+     "    if False:", [INSTANCE_TESTS]),
+    ("observation_unregulated", "an observation is refused while writes are paused (note)", "instance/imagined.py",
+     '    outcome = json.dumps({"observed": observation, "evidence": [list(r) for r in refs]}, sort_keys=True)\n'
+     "    store.require_write_allowed(db)\n",
+     '    outcome = json.dumps({"observed": observation, "evidence": [list(r) for r in refs]}, sort_keys=True)\n',
+     [INSTANCE_TESTS]),
+    ("lower_limit_ignored", "a lower row limit or lifetime applies to the records held (L3)", "instance/store.py",
+     "                removed = imagined.bound(db, time.time() if now is None else now)",
+     "                removed = 0", [INSTANCE_TESTS]),
+    ("lifetime_not_brought_forward", "a shorter lifetime brings a held record's expiry forward (L3)",
+     "instance/imagined.py",
+     '    db.execute("UPDATE imagined SET expires_at=created_at+? WHERE expires_at>created_at+?",\n'
+     "               (cfg.imagined_lifetime_seconds, cfg.imagined_lifetime_seconds))\n", "", [INSTANCE_TESTS]),
+    ("sweep_skips_orphans", "the sweep removes a record whose source went any way (L3)", "instance/imagined.py",
+     '    orphaned = db.execute(f"SELECT min(created_at) FROM imagined WHERE {_ORPHANS}").fetchone()[0]',
+     "    orphaned = None", [INSTANCE_TESTS]),
+    ("forgotten_epoch_reusable", "nothing new derives from a forgotten epoch (L3)", "instance/imagined.py",
+     '(ref_id, float("-inf"))).fetchone()', "(ref_id, 9e18)).fetchone()", [INSTANCE_TESTS]),
+    ("tombstones_kept_forever", "tombstones are dropped after the longest lifetime (note)", "instance/imagined.py",
+     '    db.execute("DELETE FROM imagined_forgotten WHERE forgotten_at<=?", (now - store.MAX_IMAGINED_LIFETIME,))\n',
+     "", [INSTANCE_TESTS]),
+    ("first_build_not_repaired", "a file of the first build of migration 17 gets today's store", "instance/schema.py",
+     '    if "imagined_refs" in present:\n        wanted |= _TRIGGERS_17', "    if False:\n        wanted |= _TRIGGERS_17",
+     [INSTANCE_TESTS]),
+    ("store_read_outside_the_allow_list", "only allow-listed modules touch the store (L5; the old opt-in list "
+     "missed this module)", "webcortex/scheduler.py", "from ..instance import store\n",
+     "from ..instance import imagined, store  # noqa: F401\n", [WEB_TESTS]),
     ("kind_check_widened", "the database takes only simulation, speculation and inference", "instance/schema.py",
      "kind TEXT NOT NULL CHECK(kind IN ('simulation','speculation','inference')),",
      "kind TEXT NOT NULL CHECK(kind IN ('simulation','speculation','inference','evidence')),", [INSTANCE_TESTS]),
     ("kind_relabel_allowed", "a record's kind is never rewritten", "instance/schema.py",
-     "BEFORE UPDATE OF id, kind, payload,", "BEFORE UPDATE OF id, payload,", [INSTANCE_TESTS]),
+     "BEFORE UPDATE OF id, kind,\n      payload,", "BEFORE UPDATE OF id,\n      payload,", [INSTANCE_TESTS]),
     ("record_kind_unchecked", "record() refuses a kind that is not quarantined", "instance/imagined.py",
      "    if kind not in KINDS:\n        raise ValidationError(f\"an imagined record is one of",
      "    if False:\n        raise ValidationError(f\"an imagined record is one of", [INSTANCE_TESTS]),
     ("lineage_unchecked", "a record names only sources the file holds", "instance/imagined.py",
-     "        missing = _unresolved(db, refs, now)\n        if missing:\n"
+     "        missing = _unresolved(db, refs)\n        if missing:\n"
      "            raise ValidationError(f\"derived_from",
      "        missing = []\n        if missing:\n            raise ValidationError(f\"derived_from", [INSTANCE_TESTS]),
     ("observation_may_be_imagined", "an observation never names an imagined record", "instance/imagined.py",
@@ -107,16 +155,21 @@ def _pytest(src_root, tests):
     return done.returncode, round(time.perf_counter() - started, 2), tail[0][:160]
 
 
-def mutations():
+def mutations(table=None, control_tests=None):
+    """Each mutation of `table` (default MUTATIONS) in a copy of src/, its tests run against it; a control run of
+    `control_tests` (default both test files) with no change must pass first. scripts/bench_genesis_safety.py runs
+    its own table through this."""
+    table = MUTATIONS if table is None else table
+    control_tests = [INSTANCE_TESTS, WEB_TESTS] if control_tests is None else control_tests
     out = []
     with tempfile.TemporaryDirectory(prefix="nsf-mutations-") as tmp:
         root = Path(tmp) / "src"
         shutil.copytree(REPO / "src", root, ignore=shutil.ignore_patterns("__pycache__"))
-        code, seconds, tail = _pytest(root, [INSTANCE_TESTS, WEB_TESTS])
+        code, seconds, tail = _pytest(root, control_tests)
         control = {"exit": code, "seconds": seconds, "summary": tail}
         if code != 0:
             raise SystemExit(f"the control run fails before any mutation: {tail}")
-        for name, safeguard, rel, old, new, tests in MUTATIONS:
+        for name, safeguard, rel, old, new, tests in table:
             path = root / "neuroscifi" / rel
             original = path.read_text()
             if original.count(old) != 1:

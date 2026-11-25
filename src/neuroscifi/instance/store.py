@@ -279,10 +279,11 @@ _SETTABLE = {
     "graph_rule_migration": lambda v: isinstance(v, bool),
     "max_imagined_rows": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= MAX_IMAGINED_ROWS,
     "imagined_lifetime_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
-                                            and math.isfinite(v) and 60 <= v <= 365 * 86400),
+                                            and math.isfinite(v) and 60 <= v <= MAX_IMAGINED_LIFETIME),
     "quiet": lambda v: isinstance(v, bool),
 }
 MAX_IMAGINED_ROWS = 100_000
+MAX_IMAGINED_LIFETIME = 365 * 86400    # also how long an imagined tombstone is kept (imagined.expire)
 
 
 SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
@@ -359,7 +360,9 @@ def set_config(db, changes, now=None):
     bumps the state version and leaves a row in the deletion log (kind 'setting', the name, {"from", "to"}), beside
     the forgets and sweeps whose meaning it changes: the log then shows from when to when expired events left no
     consolidated reading. Settings saved by older software keep every field they have; a field they lack reads as
-    its default (InstanceConfig.from_json).
+    its default (InstanceConfig.from_json). A lower max_imagined_rows or imagined_lifetime_seconds applies to the
+    imagined records already held, in the same transaction (imagined.bound; "imagined_removed" counts what it removed,
+    absent while zero).
     """
     if not isinstance(changes, dict):
         raise ValidationError("settings must be a JSON object")
@@ -369,6 +372,7 @@ def set_config(db, changes, now=None):
             raise ValidationError(f"{name!r} cannot be changed (changeable: {', '.join(sorted(_SETTABLE))})")
         if not check(value):
             raise ValidationError(f"{name}: value {value!r} is out of range")
+    removed = 0
     with write(db):
         raw = json.loads(_meta(db, "config"))
         current = asdict(InstanceConfig.from_json(json.dumps(raw)))
@@ -384,7 +388,13 @@ def set_config(db, changes, now=None):
                 (SETTING_KIND, name, time.time() if now is None else now, json.dumps(
                     {"from": current[name], "to": changes[name], "state_version": version}, sort_keys=True))
                 for name in changed])
-    return {"config": asdict(config(db)), "changed": changed}
+            if {"max_imagined_rows", "imagined_lifetime_seconds"} & set(changed):
+                from . import imagined     # a lower limit applies to the records already held (ADR-049)
+                removed = imagined.bound(db, time.time() if now is None else now)
+    out = {"config": asdict(config(db)), "changed": changed}
+    if removed:
+        out["imagined_removed"] = removed       # absent while zero
+    return out
 
 
 def birth(db):

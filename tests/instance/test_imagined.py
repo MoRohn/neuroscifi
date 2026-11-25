@@ -69,6 +69,63 @@ def test_the_migration_is_the_last_and_changes_no_row_of_a_version_16_file(tmp_p
         assert raw.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
 
 
+# What the first, unreleased build of migration 17 left (review0 M2/L1/L4, M1): reference triggers that tested free
+# text and missed upper case, padding, escapes and seven reference columns, a never-rewritten trigger that also froze
+# the expiry, no insert triggers, no imagined_refs.observed, no tombstone age index.
+_FIRST_17_JSON = "'*\"" + schema._IMAGINED_ID + "\"*'"
+_FIRST_BUILD_17 = (
+    "BEGIN; DROP TRIGGER imagined_never_rewritten; DROP TRIGGER imagined_lifetime_only_shortened; "
+    "DROP TRIGGER imagined_never_replaced; DROP TRIGGER imagined_refs_never_replaced; "
+    "DROP INDEX imagined_forgotten_age; ALTER TABLE imagined_refs DROP COLUMN observed; "
+    "CREATE TRIGGER imagined_never_rewritten BEFORE UPDATE OF id, kind, payload, assumptions, uncertainty, mechanism, "
+    "mechanism_version, model, question, created_at, expires_at ON imagined "
+    "BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END; "
+    + "".join(f"DROP TRIGGER {t}_no_imagined_i; DROP TRIGGER {t}_no_imagined_u; "
+              for t in ("web_tasks", "web_events", "web_mentions", "voice_segments", "web_knowledge"))
+    + "CREATE TRIGGER web_knowledge_no_imagined_i BEFORE INSERT ON web_knowledge WHEN coalesce(NEW.sources,'') GLOB "
+    + _FIRST_17_JSON + " BEGIN SELECT RAISE(ABORT,'an imagined record is never evidence'); END; "
+    "CREATE TRIGGER web_knowledge_no_imagined_u BEFORE UPDATE OF task_id, supporting, contradicting, sources, "
+    "verification ON web_knowledge WHEN coalesce(NEW.sources,'') GLOB " + _FIRST_17_JSON
+    + " BEGIN SELECT RAISE(ABORT,'an imagined record is never evidence'); END; "
+    "CREATE TRIGGER web_metrics_no_imagined_i BEFORE INSERT ON web_metrics WHEN coalesce(NEW.value,'') GLOB "
+    + _FIRST_17_JSON + " BEGIN SELECT RAISE(ABORT,'an imagined record is never evidence'); END; COMMIT;")
+
+
+def _all_triggers(db):
+    return {name: " ".join(sql.split()) for name, sql in db.execute("SELECT name, sql FROM sqlite_master "
+                                                                     "WHERE type='trigger'")}
+
+
+def test_a_file_of_the_first_build_of_migration_17_gets_todays_store_and_triggers(tmp_path):
+    path = tmp_path / "first17.sqlite"
+    db = store.create(path, T0)
+    add(db, "ev1")
+    rid = make(db, 1, derived_from=[("evidence", "ev1")])
+    db.close()
+    with closing(sqlite3.connect(path, isolation_level=None)) as raw:
+        raw.executescript(_FIRST_BUILD_17)
+        assert "observed" not in [c[1] for c in raw.execute("PRAGMA table_info(imagined_refs)")]
+    db = store.open_existing(path)
+    try:
+        fresh = store.create(tmp_path / "fresh.sqlite", T0)
+        try:
+            assert _all_triggers(db) == _all_triggers(fresh)
+            assert schema.ensure_triggers(db) == []                    # once repaired, an open writes nothing
+            index = "SELECT name FROM sqlite_master WHERE name='imagined_forgotten_age'"
+            assert db.execute(index).fetchall() == fresh.execute(index).fetchall() != []
+        finally:
+            fresh.close()
+        assert db.execute("SELECT record_id, ref_kind, ref_id, observed FROM imagined_refs").fetchall() == [
+            (rid, "evidence", "ev1", 0)]
+        with pytest.raises(sqlite3.IntegrityError, match="never rewritten"):
+            db.execute("INSERT OR REPLACE INTO imagined SELECT * FROM imagined")
+        db.execute("INSERT INTO web_metrics(kind,value,computed_at) VALUES('calibration',?,1)", (json.dumps([IMG]),))
+        imagined.observe(db, rid, observation={"value": 2}, evidence=[("evidence", "ev1")], now=T0 + 1)
+        assert governance.forget_evidence(db, "ev1", T0 + 2)["effects"]["imagined_removed"] == 1
+    finally:
+        db.close()
+
+
 def test_a_new_individual_has_an_empty_store(instance):
     db, _ = instance
     assert imagined.present(db) and count(db) == count(db, "imagined_refs") == count(db, "imagined_forgotten") == 0
@@ -97,16 +154,67 @@ def test_a_record_is_never_rewritten_and_its_outcome_is_filled_once(instance):
             db.execute(f"UPDATE imagined SET {column}=? WHERE id=?", (value, rid))
     with pytest.raises(sqlite3.IntegrityError, match="never rewritten"):
         db.execute("UPDATE imagined_refs SET ref_id='other' WHERE record_id=?", (rid,))
-    out = imagined.observe(db, rid, observation={"reading": 1}, evidence=[("evidence", "seen")], now=T0 + 5)
-    assert out["outcome"] == {"observed": {"reading": 1}, "evidence": [["evidence", "seen"]]}
+    out = imagined.observe(db, rid, observation={"value": 1}, evidence=[("evidence", "seen")], now=T0 + 5)
+    assert out["outcome"] == {"observed": {"value": 1}, "evidence": [["evidence", "seen"]]}
     assert out["observed_at"] == T0 + 5 and out["kind"] == "speculation" and out["label"] == "imagined, not evidence"
     with pytest.raises(sqlite3.IntegrityError, match="once"):
-        imagined.observe(db, rid, observation={"reading": 0}, now=T0 + 6)
+        imagined.observe(db, rid, observation={"value": 0}, now=T0 + 6)
     other = make(db, 2)
     with pytest.raises(ValidationError):          # an observation is never another imagined record
-        imagined.observe(db, other, observation="x", evidence=[("imagined", rid)], now=T0)
+        imagined.observe(db, other, observation=1, evidence=[("imagined", rid)], now=T0)
     with pytest.raises(ValidationError):          # nor something the file does not hold
-        imagined.observe(db, other, observation="x", evidence=[("evidence", "never")], now=T0)
+        imagined.observe(db, other, observation=1, evidence=[("evidence", "never")], now=T0)
+
+
+def test_an_insert_or_replace_never_rewrites_a_record_or_its_lineage(instance):
+    """review0 L1: REPLACE's implicit delete used to rewrite kind, payload and expiry and take the lineage with it."""
+    db, _ = instance
+    add(db, "seen")
+    rid = make(db, derived_from=[("evidence", "seen")])
+    before = db.execute("SELECT * FROM imagined").fetchall(), db.execute("SELECT * FROM imagined_refs").fetchall()
+    with pytest.raises(sqlite3.IntegrityError, match="never rewritten"):
+        db.execute("INSERT OR REPLACE INTO imagined(id,kind,payload,assumptions,uncertainty,mechanism,"
+                   "mechanism_version,question,created_at,expires_at) VALUES(?,'inference','{}','[]','u','m','1','q',"
+                   "?,?)", (rid, T0, T0 + 1e9))
+    with pytest.raises(sqlite3.IntegrityError, match="never rewritten"):
+        db.execute("INSERT OR REPLACE INTO imagined_refs(record_id,ref_kind,ref_id) VALUES(?,'evidence','seen')",
+                   (rid,))
+    after = db.execute("SELECT * FROM imagined").fetchall(), db.execute("SELECT * FROM imagined_refs").fetchall()
+    assert after == before and count(db, "imagined_forgotten") == 0
+    # the lifetime may be brought forward (a lower limit), never pushed back
+    db.execute("UPDATE imagined SET expires_at=expires_at-1 WHERE id=?", (rid,))
+    with pytest.raises(sqlite3.IntegrityError, match="never rewritten"):
+        db.execute("UPDATE imagined SET expires_at=expires_at+10 WHERE id=?", (rid,))
+
+
+def test_an_observation_carries_no_text_and_its_evidence_is_forgotten_with_the_record(instance):
+    """review0 M1: the outcome's evidence was outside imagined_refs and its free text survived forget_partner."""
+    db, _ = instance
+    add(db, "ev-alice", root="alice-secret-name")
+    add(db, "ev-bob", root="bob")
+    rid = make(db, 1, derived_from=[("partner", "bob")])
+    for text in ({"note": "alice-secret-name said yes"}, "alice-secret-name", {"value": "alice"}, [1, 2],
+                 {"value": float("nan")}, {"alice-secret-name": 1}, {"value": {"name": 1}}):
+        with pytest.raises(ValidationError):
+            imagined.observe(db, rid, observation=text, evidence=[("partner", "alice-secret-name")], now=T0 + 1)
+    out = imagined.observe(db, rid, observation={"value": 3, "scenario": None}, now=T0 + 2,
+                           evidence=[("evidence", "ev-alice"), ("partner", "alice-secret-name"), ("partner", "bob")])
+    assert out["derived_from"] == [["partner", "bob"]]                 # the lineage stays what it was derived from
+    assert out["outcome"]["evidence"] == [["evidence", "ev-alice"], ["partner", "alice-secret-name"],
+                                          ["partner", "bob"]]
+    assert db.execute("SELECT ref_kind, ref_id, observed FROM imagined_refs ORDER BY ref_kind, ref_id").fetchall() == [
+        ("evidence", "ev-alice", 1), ("partner", "alice-secret-name", 1), ("partner", "bob", 0)]
+    effects = governance.forget_partner(db, "alice-secret-name", T0 + 3)["effects"]
+    assert effects["imagined_removed"] == 1 and count(db) == 0 and count(db, "imagined_refs") == 0
+
+
+def test_an_observation_is_refused_while_writes_are_paused(instance, monkeypatch):
+    db, _ = instance
+    rid = make(db, 1)
+    monkeypatch.setattr(store, "write_allowed", lambda db, path=None: (False, "paused for the test"))
+    with pytest.raises(store.WritesPaused):
+        imagined.observe(db, rid, observation=1, now=T0 + 1)
+    assert imagined.show(db, rid)["outcome"] is None
 
 
 def test_a_record_names_only_sources_the_file_holds(instance):
@@ -123,22 +231,35 @@ def test_a_record_names_only_sources_the_file_holds(instance):
 # ---- nothing on the evidence side may name an imagined record ------------------------------------------------------
 
 # The reference columns, written out here (not read from schema) so that dropping one from the schema fails a test.
+# "whole": the column holds one id; "inside": a revision cause that names one; "list": a JSON list of ids;
+# "objects": a JSON list of objects that name a claim and a task (and quote free text beside them).
 REFERENCE_COLUMNS = {
     "evidence": {"id": "whole", "root": "whole", "sample_id": "whole"},
     "evidence_consolidated": {"root": "whole", "sample_id": "whole"},
     "belief_revisions": {"cause": "inside"},
+    "web_tasks": {"parent_id": "whole"},
+    "web_events": {"task_id": "whole"},
     "web_sources": {"task_id": "whole"},
     "web_claims": {"id": "whole", "task_id": "whole"},
-    "web_claim_links": {"src": "whole", "dst": "whole", "task_id": "whole", "detail": "json"},
-    "web_knowledge": {"task_id": "whole", "supporting": "json", "contradicting": "json", "sources": "json",
-                      "verification": "json"},
-    "web_hypotheses": {"task_id": "whole", "claims": "json"},
-    "web_predictions": {"task_id": "whole", "detail": "json"},
-    "web_feedback": {"task_id": "whole", "detail": "json"},
-    "web_metrics": {"value": "json"},
+    "web_claim_links": {"src": "whole", "dst": "whole", "task_id": "whole"},
+    "web_knowledge": {"task_id": "whole", "supporting": "list", "contradicting": "objects"},
+    "web_mentions": {"claim_id": "whole", "knowledge_id": "whole", "task_id": "whole"},
+    "web_hypotheses": {"task_id": "whole", "knowledge_id": "whole", "parent_id": "whole", "claims": "list"},
+    "web_predictions": {"task_id": "whole", "knowledge_id": "whole", "hypothesis_id": "whole"},
+    "web_feedback": {"task_id": "whole", "knowledge_id": "whole"},
+    "voice_segments": {"task_id": "whole"},
 }
-VALUE = {"whole": IMG, "inside": f"evidence:{IMG}", "json": json.dumps({"claim": IMG, "list": [IMG]})}
-BENIGN = {"whole": "Reimagined: a book", "inside": "evidence:imagined:not-an-id", "json": '["Reimagined: x"]'}
+HEX = IMG.split(":")[1]
+# Each form an id may take in such a column (review0 L4: case, padding and a JSON escape used to hide one).
+VALUES = {"whole": [IMG, IMG.upper(), f" {IMG}", f"{IMG}\n", f"\t{IMG} "],
+          "inside": [f"evidence:{IMG}", f"evidence:{IMG.upper()}"],
+          "list": [json.dumps([IMG]), f'[ "{IMG}" ]', json.dumps(["c1", IMG.upper()]),
+                   '["\\u0069magined:' + HEX + '"]']}
+VALUES["objects"] = VALUES["list"] + [json.dumps([{"claim": IMG, "text": "q"}]),
+                                      json.dumps([{"claim": "c1", "task": f" {IMG}"}])]
+BENIGN = {"whole": "Reimagined: a book", "inside": "evidence:imagined:not-an-id",
+          "list": json.dumps(["Reimagined: x", "c1"]),
+          "objects": json.dumps([{"claim": "c1", "task": "t1", "text": IMG, "url": f"http://a/{IMG}"}])}
 
 
 def _seed_rows(db):
@@ -149,6 +270,7 @@ def _seed_rows(db):
     db.execute("INSERT INTO belief_revisions(epoch,state_version,created_at,cause,summary) VALUES('e1',1,1,'c','{}')")
     db.execute("INSERT INTO web_tasks(id,objective,mode,status,origin,created_at,updated_at) "
                "VALUES('t1','o','quick_lookup','completed','test',1,1)")
+    db.execute("INSERT INTO web_events(task_id,kind,created_at) VALUES('t1','claim',1)")
     db.execute("INSERT INTO web_sources(task_id,url,canonical_url,domain,kind,retrieved_at,retrieval_mode,created_at) "
                "VALUES('t1','http://a/x','http://a/x','a','page',1,'live',1)")
     db.execute("INSERT INTO web_claims(id,task_id,text,key,kind,polarity,source_url,domain,retrieved_at,created_at) "
@@ -157,29 +279,59 @@ def _seed_rows(db):
     db.execute("INSERT INTO web_knowledge(key,version,statement,status,confidence,uncertainty,freshness_class,"
                "first_verified_at,last_verified_at,created_at,updated_at) "
                "VALUES('k',1,'s','provisional',0.8,0.1,'stable',1,1,1,1)")
+    db.execute("INSERT INTO web_entities(name,normalized,kind,first_seen,last_seen) VALUES('n','n','name',1,1)")
+    db.execute("INSERT INTO web_mentions(entity_id,claim_id,knowledge_id,task_id,created_at) VALUES(1,'c1',1,'t1',1)")
     db.execute("INSERT INTO web_hypotheses(key,statement,origin,status,created_at,updated_at) "
                "VALUES('k','s','gap','open',1,1)")
     db.execute("INSERT INTO web_predictions(knowledge_id,expectation,check_after,created_at) VALUES(1,'e',2,1)")
     db.execute("INSERT INTO web_feedback(key,effect,created_at) VALUES('k','new',1)")
     db.execute("INSERT INTO web_metrics(kind,computed_at) VALUES('calibration',1)")
+    db.execute("INSERT INTO voice_sessions(id,principal,device,mode,status,started_at,updated_at) "
+               "VALUES('v','p','d','text_only','active',1,1)")
+    db.execute("INSERT INTO voice_segments(session_id,utterance,seq,speaker,source,status,authority,text,started_at,"
+               "created_at,updated_at) VALUES('v','u',1,'user','typed','final','user_typed','t',1,1,1)")
 
 
-CASES = [(t, c, f) for t, cols in REFERENCE_COLUMNS.items() for c, f in cols.items()]
+CASES = [(t, c, f, n) for t, cols in REFERENCE_COLUMNS.items() for c, f in cols.items() for n in range(len(VALUES[f]))]
+# a second row of these tables needs its own key: the trigger, not the key, must be what refuses the copy
+_UNIQUE = {"web_claims": "task_id", "web_sources": "canonical_url", "voice_segments": "utterance"}
 
 
-@pytest.mark.parametrize("table,column,form", CASES, ids=[f"{t}.{c}" for t, c, _ in CASES])
-def test_no_evidence_side_column_may_name_an_imagined_record(instance, table, column, form):
+@pytest.mark.parametrize("table,column,form,n", CASES, ids=[f"{t}.{c}-{n}" for t, c, _, n in CASES])
+def test_no_evidence_side_column_may_name_an_imagined_record(instance, table, column, form, n):
+    db, _ = instance
+    _seed_rows(db)
+    value = VALUES[form][n]
+    rowid = db.execute(f"SELECT rowid FROM {table} LIMIT 1").fetchone()[0]
+    with pytest.raises(sqlite3.IntegrityError, match="never evidence"):
+        db.execute(f"UPDATE {table} SET {column}=? WHERE rowid=?", (value, rowid))
+    names = [r[1] for r in db.execute(f"PRAGMA table_info({table})") if r[1] not in ("id", "seq") or r[1] == column]
+    picks = ", ".join("?" if c == column else f"{c}||'2'" if c == _UNIQUE.get(table) else c for c in names)
+    with pytest.raises(sqlite3.IntegrityError, match="never evidence"):
+        db.execute(f"INSERT INTO {table}({','.join(names)}) SELECT {picks} FROM {table} WHERE rowid=?",
+                   (value, rowid))
+    db.execute(f"UPDATE {table} SET {column}=? WHERE rowid=?", (BENIGN[form], rowid))     # no false alarm
+
+
+# Free text that a web page or a template writes (review0 M2: a page titled like an id used to abort a whole
+# consolidation): never tested, whatever it holds.
+FREE_TEXT = {"web_knowledge": ("sources", "verification", "statement", "note", "claim_values"),
+             "web_claims": ("text", "title", "source_url", "claim_values", "flags"),
+             "web_sources": ("title", "url", "metadata"),
+             "web_claim_links": ("detail",), "web_predictions": ("detail", "criteria", "expectation"),
+             "web_feedback": ("detail",), "web_metrics": ("value",), "web_events": ("detail",),
+             "web_hypotheses": ("verification", "statement", "alternatives"),
+             "belief_revisions": ("summary",), "voice_segments": ("text", "detail")}
+
+
+@pytest.mark.parametrize("table", sorted(FREE_TEXT))
+def test_free_text_may_read_like_an_imagined_id(instance, table):
     db, _ = instance
     _seed_rows(db)
     rowid = db.execute(f"SELECT rowid FROM {table} LIMIT 1").fetchone()[0]
-    with pytest.raises(sqlite3.IntegrityError, match="never evidence"):
-        db.execute(f"UPDATE {table} SET {column}=? WHERE rowid=?", (VALUE[form], rowid))
-    names = [r[1] for r in db.execute(f"PRAGMA table_info({table})") if r[1] not in ("id", "seq") or r[1] == column]
-    picks = ", ".join("?" if n == column else n for n in names)
-    with pytest.raises(sqlite3.IntegrityError, match="never evidence"):
-        db.execute(f"INSERT INTO {table}({','.join(names)}) SELECT {picks} FROM {table} WHERE rowid=?",
-                   (VALUE[form], rowid))
-    db.execute(f"UPDATE {table} SET {column}=? WHERE rowid=?", (BENIGN[form], rowid))     # no false alarm
+    for column in FREE_TEXT[table]:
+        for value in (IMG, json.dumps([{"url": "https://evil.example/p", "title": IMG}]), json.dumps({"claim": IMG})):
+            db.execute(f"UPDATE {table} SET {column}=? WHERE rowid=?", (value, rowid))
 
 
 def test_every_reference_column_has_its_triggers(instance):
@@ -223,6 +375,58 @@ def test_a_record_expires_with_the_sweep_and_derived_records_go_with_it(instance
     assert out["imagined_expired"] == 2 and count(db) == 0      # the derived one goes with its source
     assert "imagined_expired" not in governance.sweep(db, T0 + 2 * DAY)
     assert reasons(db) == ["expired", "expired", "forgotten"]
+
+
+def test_a_lower_limit_applies_to_the_records_already_held(instance, tmp_path):
+    """review0 L3: lowering max_imagined_rows or imagined_lifetime_seconds used to leave held records as they were."""
+    db, path = instance
+    ids = [make(db, n, now=T0 + n) for n in range(4)]
+    out = store.set_config(db, {"max_imagined_rows": 2}, T0 + 10)
+    assert out["imagined_removed"] == 2 and [i["id"] for i in imagined.listing(db, T0 + 10)["items"]] == ids[:1:-1]
+    assert reasons(db) == ["evicted", "evicted"]
+    out = store.set_config(db, {"imagined_lifetime_seconds": 60}, T0 + 20)      # expiry brought forward
+    assert "imagined_removed" not in out
+    assert [imagined.show(db, i)["expires_at"] for i in ids[2:]] == [T0 + 62, T0 + 63]
+    assert imagined.listing(db, T0 + 62.5)["items"][0]["id"] == ids[3]
+    assert governance.sweep(db, T0 + 3600)["imagined_expired"] == 2 and count(db) == 0
+    store.set_config(db, {"imagined_lifetime_seconds": 7 * DAY}, T0 + 3601)      # never pushed back
+    rid = make(db, 9, now=T0 + 3601)
+    assert store.set_config(db, {"imagined_lifetime_seconds": 60}, T0 + 3700)["imagined_removed"] == 1
+    assert count(db) == 0                    # past the new lifetime at once: removed with the change
+    assert ("imagined", "expired") in db.execute("SELECT target_kind, target_id FROM deletion_log").fetchall()
+    with pytest.raises(NotFound):
+        imagined.show(db, rid)
+    assert store.set_config(db, {"max_imagined_rows": 0}, T0 + 3800)["changed"] == ["max_imagined_rows"]
+
+
+def test_the_sweep_removes_a_record_whose_source_went_any_other_way(instance):
+    """review0 L3: the sweep looked for orphans only when an imagined record itself expired."""
+    db, _ = instance
+    add(db, "ev1")
+    rid = make(db, 1, derived_from=[("evidence", "ev1")])
+    kept = make(db, 2)
+    with store.write(db):
+        db.execute("DELETE FROM evidence WHERE id='ev1'")       # gone without a forget (a path that does not cascade)
+    assert imagined.show(db, rid)
+    out = governance.sweep(db, T0 + 1)
+    assert out["imagined_expired"] == 1 and [i["id"] for i in imagined.listing(db, T0 + 2)["items"]] == [kept]
+    assert reasons(db) == ["forgotten"]
+
+
+def test_tombstones_are_kept_as_long_as_a_record_can_live_and_no_longer(instance, tmp_path):
+    """review0 note: imagined_forgotten grew without bound under eviction churn."""
+    db, path = instance
+    store.set_config(db, {"imagined_lifetime_seconds": store.MAX_IMAGINED_LIFETIME}, T0)
+    rid = make(db, 1)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 1)
+    imagined.purge(db, T0 + 2, record_id=rid)
+    governance.sweep(db, T0 + 2 + store.MAX_IMAGINED_LIFETIME - 1)
+    assert count(db, "imagined_forgotten") == 1
+    governance.sweep(db, T0 + 2 + store.MAX_IMAGINED_LIFETIME)
+    assert count(db, "imagined_forgotten") == 0
+    # an archive still holding the record cannot bring it back: by now it has expired there too
+    checkpoints.restore(db, cp["id"], tmp_path / "restored.sqlite", T0 + 3 + store.MAX_IMAGINED_LIFETIME)
+    assert _records(tmp_path / "restored.sqlite") == []
 
 
 def test_the_settings_are_checked_and_a_damaged_value_reads_as_the_default(instance):
@@ -278,11 +482,13 @@ def test_forgetting_an_epoch_a_partner_or_a_camera_removes_what_derives_from_it(
     assert governance.forget_partner(db, "bob", T0 + 2)["effects"]["imagined_removed"] == 1
     assert governance.forget_camera(db, "cam", T0 + 3)["effects"]["imagined_removed"] == 1
     assert count(db) == 0
-    # an epoch forgotten before a record was made does not reach that record
+    # nothing new derives from an epoch once it was forgotten (review0 L3), even when it has evidence again
     add(db, "w3", epoch_name="e1", root="ann")
-    later = make(db, 4, now=T0 + 10, derived_from=[("epoch", "e1")])
-    governance.forget_evidence(db, "w3", T0 + 11)
-    assert imagined.show(db, later)["kind"] == imagined.KINDS[4 % 3]
+    with pytest.raises(ValidationError, match="does not hold"):
+        make(db, 4, now=T0 + 10, derived_from=[("epoch", "e1")])
+    other = make(db, 5, now=T0 + 10)
+    with pytest.raises(ValidationError, match="does not hold"):
+        imagined.observe(db, other, observation=1, evidence=[("epoch", "e1")], now=T0 + 11)
 
 
 def test_expiring_the_evidence_a_record_derives_from_removes_it(instance):

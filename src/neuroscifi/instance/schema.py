@@ -25,38 +25,51 @@ _TRIGGERS_15 = {
 
 # Version 17 (the imagined store, ADR-049): an imagined record's id is 'imagined:' and 32 lowercase hex digits. No
 # column through which evidence, a claim, a knowledge item, a verification, a corroboration, a calibration settlement or
-# a belief revision names what it rests on may name such an id. _IMAGINED_ID matches a whole value (an id column),
-# _IMAGINED_IN a value that contains one (a revision cause "evidence:<id>"), _IMAGINED_JSON a JSON text holding one as a
-# string (a list of supporting claim ids, a detail object). A page title such as "Reimagined: ..." matches none.
+# a belief revision names what it rests on may name such an id. Only REFERENCES are tested: a whole-id column (its
+# value lower-cased and trimmed of white space, so case and padding do not hide an id), a revision cause that contains
+# one ("evidence:<id>"), and the elements of a JSON list of ids, read with json_each (so a JSON escape does not hide
+# one either; an object element by its id keys). Free text is never tested: a page title, a quote, a detail or a
+# verification record may read like an id, and a web page titled "imagined:<32 hex>" must not stop a consolidation.
 _IMAGINED_ID = "imagined:" + "[0-9a-f]" * 32
-_IMAGINED_IN = "*" + _IMAGINED_ID + "*"
-_IMAGINED_JSON = '*"' + _IMAGINED_ID + '"*'
-# table -> (whole-id columns, containing columns, JSON columns)
+# table -> (whole-id columns, containing columns, {JSON id-list column: the id keys of an object element})
 _NO_IMAGINED = {
-    "evidence": (("id", "root", "sample_id"), (), ()),
-    "evidence_consolidated": (("root", "sample_id"), (), ()),
-    "belief_revisions": ((), ("cause",), ()),
-    "web_sources": (("task_id",), (), ()),
-    "web_claims": (("id", "task_id"), (), ()),
-    "web_claim_links": (("src", "dst", "task_id"), (), ("detail",)),
-    "web_knowledge": (("task_id",), (), ("supporting", "contradicting", "sources", "verification")),
-    "web_hypotheses": (("task_id",), (), ("claims",)),
-    "web_predictions": (("task_id",), (), ("detail",)),
-    "web_feedback": (("task_id",), (), ("detail",)),
-    "web_metrics": ((), (), ("value",)),
+    "evidence": (("id", "root", "sample_id"), (), {}),
+    "evidence_consolidated": (("root", "sample_id"), (), {}),
+    "belief_revisions": ((), ("cause",), {}),
+    "web_tasks": (("parent_id",), (), {}),
+    "web_events": (("task_id",), (), {}),
+    "web_sources": (("task_id",), (), {}),
+    "web_claims": (("id", "task_id"), (), {}),
+    "web_claim_links": (("src", "dst", "task_id"), (), {}),
+    "web_knowledge": (("task_id",), (), {"supporting": (), "contradicting": ("claim", "task")}),
+    "web_mentions": (("claim_id", "knowledge_id", "task_id"), (), {}),
+    "web_hypotheses": (("task_id", "knowledge_id", "parent_id"), (), {"claims": ()}),
+    "web_predictions": (("task_id", "knowledge_id", "hypothesis_id"), (), {}),
+    "web_feedback": (("task_id", "knowledge_id"), (), {}),
+    "voice_segments": (("task_id",), (), {}),
 }
+
+
+def _names_imagined(expr):
+    """SQL: `expr` is, as a whole, an imagined id (case and surrounding white space ignored)."""
+    return f"lower(trim(coalesce({expr},''),char(32,9,10,11,12,13))) GLOB '{_IMAGINED_ID}'"
 
 
 def _no_imagined_triggers():
     """The version-17 triggers that refuse an imagined id in a reference column of an evidence-side table, on insert
     and on update of those columns, as {name: statement}."""
     out = {}
-    for table, (whole, inside, as_json) in _NO_IMAGINED.items():
-        tests = ([f"coalesce(NEW.{c},'') GLOB '{_IMAGINED_ID}'" for c in whole]
-                 + [f"coalesce(NEW.{c},'') GLOB '{_IMAGINED_IN}'" for c in inside]
-                 + [f"coalesce(NEW.{c},'') GLOB '{_IMAGINED_JSON}'" for c in as_json])
+    for table, (whole, inside, lists) in _NO_IMAGINED.items():
+        tests = ([_names_imagined(f"NEW.{c}") for c in (*whole, *lists)]
+                 + [f"lower(coalesce(NEW.{c},'')) GLOB '*{_IMAGINED_ID}*'" for c in inside])
+        for c, keys in lists.items():
+            element = " OR ".join([f"(j.type='text' AND {_names_imagined('j.value')})"]
+                                  + [f"(j.type='object' AND {_names_imagined(f'json_extract(j.value,{k!r})')})"
+                                     for k in (f"$.{key}" for key in keys)])
+            tests.append(f"EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(NEW.{c}) THEN NEW.{c} END) j "
+                         f"WHERE {element})")
         when = " OR ".join(tests)
-        columns = ", ".join((*whole, *inside, *as_json))
+        columns = ", ".join((*whole, *inside, *lists))
         body = "BEGIN SELECT RAISE(ABORT,'an imagined record is never evidence'); END"
         out[f"{table}_no_imagined_i"] = (f"CREATE TRIGGER IF NOT EXISTS {table}_no_imagined_i BEFORE INSERT ON "
                                          f"{table} WHEN {when} {body}")
@@ -66,6 +79,33 @@ def _no_imagined_triggers():
 
 
 NO_IMAGINED_TRIGGERS = _no_imagined_triggers()
+# The imagined store's own triggers (version 17): a record is never rewritten (not by UPDATE, nor by an INSERT OR
+# REPLACE of its id, whose implicit delete would also take its lineage and leave no tombstone), its lifetime may only
+# be shortened (store.set_config applies a shorter imagined_lifetime_seconds to the records held), and its outcome
+# slot is filled once. ensure_triggers brings a file of the first, unreleased build of version 17 to these and to
+# NO_IMAGINED_TRIGGERS.
+_STORE_TRIGGERS_17 = {
+    "imagined_never_rewritten": """CREATE TRIGGER IF NOT EXISTS imagined_never_rewritten BEFORE UPDATE OF id, kind,
+      payload, assumptions, uncertainty, mechanism, mechanism_version, model, question, created_at ON imagined
+      BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END""",
+    "imagined_lifetime_only_shortened": """CREATE TRIGGER IF NOT EXISTS imagined_lifetime_only_shortened BEFORE UPDATE
+      OF expires_at ON imagined WHEN NOT (NEW.expires_at <= OLD.expires_at)
+      BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END""",
+    "imagined_never_replaced": """CREATE TRIGGER IF NOT EXISTS imagined_never_replaced BEFORE INSERT ON imagined
+      WHEN EXISTS (SELECT 1 FROM imagined WHERE id=NEW.id)
+      BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END""",
+    "imagined_outcome_once": """CREATE TRIGGER IF NOT EXISTS imagined_outcome_once BEFORE UPDATE OF outcome,
+      observed_at ON imagined WHEN OLD.outcome IS NOT NULL
+      BEGIN SELECT RAISE(ABORT,'an imagined record is compared with what was observed once'); END""",
+    "imagined_refs_never_rewritten": """CREATE TRIGGER IF NOT EXISTS imagined_refs_never_rewritten BEFORE UPDATE ON
+      imagined_refs BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END""",
+    "imagined_refs_never_replaced": """CREATE TRIGGER IF NOT EXISTS imagined_refs_never_replaced BEFORE INSERT ON
+      imagined_refs WHEN EXISTS (SELECT 1 FROM imagined_refs WHERE record_id=NEW.record_id
+        AND ref_kind=NEW.ref_kind AND ref_id=NEW.ref_id)
+      BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END""",
+}
+_TRIGGERS_17 = _STORE_TRIGGERS_17 | NO_IMAGINED_TRIGGERS
+_INDEX_17 = "CREATE INDEX IF NOT EXISTS imagined_forgotten_age ON imagined_forgotten(forgotten_at)"
 
 MIGRATIONS = [
     # ---- version 1 ---------------------------------------------------------
@@ -639,29 +679,26 @@ MIGRATIONS = [
       CHECK((outcome IS NULL) = (observed_at IS NULL)));
     CREATE INDEX IF NOT EXISTS imagined_expiry ON imagined(expires_at);
     CREATE INDEX IF NOT EXISTS imagined_age ON imagined(created_at);
-    -- What a record was derived from, by kind and id: forgetting any of them removes the record
-    -- (imagined.purge_orphans).
+    -- What a record was derived from (observed 0) and the evidence its outcome names (observed 1), by kind and id:
+    -- forgetting any of them removes the record (imagined.purge_orphans).
     CREATE TABLE IF NOT EXISTS imagined_refs(
       record_id TEXT NOT NULL REFERENCES imagined(id) ON DELETE CASCADE,
       ref_kind TEXT NOT NULL CHECK(ref_kind IN ('task','knowledge','claim','source','hypothesis','prediction',
         'evidence','consolidated','epoch','camera','partner','dataset','graph','imagined')),
       ref_id TEXT NOT NULL CHECK(length(ref_id) BETWEEN 1 AND 128),
+      observed INTEGER NOT NULL DEFAULT 0 CHECK(observed IN (0,1)),
       PRIMARY KEY(record_id, ref_kind, ref_id));
     CREATE INDEX IF NOT EXISTS imagined_refs_target ON imagined_refs(ref_kind, ref_id);
     -- Payload-free tombstones of removed records (digest = governance.root_digest(instance id, 'imagined:' id)), so a
-    -- restore removes them from an older copy too (checkpoints._replay).
+    -- restore removes them from an older copy too (checkpoints._replay). Kept for the longest lifetime a record can
+    -- have, then dropped by the sweep (imagined.expire).
     CREATE TABLE IF NOT EXISTS imagined_forgotten(
       digest TEXT PRIMARY KEY,
       reason TEXT NOT NULL CHECK(reason IN ('purged','forgotten','expired','evicted')),
       forgotten_at REAL NOT NULL);
-    CREATE TRIGGER IF NOT EXISTS imagined_never_rewritten BEFORE UPDATE OF id, kind, payload, assumptions,
-      uncertainty, mechanism, mechanism_version, model, question, created_at, expires_at ON imagined
-      BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END;
-    CREATE TRIGGER IF NOT EXISTS imagined_outcome_once BEFORE UPDATE OF outcome, observed_at ON imagined
-      WHEN OLD.outcome IS NOT NULL
-      BEGIN SELECT RAISE(ABORT,'an imagined record is compared with what was observed once'); END;
-    CREATE TRIGGER IF NOT EXISTS imagined_refs_never_rewritten BEFORE UPDATE ON imagined_refs
-      BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END;
+    """ + _INDEX_17 + """;
+    -- The store's own triggers (schema._STORE_TRIGGERS_17).
+    """ + ";\n".join(_STORE_TRIGGERS_17.values()) + """;
     -- No reference column of an evidence-side table may name an imagined record (schema._NO_IMAGINED).
     """ + ";\n".join(NO_IMAGINED_TRIGGERS.values()) + ";\n",
 ]
@@ -694,15 +731,30 @@ _INDEXES_14 = {
 _SUPERSEDED_14 = ("evidence_consolidated_sample", "tombstones_seq")
 
 
+def _as_stored(sql):
+    """A trigger statement as sqlite_master keeps it (IF NOT EXISTS dropped), white space collapsed."""
+    return " ".join((sql or "").replace("IF NOT EXISTS ", "").split())
+
+
 def ensure_triggers(db):
-    """Bring the graph triggers of a version-15 file to their current statements (_TRIGGERS_15); returns the names
-    recreated ([] for a file that has them, which is every file but one migrated by the first build of version 15:
-    one catalogue read and no write). A file this connection cannot write keeps its triggers until a writable open."""
-    present = {name: " ".join((sql or "").split()) for name, sql in db.execute(
-        f"SELECT name, sql FROM sqlite_master WHERE type='trigger' AND name IN ({','.join('?' * len(_TRIGGERS_15))})",
-        tuple(_TRIGGERS_15))}
-    stale = [name for name, sql in _TRIGGERS_15.items() if present.get(name) != " ".join(sql.split())]
-    if not stale:
+    """Bring the triggers of the two migrations amended while unreleased to their current statements: the graph
+    triggers of version 15 (_TRIGGERS_15) and the imagined store's of version 17 (_TRIGGERS_17, with
+    imagined_refs.observed and the tombstones' age index, and without a version-17 reference trigger the current build
+    no longer has). Returns the names changed ([] for a file that has them, which is every file but one migrated by a
+    first build of 15 or 17: two catalogue reads and no write). A file this connection cannot write keeps its triggers
+    until a writable open."""
+    present = {name: (kind, _as_stored(sql)) for kind, name, sql in db.execute(
+        "SELECT type, name, sql FROM sqlite_master WHERE type IN ('trigger','index','table')")}
+    wanted = dict(_TRIGGERS_15)
+    observed = True
+    if "imagined_refs" in present:
+        wanted |= _TRIGGERS_17
+        observed = any(c[1] == "observed" for c in db.execute("PRAGMA table_info(imagined_refs)"))
+    stale = [name for name, sql in wanted.items() if present.get(name) != ("trigger", _as_stored(sql))]
+    retired = sorted(name for name, (kind, _) in present.items() if kind == "trigger" and name not in wanted
+                     and name.endswith(("_no_imagined_i", "_no_imagined_u")))
+    index = "imagined_refs" in present and "imagined_forgotten_age" not in present
+    if not stale and not retired and observed and not index:
         return []
     control = db.autocommit
     db.autocommit = True
@@ -714,9 +766,16 @@ def ensure_triggers(db):
                 return []
             raise
         try:
+            if not observed:
+                db.execute("ALTER TABLE imagined_refs ADD COLUMN observed INTEGER NOT NULL DEFAULT 0 "
+                           "CHECK(observed IN (0,1))")
+            if index:
+                db.execute(_INDEX_17)
+            for name in retired:
+                db.execute(f"DROP TRIGGER IF EXISTS {name}")
             for name in stale:
                 db.execute(f"DROP TRIGGER IF EXISTS {name}")
-                db.execute(_TRIGGERS_15[name])
+                db.execute(wanted[name])
             db.execute("COMMIT")
         except BaseException:
             if db.in_transaction:
@@ -724,7 +783,8 @@ def ensure_triggers(db):
             raise
     finally:
         db.autocommit = control
-    return stale
+    return stale + retired + ([] if observed else ["imagined_refs.observed"]) + (["imagined_forgotten_age"] if index
+                                                                                 else [])
 
 
 def ensure_indexes(db):
@@ -774,7 +834,7 @@ def migrate(db):
     refuse_newer(current)
     if current == SCHEMA_VERSION:
         ensure_indexes(db)                   # nothing to do but for a file of the first version-14 build
-        ensure_triggers(db)                  # nothing to do but for a file of the first version-15 build
+        ensure_triggers(db)                  # nothing to do but for a file of a first version-15 or -17 build
         return SCHEMA_VERSION                # an up-to-date file is opened without taking the write lock
     control = db.autocommit
     db.autocommit = True                     # so executescript does not commit the transaction holding the lock
@@ -787,7 +847,7 @@ def migrate(db):
                 if version == SCHEMA_VERSION:
                     db.execute("COMMIT")
                     ensure_indexes(db)       # in case the process that upgraded meanwhile was a first build of 14
-                    ensure_triggers(db)      # ... or of 15
+                    ensure_triggers(db)      # ... or of 15 or 17
                     return SCHEMA_VERSION
                 db.executescript(MIGRATIONS[version] + f";PRAGMA user_version={version + 1};")
                 db.execute("COMMIT")

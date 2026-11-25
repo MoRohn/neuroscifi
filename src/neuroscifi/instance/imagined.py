@@ -15,10 +15,13 @@ slot for what was later observed (imagine -> observe -> compare). It is never ev
     resolves a citation to it). A caller that wants to show imagined text to a model puts it in section(), a separate
     part labelled NOT_EVIDENCE whose items carry no citable id.
   - Bounded: at most InstanceConfig.max_imagined_rows records (the oldest is evicted first; 0 = nothing may be
-    stored), each for at most InstanceConfig.imagined_lifetime_seconds (governance.sweep expires them).
+    stored), each for at most InstanceConfig.imagined_lifetime_seconds (governance.sweep expires them); a lower limit
+    applies to the records already held (bound, from store.set_config).
   - Forgetting covers it: a record whose source is forgotten (a task, a knowledge item, a claim, a source, an event, an
     epoch, a camera or partner root, a dataset, a graph, another imagined record) is removed in the same transaction
-    (purge_orphans, called by every forget), and every removal leaves a payload-free tombstone that a restore replays.
+    (purge_orphans, called by every forget and by every sweep), and every removal leaves a payload-free tombstone that
+    a restore replays. The evidence an outcome names is one of the record's references too, and an outcome holds no
+    text of its own (observe), so nothing a forget removes survives in a record.
   - A checkpoint is a copy of the whole file, so archives and restores carry the store with its kinds; a restore then
     removes what the live file removed since (replay).
 
@@ -27,6 +30,7 @@ deterministic generator for tests and measurements; it writes nothing itself.
 """
 import hashlib
 import json
+import math
 import secrets
 
 from .. import provenance
@@ -95,12 +99,13 @@ def _ref(item, kinds=REF_KINDS):
     return kind, str(ref_id)
 
 
-def _unresolved(db, refs, created_at):
-    """The references of `refs` that name nothing this file holds (as purge_orphans would judge them)."""
+def _unresolved(db, refs):
+    """The references of `refs` that name nothing this file holds (as purge_orphans would judge them; an epoch that
+    was ever forgotten counts as gone, so nothing new derives from it)."""
     missing = []
     for kind, ref_id in refs:
         row = db.execute(f"SELECT {_GONE[kind]} FROM (SELECT ? AS ref_id) r, (SELECT ? AS created_at) i",
-                         (ref_id, created_at)).fetchone()
+                         (ref_id, float("-inf"))).fetchone()
         if row[0]:
             missing.append((kind, ref_id))
     return missing
@@ -159,16 +164,45 @@ def purge_orphans(db, now):
 
 
 def expire(db, now):
-    """Remove records whose lifetime ended, and what derives from them; checkpoints written since the oldest of them
-    become stale and one deletion_log row (kind 'imagined', target 'expired') says so. Caller owns the transaction
-    (governance.sweep). Returns how many were removed."""
+    """Remove records whose lifetime ended, and what derives from them, and - whatever expired - every record one of
+    whose sources is gone by now however it went; checkpoints written since the oldest of them become stale and one
+    deletion_log row (kind 'imagined', target 'expired') says so. Tombstones older than the longest lifetime a record
+    can have (store.MAX_IMAGINED_LIFETIME) are dropped: every record they name has expired in every archive too, and
+    a restore's replay expires it there. Caller owns the transaction (governance.sweep). Returns how many were
+    removed."""
     if not present(db):
         return 0
+    db.execute("DELETE FROM imagined_forgotten WHERE forgotten_at<=?", (now - store.MAX_IMAGINED_LIFETIME,))
     ids, earliest = _remove(db, "expires_at<=?", (now,), "expired", now)
-    if not ids:
+    orphaned = db.execute(f"SELECT min(created_at) FROM imagined WHERE {_ORPHANS}").fetchone()[0]
+    if not ids and orphaned is None:
         return 0
     removed = len(ids) + purge_orphans(db, now)
-    _log(db, "expired", removed, _stale_checkpoints(db, earliest), now)
+    _log(db, "expired", removed, _stale_checkpoints(db, min(t for t in (earliest, orphaned) if t is not None)), now)
+    return removed
+
+
+def bound(db, now):
+    """Apply the current limits to the records held (store.set_config calls it when the owner lowers either, and a
+    restore's replay after carrying the owner's settings): no record outlives imagined_lifetime_seconds from its
+    creation (its expiry is brought forward, never back) and at most max_imagined_rows are kept (the oldest are
+    evicted first, as record() does). Caller owns the transaction. Returns how many records were removed."""
+    if not present(db):
+        return 0
+    try:
+        cfg = store.config(db)
+    except (ValueError, TypeError):      # a damaged settings row (a restore's copy) reads as the defaults
+        cfg = store.InstanceConfig()
+    db.execute("UPDATE imagined SET expires_at=created_at+? WHERE expires_at>created_at+?",
+               (cfg.imagined_lifetime_seconds, cfg.imagined_lifetime_seconds))
+    removed = expire(db, now)
+    held = db.execute("SELECT count(*) FROM imagined").fetchone()[0]
+    if held > cfg.max_imagined_rows:
+        evicted, earliest = _remove(db, "id IN (SELECT id FROM imagined ORDER BY created_at, id LIMIT ?)",
+                                    (held - cfg.max_imagined_rows,), "evicted", now)
+        count = len(evicted) + purge_orphans(db, now)
+        _log(db, "evicted", count, _stale_checkpoints(db, earliest), now)
+        removed += count
     return removed
 
 
@@ -210,7 +244,7 @@ def record(db, kind, *, payload, assumptions, uncertainty, mechanism, mechanism_
     store.require_write_allowed(db)
     record_id = "imagined:" + secrets.token_hex(16)
     with store.write(db):
-        missing = _unresolved(db, refs, now)
+        missing = _unresolved(db, refs)
         if missing:
             raise ValidationError(f"derived_from names records this instance does not hold: {missing}")
         held = db.execute("SELECT count(*) FROM imagined").fetchone()[0]
@@ -220,7 +254,7 @@ def record(db, kind, *, payload, assumptions, uncertainty, mechanism, mechanism_
                                         (held - cfg.max_imagined_rows + 1,), "evicted", now)
             removed = len(evicted) + purge_orphans(db, now)
             _log(db, "evicted", removed, _stale_checkpoints(db, earliest), now)
-            missing = _unresolved(db, refs, now)     # an evicted record may have been one of this one's sources
+            missing = _unresolved(db, refs)          # an evicted record may have been one of this one's sources
             if missing:
                 raise ValidationError(f"derived_from names records the limit just evicted: {missing}")
         db.execute(f"INSERT INTO imagined({','.join(COLUMNS[:11])}) VALUES({','.join('?' * 11)})",
@@ -233,32 +267,48 @@ def record(db, kind, *, payload, assumptions, uncertainty, mechanism, mechanism_
     return record_id
 
 
+def _scalar(value):
+    return value is None or isinstance(value, bool) or (isinstance(value, (int, float)) and math.isfinite(value))
+
+
 def observe(db, record_id, *, observation, now, evidence=()):
     """Fill a record's outcome slot with what was later observed, once: {"observed": observation, "evidence": [[kind,
-    id], ...]}. The evidence named must be held by this file and is never another imagined record. Comparing the two
-    is the caller's (a mechanism's) business; this store keeps both side by side and never turns either into the
-    other."""
+    id], ...]}. The evidence named must be held by this file and is never another imagined record; it joins the
+    record's references (imagined_refs, observed 1), so forgetting any of it removes the record as forgetting a
+    source does. The observation is structured and carries no text of its own, so nothing a forget must remove can
+    survive in it: a number, true/false or null, or an object mapping some of the record's own top-level payload
+    keys to such values. Comparing the two is the caller's (a mechanism's) business; this store keeps both side by
+    side and never turns either into the other. Refused while regulation pauses writes."""
     refs = list(dict.fromkeys(_ref(r, OBSERVATION_KINDS) for r in evidence))
-    try:
-        outcome = json.dumps({"observed": observation, "evidence": [list(r) for r in refs]}, sort_keys=True,
-                             allow_nan=False)
-    except (TypeError, ValueError):
-        raise ValidationError("observation must be JSON") from None
+    if len(refs) > MAX_REFS:
+        raise ValidationError(f"evidence must be at most {MAX_REFS} (kind, id) pairs")
+    if not (_scalar(observation) or (isinstance(observation, dict) and all(map(_scalar, observation.values())))):
+        raise ValidationError("observation must be a number, true/false or null, or an object of the record's payload "
+                              "keys to such values (no text: a forget must be able to remove everything it names)")
+    outcome = json.dumps({"observed": observation, "evidence": [list(r) for r in refs]}, sort_keys=True)
+    store.require_write_allowed(db)
     with store.write(db):
-        row = db.execute("SELECT outcome FROM imagined WHERE id=?", (record_id,)).fetchone()
+        row = db.execute("SELECT outcome, payload FROM imagined WHERE id=?", (record_id,)).fetchone()
         if row is None:
             raise NotFound(f"Unknown imagined record {record_id}")
-        missing = _unresolved(db, refs, now)
+        payload = json.loads(row[1])
+        if isinstance(observation, dict) and not set(observation) <= set(payload if isinstance(payload, dict) else ()):
+            raise ValidationError("an observation's keys are keys of the record's payload")
+        missing = _unresolved(db, refs)
         if missing:
             raise ValidationError(f"evidence names records this instance does not hold: {missing}")
         db.execute("UPDATE imagined SET outcome=?, observed_at=? WHERE id=?", (outcome, now, record_id))
+        held = set(db.execute("SELECT ref_kind, ref_id FROM imagined_refs WHERE record_id=?", (record_id,)))
+        db.executemany("INSERT INTO imagined_refs(record_id,ref_kind,ref_id,observed) VALUES(?,?,?,1)",
+                       [(record_id, k, i) for k, i in refs if (k, i) not in held])
         store.bump_state_version(db)
     return show(db, record_id)
 
 
 def _refs(db, record_id):
-    return [[k, i] for k, i in db.execute("SELECT ref_kind, ref_id FROM imagined_refs WHERE record_id=? "
-                                          "ORDER BY ref_kind, ref_id", (record_id,))]
+    """What the record was derived from (not the evidence its outcome names, which the outcome lists)."""
+    return [[k, i] for k, i in db.execute("SELECT ref_kind, ref_id FROM imagined_refs WHERE record_id=? AND "
+                                          "observed=0 ORDER BY ref_kind, ref_id", (record_id,))]
 
 
 def _item(db, row, *, full):
@@ -328,8 +378,9 @@ def purge(db, now, *, record_id=None, kind=None):
 
 def replay(copy, forgotten, now):
     """In a restore's or rewrite's copy: remove every record the live file removed since the archive was written
-    (`forgotten`: the live imagined_forgotten rows), keep their tombstones, expire what is past its lifetime, and drop
-    what derives from anything the copy no longer holds. Caller owns the transaction. Returns how many."""
+    (`forgotten`: the live imagined_forgotten rows), keep their tombstones, apply the owner's limits carried into the
+    copy (bound: what is past its lifetime expires, the oldest beyond the row limit are evicted), and drop what derives
+    from anything the copy no longer holds. Caller owns the transaction. Returns how many."""
     if not present(copy):
         return 0
     copy.executemany("INSERT OR IGNORE INTO imagined_forgotten(digest,reason,forgotten_at) VALUES(?,?,?)", forgotten)
@@ -341,7 +392,7 @@ def replay(copy, forgotten, now):
         marks = ",".join("?" * len(chunk))
         copy.execute(f"DELETE FROM imagined_refs WHERE record_id IN ({marks})", chunk)
         removed += copy.execute(f"DELETE FROM imagined WHERE id IN ({marks})", chunk).rowcount
-    return removed + expire(copy, now) + purge_orphans(copy, now)
+    return removed + bound(copy, now) + purge_orphans(copy, now)
 
 
 def section(records):
