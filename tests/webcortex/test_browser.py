@@ -141,12 +141,15 @@ def _alive(pid):
 
 
 class HangingFetcher:
-    """Delegates to a SafeFetcher but blocks every sub-resource fetch, recording the processes below this test
-    process (Playwright driver + Chromium) while the render hangs."""
+    """Delegates to a SafeFetcher but blocks every sub-resource fetch (for longer than the render may take),
+    recording the processes below this test process (Playwright driver + Chromium) while the render hangs."""
+
+    HANG = 60.0
 
     def __init__(self, inner):
         self.inner, self.policy, self._clock = inner, inner.policy, inner._clock
         self.release = threading.Event()
+        self.hung = threading.Event()
         self.tree: list[int] = []
         self.cmdlines: dict[int, str] = {}
         # Processes this test process already had before the render (an earlier test's helpers, such as the
@@ -161,25 +164,40 @@ class HangingFetcher:
                     self.cmdlines[pid] = open(f"/proc/{pid}/cmdline", "rb").read().decode("utf-8", "replace")
                 except OSError:
                     pass
-            self.release.wait(30)
+            self.hung.set()
+            self.release.wait(self.HANG)
         return self.inner.fetch(url, **kwargs)
 
 
+# Timing (a slow runner): the render's limit covers launching Chromium, so it is long enough for a cold launch to
+# reach the hanging sub-request; the processes are given a generous deadline to die once killed. Neither weakens
+# the test: the sub-request hangs far longer than limit + 2 x grace, so a render that returns at all was ended by its
+# own timeout, and a process still alive at the deadline did outlive the render.
+HUNG_RENDER_LIMIT = 8.0
+HUNG_RENDER_GRACE = 1.0
+DEATH_DEADLINE = 20.0
+
+
 def test_hung_render_kills_driver_and_chromium(web, monkeypatch):
-    monkeypatch.setattr(browser_mod, "RENDER_GRACE", 1.0)
+    monkeypatch.setattr(browser_mod, "RENDER_GRACE", HUNG_RENDER_GRACE)
     web.add("hang.example", "/", '<html><body><p>text</p><script src="/slow.js"></script></body></html>')
     fetcher = HangingFetcher(fetcher_for(web))
-    renderer = BrowserRenderer(fetcher, timeout=2.0)
+    renderer = BrowserRenderer(fetcher, timeout=HUNG_RENDER_LIMIT)
     if not renderer.available()[0]:
         pytest.skip("browser rendering unavailable")
+    assert HUNG_RENDER_LIMIT + 2 * HUNG_RENDER_GRACE + 10 < HangingFetcher.HANG
     started = time.monotonic()
     try:
         with pytest.raises(FetchError) as info:
             renderer.render("http://hang.example/", budget=Budget(max_browser_sessions=1), usage=Usage())
-        assert info.value.code == "timeout" and time.monotonic() - started < 2.0 + 1.0 + 1.0 + 1.0
+        took = time.monotonic() - started
+        assert info.value.code == "timeout" and "killed" in str(info.value)
+        # ended by its own timeout while the sub-request still hung: the watchdog killed it, nothing released it
+        assert not fetcher.release.is_set() and took < HUNG_RENDER_LIMIT + 2 * HUNG_RENDER_GRACE + 10
+        assert fetcher.hung.is_set(), "the render timed out before Chromium reached the hanging sub-request"
         chromium = [p for p, cmd in fetcher.cmdlines.items() if "chrom" in cmd.lower()]
         assert chromium, "the hang was not observed with Chromium running"
-        deadline = time.monotonic() + 3
+        deadline = time.monotonic() + DEATH_DEADLINE
         while any(_alive(p) for p in fetcher.tree) and time.monotonic() < deadline:
             time.sleep(0.1)
         assert not [p for p in fetcher.tree if _alive(p)], "driver/Chromium processes outlived the render"

@@ -219,12 +219,27 @@ graphs.promote(db, revision_id, now) -> {"promoted": bool, "decision": {...all n
 #       when learn() recorded metrics.beats_no_graph; a candidate learned before that has checks (a)-(e) and the
 #       decision record it always had.
 #   Pass: incumbent -> 'archived', candidate -> 'active'. Fail: candidate -> 'rejected'. Decision JSON stored either way.
+graphs.no_graph_check(db, rev) -> {"passed": bool|None, "validation_mse", "no_graph_validation_mse", "computed", "why"?}
+#   Check (f) for a revision already decided: what learn() recorded, else computed from its snapshot and its own
+#   validation dataset; None (with "why") for a founding or imported graph or one whose validation data is gone.
+graph_migration.apply(db, now) -> record|None   # run by store.open_existing(path, graph_migration=True) (ADR-047)
+#   Once per file (meta 'graph_rule_migration'): newest rule built-in gate-v1 and best-learner-v1 unregistered ->
+#   register best-learner-v1 (created_by 'migration'); every active graph failing no_graph_check -> 'archived' with
+#   decision {"action": "demote", "by": "migration", "check", "prior"}. Not for a file born by this software
+#   (status 'settled_at_birth'), with config.graph_rule_migration false, on a connection that cannot write, or while a
+#   lease is held (None: retried at the next open). Record: {"status": "applied", "rule": {"from","to"}|null,
+#   "rule_note", "demote", "keep", "not_judged": [{"revision","context","check"}], "state_version", "at"}.
+graph_migration.status(db) -> record | {"status": "pending"|"opted_out", "plan": {...}}   # `nsf graph migration status`
+graph_migration.undo(db, now) -> record with "status": "reversed", "undone", "not_undone"  # `... undo --owner-approved`
+#   Conflict unless applied; LeaseHeld while a graph job runs. Sets config.graph_rule_migration false (logged).
+store.inventory(db)["graph_rule_migration"]   # present once applied or reversed (`nsf birth`, console overview)
 graphs.reject(db, revision_id, now, reason) -> dict
 graphs.rollback(db, context, revision_id, now) -> dict       # re-activate an archived, non-invalidated revision
 graphs.invalidate_dependents(db, dataset_id, now) -> {"invalidated": [ids], "reactivated": id|None, "failure": str|None}
 #   Caller (governance) owns the transaction. Revisions trained or validated on the dataset -> 'invalidated'.
 #   If the active one was invalidated, re-activate the newest archived revision of that context whose lineage has no
-#   deleted dataset; if none, failure = "no eligible snapshot for context <c>".
+#   deleted dataset and that was not rolled back from or demoted (graphs.NOT_REVIVED); if none,
+#   failure = "no eligible snapshot for context <c>".
 graphs.lesion(db, revision_id, dataset_id, now) -> {"edges":[{"src","dst","delta_mse"}], "permuted_control_mse", "base_mse"}
 #   The change in MSE from zeroing each retained edge, stored in graph_effects(kind='lesion'). Zeroing one edge
 #   changes only its receiver's residual, so each delta is taken from its closed form (the mean of the per-step
@@ -267,7 +282,12 @@ governance.forget_epoch(db, epoch, now) -> dict           # every evidence row i
 #   row stays. An epoch holding only a note is forgotten and logged too. Every checkpoint is marked stale whenever
 #   derived rows were removed, also when the epoch's evidence had already expired.
 governance.forget_partner(db, root, now) -> dict          # every word evidence row from that partner
-governance.forget_dataset(db, dataset_id, now) -> dict    # blob NULL, deleted_at set, graphs.invalidate_dependents, stale checkpoints
+governance.forget_dataset(db, dataset_id, now) -> dict    # blob, note and digest erased, deleted_at set, graphs.invalidate_dependents, graphs.erase_learned_from (effects.graphs_erased, effects.decisions_redacted), stale checkpoints
+#   status "forgotten"; on a dataset deleted before: "completed" when an earlier version's forget left something
+#   learned from it (effects.completed, effects.by), else "absent".
+governance.finish_earlier_forgets(db, now) -> list|None   # run by store.open_existing: the same completion, once, for every such dataset (by "upgrade"); None when nothing to do, not writable or busy
+graphs.erase_learned_from(db, dataset_id, now) -> dict    # blob X'', sha256 "erased", metrics {"erased"}, scores removed from its decisions and from the incumbent side of others' (graphs.SCORE_KEYS); {"erased", "effects_deleted", "decisions_redacted"}
+store.can_write(db) -> bool; store.optional_write(db, body) -> value|None   # an optional step at open: lock waited for at most 200 ms, busy/read-only gives None
 #   Also deletes the graph_effects rows measured on the dataset (lesion, lesion_control, coactivation):
 #   effects["graph_effects_deleted"]. Effects measured on other datasets stay.
 governance.promote(db, event_id, now) -> dict             # retention 'promoted', expires_at NULL
@@ -290,7 +310,7 @@ CLI (W2-C): `nsf memory KIND [filters]`, `nsf forget evidence ID | epoch NAME | 
 
 ## 5. Pocket bridge HTTP API (owner: W2-D; prototype contract preserved)
 
-All routes are `POST /api/<route>`. Requests must be `Content-Type: application/json`, between 2 and 512 bytes (`research_submit`: up to 1024, so 300 non-Latin characters fit), and carry the same `Origin` if any. Everything except `pair` needs `Authorization: Bearer <credential>`. Responses are `no-store` and carry the CSP shown in `pocket/server.py`.
+All routes are `POST /api/<route>`. Requests must be `Content-Type: application/json`, between 2 and 512 bytes (`research_submit`: up to 1024 + 64, so 300 non-Latin characters fit with the outbox's request key), and carry the same `Origin` if any. Everything except `pair` needs `Authorization: Bearer <credential>`. Responses are `no-store` and carry the CSP shown in `pocket/server.py`.
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
@@ -556,7 +576,7 @@ JSON content type and 512-byte body rules apply.
 
 | Action | Body | Result |
 |---|---|---|
-| research_submit | `{objective: 1–300 chars, mode?: quick_lookup\|deep_research\|fact_verification\|comparative\|scientific\|technical}` | 201 `{id}`; 400 `private_data` on the privacy screen; 429 after 10 per pairing family per hour (persisted); 507 `writes_paused` |
+| research_submit | `{objective: 1–300 chars, mode?: quick_lookup\|deep_research\|fact_verification\|comparative\|scientific\|technical, request?: UUID v4}` | 201 `{id}`; 200 `{id, replayed: true}` when the family sent this `request` key before (nothing queued or counted again; kept 8 days); 410 `forgotten` only when the owner forgot that task since (its tombstone is in the individual; a task merely absent, as after a restore from an older archive, makes the key a new request), and every later retry of that key is 410 again while the key is kept, so a forgotten question is never queued again; 400 `private_data` on the privacy screen; 429 after 10 queued tasks or 20 screen refusals per pairing family per hour (persisted, counted apart). Order, under one lock: a key this Pocket recorded is replayed first (so a private term added since never refuses a question already queued), then the hourly limit, then a search of the individual for a key whose record was lost, then the screen, then the submit; 507 `writes_paused` |
 | research_list | `{}` | the caller's pairing family's tasks, newest first, ≤ 50 |
 | research_get | `{id}` | status, stage and a phone-sized report; 404 for unknown ids and other families |
 | research_cancel | `{id}` | 200; 404 as above |

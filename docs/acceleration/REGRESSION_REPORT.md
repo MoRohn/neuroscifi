@@ -1,7 +1,8 @@
 # Compatibility and regression report
 
 Status: 2026-11-24. Phases 1 and 2: branch `nvidia-acceleration-review` against `9e4570a` (0.7.0), merged to `main`
-as `793a21f`. Phase 3: branch `open-items-round` against `793a21f`. This page says, capability by
+as `793a21f`. Phase 3: branch `open-items-round` against `793a21f`, merged to `main` as `c565c20`. Phase 4: branch
+`remaining-items-round` against `c565c20`, in §5. This page says, capability by
 capability, how each was checked after the changes and what the check covers. "Verified" means a test or a
 measurement ran and passed on this branch; "unverified" means the environment could not check it, and is never
 counted as passed.
@@ -274,3 +275,58 @@ the setting `web_question_stale_days`.
 | A forget from this process or a restore while the kept knowledge index is warm; a write by another process | Index tests, one per forget kind; a subprocess write | The index is dropped or rebuilt; results equal to the uncached path |
 | A sweep that crosses the consolidation limit partway; the limit lowered below what is kept | Limit tests | Oldest first up to the limit, the rest expire; nothing kept is removed |
 | GPU memory exhaustion; a failed image upgrade and rollback; days of wall-clock autonomy | — | **Unverified** in this review (the first two were not provoked on a shared host; the third is the owner's running soak, left untouched) |
+
+## 5. Phase 4: the remaining items
+
+Branch `remaining-items-round` against `c565c20` ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §7).
+
+### 5.1 Suites
+
+Final code of the round: code `b45c3c8` (later commits change only these reports and evidence): `bash scripts/check.sh` ruff clean, pytest 5053 passed, 18 skipped (the same live-service tests as before), Node checks and `scripts/reproduce.py` pass; browser suite 206 passed, 1 skipped; `nsf acceptance --all` exit 0; guard differential 1,937 inputs, 1,688 identical, 232 stricter, 17 loosened (the proven exact-restatement class), 0 different, every gap corpus met; two-account check 55 of 55. An earlier full browser run on `382d115` had one failure under load (the pairing click in `test_forget_pairing_also_removes_the_vault_copy` waited 30 s for navigation); it passed 6 of 6 on rerun and in both later full runs (on `1d5d860`, before the owner's ruling on comma-grouped numbers was built: 5039 passed and the same browser result; and on the final code).
+
+During the round each lane ran ruff and the full non-browser suite on its own branch before it was merged, and the
+merged branch ran the gate after the lanes (4,892 passed, 1 failed: the test of migration 15, broken by the schema
+renumbering and fixed) and after the first fix round (4,991 passed, 18 skipped). The browser suite on the code after
+the first fix round had 205 passed, 1 skipped and 1 failed: `test_forget_pairing_also_removes_the_vault_copy` waited
+30 s for navigation after its pairing click while four lanes and the gate ran on the host; it passed 6 of 6 alone.
+
+**Tests changed, not only added.** `tests/test_phone_setup.py::test_start_runs_the_services_and_stops_them_all_on_sigterm`
+raced in one run of ten (it stopped waiting at "NeuroSciFi is running." before Pocket's pairing line); it now waits for
+both lines, and stops its services when an assertion fails (two failed runs had left a console and Pocket running).
+`tests/instance/test_forget_dataset_erasure.py::test_migration_15_changes_no_row_of_a_version_14_file` builds a real
+version-14 file now that migration 16 follows. The two timing-sensitive tests of phase 3 (the cross-process race test,
+the hung-render test) wait on conditions with generous deadlines; each passed 50 of 50 runs under load. The existing
+Pocket research browser test expects the outbox key in the request body; four tests that rebuild older schemas drop
+the new triggers too; the guard's reference was re-recorded from `307b907` for the new corpus entries.
+
+### 5.2 Capability matrix, phase 4
+
+| Capability | Touched | Check | Result |
+|---|---|---|---|
+| The sentence guard | New refusals; earlier over-refusals given back where `307b907` accepts | Differential over 1,937 inputs; attack suite; benchmark sentences; gap corpora | 0 different; attack suite and benchmark unmoved; every gap corpus met |
+| Knowledge and contradictions | Values across units, stated aliases, contained names, stored values read again | Fresh held-out set, development set, words path, offline research benchmark | Precision not lower anywhere; no outcome of the offline benchmark changed |
+| Forgetting and restores | Schema 15; one kind of a name; settlements of forgotten tasks; forgotten datasets' graphs | Before/after scenarios live and in restored copies; migration from 14 with every row compared | Verified |
+| Beliefs | Schema 16, copied flags | Randomised differential on three paths; 64 safeguards broken one at a time | Identical results; 64 of 64 caught |
+| Graphs | The graph-rule migration | Kept, archived, not judged, undo, opt-out, read-only, `query_only`, held lease, restores | Verified |
+| Memory server | No network for the model server; the forwarder; kept connections | Benchmark over 8 runs; egress probes inside the container; server tests | Equal in every class; outbound connections refused |
+| Two-account install | SearXNG without writes; ports | `scripts/two_account_check.py` | 55 of 55 |
+| Resource policy | An unused voice session | Session tests at 5, 29, 31 and 480 minutes | Verified |
+| Read-ahead | robots.txt continuation | 1,800 random webs; stop tests | 0 differences |
+| Pocket | The offline outbox | Server tests for exactly once, replay, 410, limits; browser tests with offline emulation | Verified; a real handset **unverified** |
+| TensorRT-LLM window | New script | Unit tests with fakes; real dry runs on this host | Verified as a dry run; the window itself **unverified** |
+| Services not started by this round | `neuroscifi-vllm`, SearXNG, ASR, TTS | Health after the round | Untouched and healthy |
+
+### 5.3 Behaviour that changed on purpose in phase 4
+
+1. **The guard refuses more**: negated exceptions, a group as an advisory's author, a pronoun where the claim has an
+   acronym, versions joined across clauses, adverb and cleft role reversals, and a few faithful wordings as an accepted
+   cost (§7.1 of the plan).
+2. **Contradictions are found across units**, and values that cannot be compared never strengthen knowledge; a
+   forecast that meets an incomparable value stays open instead of being confirmed.
+3. **Forgetting reaches further**: one kind of a name, a forgotten task's settlements, a forgotten dataset's graph
+   weights (also for datasets forgotten by an earlier version, at the first open).
+4. **Existing individuals adopt today's graph rules once**: `best-learner-v1`, and an active graph worse than no graph
+   is archived. Off before the open: `nsf config --no-graph-rule-migration`.
+5. **The memory models have no network**; `NSF_MEMORY_EGRESS=bridge` restores the earlier container.
+6. **An unused voice session stops holding off idle unloading** after 30 minutes; `nsf resources idle --set voice=off`.
+7. **Pocket keeps unsent questions** and sends them once when the Spark is reachable again.

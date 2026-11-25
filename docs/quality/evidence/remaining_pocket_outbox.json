@@ -1,0 +1,29 @@
+{
+  "item": "ENGINEERING_PLAN.md §6 item 12: an offline outbox in Pocket (voice continuity across a restart is not part of this)",
+  "date": "2026-11-24",
+  "host": "this computer (aarch64); Chromium 156 from Playwright; Python 3.12",
+  "design": {
+    "key": "a UUID v4 made on the device per question, sent inside the research_submit body as `request`",
+    "spark_record": "the individual keeps sha256('pocket-outbox:<instance-salted family digest>:<key>')[:32] in the task's 'submitted' event, written in the same transaction as the task; the Pocket database keeps (family, key, task, time) for 8 days and drops it with the family",
+    "replies": {"201": "queued now", "200 replayed": "this family's key queued that task before: nothing queued or counted again", "410 forgotten": "the task the key queued was forgotten since: nothing queued", "400": "refused as written: kept on the device for the owner to edit or remove"},
+    "signing": "the key is inside the signed body; a waiting question is signed again on every send, so no signature outlives the 120 s freshness window",
+    "device_storage": "inside the encrypted device vault (AES-GCM, the vault's 64-row limit) when it is open, kept 7 days and surviving a reload; otherwise in the tab only, with the browser's leave-page prompt; never stored unencrypted; at most 10 waiting",
+    "body_cap": "research_submit 1024 + 64 bytes (the key needs 49); every other route unchanged"
+  },
+  "measured": {
+    "server_tests": "tests/test_pocket_outbox.py: 11 passed",
+    "concurrent_retries": "6 simultaneous sends of one key: 1 task, 1 counted submission, five 200 replayed and one 201",
+    "lost_record_in_pocket_db": "the task is found by its tag in the individual and the record restored (no second task)",
+    "largest_keyed_body_bytes": {"300 characters, 108 four-byte and 192 three-byte (the page's 1024-byte question)": 1073, "300 CJK characters, longest mode": 992, "cap": 1088},
+    "signed_node": "same signed bytes twice: 401 replayed_request; signed an hour ago: 401 stale_request; re-signed: 200 replayed; key changed inside a signed body: 401 signature_invalid (Ed25519 and P-256)",
+    "outbox_module": "tests/js/outbox_check.mjs passed (keys, request body, due order and Spark binding, reply outcomes, bounds, backoff)",
+    "browser": {
+      "tests/e2e/test_pocket_outbox_e2e.py": "6 passed in each of 7 runs after the offline harness fix below (6 alone, 1 in the second suite run)",
+      "scenarios": ["written offline, sent once when back online", "reply lost after the Spark queued it: asked again with the same key, 1 task and 1 counted submission", "kept in the vault through an offline reload, sent once after the vault's pairing is checked, nothing left after the next unlock", "a question only the Spark refuses (phone number) stays with its reason and Edit puts it back", "axe: no serious or critical violation on phone and tablet with two questions waiting; buttons at least 43.5 px tall; no horizontal scroll"],
+      "pocket_suites": "tests/e2e Pocket, research, signing, push, handoff, UAT, T4, UI matrix, phone setup and accessibility-tree files: 117 passed and 1 failed in each of two runs; the failure was the outbox reload test in the first run (fixed, below) and test_research_journey_with_offline_copy in the second (a console error for a request made offline; it passed 5 of 5 reruns, and the outbox makes no request when nothing waits, so the request is one of the page's existing timers: not proven)"
+    },
+    "harness_finding": "Playwright's offline emulation did not stop every request the service worker passed to the network after a reload: once in about five runs the Spark queued a question the page saw fail. That is the lost-reply case, and the next send was replayed, not duplicated. The test now also makes the Spark refuse every connection while the device is 'offline'.",
+    "full_gate_without_browser": "4593 passed, 19 skipped, 1 failed: tests/voice/test_hub_transcripts.py::test_utterance_streaming_provisional_final_and_reply (a provisional transcript missing under load while the browser suite ran in parallel; no voice code changed; 34 of 34 passed in each of 3 reruns)"
+  },
+  "unverified": ["a real handset moving between networks, sleeping or killing the tab", "the beforeunload prompt as a real browser shows it (the test checks that the event is cancelled)", "Safari and Firefox"]
+}

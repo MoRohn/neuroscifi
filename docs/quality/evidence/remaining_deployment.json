@@ -1,0 +1,98 @@
+{
+ "date": "2026-11-24",
+ "lane": "D (remaining-items round)",
+ "host": "aarch64",
+ "two_account_check": {
+  "exit": 0,
+  "passed": 55,
+  "failed": 0,
+  "seconds": 21.2,
+  "searxng_checks": [
+   {
+    "check": "the path SearXNG's command took before cannot start it as the idle account (it opens the database to write)",
+    "ok": true
+   },
+   {
+    "check": "as the idle account a first start runs SearXNG, writes nothing, and names the owner's one command",
+    "ok": true
+   },
+   {
+    "check": "with searxng_url set by the service account and the database open, the idle account starts it on that port and writes nothing",
+    "ok": true
+   },
+   {
+    "check": "the idle account's stop and status read the port and write nothing",
+    "ok": true
+   },
+   {
+    "check": "SearXNG's health probe, which records what it finds, stays with the service account",
+    "ok": true
+   },
+   {
+    "check": "the idle account still cannot write the database or create a file beside it",
+    "ok": true
+   }
+  ]
+ },
+ "idle_pass_with_an_open_voice_session": [
+  {
+   "used_minutes_ago": 5.0,
+   "bound": 1800.0,
+   "vllm": "none",
+   "blocked_by_voice": true
+  },
+  {
+   "used_minutes_ago": 29.0,
+   "bound": 1800.0,
+   "vllm": "none",
+   "blocked_by_voice": true
+  },
+  {
+   "used_minutes_ago": 31.0,
+   "bound": 1800.0,
+   "vllm": "unload",
+   "blocked_by_voice": false
+  },
+  {
+   "used_minutes_ago": 480.0,
+   "bound": 1800.0,
+   "vllm": "unload",
+   "blocked_by_voice": false
+  },
+  {
+   "used_minutes_ago": 480.0,
+   "bound": null,
+   "vllm": "none",
+   "blocked_by_voice": true
+  },
+  {
+   "used_minutes_ago": 31.0,
+   "bound": 3600,
+   "vllm": "none",
+   "blocked_by_voice": true
+  }
+ ],
+ "note": "bound null is --set voice=off, the rule of 0.7.0. idle_pass_before_c565c20: the same pass on the code of c565c20 (exported with git archive), measured: an open session blocks at every age. The vLLM container is fake (tests/test_resources_idle.FakeHost); the decision is the real policy's.",
+ "idle_pass_before_c565c20": [
+  {
+   "used_minutes_ago": 5.0,
+   "vllm": "none",
+   "blocked_by_voice": true
+  },
+  {
+   "used_minutes_ago": 29.0,
+   "vllm": "none",
+   "blocked_by_voice": true
+  },
+  {
+   "used_minutes_ago": 31.0,
+   "vllm": "none",
+   "blocked_by_voice": true
+  },
+  {
+   "used_minutes_ago": 480.0,
+   "vllm": "none",
+   "blocked_by_voice": true
+  }
+ ]
+}

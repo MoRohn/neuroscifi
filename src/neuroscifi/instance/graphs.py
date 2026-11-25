@@ -3,7 +3,7 @@
 Lifecycle of a revision: 'candidate' (learn) -> 'active' or 'rejected' (promote/reject). Promoting a
 candidate archives the incumbent of its context, so at most one revision per context is active and older
 graphs stay available for rollback and recall. Deleting a dataset turns every revision trained or
-validated on it into 'invalidated' (invalidate_dependents).
+validated on it into 'invalidated' (invalidate_dependents) and erases its weights and metrics (erase_learned_from).
 
 Single writer: learn, promote and rollback hold the context lease (graph_leases) for their duration and
 re-check it inside the committing transaction. Fitting and scoring run under the lease but outside any
@@ -36,6 +36,12 @@ COLUMNS = ("id", "context", "parent_id", "status", "bits", "degree", "rows", "co
 CHECKS = ("independent_heldout", "heldout_gain", "retention", "byte_budget", "lineage_intact", "beats_no_graph")
 NEW_CONTEXT_ADVICE = "register as a new context; the incumbent still solves older data"
 REPLACED_BY_ROLLBACK = "replaced_by_rollback"
+# Set by the graph-rule migration (graph_migration.py) on an active graph that fails check (f): it was archived
+# because it predicts worse than no graph.
+DEMOTED = "demote"
+# Archived revisions the deletion cascade never re-activates on its own: one the owner rolled back from, and one
+# demoted for failing check (f). The owner can still re-activate either with rollback.
+NOT_REVIVED = (REPLACED_BY_ROLLBACK, DEMOTED)
 LESION_BLOCK = 32          # time steps per block for the lesion standard error
 COACTIVATION_LAGS = (1, 2, 3)
 
@@ -52,9 +58,22 @@ def _row(db, revision_id):
     return rev
 
 
+ERASED = b""      # the blob of a revision whose weights went with a forgotten dataset (schema 15)
+ERASED_SHA256 = "erased"   # and the digest of its weights (schema 15: the only other value the trigger allows)
+
+
+def _erased_text(revision_id):
+    return (f"Graph revision {revision_id} was erased: it learned from a dataset the owner forgot, so its weights "
+            "and metrics are gone")
+
+
 def _matrix(db, revision_id):
-    blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()[0]
-    return decode(blob)
+    row = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()
+    if row is None:
+        raise NotFound(f"Unknown graph revision {revision_id}")
+    if bytes(row[0]) == ERASED:
+        raise Gone(_erased_text(revision_id))
+    return decode(row[0])
 
 
 def _active(db, context):
@@ -351,6 +370,32 @@ def _gate(db, cand, rule, now):
     return decision
 
 
+def no_graph_check(db, rev):
+    """Check (f) for a revision already decided: {"passed": True|False|None, ...}. What learn() recorded when it did
+    (metrics.beats_no_graph); otherwise, for a learned revision whose validation dataset is still stored, the same
+    comparison computed now from its snapshot (`computed`: true); otherwise None with `why` (a founding or imported
+    graph, or a revision whose validation data is gone, cannot be judged). Reads only."""
+    metrics = rev["metrics"]
+    if isinstance(metrics.get("beats_no_graph"), bool):
+        return {"passed": metrics["beats_no_graph"], "validation_mse": metrics.get("validation_mse"),
+                "no_graph_validation_mse": metrics.get("no_graph_validation_mse"), "computed": False}
+    if rev["origin"] != "learner":
+        return {"passed": None, "why": f"a {rev['origin']} graph has no validation data of its own"}
+    dataset_id = metrics.get("validation_dataset")
+    row = db.execute("SELECT cols, deleted_at IS NULL AND blob IS NOT NULL FROM datasets WHERE id=?",
+                     (dataset_id,)).fetchone() if isinstance(dataset_id, int) else None
+    if row is None or not row[1]:
+        return {"passed": None, "why": "its validation dataset is no longer stored"}
+    if row[0] != rev["cols"] or rev["rows"] != rev["cols"]:
+        return {"passed": None, "why": f"its validation dataset has {row[0]} populations, the graph is "
+                                       f"{rev['rows']}x{rev['cols']}"}
+    states, targets = datasets.load(db, dataset_id)
+    ours = float(learner.mse(_matrix(db, rev["id"]), states, targets))
+    none = float(np.mean(targets ** 2))
+    return {"passed": bool(ours < none), "validation_mse": ours, "no_graph_validation_mse": none,
+            "validation_dataset": dataset_id, "computed": True}
+
+
 def promote(db, revision_id, now):
     """Run the gate of the candidate's recorded rule; promote on a full pass, otherwise reject.
 
@@ -464,7 +509,7 @@ def invalidate_dependents(db, dataset_id, now):
         candidates = [r[0] for r in db.execute(
             "SELECT id, decision FROM graph_revisions WHERE context=? AND status='archived' "
             "ORDER BY created_at DESC, id DESC", (context,))
-            if (json.loads(r[1]) if r[1] else {}).get("action") != REPLACED_BY_ROLLBACK]
+            if (json.loads(r[1]) if r[1] else {}).get("action") not in NOT_REVIVED]
         chosen = next((r for r in candidates if _lineage_intact(db, r)), None)
         if chosen is None:
             failures.append(f"no eligible snapshot for context {context}")
@@ -476,6 +521,102 @@ def invalidate_dependents(db, dataset_id, now):
         reactivated = chosen
     return {"invalidated": invalidated, "reactivated": reactivated,
             "failure": "; ".join(failures) if failures else None}
+
+
+# Scores in a decision record computed with a revision's weights: with them (as with the digest of the weights) a
+# guessed dataset could be refitted and checked against the file once the weights are erased. An erased revision's
+# own decisions lose all of them; another revision's decision loses those of the incumbent when the incumbent is
+# the erased one (its error on held-out data, the threshold and limits computed from it).
+SCORE_KEYS = frozenset({"candidate_mse", "incumbent_mse", "threshold", "limit", "candidate_per_dataset",
+                        "incumbent_per_dataset", "validation_mse", "no_graph_validation_mse", "mse",
+                        "dense_validation_mse", "reference_validation_mse", "heldout_mse"})
+INCUMBENT_KEYS = frozenset({"incumbent_mse", "incumbent_per_dataset", "threshold", "limit"})
+ERASED_WHY = "erased: the scores went with data the owner forgot (ADR-048)"
+
+
+def _redact(node, keys):
+    """A copy of a decision tree with every value under `keys` set to None (the structure stays, so a reader shows
+    "—"); a "why" beside a removed score (it may quote the score) is replaced. Returns (copy, changed)."""
+    if isinstance(node, list):
+        out, changed = [], False
+        for item in node:
+            item, hit = _redact(item, keys)
+            out.append(item)
+            changed |= hit
+        return out, changed
+    if not isinstance(node, dict):
+        return node, False
+    out, changed = {}, False
+    for key, value in node.items():
+        if key in keys and value is not None:
+            out[key], changed = None, True
+        else:
+            out[key], hit = _redact(value, keys)
+            changed |= hit
+    if changed and isinstance(out.get("why"), str) and out["why"] != ERASED_WHY and any(ch.isdigit()
+                                                                                       for ch in out["why"]):
+        out["why"] = ERASED_WHY
+    return out, changed
+
+
+def _redact_incumbent(node, erased):
+    """A copy of a decision tree in which every gate decision whose incumbent is in `erased` loses the incumbent's
+    scores (INCUMBENT_KEYS); the candidate's own scores stay. Returns (copy, changed)."""
+    if isinstance(node, list):
+        out, changed = [], False
+        for item in node:
+            item, hit = _redact_incumbent(item, erased)
+            out.append(item)
+            changed |= hit
+        return out, changed
+    if not isinstance(node, dict):
+        return node, False
+    changed = False
+    if node.get("incumbent") in erased:
+        node, changed = _redact(node, INCUMBENT_KEYS)
+    out = {}
+    for key, value in node.items():
+        out[key], hit = _redact_incumbent(value, erased)
+        changed |= hit
+    return out, changed
+
+
+def erase_learned_from(db, dataset_id, now):
+    """Erase the weights, the digest of the weights and the metrics of every invalidated revision trained or
+    validated on a deleted dataset (also one invalidated earlier by another forget, or erased by an earlier version
+    that kept the digest), the scores in its decisions, the incumbent's scores in other revisions' decisions where it
+    was the incumbent, and the graph effects measured on those revisions: what was learned from data the owner forgot
+    goes with it, and nothing kept can confirm a guess of that data (ADR-048). Caller owns the transaction; call after
+    invalidate_dependents.
+
+    The revision stays listed: id, context, status 'invalidated', shape, lineage and decisions (the audit of what
+    was promoted and why, without its scores). metrics becomes {"erased": {"dataset": id, "at": now}}, sha256
+    'erased'. The schema trigger allows exactly this update of an invalidated revision. Idempotent.
+    Returns {"erased": [ids], "effects_deleted": n, "decisions_redacted": [ids]}."""
+    ids = [r for (r,) in db.execute(
+        "SELECT DISTINCT r.id FROM graph_lineage l JOIN graph_revisions r ON r.id=l.revision_id "
+        "WHERE l.dataset_id=? AND l.role IN ('train','validation') AND r.status='invalidated' "
+        "AND (r.blob!=? OR r.sha256!=?) ORDER BY r.id", (dataset_id, ERASED, ERASED_SHA256))]
+    effects = 0
+    for revision in ids:
+        decision = db.execute("SELECT decision FROM graph_revisions WHERE id=?", (revision,)).fetchone()[0]
+        if decision:
+            decision = _dump(_redact(json.loads(decision), SCORE_KEYS)[0])
+        db.execute("UPDATE graph_revisions SET blob=?, sha256=?, metrics=?, decision=? WHERE id=?",
+                   (ERASED, ERASED_SHA256, _dump({"erased": {"dataset": dataset_id, "at": now}}), decision, revision))
+        effects += db.execute("DELETE FROM graph_effects WHERE revision_id=?", (revision,)).rowcount
+    redacted = []
+    if ids:
+        erased = set(ids)
+        for other, decision in db.execute("SELECT id, decision FROM graph_revisions WHERE decision IS NOT NULL "
+                                          "AND id NOT IN (%s)" % ",".join("?" * len(ids)), ids).fetchall():
+            new, changed = _redact_incumbent(json.loads(decision), erased)
+            if changed:
+                db.execute("UPDATE graph_revisions SET decision=? WHERE id=?", (_dump(new), other))
+                redacted.append(other)
+        from . import graph_migration                     # imported lazily: graph_migration imports this module
+        graph_migration.redact(db, erased)
+    return {"erased": ids, "effects_deleted": effects, "decisions_redacted": redacted}
 
 
 # ---- inspection ---------------------------------------------------------------------------------------
@@ -619,11 +760,15 @@ def listing(db, context=None):
 
 
 def show(db, revision_id):
-    """Revision record, lineage, the decoded matrix (rounded to 6 decimals) and its support mask."""
+    """Revision record, lineage, the decoded matrix (rounded to 6 decimals) and its support mask. An erased revision
+    (erase_learned_from) has no matrix: `erased` says why, and matrix and support are empty."""
     rev = _public(_row(db, revision_id))
-    matrix = _matrix(db, revision_id).astype(np.float64)
     rev["lineage"] = [{"dataset_id": d, "role": role, "deleted": deleted is not None}
                       for d, role, _, deleted in _lineage(db, revision_id)]
+    try:
+        matrix = _matrix(db, revision_id).astype(np.float64)
+    except Gone as gone:
+        return rev | {"erased": str(gone), "matrix": [], "support": [], "edges": 0}
     rev["matrix"] = np.round(matrix, 6).tolist()
     rev["support"] = (matrix != 0).tolist()
     rev["edges"] = int((matrix != 0).sum())
@@ -634,6 +779,8 @@ def export(db, revision_id, out_path):
     """Write the revision's NSG1 bytes to a new file (mode 0600). Refuses to overwrite or to follow a symlink."""
     rev = _row(db, revision_id)
     blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()[0]
+    if bytes(blob) == ERASED:
+        raise Gone(_erased_text(revision_id))
     try:
         fd = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     except FileExistsError:

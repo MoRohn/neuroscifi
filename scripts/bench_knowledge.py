@@ -26,6 +26,11 @@ consolidate._compare). Each probe has a class and a gold outcome:
   subject      another subject, similar wording                -> none (must not be paired)
   unrelated    nothing in memory is about it                    -> none
 
+`--data fresh` runs webcortex/bench/contradiction_fresh.json instead: a set written before the remaining-items
+round's changes and held out whole, with three more classes (alias_stated: the subject called by a name a stored
+statement gives it -> same or conflict; contained: a longer name that contains a stored subject's name and names
+something else -> none; iec: a data size in binary prefixes or off by the binary factor -> none).
+
 Reported per class and per half (development and held-out subjects): how many probes got their gold outcome, and
 for the three negative classes how many were paired at all (false pairs) and what the value comparison then said.
 `--sweep` (with the models) records the embedding similarity and the reranker score of every probe against its
@@ -142,7 +147,10 @@ def bench_index(sizes, repeats):
 # ---- contradictions -----------------------------------------------------------------------------------------------------
 
 DATA = Path(__file__).resolve().parents[1] / "src" / "neuroscifi" / "webcortex" / "bench" / "contradiction_paraphrase.json"
-NEGATIVE = ("property", "subject", "unnamed", "unrelated")
+FRESH = DATA.with_name("contradiction_fresh.json")
+NEGATIVE = ("property", "subject", "unnamed", "unrelated", "contained", "iec")
+CLASSES = ("restate", "contradict", "units", "alias", "alias_stated", "property", "subject", "unnamed", "unrelated",
+           "contained", "iec")
 
 
 def _cluster(statement, n):
@@ -178,7 +186,8 @@ def _outcome(db, cluster, proposals):
 def bench_contradictions(args):
     from neuroscifi.inference import config as iconfig
     from neuroscifi.webcortex import consolidate
-    data = json.loads(DATA.read_text())
+    path = {"paraphrase": DATA, "fresh": FRESH}.get(args.data) or Path(args.data)
+    data = json.loads(path.read_text())
     dev = set(data["development_subjects"])
     with tempfile.TemporaryDirectory(prefix="nsf-bench-knowledge-") as folder:
         db = store.create(Path(folder) / "i.sqlite", T0)
@@ -227,7 +236,7 @@ def bench_contradictions(args):
 
     def summary(part):
         out = {}
-        for cls in ("restate", "contradict", "units", "alias", "property", "subject", "unnamed", "unrelated"):
+        for cls in CLASSES:
             got = [r for r in part if r["class"] == cls]
             if not got:
                 continue
@@ -255,7 +264,7 @@ def bench_contradictions(args):
     for r in rows:
         by_outcome.setdefault("paired" if r["outcome"] != "none" else "not_paired", []).append(r["propose_ms"])
     latencies.sort()
-    return {"benchmark": "contradictions in other words", "label": args.label,
+    return {"benchmark": "contradictions in other words", "label": args.label, "data": path.name,
             "facts": len(data["facts"]), "facts_merged_by_the_write_path": merged, "probes": len(rows),
             "semantic": semantic_on, "semantic_status": info,
             "propose_ms": {"p50": round(latencies[len(latencies) // 2], 2),
@@ -287,6 +296,7 @@ def main(argv=None):
     p.add_argument("--llm-model", default="qwen3-30b-a3b-instruct-2507-fp8")
     p.add_argument("--llm-key-file")
     p.add_argument("--config", help="JSON of further semantic settings, for example '{\"pair_floor\": 0.5}'")
+    p.add_argument("--data", default="paraphrase", help="paraphrase (default), fresh, or a path to a set of the same form")
     p.add_argument("--sweep", action="store_true", help="record every probe's scores (no threshold applied)")
     p.add_argument("--label", default="run")
     p.add_argument("--out")

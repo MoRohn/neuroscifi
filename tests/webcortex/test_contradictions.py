@@ -22,7 +22,7 @@ DEEP = "At its deepest point the Varnel River is 38 metres deep."
 OTHER_RIVER = "From its source to the sea the Ostrel runs for 389 km."
 UNNAMED = "From its source to the sea the river runs for 389 km."
 # what each statement is about, for the stand-in models: one axis per property
-ABOUT = {"kilometres long": "length", "runs for": "length", "drains a basin": "basin", "metres tall": "height",
+ABOUT = {"kilometres long": "length", "km long": "length", "metres long": "length", "runs for": "length", "drains a basin": "basin", "metres tall": "height",
          "metres deep": "depth", "metres wide": "width"}
 AXES = ("length", "basin", "height", "depth", "width")
 
@@ -176,6 +176,27 @@ def test_the_reranker_reads_the_statements_with_their_numbers_masked():
     assert semantic._masked("The Varnel runs for 412 km, or 256.0 miles, since 1,874.") == \
         "The Varnel runs for # km, or # miles, since #."
     assert semantic._masked("Lumen-7 carries 220 bands") == "Lumen-# carries # bands"
+
+
+@pytest.mark.parametrize("statement, like, read", [
+    ("The Varnel flows 256 miles to the sea.", "The Varnel River is 412 kilometres long.",
+     "The Varnel flows # kilometres to the sea."),
+    ("Yearly sales came to 0.61 billion euros.", "Revenue was 610 million euros.", "Yearly sales came to # million euros."),
+    ("Sennet counts 61.5 thousand inhabitants.", "The town of Sennet has 61,500 inhabitants.",
+     "Sennet counts # inhabitants."),
+    ("Orbix wants 4,000 MB of memory.", "Orbix needs 4 GB of memory.", "Orbix wants # GB of memory."),
+    ("The ferry cruises at 40.7 km/h.", "The ferry has a speed of 22 knots.", "The ferry cruises at # knots."),
+    ("The spring is 161.6 °F.", "The spring is 72 °C.", "The spring is # °C."),
+    # nothing of the other's kind: as written; the same unit: as before
+    ("The dam generates 740 MW.", "The dam stands 186 metres tall.", "The dam generates # MW."),
+    ("The Varnel runs for 389 km.", "The Varnel River runs for 412 km.", "The Varnel runs for # km."),
+    # binary prefixes are not decimal ones (text._DIMENSION): never rewritten into GB
+    ("Quorra uses 8 GiB of memory.", "Quorra needs 8 GB of memory.", "Quorra uses # GiB of memory."),
+])
+def test_each_statement_is_read_in_the_units_of_the_other(statement, like, read):
+    """What the units are is not what the models are asked: a restatement in miles of a length in kilometres read
+    under the reranker's floor one way round (scripts/bench_knowledge.py, lane K of the remaining-items round)."""
+    assert semantic._masked(statement, like=like) == read
 
 
 # ---- off, or a model down: what consolidation was ----------------------------------------------------------------------
@@ -485,7 +506,11 @@ def test_pairs_sends_the_reranker_masked_text_and_the_pair_instruction(db, model
     semantic.pairs(db, [CONTRADICTED], rows_of(db))
     read = [t for t in models[1].seen]
     assert any(semantic.PAIR_INSTRUCTION in t and "the Varnel runs for # km" in t for t in read)
-    assert any("The Varnel River is # kilometres long." in t for t in read)
+    # each side is read in the unit the other wrote it in: forward the stored statement in the new one's km, back
+    # the new statement in the stored one's kilometres
+    assert any("The Varnel River is # km long." in t for t in read)
+    assert any(semantic.PAIR_INSTRUCTION in t and "The Varnel River is # kilometres long." in t for t in read)
+    assert any("the Varnel runs for # kilometres." in t for t in read)
     assert not any("389" in t or "412" in t for t in read)
     assert CONTRADICTED in models[0].seen                 # the embedding model reads the statement as it is
 
@@ -537,7 +562,7 @@ def test_the_confirmation_is_one_private_masked_question_per_pair(db):
     assert schema == consolidate.PAIR_CHECK_SCHEMA and messages[0]["content"] == consolidate.PAIR_CHECK_SYSTEM
     assert messages[1]["private"] is True
     assert "Statement A: From its source to the sea the Varnel runs for # km." in messages[1]["content"]
-    assert "Statement B: The Varnel River is # kilometres long." in messages[1]["content"]
+    assert "Statement B: The Varnel River is # km long." in messages[1]["content"]       # in A's unit
     assert "389" not in messages[1]["content"] and "412" not in messages[1]["content"]
     assert kw["purpose"] == "memory_pair_check" and kw["temperature"] == 0.0 and kw["priority"] == 10
     assert 0 < kw["timeout"] <= consolidate.PAIR_CHECK_TIMEOUT
@@ -587,3 +612,121 @@ def test_the_cli_switch_and_what_web_memory_shows(tmp_path, capsys):
     assert code == 0 and out["settings"]["contradictions"] is True and out["settings"]["pair_floor"] == 0.9
     code, err = nsf("web", "memory", "config", "--set", "pair_floor=2", "--db", path)
     assert code != 0 and "pair_floor must be a number between 0 and 1" in err
+
+
+# ---- a longer name, a stated alias, a binary factor (remaining-items round, lane K) --------------------------------------
+
+@pytest.mark.parametrize("longer, shorter", [
+    ("The village of Pemberly Cross, Ohio has 1,100 residents.", "The village of Pemberly Cross has 3,000 residents."),
+    ("Pemberly, Ohio has 1,100 residents.", "In Pemberly there are 3,000 residents."),
+    ("The Orbix Cloud gateway needs 16 GB of memory.", "The Orbix server needs at least 4 GB of memory."),
+    ("Little Lake Arn covers 3 square kilometres.", "Lake Arn covers 54 square kilometres."),
+    ("The Kelder Bridge II is 990 metres long.", "The Kelder Bridge is 1,340 metres long."),
+    ("Hollin & Reeve Asia employs 310 people.", "Hollin & Reeve employs about 3,200 people."),
+    ("The Bank of Tessaly employs 4,100 people.", "Tessaly employs 4,100 civil servants."),
+])
+def test_a_longer_name_that_contains_the_other_names_another_subject(longer, shorter):
+    """'Paris, Texas' is not Paris: the longer name carries a word of its own that says which thing it is."""
+    assert consolidate._same_subject(longer, shorter) is False
+    assert consolidate._same_subject(shorter, longer) is False
+
+
+@pytest.mark.parametrize("a, b", [
+    (RESTATED, LENGTH),                                                            # "River": what kind of thing
+    ("Avarel is 11,400 feet high.", "Mount Avarel rises 3,912 metres above sea level."),
+    ("Visitors climb 214 steps to reach the gallery of the Tolvane Lighthouse.",
+     "A staircase of 214 steps leads up the Tolvane tower."),
+    ("The Marrow Valley railway runs 87 kilometres between Hesket and Pell.",     # other names, not qualifiers
+     "Trains on the Marrow Valley line cover 87 km from end to end."),
+    ("Hollin & Reeve Ltd employs about 3,200 people.", "Hollin & Reeve employs about 3,200 people."),
+])
+def test_a_word_that_only_says_what_kind_of_thing_it_is_does_not_make_another_subject(a, b):
+    assert consolidate._same_subject(a, b) is True and consolidate._same_subject(b, a) is True
+
+
+ALIAS_SOURCE = "The Varnel River, also known as the Old Grey, drains a basin of 9,800 square kilometres."
+
+
+@pytest.mark.parametrize("statement, name, alias", [
+    (ALIAS_SOURCE, "Varnel River", "Old Grey"),
+    ("The Meriden Hall (formerly the Corn Exchange) seats 900 people.", "Meriden Hall", "Corn Exchange"),
+    ("The Brask Line, previously the Northern Spur, is 44 km long.", "Brask Line", "Northern Spur"),
+    ("Hollin & Reeve, formerly known as Hollin Brothers, employs 3,200 people.", "Hollin & Reeve", "Hollin Brothers"),
+    ("Lumen-7 (a.k.a. Skyeye) orbits at 705 km.", "Lumen-7", "Skyeye"),
+])
+def test_an_alias_is_what_a_statement_itself_says_a_name_is_also_called(statement, name, alias):
+    found = consolidate._aliases([{"id": 7, "statement": statement}])
+    assert [(a["name"], a["as"], a["knowledge_id"]) for a in found] == [(name, alias, 7)]
+
+
+@pytest.mark.parametrize("statement", [
+    "The largest city on the gulf coast, Tessaly, has 248,000 residents.",       # a description is no alias
+    "The Varnel River, the longest in the region, is 412 kilometres long.",
+    "The Varnel River and the Ostrel River are 412 and 520 kilometres long.",
+    "The Varnel River was formerly navigable.",                                    # no name after the word
+])
+def test_nothing_else_is_an_alias(statement):
+    assert consolidate._aliases([{"id": 1, "statement": statement}]) == []
+
+
+def test_a_name_and_its_stated_alias_name_one_subject():
+    aliases = consolidate._aliases([{"id": 3, "statement": ALIAS_SOURCE}])
+    used = []
+    new = "From its source to the sea the Old Grey runs for 389 km."
+    assert consolidate._same_subject(new, LENGTH) is False                         # without the alias: two names
+    assert consolidate._same_subject(new, LENGTH, aliases=aliases, used=used) is True
+    assert [u["knowledge_id"] for u in used] == [3]
+    assert consolidate._read_aliases(aliases)(new) == "From its source to the sea the Varnel River runs for 389 km."
+    # an alias does not make a longer name the same: "Old Grey Bridge" is another subject
+    assert consolidate._same_subject("The Old Grey Bridge is 120 metres long.", LENGTH, aliases=aliases) is False
+
+
+def test_a_contradiction_found_through_a_stated_alias_records_the_statement_that_gives_it(db, models, judge):
+    on(db)
+    kid = known(db)
+    source = known(db, ALIAS_SOURCE)
+    new = "From its source to the sea the Old Grey runs for 389 km."
+    _, out = consolidated(db, [sources(new)], T0 + 10, objective="How long is the Old Grey?")
+    assert [(p["knowledge_id"], p["relation"]) for p in out["paired_by_meaning"]] == [(kid, "conflict")]
+    assert out["paired_by_meaning"][0]["alias"] == [{"name": "Varnel River", "as": "Old Grey", "knowledge_id": source}]
+    reason = knowledge.row(db, kid)["contradicting"][0]["reason"]
+    assert f"Old Grey is Varnel River, as knowledge #{source} states" in reason
+    # the answer model reads the alias as the name it stands for
+    assert judge[-1] == ("From its source to the sea the Varnel River runs for 389 km.", LENGTH)
+
+
+def test_an_alias_whose_statement_is_forgotten_names_nothing(db, models, judge):
+    on(db)
+    known(db)
+    source = known(db, ALIAS_SOURCE)
+    knowledge.forget(db, source, T0 + 5)
+    _, out = consolidated(db, [sources("From its source to the sea the Old Grey runs for 389 km.")], T0 + 10,
+                          objective="How long is the Old Grey?")
+    assert out["paired_by_meaning"] == [] and len(out["provisional"]) == 1
+
+
+def test_a_name_that_differs_only_in_its_number_is_another_subject_on_the_words_path(db):
+    """A claim key holds no numbers: "Lumen-9 orbits at ..." has the key of "Lumen-7 orbits at ...", and 0.7.0 took
+    the two for one fact and its contradiction (found on the fresh held-out set of the remaining-items round)."""
+    kid = known(db, "Lumen-7 orbits at an altitude of 705 kilometres.")
+    _, out = consolidated(db, [sources("Lumen-9 orbits at an altitude of 512 kilometres.")], T0 + 10,
+                          objective="At what altitude does Lumen-9 orbit?")
+    assert out["contested"] == [] and len(out["provisional"]) == 1
+    assert knowledge.row(db, kid)["contradicting"] == []
+    _, out = consolidated(db, [sources("Lumen-7 orbits at an altitude of 512 kilometres.")], T0 + 20,
+                          objective="At what altitude does Lumen-7 orbit?")
+    assert [c["knowledge_id"] for c in out["contested"]] == [kid]           # the same name still finds it
+
+
+@pytest.mark.parametrize("new, stored, refused", [
+    (["8192 mb"], ["8 gb"], True),          # 8 GB in binary megabytes, or 8.192 GB: cannot be told
+    (["4 gb"], ["4096 mb"], True),
+    (["1 tb"], ["1099.511627776 gb"], True),
+    (["8100 mb"], ["8 gb"], False),         # a plain disagreement is a contradiction like any other
+    (["8000 mb"], ["8 gb"], False),
+])
+def test_data_sizes_off_by_the_binary_factor_are_not_paired(new, stored, refused):
+    assert consolidate._binary_factor(new, stored) is refused
+    item = {"statement": "The Quorra server needs 8 GB of memory.", "claim_values": stored, "polarity": 1}
+    why = consolidate._admissible("The Quorra server needs 8 GB of memory.", new, 1, item)
+    assert (why is not None and "binary" in why) is refused

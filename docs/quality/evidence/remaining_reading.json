@@ -1,0 +1,188 @@
+{
+ "generated_at": "2026-11-24",
+ "base": "c565c20",
+ "label": "measured on this host; fixture webs; scheduling varies run to run",
+ "robots_walk_continuation": {
+  "change": "a fetch ahead stopped before a request inside a hop's robots.txt walk (the file redirects onto a busy site, or the room ran out at a later hop) is continued from that walk's own hop by its claim; not used when the file is known by the claim",
+  "before": "the fetch ahead was thrown away and its claim sent that robots.txt again (charged once, counted unused once), one politeness interval later",
+  "tests": [
+   "test_a_fetch_ahead_stopped_inside_a_robots_txt_walk_is_continued_from_that_walks_hop",
+   "test_a_fetch_ahead_out_of_room_inside_a_robots_txt_walk_is_continued_from_that_walks_hop",
+   "test_a_robots_txt_walk_known_by_the_claim_is_not_continued",
+   "test_a_continued_robots_txt_walk_waits_no_extra_politeness_interval"
+  ],
+  "tests_failing_on_base": 3,
+  "politeness": "the claim's next request to the site is one interval after the walk's robots.txt request, not two (min_domain_interval 0.5 s, real clock)"
+ },
+ "equivalence": {
+  "command": "MAXREQ=m fuzz_equivalence.py 200 <seed> (reviewers' script, robots.txt redirects on, read_ahead 1 vs 4; bound check added: traffic <= max_requests + min(max_requests, unused_allowance(4)))",
+  "after": [
+   {
+    "run": "m12_s41",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 400,
+    "worst_traffic_over_max_requests": 1.8
+   },
+   {
+    "run": "m12_s42",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 396,
+    "worst_traffic_over_max_requests": 1.75
+   },
+   {
+    "run": "m12_s43",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 323,
+    "worst_traffic_over_max_requests": 1.75
+   },
+   {
+    "run": "m20_s41",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 423,
+    "worst_traffic_over_max_requests": 1.75
+   },
+   {
+    "run": "m20_s42",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 435,
+    "worst_traffic_over_max_requests": 1.75
+   },
+   {
+    "run": "m20_s43",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 396,
+    "worst_traffic_over_max_requests": 1.71
+   },
+   {
+    "run": "m6_s41",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 249,
+    "worst_traffic_over_max_requests": 1.67
+   },
+   {
+    "run": "m6_s42",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 257,
+    "worst_traffic_over_max_requests": 1.75
+   },
+   {
+    "run": "m6_s43",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 241,
+    "worst_traffic_over_max_requests": 1.83
+   }
+  ],
+  "before": [
+   {
+    "run": "m12_s41",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 421,
+    "worst_traffic_over_max_requests": 1.75
+   },
+   {
+    "run": "m12_s42",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 420,
+    "worst_traffic_over_max_requests": 1.75
+   },
+   {
+    "run": "m12_s43",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 355,
+    "worst_traffic_over_max_requests": 1.75
+   },
+   {
+    "run": "m20_s41",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 423,
+    "worst_traffic_over_max_requests": 1.62
+   },
+   {
+    "run": "m20_s42",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 466,
+    "worst_traffic_over_max_requests": 1.71
+   },
+   {
+    "run": "m20_s43",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 410,
+    "worst_traffic_over_max_requests": 1.71
+   },
+   {
+    "run": "m6_s41",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 264,
+    "worst_traffic_over_max_requests": 1.83
+   },
+   {
+    "run": "m6_s42",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 260,
+    "worst_traffic_over_max_requests": 1.83
+   },
+   {
+    "run": "m6_s43",
+    "scenarios": 200,
+    "differences": 0,
+    "over_bound": 0,
+    "unused_requests": 248,
+    "worst_traffic_over_max_requests": 1.83
+   }
+  ],
+  "total": {
+   "scenarios": 1800,
+   "differences": 0,
+   "over_bound": 0,
+   "unused_requests_after": 3120,
+   "unused_requests_before": 3267
+  }
+ },
+ "timing_tests": {
+  "cross_process_race": {
+   "runs": 50,
+   "passed": 50,
+   "note": "spawned processes report results and errors; one deadline (barrier 120 s + 60 s) instead of fixed joins"
+  },
+  "hung_render": {
+   "runs": 50,
+   "passed": 50,
+   "note": "render limit 8 s (covers a cold Chromium launch; measured 0.45-1.05 s to the hanging sub-request here), sub-request hangs 60 s, 20 s for killed processes to die; ~10 s per run (was ~4 s)"
+  },
+  "load": "both loops ran while 9 fuzz processes ran beside them"
+ }
+}

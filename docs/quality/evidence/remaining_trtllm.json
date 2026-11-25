@@ -1,0 +1,199 @@
+{
+ "lane": "T (TensorRT-LLM), remaining-items round",
+ "generated_at": "2026-11-24",
+ "host": "NVIDIA GB10 (DGX Spark class, SM 12.1), arm64, ~121 GB unified memory shared with other tenants",
+ "question": "Can TensorRT-LLM serve the answer model (Qwen3-30B-A3B-Instruct-2507-FP8, 128x128 block-scale e4m3) on this host, and how should the comparison with vLLM be run?",
+ "sources": {
+  "nvidia_spark_playbook": "https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/trt-llm/README.md (container 1.3.0rc13; Qwen3-30B-A3B listed only as NVFP4, nvidia/Qwen3-30B-A3B-FP4, the base model, not Instruct-2507)",
+  "releases": "https://github.com/NVIDIA/TensorRT-LLM/releases (v1.3.0 2026-11-20 stable; v1.4.0rc4 2026-11-18 pre-release)",
+  "sm121_branch_1_3_0": "tensorrt_llm/_torch/modules/linear.py@v1.3.0 lines 1325 and 1469: `sm_version == 120`",
+  "sm121_branch_1_4_0rc4": "linear.py@v1.4.0rc4 line 1632 `is_sm_120f(sm_version)`; _utils.py: is_sm_120f = 120 <= sm < 130",
+  "nvfp4_load_issue": "https://github.com/NVIDIA/TensorRT-LLM/issues/12762 (Qwen3-30B-A3B-Instruct-2507 NVFP4 export failing to load on GB10 in 1.3.0rc9/rc10; closed 2026-04-04 without comment)"
+ },
+ "images": {
+  "1.3.0": {
+   "ref": "nvcr.io/nvidia/tensorrt-llm/release:1.3.0@sha256:bb9a0c29b6b5f52e142c324eb2f4e2f114fc7573dc1c6d4d1495e4ebc6afdfbf",
+   "arm64_manifest": "sha256:e363013c6fd6d2d2568af5c52f7b2f99f9625560bc14bd53fd2466ad1ceb2e07",
+   "compressed_gib": 15.89,
+   "pulled_anonymously": true,
+   "removed_after_test": true
+  },
+  "1.4.0rc4": {
+   "ref": "nvcr.io/nvidia/tensorrt-llm/release:1.4.0rc4@sha256:813f751bc2c7ed867a53915dedde1c153ca94758e931d989e9c25835f9ba1814",
+   "arm64_manifest": "sha256:2638789151d53852aef4067eaa8da69093801aaf1a4f68be81d1c4882731ceac",
+   "on_disk_gb": 53,
+   "pulled_anonymously": true,
+   "kept_for_the_window": true
+  }
+ },
+ "dry_run_of_the_real_window": {
+  "blockers": [],
+  "probe": {
+   "missing_flags": [],
+   "tool_parsers": "auto|qwen3|qwen3_coder|kimi_k2|kimi_k3|deepseek_v3|deepseek_v31|deepseek_v32|deepseek_v4|deepseek_v41|gemma4|glm4|glm47|minimax_m2|minimax_m3|musespark|poolside_v1",
+   "tensorrt_llm": "1.4.0rc4",
+   "ptxas_in_image": true
+  },
+  "limits": {
+   "max_len": 32768,
+   "max_batch": 8,
+   "max_tokens": 4096,
+   "kv_bytes": 13958643712,
+   "kv_tokens": 141994
+  },
+  "vllm_container_reproduced_by_run_sh": true,
+  "note": "scripts/trtllm_compare.py --dry-run: nothing stopped or started; the answer model stayed up"
+ },
+ "proxy": {
+  "label": "PROXY, not the comparison: Qwen/Qwen3-0.6B-FP8 (revision e5be08033360965ceca7b0ffd72d521a51331ce0, dense, same FP8 block-scale format as the answer model, thinking on by default), each engine alone, max length 8192, KV 2 GiB, batch 8, 4096 tokens per step; harness scripts/bench_inference.py --runs 8 without the context scenario; answer model untouched",
+  "trtllm_1_3_0": {
+   "loaded": false,
+   "error": "RuntimeError: Scale dtype must be Int32.",
+   "cause": "SM 121 not in the SM 120 branch of the FP8 block-scale linear layer"
+  },
+  "vllm_pinned": {
+   "ready_s": 191.5,
+   "mem_drop_gb": 4.9,
+   "result": {
+    "short": {
+     "first_token_ms_p50": 75.187,
+     "total_s_p50": 0.875,
+     "decode_tokens_per_s_p50": 184.611,
+     "errors": 0
+    },
+    "evidence": {
+     "first_token_ms_p50": 143.41,
+     "total_s_p50": 2.09,
+     "decode_tokens_per_s_p50": 131.418,
+     "errors": 0
+    },
+    "repeat": {
+     "first_token_ms_p50": 142.502,
+     "total_s_p50": 2.026,
+     "decode_tokens_per_s_p50": 134.019,
+     "errors": 0
+    },
+    "structured": {
+     "first_token_ms_p50": 177.596,
+     "total_s_p50": 2.184,
+     "decode_tokens_per_s_p50": 124.756,
+     "errors": 0,
+     "valid_json": "3/8"
+    },
+    "concurrency_aggregate_tokens_per_s": {
+     "1": 71.47,
+     "2": 117.81,
+     "4": 152.89,
+     "8": 194.29
+    },
+    "mixed_first_token_ms_p50": {
+     "foreground_alone": 101.529,
+     "foreground_with_4_background": 102.948
+    },
+    "reasoning": "8/16",
+    "tools": "8/8",
+    "server_version": "{\"version\":\"0.33.0rc1.dev910+g4fab5a074\"}"
+   }
+  },
+  "trtllm_1_4_0rc4_no_grammar_backend": {
+   "ready_s": 175.9,
+   "mem_drop_gb": 13.3,
+   "result": {
+    "short": {
+     "first_token_ms_p50": 34.959,
+     "total_s_p50": 0.919,
+     "decode_tokens_per_s_p50": 187.889,
+     "errors": 0
+    },
+    "evidence": {
+     "first_token_ms_p50": 142.566,
+     "total_s_p50": 2.04,
+     "decode_tokens_per_s_p50": 134.423,
+     "errors": 0
+    },
+    "repeat": {
+     "first_token_ms_p50": 29.932,
+     "total_s_p50": 1.896,
+     "decode_tokens_per_s_p50": 136.825,
+     "errors": 0
+    },
+    "structured": {
+     "first_token_ms_p50": 139.562,
+     "total_s_p50": 2.025,
+     "decode_tokens_per_s_p50": 135.206,
+     "errors": 0,
+     "valid_json": "0/8"
+    },
+    "concurrency_aggregate_tokens_per_s": {
+     "1": 121.83,
+     "2": 190.47,
+     "4": 244.63,
+     "8": 258.36
+    },
+    "mixed_first_token_ms_p50": {
+     "foreground_alone": 15.538,
+     "foreground_with_4_background": 45.177
+    },
+    "reasoning": "6/16",
+    "tools": "7/8",
+    "server_version": "{\"version\":\"1.4.0rc4\"}"
+   }
+  },
+  "trtllm_1_4_0rc4_xgrammar": {
+   "ready_s": 165.7,
+   "mem_drop_gb": 9.8,
+   "result": {
+    "short": {
+     "first_token_ms_p50": 61.601,
+     "total_s_p50": 0.957,
+     "decode_tokens_per_s_p50": 182.316,
+     "errors": 0
+    },
+    "evidence": {
+     "first_token_ms_p50": 140.618,
+     "total_s_p50": 2.045,
+     "decode_tokens_per_s_p50": 133.785,
+     "errors": 0
+    },
+    "repeat": {
+     "first_token_ms_p50": 27.194,
+     "total_s_p50": 1.962,
+     "decode_tokens_per_s_p50": 131.899,
+     "errors": 0
+    },
+    "structured": {
+     "first_token_ms_p50": 141.179,
+     "total_s_p50": 1.504,
+     "decode_tokens_per_s_p50": 132.96,
+     "errors": 0,
+     "valid_json": "6/8"
+    },
+    "concurrency_aggregate_tokens_per_s": {
+     "1": 122.13,
+     "2": 189.53,
+     "4": 245.29,
+     "8": 248.34
+    },
+    "mixed_first_token_ms_p50": {
+     "foreground_alone": 13.899,
+     "foreground_with_4_background": 44.205
+    },
+    "reasoning": "6/16",
+    "tools": "7/8",
+    "server_version": "{\"version\":\"1.4.0rc4\"}"
+   }
+  },
+  "caveats": [
+   "mem_drop_gb is the fall of the host's MemAvailable while loading, on a host other tenants share",
+   "one run per engine; concurrency levels are one sample each",
+   "reasoning/tools on a 0.6B thinking model say nothing about the answer model; TensorRT-LLM's 'no ANSWER line' failures are unexplained (chat template or sampling defaults may differ) and must be settled in the real window, where the model does not think",
+   "without guided_decoding_backend TensorRT-LLM ignored response_format (0/8 valid JSON); the script now sets xgrammar (6/8)"
+  ]
+ },
+ "unverified": [
+  "the Qwen3 MoE FP8 block-scale path on SM 121 (the proxy is dense)",
+  "TensorRT-LLM's footprint and load time for the 31 GB answer model",
+  "every answer-model number on TensorRT-LLM: speed, structured answers, tools, the guard survival in bench_pipeline.py",
+  "the restore path against the real container (tested with fakes and by the dry run's reproduction check)"
+ ]
+}

@@ -194,6 +194,64 @@ def select() -> list[dict]:
     return rows
 
 
+# A sudden change of a forecaster's habits (ADR-048): the window split where fitting its parts apart gains most, the
+# older part dropped above a threshold. Selected on the development streams, gated on the held-out ones; both rules
+# were written before either was run. It did not pass, so evolution.RECALIBRATION_CHANGE_THRESHOLD stays None.
+CHANGE_GRID = {"change_step": (5, 10, 20), "change_threshold": (2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0)}
+CHANGE_RULES = {
+    "select": "development only: eligible when no stream is worse than the stated forecast by more than 0.002 in mean "
+              "distance at any prefix (the rule of `select`) and no stream without a change is worse than the "
+              "shipped mapping by more than 0.002 in Brier at any prefix; among the eligible, the lowest mean "
+              "distance over the 50 predictions after each change; ties to the larger threshold",
+    "gate": "held-out: no stream without a change worse than the shipped mapping by more than 0.002 in Brier at any "
+            "prefix, and every drifting stream better than the shipped mapping in the 50 predictions after its "
+            "change; the burst streams are reported, not gated"}
+
+
+def _against_shipped(split: str, options: dict, shipped: dict) -> dict:
+    """The candidate `options` against the shipped mapping on one split: per stream, at every prefix, the change in
+    Brier of the streams without a change (worst first), and the 50 predictions after each change."""
+    streams = SPLITS[split]["streams"]
+    res, base = evaluate(split, options), evaluate(split, shipped)
+    steady = [n for n, (_, rules) in streams.items() if not isinstance(rules, list)]
+    worst = max((round(res[n][u]["mapped"]["brier"] - base[n][u]["mapped"]["brier"], 6), n, u)
+                for n in steady for u in res[n])
+    return {"summary": summary(res), "summary_shipped": summary(base),
+            "worst_brier_change_without_a_change": {"change": worst[0], "stream": worst[1], "first": worst[2]},
+            "after_a_change": after_a_change(split, options), "after_a_change_shipped": after_a_change(split, shipped)}
+
+
+def select_change(shipped: dict | None = None) -> list[dict]:
+    """Every setting of CHANGE_GRID (the other settings as shipped) on the development streams, by CHANGE_RULES."""
+    shipped = shipped or CHOSEN
+    rows = []
+    for step in CHANGE_GRID["change_step"]:
+        for threshold in CHANGE_GRID["change_threshold"]:
+            options = shipped | {"change_step": step, "change_threshold": threshold}
+            r = _against_shipped("development", options, shipped)
+            after = sum(v["mapped"] for v in r["after_a_change"].values()) / len(r["after_a_change"])
+            rows.append({"options": options, "after_a_change_mean_distance": round(after, 6),
+                         "eligible": r["summary"]["worst_change"]["distance"]["change"] <= 0.002
+                         and r["worst_brier_change_without_a_change"]["change"] <= 0.002,
+                         "worst_brier_change_without_a_change": r["worst_brier_change_without_a_change"],
+                         "mean_distance": r["summary"]["mean"]["mapped"]["distance"]})
+    rows.sort(key=lambda r: (not r["eligible"], r["after_a_change_mean_distance"],
+                             -r["options"]["change_threshold"], r["options"]["change_step"]))
+    return rows
+
+
+def change_gate(options: dict, shipped: dict | None = None) -> dict:
+    """The selected setting on the held-out and burst streams against the shipped mapping, by CHANGE_RULES."""
+    shipped = shipped or CHOSEN
+    held, bursts = _against_shipped("held_out", options, shipped), _against_shipped("bursts", options, shipped)
+    after, before = held["after_a_change"], held["after_a_change_shipped"]
+    passes = {"no_stream_without_a_change_worse_by_more_than_0.002":
+              held["worst_brier_change_without_a_change"]["change"] <= 0.002,
+              "every_drifting_stream_better_after_its_change": all(after[n]["mapped"] < before[n]["mapped"]
+                                                                   for n in before)}
+    return {"options": options, "held_out": held, "bursts": bursts, "passes": passes, "ships": all(passes.values())}
+
+
 def report(options: dict | None = None) -> dict:
     options = options or CHOSEN
     out = {"options": options}

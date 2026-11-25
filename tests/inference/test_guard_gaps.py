@@ -58,6 +58,15 @@ def judged(b, text, ids=("C1",)):
     ("Every release is patched with 2.5.4 excepted", "excepted"),
     ("Every release but 2.5.4 is patched", "but"),
     ("All versions save the oldest are patched", "save"),
+    # remaining items: exceptions written as a negated phrase
+    ("The flaw is fixed for all users not on Windows", "not on"),
+    ("The patch applies to every release not built from source", "not built"),
+    ("Every account not using two-factor login was locked", "not using"),
+    ("All customers who are not on the legacy plan get the refund", "not on"),
+    ("The fee is waived for any student not yet enrolled", "not yet enrolled"),
+    ("All the tickets not sold by Friday go on sale again", "not sold"),
+    ("Every test passed, not counting the flaky network tests", "not counting"),
+    ("All rights not expressly granted are reserved", "not expressly granted"),
 ])
 def test_a_restriction_is_found_by_its_closed_list_of_words(text, marker):
     assert reasoning._restriction(text) == marker
@@ -85,6 +94,20 @@ def test_a_restriction_is_found_by_its_closed_list_of_words(text, marker):
     "Besides, the vendor published version 4",
     "The vendor was given the patch in May",
     "Every release shipped on time, but the docs lagged behind",               # "but" too far from "every"
+    # remaining items: a "not" that negates a verb, or adds, excepts nothing
+    "All NumPy releases are not affected by the parser flaw",
+    "Each user did not receive the update in May",
+    "Every NumPy release, not only 2.5.5, is patched against the flaw",
+    "Not all users on Windows are affected by the flaw",
+    "The flaw is not fixed for all users",
+    "All of the fixes, not just the parser fix, landed in 2.5.5",
+    # correctness review of the round: "not only/merely ... but" adds
+    "The update affects all versions not only in Europe but worldwide",
+    "The recall covers every model not merely in the US but abroad",
+    "Every plan not simply on paper but in practice was audited",
+    "All tenants not just in the east wing but everywhere were told",
+    "Orbix 3.0 was released in May, and the team made every effort not to break the API",   # an infinitive
+    "Every member chose not to renew",
 ])
 def test_words_that_restrict_nothing_are_not_restrictions(text):
     assert reasoning._restriction(text) is None
@@ -157,6 +180,10 @@ def claims_of(*texts):
     ("NASA signed the Lumen-7 agreement", "Nasa signed the Lumen-7 agreement.", "Nasa", "NASA"),  # more than a first letter
     ("NASA signed the Lumen-7 agreement", "NASA signed the lumen-7 agreement.", "lumen", "Lumen"),
     ("Turkey raised tariffs on poultry", "Turkey raised tariffs on turkey.", "turkey", "Turkey"),  # a second word
+    ("US sanctions hit the firm in 2025", "US sanctions hit us in 2025.", "us", "US"),   # a pronoun of its own
+    ("IT staff patched the servers in May", "IT staff patched it in May.", "it", "IT"),
+    ("The IT department audited the servers in May", "The IT department audited it in May.", "it", "IT"),
+    ("US officials met the delegation in June", "US officials met us in June.", "us", "US"),
 ])
 def test_a_word_of_the_claims_in_another_case_is_a_change(claim, sentence, word, theirs):
     assert reasoning._case_changed(sentence, claims_of(claim), "q") == [
@@ -175,9 +202,24 @@ def test_a_word_of_the_claims_in_another_case_is_a_change(claim, sentence, word,
     ("The U.S. team shipped it", "The u.s. team shipped it.", "q"),                  # single letters are not judged
     ("The tower is 72 metres tall", "The tower is 72 metres tall, according to one source.", "q"),
     ("Open Source tools found the flaw", "Open Source tools found the flaw, according to one source.", "q"),
+    ("US sanctions hit the firm in 2025, and it lost its contracts",                  # the claim writes "it" itself
+     "US sanctions hit the firm in 2025, and it lost its contracts.", "q"),
+    ("The lighthouse at MAY Point is open in May", "The lighthouse at MAY Point is open in May, but it may close.",
+     "q"),                                                                            # not a pronoun: excused as before
 ])
 def test_what_the_case_rule_does_not_judge(claim, sentence, question):
     assert reasoning._case_changed(sentence, claims_of(claim), question) == []
+
+
+def test_a_pronoun_that_stands_for_the_acronyms_phrase_is_not_a_change():
+    """"it" for "The IT department": the claim goes on after the acronym as the sentence goes on after the pronoun."""
+    claims = claims_of("Acme's IT department migrated to Linux in 2024",
+                       "The IT department reported fewer outages after the migration")
+    assert reasoning._case_changed("Acme's IT department migrated to Linux in 2024, and it reported fewer outages "
+                                   "after the migration.", claims, "q") == []
+    assert reasoning._case_changed("The US Senate passed the bill in June, and it adjourned in July.",
+                                   claims_of("The US Senate passed the bill in June",
+                                             "The US Senate adjourned in July"), "q") == []
 
 
 def test_the_case_rule_reads_claims_only_and_never_the_codes_own_attribution():
@@ -279,6 +321,9 @@ def test_the_exemption_needs_exactly_one_cited_claim_and_its_own_sources():
 @pytest.mark.parametrize("after", [
     "by Reuters", "from the NumPy security team", "by the Ostra Space Agency", "from Tessaly Statistics",
     "by a Reuters news desk", "from the Bank of England", "by The New York Times", "from ACME and Sons",
+    # a word for a group of people that does not head the name, or heads one with a noun of an organisation
+    "by Citizens Advice", "by Consumer Reports", "by the Orbix User Association", "by Reader's Digest",
+    "by the Institute of Electrical and Electronics Engineers", "by the Society of Orbix Users",
 ])
 def test_words_that_only_name_the_source_are_removed_as_0_7_0_removed_them(after):
     assert reasoning._names_the_source(after)
@@ -293,7 +338,10 @@ def test_words_that_only_name_the_source_are_removed_as_0_7_0_removed_them(after
     "from Bank of", "by Ana Ruiz Jose Luis Maria Carmen Lopez",           # seven words
     "from ACME & Sons",
     "by Orbix Labs Retracted", "by Orbix Labs Withdrawn", "from the Orbix Archive Superseded",   # review round 2
-    "by Orbix Labs Disputed", "by Orbix Labs DEBUNKED", "by the Draft Orbix Board",                                                   # a sign between words: refused, kept simple
+    "by Orbix Labs Disputed", "by Orbix Labs DEBUNKED", "by the Draft Orbix Board",
+    "from Windows Users", "from Linux Administrators", "by Enterprise Customers",   # remaining items: a group of
+    "from Python Developers", "by Local Residents", "by Stack Overflow Developers",   # people, source or scope
+    "by People", "from Premium Customers", "by the Linux Developers",                                                   # a sign between words: refused, kept simple
     "",
 ])
 def test_anything_else_after_the_source_word_is_not_a_name(after):
@@ -389,6 +437,19 @@ def test_the_passive_swap_is_refused_through_the_answer_path():
      "labs orbix"),
     ("Mallory was robbed by Trent", "Trent was reportedly robbed.", "PASSIVE_SWAP", "robbed", "trent"),
     ("Mallory was robbed by Trent", "Trent got robbed.", "PASSIVE_SWAP", "robbed", "trent"),
+    # remaining items: the claim's verb with an adverb before it, and a cleft on the agent
+    ("Globex quietly acquired Acme Corp", "Acme Corp quietly acquired Globex.", "ROLE_SWAP", "acquired", "acme corp"),
+    ("Globex quietly acquired Acme Corp", "Globex was quietly acquired.", "PASSIVE_SWAP", "acquired", "globex"),
+    ("Globex quietly acquired Acme Corp", "It was Acme Corp that quietly acquired Globex.", "ROLE_SWAP", "acquired",
+     "acme corp"),
+    ("Globex acquired Acme Corp", "It was by Acme Corp that Globex was acquired.", "ROLE_SWAP", "acquired",
+     "acme corp"),
+    ("Acme Corp got acquired by Globex", "It was by Acme Corp that Globex got acquired.", "PASSIVE_SWAP", "acquired",
+     "globex"),
+    ("It was by Globex that Acme Corp was acquired", "Acme Corp acquired Globex.", "ROLE_SWAP", "acquired",
+     "acme corp"),
+    ("Orbix Labs thoroughly audited the library", "The library thoroughly audited Orbix Labs.", "ROLE_SWAP",
+     "audited", "library"),
 ])
 def test_roles_reversed_in_any_voice_are_refused(claim, sentence, template, verb, subject):
     found = reasoning._role_swaps_refused(sentence, [{"id": "C1", "text": claim}])
@@ -407,6 +468,10 @@ def test_roles_reversed_in_any_voice_are_refused(claim, sentence, template, verb
      "NumPy 2.5.5 is not affected by the parser flaw, but NumPy 2.5.4 is affected."),
     ("Kestrel is a statically typed programming language created by Ilse Marten in 2019.",
      "Ilse Marten created the Kestrel programming language in 2019."),
+    ("Globex quietly acquired Acme Corp", "Acme Corp was quietly acquired by Globex."),
+    ("Globex quietly acquired Acme Corp", "It was Globex that quietly acquired Acme Corp."),
+    ("It was by Globex that Acme Corp was acquired", "Acme Corp was acquired by Globex."),
+    ("Acme Corp was quietly acquired in 2024", "In 2024 Acme Corp was quietly acquired."),
 ])
 def test_faithful_voices_are_not_role_swaps(claim, sentence):
     assert reasoning._role_swaps_refused(sentence, [{"id": "C1", "text": claim}]) == []
@@ -419,3 +484,145 @@ def test_roles_read_a_reduced_passive_negation_and_a_joined_clause():
     assert ("affected", ["flaw"], ["numpy", "2.5.4", "is"]) in roles or ("affected", ["flaw"], ["numpy", "2.5.4"]) \
         in [(v, d, [x for x in t if x != "is"] if t else t) for v, d, t in roles]
     assert any(v == "affected" and t and "2.5.5" in t and "2.5.4" not in t for v, d, t in roles)
+
+
+def test_a_restriction_after_the_600th_character_of_a_claim_is_read():
+    """The rule read a claim cut at 600 characters, so an exception further on was never seen. Production cuts claims
+    at 420 (QUOTE_CHARS); a claim reaching the guard by another road is read whole."""
+    claim = "The plant supplies drinking water to the whole region" + ", and it has done so reliably" * 22 + \
+        ", every household except those on private wells"
+    assert len(claim) > 600 and claim.index("except") > 600
+    b = one_claim("supported", (1, 2), text=claim, question="Who gets the water?")
+    ok, bad = judged(b, "The plant supplies drinking water to the whole region.")
+    assert ok == [] and bad[0]["reasons"][0].startswith(reasoning.RESTRICTION_LOST.split("{")[0])
+
+
+@pytest.mark.parametrize("text, excused", [
+    ("The flaw is fixed if patched", False),
+    ("It is unclear if the flaw is fixed", True),
+    ("It is unclear\n\t  if the flaw is fixed", True),          # any run of white space before "if"
+    ("The vendor did not say if it is fixed", True),
+    ("Asked if it was fixed, the vendor declined", True),
+    ("The flaw, if patched, is fixed", False),                    # the word before is no asking word
+    ("The vendor will check, if asked", False),                   # a comma between
+    ("Even if patched, the flaw stays", True),
+])
+def test_an_if_is_excused_by_the_word_right_before_it(text, excused):
+    at = reasoning._IF.search(text).start()
+    assert reasoning._if_excused(text, at) is excused
+    assert (reasoning._IF_BEFORE.search(text[:at]) is not None) is excused       # as the whole-prefix search said
+
+
+def test_a_long_claim_with_many_ifs_is_read_in_linear_time():
+    """The whole claim is read (above), so the excuse of each "if" is looked for in the words just before it, not in
+    everything before it: 80,000 characters with 3,800 "if"s took seconds when every prefix was searched."""
+    import time
+    claim = " ".join(["the flaw is fixed if"] * 3800)
+    started = time.perf_counter()
+    assert reasoning._restriction(claim) == "if"
+    assert time.perf_counter() - started < 1.0
+
+
+# ---- a version joined with what its claims say of another (remaining items) ---------------------------------------
+
+@pytest.mark.parametrize("claims, sentence, a, b, other", [
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"], "Zephyr 4.2 supports Windows.", "4.2", "windows",
+     "4.1"),
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"],
+     "Zephyr 4.2 supports Windows and Zephyr 4.1 supports Linux.", "4.2", "windows", "4.1"),
+    (["Zephyr 4.1 supports Windows", "Zephyr 4.2 supports Linux"],                    # across two cited claims
+     "Zephyr 4.2 supports Windows and Zephyr 4.1 supports Linux.", "4.2", "windows", "4.1"),
+    (["Lumen 3 runs on ARM and Lumen 4 runs on RISC-V"], "Lumen 4 runs on ARM.", "4", "arm", "3"),
+    (["The operator restored 12 regions in May and 3 regions in June"], "The operator restored 3 regions in May.",
+     "3", "may", "12"),
+    # correctness review of the round: the name the claim ties to the other version first in the sentence
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"], "Windows is supported by Zephyr 4.2.", "4.2",
+     "windows", "4.1"),
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"], "Windows: supported by Zephyr 4.2.", "4.2",
+     "windows", "4.1"),
+    (["Zephyr 4.1 supports Windows", "Zephyr 4.2 supports Linux"], "Linux is supported by Zephyr 4.1.", "4.1",
+     "linux", "4.2"),
+])
+def test_a_version_joined_with_what_its_claims_say_of_another_is_refused(claims, sentence, a, b, other):
+    found = reasoning._joined_apart(sentence, claims_of(*claims))
+    assert reasoning.JOINED_APART.format(a=a, b=b, other=other) in found, found
+
+
+@pytest.mark.parametrize("claims, sentence", [
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"],
+     "Zephyr 4.2 supports Linux and Zephyr 4.1 supports Windows."),                    # clauses reordered
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"], "Zephyr 4.1 supports Windows."),
+    (["NumPy 2.5.5 fixes the flaw", "The flaw affects Windows builds"],                  # two claims joined: the
+     "NumPy 2.5.5 fixes the flaw that affects Windows builds."),                         # clause of "Windows" holds
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Windows"],                   # no version of its own
+     "Zephyr 4.1 and 4.2 both support Windows."),
+    (["NumPy 2.5.4 is affected by the parser flaw and NumPy 2.5.5 is not affected."],
+     "NumPy 2.5.5 is not affected by the parser flaw, but NumPy 2.5.4 is affected."),
+    # the other claim's version is a bound: it ties nothing to that version alone
+    (["NumPy 2.5.5 fixes CVE-2026-1234", "CVE-2026-1234 affects Windows builds since NumPy 2.4.0"],
+     "NumPy 2.5.5 fixes CVE-2026-1234 in Windows builds."),
+    (["Lumen 3.2 patches the memory leak", "The memory leak affects ARM boards since Lumen 3.0"],
+     "Lumen 3.2 patches the memory leak on ARM boards."),
+    (["Orbix 7 drops the old importer", "The old importer has served Linux users from version 2"],
+     "Orbix 7 drops the old importer for Linux users."),
+])
+def test_a_version_kept_with_what_its_claims_say_of_it_is_not_judged(claims, sentence):
+    assert reasoning._joined_apart(sentence, claims_of(*claims)) == []
+
+
+@pytest.mark.parametrize("clause, bounds", [
+    ("CVE-2026-1234 affects Windows builds since NumPy 2.4.0", {"2.4.0"}),
+    ("The leak affects ARM boards from version 3 until 3.4", {"3", "3.4"}),
+    ("Zephyr 4.1 supports Windows", set()),
+    ("The service restored 12 regions in May", set()),
+    ("Support ended after 2 versions of 4.1", {"2"}),         # 4.1: a number stands between it and the bound word
+])
+def test_a_version_after_a_bound_word_is_a_bound(clause, bounds):
+    assert reasoning._bounded_numbers(clause) == bounds
+
+
+def test_an_adverb_ends_no_name_but_a_name_is_no_adverb():
+    assert ("acquired", ["globex"], ["acme", "corp"]) in reasoning._roles("Globex quietly acquired Acme Corp")
+    assert ("acquired", ["kelly"], ["acme", "corp"]) in reasoning._roles("Kelly acquired Acme Corp")
+    assert ("acquired", ["acme", "corp"], ["globex"]) in reasoning._roles(
+        "It was by Acme Corp that Globex was acquired")
+
+
+# ---- re-review N3: "not to" after the quantified noun, "not only/just" before a participle -----------------------
+
+@pytest.mark.parametrize("text, marker", [
+    ("Every account not to be renewed is closed", "not to"),
+    ("All packages not to exceed 2 kg ship free", "not to"),
+    ("All files not only encrypted but also signed are accepted", "not only encrypted"),
+    ("Every user not just registered but verified can vote", "not just registered"),
+    ("All parcels not merely sent but delivered are insured", "not merely sent"),
+])
+def test_a_negated_infinitive_or_participle_after_the_quantified_noun_restricts_it(text, marker):
+    assert reasoning._restriction(text) == marker
+
+
+@pytest.mark.parametrize("text", [
+    "Orbix shipped on time, and the team made every attempt not to delay the launch",
+    "The vendor shipped the patch and took every care not to break the plug-ins",
+    "All staff were told not to open the attachment",
+    "Every member decided not to renew",
+    "All tenants agreed not to sublet",
+    "The outage affected all regions not just in Europe but worldwide",
+    "The update reaches all devices not only in offices but at home",
+])
+def test_a_not_that_belongs_to_a_verb_or_adds_still_restricts_nothing(text):
+    assert reasoning._restriction(text) is None
+
+
+# ---- re-review N4: an organisation's noun excuses a group word only when "of" follows it --------------------------
+
+@pytest.mark.parametrize("after", ["by University Students", "by Trust Wallet Users", "by the Club Members",
+                                   "from the Union Members"])
+def test_an_organisation_noun_that_qualifies_the_group_word_excuses_nothing(after):
+    assert not reasoning._names_the_source(after)
+
+
+@pytest.mark.parametrize("after", ["by the Federation of Orbix Users", "by the Society of Orbix Users",
+                                   "by the Orbix Members Club", "by Consumer Reports", "by the Orbix User Association"])
+def test_an_organisation_named_with_of_or_headed_by_its_noun_is_a_name(after):
+    assert reasoning._names_the_source(after)

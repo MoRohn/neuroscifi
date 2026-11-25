@@ -397,6 +397,48 @@ def test_forgetting_the_task_behind_a_hypothesis_takes_its_settled_forecasts_out
     assert fit["applied"] is False and fit["n"] == 0
 
 
+def test_a_settlement_whose_task_was_forgotten_stops_counting(db, tmp_path):
+    """ENGINEERING_PLAN §6 item 8 (ADR-048): the task that settled a prediction is forgotten; the prediction keeps
+    its outcome (ADR-029) but its settlement no longer counts in the calibration, the mapping or the accuracy. The
+    task that made the item and the item itself stay."""
+    from test_consolidate import task_with
+    _, kid, p = settled_knowledge_forecasts(db, ["confirmed"] * 5)
+    settler = task_with(db, [], T0 + 500)
+    ids = [predictions.record(db, kid, "still holds at next refresh", T0 + DAY, T0 + 600 + i)["id"]
+           for i in range(30)]
+    for i, pid in enumerate(ids):
+        with store.write(db):
+            evolution._settle(db, evolution.prediction(db, pid), "error", T0 + 2000 + i, task_id=settler,
+                              observation={"task_id": settler, "state": "disputed", "at": T0 + 2000 + i})
+            store.bump_state_version(db)
+    path = Path(db.execute("PRAGMA database_list").fetchone()[2])
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 8000)
+    assert evolution.recalibrations(db)["knowledge"]["n"] == 35
+    assert evolution.calibration(db)["n"] == 35
+    assert evolution.metrics(db, T0 + 8000)["predictions"]["error"] == 30
+    governance.forget_research(db, settler, T0 + 9000)
+    assert db.execute("SELECT count(*) FROM web_predictions WHERE outcome='error'").fetchone()[0] == 30   # kept
+    assert db.execute("SELECT status FROM web_knowledge WHERE id=?", (kid,)).fetchone()[0] is not None
+    fit = evolution.recalibrations(db)["knowledge"]
+    assert fit["n"] == 5 and fit["applied"] is False and evolution.recalibrate(p, fit) == p
+    assert evolution.calibration(db)["n"] == 5 and evolution.calibration(db)["base_rate"] == 1.0
+    counted = evolution.metrics(db, T0 + 9001)["predictions"]
+    assert counted["error"] == 0 and counted["confirmed"] == 5 and counted["settled_by_forgotten_tasks"] == 30
+    checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 9002)    # an archive older than the forget
+    copy = store.open_existing(tmp_path / "r.sqlite")
+    try:
+        assert evolution.recalibrations(copy)["knowledge"]["n"] == 5
+    finally:
+        copy.close()
+
+
+def test_a_malformed_prediction_detail_is_counted_and_does_not_break_calibration(db):
+    settled_hypothesis_forecasts(db, [(0.6, "error")] * 3)
+    with store.write(db):
+        db.execute("UPDATE web_predictions SET detail='{not json' WHERE id=(SELECT min(id) FROM web_predictions)")
+    assert evolution.calibration(db)["n"] == 3 and evolution.recalibrations(db)["hypothesis"]["n"] == 3
+
+
 def test_a_restored_copy_reads_forecasts_from_the_rows_it_holds(db, tmp_path):
     _, kid, p = settled_knowledge_forecasts(db, ["error"] * 30)
     settled_hypothesis_forecasts(db, [(0.6, "error")] * 30)
@@ -436,6 +478,24 @@ def test_nsf_knowledge_calibration_shows_the_mapping_and_how_it_would_have_fared
     assert kind["had_it_been_used"]["adjusted"] == 10
     assert kind["had_it_been_used"]["brier_mapped"] < kind["had_it_been_used"]["brier_stated"] == 0.36
     assert "calibrated_forecasts=false" in out["recalibration"]["off"]
+
+
+def test_a_change_of_habits_can_be_detected_but_is_not_acted_on_by_default():
+    """ADR-048: dropping the settlements before a detected change was selected on the development streams and did
+    not pass the held-out gate, so it stays off; off, the mapping is exactly the one of ADR-046."""
+    assert evolution.RECALIBRATION_CHANGE_THRESHOLD is None
+    rng = random.Random(7)
+    reversal = [(0.8, rng.random() < 0.95) for _ in range(60)] + [(0.8, rng.random() < 0.2) for _ in range(40)]
+    off = evolution.fit_recalibration(reversal)
+    assert off == evolution.fit_recalibration(reversal, change_threshold=None) and "change" not in off
+    on = evolution.fit_recalibration(reversal, change_step=10, change_threshold=4.0)
+    assert on["change"]["dropped"] == 60 and on["used"] == 40 and on["applied"]
+    assert evolution.recalibrate(0.8, on) < evolution.recalibrate(0.8, off)     # reads the new habits, not the old
+    steady = [(0.8, rng.random() < 0.8) for _ in range(100)]
+    assert "change" not in evolution.fit_recalibration(steady, change_step=10, change_threshold=20.0)
+    recorded = json.loads((EVIDENCE.parent / "remaining_forgetting.json").read_text(encoding="utf-8"))
+    gate = recorded["calibration after a change of habits"]["gate"]
+    assert gate["ships"] is False and recorded["calibration after a change of habits"]["shipped"] == sim.CHOSEN
 
 
 def test_the_simulation_is_deterministic_and_the_recorded_evidence_is_what_it_gives():

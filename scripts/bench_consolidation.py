@@ -3,6 +3,7 @@
     python scripts/bench_consolidation.py WORKDIR > result.json
     python scripts/bench_consolidation.py WORKDIR copies [10000 100000 1000000] > copies.json
     python scripts/bench_consolidation.py WORKDIR limit [100000 1000000] > limit.json
+    python scripts/bench_consolidation.py WORKDIR flags [100000 1000000] > flags.json    (see flags())
 
 Builds, per size (200, 10,000 and 100,000 learning events), two temporary individuals in WORKDIR with the same events:
 three channels, four roots each, a sample id on a third of them, one confirmed camera change in the middle. In one of
@@ -219,8 +220,65 @@ def limit(workdir, sizes):
     print(json.dumps(out, indent=1))
 
 
+def flags(workdir, sizes):
+    """`flags`: what a belief computation and a restore cost on files written as for `copies`, measured the same way
+    on the code before and after the copied flags (schema 16) (run this script with each tree on PYTHONPATH). Per size and share of
+    copied samples: compute() and decide(), the minimum of 5 warm calls on a file reopened after it was written (no
+    WAL left to read through), and a digest of everything compute() returns, so the two trees' beliefs can be
+    compared. For the file without copies: a full restore of an archive of it (every reading's tombstone replayed),
+    its wall-clock time and the peak of Python memory (tracemalloc) while it runs."""
+    import hashlib
+    import tracemalloc
+
+    from neuroscifi.instance import checkpoints
+
+    def best(fn, k=5):
+        times = []
+        for _ in range(k):
+            start = time.perf_counter()
+            fn()
+            times.append(time.perf_counter() - start)
+        return round(min(times) * 1000, 1)
+
+    out = {}
+    for n in sizes:
+        out[n] = {}
+        for label, share in (("each_sample_once", 0), ("one_sample_in_ten_twice", .1), ("each_sample_twice", 1)):
+            path = f"{workdir}/flags-{n}-{label}.sqlite"
+            db, readings = build_copies(path, n, share)
+            governance.sweep(db, T0 + 9 * 86400)                 # the 20 memory-only events of the builder
+            db.close()
+            db = store.open_existing(path)
+            beliefs.compute(db, "e")
+            result = beliefs.compute(db, "e")
+            row = {"readings": readings,
+                   "compute_ms": best(lambda: beliefs.compute(db, "e")),
+                   "decide_ms": best(lambda: executive.decide(db, "e", T0 + 9 * 86400)),
+                   "beliefs_sha256": hashlib.sha256(json.dumps(result, sort_keys=True, default=str).encode())
+                   .hexdigest()}
+            if share == 0:
+                archive = checkpoints.create(db, path, f"{workdir}/flags-{n}-cps", T0 + 9 * 86400 + 1)
+                dest = f"{workdir}/flags-{n}-restored.sqlite"
+                if os.path.exists(dest):
+                    os.remove(dest)
+                tracemalloc.start()
+                start = time.perf_counter()
+                try:
+                    restored = checkpoints.restore(db, archive["id"], dest, T0 + 9 * 86400 + 2)
+                    row["restore_s"] = round(time.perf_counter() - start, 1)
+                    row["restore_peak_mib"] = round(tracemalloc.get_traced_memory()[1] / 2**20, 1)
+                finally:
+                    tracemalloc.stop()
+                row["restore_tombstones_applied"] = restored["tombstones_applied"]
+            out[n][label] = row
+            db.close()
+    print(json.dumps(out, indent=1))
+
+
 if __name__ == "__main__":
-    if len(sys.argv) > 2 and sys.argv[2] == "copies":
+    if len(sys.argv) > 2 and sys.argv[2] == "flags":
+        flags(sys.argv[1], [int(x) for x in sys.argv[3:]] or [100_000, 1_000_000])
+    elif len(sys.argv) > 2 and sys.argv[2] == "copies":
         copies(sys.argv[1], [int(x) for x in sys.argv[3:]] or [10_000, 100_000, 1_000_000])
     elif len(sys.argv) > 2 and sys.argv[2] == "limit":
         limit(sys.argv[1], [int(x) for x in sys.argv[3:]] or [100_000, 1_000_000])

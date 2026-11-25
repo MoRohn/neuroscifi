@@ -29,7 +29,10 @@ question's embedding waited 8.0 s behind the largest accepted batch of either mo
 up to 1.5 s with the two models running side by side on the one GPU. Tokenising happens before the turn, a few
 texts at a time. A request holds at most MAX_REQUEST_TOKENS.
 
-Security: started by run.sh inside a container whose ports Docker publishes on the host's loopback address only.
+Security: started by run.sh inside a container without a network (`--network none`: no route to anywhere, so
+nothing in it can send a byte out), listening on two Unix sockets (--unix-dir) that deploy/memory/forward.py, in a
+container of its own with neither the models nor the key, publishes on the host's loopback address only.
+NSF_MEMORY_EGRESS=bridge keeps the earlier way: this container on its own bridge, its ports published directly.
 Every request but /health and /metrics needs the key (`Authorization: Bearer`, compared in constant time; the key
 is read from a file mounted read-only, never from the environment or a command line). Outside a container the
 server binds a loopback address only; any other address needs --container, which run.sh passes because there the
@@ -41,10 +44,12 @@ rest (/health, /metrics, refusals), so clients without the key can never take th
 (review L3b: 32 keep-alive /health pollers made every keyed call 503). An answer to a request without the key closes
 its connection. A request beyond the slots of its kind is answered 503: the server shuts its side for writing, and
 one shared drainer reads and discards what the client still sends (at most DRAIN_BYTES, DRAIN_SECONDS) before
-closing, so a client in the middle of a large body still reads the 503 instead of a reset. A body must arrive whole
-within BODY_TIMEOUT, the next request's head on a kept connection within HEAD_TIMEOUT (a reaper closes it
-otherwise). The head is
-parsed strictly: a request line of at most MAX_REQUEST_LINE bytes, at most MAX_HEADERS headers of MAX_HEADER_BYTES
+closing, so a client in the middle of a large body still reads the 503 instead of a reset. A slot and its thread
+last one request: a connection kept alive goes back to the door after its answer, with what its client already sent
+of the next request, so kept connections can never hold the slots (ENGINEERING_PLAN §6.7: 32 keyed keep-alive
+connections made every other keyed call 503 for the head deadline of their next request). A body must arrive whole
+within BODY_TIMEOUT, the next request's head on a kept connection within HEAD_TIMEOUT (the door closes it
+otherwise). The head is parsed strictly: a request line of at most MAX_REQUEST_LINE bytes, at most MAX_HEADERS headers of MAX_HEADER_BYTES
 together, exactly one Content-Length of plain digits on a POST and none (or 0) on a GET, one Host and one
 Authorization at most, no Transfer-Encoding. Bodies, batches and text lengths are bounded; no request text is ever
 logged, and a path is logged only if it is one of the routes (otherwise "<other>"). Weights load from safetensors
@@ -60,6 +65,7 @@ import ipaddress
 import json
 import math
 import signal
+import socket
 import sys
 import threading
 import time
@@ -297,14 +303,17 @@ class Service:
                 thread.join(DRAIN_SECONDS + 1)
 
     # ---- the door: no thread before a request head is whole --------------------------------------------------------
-    def admit(self, listener, sock, address) -> None:
-        """Hand an accepted connection to the door (called on the accepting thread; never blocks, never reads)."""
+    def admit(self, listener, sock, address, head: bytes = b"") -> None:
+        """Hand a connection to the door: one just accepted (called on the accepting thread; never blocks, never
+        reads), or one kept alive after its answer, with what its client already sent of the next request (`head`).
+        Between two requests a kept connection holds no slot and no thread (open-items §6.7: 28 keyed keep-alive
+        connections held every keyed slot for the head deadline of their next request)."""
         import socket
         with self.door_lock:
             if self.closed.is_set():
                 sock.close()
                 return
-            self.incoming.append((listener, sock, address))
+            self.incoming.append((listener, sock, address, head))
             if self.door is None:
                 self.wake_r, self.wake_w = socket.socketpair()
                 self.wake_r.setblocking(False)
@@ -336,14 +345,17 @@ class Service:
                 events = sel.select(timeout=0.2)
                 with self.door_lock:
                     arrived, self.incoming = self.incoming, []
-                for listener, sock, address in arrived:
+                for listener, sock, address, head in arrived:
+                    if b"\r\n\r\n" in head or len(head) >= HEAD_BYTES:     # a pipelined request, whole already
+                        self._dispatch(listener, sock, address, head)
+                        continue
                     try:
                         sock.setblocking(False)
                         sel.register(sock, selectors.EVENT_READ)
                     except (OSError, ValueError):
                         sock.close()
                         continue
-                    self.pending[sock] = [listener, address, time.monotonic() + HEAD_TIMEOUT, bytearray()]
+                    self.pending[sock] = [listener, address, time.monotonic() + HEAD_TIMEOUT, bytearray(head)]
                     while len(self.pending) > MAX_PENDING:        # the oldest waiting connection makes room
                         oldest = next(iter(self.pending))
                         self._drop(sel, oldest)
@@ -383,7 +395,7 @@ class Service:
                 self._drop(sel, sock)
                 sock.close()
             with self.door_lock:
-                for _, sock, _ in self.incoming:
+                for _, sock, _, _ in self.incoming:
                     sock.close()
                 self.incoming = []
             sel.close()
@@ -406,7 +418,7 @@ class Service:
             return
         self.prefixes[sock] = head
         try:
-            sock.setblocking(True)
+            sock.settimeout(SOCKET_TIMEOUT)
             threading.Thread(target=listener.serve_admitted, args=(sock, address, slots),
                              name="nsf-memory-request", daemon=True).start()
         except BaseException:
@@ -609,10 +621,22 @@ ROUTES = {"embed": ("/v1/embeddings", embeddings), "rerank": ("/v1/rerank", rera
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    """One request per thread: the door read its head; a connection kept alive goes back to the door afterwards
+    (Listener.serve_admitted). Reads are unbuffered, so what the client sent beyond this request is exactly what
+    the door's prefix still holds (`leftover`), and nothing is lost in a buffer between two requests."""
     protocol_version = "HTTP/1.1"
     server_version = "neuroscifi-memory"
     sys_version = ""
     timeout = SOCKET_TIMEOUT
+    rbufsize = 0
+
+    def handle(self):
+        self.close_connection = True
+        self.handle_one_request()
+
+    def leftover(self) -> bytes:
+        """What the client already sent of its next request (pipelined), for the door."""
+        return self.rfile.head.read() if isinstance(self.rfile, _Prefixed) else b""
 
     def log_message(self, *args):          # the default access log is replaced by _done (never any request text)
         pass
@@ -769,17 +793,69 @@ class Listener(http.server.ThreadingHTTPServer):
         self.service.admit(self, request, client_address)
 
     def serve_admitted(self, request, client_address, slots):
-        """The thread of one admitted connection: its requests, then the connection closed and the slot freed."""
+        """The thread of one request: answered, then the slot freed and the connection either closed or, kept
+        alive, handed back to the door with what its client already sent of the next request."""
+        again = None
         try:
             self.service.watch(request, HEAD_TIMEOUT)
-            self.finish_request(request, client_address)
+            handler = self.RequestHandlerClass(request, client_address, self)
+            if not handler.close_connection and not self.service.closed.is_set():
+                again = handler.leftover()
         except Exception:
             self.handle_error(request, client_address)
         finally:
             self.service.unwatch(request)
             self.service.prefixes.pop(request, None)
-            self.shutdown_request(request)
             slots.release()
+            if again is None:
+                self.shutdown_request(request)
+            else:
+                self.service.admit(self, request, client_address, again)
+
+
+class UnixListener(Listener):
+    """A listener on a Unix socket (--unix-dir): how run.sh serves from a container without a network
+    (`--network none`, so the process that holds the models and the key cannot open a connection to anywhere);
+    deploy/memory/forward.py, in a container of its own that holds neither, publishes the two ports. The socket
+    file is the owner's only (0600, in a folder run.sh keeps 0700); a stale one from a stopped server is replaced,
+    anything else at that path is refused."""
+    address_family = socket.AF_UNIX
+    allow_reuse_address = False
+
+    def server_bind(self):
+        import os
+        import stat
+        path = self.server_address
+        try:
+            if not stat.S_ISSOCK(os.lstat(path).st_mode):
+                raise SystemExit(f"server.py: {path} exists and is not a socket; not replaced")
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        old = os.umask(0o177)
+        try:
+            self.socket.bind(path)
+        finally:
+            os.umask(old)
+        self.bound = path
+        os.chmod(path, 0o600)
+        self.server_address = path
+        self.server_name, self.server_port = "localhost", 0
+
+    def process_request(self, request, client_address):
+        self.service.admit(self, request, ("unix", 0))
+
+    def server_close(self):
+        """Closed, and the socket file removed: only the one this listener made (a refused path is left as it is)."""
+        import os
+        import stat
+        super().server_close()
+        path = getattr(self, "bound", None)
+        try:
+            if path and stat.S_ISSOCK(os.lstat(path).st_mode):
+                os.unlink(path)
+        except OSError:
+            pass
 
 
 class _Prefixed:
@@ -796,10 +872,20 @@ class _Prefixed:
         return line + self.rest.readline(-1 if limit is None or limit < 0 else limit - len(line))
 
     def read(self, n=-1):
+        """`n` bytes, fewer only at the end of the stream (the socket's own stream is unbuffered: one read of it
+        returns what has arrived, so it is read until `n` are there)."""
         got = self.head.read(n)
         if n is None or n < 0:
             return got + self.rest.read()
-        return got if len(got) >= n else got + self.rest.read(n - len(got))
+        parts = [got]
+        while len(got) < n:
+            more = self.rest.read(n - len(got))
+            if not more:
+                break
+            parts.append(more)
+            got = b"".join(parts)
+            parts = [got]
+        return got
 
     def close(self):
         self.rest.close()
@@ -828,14 +914,21 @@ def read_key(path) -> str:
     return key
 
 
-def serve(service, host, embed_port, rerank_port, stop: threading.Event):
-    listeners = [Listener((host, embed_port), service, "embed"), Listener((host, rerank_port), service, "rerank")]
+def serve(service, host, embed_port, rerank_port, stop: threading.Event, unix_dir=None):
+    if unix_dir:
+        import os
+        listeners = [UnixListener(os.path.join(unix_dir, f"{role}.sock"), service, role)
+                     for role in ("embed", "rerank")]
+        where = [one.server_address for one in listeners]
+    else:
+        listeners = [Listener((host, embed_port), service, "embed"),
+                     Listener((host, rerank_port), service, "rerank")]
+        where = [f"{host}:{one.server_address[1]}" for one in listeners]
     threads = [threading.Thread(target=one.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True)
                for one in listeners]
     for thread in threads:
         thread.start()
-    service.log(f"listening: embeddings on {host}:{listeners[0].server_address[1]}, "
-                f"reranker on {host}:{listeners[1].server_address[1]}")
+    service.log(f"listening: embeddings on {where[0]}, reranker on {where[1]}")
     try:
         stop.wait()
     finally:
@@ -859,10 +952,12 @@ def main(argv=None) -> int:
     ap.add_argument("--max-len", type=int, default=2048, help="tokens of one text")
     ap.add_argument("--device", default="cuda", choices=("cuda", "cpu"))
     ap.add_argument("--container", action="store_true", help="allow a non-loopback address (run.sh, inside Docker)")
+    ap.add_argument("--unix-dir", help="listen on embed.sock and rerank.sock in this folder instead of TCP ports "
+                    "(run.sh: the container has no network; forward.py publishes the ports)")
     a = ap.parse_args(argv)
     if not 16 <= a.max_len <= 32768:
         raise SystemExit("server.py: --max-len must be between 16 and 32768")
-    host = check_bind(a.host, a.container)
+    host = a.host if a.unix_dir else check_bind(a.host, a.container)
     key = read_key(a.key_file)
 
     def log(message):
@@ -875,7 +970,7 @@ def main(argv=None) -> int:
     if stop.is_set():
         return 0
     service = Service(models, key, {"embed": a.embed_name, "rerank": a.rerank_name}, max_len=a.max_len, log=log)
-    serve(service, host, a.embed_port, a.rerank_port, stop)
+    serve(service, host, a.embed_port, a.rerank_port, stop, unix_dir=a.unix_dir)
     log("stopped")
     return 0
 

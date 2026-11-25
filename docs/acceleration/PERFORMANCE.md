@@ -2,14 +2,16 @@
 
 Status: 2026-11-24, DGX Spark GB10 (aarch64, 121.9 GiB unified memory). Before = commit `9e4570a` with the 0.7.0
 serving flags. After = branch `nvidia-acceleration-review` (phases 1 and 2, merged as `793a21f`) and, for §8,
-branch `open-items-round` (phase 3). Same host, same model and precision
+branch `open-items-round` (phase 3, merged as `c565c20`) and, for §9, branch `remaining-items-round` (phase 4).
+Same host, same model and precision
 (Qwen3-30B-A3B-Instruct-2507 FP8 on the same pinned vLLM image), same prompts and seeds, server warm in both.
 Unrelated containers of the host's other tenants were resident throughout (about 30 GiB of memory available);
 they are listed in each evidence file and were not controlled.
 
 §1 to §5 are phase 1 of the review. §7 holds what was measured after the owner's decisions were built (phase 2),
 and §8 what was measured when the open items of phase 2 were acted on (phase 3, 2026-11-24), each under the
-conditions it states; §1 and §6 carry all three.
+conditions it states; §1 and §6 carry all three. §9 holds what was measured when the remaining items were acted
+on (phase 4, 2026-11-24); the answer model was not changed in phase 4.
 
 **How to read the numbers.** Latency scenarios run 8 calls each; the pipeline benchmark runs 51 tasks. The shipped
 configuration and the adopted one were each measured twice: the two runs of each agree within about 2 % on every
@@ -538,3 +540,82 @@ the nearest statement the same for 130 of 130 questions; the ten nearest the sam
 | `deploy/vllm/run.sh status` | the key on curl's command line, once per call | on standard input, only to its own container |
 | A call whose reload or in-use lock outlasts it | up to twice its timeout; the lock wait unbounded (1 s asked, 4 s taken) | within its own time |
 | The cross-process race test | forked from a multi-threaded test process | spawned; 50 of 50 runs on a busy core |
+
+## 9. Phase 4: the remaining items, measured
+
+The items left after phase 3 were acted on in a fourth round ([ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §7).
+**Conditions:** as in phase 3, the lanes ran in parallel on the shared host, so times were taken with other jobs
+running unless a row says otherwise; counts do not depend on that. Evidence files are
+`docs/quality/evidence/remaining_*.json`.
+
+### 9.1 Consolidated readings
+
+`remaining_consolidation.json`; both trees measured the same way.
+
+| What | Before | After |
+|---|---|---|
+| Belief computation, a million readings, no sample recorded twice | 465 ms | 118 ms |
+| The same, 100,000 readings | 124 ms | 24 ms |
+| A restore of a file with a million readings, Python memory peak | 279 MiB | 4.2 MiB |
+| The same restore, wall clock (one run each, loaded host) | 18.6 s | 22.7 s |
+| Files with copied samples | the grouped pass | the same grouped pass; equal within noise |
+
+The restore's wall clock is one run each on a loaded host and is not claimed as a change either way.
+
+### 9.2 Knowledge
+
+`remaining_knowledge.json`. The contradiction figures are counts on fixed sets; `knowledge.query` was not changed in
+phase 4 (its phase-3 numbers in §8.3 stand).
+
+| Fresh held-out set (78 probes) | Before phase 4 | After |
+|---|---|---|
+| Positives found | 19 of 50 | 45 of 50 (40 before a number written with a comma stopped reading as a year) |
+| Values in other units | 3 of 21 | 19 of 21 |
+| Stated aliases | 1 of 6 | 6 of 6 |
+| False pairs | 6 of 28 | 1 of 28 |
+
+Development set: 72 of 86 right and 0 of 46 false pairs after the lane and after both review rounds.
+
+### 9.3 The memory server
+
+`remaining_memory_server.json`.
+
+| What | Before | After |
+|---|---|---|
+| Outbound connections from the process with the models and the key | possible (Docker bridge) | refused (`--network none`) |
+| Extra time per request through the forwarder | — | about 2 to 2.6 ms, measured in pairs |
+| Memory benchmark | equal to phase 3 | equal in every class, 8 runs |
+| Keyed calls served while 32 kept-alive connections are open | 0 of 15 (503) | 15 of 15 |
+| Ten nearest candidates the same as single precision, of 130 queries | vLLM 111 to 112 | this server 114 to 116 (unchanged code; the drift is bfloat16 rounding) |
+
+### 9.4 Graphs
+
+`remaining_graphs.json`.
+
+| What | Result |
+|---|---|
+| The graph-rule migration, first open of an older individual | 1 to 31 ms |
+| Later opens | 0.4 to 1.0 ms |
+| Old graphs, by populations | kept at 24, 96 and 128; archived at 160 and 256 |
+| The next graph under `best-learner-v1`, 96 populations, held-out error | 0.00835 → 0.00433 |
+
+### 9.5 Reading pages and tests
+
+`remaining_reading.json`. 1,800 random webs with redirecting robots.txt files: 0 differences from one page at a
+time and 0 tasks above budget plus allowance. Wasted requests over the same seeds 3,267 before and 3,120 after
+(indicative only; the number depends on scheduling). The cross-process race test and the hung-render test passed 50
+of 50 runs each under load; the hung-render test takes about 10 s instead of about 4 s.
+
+### 9.6 TensorRT-LLM: a small-model proxy, not the comparison
+
+`remaining_trtllm.json`. Qwen3-0.6B-FP8 (the answer model's format, not the answer model), each engine alone on this
+host, vLLM against TensorRT-LLM 1.4.0rc4. These numbers say only that the engine runs here; they do not predict the
+30B mixture-of-experts model, which the owner's window measures.
+
+| What | vLLM | TensorRT-LLM |
+|---|---|---|
+| Decode | 185 tokens/s | 182 tokens/s |
+| First token, repeated prompt | 143 ms | 27 ms |
+| Eight requests at once | 194 tokens/s | 248 tokens/s |
+| Valid JSON answers | 3 of 8 | 6 of 8 (0 of 8 before a grammar backend was set) |
+| Reasoning | 8 of 16 | 6 of 16 |

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+import math
 import os
 import time
 
@@ -28,6 +29,10 @@ def _alive(pid) -> bool:
     except (ProcessLookupError, ValueError, TypeError, OverflowError):
         return False
     return True
+
+
+def _number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 class SharedAudioBeacon(AudioBeacon):
@@ -47,12 +52,12 @@ class SharedAudioBeacon(AudioBeacon):
             return
         if self.last is None or flags != self.last[0] or (any(flags) and now - self.last[1] >= BEACON_HEARTBEAT):
             try:
-                self.write(*flags)
+                self.write(*flags, vstate.last_used())
                 self.last = (flags, now)
             except OSError:
                 pass
 
-    def write(self, active: bool, session: bool = False) -> None:
+    def write(self, active: bool, session: bool = False, used_at: float | None = None) -> None:
         shared.ensure_folder(self.path.parent)       # the folder's own mode decides who may read what is written
         lock = shared.open_file(self.path.parent / "audio.lock", os.O_RDWR)
         try:
@@ -66,14 +71,21 @@ class SharedAudioBeacon(AudioBeacon):
             if not isinstance(writers, dict):          # a beacon written by a plain AudioBeacon: its one entry
                 writers = {str(current["pid"]): current} if "pid" in current else {}
             now = self.clock()
-            entries = {pid: {"active": bool(w.get("active")), "session": bool(w.get("session")), "at": w.get("at")}
+            entries = {pid: {"active": bool(w.get("active")), "session": bool(w.get("session")), "at": w.get("at"),
+                             **({"used_at": w["used_at"]} if _number(w.get("used_at")) else {})}
                        for pid, w in writers.items()
                        if pid != str(self.pid) and isinstance(w, dict) and isinstance(w.get("at"), (int, float))
                        and 0 <= now - w["at"] <= BEACON_STALE and _alive(pid)}
-            entries[str(self.pid)] = {"active": bool(active), "session": bool(session), "at": now}
+            entries[str(self.pid)] = {"active": bool(active), "session": bool(session), "at": now,
+                                      **({"used_at": used_at} if session and _number(used_at) else {})}
             record = {"active": any(e["active"] for e in entries.values()),
                       "session": any(e["session"] for e in entries.values()), "at": now, "pid": self.pid,
                       "writers": entries}
+            # The newest use of an open session of any process; an open session whose writer did not say when it
+            # was used (an older writer) leaves it out, which the readers count as in use (policy._in_use).
+            sessions = [e for e in entries.values() if e["session"]]
+            if sessions and all("used_at" in e for e in sessions):
+                record["used_at"] = max(e["used_at"] for e in sessions)
             shared.write_text(self.path, json.dumps(record))
         finally:
             os.close(lock)                             # releases the flock

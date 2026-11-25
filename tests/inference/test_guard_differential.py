@@ -18,17 +18,25 @@ sentences this tree does not yet treat so, and goes to zero gap by gap.
 
 Closed so far:
   restriction  a cited claim that carries an exception or a condition is restated whole or not at all
-               (reasoning.RESTRICTION_LOST). Stricter only.
+               (reasoning.RESTRICTION_LOST), an exception written as a negated phrase too ("every release not
+               built from source", "not counting"), however far into the claim. Stricter only.
   case         a word the sentence shares with its cited claims is written as they write it
-               (reasoning.CASE_CHANGED). Stricter only.
+               (reasoning.CASE_CHANGED); a pronoun of the sentence's own is not excused beside the claim's
+               acronym ("US sanctions hit us"). Stricter only.
   unseen       a claim that holds a character nobody sees is not cited (reasoning.UNSEEN_IN_CLAIM). Stricter
                only. (Extraction removes such characters from fetched text: tests/webcortex/test_extract.py.)
   restatement  a sentence that is one cited claim word for word is not rejected by the anchor rule when that is
                its only fault (reasoning.check_sentence, ANCHOR_TIED). The one loosening; its class is proven case
-               by case (scripts/guard_differential.py, LOOSENINGS).
+               by case (scripts/guard_differential.py, LOOSENINGS). And a version or number joined in one
+               clause with what the cited claims say, in another clause, of another version or number is refused
+               (reasoning.JOINED_APART): stricter only.
   cut          the refusal of a sentence whose own attribution would take words with it (reasoning.CUT_WORDS)
                spares words that only name the source ("by Reuters"); such a sentence gets 307b907's verdict
-               and text again. Still stricter only against 307b907.
+               and text again; words for a group of people ("from Windows Users") are no name, since the
+               sentence may be about them. Still stricter only against 307b907.
+  role         a role reversal in either voice (reasoning.PASSIVE_SWAP, ROLE_SWAP), with an adverb before the
+               claim's verb ("Globex quietly acquired ..."), a get-passive, a cleft, or a cleft on the agent ("It was
+               by Acme Corp that Globex was acquired"). Stricter only.
 """
 import importlib.util
 import json
@@ -44,21 +52,23 @@ _spec = importlib.util.spec_from_file_location("guard_differential", SCRIPT)
 gd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gd)
 
-GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording")
-INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 332}
-SIZES = {"restriction": 111, "case": 48, "unseen": 37, "restatement": 56, "cut": 47, "wording": 33}
+GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording", "role")
+INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 461}
+SIZES = {"restriction": 146, "case": 56, "unseen": 37, "restatement": 81, "cut": 69, "wording": 33, "role": 39}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0}
+UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0, "role": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
 UNSEEN_MARK = reasoning.UNSEEN_IN_CLAIM.split("{")[0]
 PASSIVE_MARK = reasoning.PASSIVE_SWAP.split("'")[0]
 ROLE_MARK = reasoning.ROLE_SWAP.split("{")[0]
+JOINED_MARK = reasoning.JOINED_APART.split("'")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
-STRICTER = {"review": 24, "gap": 149}
+STRICTER = {"review": 24, "gap": 208}
 LOOSENED = {"review": 6, "gap": 11}
-REFUSED = {CUT_MARK: 40, RESTRICTION_MARK: 74, CASE_MARK: 24, UNSEEN_MARK: 18, PASSIVE_MARK: 17, ROLE_MARK: 5}
+REFUSED = {CUT_MARK: 52, RESTRICTION_MARK: 86, CASE_MARK: 28, UNSEEN_MARK: 18, PASSIVE_MARK: 37, ROLE_MARK: 21,
+           JOINED_MARK: 11}
 
 
 @pytest.fixture(scope="module")
@@ -88,7 +98,7 @@ def test_the_reference_is_the_attack_tested_commit_and_its_inputs_are_of_four_ki
     assert reference["commit"] == "307b9070f973be63b1cdbd8da222da8114bd32d6"
     assert reference["reference_guard_tests"] == "827 passed"          # that commit's own guard tests, while recording
     assert reference["cases_by_origin"] == INPUTS
-    assert len(reference["cases"]) == sum(INPUTS.values()) == 1808
+    assert len(reference["cases"]) == sum(INPUTS.values()) == 1937
     kinds = {c["kind"] for c in reference["cases"]}
     assert kinds == {"compose", "guard", "answer"}
 

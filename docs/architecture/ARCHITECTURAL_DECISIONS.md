@@ -1301,13 +1301,16 @@ million. Reading those in bounded pieces needs the live file's snapshot held ope
   or forgets what is no longer needed. Which events are kept when a sweep crosses the limit is decided by their
   place in the journal, not by what they teach.
 - A camera forgotten while a partner of the same name is still held (or the reverse): its readings, events and
-  changes go, in the live file and in every restore. Its **name** stays in the text of belief revisions, questions
-  and decisions, because scrubbing works per root name and the name is still held by the other channel; it goes
-  when the last evidence of that name does.
+  changes go, in the live file and in every restore. Its name as that kind goes too (ADR-048, schema 15): until
+  then it stayed in the text of belief revisions, questions and decisions, because scrubbing worked per root name.
+  A bare mention of the name outside a question or decision about the forgotten scope stays, since it may be the
+  other one; it goes when the last evidence of that name does.
 - Version 14 was amended twice before any release. A file that reached version 14 under an earlier build of this
   branch gets the current indexes when it is next opened (`schema.ensure_indexes`); the sweeps it ran under the
   first build kept only the first copy of a sample, and that history is not repaired.
-- `compute()` is linear in the readings of an epoch, as it was in its events.
+- `compute()` is linear in the readings of an epoch, as it was in its events. (Amended by schema 16, below: the
+  pass that grouped every reading by sample to find the copied samples is gone when few samples are copied; the
+  tallies' pass over the readings stays.)
 - The prototype's `legacy` status reads the same readings, but without event ids to order them by its sums can
   differ from `legacy_live`'s in the last bits once readings are consolidated.
 - Two files that both continue after a restore (the restored copy and the file it was restored from) issue seqs
@@ -1323,6 +1326,39 @@ million. Reading those in bounded pieces needs the live file's snapshot held ope
   `tests/instance/test_consolidation_limit.py` (the limit at, below and across; the warning; the setting; what a
   restore reads), `tests/console/test_console_api.py` (the readings and the two forgets over HTTP), and the expiry
   tests of `test_erasure.py` and `test_journeys.py`, which keep their old assertions under `consolidation=False`.
+
+## Amendment (schema 16): finding the copied samples without a pass over every reading
+
+Beliefs count the earliest copy of a sample. To know which samples have more than one reading, every belief
+computation grouped all of the epoch's readings by sample (about 0.1 to 0.3 s per million readings that carry a
+sample id), even when no sample was ever recorded twice. A belief cache, or a maintained list of copied samples, was
+rejected (phase 3): a second source of truth that every forget, sweep, confirmed change and restore must invalidate.
+
+Decision: a column `copied` on each consolidated reading and three triggers that keep one rule: **of any two
+readings of one sample (epoch, channel, root, sample id), at least one has `copied=1`**. The reading that arrives
+second, by an insert or by an update of those columns, finds the first and is flagged; a flag is never cleared (a
+trigger refuses it). Why this is not the rejected design:
+
+- It is a one-sided hint, not a fact. A flag can be stale (the other reading was forgotten since); beliefs then look
+  up one sample by key, find one reading, and drop it. A missing flag is impossible by the rule, so no sample with
+  several readings is ever missed. Nothing reads `copied` as a statement about a sample.
+- No code path maintains it: SQLite does, in the same statement as the write, whichever path writes (a sweep, a
+  restore's replay, a forget). Nothing needs to invalidate it.
+- Beliefs are computed exactly as before from the same rows. `beliefs._copied_samples` returns the same samples as
+  the grouped pass: up to 256 flagged samples are counted by key; beyond that, or on a connection that has not
+  migrated, the grouped pass runs as before.
+
+Measured on files of a million readings each with its own sample id: see
+`docs/quality/evidence/remaining_consolidation.json`. Tests: `tests/instance/test_consolidation_copied.py` (the rule
+under random inserts, deletes and updates; the migration of a version-14 file; no grouped pass without copies;
+beliefs identical on the three paths), and every test of `test_consolidation.py`, which now runs on three paths:
+flags, the grouped pass, and no flags.
+
+**A restore streams the tombstones.** The live file's tombstones (about 230 MiB per million as Python rows) are no
+longer read whole: the replay applies them in batches of 2,000 while the snapshot of the live file stays open
+(`checkpoints._snapshot`), so a forget committing meanwhile is still wholly in the replay or not at all. The cost:
+the read transaction on the live file lasts as long as the replay, so its WAL cannot be checkpointed past that
+snapshot until the replay ends (writers are not blocked).
 
 # ADR-045 (draft) Which graph is promoted: the better learner's, and never one worse than no graph. R
 
@@ -1365,7 +1401,9 @@ the two learners agree to within 0.3 %.
    keeps its meaning, its sha256 and its result, byte for byte.
 3. **New individuals are born with two rules, `gate-v1` and then `best-learner-v1`** (`store.BIRTH_RULES`):
    gate-v1 with both parts, the same thresholds and the same 4096-byte budget. Graphs are learned under the last.
-4. **Existing individuals keep exactly the rules they have.** Their owner adopts the rule with
+4. **Existing individuals keep exactly the rules they have** (superseded by ADR-047: an individual still on
+   gate-v1 adopts best-learner-v1 at its next open, and an active graph worse than no graph is archived; both are
+   recorded and reversible). Their owner adopts the rule with
    `nsf graph rules add --builtin best-learner-v1 --owner-approved`, and goes back with
    `nsf graph rules add --builtin gate-v1 --as gate-v1-again --owner-approved` (rules are immutable and the newest
    is used, so going back is a new version with gate-v1's content). Candidates keep the rule they were learned
@@ -1542,9 +1580,191 @@ it is still better (0.046 against 0.053).
   owner asking (CONTINUAL_LEARNING, kind 2b): bounded as above, shown, logged with each decision, and one setting
   away from off.
 - A prediction settled by a task that was later forgotten keeps its outcome (ADR-029: the observation is scrubbed,
-  the outcome stays) and so still counts, as it does in `calibration`.
+  the outcome stays). Since ADR-048 it no longer counts, here or in `calibration`.
 - Settlements are treated as independent draws. They are not (one source change can fail several predictions);
   the minimum and the prior are the only allowance for that.
 - Tests: `tests/webcortex/test_recalibration.py` (24; the fit against the objective written out and against a
   one-value solution by bisection, monotonicity over 200 random histories, the kinds, the reader, the decision
   record, forgetting, restore, the setting, the command, and the recorded evidence recomputed).
+
+
+# ADR-047 (draft) Individuals made by older software adopt today's graph rules once, recorded and reversible. R
+
+## Context
+
+ADR-045 left existing individuals with exactly the rules they had: one born under gate-v1 kept packing a cut of the
+dense fit, which at 96 and 128 populations has twice the sparse learner's error, until its owner added
+best-learner-v1; and an active graph promoted before check (f) existed stayed active although it predicts worse
+than a graph with no edges (from about 160 populations, ADR-045's table). On 2026-11-24 the owner ruled: migrate
+automatically.
+
+## Decision
+
+`instance/graph_migration.py`, run by `store.open_existing` once per file (a meta row `graph_rule_migration`
+records that it ran and what it did):
+
+1. **Birth rule.** If the newest rule is the built-in `gate-v1` and `best-learner-v1` is not registered, register
+   `best-learner-v1` (`created_by: migration`). An owner who chose otherwise keeps their choice: a rule of their own
+   newest, or best-learner-v1 registered and gate-v1 added again after it. Nothing is removed or edited; revisions
+   keep the rule they were decided under.
+2. **Active graphs.** Each active graph is judged by check (f): from what `learn` recorded, or, for one learned
+   before that was recorded, by computing its snapshot's error and the no-graph error on its own validation dataset
+   (`graphs.no_graph_check`). One that fails is archived with a decision `{"action": "demote", "by": "migration",
+   "check", "prior"}`; snapshot, metrics and lineage are kept. A graph that cannot be judged (founding, imported,
+   validation data gone or damaged) stays active and is listed as `not_judged`. The deletion cascade never
+   re-activates a demoted graph on its own (`graphs.NOT_REVIVED`); the owner can, with `nsf graph rollback`.
+3. **Not applied** to an individual born by this software (`store.create` records `settled_at_birth`: its rules
+   are the ones chosen at birth, which keeps the first physical test's gate-v1 individuals as preregistered), while
+   the owner's setting `graph_rule_migration` is false, to a connection that cannot write (a read-only file, or
+   `query_only`: tried again at the next writable open), and while a context's lease is held (a graph job runs).
+   All of these are read before the write lock is asked for, and the lock is waited for at most 200 ms
+   (`store.optional_write`; a busy file is tried again at the next open): an open must never queue behind another
+   writer for a step it can postpone, since the console opens the file for each request (review of the round).
+   `nsf config` and `nsf graph migration` open the file without it, so an owner can see the plan
+   (`nsf graph migration status`) and opt out (`nsf config --no-graph-rule-migration`) before anything runs it.
+4. **Reversal.** `nsf graph migration undo --owner-approved`: gate-v1's content is registered again as the newest
+   rule (`gate-v1-restored`) if best-learner-v1 added by the migration is still the newest; each demoted graph is
+   re-activated if it is still archived as demoted, its lineage is intact and its context has no active graph; the
+   setting turns off (logged as a setting change), so it never runs again, also in a copy restored from an older
+   archive (the setting is carried by a restore, like consolidation's). What cannot be reversed is listed with the
+   reason and the command that does it by hand. The migration runs at most once: turning the setting on again after
+   an undo does nothing, and `nsf config` says so. An undo is not carried into a copy restored from an archive taken
+   after the migration and before the undo: the copy holds the migration's own record and changes, as the archive
+   did, and only the setting (off) comes from the live file; the owner runs `nsf graph migration undo` in the copy
+   if it is to become the individual.
+5. Shown in `nsf birth` and the console's overview (`graph_rule_migration`), and in each demoted revision's
+   decision (the console's graph detail says why it was archived).
+
+No schema change: the record is a meta row and the setting a field of the settings JSON.
+
+## Measured
+
+`scripts/bench_graph_learner.py migration` (`docs/quality/evidence/remaining_graphs.json`), 3 worlds per size,
+individuals as older software left them:
+
+| Populations | Old active graph, validation MSE against no graph | First open | Graph learned afterwards (heldout MSE, old → new) |
+|---|---|---|---|
+| 24 | 0.0042-0.0044 < 0.018-0.020: kept | 1.0-1.1 ms | 0.00433 → 0.00430, promoted |
+| 96 | 0.0083-0.0085 < 0.017-0.018: kept | 2.8-24 ms | 0.00835 → 0.00433, promoted |
+| 128 | 0.0084-0.0085 < 0.017-0.018: kept | 6.2-15 ms | 0.00859 → 0.00433, promoted |
+| 160 | 0.019-0.020 > 0.0177-0.0182: archived | 7.7-31 ms | 0.0193 → 0.00432, promoted |
+| 256 | 228-468 > 0.018: archived | 18-24 ms | 273 → 0.00432, promoted |
+
+A later open costs 0.4-1.0 ms in all (one meta read decides that nothing is due).
+
+## Alternatives rejected
+
+- **Relearning the graphs at migration.** A graph job needs the lease, takes seconds and writes candidates; it is
+  the owner's or the scheduler's to run. At 96 and 128 populations the old graph still beats no graph, so it stays
+  active until a candidate learned under best-learner-v1 beats it at the gate, which it did in every world.
+- **Re-activating an older archived graph in place of a demoted one.** Its quality was never compared with the
+  demoted one's on today's data; a context with no active graph is not used by recall, which is safer than one
+  that misleads. The owner can roll back.
+- **Repairing the dense learner.** As in ADR-045: its arithmetic is the lab's and the reproduction depends on it.
+
+## Consequences
+
+- An individual made by older software changes at its first open by this software, unless its owner opts out
+  first. The change is graph state of the failing revisions and one added rule; no revision, snapshot, metric or
+  dataset is removed.
+- A preregistered individual born by older software under gate-v1 alone is migrated too unless its owner opts out
+  first; its recorded decisions keep gate-v1.
+- Tests: `tests/instance/test_graph_migration.py` (kept and archived graphs, a founding graph not judged, a graph
+  learned afterwards under best-learner-v1, the cascade, undo and what it leaves, opt-out before the open, a damaged
+  setting, a read-only file and a `query_only` connection, a held lease, a new individual, an owner's own rule
+  choice, restores before and after an undo; an open beside a writer while the migration is pending, a read-only
+  file not judged, `nsf config` after an undo, the record without the scores of an erased graph).
+
+# ADR-048 (draft) Forgetting reaches what was left behind: one kind of a name, a forgotten task's settlements, a forgotten dataset's graphs. R
+
+## Context
+
+ENGINEERING_PLAN.md §6 listed what a forget still left behind after phase 3: the name of a camera forgotten while a
+partner of the same name is held (or the reverse) in belief revisions, questions and decisions; the settled
+predictions of a forgotten task, which still counted in the calibration of ADR-046; and the weights and metrics of a
+graph revision invalidated by `forget_dataset`, with the dataset's digest. Forgetting is the owner's act, so
+erasing what it names is correct; nothing else may go, and a restore must end the same way.
+
+## Decision
+
+1. **One kind of a name (schema 15, `forgotten_scopes`).** When the last evidence of a root in one channel goes
+   (by `forget_camera`, `forget_partner`, the forget of its last event or a sweep) while the other channel still
+   holds the name, that kind is scrubbed (`governance.scrub_roots(..., scoped=True)`): `camera:<root>` (or
+   `partner:<root>` and the executive's "partner <root>") everywhere, the root's key in the summaries' `sensors`
+   (or `partners`) map, its changepoints and the epoch links with a segment of it, and every mention of the name
+   in a question or decision whose scope is that very scope. A bare mention anywhere else may be the other one and
+   stays until the last evidence of the name goes. The digest is recorded with its kind (`forgotten_scopes`, as
+   `forgotten_roots` records whole roots), and a restore scrubs the same kind in its copy unless the copy holds
+   evidence of that kind (a newer camera or partner of the name). `effects.scopes_forgotten` counts them.
+2. **A forgotten task's settlements stop counting.** A task the owner forgets takes its observation with it
+   (`governance._scrub_observations` leaves `{"forgotten": true}` on the prediction it settled). The outcome stays
+   on the prediction (ADR-029: the knowledge and hypotheses revised by it are not rolled back), but the settlement
+   no longer counts in `calibration`, in the mapping of ADR-046 or in the accuracy of `metrics`, which reports such
+   settlements as `settled_by_forgotten_tasks`. Computed on read, so it holds for forgets made before this change
+   and in a restored copy. Reopening the prediction instead was rejected: it would be checked again and could
+   start a second error analysis for the same failure.
+3. **What graphs learned from a forgotten dataset goes with it (schema 15).** `forget_dataset` already invalidated
+   the revisions trained or validated on the dataset. Now `graphs.erase_learned_from` also empties their blob (the
+   weights are an image of the data they were fitted to) and replaces their metrics with
+   `{"erased": {"dataset", "at"}}`, deletes the graph effects measured on them, and the dataset's digest becomes
+   empty (with it a guessed dataset could be checked against the file). A revision invalidated earlier by another
+   dataset of its lineage is erased too. Nothing kept may confirm a guess of the data either (security review of the
+   round, L3: `learn` is deterministic, so a guessed dataset could be refitted and compared): the digest of the
+   weights becomes `erased`, and every score computed with the weights is removed (set to null) from the revision's
+   own decisions, from the incumbent's side of other revisions' gate decisions where it was the incumbent (its
+   held-out error, and the threshold and limits computed from it; the other candidate's own scores stay), and from
+   the graph-rule migration's record (ADR-047). The revision stays listed with its id, status, shape (bits, degree,
+   byte size: fixed by the shape and the rule, not by the data), lineage and decisions, the audit of what was
+   promoted and why; `graphs.show` returns it without a matrix and says why, `export`, `lesion` and the other readers
+   of the weights raise Gone. Migration 15 replaces the identity trigger: it allows exactly this update of an
+   invalidated revision (the blob to empty and the digest to `erased`, nothing else of its identity) and refuses
+   every other as before; a second trigger keeps an erased revision invalidated, and a third refuses deleting a
+   revision, which also closes INSERT OR REPLACE (its implicit delete fires it; review L2). A restore replays it.
+   A revision that only scored the dataset as held-out data keeps its weights: it did not learn from it.
+   **Forgets made by an earlier version** kept all of this. The first writable open of the file finishes them once
+   (`governance.finish_earlier_forgets`, logged as a dataset deletion with `by: upgrade`, valid checkpoints marked
+   stale), so the live file holds what every restored copy holds, and `forget_dataset` on such a dataset finishes
+   it too (status `completed`; `absent` once nothing is left). The owner already named the data; nothing not
+   learned from it is touched (review CM2). Like the graph-rule migration it waits for a writable open and never
+   queues for the lock.
+   **The WAL.** A restore or rewrite keeps one read snapshot of the live file for its whole replay, so a forget
+   committed meanwhile cannot truncate the WAL; when the file changed during the snapshot (`PRAGMA data_version`),
+   the WAL is truncated as soon as it ends (review L4).
+4. **Calibration after a change of habits: tried, not shipped.** After a forecaster's rule reverses, the mapping of
+   ADR-046 reads the next 50 forecasts worse than stated (held out: 0.095 against 0.043). `fit_recalibration` can
+   now split its window where fitting the two parts apart gains most and drop the older part when twice that gain
+   exceeds a threshold (`change_step`, `change_threshold`). Both rules were written before they were run
+   (`bench.calibration.CHANGE_RULES`): selected on the development streams (step 10, threshold 4.0; the first grid
+   was best at its edge and was extended downwards on the development streams only), gated on the held-out ones.
+   It made both held-out reversals better (0.095 to 0.065, 0.045 to 0.043) and the mean distance lower, but one
+   held-out stream without a change got worse than the shipped mapping by 0.002021 in Brier, over the 0.002
+   allowed, and the burst streams by up to 0.006 (false alarms on correlated outcomes). So
+   `RECALIBRATION_CHANGE_THRESHOLD` stays None and the mapping is exactly ADR-046's. No other setting was tried on
+   the held-out streams. `python scripts/bench_calibration.py change` reproduces all of it.
+
+## Measured
+
+`docs/quality/evidence/remaining_forgetting.json`, the code of c565c20 against this change on the same scenarios:
+a camera forgotten while a partner of its name is held left `camera:<name>` 15 times and the name in 13 summaries'
+sensors, live and in a restored older archive; now 0 and 0 (the partner's 15 mentions stay). The reverse: 15, 10,
+and the question "What does <name> mean" once; now 0. Thirty predictions settled by one task the owner then forgot
+counted 30 times in the calibration and in the mapping; now 0, the outcomes kept. A revision trained on a forgotten
+dataset kept its 247-byte blob, 2,407 bytes of metrics, 73 effects and the dataset's digest; now 0 bytes, 46 bytes
+(the erasure note), 0 and no digest.
+
+## Consequences
+
+- Schema 15. An older binary refuses the file, as for every schema. The migration adds a table and replaces or
+  adds triggers; no row changes (tested on a version-14 file with graphs, datasets and evidence). The completion of
+  earlier forgets is not part of the migration: it runs at the first writable open after it.
+- An erased revision cannot be exported, lesioned or rolled back to; `graphs.show` lists it without a matrix.
+- The calibration history snapshots in `web_metrics` recorded before a task was forgotten keep the numbers they
+  were computed with, by decision: they are a past record of aggregate scores (a Brier score over many forecasts),
+  not the task's content, and the calibration read now leaves the settlement out (review question Q1).
+- Still open: a bare mention of a name whose other kind is held (it may be that other one); tombstones and the
+  deletion log keep epoch names and event ids in clear; settlements are still treated as independent draws.
+  A connection that does not turn recursive_triggers on (a raw sqlite3 connection, not `store.connect`) does not
+  fire the delete trigger on INSERT OR REPLACE.
+- Tests: `tests/instance/test_forget_one_kind.py`, `tests/instance/test_forget_dataset_erasure.py`,
+  `tests/webcortex/test_recalibration.py` (the settlement of a forgotten task; the change detection, off).
+

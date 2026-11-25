@@ -443,7 +443,8 @@ CLAIM_COLUMNS = ("id", "task_id", "source_id", "text", "key", "kind", "polarity"
 def claim_from_row(row: dict) -> Claim:
     return Claim(id=row["id"], text=row["text"], source_url=row["source_url"], domain=row["domain"],
                  title=row["title"] or "", retrieved_at=row["retrieved_at"], key=row["key"], kind=row["kind"],
-                 polarity=row["polarity"], values=_listed(row["claim_values"]), published_at=row["published_at"],
+                 polarity=row["polarity"], values=_as_read(_listed(row["claim_values"]), row["text"]),
+                 published_at=row["published_at"],
                  event_at=row["event_at"], relevance=row["relevance"] or 0.0, doc_sha256=row["doc_sha256"] or "",
                  sentence_index=row["sentence_index"] or 0,
                  flags=row["flags"] if isinstance(row["flags"], dict) else loads(row["flags"], {}))
@@ -453,12 +454,21 @@ def _listed(value):
     return list(value) if isinstance(value, list) else loads(value, [])
 
 
+def _as_read(values, text):
+    """A stored claim's values as this version reads its text (consolidate._read_values, as for a knowledge item):
+    a claim saved when "2,900 residents" read as the year 2900, or "120 km/h" as "120 km", is compared as what its
+    text says now. A claim's values are those of its own text (claims.extract), so nothing else is replaced."""
+    from .consolidate import _read_values
+    return _read_values({"claim_values": values, "statement": text})
+
+
 def claims(db, task_id) -> list[dict]:
     out = []
     for row in db.execute(f"SELECT {','.join(CLAIM_COLUMNS)} FROM web_claims WHERE task_id=? ORDER BY rowid",
                           (task_id,)):
         item = dict(zip(CLAIM_COLUMNS, row))
         item["claim_values"], item["flags"] = loads(item["claim_values"], []), loads(item["flags"], {})
+        item["claim_values"] = _as_read(item["claim_values"], item["text"])
         out.append(item)
     return out
 

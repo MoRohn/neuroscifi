@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 import glob
 import json
+import logging
 import math
 import os
 from pathlib import Path
@@ -23,6 +24,8 @@ import uuid
 from .. import __version__
 from .errors import InstanceError, NotFound, ValidationError, WritesPaused
 from .schema import SCHEMA_VERSION, migrate
+
+log = logging.getLogger(__name__)
 
 THERMAL_ZONES = "/sys/class/thermal/thermal_zone*/temp"  # millidegrees Celsius, one file per zone
 DEFAULT_DB_ENV = "NSF_DB"
@@ -83,6 +86,11 @@ class InstanceConfig:
     # It never deletes a reading: lowering it below what is kept only stops further consolidation. 0 = no limit.
     max_consolidated_rows: int = 1_000_000
     max_thermal_celsius: float | None = None  # regulation: pause new writes above this temperature (None = off)
+    # The graph-rule migration (graph_migration.py, ADR-047): at the next open, an individual whose newest scoring
+    # rule is still gate-v1 adopts best-learner-v1, and an active graph that predicts worse than no graph is archived.
+    # Both are recorded and `nsf graph migration undo --owner-approved` reverses them. False before that open = the
+    # file is left as it is (the owner opts out with `nsf config --no-graph-rule-migration`, which never migrates).
+    graph_rule_migration: bool = True
 
     @classmethod
     def from_json(cls, text):
@@ -95,6 +103,9 @@ class InstanceConfig:
         # the reading that cannot keep data an owner opted out of. setting_problems() reports it.
         if not isinstance(values.get("consolidation", True), bool):
             values["consolidation"] = False
+        # The same for the graph-rule migration: a damaged value never changes an individual's rules or graphs.
+        if not isinstance(values.get("graph_rule_migration", True), bool):
+            values["graph_rule_migration"] = False
         # A limit that is not a whole number from 0 up (a hand-edited "none", a -1, true) is not a limit: the default
         # stands, never "no limit" by accident. setting_problems() reports it.
         if "max_consolidated_rows" in values and not _row_limit(values["max_consolidated_rows"]):
@@ -174,6 +185,44 @@ def write(db):
         raise
 
 
+def can_write(db):
+    """Whether this connection may write its file, read without asking for the write lock: not a query_only
+    connection, and the file (and its folder, for the WAL) writable by this process. A False is final for this open;
+    a True can still meet a busy file (optional_write)."""
+    if db.execute("PRAGMA query_only").fetchone()[0]:
+        return False
+    path = database_path(db)
+    if path is None:
+        return True
+    path = Path(path)
+    return os.access(path, os.W_OK) and os.access(path.parent, os.W_OK)
+
+
+OPTIONAL_BUSY_MS = 200   # how long an optional step at open (optional_write) waits for the write lock
+
+
+def optional_write(db, body):
+    """Run body(db) in a write transaction for a step an open does when it can and retries at the next open
+    otherwise (the graph-rule migration, the completion of earlier forgets): the lock is waited for at most
+    OPTIONAL_BUSY_MS, and a busy, locked or read-only file gives None instead of an error. A step that a check of
+    the file refuses (IntegrityError: a trigger or a constraint) is rolled back, logged and tried again at the next
+    open; it never makes the open fail."""
+    db.execute(f"PRAGMA busy_timeout={OPTIONAL_BUSY_MS}")
+    try:
+        with write(db):
+            return body(db)
+    except sqlite3.OperationalError as error:
+        text = str(error)
+        if "readonly" in text or "read-only" in text or "locked" in text or "busy" in text:
+            return None
+        raise
+    except sqlite3.IntegrityError as error:
+        log.warning("an optional step at open was skipped and is tried again at the next open: %s", error)
+        return None
+    finally:
+        db.execute("PRAGMA busy_timeout=10000")
+
+
 def bump(db, name, amount=1):
     db.execute("INSERT INTO counters(name,value) VALUES(?,?) "
                "ON CONFLICT(name) DO UPDATE SET value=value+excluded.value", (name, amount))
@@ -211,6 +260,7 @@ _SETTABLE = {
                                             and math.isfinite(v) and 0 <= v <= 36500 * 86400),
     "consolidation": lambda v: isinstance(v, bool),
     "max_consolidated_rows": _row_limit,
+    "graph_rule_migration": lambda v: isinstance(v, bool),
 }
 
 
@@ -235,7 +285,9 @@ def setting_problems(db):
     notes = {"consolidation": "; consolidation is treated as off until it is set with `nsf config --consolidation` or "
                               "`--no-consolidation`",
              "max_consolidated_rows": f"; the default limit of {InstanceConfig.max_consolidated_rows} consolidated "
-                                      "readings applies until it is set with `nsf config --max-consolidated-rows N`"}
+                                      "readings applies until it is set with `nsf config --max-consolidated-rows N`",
+             "graph_rule_migration": "; the graph-rule migration is treated as off until it is set with "
+                                     "`nsf config --graph-rule-migration` or `--no-graph-rule-migration`"}
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
             for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
 
@@ -361,6 +413,10 @@ def create(path, now, *, action_semantics=None, config=None, founding_graph=None
             db.execute("INSERT INTO meta VALUES('birth',?)", (json.dumps(record, sort_keys=True),))
             for rule in birth_rules:
                 rules.register(db, rule, now, created_by="birth")
+            # A new individual's rules are the ones it was born with, chosen now: the migration for files of older
+            # software (graph_migration.py) never applies to it.
+            from . import graph_migration
+            graph_migration.settle_at_birth(db, now)
             bump_state_version(db)
         if founding_graph is not None:
             from . import graphs
@@ -377,13 +433,26 @@ def create(path, now, *, action_semantics=None, config=None, founding_graph=None
     return db
 
 
-def open_existing(path):
+def open_existing(path, *, graph_migration=True):
+    """Open an individual, bringing its schema up to date. graph_migration=False skips the graph-rule migration
+    (graph_migration.apply): `nsf config`, so that an owner can opt out before it runs, and `nsf graph migration`."""
     path = Path(path)
     if not path.is_file():
         raise NotFound(f"No instance at {path}; create one with `nsf init --db {path}`")
     db = connect(path)
-    migrate(db)
-    birth(db)  # fail early on a non-instance database
+    try:
+        migrate(db)
+        birth(db)  # fail early on a non-instance database
+        # A dataset forgotten by an earlier version left the weights learned from it (ADR-048): finish that forget
+        # once, as a restore of any archive does in its copy. Not an owner's choice: the owner already forgot it.
+        from . import governance
+        governance.finish_earlier_forgets(db, time.time())
+        if graph_migration:
+            from . import graph_migration as adopt
+            adopt.apply(db, time.time())
+    except BaseException:
+        db.close()
+        raise
     return db
 
 
@@ -509,6 +578,10 @@ def inventory(db):
     web = web_state.counts(db)
     if web:
         out["web"] = web
+    from .graph_migration import shown       # lazy: graph_migration imports this module
+    migration = shown(db)
+    if migration is not None:
+        out["graph_rule_migration"] = migration   # absent for an individual it never applied to
     warnings = consolidation_warnings(db, out["memory"]["consolidated_readings"])
     if warnings:
         out["warnings"] = warnings      # absent while there is nothing to say (the limit on consolidated readings)

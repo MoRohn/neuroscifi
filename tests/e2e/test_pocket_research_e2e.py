@@ -157,7 +157,10 @@ def test_research_journey_with_offline_copy(slow_spark, new_page):
     expect(page.locator("#researchsaved li")).to_have_count(1)
     vault = page.evaluate("localStorage.getItem('neuroscifi.field.v1')")
     assert "4.2.0" not in vault and "Zephyr" not in vault, "the saved report is encrypted"
-    assert [json.loads(raw) for route, raw in sent if route == "research_submit"] == [{"objective": QUESTION}]
+    submitted = [json.loads(raw) for route, raw in sent if route == "research_submit"]
+    assert [{k: v for k, v in s.items() if k != "request"} for s in submitted] == [{"objective": QUESTION}]
+    assert all(re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", s["request"])
+               for s in submitted), "the question's outbox key (a UUID v4 made on the device) and nothing else"
     assert {route for route, _ in sent if route.startswith("research_")} == {   # session: who drives it (status)
         "research_list", "research_submit", "research_get", "research_session"}
     assert all(json.loads(raw)["action"] == "status" for route, raw in sent if route == "research_session")

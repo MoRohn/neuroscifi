@@ -1,0 +1,129 @@
+{
+ "what": "Remaining-items round, lane C: the copied samples found from flagged readings (schema 16, evidence_consolidated.copied kept by triggers) instead of a grouped pass over every reading on every belief computation; a restore that applies the live file's tombstones in batches inside one snapshot instead of reading them whole",
+ "script": "scripts/bench_consolidation.py WORKDIR flags 100000 1000000, run once with the code of c565c20 and once with this lane's code on PYTHONPATH",
+ "generated_at": "2026-11-24",
+ "host": "DGX Spark (aarch64), shared with other tenants and other lanes' test runs",
+ "method": "Files written as for `copies` (every reading consolidated, every reading with a sample id; 200 roots, one confirmed camera change), each tree building its own file the same way, then closed and reopened. compute() and decide(): minimum of 5 warm wall-clock calls. beliefs_identical: the SHA-256 of everything compute() returns, equal between the two trees. Restore: checkpoints.restore of an archive of the file without copies, every reading's tombstone replayed; wall-clock and the tracemalloc peak.",
+ "by_readings": {
+  "100000": {
+   "each_sample_once": {
+    "readings": 100000,
+    "compute_ms": {
+     "before": 124.5,
+     "after": 23.5
+    },
+    "decide_ms": {
+     "before": 198.0,
+     "after": 23.8
+    },
+    "beliefs_identical": true,
+    "restore": {
+     "tombstones_applied": 100020,
+     "seconds": {
+      "before": 3.6,
+      "after": 1.9
+     },
+     "python_peak_mib": {
+      "before": 29.0,
+      "after": 4.2
+     }
+    }
+   },
+   "one_sample_in_ten_twice": {
+    "readings": 100001,
+    "compute_ms": {
+     "before": 102.3,
+     "after": 93.7
+    },
+    "decide_ms": {
+     "before": 98.5,
+     "after": 97.7
+    },
+    "beliefs_identical": true
+   },
+   "each_sample_twice": {
+    "readings": 100000,
+    "compute_ms": {
+     "before": 100.0,
+     "after": 98.0
+    },
+    "decide_ms": {
+     "before": 107.7,
+     "after": 97.6
+    },
+    "beliefs_identical": true
+   }
+  },
+  "1000000": {
+   "each_sample_once": {
+    "readings": 1000000,
+    "compute_ms": {
+     "before": 465.1,
+     "after": 118.2
+    },
+    "decide_ms": {
+     "before": 469.2,
+     "after": 118.4
+    },
+    "beliefs_identical": true,
+    "restore": {
+     "tombstones_applied": 1000020,
+     "seconds": {
+      "before": 18.6,
+      "after": 22.7
+     },
+     "python_peak_mib": {
+      "before": 279.1,
+      "after": 4.2
+     }
+    }
+   },
+   "one_sample_in_ten_twice": {
+    "readings": 1000000,
+    "compute_ms": {
+     "before": 773.9,
+     "after": 749.1
+    },
+    "decide_ms": {
+     "before": 802.3,
+     "after": 775.6
+    },
+    "beliefs_identical": true
+   },
+   "each_sample_twice": {
+    "readings": 1000000,
+    "compute_ms": {
+     "before": 793.9,
+     "after": 856.7
+    },
+    "decide_ms": {
+     "before": 798.1,
+     "after": 885.2
+    },
+    "beliefs_identical": true
+   }
+  }
+ },
+ "rechecked": "The two copied cases at a million readings timed again alternately on both trees, 9 calls each: each_sample_twice min 803.9/798.8 and 745.3/800.3 ms, one_sample_in_ten_twice 745.0/747.4 and 738.5/743.5 ms (before/after); medians within 1.5 %",
+ "reading": "Without copied samples the grouped pass is gone: at a million readings compute() is the tallies' pass and the rest (465 to 118 ms). With copied samples (one in ten, or all, recorded twice) the grouped pass still runs and the cost is unchanged within the host's noise. A restore's Python memory no longer grows with the tombstones (279 to 4 MiB at a million); its time is the replay's, as before.",
+ "mutation_check": {
+  "what": "Each safeguard broken once: the 54 of phase 3 (one anchor moved to the restore's new snapshot block) and 10 new ones (the three triggers, the migration's flagging, the copied samples found from the flags, stale flags dropped, many flags to the grouped pass, every tombstone batch applied, the snapshot held until the replay ends, revision causes scrubbed when streamed); tests/instance/test_consolidation_copied.py, test_consolidation_limit.py, test_consolidation.py and test_erasure.py run against each",
+  "first_run": {
+   "mutations": 64,
+   "caught": 63,
+   "missed": [
+    "many flagged samples go to the grouped pass"
+   ],
+   "then": "a test added for the miss (test_more_flagged_samples_than_are_looked_up_go_to_the_grouped_pass)"
+  },
+  "second_run": {
+   "what": "the same 64, after that test",
+   "mutations": 64,
+   "caught": 64,
+   "missed": []
+  }
+ },
+ "tests": {
+  "non_browser_suite": "4694 passed, 18 skipped (phase 3 recorded 4584 passed, 18 skipped on 1ece09b; the base was not rerun by this lane)"
+ }
+}

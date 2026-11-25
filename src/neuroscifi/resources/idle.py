@@ -35,7 +35,7 @@ webcortex/semantic.py), so a later lookup is ranked by meaning again. Their relo
 """
 from __future__ import annotations
 
-from contextlib import ExitStack, closing, contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import fcntl
 import json
@@ -59,6 +59,12 @@ CRITICAL_SHARE = 0.25          # at critical pressure the idle timeout is a quar
 CRITICAL_FLOOR = 120.0         # ... but never under two minutes
 COMMAND_TIMEOUT = 120.0        # stop / start; the wait commands carry their own limit
 EVENTS_KEPT = 500
+# An open voice session holds off every unload while it is used; one left open and quiet (a phone that keeps it
+# open in a pocket) stops holding it off after this long without audio, a typed turn, a capture or mode change, an
+# interruption, a confirmation or a reply fetched (§6 item 13). `nsf resources idle --set voice=DURATION|off`; off is
+# 0.7.0's rule: an open session holds it off for as long as it stays open.
+VOICE_QUIET = 1800.0
+VOICE = "voice"                 # the name the owner sets it under, beside the services' names
 RUNNING = ("discovering", "reading", "evaluating", "synthesizing")
 REPO = Path(os.environ.get("NSF_REPO") or Path(__file__).resolve().parents[3])
 
@@ -469,18 +475,37 @@ class Idle:
 
     # ---- configuration ----------------------------------------------------------------------------------------
     def configure(self, changes: dict) -> dict:
-        """{service: seconds or None}. Returns the timeouts now in force."""
+        """{service: seconds or None}, and VOICE: how long an open voice session may stay quiet and still hold off
+        every unload (None: for as long as it is open). Returns the timeouts now in force."""
         for name in changes:
-            if name not in self.services:
-                raise ValueError(f"unknown service {name!r} (one of {', '.join(self.services)})")
+            if name not in self.services and name != VOICE:
+                raise ValueError(f"unknown service {name!r} (one of {', '.join(self.services)}, or {VOICE})")
         with self._state() as data:
             for name, seconds in changes.items():
-                data["timeouts"][name] = seconds
+                if name == VOICE:
+                    data["voice_quiet_s"] = "off" if seconds is None else seconds
+                else:
+                    data["timeouts"][name] = seconds
             timeouts = dict(data["timeouts"])
         for name, seconds in changes.items():
-            self._event(name, "configure", "owner set the idle timeout to " +
-                        ("off" if seconds is None else _minutes(seconds)), timeout_s=seconds)
+            if name == VOICE:
+                self._event(name, "configure", "owner set how long an open voice session may stay quiet and still "
+                            "hold off unloading to " + ("off (while it is open)" if seconds is None
+                                                        else _minutes(seconds)), timeout_s=seconds)
+            else:
+                self._event(name, "configure", "owner set the idle timeout to " +
+                            ("off" if seconds is None else _minutes(seconds)), timeout_s=seconds)
         return timeouts
+
+    def voice_quiet(self) -> float | None:
+        """Seconds an open voice session may stay quiet and still hold off unloading; None: for as long as it is
+        open. VOICE_QUIET until the owner sets it; a value that is not a number of seconds reads as the default."""
+        value = self.read().get("voice_quiet_s", VOICE_QUIET)
+        if value == "off":
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            return VOICE_QUIET
+        return float(value)
 
     def timeouts(self) -> dict:
         data = self.read()["timeouts"]
@@ -523,64 +548,40 @@ class Idle:
                 return bool(self.read_ready(f"http://{where}:{port}{path}"))
         return None
 
-    def voice_session(self) -> bool:
-        return policy.voice_session_active(self.db_path, now=self.clock())
+    def voice_session(self, quiet: float | None = None) -> bool:
+        """An open voice session, of this process or another (the audio beacon); with `quiet`, one used within
+        that many seconds (policy.voice_session_active)."""
+        return policy.voice_session_active(self.db_path, now=self.clock(), quiet=quiet)
 
     def running_tasks(self) -> int | None:
         """How many research tasks run now (a running stage with a live lease); None when this account cannot
         tell. The pass then unloads nothing: where the idle policy runs as another account than the one that owns
         the database (deploy/install.sh --idle), a database it may not read must not read as "nothing runs"."""
-        # The database and its write-ahead log's two files are the service account's (review L5, L4b): SQLite opens
-        # all three, so a link, a FIFO (an open that never returns, on every pass) or a device under any of the three
-        # names is not an answer: each must be a plain file or absent, and nothing is opened otherwise. What remains
-        # is a swap after this look and before SQLite's open, which needs a race; its worst is a pass that hangs
-        # until its unit's TimeoutStartSec and unloads nothing, as an unreadable file would.
+        # The database is the service account's: shared.read_database opens it read only, refuses a link, a FIFO or
+        # a device under its three names (review L5, L4b) and trusts nothing of its schema. Its worst is a pass that
+        # waits until its unit's TimeoutStartSec and unloads nothing, as an unreadable file would.
         self.db_problem = None
-        for path in (str(self.db_path), f"{self.db_path}-wal", f"{self.db_path}-shm"):
-            try:
-                kind = os.lstat(path).st_mode
-            except FileNotFoundError:
-                if path == str(self.db_path):
-                    return 0
-                continue
-            except OSError:
-                return None   # the folder itself is closed to this account
-            if not stat.S_ISREG(kind):
-                self.db_problem = f"{os.path.basename(path)} is not a plain file; whether a task runs cannot be told"
-                return None
-        if not os.access(self.db_path, os.R_OK):
-            return None
         sql = (f"SELECT count(*) FROM web_tasks WHERE status IN ({','.join('?' * len(RUNNING))}) "
                "AND lease_holder IS NOT NULL AND lease_expires_at>=?")
-        # A reader that may not write beside the database (the operations account: the folder is the service
-        # account's) cannot create the write-ahead log's files. While a process has the database open they exist
-        # and the ordinary read-only open works. When they do not exist nobody has it open, so the file is complete
-        # as it stands and is read as it stands (immutable: no lock file is needed).
-        plain = f"file:{self.db_path}?mode=ro"
-        attempts = [plain]
-        if not os.path.exists(f"{self.db_path}-wal") and not os.access(self.db_path.parent, os.W_OK):
-            attempts.append(f"{plain}&immutable=1")
-        for n, uri in enumerate(attempts):
-            try:
-                with closing(sqlite3.connect(uri, uri=True, timeout=5)) as db:
-                    # Read only, and nothing of the writer's choosing runs here (review L5): no function a view or
-                    # a trigger names is trusted, nothing is written, and web_tasks must be a table, not a view.
-                    db.execute("PRAGMA trusted_schema=OFF")
-                    db.execute("PRAGMA query_only=ON")
-                    kind = db.execute("SELECT type FROM sqlite_schema WHERE name='web_tasks'").fetchone()
-                    if kind is None:
-                        return 0      # no web cortex tables yet: nothing runs
-                    if kind[0] != "table":
-                        return None
-                    return db.execute(sql, (*RUNNING, self.clock())).fetchone()[0]
-            except sqlite3.OperationalError as error:
-                if "no such table" in str(error):
-                    return 0  # no web cortex tables yet: nothing runs
-                if n + 1 == len(attempts):
-                    return None
-            except sqlite3.Error:
-                return None
-        return None
+        try:
+            with shared.read_database(self.db_path) as db:     # a file this account may not read: sqlite3.Error
+                kind = db.execute("SELECT type FROM sqlite_schema WHERE name='web_tasks'").fetchone()
+                if kind is None:
+                    return 0          # no web cortex tables yet: nothing runs
+                if kind[0] != "table":
+                    return None       # web_tasks must be a table, not a view
+                return db.execute(sql, (*RUNNING, self.clock())).fetchone()[0]
+        except FileNotFoundError:
+            return 0                  # no database: nothing runs
+        except shared.NotAFile as error:
+            self.db_problem = f"{error}; whether a task runs cannot be told"
+            return None
+        except OSError:
+            return None               # the folder itself is closed to this account
+        except sqlite3.OperationalError as error:
+            return 0 if "no such table" in str(error) else None
+        except sqlite3.Error:
+            return None
 
     def last_used(self, name) -> float | None:
         try:
@@ -605,9 +606,13 @@ class Idle:
             return {"enabled": False, "decisions": {}}
         sample = self.sample()
         level = sample["level"]
-        blockers = []
-        if self.voice_session():
+        blockers, notes = [], []
+        quiet = self.voice_quiet()
+        if self.voice_session(quiet):
             blockers.append("a voice session is open")
+        elif quiet is not None and self.voice_session():
+            notes.append(f"a voice session is open but unused for more than {_minutes(quiet)}: it no longer holds "
+                         f"off unloading (nsf resources idle --set {VOICE}=off keeps the rule of 0.7.0)")
         tasks = self.running_tasks()
         if tasks is None:
             blockers.append(getattr(self, "db_problem", None) or
@@ -634,7 +639,8 @@ class Idle:
                                        "timeout is off: it is never unloaded while idle"}
                     continue
             decisions[name] = self._consider(self.services[name], seconds, level, blockers, now)
-        return {"enabled": True, "level": level, "blockers": blockers, "decisions": decisions}
+        return {"enabled": True, "level": level, "blockers": blockers, "decisions": decisions,
+                **({"notes": notes} if notes else {})}
 
     def group(self, name) -> list[str]:
         """The services that are one container with `name`, in the order of the service list (the single memory
@@ -954,9 +960,12 @@ class Idle:
                 "reload_estimate_s": self.estimate(name)}
         return {"automatic": any(v is not None for v in timeouts.values()), "services": services,
                 **({"state_problems": self.problems} if getattr(self, "problems", None) else {}),
-                "critical_share": CRITICAL_SHARE, "events": self.events(limit=20),
+                "critical_share": CRITICAL_SHARE, "voice_quiet_s": self.voice_quiet(),
+                "events": self.events(limit=20),
                 "how": "nsf resources idle --set vllm=30m --set asr=15m --set tts=15m --set embed=15m --set "
-                       "rerank=15m; nsf resources tick (neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
+                       "rerank=15m; an open voice session holds off unloading while used within voice_quiet_s "
+                       f"(--set {VOICE}=30m, or {VOICE}=off: while it is open); nsf resources tick "
+                       "(neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
 
 
 _LOADS: dict = {}                   # (db_path, service) -> the _Load running in this process

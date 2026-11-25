@@ -287,7 +287,7 @@ def open_hypothesis(db, *, key, statement, origin, verification, claims, values,
         raise ValidationError("statement must be a non-blank string")
     polarity = -1 if polarity is not None and polarity < 0 else 1
     for h in hypotheses(db, status="open", key=key, limit=50):
-        if _relation(values, polarity, h["claim_values"], h["polarity"]) == "same":
+        if _relation(values, polarity, h["claim_values"], h["polarity"], h.get("statement")) == "same":
             merged = list(dict.fromkeys(h["claims"] + list(claims)))
             db.execute("UPDATE web_hypotheses SET claims=?, verification=?, updated_at=?, "
                        "knowledge_id=coalesce(knowledge_id, ?) WHERE id=?",
@@ -310,10 +310,13 @@ def open_hypothesis(db, *, key, statement, origin, verification, claims, values,
     return hid, True
 
 
-def _relation(values, polarity, other_values, other_polarity) -> str:
-    """'same' | 'conflict' | 'series' (consolidate._compare over plain values)."""
+def _relation(values, polarity, other_values, other_polarity, other_statement=None) -> str:
+    """'same' | 'conflict' | 'series' | 'incomparable' (consolidate._compare over plain values). Given the other
+    side's statement (a hypothesis's), its stored values are read as this version reads that statement, as a
+    knowledge item's are (consolidate._read_values): a forecast saved when "2,900 residents" read as the year 2900
+    is settled as a quantity."""
     from .consolidate import _compare
-    return _compare(list(values or []), polarity, {"polarity": other_polarity,
+    return _compare(list(values or []), polarity, {"polarity": other_polarity, "statement": other_statement,
                                                    "claim_values": list(other_values or [])})[0]
 
 
@@ -422,7 +425,7 @@ def observe(db, task_id, observed, now, *, freshness_class="stable", ttl_overrid
             continue
         cluster, verdict, statement = match
         values, polarity = _values(cluster)
-        relation = _relation(values, polarity, hyp["claim_values"], hyp["polarity"])
+        relation = _relation(values, polarity, hyp["claim_values"], hyp["polarity"], hyp.get("statement"))
         observation = {"task_id": task_id, "state": verdict["state"], "basis": verdict.get("basis"),
                        "statement": statement, "values": values, "polarity": polarity, "relation": relation,
                        "confidence": verdict.get("confidence"), "at": now, "match": how, "key": cluster.key}
@@ -520,16 +523,26 @@ def knowledge_prediction_error(db, pred, item, reason, consolidation, now) -> di
 
 # ---- calibration --------------------------------------------------------------------------------------------
 
+def _counted(alias=""):
+    """SQL: the prediction's settlement still stands on an observation the individual holds. A task the owner
+    forgot takes its observation with it (governance._scrub_observations leaves {"forgotten": true}): the outcome
+    stays on the prediction (ADR-029), but it no longer counts as evidence of how the forecasts fare (ADR-048)."""
+    column = f"{alias}detail"
+    return (f"coalesce(CASE WHEN json_valid({column}) THEN json_extract({column},'$.observation.forgotten') END, 0)"
+            " IS NOT 1")
+
+
 def calibration(db, *, since=None) -> dict:
     """Brier score and reliability bins over every settled prediction with a forecast probability: outcome
     'confirmed' = 1, 'error' = 0 ('inconclusive' is excluded: nothing was observed). Skill against the base rate
-    (climatology) and the expected calibration error (bin-weighted |mean forecast - observed frequency|)."""
+    (climatology) and the expected calibration error (bin-weighted |mean forecast - observed frequency|).
+    A settlement whose observation went with a forgotten task does not count (_counted)."""
     since = state.finite(since, 0.0)
     rows = db.execute("SELECT probability, outcome FROM web_predictions WHERE outcome IN ('confirmed','error') AND "
-                      "probability IS NOT NULL AND coalesce(checked_at, 0)>=?", (since,)).fetchall()
+                      f"probability IS NOT NULL AND coalesce(checked_at, 0)>=? AND {_counted()}", (since,)).fetchall()
     n = len(rows)
     inconclusive = db.execute("SELECT count(*) FROM web_predictions WHERE outcome='inconclusive' AND "
-                              "coalesce(checked_at,0)>=?", (since,)).fetchone()[0]
+                              f"coalesce(checked_at,0)>=? AND {_counted()}", (since,)).fetchone()[0]
     out = {"n": n, "inconclusive": inconclusive, "brier": None, "base_rate": None, "brier_reference": None,
            "skill": None, "ece": None, "bins": []}
     if not n:
@@ -561,8 +574,8 @@ def calibration(db, *, since=None) -> dict:
 # shift = 0 and tilt = 0 is the forecast as stated, and that is where the estimate starts: it is the maximum of the
 # log-likelihood of the settled outcomes under a Gaussian prior on shift and tilt around 0, so a few settlements move
 # it little, and below RECALIBRATION_MINIMUM settlements it is not moved at all. Computed on read from the settled
-# rows of web_predictions (the rows calibration() reads): no stored parameter, so a prediction a forget removes
-# stops counting at once. docs/knowledge/KNOWLEDGE_EVOLUTION.md section 5 has the measurements behind the numbers.
+# rows of web_predictions (the rows calibration() reads): no stored parameter, so a prediction a forget removes, or
+# one whose settling task the owner forgot, stops counting at once. docs/knowledge/KNOWLEDGE_EVOLUTION.md section 5 has the measurements behind the numbers.
 
 RECALIBRATION_KINDS = ("knowledge", "hypothesis", "owner")   # one mapping per kind of forecaster
 # The four numbers below were chosen on the development streams of bench/calibration.py (the lowest mean distance
@@ -573,6 +586,10 @@ RECALIBRATION_WINDOW = 100        # only the most recent settlements count (a fo
 RECALIBRATION_PRIOR_SHIFT = 16.0  # prior precision of shift: about 64 settlements at even odds weigh as much
 RECALIBRATION_PRIOR_TILT = 16.0   # prior precision of tilt, in the same units
 RECALIBRATION_TILT = (-1.0, 1.0)  # slope 1 + tilt stays in [0, 2]: the mapping never reverses an order
+# A sudden change of a forecaster's habits (ADR-048): the window is tested for a split every STEP settlements; above
+# THRESHOLD (twice the log-likelihood gain of fitting the two parts apart) the older part is dropped. None: off.
+RECALIBRATION_CHANGE_STEP = 10
+RECALIBRATION_CHANGE_THRESHOLD = None
 IDENTITY = {"applied": False, "shift": 0.0, "tilt": 0.0, "centre": 0.0}
 
 
@@ -585,17 +602,9 @@ def _sigmoid(x: float) -> float:
     return 1.0 / (1.0 + math.exp(-x)) if x >= 0 else math.exp(x) / (1.0 + math.exp(x))
 
 
-def fit_recalibration(pairs, *, minimum=RECALIBRATION_MINIMUM, window=RECALIBRATION_WINDOW,
-                      prior_shift=RECALIBRATION_PRIOR_SHIFT, prior_tilt=RECALIBRATION_PRIOR_TILT) -> dict:
-    """The mapping for one kind of forecast from its settled (forecast, outcome) pairs, oldest first; outcome 1 =
-    confirmed, 0 = error. {n (pairs given), used (the last `window`), minimum, applied, shift, tilt, centre};
-    applied False (fewer than `minimum` pairs in the window) is the identity. Deterministic: Newton steps from the
-    identity on a concave objective, forecasts grouped by value. prior_tilt None fits the shift alone."""
-    pairs = [(float(p), 1.0 if y else 0.0) for p, y in pairs if state.finite(p) is not None]
-    used = pairs[-int(window):] if window else pairs
-    out = {"n": len(pairs), "used": len(used), "minimum": int(minimum)} | IDENTITY
-    if not used or len(used) < minimum:
-        return out
+def _solve(used, prior_shift, prior_tilt):
+    """(shift, tilt, centre) maximising the log-likelihood of `used` [(p, y)] under the Gaussian prior. Newton steps
+    from the identity on a concave objective, forecasts grouped by value; prior_tilt None fits the shift alone."""
     groups: dict = {}
     for p, y in used:
         g = groups.setdefault(round(_logit(p), 9), [0.0, 0.0])
@@ -627,6 +636,59 @@ def fit_recalibration(pairs, *, minimum=RECALIBRATION_MINIMUM, window=RECALIBRAT
         a, c = a + step_a, new_c
         if moved < 1e-10:
             break
+    return a, c, centre
+
+
+def _loglik(used, a, c, centre):
+    """Log-likelihood of the outcomes of `used` under the mapping (shift a, tilt c, centre)."""
+    total = 0.0
+    for p, y in used:
+        z = _logit(p)
+        q = min(1.0 - 1e-12, max(1e-12, _sigmoid(z + a + c * (z - centre))))
+        total += math.log(q) if y else math.log(1.0 - q)
+    return total
+
+
+def _change_point(used, step, prior_shift, prior_tilt):
+    """(cut, statistic): the split of `used` into an earlier and a later part, at a multiple of `step` with at least
+    `step` settlements on each side, that most improves the log-likelihood of fitting the two parts apart over
+    fitting them together (twice the gain); (None, 0.0) when no split improves it."""
+    whole = _loglik(used, *_solve(used, prior_shift, prior_tilt))
+    best, best_stat = None, 0.0
+    for cut in range(step, len(used) - step + 1, step):
+        before, after = used[:cut], used[cut:]
+        stat = 2.0 * (_loglik(before, *_solve(before, prior_shift, prior_tilt))
+                      + _loglik(after, *_solve(after, prior_shift, prior_tilt)) - whole)
+        if stat > best_stat + 1e-12:
+            best, best_stat = cut, stat
+    return best, best_stat
+
+
+def fit_recalibration(pairs, *, minimum=RECALIBRATION_MINIMUM, window=RECALIBRATION_WINDOW,
+                      prior_shift=RECALIBRATION_PRIOR_SHIFT, prior_tilt=RECALIBRATION_PRIOR_TILT,
+                      change_step=RECALIBRATION_CHANGE_STEP, change_threshold=RECALIBRATION_CHANGE_THRESHOLD) -> dict:
+    """The mapping for one kind of forecast from its settled (forecast, outcome) pairs, oldest first; outcome 1 =
+    confirmed, 0 = error. {n (pairs given), used (the last `window`, or fewer after a change), minimum, applied,
+    shift, tilt, centre}; applied False (fewer than `minimum` pairs used) is the identity. Deterministic.
+
+    A forecaster's habits can change at once (a source it trusted turns unreliable): then what the window learned
+    describes the old habits and reads the next forecasts worse than they are stated. With change_threshold set,
+    the window is split where fitting its two parts apart gains most (_change_point); when twice that gain exceeds
+    the threshold, only the settlements after the split are used, and below `minimum` of them the mapping is the
+    identity again until enough have settled. `change` then says where and how strongly (ADR-048)."""
+    pairs = [(float(p), 1.0 if y else 0.0) for p, y in pairs if state.finite(p) is not None]
+    used = pairs[-int(window):] if window else pairs
+    out = {"n": len(pairs), "used": len(used), "minimum": int(minimum)} | IDENTITY
+    if not used or len(used) < minimum:
+        return out
+    if change_threshold is not None and change_step and len(used) >= 2 * change_step:
+        cut, stat = _change_point(used, int(change_step), prior_shift, prior_tilt)
+        if cut is not None and stat > change_threshold:
+            used = used[cut:]
+            out |= {"used": len(used), "change": {"dropped": cut, "statistic": round(stat, 3)}}
+            if len(used) < minimum:
+                return out
+    a, c, centre = _solve(used, prior_shift, prior_tilt)
     return out | {"applied": True, "shift": round(a, 6), "tilt": round(c, 6), "centre": round(centre, 6)}
 
 
@@ -653,7 +715,7 @@ def settled_forecasts(db) -> dict:
     for kind, p, outcome in db.execute(
             f"SELECT {_KIND_SQL}, p.probability, p.outcome FROM web_predictions p LEFT JOIN web_hypotheses h ON "
             "h.id=p.hypothesis_id WHERE p.outcome IN ('confirmed','error') AND p.probability IS NOT NULL "
-            "ORDER BY coalesce(p.checked_at, 0), p.id"):
+            f"AND {_counted('p.')} ORDER BY coalesce(p.checked_at, 0), p.id"):
         out[kind].append((float(p), 1.0 if outcome == "confirmed" else 0.0))
     return out
 
@@ -759,7 +821,9 @@ def metrics(db, now, *, since=None, record=False) -> dict:
     clarified_h = one("SELECT count(*) FROM web_hypotheses WHERE origin IN ('conflicting','disputed') AND status IN "
                       "('supported','refuted','revised') AND resolved_at>=?", since)
     outcomes = dict(db.execute("SELECT outcome, count(*) FROM web_predictions WHERE outcome IS NOT NULL AND "
-                               "coalesce(checked_at,0)>=? GROUP BY outcome", (since,)).fetchall())
+                               f"coalesce(checked_at,0)>=? AND {_counted()} GROUP BY outcome", (since,)).fetchall())
+    uncounted = one("SELECT count(*) FROM web_predictions WHERE outcome IS NOT NULL AND coalesce(checked_at,0)>=? "
+                    f"AND NOT ({_counted()})", since)
     decided = outcomes.get("confirmed", 0) + outcomes.get("error", 0)
     finished = db.execute("SELECT usage, json_extract(result,'$.memory.answered_from_memory') FROM web_tasks WHERE "
                           "status IN ('completed','partial') AND coalesce(finished_at, updated_at)>=?",
@@ -778,6 +842,7 @@ def metrics(db, now, *, since=None, record=False) -> dict:
                         "inconclusive": outcomes.get("inconclusive", 0),
                         "open": one("SELECT count(*) FROM web_predictions WHERE outcome IS NULL"),
                         "accuracy": round(outcomes.get("confirmed", 0) / decided, 6) if decided else None,
+                        "settled_by_forgotten_tasks": uncounted,
                         "calibration": calibration(db, since=since)},
         "retrieval": ({"measurable": True, "finished_tasks": len(finished), "answered_from_memory": from_memory,
                        "memory_answer_rate": round(from_memory / len(finished), 6)} if finished else

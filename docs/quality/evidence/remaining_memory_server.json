@@ -1,0 +1,705 @@
+{
+ "what": "The single memory server of ENGINEERING_PLAN \u00a76 item 7, remaining-items round, lane M: (1) the container that holds the models and the key without a network, its ports published by a forwarder that holds neither; (2) kept-alive connections no longer hold the connection slots; (3) the cause of the drift of the ten nearest statements against the vLLM pair.",
+ "generated_at": "2026-11-24",
+ "host": "the reference DGX Spark (GB10, unified memory), shared with other tenants and with the other lanes of the round running their tests: load average 15 to 21 during these measurements",
+ "image": "the digest-pinned vLLM image of deploy/memory/memory.env; nothing pulled",
+ "containers": "own names (neuroscifi-memlite-m-*), own ports (18463 for the vLLM reference, 18471/18472 for the server), own network (neuroscifi-memlite-m-net), started through deploy/memory/run.sh with a scratch NSF_MEMORY_DIR; one server at a time; all stopped and removed",
+ "egress": {
+  "how": "NSF_MEMORY_EGRESS=none (the default): the model server runs with --network none and listens on two Unix sockets (--unix-dir) in a 0700 folder; deploy/memory/forward.py, in a container of its own (no device, no model, no key, the sockets' folder read-only, 256 MiB, 32 pids), publishes ports 8000/8001 on 127.0.0.1 and joins each connection to its socket",
+  "probe_inside_the_model_server": {
+   "interfaces": [
+    "lo"
+   ],
+   "tcp_to_its_former_network_gateway": "OSError errno=101 (network unreachable)",
+   "tcp_to_dockers_default_bridge_gateway": "OSError errno=101",
+   "tcp_to_a_public_address": "OSError errno=101 (no route: no packet left)",
+   "dns": "gaierror"
+  },
+  "probe_inside_the_forwarder": {
+   "interfaces": [
+    "eth0",
+    "lo"
+   ],
+   "tcp_to_its_network_gateway": "timed out (a route exists; it holds nothing)"
+  },
+  "probe_inside_the_earlier_server (c565c20, bridge)": {
+   "interfaces": [
+    "eth0",
+    "lo"
+   ],
+   "tcp_to_its_network_gateway": "timed out (a route exists)"
+  },
+  "published_ports": {
+   "forwarder": [
+    "8000/tcp -> 127.0.0.1:18471",
+    "8001/tcp -> 127.0.0.1:18472"
+   ],
+   "model_server": "none"
+  },
+  "reached_from_the_hosts_lan_address": "connection refused",
+  "reached_from_127.0.0.1": "200 /health",
+  "socket_files": "srw------- in a drwx------ folder of the invoking user",
+  "memory": {
+   "model_server_GiB": 3.718,
+   "forwarder_MiB": 11.88,
+   "forwarder_pids": 1
+  }
+ },
+ "benchmark": {
+  "reference": "open_items_memory_server.json single_1 and single_2 (phase 3, the server published directly)",
+  "isolated_1": {
+   "near": {
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0,
+    "mrr": 1.0
+   },
+   "para": {
+    "recall_at_1": 0.979,
+    "recall_at_3": 1.0,
+    "mrr": 0.99
+   },
+   "noname": {
+    "recall_at_1": 0.917,
+    "recall_at_3": 0.875,
+    "mrr": 0.917,
+    "not_found": 1
+   },
+   "topic": {
+    "all_facts_on_top": 1.0,
+    "recall_of_facts": 1.0
+   },
+   "none": {
+    "false_positive_rate": 0.3
+   },
+   "all_answerable": {
+    "recall_at_1": 0.981,
+    "recall_at_3": 0.986,
+    "mrr": 0.986
+   },
+   "query_ms": {
+    "p50": 86.874,
+    "p95": 115.794,
+    "max": 133.796
+   }
+  },
+  "isolated_2": {
+   "near": {
+    "recall_at_1": 1.0,
+    "recall_at_3": 1.0,
+    "mrr": 1.0
+   },
+   "para": {
+    "recall_at_1": 0.979,
+    "recall_at_3": 1.0,
+    "mrr": 0.99
+   },
+   "noname": {
+    "recall_at_1": 0.917,
+    "recall_at_3": 0.875,
+    "mrr": 0.917,
+    "not_found": 1
+   },
+   "topic": {
+    "all_facts_on_top": 1.0,
+    "recall_of_facts": 1.0
+   },
+   "none": {
+    "false_positive_rate": 0.3
+   },
+   "all_answerable": {
+    "recall_at_1": 0.981,
+    "recall_at_3": 0.986,
+    "mrr": 0.986
+   },
+   "query_ms": {
+    "p50": 96.36,
+    "p95": 156.721,
+    "max": 205.007
+   }
+  },
+  "after_the_forwarders_drain_rewrite": {
+   "isolated_3": {
+    "near": {
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0,
+     "mrr": 1.0
+    },
+    "para": {
+     "recall_at_1": 0.979,
+     "recall_at_3": 1.0,
+     "mrr": 0.99
+    },
+    "noname": {
+     "recall_at_1": 0.917,
+     "recall_at_3": 0.875,
+     "mrr": 0.917,
+     "not_found": 1
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "recall_of_facts": 1.0
+    },
+    "none": {
+     "false_positive_rate": 0.3
+    },
+    "all_answerable": {
+     "recall_at_1": 0.981,
+     "recall_at_3": 0.986,
+     "mrr": 0.986
+    },
+    "query_ms": {
+     "p50": 156.593,
+     "p95": 179.344,
+     "max": 211.06
+    }
+   },
+   "isolated_4": {
+    "near": {
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0,
+     "mrr": 1.0
+    },
+    "para": {
+     "recall_at_1": 0.979,
+     "recall_at_3": 1.0,
+     "mrr": 0.99
+    },
+    "noname": {
+     "recall_at_1": 0.917,
+     "recall_at_3": 0.875,
+     "mrr": 0.917,
+     "not_found": 1
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "recall_of_facts": 1.0
+    },
+    "none": {
+     "false_positive_rate": 0.3
+    },
+    "all_answerable": {
+     "recall_at_1": 0.981,
+     "recall_at_3": 0.986,
+     "mrr": 0.986
+    },
+    "query_ms": {
+     "p50": 159.454,
+     "p95": 203.939,
+     "max": 265.962
+    }
+   },
+   "isolated_5": {
+    "near": {
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0,
+     "mrr": 1.0
+    },
+    "para": {
+     "recall_at_1": 0.979,
+     "recall_at_3": 1.0,
+     "mrr": 0.99
+    },
+    "noname": {
+     "recall_at_1": 0.917,
+     "recall_at_3": 0.875,
+     "mrr": 0.917,
+     "not_found": 1
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "recall_of_facts": 1.0
+    },
+    "none": {
+     "false_positive_rate": 0.3
+    },
+    "all_answerable": {
+     "recall_at_1": 0.981,
+     "recall_at_3": 0.986,
+     "mrr": 0.986
+    },
+    "query_ms": {
+     "p50": 108.35,
+     "p95": 136.706,
+     "max": 151.696
+    }
+   },
+   "isolated_6": {
+    "near": {
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0,
+     "mrr": 1.0
+    },
+    "para": {
+     "recall_at_1": 0.979,
+     "recall_at_3": 1.0,
+     "mrr": 0.99
+    },
+    "noname": {
+     "recall_at_1": 0.917,
+     "recall_at_3": 0.875,
+     "mrr": 0.917,
+     "not_found": 1
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "recall_of_facts": 1.0
+    },
+    "none": {
+     "false_positive_rate": 0.3
+    },
+    "all_answerable": {
+     "recall_at_1": 0.981,
+     "recall_at_3": 0.986,
+     "mrr": 0.986
+    },
+    "query_ms": {
+     "p50": 106.995,
+     "p95": 134.354,
+     "max": 145.396
+    }
+   }
+  },
+  "bridge_between_them": {
+   "bridge_1": {
+    "near": {
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0,
+     "mrr": 1.0
+    },
+    "para": {
+     "recall_at_1": 0.979,
+     "recall_at_3": 1.0,
+     "mrr": 0.99
+    },
+    "noname": {
+     "recall_at_1": 0.917,
+     "recall_at_3": 0.875,
+     "mrr": 0.917,
+     "not_found": 1
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "recall_of_facts": 1.0
+    },
+    "none": {
+     "false_positive_rate": 0.3
+    },
+    "all_answerable": {
+     "recall_at_1": 0.981,
+     "recall_at_3": 0.986,
+     "mrr": 0.986
+    },
+    "query_ms": {
+     "p50": 151.341,
+     "p95": 192.566,
+     "max": 350.015
+    }
+   },
+   "bridge_2": {
+    "near": {
+     "recall_at_1": 1.0,
+     "recall_at_3": 1.0,
+     "mrr": 1.0
+    },
+    "para": {
+     "recall_at_1": 0.979,
+     "recall_at_3": 1.0,
+     "mrr": 0.99
+    },
+    "noname": {
+     "recall_at_1": 0.917,
+     "recall_at_3": 0.875,
+     "mrr": 0.917,
+     "not_found": 1
+    },
+    "topic": {
+     "all_facts_on_top": 1.0,
+     "recall_of_facts": 1.0
+    },
+    "none": {
+     "false_positive_rate": 0.3
+    },
+    "all_answerable": {
+     "recall_at_1": 0.981,
+     "recall_at_3": 0.986,
+     "mrr": 0.986
+    },
+    "query_ms": {
+     "p50": 141.769,
+     "p95": 165.961,
+     "max": 184.963
+    }
+   }
+  },
+  "lookup_p50_ms_in_time_order": {
+   "isolated_1": 86.9,
+   "isolated_2": 96.4,
+   "isolated_3": 156.6,
+   "isolated_4": 159.5,
+   "bridge_1": 151.3,
+   "bridge_2": 141.8,
+   "isolated_5": 108.4,
+   "isolated_6": 107.0
+  },
+  "reading": "every class equal to phase 3's runs in all eight runs (near 1.0, para 0.979/1.0/0.99, noname 0.917/0.875/0.917 with 1 not found, topic 1.0, none 0.3). Lookup p50 moved with the host's load between 87 and 159 ms, the bridge way's with it (142 and 151 ms between isolated runs of 157 to 159 and 107 to 108): the per-request cost of the hop is measured paired, below"
+ },
+ "latency_ms": {
+  "note": "a new connection per request, as the gateway's calls; 200 of each; the host was loaded (load average about 20) and runs vary by 10 ms or more between minutes",
+  "isolated_runs": [
+   {
+    "embed_one_question_ms": {
+     "n": 200,
+     "p50": 49.94,
+     "p95": 65.02,
+     "max": 100.62
+    },
+    "rerank_ten_ms": {
+     "n": 200,
+     "p50": 52.59,
+     "p95": 108.17,
+     "max": 205.28
+    }
+   },
+   {
+    "embed_one_question_ms": {
+     "p50": 43.96,
+     "p95": 67.48
+    },
+    "rerank_ten_ms": {
+     "p50": 42.33,
+     "p95": 60.14
+    }
+   },
+   {
+    "embed_one_question_ms": {
+     "p50": 36.63,
+     "p95": 57.09
+    },
+    "rerank_ten_ms": {
+     "p50": 41.61,
+     "p95": 57.46
+    }
+   }
+  ],
+  "bridge_runs": [
+   {
+    "embed_one_question_ms": {
+     "n": 200,
+     "p50": 32.09,
+     "p95": 62.9,
+     "max": 102.58
+    },
+    "rerank_ten_ms": {
+     "n": 200,
+     "p50": 45.97,
+     "p95": 70.68,
+     "max": 94.62
+    }
+   },
+   {
+    "embed_one_question_ms": {
+     "p50": 32.47,
+     "p95": 61.3
+    },
+    "rerank_ten_ms": {
+     "p50": 44.04,
+     "p95": 66.49
+    }
+   }
+  ],
+  "the_forwarders_own_cost": {
+   "how": "300 pairs, each the same embedding request through the published port (Docker's proxy, forward.py, the socket) and straight to the server's socket, alternating, so the load weighs on both alike",
+   "through_the_published_port": {
+    "p50": 41.57,
+    "p95": 61.68
+   },
+   "straight_to_the_socket": {
+    "p50": 39.5,
+    "p95": 56.94
+   },
+   "difference_per_pair": {
+    "p50": 2.07,
+    "p95": 34.21
+   },
+   "after_the_drain_rewrite": {
+    "through_the_published_port_ms": {
+     "n": 300,
+     "p50": 40.53,
+     "p95": 63.23
+    },
+    "straight_to_the_socket_ms": {
+     "n": 300,
+     "p50": 45.04,
+     "p95": 62.15
+    },
+    "difference_per_pair_ms": {
+     "n": 300,
+     "p50": 2.56,
+     "p95": 31.07
+    }
+   },
+   "reading": "about 2 to 2.6 ms a request at the median, Docker's proxy included (which the bridge way pays too); the p95 of the differences is the host's load, not the hop"
+  }
+ },
+ "forwarder_room": {
+  "scenario": "a forwarder of 8 connections; 8 clients ask /health without the key and then neither read nor close; then one keyed call (scratch fwd_room_check.py, the fake models of the test suite)",
+  "before (the forwarder's first version: joined until 5 s after the server's end, a newcomer closed when full)": "the keyed call's connection was reset",
+  "after (a connection the server is done with is only drained, 2 s at most, and the oldest drained one makes room)": "HTTP/1.1 200 OK"
+ },
+ "ready_after_start_s": {
+  "isolated": [
+   35,
+   13,
+   10,
+   16,
+   9
+  ],
+  "bridge": [
+   20,
+   18
+  ],
+  "reading": "the first start built the cache; the same 6 to 20 s as before otherwise"
+ },
+ "kept_connections": {
+  "scenario": "through the published port: 32 connections that each made one keyed request and stay open, 32 that sent half of a request head and nothing more, then 15 keyed embedding calls",
+  "before (c565c20)": {
+   "first_requests_of_the_32": {
+    "200": 28,
+    "503": 4
+   },
+   "kept_alive_connections": 28,
+   "half_head_connections": 32,
+   "keyed_calls_meanwhile": [
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503,
+    503
+   ],
+   "their_ms": [
+    1.5,
+    0.8,
+    0.6,
+    0.5,
+    0.8,
+    0.7,
+    0.7,
+    1.4,
+    1.8,
+    0.7,
+    1.0,
+    5.8,
+    0.7,
+    0.8,
+    0.6
+   ],
+   "kept_connections_still_serving": 28
+  },
+  "after": {
+   "kept_alive_connections": 32,
+   "half_head_connections": 32,
+   "keyed_calls_meanwhile": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ],
+   "their_ms": [
+    66.1,
+    44.9,
+    17.8,
+    18.9,
+    17.7,
+    16.9,
+    41.2,
+    56.4,
+    43.4,
+    15.7,
+    47.6,
+    17.7,
+    56.2,
+    13.3,
+    43.4
+   ],
+   "kept_connections_still_serving": 32
+  },
+  "after_the_forwarders_drain_rewrite": {
+   "kept_alive_connections": 32,
+   "half_head_connections": 32,
+   "keyed_calls_meanwhile": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+   ],
+   "their_ms": [
+    29.5,
+    59.9,
+    54.2,
+    60.2,
+    31.5,
+    62.4,
+    55.2,
+    54.6,
+    55.1,
+    66.4,
+    56.9,
+    47.6,
+    27.1,
+    46.7,
+    25.4
+   ],
+   "kept_connections_still_serving": 32
+  },
+  "reading": "before, the 29th to 32nd kept connections' own first requests and all 15 later keyed calls were answered 503 (28 keyed slots, each held until the next head's deadline); after, a kept connection holds no slot and no thread between two requests: 15 of 15 answered, and every kept connection still serves"
+ },
+ "drift_of_the_ten_nearest": {
+  "texts": "the benchmark's 48 statements and 130 queries, statements sent in batches of 64 and each question alone (as semantic.py sends them); 'each': every text alone",
+  "comparisons": {
+   "vllm_semantic vs vllm_semantic_again": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 128,
+    "same_ten_in_order": 124,
+    "max_abs_cosine_difference": 0.002125961701750889,
+    "vector_cosine_min": 0.9998452548290635
+   },
+   "vllm_semantic vs vllm_each": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 123,
+    "same_ten_in_order": 98,
+    "max_abs_cosine_difference": 0.006113456534776324,
+    "vector_cosine_min": 0.9996717630617186
+   },
+   "server_semantic vs vllm_semantic": {
+    "same_nearest": 129,
+    "same_ten_as_a_set": 108,
+    "same_ten_in_order": 60,
+    "max_abs_cosine_difference": 0.009274469642279681,
+    "vector_cosine_min": 0.9995416388801566
+   },
+   "server_each vs vllm_semantic": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 111,
+    "same_ten_in_order": 57,
+    "max_abs_cosine_difference": 0.011044140218486598,
+    "vector_cosine_min": 0.9995416388801566
+   },
+   "server_semantic vs server_each": {
+    "same_nearest": 129,
+    "same_ten_as_a_set": 114,
+    "same_ten_in_order": 64,
+    "max_abs_cosine_difference": 0.008222106385330968,
+    "vector_cosine_min": 0.9996900721221345
+   },
+   "bf16_sdpa_each vs vllm_semantic": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 111,
+    "same_ten_in_order": 57,
+    "max_abs_cosine_difference": 0.011044140218486598,
+    "vector_cosine_min": 0.9995416388801566
+   },
+   "bf16_eager_each vs vllm_semantic": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 107,
+    "same_ten_in_order": 58,
+    "max_abs_cosine_difference": 0.012340579320791967,
+    "vector_cosine_min": 0.9994384629496529
+   },
+   "bf16_sdpa_batch16 vs vllm_semantic": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 105,
+    "same_ten_in_order": 59,
+    "max_abs_cosine_difference": 0.008688260729270758,
+    "vector_cosine_min": 0.9996083114059455
+   },
+   "bf16_eager_batch16 vs vllm_semantic": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 104,
+    "same_ten_in_order": 44,
+    "max_abs_cosine_difference": 0.016086545373359906,
+    "vector_cosine_min": 0.9993988484978864
+   },
+   "fp32_each vs vllm_semantic": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 112,
+    "same_ten_in_order": 70,
+    "max_abs_cosine_difference": 0.006466778097458908,
+    "vector_cosine_min": 0.9997985114039746
+   },
+   "fp32_each vs vllm_each": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 111,
+    "same_ten_in_order": 70,
+    "max_abs_cosine_difference": 0.007071200879486372,
+    "vector_cosine_min": 0.9997837005808581
+   },
+   "fp32_each vs server_semantic": {
+    "same_nearest": 129,
+    "same_ten_as_a_set": 116,
+    "same_ten_in_order": 71,
+    "max_abs_cosine_difference": 0.00893752747457166,
+    "vector_cosine_min": 0.9995529314691693
+   },
+   "fp32_each vs server_each": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 114,
+    "same_ten_in_order": 74,
+    "max_abs_cosine_difference": 0.009426449666030123,
+    "vector_cosine_min": 0.9995529314691693
+   },
+   "fp32_each vs bf16_eager_each": {
+    "same_nearest": 130,
+    "same_ten_as_a_set": 114,
+    "same_ten_in_order": 69,
+    "max_abs_cosine_difference": 0.010830814767851304,
+    "vector_cosine_min": 0.9995406829285912
+   }
+  },
+  "tokens_identical_to_vllm": true,
+  "last_token": "151643 (<|endoftext|>) for every text on both servers",
+  "single_precision_margin_between_the_10th_and_11th": {
+   "min": 7.737679540797959e-05,
+   "median": 0.004877455560571536,
+   "under_0.001": 15,
+   "under_0.002": 33
+  },
+  "reading": "What the model is given is the same on both servers: the same tokens for all 178 texts, the same end-of-text token, last-token pooling, L2 normalisation. The drift is bfloat16 rounding in different kernels (vLLM's FlashInfer and fused kernels; PyTorch's SDPA here) at near ties: for 15 of 130 queries the 10th and 11th statements are closer than 0.001 in single precision, and a bfloat16 server's cosines move by up to 0.006 to 0.012. Against single precision, which neither server is, the single server agrees on the ten as a set for 114 to 116 queries and vLLM for 111 to 112: the single server is no further from the exact answer than vLLM; the two are further from each other (108 to 111) because their errors add. No variant of this server's kernels (SDPA or eager attention, batched or one text at a time) comes closer to vLLM than 111. Nothing to match: the nearest statement is the same for 129 to 130 queries in every comparison and the benchmark's classes are equal."
+ },
+ "decision": "NSF_MEMORY_EGRESS=none is the default for the single server; NSF_MEMORY_EGRESS=bridge restores the one-container way. Kept connections go back to the door between requests (no switch: the same answers, fewer held resources). No change for the drift: its cause is the precision both servers share, and the single server is as close to single precision as vLLM.",
+ "unverified": [
+  "the vLLM pair (NSF_MEMORY_SERVER=vllm) still runs its containers on the bridge, with egress possible: vLLM's own Unix-socket serving was not tried",
+  "the forwarder under systemd as a system unit (run here as the invoking user through `run.sh foreground all` and `run.sh stop all`, the unit's ExecStart and ExecStop)"
+ ]
+}

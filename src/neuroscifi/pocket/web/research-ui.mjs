@@ -3,8 +3,10 @@
 // Shared links prefill the question for review (never submitted for you); Read aloud uses an on-device voice only;
 // notifications are opt-in: from this open page (no push service), or per device through an empty Web Push (ADR-040);
 // see mobile/README.md.
-import {vaultOpen,findings,keepFinding,forgetFinding} from "./field-ui.mjs";
+import {vaultOpen,findings,keepFinding,forgetFinding,vaultOutbox,changeOutbox} from "./field-ui.mjs";
+import {liveRows} from "./field-model.mjs";
 import * as nodeKey from "./node-key.mjs";
+import * as outbox from "./outbox.mjs";
 const $=id=>document.getElementById(id);
 const TERMINAL=["completed","partial","failed","cancelled"], STAGES=["discovering","reading","evaluating","synthesizing"];
 // Labels shared with the console (U-21): stages and statuses as the console's TASK_LABELS, kinds as #researchmode.
@@ -24,6 +26,11 @@ let sharing=false, notify=false, away=null, reading=null, session=null, shown=nu
 let offered=false, push=null, pushOn=false, pushBusy=false, pushOld=false, pushTesting=false;  // push: the Spark's status
 // This device as a research node (ADR-042 draft): the Spark's view (node_enrol status) and this browser's own key.
 let nodeInfo=null, localKey=null, nodeBusy=false;
+// The outbox (outbox.mjs): questions waiting for the Spark. In the vault while it is open, else here (this tab only).
+let tabOutbox=[], draining=false, outboxTimer=0, outboxTries=0, moving=false;
+// Why sending stopped: "network" (out of reach: any reply from the Spark is the moment to send again) or "spark"
+// (the Spark said not now: wait for the backoff, or for Send now).
+let heldBy=null;
 const say=t=>{$("researchmsg").textContent=t;};
 const active=t=>!TERMINAL.includes(t.status);
 
@@ -118,7 +125,7 @@ function stageText(t){
 }
 function layout(){
   const saved=vaultOpen()&&findings().length>0;
-  $("research").hidden=!(research||saved||sharing); $("navresearch").hidden=$("research").hidden;
+  $("research").hidden=!(research||saved||sharing||allWaiting().length); $("navresearch").hidden=$("research").hidden;
   $("researchform").hidden=!(research&&paired); $("researchtasks").hidden=!research;
   $("researchsavedbox").hidden=!saved;$("researchnode").hidden=!(research&&paired);
   $("researchhelp").textContent=research?"Your Spark researches the public web and reports with sources. Pocket only sends the question.":
@@ -133,7 +140,7 @@ function buttons(){
   const text=$("objective").value, size=bytes(body()), chars=[...text].length;
   $("objectivecount").textContent=chars+" / "+MAX+" characters · "+size+" / "+MAX_BYTES+" bytes"+(size>MAX_BYTES?" · too long to send":"");
   $("researchsubmit").disabled=!paired||!research||busy||!text.trim()||chars>MAX||size>MAX_BYTES;
-  $("researchsubmithint").textContent=!$("researchsubmit").disabled?"":!paired||!research?"Pair with a research-enabled Spark to submit.":
+  $("researchsubmithint").textContent=!$("researchsubmit").disabled?(navigator.onLine===false?"This device is offline. Your question will wait here and be sent once your Spark answers.":""):!paired||!research?"Pair with a research-enabled Spark to submit.":
     busy?"Sending your question…":!text.trim()?"Type a question to enable Submit.":"Shorten the question to enable Submit.";
   $("dictate").disabled=!!dictation;
 }
@@ -163,6 +170,120 @@ function drawSaved(){
   }
   layout();
 }
+// ---- the outbox: questions waiting for your Spark --------------------------------------------------------------
+const allWaiting=()=>[...(vaultOpen()?vaultOutbox():[]),...(tabOutbox=liveRows(tabOutbox))];
+const when=ms=>new Date(ms).toLocaleString([], {hour:"numeric",minute:"2-digit",month:"short",day:"numeric"});
+const keptUntil=ms=>new Date(ms).toLocaleDateString([], {month:"short",day:"numeric"});
+// Apply a change to the waiting questions wherever they are kept (the vault, this tab, or both while moving).
+async function changeWaiting(change){
+  tabOutbox=change(tabOutbox);
+  try{if(vaultOpen())await changeOutbox(change);}
+  finally{drawOutbox();}
+}
+async function keepWaiting(item){
+  if(outbox.full(allWaiting()))throw Error(outbox.MAX_WAITING+" questions are already waiting. Remove one first.");
+  if(vaultOpen())await changeOutbox(list=>[...list,item]);
+  // Not in the vault after all (it locked while saving): keep it in this tab rather than lose it.
+  if(!vaultOutbox().some(r=>r.id===item.id))tabOutbox=[...tabOutbox,item];
+  drawOutbox();
+}
+// Opening the vault takes in what waited in this tab, so it survives a reload from then on.
+async function moveIntoVault(){
+  if(moving||!vaultOpen()||!tabOutbox.length)return;
+  moving=true;const taken=tabOutbox;
+  try{await changeOutbox(list=>[...list,...taken.filter(t=>!list.some(r=>r.id===t.id))]);tabOutbox=tabOutbox.filter(t=>!taken.includes(t));}
+  catch{/* the vault is busy or full: they stay in this tab and are still shown */}
+  finally{moving=false;drawOutbox();}
+}
+function laterNote(e){
+  return e.code==="unverified"?"Pocket could not confirm your Spark's reply. It asks again; a question is never queued twice."
+    :e.code==="not_paired"||e.code==="no_pin"?"Pair with your Spark to send it."
+    :e.status===0?"Your Spark is out of reach."
+    :e.code==="daily_budget"?"Your Spark's daily research budget is used up. Pocket tries again later."
+    :e.status===429?"Up to 10 questions an hour from your linked devices together. Pocket tries again later."
+    :e.status===507?"Your Spark has paused new research until its storage is freed."
+    :e.status===404?"Research from this device is off on your Spark."
+    :e.status===403?"Your Spark no longer accepts this pairing. Pair again to send it."
+    :NODE_TEXT[e.code]||"Your Spark could not take it right now (error "+e.status+"). Pocket tries again later.";
+}
+const refusedNote=e=>e.code==="private_data"?"Not sent: your Spark found personal details in it. Edit it to remove them, or remove it."
+  :"Not sent: your Spark rejected it as written (at most 300 characters and 1024 bytes). Edit it or remove it.";
+function drawOutbox(){
+  const items=allWaiting().sort((a,b)=>a.created-b.created), pin=window.pocketSpark?.(), list=$("outboxlist");
+  list.replaceChildren();
+  for(const r of items){
+    const q=r.outbox, li=node("li",null,"rtask"), text=node("div",q.objective);
+    const elsewhere=!!pin&&q.spark!==pin.key;
+    text.append(node("small",q.state==="refused"?q.note
+      :(elsewhere?"Written for the Spark of an earlier pairing; Pocket sends it only to that Spark":"Waiting to send · written "+when(r.created))
+       +" · kept on this device until "+keptUntil(outbox.until(r))+(q.note&&!elsewhere?" · "+q.note:"")));
+    li.append(text);
+    if(q.state==="refused"){
+      const edit=node("button","Edit");edit.ariaLabel="Edit waiting question: "+q.objective;
+      edit.onclick=()=>changeWaiting(rows=>rows.filter(x=>x.id!==r.id)).then(()=>{
+        $("objective").value=q.objective;$("researchmode").value=q.mode||"";buttons();$("objective").focus();
+        say("The question is back in the field. Change it, then submit it again.");}).catch(e=>say(e.message));
+      li.append(edit);
+    }
+    const remove=node("button","Remove");remove.ariaLabel="Remove waiting question: "+q.objective;
+    remove.onclick=()=>{
+      if(!confirm("Remove this waiting question from this device? If an earlier try already reached your Spark, it stays there."))return;
+      changeWaiting(rows=>rows.filter(x=>x.id!==r.id)).then(()=>say("Waiting question removed from this device.")).catch(e=>say(e.message));
+    };
+    li.append(remove);list.append(li);
+  }
+  $("researchoutbox").hidden=!items.length;
+  $("outboxhelp").textContent=(vaultOpen()?"Kept in your encrypted vault on this device for up to "+outbox.OUTBOX_DAYS+" days."
+    :"Kept in this tab only. Open your vault (Device memory) to keep waiting questions through a reload.")
+    +" Pocket sends them once your Spark answers, each one only once.";
+  $("outboxsend").disabled=draining||!paired||!research||!outbox.due(items,pin).length;
+  $("outboxsend").textContent=draining?"Sending…":"Send now";
+  layout();
+}
+function scheduleOutbox(){
+  clearTimeout(outboxTimer);outboxTimer=0;
+  if(research&&paired&&!document.hidden&&outbox.due(allWaiting(),window.pocketSpark?.()).length)
+    outboxTimer=setTimeout(drain,outbox.backoff(outboxTries)*1000);
+}
+// Send what waits for this Spark, oldest first, one at a time; stop at the first reply that says "not now".
+async function drain(){
+  clearTimeout(outboxTimer);outboxTimer=0;
+  if(draining||!paired||!research||document.hidden)return;
+  const items=outbox.due(allWaiting(),window.pocketSpark?.());
+  if(!items.length)return;
+  draining=true;drawOutbox();
+  let sent=0,gone=0,later=null;
+  try{
+    for(const item of items){
+      if(!paired||!research||document.hidden)break;
+      let error=null;
+      try{await call("research_submit",outbox.request(item));}catch(e){error=e;}
+      const what=outbox.outcome(error);
+      if(what==="sent"||what==="gone"){
+        await changeWaiting(rows=>rows.filter(r=>r.id!==item.id)).catch(()=>{});  // if it stays, the next send is replayed
+        if(what==="sent")sent++;else gone++;
+      }else if(what==="refused"){
+        await changeWaiting(rows=>outbox.replace(rows,item.id,{state:"refused",note:refusedNote(error)})).catch(()=>{});
+      }else{
+        later=error;
+        await changeWaiting(rows=>outbox.replace(rows,item.id,{note:laterNote(error),tries:item.outbox.tries+1})).catch(()=>{});
+        break;
+      }
+    }
+  }finally{draining=false;}
+  outboxTries=later?outboxTries+1:0;
+  heldBy=!later?null:later.status===0&&later.code!=="unverified"?"network":"spark";
+  if(later&&(later.status===404||later.status===403))fail(later);   // research switched off or the pairing refused
+  const parts=[];
+  if(sent)parts.push(sent===1?"Sent a waiting question to your Spark.":"Sent "+sent+" waiting questions to your Spark.");
+  if(gone)parts.push(gone===1?"One waiting question had already reached your Spark and was removed there since; it was not sent again."
+    :gone+" waiting questions had already reached your Spark and were removed there since; they were not sent again.");
+  if(parts.length)say(parts.join(" "));
+  drawOutbox();scheduleOutbox();
+  if(sent)refresh();
+}
+// Questions kept in this tab only are lost with it: the browser asks before the page is left or reloaded.
+window.addEventListener("beforeunload",e=>{if(tabOutbox.length){e.preventDefault();e.returnValue="";}});
 function cites(numbers){
   const span=node("span",null,"cites");
   for(const n of numbers){const a=node("a","["+n+"]");a.href="#rsrc-"+n;a.ariaLabel="Source "+n;span.append(" ",a);}
@@ -658,6 +779,7 @@ async function refresh(){
   try{
     const reply=await call("research_list",{});if(g!==generation)return;tasks=reply.tasks;
     workerRunning=typeof reply.worker_running==="boolean"?reply.worker_running:null;drawList();schedule();scheduleList();
+    if(!draining&&heldBy!=="spark")drain();   // the Spark answers: send what waits, unless it said "not now"
     $("researchworker").hidden=workerRunning!==false;
     $("researchworker").textContent=workerRunning===false?NO_WORKER+": questions wait as Queued until your owner starts one on the Spark.":"";
     if(!nodeInfo||nodeInfo.error||nodeInfo.pending==="attested")loadNode();
@@ -731,31 +853,44 @@ $("researchform").onsubmit=async e=>{
     const f=$("objective");f.setAttribute("aria-invalid","true");f.setAttribute("aria-describedby","objectivecount researchmsg");
     say("Nothing was sent. The question contains "+list+". Remove personal details and submit again.");f.focus();return;
   }
-  busy=true;buttons();const g=generation;
+  busy=true;buttons();const g=generation, item=outbox.entry(data,window.pocketSpark?.());
   try{
-    const {id}=await call("research_submit",data);if(g!==generation)return;
+    const {id}=await call("research_submit",outbox.request(item));if(g!==generation)return;
     $("objective").value="";sharing=false;layout();say("Queued on your Spark. Its research worker runs it; this page follows each stage.");
     await refresh();if(g!==generation)return;
     if(workerRunning===false)say("Queued on your Spark, but "+NO_WORKER.charAt(0).toLowerCase()+NO_WORKER.slice(1)+": it waits until your owner starts one.");
     await openTask(id);
-  }catch(err){if(g===generation)fail(err);}
+  }catch(err){
+    // Out of reach, or a reply Pocket cannot confirm: the question may or may not have arrived. It waits here with
+    // its key; sending it again later queues it at most once (outbox.mjs).
+    if((err.status===0&&!["not_paired","no_pin"].includes(err.code))||err.code==="unverified"){
+      try{
+        await keepWaiting(item);
+        if($("objective").value.trim()===objective){$("objective").value="";sharing=false;}
+        say(err.code==="unverified"?"Pocket could not confirm your Spark's reply, so the question waits on this device and is asked again. It is never queued twice."
+          :"Your Spark is out of reach, so the question waits on this device. Pocket sends it once your Spark answers.");
+        outboxTries=0;heldBy="network";scheduleOutbox();
+      }catch(e){say((e.message||"Could not keep the question.")+" Nothing was stored; the question is still in the field.");}
+    }else if(g===generation)fail(err);
+  }
   finally{busy=false;buttons();}
 };
+$("outboxsend").onclick=()=>{outboxTries=0;heldBy=null;drain();};
 document.addEventListener("pocketpair",e=>{
   const next=!!e.detail?.paired, allowed=next&&e.detail?.research===true, pushes=allowed&&e.detail?.push===true;
   if(next===paired&&allowed===research&&pushes===offered){refresh();return;}
   if(paired&&!next)say("");  // a revoked or erased pairing: no stale outcome of the old one (RT-B-08)
   generation++;clearTimeout(timer);clearTimeout(listTimer);paired=next;research=allowed;offered=pushes;tasks=[];away=null;pushTesting=false;nodeInfo=null;localKey=null;
   if(current&&!current.saved)close();
-  drawList();layout();drawNode();refresh();loadPush();drawOptOut();
+  drawList();layout();drawNode();refresh();loadPush();drawOptOut();drawOutbox();
   if(sharing&&research&&paired&&$("objective").value)$("objective").focus();
 });
 drawOptOut();
-document.addEventListener("pocketvault",drawSaved);
+document.addEventListener("pocketvault",()=>{drawSaved();drawOutbox();moveIntoVault();});
 document.addEventListener("visibilitychange",()=>{
   if(document.hidden){
     away=new Set(tasks.filter(active).map(t=>t.id));
-    generation++;clearTimeout(timer);clearTimeout(listTimer);stopDictation();close();$("objective").value="";sharing=false;layout();
+    generation++;clearTimeout(timer);clearTimeout(listTimer);clearTimeout(outboxTimer);outboxTimer=0;stopDictation();close();$("objective").value="";sharing=false;layout();
   }
   else refresh();
 });
@@ -780,4 +915,6 @@ if(shared!==undefined){
   else{$("objective").value=SUMMARIZE+shared;say("Shared link ready. Review the question, then submit it yourself.");}
 }
 speechGate().then(R=>{$("dictate").hidden=!R;});
-drawSaved();
+// Back online: the first send is the check that the Spark answers (one request; out of reach, it waits again).
+window.addEventListener("online",()=>{buttons();if(heldBy!=="spark")drain();});window.addEventListener("offline",buttons);
+drawSaved();drawOutbox();

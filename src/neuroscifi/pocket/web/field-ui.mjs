@@ -86,6 +86,12 @@ export async function keepFinding(entry){
  });
 }
 export const forgetFinding=id=>mutate(list=>list.filter(r=>r.id!==id));
+// Research questions waiting to be sent (outbox.mjs) live in the same vault while it is open, kept seven days.
+export const vaultOutbox=()=>vault?liveRows(rows).filter(r=>r.outbox):[];
+export function changeOutbox(change){
+ if(!vault)return Promise.reject(Error("Open your device vault first (Device memory). Nothing was stored."));
+ return mutate(list=>[...list.filter(r=>!r.outbox),...change(list.filter(r=>r.outbox))]);
+}
 // Remove the vault-held pairing (Forget this pairing, or a Spark that refused it). Needs no passphrase: only the sealed
 // `auth` field is dropped from the stored box (P-02).
 async function dropPair(){

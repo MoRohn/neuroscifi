@@ -33,7 +33,7 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobil
           "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"), "/icon-192.png": ("icon-192.png", "image/png"),
           "/icon-512.png": ("icon-512.png", "image/png"),
           "/icon-maskable-512.png": ("icon-maskable-512.png", "image/png")}
-for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","node-key.mjs","sw.js"):
+for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","node-key.mjs","outbox.mjs","sw.js"):
     ASSETS["/"+asset]=(asset,"text/javascript")
 from ..presence import POCKET as PRESENCE_FILES, assets as presence_assets  # noqa: E402  shared presence + theme
 ASSETS.update(presence_assets(PRESENCE_FILES))
@@ -56,6 +56,9 @@ BODY_LIMIT = 512
 # A 300-character question in a non-Latin script needs up to 3 bytes a character; research_submit alone may send
 # 1 KiB (README: deviation from the 512-byte cap of every other route).
 RESEARCH_BODY_LIMIT = 1024
+# The outbox's request key (`,"request":"<UUID>"`, 49 bytes) rides on top of the question's 1 KiB, so a question that
+# fits the page's counter (research-ui.mjs) always fits with its key.
+SUBMIT_BODY_LIMIT = RESEARCH_BODY_LIMIT + 64
 INVITATION_SECONDS = 300
 INVITATION_FORMAT = re.compile(r"[A-Za-z0-9_-]{32}\n?")
 ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}
@@ -70,6 +73,14 @@ RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparativ
 MAX_OBJECTIVE = 300
 VERDICTS = ("supported", "disputed", "contested", "insufficient")
 SUBMISSIONS_PER_HOUR = 10   # per pairing family, kept in the Pocket database so a restart does not reset it
+REFUSALS_PER_HOUR = 20      # questions the private-data screen refused, per family and hour (each screen reads the
+                            # individual under the submit lock); counted apart, so they never spend the task allowance
+# Pocket's outbox (research-ui.mjs, outbox.mjs): a question written while the Spark is out of reach waits on the
+# device for up to OUTBOX_DAYS and is sent with a `request` key (a UUID v4 made on the device). A request key the
+# family already used is answered with that task (200, replayed) and counts nothing again, so a retry after a lost
+# reply never queues a second task. The keys are kept REQUEST_DAYS here (a day more than the device keeps a question).
+OUTBOX_DAYS = 7
+REQUEST_DAYS = OUTBOX_DAYS + 1
 _RATE_LOCK = threading.Lock()
 
 
@@ -118,6 +129,10 @@ class Store:
                   family TEXT NOT NULL, sponsor TEXT, created INTEGER);
                 INSERT OR IGNORE INTO members(device,family) SELECT key,key FROM devices;
                 CREATE TABLE IF NOT EXISTS submissions(family TEXT NOT NULL, at REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS refusals(family TEXT NOT NULL, at REAL NOT NULL);
+                -- Outbox request keys (OUTBOX_DAYS): which task a family's request key queued; no question text.
+                CREATE TABLE IF NOT EXISTS outbox_requests(family TEXT NOT NULL, request TEXT NOT NULL,
+                  task TEXT NOT NULL, at REAL NOT NULL, PRIMARY KEY(family, request));
                 CREATE TABLE IF NOT EXISTS episodes(device TEXT REFERENCES devices(key) ON DELETE CASCADE,
                   id TEXT, body TEXT, until INTEGER,PRIMARY KEY(device,id));
                 CREATE TABLE IF NOT EXISTS retired_episodes(device TEXT REFERENCES devices(key) ON DELETE CASCADE,
@@ -174,19 +189,71 @@ class Store:
         with closing(connect(self.path)) as db:
             return db.execute("SELECT count(*) FROM members WHERE family=?", (family,)).fetchone()[0] >= FAMILY_DEVICES
 
-    def admit(self, family, submit):
-        """Run `submit` unless the family already queued SUBMISSIONS_PER_HOUR tasks in the last hour."""
+    def admit(self, family, submit, request=None, replay=None, lost=None, refuse=None):
+        """Run `submit` unless the family already queued SUBMISSIONS_PER_HOUR tasks in the last hour.
+
+        In this order, under one lock (cheapest first, nothing counted before a task is queued):
+        1. With an outbox `request` key this database recorded, `replay(task)` with the task it queued: a reply it
+           returns (200 replayed, 410 forgotten) is returned as it is, and the record stays (a later retry is 410
+           again). None means the task is gone without having been forgotten (a restore from an older archive): the
+           record goes and the key is new.
+        2. The hourly limits (None when one is reached): SUBMISSIONS_PER_HOUR queued tasks, REFUSALS_PER_HOUR refusals
+           of the screen; before any scan of the individual a new key would cost.
+        3. With a key, `lost()`: the task this key queued when this database lost its record (a crash between the
+           two commits); a reply it returns is returned as it is.
+        4. `refuse()`: a refusal it returns (the private-data screen) is returned as it is. A retry of a key already
+           queued is answered by 1 or 3 first, so a term added to the screen since never refuses a queued question.
+           A refusal is counted toward REFUSALS_PER_HOUR.
+        5. `submit()`; a result reporting `replayed` (the key found inside the individual's own transaction, by
+           another process) is not counted. A new key is recorded with the task `submit` returned."""
         with _RATE_LOCK:
             now = self.clock()
+            if request is not None:
+                with closing(connect(self.path)) as db:
+                    row = db.execute("SELECT task FROM outbox_requests WHERE family=? AND request=?",
+                                     (family, request)).fetchone()
+                if row is not None:
+                    answer = replay(row[0])
+                    if answer is not None:
+                        # 410 keeps the record: every later retry of the key is answered 410 again until the record
+                        # expires (REQUEST_DAYS, longer than the device keeps a question), so a forgotten question is
+                        # never queued again by a retry whose 410 was lost on the way.
+                        return answer
+                    with closing(connect(self.path)) as db, db:   # gone without a forget: the key is new
+                        db.execute("DELETE FROM outbox_requests WHERE family=? AND request=?", (family, request))
             with closing(connect(self.path)) as db:
                 recent = db.execute("SELECT count(*) FROM submissions WHERE family=? AND at>?",
                                     (family, now - 3600)).fetchone()[0]
-            if recent >= SUBMISSIONS_PER_HOUR:
+                refused = db.execute("SELECT count(*) FROM refusals WHERE family=? AND at>?",
+                                     (family, now - 3600)).fetchone()[0]
+            if recent >= SUBMISSIONS_PER_HOUR or refused >= REFUSALS_PER_HOUR:
                 return None
+            if request is not None and lost is not None:
+                answer = lost()
+                if answer is not None:
+                    return answer
+            if refuse is not None:
+                answer = refuse()
+                if answer is not None:
+                    # Counted apart from the queued tasks: the screen reads the individual under this lock, so a
+                    # device sending refused questions is limited too, without spending the owner's task allowance.
+                    with closing(connect(self.path)) as db, db:
+                        db.execute("INSERT INTO refusals VALUES(?,?)", (family, now))
+                    return answer
             result = submit()
+            replayed = isinstance(result, dict) and result.get("replayed")
             with closing(connect(self.path)) as db, db:
-                db.execute("INSERT INTO submissions VALUES(?,?)", (family, now))
+                if not replayed:
+                    db.execute("INSERT INTO submissions VALUES(?,?)", (family, now))
+                if request is not None and isinstance(result, dict) and result.get("id"):
+                    db.execute("INSERT OR IGNORE INTO outbox_requests VALUES(?,?,?,?)",
+                               (family, request, result["id"], now))
             return result
+
+    def remember_request(self, family, request, task):
+        """Record that `request` of `family` queued `task` (a task found by its key in the individual)."""
+        with closing(connect(self.path)) as db, db:
+            db.execute("INSERT OR IGNORE INTO outbox_requests VALUES(?,?,?,?)", (family, request, task, self.clock()))
 
     def pairings(self, instance=None):
         """(label, family tag, sponsor label or None, created epoch or None) per device, oldest first. `instance` is
@@ -227,6 +294,9 @@ class Store:
         db.execute("INSERT OR IGNORE INTO retired_episodes SELECT device,id FROM episodes WHERE until<=?", (now,))
         db.execute("DELETE FROM episodes WHERE until<=?",(now,))
         db.execute("DELETE FROM submissions WHERE at<=? OR family NOT IN (SELECT family FROM members)", (now - 3600,))
+        db.execute("DELETE FROM refusals WHERE at<=? OR family NOT IN (SELECT family FROM members)", (now - 3600,))
+        db.execute("DELETE FROM outbox_requests WHERE at<=? OR family NOT IN (SELECT family FROM members)",
+                   (now - REQUEST_DAYS * DAY,))
         db.execute("DELETE FROM push_seen WHERE at<=? OR (family!='' AND family NOT IN (SELECT family FROM members))",
                    (now - 2 * DAY,))
 
@@ -490,6 +560,19 @@ def family_tag(family, instance):
     return state.family_digest(instance, family)[:8]
 
 
+def request_tag(family_digest, request):
+    """The idempotency tag a task keeps for an outbox request key: bound to the family (instance-salted digest), so
+    one family's key never finds another family's task, and the key itself is not stored in the individual."""
+    return hashlib.sha256(f"pocket-outbox:{family_digest}:{request}".encode()).hexdigest()[:32]
+
+
+def forgotten_task(db, task_id):
+    """Whether the owner forgot research task `task_id` (governance records a payload-free tombstone for it)."""
+    from ..instance import governance, store as instance_store
+    digest = governance.web_digest(instance_store.birth(db)["instance_id"], "task", task_id)
+    return db.execute("SELECT 1 FROM web_forgotten WHERE kind='task' AND digest=?", (digest,)).fetchone() is not None
+
+
 def research(server, token, route, data, raw=b"", headers=None):
     """Family-scoped research actions (ADR-028). Pocket queues and reads; the Spark's worker runs the task.
     `raw` and `headers` are the request's body bytes and headers, for a node's signature (ADR-042 draft)."""
@@ -509,21 +592,50 @@ def research(server, token, route, data, raw=b"", headers=None):
                 return refused
             if route == "research_submit":
                 objective, mode = data.get("objective"), data.get("mode")
-                if not {"objective"} <= set(data) <= {"objective", "mode"}:
+                if not {"objective"} <= set(data) <= {"objective", "mode", "request"}:
                     raise ValueError()
                 if "mode" in data and mode not in RESEARCH_MODES:
                     raise ValueError()
                 if not isinstance(objective, str) or not objective.strip() or len(objective) > MAX_OBJECTIVE:
                     raise ValueError()
+                request = event_id(data["request"]) if "request" in data else None
+                tag = None if request is None else request_tag(digest, request)
+
+                def replay(known):
+                    """A key this family's Pocket record says queued `known`: that task (200, replayed); 410 only
+                    when the owner forgot it (its tombstone is in the individual); None when it is simply absent
+                    (a restore from an archive older than the task): the key is then a new request."""
+                    try:
+                        orchestrator.get(db, known, family=digest)
+                    except NotFound:
+                        if forgotten_task(db, known):
+                            return 410, {"error": "forgotten"}
+                        return None
+                    return 200, {"id": known, "replayed": True}
+
+                def lost():
+                    """The task this key queued although this database lost its record (found by its tag)."""
+                    found = orchestrator.by_request(db, digest, tag)
+                    if found is None:
+                        return None
+                    server.store.remember_request(family, request, found)
+                    return 200, {"id": found, "replayed": True}
                 cfg = state.get_config(db)
-                if orchestrator.screen(db, objective, cfg):
-                    return 400, {"error": "private_data"}
                 try:
                     task = server.store.admit(family, lambda: orchestrator.submit(
-                        db, objective, time.time(), mode=mode, origin="pocket", family=digest))
+                        db, objective, time.time(), mode=mode, origin="pocket", family=digest, request=tag),
+                        request=request, replay=replay, lost=lost,
+                        refuse=lambda: (400, {"error": "private_data"}) if orchestrator.screen(db, objective, cfg)
+                        else None)
                 except autonomy.BudgetRefused:
                     return 429, {"error": "daily_budget"}   # the owner's daily research budget is spent (D4)
-                return (429, {}) if task is None else (201, {"id": task["id"]})
+                if isinstance(task, tuple):
+                    return task
+                if task is None:
+                    return 429, {}
+                if task.get("replayed"):      # found inside the individual's transaction (another process queued it)
+                    return 200, {"id": task["id"], "replayed": True}
+                return 201, {"id": task["id"]}
             if route == "research_list":
                 if data:
                     raise ValueError()
@@ -665,7 +777,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(404, nonce=signed)  # invisible while off, like an unknown route
             size = int(self.headers.get("Content-Length", "0"))
             # a push endpoint URL can take several hundred bytes (WNS), so `push` shares research_submit's 1 KiB
-            limit = RESEARCH_BODY_LIMIT if route in ("research_submit", PUSH) else BODY_LIMIT
+            limit = SUBMIT_BODY_LIMIT if route == "research_submit" else RESEARCH_BODY_LIMIT if route == PUSH else BODY_LIMIT
             if self.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
                 return self.reply(400, nonce=signed)
             raw = self.read_body(size)

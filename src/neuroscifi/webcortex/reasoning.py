@@ -184,6 +184,23 @@ _SOURCE_STATUS = frozenset("""retracted withdrawn disputed contested superseded 
 deprecated obsolete outdated archived rescinded revoked cancelled canceled debunked disproven disproved discredited
 refuted unverified unconfirmed alleged purported draft preliminary provisional pending invalid invalidated void
 erroneous incorrect wrong false fake forged hoax satire satirical parody""".split())
+# Words for a group of people that a sentence can be about as well as hear from: "the advisory from Windows Users"
+# names the source or says whom the advisory is for, and code cannot tell which. Refused as the head (the last word)
+# of a name, capitalised or not, unless the name holds a noun of an organisation followed by "of"
+# (_ORGANISATION_NAME_NOUNS: "the Institute of Electrical and Electronics Engineers", "the Society of Orbix Users");
+# before the group word such a noun only qualifies it ("University Students", "the Club Members": refused). A group
+# word inside a name is not its head ("Consumer Reports", "Citizens Advice", "the Orbix User Association"). A cost:
+# "a survey by Stack Overflow Developers" and "a report by People" are refused.
+_PEOPLE_GROUPS = frozenset("""user users customer customers client clients consumer consumers resident residents
+citizen citizens developer developers maintainer maintainers administrator administrators admin admins engineer
+engineers operator operators owner owners member members subscriber subscribers patient patients student students
+parent parents teacher teachers worker workers employee employees investor investors shareholder shareholders voter
+voters driver drivers passenger passengers traveller travellers traveler travelers player players gamer gamers reader
+readers viewer viewers listener listeners buyer buyers tenant tenants contributor contributors volunteer volunteers
+adult adults child children teen teens teenager teenagers people locals visitors visitor""".split())
+_ORGANISATION_NAME_NOUNS = frozenset("""institute institution association society union foundation federation league
+alliance coalition council committee board guild academy college university school agency bureau commission authority
+organisation organization club trust""".split())
 # head nouns of an organisation's name that are also verbs ("the NumPy security team", "the Reuters news desk")
 _ORGANISATION_NOUNS = frozenset("team staff board group panel desk press service office unit council committee "
                                 "project network watch monitor review".split())
@@ -196,7 +213,9 @@ def _names_the_source(after: str) -> bool:
     stopword (a preposition, a conjunction, an auxiliary, a pronoun: "for adults", "until further notice", "and was
     vetoed", "in no case"; "of" and "and" only between two capitalised words: "the Bank of England"), a
     negation, a word of scope, quantity, time or comparison ("Users Only", "NOT The City", "NumPy Two"), a word of
-    what became of the source ("Orbix Labs Retracted", _SOURCE_STATUS) or a restriction (_restriction); and no word
+    what became of the source ("Orbix Labs Retracted", _SOURCE_STATUS), a group of people the sentence could be
+    about as the name's head ("Windows Users", _PEOPLE_GROUPS; not in a name with a noun of an organisation and "of")
+    or a restriction (_restriction); and no word
     without a capital may be an -ed, -ing or -ly form or a verb (a head
     noun of an organisation's name excepted: "team", "desk", _ORGANISATION_NOUNS)."""
     lead = _NAMING_LEAD.match(after)
@@ -207,13 +226,18 @@ def _names_the_source(after: str) -> bool:
             " ".join(after[lead.end():].split()) != " ".join(words):
         return False
     capital = [any(ch.isupper() for ch in w) for w in words]
+    # an organisation's noun names the organisation whose members the group word counts only when "of" follows it
+    # ("the Society of Orbix Users"); before the group word it qualifies it ("University Students", "the Club Members")
+    organisation = any(w.strip(".'’").casefold() in _ORGANISATION_NAME_NOUNS and nxt.casefold() == "of"
+                       for w, nxt in zip(words, words[1:]))
     for i, w in enumerate(words):
         low = w.strip(".'’").casefold()
         if low in ("of", "and") and 0 < i < len(words) - 1 and capital[i - 1] and capital[i + 1]:
             continue
         if low in T.STOPWORDS or low in _ENTAIL_NEG or low in _NEG_WORDS or low in _PREPOSITIONS or \
                 low in _NUMBER_WORDS or low in _SCOPE or low in _QUANTITY_WORDS or low in _TIME or \
-                low in _COMPARATIVE or low in _SOURCE_STATUS:
+                low in _COMPARATIVE or low in _SOURCE_STATUS or \
+                (low in _PEOPLE_GROUPS and i == len(words) - 1 and not organisation):
             return False
         if not capital[i] and (low.endswith(("ed", "ing", "ly")) or (low in _verbs() and low not in
                                                                      _ORGANISATION_NOUNS)):
@@ -2545,21 +2569,75 @@ PASSIVE_SWAP = ("makes the agent of '{verb}' in {claim} its subject ('{subject}'
 # Acme Corp that acquired Globex." for "Globex acquired Acme Corp", "Orbix Labs was audited by the library." for
 # "Orbix Labs audited the library").
 ROLE_SWAP = ("makes the one {claim} says was '{verb}' its doer ('{subject}'): who does what is swapped")
-REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM, PASSIVE_SWAP, ROLE_SWAP)
+# A version or number joined in one clause with what its cited claims say, in another clause, of another version or
+# number: "Zephyr 4.2 supports Windows." and "Zephyr 4.2 supports Windows and Zephyr 4.1 supports Linux." for
+# "Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux". The anchor rule compares content words, and here the
+# swapped words are names ("Windows", "Linux"), which it reads as anchors, not as what is said.
+JOINED_APART = ("joins in one clause what its cited claims keep apart: '{a}' with '{b}', which they say of '{other}'")
+REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM, PASSIVE_SWAP, ROLE_SWAP, JOINED_APART)
 # Past participles that do not end in -ed, for the passive check
 _PARTICIPLES = frozenset("""beaten bitten blown broken brought built bought caught chosen done drawn driven eaten fallen
 felt found forgiven forgotten frozen given gone grown hidden held hit hurt kept known laid led left lent lost made met
 paid put read ridden rung risen run said seen sent set shaken shot shown shut sold spent spoken stolen struck sung sunk
 taken taught thrown told torn understood won worn woven written""".split())# Exceptions: what follows is taken out of what the claim says.
-_EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exclusive of|other than|apart from|"
+_EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|not counting|exclusive of|other than|"
+              r"apart from|"
               r"aside from|save for|barring|but not|besides(?!\s*,)|"
               r"(?:all|everything|everyone|everybody|anything|anyone|nothing|none|no one|nobody) but")
 # Exceptions written around a quantifier: "every release but 2.5.4", "every release is patched save 2.5.4" (a "save"
 # or "but" within five words after every/all/each/any/no; "save" alone is mostly the verb), and "with 2.5.4
-# excepted".
-_QUANTIFIED_EXCEPTION = re.compile(r"(?<![\w-])(?:every|all|each|any|no)(?:\s+[\w.-]+){1,5}?\s+(but|save)(?![\w-])|"
+# excepted". The "but" that closes a "not only" adds ("all versions not only in Europe but worldwide"): no exception.
+_NOT_ADDING = r"(?:only|merely|simply|solely|exclusively|just)"
+_QUANTIFIED_EXCEPTION = re.compile(r"(?<![\w-])(?:every|all|each|any|no)(?:\s+(?!not\s+" + _NOT_ADDING +
+                                   r"\b)[\w.-]+){1,5}?\s+(but|save)(?![\w-])|"
                                    r"(?<![\w-])with\s+(?:[^,.;:]|\.(?=\w)){1,40}?\s+(excepted)(?![\w-])",
                                    re.IGNORECASE)
+# Exceptions written as a negated phrase after a quantified noun: "all users not on Windows", "every release not built
+# from source", "any student not yet enrolled", "all customers who are not on the legacy plan". Between the quantifier
+# and "not" stand one to four words, none of them an auxiliary ("all releases are not affected" negates the verb and
+# excepts nothing), and no punctuation ("every release, not only 2.5.5, ..." adds, it excepts nothing); after "not"
+# (and an optional "yet" or -ly adverb) a preposition or a participle. "not only", "not merely", "not simply", "not
+# solely", "not exclusively" and "not just" add ("all versions not only in Europe but worldwide"): no exception.
+# "to" is not among the prepositions: "not to" starts an infinitive ("made every effort not to break the API").
+_NEG_AUX = (r"is|are|was|were|be|been|being|am|do|does|did|has|have|had|can|could|will|would|may|might|must|should|"
+            r"shall|cannot")
+_NEG_AFTER = (r"on|in|at|of|from|for|under|with|within|without|by|into|inside|outside|behind|among|"
+              r"\w+ing|\w+ed|" + "|".join(sorted(("built bought brought caught chosen done drawn driven given grown "
+                                                   "held hidden kept known made paid run seen sent set shown sold "
+                                                   "spent taken told written").split())))
+# "not only" and its kin add before a preposition or an adverb ("all versions not only in Europe but worldwide") and
+# restrict before a participle ("all files not only encrypted but also signed are accepted": only those files).
+_PARTICIPLE_AHEAD = r"(?=(?:\w+ed|" + "|".join(sorted(_PARTICIPLES)) + r")(?![\w-]))"
+_NEGATED_EXCEPTION = re.compile(rf"(?<![\w-])(?:every|all|each|any)\s+(?:(?!(?:{_NEG_AUX})\b)[\w.'’-]+\s+){{1,4}}?"
+                                rf"(?:(?:who|that|which)\s+(?:{_NEG_AUX})\s+)?"
+                                rf"(not\s+(?:{_NOT_ADDING}\s+{_PARTICIPLE_AHEAD}|(?!{_NOT_ADDING}\b)(?:yet\s+|\w+ly\s+)?)"
+                                rf"(?:{_NEG_AFTER}))"
+                                r"(?![\w-])", re.IGNORECASE)
+# "not to" right after the quantified noun restricts it ("every account not to be renewed is closed", "all packages not
+# to exceed 2 kg ship free"), unless the noun takes an infinitive of its own ("made every effort not to break the
+# API", "took every care not to", "every reason not to"): _restriction drops those.
+_NEGATED_INFINITIVE = re.compile(rf"(?<![\w-])(?:every|all|each|any)\s+((?:(?!(?:{_NEG_AUX})\b)[\w.'’-]+\s+){{1,4}}?)"
+                                 r"(not\s+to)(?![\w-])", re.IGNORECASE)
+_INFINITIVE_NOUNS = frozenset("""effort efforts attempt attempts reason reasons care way ways intention intentions
+decision decisions promise promises chance chances opportunity opportunities right rights need needs obligation
+obligations incentive incentives temptation temptations step steps measure measures precaution precautions plan plans
+order orders instruction instructions request requests wish wishes desire choice choices pressure motive motives
+encouragement advice warning warnings""".split())
+# ... and a verb that takes it ("every member chose not to renew", "all staff were told not to"): the "not" negates
+# the verb's infinitive, it excepts nothing. A past form in -ed or a participle (_PARTICIPLES) counts as a verb too.
+_INFINITIVE_VERBS = frozenset("""chose choose chooses decide decides try tries want wants ask asks prefer prefers
+refuse refuses agree agrees promise promises seem seems appear appears tend tends hope hopes intend intends vow vows
+swear swears swore opt opts elect elects learn learns learnt get gets got begin begins began continue continues fail
+fails manage manages offer offers threaten threatens pledge pledges wish wishes pretend pretends""".split())
+
+
+def _infinitive_excepts(before: str) -> bool:
+    """Whether a "not to" after `before` (the words between the quantifier and "not") restricts the quantified noun:
+    not when the last of them takes the infinitive itself (_INFINITIVE_NOUNS, _INFINITIVE_VERBS, a form in -ed or a
+    participle)."""
+    last = before.split()[-1].strip(".'’").casefold()
+    return not (last in _INFINITIVE_NOUNS or last in _INFINITIVE_VERBS or last in _PARTICIPLES or
+                last.endswith("ed"))
 # Conditions: the claim holds only under what follows. "when" only in its reduced form ("safe when used with TLS
 # 1.3", "when built from source"), and not the reporting kind ("when asked", "when speaking"); a "when" with its own
 # subject is mostly one of time ("when the ship sank").
@@ -2584,15 +2662,28 @@ _IF_BEFORE = re.compile(r"\b(?:even|as|what|or|whether|unclear|unknown|uncertain
                         r"checked|see|tell|doubt|doubts|doubted|say|says|said|state|specify|show)\s+$", re.IGNORECASE)
 
 
+def _if_excused(text: str, at: int) -> bool:
+    """Whether the "if" at `at` follows one of _IF_BEFORE's words, read from the words just before it: the
+    whitespace before "if" and at most twelve characters more (its longest word is nine letters), so that a claim of
+    any length with many "if"s is read in linear time (searching all of text[:at] for each was quadratic)."""
+    start = at
+    while start > 0 and text[start - 1].isspace():
+        start -= 1
+    return start < at and _IF_BEFORE.search(text, max(0, start - 12), at) is not None
+
+
 def _restriction(text: str) -> str | None:
-    """The first restriction `text` carries, as written ("except", "unless", "only if", "when used", "if"), or
-    None. A closed list (_EXCEPTION, _CONDITION, _QUANTIFIED_EXCEPTION) and "if" where it is a condition (_IF,
-    _IF_BEFORE). Left out on
+    """The first restriction `text` carries, as written ("except", "unless", "only if", "when used", "if", "not on"),
+    or None. A closed list (_EXCEPTION, _CONDITION, _QUANTIFIED_EXCEPTION, _NEGATED_EXCEPTION) and "if" where it is a
+    condition (_IF, _IF_BEFORE). Left out on
     purpose: bounds of time ("until", "before", "after", "since", "while" and a "when" with its own subject), whose
     loss generalises over time and inverts nothing, and "only" and "without", whose loss says less, not more."""
     found = [(m.start(), m.group(0)) for m in _RESTRICTION.finditer(text or "")]
     found += [(m.start(m.lastindex), m.group(m.lastindex)) for m in _QUANTIFIED_EXCEPTION.finditer(text or "")]
-    found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _IF_BEFORE.search(text[:m.start()])]
+    found += [(m.start(1), m.group(1)) for m in _NEGATED_EXCEPTION.finditer(text or "")]
+    found += [(m.start(2), m.group(2)) for m in _NEGATED_INFINITIVE.finditer(text or "")
+              if _infinitive_excepts(m.group(1))]
+    found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _if_excused(text, m.start())]
     return _SPACE.sub(" ", min(found, key=lambda f: (f[0], -len(f[1])))[1]) if found else None   # longest first
 
 
@@ -2604,17 +2695,22 @@ def _holds_whole(words: list[str], claim_words: list[str]) -> bool:
 
 def _restriction_lost(text: str, used) -> list[str]:
     """RESTRICTION_LOST for each cited claim that carries a restriction (_restriction) and whose words (letter case,
-    punctuation and bracketed reference marks aside) are not all in the sentence, unbroken and in order."""
+    punctuation and bracketed reference marks aside) are not all in the sentence, unbroken and in order. The whole
+    claim is read, however long: a restriction after its 600th character restricts it all the same."""
     mine = [w.casefold() for w in _WORD_RX.findall(text)]
     out = []
     for c in used:
-        theirs = _inline_refs(_clean(_norm(c["text"])))[0]
+        theirs = _inline_refs(_SPACE.sub(" ", _norm(c["text"])).strip())[0]
         marker = _restriction(theirs)
         if marker is not None and not _holds_whole(mine, [w.casefold() for w in _WORD_RX.findall(theirs)]):
             out.append(RESTRICTION_LOST.format(claim=c["id"], words=marker))
     return out
 
 
+# A pronoun beside the claim's acronym of the same letters is the sentence's own word for someone the claims do not
+# name ("US sanctions hit us" for "US sanctions hit the firm"): not excused as a function word
+_PERSONAL_PRONOUNS = frozenset("i me my mine we us our ours you your yours he him his she her hers it its they them "
+                               "their theirs".split())
 _RUN = re.compile(r"[^\W\d_]+")      # a run of letters: "Lumen-7" is "Lumen", "NumPy's" is "NumPy" and "s"
 _TITLE_LIKE = 0.7                    # a claim with this share of capitalised words is written as a title is
 # where a word starts its sentence: at the start of the text, after a sentence end, a colon or an opening quote or
@@ -2645,15 +2741,21 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
       - a difference in the first letter alone where the sentence's word starts its sentence (_STARTS);
       - when the claim's form stands in the sentence as well: a function word of the sentence's own beside it
         ("... from May to September, but this may be out of date": T.STOPWORDS and the guard's auxiliaries and
-        hedge words), and nothing else ("Turkey raised tariffs on turkey" is refused);
+        hedge words), and nothing else ("Turkey raised tariffs on turkey" is refused); a personal pronoun is not
+        excused beside an acronym the claims write only in capitals ("US sanctions hit us", "IT staff patched it")
+        unless it stands for the claim's phrase that holds the acronym: the sentence's next word follows the
+        acronym within three words in a cited claim ("..., and it reported fewer outages" for "The IT department
+        reported fewer outages", _for_the_acronyms_phrase);
       - when it does not: a difference in the first letter alone where the claim's word starts its sentence, or
         the claim is written as a title is (_TITLE_LIKE).
     Only the cited claims say how a word is written: a source's title is a page's label and writes names as the
     site likes ("numpy | Snyk" beside a sentence about NumPy, kept live)."""
     folded, lenient = {}, set()          # casefold -> forms the claims write; forms whose first letter is free
+    claim_runs = []                      # each cited claim's runs of letters, in order
     for c in used:
         t = _clean(_norm(c["text"]))
         runs = list(_RUN.finditer(t))
+        claim_runs.append([m.group(0) for m in runs])
         capitals = sum(1 for m in runs if m.group(0)[:1].isupper())
         titled = len(runs) > 3 and capitals >= _TITLE_LIKE * len(runs)
         for m in runs:
@@ -2664,7 +2766,8 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
     own = _own_words(text, question)
     mine = {m.group(0) for m in _RUN.finditer(own)}
     out = []
-    for m in _RUN.finditer(own):
+    own_runs = list(_RUN.finditer(own))
+    for k, m in enumerate(own_runs):
         w = m.group(0)
         theirs = folded.get(w.casefold())
         if len(w) < 2 or not theirs or w in theirs or w in asked:
@@ -2677,11 +2780,27 @@ def _case_changed(text: str, used, question: str = "") -> list[str]:
             # the sentence's own function word ("... but this may be out of date"), or another word altogether
             # ("Turkey raised tariffs on turkey")
             if w.islower() and (w in T.STOPWORDS or w in _AUX or w in _ENTAIL_META):
-                continue
+                if not (w in _PERSONAL_PRONOUNS and all(len(x) > 1 and x.isupper() for x in theirs)):
+                    continue
+                if k + 1 < len(own_runs) and _for_the_acronyms_phrase(w, own_runs[k + 1].group(0), claim_runs):
+                    continue            # "it" for "The IT department", where the claim goes on as the sentence does
         elif any(t in lenient for t in first_letter):
             continue                    # the claim's word starts its sentence there, or the claim is written as a title
         out.append(CASE_CHANGED.format(word=w, theirs="/".join(sorted(theirs))))
     return list(dict.fromkeys(out))
+
+
+def _for_the_acronyms_phrase(pronoun: str, after: str, claim_runs) -> bool:
+    """Whether a pronoun spelled as a claim's acronym stands for the claim's phrase that holds the acronym: in a cited
+    claim the word after the pronoun in the sentence (`after`) follows the acronym within three words ("it reported"
+    for "The IT department reported"). "US sanctions hit us in 2025" for "US sanctions hit the firm in 2025" is not:
+    "in" follows "the firm", not "US"."""
+    after = after.casefold()
+    for words in claim_runs:
+        for j, x in enumerate(words):
+            if x.isupper() and x.casefold() == pronoun and any(y.casefold() == after for y in words[j + 1:j + 4]):
+                return True
+    return False
 
 
 def _unseen_in_claims(used) -> list[str]:
@@ -2701,6 +2820,23 @@ _ROLE_CUT = frozenset("and or but while whereas".split())   # a clause joined by
 # "It was Acme Corp that acquired Globex" says "Acme Corp acquired Globex": a cleft is read without its frame
 _CLEFT = re.compile(r"(?:^|(?<=[,;:]\s))(?:it|this)\s+(?:is|was)\s+(.{1,80}?)\s+(?:that|who|which)\s+",
                     re.IGNORECASE)
+# "It was by Acme Corp that Globex was acquired" says "Globex was acquired by Acme Corp": a cleft on the agent is read
+# with the agent put back after the participle
+_BY_CLEFT = re.compile(r"(?:^|(?<=[,;:]\s))(?:it|this)\s+(?:is|was)\s+by\s+(.{1,80}?)\s+(?:that|which)\s+"
+                       r"(.{1,120}?\b(?:is|are|was|were|be|been|being|get|gets|got|gotten|getting)\s+"
+                       r"(?:(?:\w+ly|not|never|also|still|already)\s+){0,2}\w+)", re.IGNORECASE)
+
+
+def _without_adverbs(words, names=frozenset()):
+    """`words` without the adverbs at their end ("quietly", "not", "also"): "globex quietly" (before "acquired") is
+    "globex". A word the text writes with a capital ("Kelly", `names`) is no adverb, and the first word stays."""
+    if words is None:
+        return None
+    words = list(words)
+    while len(words) > 1 and words[-1] not in names and (
+            (words[-1].endswith("ly") and words[-1] not in _NOT_ADVERB) or words[-1] in _ROLE_BETWEEN):
+        words.pop()
+    return words
 
 
 def _roles(text: str):
@@ -2711,8 +2847,12 @@ def _roles(text: str):
     Marten") is a reduced passive: its doer only. Active (the past form with neither): the words before it are the
     doer, the words after it up to the next stopword (a leading article skipped) the done-to. "Before" reaches back
     to the start of the clause or to the last "and", "or", "but", "while", "whereas" in it. A cleft is read without
-    its frame (_CLEFT). Words are plain (_e_plain): lower case, numbers kept."""
+    its frame (_CLEFT), a cleft on the agent with the agent after the participle (_BY_CLEFT). Adverbs at the end of
+    the words before the verb are not part of what they name ("Globex quietly acquired": the doer is "globex").
+    Words are plain (_e_plain): lower case, numbers kept."""
+    text = _BY_CLEFT.sub(lambda m: f"{m.group(2)} by {m.group(1)}", text)
     text = _CLEFT.sub(lambda m: m.group(1) + " ", text)
+    names = frozenset(_e_plain(m.group(0)) for m in _E_WORD.finditer(text) if m.group(0)[:1].isupper())
     cuts = [m.start() for m in _E_CLAUSE.finditer(text)]
     toks = [(_e_plain(m.group(0)), sum(1 for c in cuts if c <= m.start())) for m in _E_WORD.finditer(text)]
     words = [w for w, _ in toks]
@@ -2755,6 +2895,10 @@ def _roles(text: str):
                 continue
             doer = words_before(i, clause)
             done_to = phrase_after(i + 1, clause) or None
+        if k < 0 or words[k] not in _BE and words[k] not in _GET:
+            doer = _without_adverbs(doer, names)        # an active verb: "Globex quietly acquired"
+        else:
+            done_to = _without_adverbs(done_to, names)  # a passive: "Globex quietly got acquired"
         out.append((w, doer, done_to))
     return out
 
@@ -2794,6 +2938,63 @@ def _role_swaps_refused(text: str, used) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+# Words that make the number after them a bound ("affects Windows builds since NumPy 2.4.0"): a clause holding a
+# bound says nothing of that version alone, so _joined_apart never takes it for the version a clause is about
+_BOUND_WORDS = frozenset("since from after before until till through".split())
+
+
+def _bounded_numbers(clause: str) -> set[str]:
+    """The numbers and versions of `clause` (as _ordered_numbers gives them) that stand as a bound: a bound word
+    (_BOUND_WORDS) at most two words before, with no number between ("since NumPy 2.4.0", "from version 3")."""
+    text = _DATE_PART.sub(" ", _V_PREFIX.sub("", clause or ""))
+    out = set()
+    for n, at in _number_positions(text):
+        before = text[:at].split()[-3:]
+        if any(w.casefold().strip("(\"'“‘") in _BOUND_WORDS and
+               not any(ch.isdigit() for x in before[i + 1:] for ch in x) for i, w in enumerate(before)):
+            out.add(n)
+    return out & set(_ordered_numbers(clause))
+
+
+def _joined_apart(text: str, used) -> list[str]:
+    """JOINED_APART for each clause of the sentence (_coarse_clauses) that holds a version or number `a` and another
+    anchor `b` (_anchors: a version, number or name) that no clause of the cited claims holds together, while a claim
+    clause holding `b` holds another version or number of its own that the claim clause of `a` does not, and the
+    sentence's clause does not hold it. So "Zephyr 4.2 supports Windows" for "Zephyr 4.1 supports Windows and Zephyr
+    4.2 supports Linux" (4.2 with Windows, which the claim says of 4.1), whatever stands first ("Windows is supported
+    by Zephyr 4.2": a word of the sentence counts as `b` when a claim clause holds it as an anchor). A sentence that
+    joins two claims about
+    different things ("NumPy 2.5.5 fixes the flaw that affects Windows builds" for "NumPy 2.5.5 fixes the flaw" and
+    "The flaw affects Windows builds") is not judged: the clause of "Windows" holds no version of its own; nor is
+    one whose other version is a bound ("NumPy 2.5.5 fixes CVE-2026-1234 in Windows builds" for "... affects Windows
+    builds since NumPy 2.4.0": _bounded_numbers), which ties nothing to that version alone."""
+    def words(clause):
+        return _anchors(clause) | {_e_plain(w) for w in _E_WORD.findall(clause)}
+    theirs = [(_anchors(c), words(c), _bounded_numbers(c))
+              for x in used for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
+    named = set().union(*(t[0] for t in theirs)) if theirs else set()
+    out = []
+    carried = (set(), set())
+    for clause in _coarse_clauses(_V_PREFIX.sub("", text)):
+        mine, said = _anchors(clause) | carried[0], words(clause) | carried[1]
+        carried = (set(), set())
+        if len(_E_WORD.findall(clause)) <= 3 and not any(ch.isdigit() for ch in clause):
+            carried = (mine, said)          # a heading ("Windows: supported by Zephyr 4.2") speaks of what follows
+            continue
+        # b: the clause's anchors, and any word of it that a claim clause holds as an anchor (the sentence's first
+        # word is no anchor of its own: "Windows is supported by Zephyr 4.2")
+        for a in sorted(x for x in mine if any(ch.isdigit() for ch in x)):
+            for b in sorted((mine | (said & named)) - {a}):
+                if any(a in w and b in w for _, w, _ in theirs):
+                    continue                    # a claim clause holds both, whatever their place in it
+                for _, here, _ in (t for t in theirs if a in t[1]):
+                    for there, _, bounds in (t for t in theirs if b in t[1]):
+                        other = sorted(o for o in there - here - said - bounds if any(ch.isdigit() for ch in o))
+                        if other:
+                            out.append(JOINED_APART.format(a=a, b=b, other=other[0]))
+    return list(dict.fromkeys(out))
+
+
 def _refusals(text: str, used, b: dict) -> list[str]:
     """Why a sentence that passed every check of check_sentence() is refused all the same (REFUSALS), or []. A caveat
     of the closed grammar asserts nothing of its claims and is never refused here."""
@@ -2801,7 +3002,7 @@ def _refusals(text: str, used, b: dict) -> list[str]:
     if not used or insufficiency(text, question):
         return []
     return (_unseen_in_claims(used) + _restriction_lost(text, used) + _case_changed(text, used, question) +
-            _role_swaps_refused(text, used))
+            _role_swaps_refused(text, used) + _joined_apart(text, used))
 
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:
