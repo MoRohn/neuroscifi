@@ -104,10 +104,16 @@ nsf resources                  # policy.idle_unload: timeouts, state, last use, 
 
 A pass unloads a service only when all of these hold:
 1. Its timeout is set and its container runs.
-2. No voice session is open and no research task is running. A voice session counts from start to end, whether it
-   is capturing or not, the owner's or a Pocket device's. The console and the Pocket bridge each publish their open
-   sessions in the audio beacon (`session`, §3(a)), so the pass in the timer's process sees them. A running task is a
-   `web_tasks` row in a running stage with a live lease.
+2. No voice session is in use and no research task is running. A voice session counts from its start for as long as
+   it is used, whether it is capturing or not, the owner's or a Pocket device's: a use is audio (or a client
+   reporting capture, speech or the user speaking), a typed turn, a capture or mode change, a reply fetched, an
+   interruption or a confirmation; polling for events and status reports that nothing plays are not. A session left
+   open and unused for longer than `voice` (default 30 min, `nsf resources idle --set voice=45m`) stops holding off
+   unloading, so a phone that keeps a session open in a pocket no longer does so for ever; the pass says so in its
+   `notes`. `--set voice=off` is the rule of 0.7.0: an open session counts until it ends. The console and the Pocket
+   bridge each publish their open sessions in the audio beacon (`session`, and `used_at`, the newest use; a writer
+   that does not say when counts as in use; §3(a)), so the pass in the timer's process sees them. A running task is
+   a `web_tasks` row in a running stage with a live lease.
 3. Nothing is in flight. Every model call through the gateway, every SearXNG search and every voice session start
    holds the service's in-use lock (`<db>.resources/idle-inuse-<service>.lock`, shared). The pass takes it exclusively
    and keeps it while the service stops, so a call either finishes first or waits and then reloads the service. For
@@ -586,9 +592,13 @@ service):
   the docker group, which already equals root on the host, so this grants nothing that account could not take;
   an account without that power would need the worker to publish the fact in `<db>.resources/` instead (the way
   the audio beacon does), which is not built.
-- SearXNG's unit (`deploy/install.sh --searxng`) runs `nsf web searxng start`, which writes the instance
-  database, as a Docker user: in a two-account install that unit needs an account with both, which the installer
-  does not arrange (it asks for `User=` in a drop-in, as before).
+- SearXNG's unit (`deploy/install.sh --searxng`) runs `nsf web searxng start` as a Docker user. For an account that
+  may read the instance database but not write it, `nsf web searxng start|stop|status` reads the Web Cortex
+  configuration (read only, through the idle pass's opener: no link or FIFO, nothing of the schema trusted) and
+  writes nothing; a first start says which command the database's owner runs once to set `searxng_url`, and
+  `health` stays with that owner because it records what it finds. With `--idle --searxng` the installer writes
+  the unit's drop-in (`User=` the idle account, `NSF_DB`), so the unit and the idle pass start and stop SearXNG as
+  the same account, with no right added to it (two-account check, §3(d)). Not exercised: systemd running that unit.
 - A lookup's use of a memory model is seen by the idle policy only when it goes through `knowledge.query` in a
   process that knows the individual's file. A result served from the per-process cache uses no model and marks no
   use.

@@ -33,11 +33,12 @@ def test_the_two_account_install_works_with_real_accounts_in_a_user_namespace(tm
         pytest.skip(done.stdout.strip().splitlines()[-1])
     assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-1000:]
     result = json.loads(report.read_text())
-    assert result["failed"] == 0 and result["passed"] >= 41
+    assert result["failed"] == 0 and result["passed"] >= 55
     names = {c["check"] for c in result["checks"]}
     assert {"the idle account cannot write the database", "a third account's listener is refused",
             "the idle account serves the request and reloads the service",
-            "the service account cannot remove another account's entry"} <= names
+            "the service account cannot remove another account's entry",
+            "the idle account's stop and status read the port and write nothing"} <= names
 
 
 # ---- the folder's mode decides the files' mode ---------------------------------------------------------------------

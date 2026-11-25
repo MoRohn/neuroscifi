@@ -250,6 +250,14 @@ class VoiceHub:
     def _state(self, s: Session, **changes):
         vstate.update(s.id, owner=s.principal.owner, **changes)
 
+    def _used(self, sid, principal) -> Session:
+        """session(), for a call that uses the session (audio, a typed turn, a capture or mode change, a reply
+        fetched, an interruption, a confirmation): the resource policy counts an open session as in use only while
+        such calls keep coming (voice.state.last_used). Polling events and status reports are not uses."""
+        s = self.session(sid, principal)
+        vstate.touch(s.id)
+        return s
+
     def session(self, sid, principal) -> Session:
         sid = self.aliases.get(sid, sid) if isinstance(sid, str) else None
         s = self.sessions.get(sid) if sid else None
@@ -423,7 +431,7 @@ class VoiceHub:
         return vconfig.public(cfg)
 
     def consent(self, sid, principal, accept: bool) -> dict:
-        s = self.session(sid, principal)
+        s = self._used(sid, principal)
         with self.db() as db:
             vconfig.record_consent(db, s.device, self.clock(), bool(accept))
             if not accept and tx.holds(db, s.device, self.clock()):
@@ -433,7 +441,7 @@ class VoiceHub:
         return {"consented": bool(accept)}
 
     def set_mode(self, sid, principal, mode) -> dict:
-        s = self.session(sid, principal)
+        s = self._used(sid, principal)
         if mode not in vconfig.MODES:
             raise ValidationError("mode must be one of " + ", ".join(vconfig.MODES))
         self._apply_mode(s, mode)
@@ -466,7 +474,7 @@ class VoiceHub:
 
     # ---- capture ownership --------------------------------------------------------------------------------------
     def capture(self, sid, principal, action, *, handoff_confirm=None) -> dict:
-        s = self.session(sid, principal)
+        s = self._used(sid, principal)
         now = self.clock()
         with self.db() as db:
             if action in ("acquire", "handoff"):
@@ -551,7 +559,7 @@ class VoiceHub:
 
     # ---- audio in -------------------------------------------------------------------------------------------------
     def audio(self, sid, principal, utterance, seq, final, pcm: bytes, *, started_at=None) -> dict:
-        s = self.session(sid, principal)
+        s = self._used(sid, principal)
         now = self.clock()
         if not isinstance(utterance, str) or not ID.match(utterance):
             raise ValidationError("utterance id must match [A-Za-z0-9_-]{4,64}")
@@ -682,7 +690,7 @@ class VoiceHub:
         return {"status": "final" if replying else "busy", "text": text, "asr_ms": round(result["latency"] * 1000, 1)}
 
     def text(self, sid, principal, text) -> dict:
-        s = self.session(sid, principal)
+        s = self._used(sid, principal)
         if not isinstance(text, str) or not text.strip() or len(text) > 2000:
             raise ValidationError("text must be 1..2000 characters")
         if not self._replies.acquire(blocking=False):
@@ -890,7 +898,7 @@ class VoiceHub:
             turn.cond.notify_all()
 
     def speech(self, sid, principal, turn_id, n, *, wait=15.0) -> bytes:
-        s = self.session(sid, principal)
+        s = self._used(sid, principal)
         turn = s.turns.get(turn_id)
         if turn is None or not isinstance(n, int) or not 0 <= n < len(turn.sentences):
             raise NotFound("no such sentence")
@@ -926,7 +934,7 @@ class VoiceHub:
 
     def interrupt(self, sid, principal, turn_id, sentence, kind, *, detect_ms=None, stop_ms=None) -> dict:
         """The client stopped playback (barge-in or stop) or heard a brief overlap. Never cancels research."""
-        s = self.session(sid, principal)
+        s = self._used(sid, principal)
         if kind not in ("barge_in", "stop", "overlap", "finished"):
             raise ValidationError("kind must be barge_in, stop, overlap or finished")
         if kind == "overlap":
@@ -967,7 +975,7 @@ class VoiceHub:
 
     # ---- confirmations, client state -------------------------------------------------------------------------------
     def confirm(self, sid, principal, confirm_id, accept) -> dict:
-        s = self.session(sid, principal)
+        s = self._used(sid, principal)
         with s.lock:          # claim it: two concurrent confirms never both execute
             pending = s.pending
             if not pending or pending["id"] != confirm_id or pending["expires_at"] <= self.clock():

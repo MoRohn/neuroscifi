@@ -59,6 +59,12 @@ CRITICAL_SHARE = 0.25          # at critical pressure the idle timeout is a quar
 CRITICAL_FLOOR = 120.0         # ... but never under two minutes
 COMMAND_TIMEOUT = 120.0        # stop / start; the wait commands carry their own limit
 EVENTS_KEPT = 500
+# An open voice session holds off every unload while it is used; one left open and quiet (a phone that keeps it
+# open in a pocket) stops holding it off after this long without audio, a typed turn, a capture or mode change, an
+# interruption, a confirmation or a reply fetched (§6 item 13). `nsf resources idle --set voice=DURATION|off`; off is
+# 0.7.0's rule: an open session holds it off for as long as it stays open.
+VOICE_QUIET = 1800.0
+VOICE = "voice"                 # the name the owner sets it under, beside the services' names
 RUNNING = ("discovering", "reading", "evaluating", "synthesizing")
 REPO = Path(os.environ.get("NSF_REPO") or Path(__file__).resolve().parents[3])
 
@@ -469,18 +475,37 @@ class Idle:
 
     # ---- configuration ----------------------------------------------------------------------------------------
     def configure(self, changes: dict) -> dict:
-        """{service: seconds or None}. Returns the timeouts now in force."""
+        """{service: seconds or None}, and VOICE: how long an open voice session may stay quiet and still hold off
+        every unload (None: for as long as it is open). Returns the timeouts now in force."""
         for name in changes:
-            if name not in self.services:
-                raise ValueError(f"unknown service {name!r} (one of {', '.join(self.services)})")
+            if name not in self.services and name != VOICE:
+                raise ValueError(f"unknown service {name!r} (one of {', '.join(self.services)}, or {VOICE})")
         with self._state() as data:
             for name, seconds in changes.items():
-                data["timeouts"][name] = seconds
+                if name == VOICE:
+                    data["voice_quiet_s"] = "off" if seconds is None else seconds
+                else:
+                    data["timeouts"][name] = seconds
             timeouts = dict(data["timeouts"])
         for name, seconds in changes.items():
-            self._event(name, "configure", "owner set the idle timeout to " +
-                        ("off" if seconds is None else _minutes(seconds)), timeout_s=seconds)
+            if name == VOICE:
+                self._event(name, "configure", "owner set how long an open voice session may stay quiet and still "
+                            "hold off unloading to " + ("off (while it is open)" if seconds is None
+                                                        else _minutes(seconds)), timeout_s=seconds)
+            else:
+                self._event(name, "configure", "owner set the idle timeout to " +
+                            ("off" if seconds is None else _minutes(seconds)), timeout_s=seconds)
         return timeouts
+
+    def voice_quiet(self) -> float | None:
+        """Seconds an open voice session may stay quiet and still hold off unloading; None: for as long as it is
+        open. VOICE_QUIET until the owner sets it; a value that is not a number of seconds reads as the default."""
+        value = self.read().get("voice_quiet_s", VOICE_QUIET)
+        if value == "off":
+            return None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            return VOICE_QUIET
+        return float(value)
 
     def timeouts(self) -> dict:
         data = self.read()["timeouts"]
@@ -523,8 +548,10 @@ class Idle:
                 return bool(self.read_ready(f"http://{where}:{port}{path}"))
         return None
 
-    def voice_session(self) -> bool:
-        return policy.voice_session_active(self.db_path, now=self.clock())
+    def voice_session(self, quiet: float | None = None) -> bool:
+        """An open voice session, of this process or another (the audio beacon); with `quiet`, one used within
+        that many seconds (policy.voice_session_active)."""
+        return policy.voice_session_active(self.db_path, now=self.clock(), quiet=quiet)
 
     def running_tasks(self) -> int | None:
         """How many research tasks run now (a running stage with a live lease); None when this account cannot
@@ -579,9 +606,13 @@ class Idle:
             return {"enabled": False, "decisions": {}}
         sample = self.sample()
         level = sample["level"]
-        blockers = []
-        if self.voice_session():
+        blockers, notes = [], []
+        quiet = self.voice_quiet()
+        if self.voice_session(quiet):
             blockers.append("a voice session is open")
+        elif quiet is not None and self.voice_session():
+            notes.append(f"a voice session is open but unused for more than {_minutes(quiet)}: it no longer holds "
+                         f"off unloading (nsf resources idle --set {VOICE}=off keeps the rule of 0.7.0)")
         tasks = self.running_tasks()
         if tasks is None:
             blockers.append(getattr(self, "db_problem", None) or
@@ -608,7 +639,8 @@ class Idle:
                                        "timeout is off: it is never unloaded while idle"}
                     continue
             decisions[name] = self._consider(self.services[name], seconds, level, blockers, now)
-        return {"enabled": True, "level": level, "blockers": blockers, "decisions": decisions}
+        return {"enabled": True, "level": level, "blockers": blockers, "decisions": decisions,
+                **({"notes": notes} if notes else {})}
 
     def group(self, name) -> list[str]:
         """The services that are one container with `name`, in the order of the service list (the single memory
@@ -928,9 +960,12 @@ class Idle:
                 "reload_estimate_s": self.estimate(name)}
         return {"automatic": any(v is not None for v in timeouts.values()), "services": services,
                 **({"state_problems": self.problems} if getattr(self, "problems", None) else {}),
-                "critical_share": CRITICAL_SHARE, "events": self.events(limit=20),
+                "critical_share": CRITICAL_SHARE, "voice_quiet_s": self.voice_quiet(),
+                "events": self.events(limit=20),
                 "how": "nsf resources idle --set vllm=30m --set asr=15m --set tts=15m --set embed=15m --set "
-                       "rerank=15m; nsf resources tick (neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
+                       "rerank=15m; an open voice session holds off unloading while used within voice_quiet_s "
+                       f"(--set {VOICE}=30m, or {VOICE}=off: while it is open); nsf resources tick "
+                       "(neuroscifi-idle.timer); nsf resources unload|load SERVICE"}
 
 
 _LOADS: dict = {}                   # (db_path, service) -> the _Load running in this process

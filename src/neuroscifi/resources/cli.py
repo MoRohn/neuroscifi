@@ -79,7 +79,9 @@ def register(sub):
                         "unload|load SERVICE: the owner's manual command")
     p.add_argument("service", nargs="?", choices=tuple(idle.SERVICES), help="for unload and load")
     p.add_argument("--set", action="append", metavar="SERVICE=DURATION",
-                   help="idle timeout, e.g. vllm=30m, asr=15m, embed=15m, searxng=off (repeatable; with `idle`)")
+                   help="idle timeout, e.g. vllm=30m, asr=15m, embed=15m, searxng=off (repeatable; with `idle`); "
+                        "voice=30m: how long an open voice session may go unused and still hold off unloading "
+                        "(default 30m; voice=off: for as long as it is open)")
     p.add_argument("--on-demand", metavar="PURPOSE",
                    help="with `load`: reload the service only if the idle policy unloaded it (an owner's unload "
                         "stands), and record it as on demand for PURPOSE")

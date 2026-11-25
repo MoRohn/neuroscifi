@@ -78,26 +78,57 @@ def local_session() -> bool:
         return False
 
 
-def _beacon(db_path, key, now) -> bool:
+def local_used() -> float | None:
+    """When an open voice session of this process was last used (voice.state.last_used), None when none is open."""
+    try:
+        from ..voice import state as vstate
+        return vstate.last_used()
+    except Exception:          # the voice module is optional
+        return None
+
+
+def _read_beacon(db_path, now) -> dict | None:
+    """The beacon when it is fresh (written less than BEACON_STALE seconds ago), else None."""
     path = _beacon_path(db_path)
     if path is None:
-        return False
+        return None
     try:
         beacon = shared.read_json(path)       # no link, no FIFO, bounded, not too deep (review L4, L4c)
     except (OSError, ValueError):
-        return False
+        return None
     now = time.time() if now is None else now
     at = beacon.get("at") if isinstance(beacon, dict) else None
-    return bool(isinstance(at, (int, float)) and 0 <= now - at <= BEACON_STALE and beacon.get(key))
+    if isinstance(at, bool) or not isinstance(at, (int, float)) or not 0 <= now - at <= BEACON_STALE:
+        return None
+    return beacon
+
+
+def _beacon(db_path, key, now) -> bool:
+    beacon = _read_beacon(db_path, now)
+    return bool(beacon is not None and beacon.get(key))
 
 
 def audio_active(db_path=None, *, now=None) -> bool:
     return local_audio() or _beacon(db_path, "active", now)
 
 
-def voice_session_active(db_path=None, *, now=None) -> bool:
-    """A voice session is open in this process or in the process whose beacon is fresh (the idle policy's guard)."""
-    return local_session() or _beacon(db_path, "session", now)
+def _in_use(used_at, now, quiet) -> bool:
+    """An open session counts unless it is known to have been quiet for longer than `quiet` seconds: no bound
+    (None), or no time of last use (a beacon written before it was published), counts as in use."""
+    if quiet is None or isinstance(used_at, bool) or not isinstance(used_at, (int, float)):
+        return True
+    return now - used_at <= quiet
+
+
+def voice_session_active(db_path=None, *, now=None, quiet=None) -> bool:
+    """A voice session is open in this process or in the process whose beacon is fresh (the idle policy's guard).
+    With `quiet` (seconds), a session counts only while it was used within that time: a phone that keeps a voice
+    session open without using it does not hold off idle unloading for ever (§6 item 13; Idle.voice_quiet)."""
+    now = time.time() if now is None else now
+    if local_session() and _in_use(local_used(), now, quiet):
+        return True
+    beacon = _read_beacon(db_path, now)
+    return bool(beacon is not None and beacon.get("session") and _in_use(beacon.get("used_at"), now, quiet))
 
 
 def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
@@ -176,10 +207,12 @@ class AudioBeacon:
         self.thread.start()
         return self
 
-    def write(self, active: bool, session: bool = False) -> None:
+    def write(self, active: bool, session: bool = False, used_at: float | None = None) -> None:
         shared.ensure_folder(self.path.parent)
-        shared.write_text(self.path, json.dumps({"active": bool(active), "session": bool(session),
-                                                 "at": self.clock(), "pid": os.getpid()}))
+        record = {"active": bool(active), "session": bool(session), "at": self.clock(), "pid": os.getpid()}
+        if session and used_at is not None:
+            record["used_at"] = used_at          # when an open session was last used (voice_session_active's quiet)
+        shared.write_text(self.path, json.dumps(record))
 
     def tick(self) -> None:
         """Write when audio or an open session starts or stops and every BEACON_HEARTBEAT seconds while either is on;
@@ -190,7 +223,7 @@ class AudioBeacon:
             return
         if self.last is None or flags != self.last[0] or (any(flags) and now - self.last[1] >= BEACON_HEARTBEAT):
             try:
-                self.write(*flags)
+                self.write(*flags, local_used())
                 self.last = (flags, now)
             except OSError:
                 pass

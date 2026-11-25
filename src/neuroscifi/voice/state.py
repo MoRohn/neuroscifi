@@ -20,6 +20,7 @@ STALE_SECONDS = 30.0
 ENGINES_STALE = 60.0
 FIELDS = ("mode", "session_active", "capture_device", "mic_capturing", "output_muted", "speaking", "user_speaking",
           "interrupted_at", "updated_at")
+AUDIO = ("mic_capturing", "speaking", "user_speaking")
 _LOCK = threading.Lock()
 _SESSIONS: dict[str, dict] = {}
 _ENGINES: dict = {}
@@ -35,6 +36,7 @@ def update(session_id: str, *, owner: bool = True, **changes) -> dict:
     """Record changes for one session (unknown keys are ignored). Returns the session's state. `owner` False marks
     a non-owner (Pocket) session: it never becomes what snapshot() shows."""
     with _LOCK:
+        new = session_id not in _SESSIONS
         cur = _SESSIONS.setdefault(session_id, _idle())
         cur["_owner"] = bool(owner)
         changed = False
@@ -45,7 +47,36 @@ def update(session_id: str, *, owner: bool = True, **changes) -> dict:
         if changed or cur["updated_at"] is None:
             cur["updated_at"] = time.time()
         cur["_seen"] = time.monotonic()
+        if new or any(changes.get(k) is True for k in AUDIO):
+            cur["_used_at"] = time.time()           # a session begun, or audio reported: it is in use
         return {k: cur[k] for k in FIELDS}
+
+
+def touch(session_id: str) -> None:
+    """The session was used now: audio, a typed turn, a capture or mode change, an interruption, a confirmation or
+    a reply fetched (voice.hub). Reading its events or reporting that nothing plays is not a use."""
+    with _LOCK:
+        cur = _SESSIONS.get(session_id)
+        if cur is not None:
+            cur["_used_at"] = time.time()
+
+
+def last_used() -> float | None:
+    """When an open voice session of this process was last used (wall clock), None when none is open. A session
+    whose client reports audio now (capturing, speaking, the user speaking, within STALE_SECONDS) is in use now.
+    The resource policy reads it, through the audio beacon for other processes (resources.policy
+    .voice_session_active): an open session left quiet stops holding off idle unloading (§6 item 13)."""
+    with _LOCK:
+        mono, now = time.monotonic(), time.time()
+        times = []
+        for s in _SESSIONS.values():
+            if not s.get("session_active"):
+                continue
+            if mono - s.get("_seen", mono) <= STALE_SECONDS and any(s.get(k) for k in AUDIO):
+                times.append(now)
+            else:
+                times.append(s.get("_used_at", now))
+        return max(times) if times else None
 
 
 def end(session_id: str) -> None:
