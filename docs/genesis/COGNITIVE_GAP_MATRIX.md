@@ -11,8 +11,9 @@ measured at `19f80e2`, system code unchanged from `07a8728`), described in
 How priority is set: by the build plan the owner's session ruled (handoff "Build plan (rulings)"): **Wave 0** is a
 prerequisite for everything else; **Wave 1** lanes run in parallel after it; **not planned** means no lane addresses
 the gap. The research rank (1–12, [RESEARCH_ASSESSMENT.md](RESEARCH_ASSESSMENT.md) §6) is given in brackets where a
-shortlisted mechanism applies. Wave 1 lanes are **built, awaiting integration and validation**: their numbers are lane
-reports, not final results.
+shortlisted mechanism applies. Wave 1 is **integrated, reviewed, fixed and
+reconciled**: its rows give the shipped status measured on the reconciled tree ([WAVE1.md](WAVE1.md)); the final
+validation and the withheld run are still to be recorded there.
 
 The baseline is a set of task scores on synthetic worlds with known answers. It is not a measurement of
 "intelligence", of the real host, of the open web or of the answer model.
@@ -51,7 +52,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | Core M: no predictive regulation, no rollout. Runtime: regulation reactive and threshold-based; nothing predicts load; elevated pressure, GPU, queue depth, KV saturation and latency trends protect nothing (A §3.2) |
 | Baseline | memory breaches avoided 0 of 3 / 0 of 7; mean lead of the first hold before a memory breach 4.3 / 5.8 ticks; false-alarm share 0.000 / 0.009; background work given up 0.023 / 0.044. The plant's constants (12 GiB, 450 ms, 6 ticks, 2.5 s, 2 GiB) are declared by the benchmark, not measured on the Spark |
 | Priority, lane | Wave 1, research rank 10. Lane I: predictive regulation acting only inside existing bounds; lane M: multi-step forecast from the active graph |
-| Lane report (awaiting integration) | Lane I: predictive regulation **off by default** — held-out memory breaches avoided 0.80, voice-session 0.53, but false alarms 0.043 and background work given up 0.106; footprint unmeasured on the host. Latency and backlog forecasting not built |
+| Wave 1 (as shipped; [WAVE1.md](WAVE1.md) §4.1) | Predictive regulation **off** (lane I). Within the simulated plant (constants declared, the forecaster fed directly; the gate's wiring covered by a test): held-out memory breaches avoided 0.80 on the split seeds (was 0), 0.80 ± 0.07 against 0.06 ± 0.11 on 12 further seeds; mainly the per-task memory reserve (without the trend still 0.80); costs: background work given up 0.044 → 0.106, false alarms 0.009 → 0.043. Multi-step graph forecasts (lane M) on as commands. Latency and backlog forecasting not built; nothing measured on the host |
 
 ## 3. Causal reasoning
 
@@ -61,7 +62,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | The graph has no action input, so it cannot predict the consequence of an action. Web: no causal relation extraction; entities are co-mention only (A §3.10). No interventional or counterfactual engine |
 | Baseline | counterfactual coverage of answerable queries 0.107 / 0.071 (only one-step graph queries are answered); relative error 0.045 where answered, always within 2 sd; correct abstention 1.00 is vacuous (everything else is declined) |
 | Priority, lane | Wave 1; research pilot 2.2 (small causal graphs with a deterministic engine). Lane M |
-| Lane report (awaiting integration) | Lane M (wording after the Wave 1 review): "coverage" counted any answer and is not a supported headline. Held-out answered within tolerance 0.071 → 1.0 on the split's seeds (0.065 → 0.985 on 12 further seeds); of 28 answerable questions per seed, 16 are exact arithmetic on equations handed to the engine, 3 belief what-ifs (plumbing) and 9 learned graph forecasts and actions, the substantive part (0.22 → 1.0). The "confounded" questions are front-door answerable; a decline there is now an honest abstention, reported on its own line |
+| Wave 1 (as shipped; WAVE1.md §4.3) | Lane M, on as commands: held-out answered within tolerance 0.071 → 1.000 on the split seeds (0.065 → 0.985 on 12 further seeds). By group: equations handed to the engine 0 → 1.0 (exact arithmetic), belief what-ifs 0 → 1.0 (plumbing), learned-graph forecasts and actions 0.222 → 1.000 (12 seeds 0.204 → 0.954), against an "answer 0" floor of 0.407 on those held-out questions. Front-door questions are declined (no front-door adjustment): the open gap |
 
 ## 4. Imagination and simulation
 
@@ -71,7 +72,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | No sandbox, no what-if, no scenario, no prospective simulation in either package. A reading labelled `provenance='simulated'` moves a belief like an observation |
 | Baseline | counterfactual coverage as in row 3 (multi-step forecasts, action consequences, interventional and counterfactual questions and belief what-ifs: coverage 0); adversarial `simulated_reading_moves_no_belief` fails (0.500 → 0.994 after four readings) |
 | Priority, lane | Prerequisite (research rank 1) done in Wave 0 by lane P. Wave 1 lane M: core sandbox on an in-memory copy, exact what-if, multi-step forecast, web scenario records (kind `simulation`, quarantined), the imagine → predict → act → observe → compare loop |
-| Lane report (awaiting integration) | Lane M: adversarial 13 of 13 by relabelling the `simulated` case (ruled mislabelled: simulated-environment readings are evidence, ADR-014). Scenario records off by default. Open owner decision: mixing simulated-environment and real readings in one epoch is not prevented (needs a schema change) |
+| Wave 1 (as shipped) | Lane M: the sandbox, exact what-ifs, retrospection on (commands; computed on a private copy, never written unless kept, and a kept answer goes when anything it names is forgotten); scenario records **off** (no settled real predictions to measure them on). Adversarial: 13 of the original 13 under the redefinition in ADR-052 §6 (the `simulated` case ruled mislabelled). Open owner decision: mixing simulated-environment and real readings in one epoch (needs a schema change) |
 
 ## 5. Self-monitoring
 
@@ -81,7 +82,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | No integrated internal-state record, none persisted or shared between processes; no single self-model (goals, capabilities, limits, authorised tools); claim probabilities under-confident; self-critique precision unmeasured; outcome tracking of the change detector computed by nothing |
 | Baseline | self-description: coverage 0.80, accuracy when answered 1.00, 4 separate surfaces; never answered: what it is uncertain about, its last decision, the tools the model may use. Selective: accuracy 0.857 (21 items) / 1.000 (20 items); AURC 0.080 / 0.000; AUROC 0.685 / undefined (no wrong held-out answer); claim probability Brier 0.095 / 0.122, all of it reliability error; ECE 0.304 / 0.341 |
 | Priority, lane | Wave 1, research ranks 3 and 4. Lane I (internal-state record), lane W (self-description record on every surface), lane C (confidence, selective answering, escalation, detector precision) |
-| Lane reports (awaiting integration) | Lane W: self-description held-out 29 of 30 under the original answer key and 30 of 30 under the changed key (baseline 24 of 30 over 4 surfaces; two probes are plumbing checks; held-out states printed once during development). Lane C (wording after the Wave 1 review): confidence record on by default; on 10 held-out claims, adding the verification state to the posterior lowers Brier 0.122 → 0.022 with the unfitted score now shipped (0.042 with the fitted map); no answer confidence shown (not enough development data); no held-out evidence about selective answering; selective answering, escalation and adaptive depth off; self-critique marks precision 0.07, so they stay display-only. Calibration fitted on 21 fictional development items |
+| Wave 1 (as shipped; WAVE1.md §4.4, §4.5) | Lane I: the internal-state record and its history on (display). Lane W: one self-description record on every surface; held-out 29 of 30 under the original answer key, 30 of 30 under lane W's key (baseline 24 of 30, 4 surfaces → 1); two probes are plumbing checks; held-out states printed once during development. Lane C: the monitoring record on (display); on 10 held-out claims the verification state lowers Brier 0.122 → 0.022, but a two-line rule on the verdict word scores 0.0025, so it is not a calibration gain; **no answer confidence shown** (no fitted map has 30 development items in 3 blocks); development answer ranking AURC 0.080 → 0.143; no held-out evidence about selective answering; selective answering, escalation and adaptive depth off; three score terms untested |
 
 ## 6. Temporal continuity
 
@@ -91,7 +92,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | No cross-task working context; voice sessions, events and the follow of a spoken research answer are lost on restart (R8); console and Pocket are separate principals with no shared conversational context; in-flight model calls are process-local |
 | Baseline | none: the self-description family "cannot show continuity over a long-running process" |
 | Priority, lane | Wave 1, lane W (voice follow-up survives restart; a "What we were just doing" panel) |
-| Lane report (awaiting integration) | Lane W: voice `resume_follow` on (R8; real microphone and handset **unverified**); worker model calls visible to Presence through files in `<db>.resources/` |
+| Wave 1 (as shipped) | Lane W: voice `resume_follow` on, delivered once to the person's live session (tested with two hubs in one process; two real processes **unverified**; real microphone and handset **unverified**); worker model calls visible to Presence; `pocket_recent` off. No benchmark measures continuity |
 
 ## 7. Adaptive motivation
 
@@ -101,7 +102,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | No expected-information-gain computation in the core; the timer's ranking chases a never-resolving subject; the idle ranking is worse (the noisy subject returns as an open hypothesis whose gain the futility rule does not touch) |
 | Baseline | core realised bits per investigation 0.014 / 0.092 (oracle 0.035 / 0.119; random 0.037 / 0.083); core noise share 0.00 / 0.10. Web realised bits per unit of budget 0.161 / 0.093 (oracle 0.263 / 0.146); budget on noise 0.375 / 0.537 (idle path 0.81 / 0.80, realised bits per unit of budget −0.040 / −0.016); budget on the stale-but-important subject 0.194 / 0.083 (oracle 0.417 / 0.250) |
 | Priority, lane | Wave 0 (lane S) unified admission. Wave 1, research ranks 9 and 11: lane I (curiosity by learning progress, exact information gain beside decisions, optional information-seeking rule) |
-| Lane report (awaiting integration) | Lane I: curiosity by learning progress **on** — held-out noise share 0.375 on both paths (was 0.54 timer / 0.80 idle), stale-but-important 0.167 (was 0.083 / 0). Rule `information-v1` **opt-in**: 0.118 bits per investigation (rules-v1 0.092, oracle 0.119) but noise share 0.31 (was 0.10) and it fails the retention check `asks_only_while_partner_ambiguous`. Tuned on development (disclosed) |
+| Wave 1 (as shipped; WAVE1.md §4.2) | Lane I, curiosity by learning progress **off**: reworked after the review (a confirming re-verification is progress; the stronger of it and the futility rule; a 7-day fade). Held-out, off → on: timer path 0.093 → 0.134 bits per budget on the split seeds but 0.139 → 0.126 on 12 further seeds (noise 0.412 → 0.394); idle path 0.094 → 0.144 (noise 0.706 → 0.550) on 12 further seeds. Rule `information-v1` **opt-in**, amended: held-out core 0.092 → 0.105 bits per investigation, noise 0.095 → 0.071, and it now passes retention. The salience record and the information display on (records only). Lane K's re-check first, then curiosity: held-out web 0.093 → 0.124 (12 seeds 0.139 → 0.196); the idle re-check is off |
 
 ## 8. Knowledge formation
 
@@ -111,7 +112,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | No abstraction (one sentence = one claim = at most one knowledge row), no concept hierarchy, no causal relation extraction, no uncertainty propagation; hypotheses lack explicit assumptions, stored expected gain and cost; `abandoned` is never set; nothing re-checks dependents when a premise changes |
 | Baseline | retention: 4 of 4 scenarios pass; 7 offline-benchmark metrics recorded as the reference values. No family measures abstraction |
 | Priority, lane | Wave 1, research ranks 5 and 8: lane K (hypothesis fields, premise-change re-check, idle re-check of important beliefs) |
-| Lane report (awaiting integration) | Lane K: hypothesis fields and premise re-check on (record-only); idle re-check off (held-out retention within noise, 0.695 against 0.693; owner decision); one migration appended (tables for hypothesis details, premises, re-checks, reflections, the improvement ledger) |
+| Wave 1 (as shipped) | Lane K: hypothesis fields and premise marks on (records; a mark closes when its subject is re-verified by any normal path); idle re-check off (retention under change 0.695 against 0.693, within noise; owner decision); `abandoned` off; migration 18 (five tables; the improvement ledger refuses UPDATE and DELETE) |
 
 ## 9. Learning-to-learn
 
@@ -121,7 +122,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | Research-policy weights (updated only by `nsf knowledge learning --update`) and per-mode outcome statistics are written and read by nothing; reasoning depth is fixed rules |
 | Baseline | no family measures it directly |
 | Priority, lane | Wave 1, research rank 12: lane K (Thompson sampling over research modes from the recorded statistics; ranks only; promotion only through the held-out and withheld gate); lane C (depth adapted from outcomes) |
-| Lane reports (awaiting integration) | Lane K: strategy selection off — held-out 0.395 against 0.265 verified per investigation; gate verdict "revise": it needs one withheld run by the main session, and the withheld family has no strategy-selection world. Lane C: adaptive depth off — equal quality, 581 → 559 pages, wall time not lower (owner decision) |
+| Wave 1 (as shipped) | Lane K: strategy selection inactive behind its gate — held-out 0.395 against 0.265 verified per investigation; verdict "revise": the gate needs one withheld run, and the withheld family has no strategy-selection world. Lane C: adaptive depth off — equal quality, 581 → 559 pages, wall time not lower (owner decision) |
 
 ## 10. Generalisation and transfer
 
@@ -149,7 +150,7 @@ The baseline is a set of task scores on synthetic worlds with known answers. It 
 | Gap | No policy learned from outcomes beyond `answer_prior`; no improvement ledger (retain, revise, revert); no scheduled reflection; nothing turns an error analysis into a changed procedure |
 | Baseline | no direct family; the benchmark's rules (held-out gain beyond the baseline's spread, ablation removes it, retention all retained, no adversarial case lost) are the gate |
 | Priority, lane | Wave 1, lane K (bounded reflection with traceable outputs, improvement ledger). Directive Levels 4 (model adaptation) and 5 (architecture optimisation) are not built: they need the owner's authorisation ([IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) §6) |
-| Lane report (awaiting integration) | Lane K: reflection off; it writes an optional model summary as `inference` to the imagined store, never as evidence |
+| Wave 1 (as shipped) | Lane K: reflection off (a scheduled reflection while writes are paused is skipped); its optional model summary is an `inference` in the imagined store, derived from the records it phrases, never evidence. The improvement ledger is append-only. Levels 4–5 not built |
 
 ## Other findings the directive's §3 asks to classify
 

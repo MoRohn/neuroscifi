@@ -826,7 +826,7 @@ scenarios.tick(db, now) -> None (off) | {"held"} | {"settled", "imagined"} | {"s
 
 ```python
 self_description.build(db, path, now, *, scope="owner", family=None) -> record     # read-only, writes nothing
-#   record = {"schema": "nsf.self-description/1", "scope": "owner"|"family", "built_at", "state_version", "note",
+#   record = {"schema": "nsf.self-description/1", "scope": "owner"|"agent"|"family", "built_at", "state_version", "note",
 #             "doing", "resources", "knows"?, "uncertain"?, "can", "decisions"?, "provenance", "recent"?, "answers"}
 #   every leaf field is {"value", "source": str, "at": float | None, "age_seconds": float | None}
 #   owner sections: doing {quiet, tasks {running, queued, proposals_waiting, items}, questions {open, web, items},
@@ -840,6 +840,12 @@ self_description.build(db, path, now, *, scope="owner", family=None) -> record  
 #     {version, schema_version, software_at_birth, instance_id, models}, counts {evidence, prediction, imagined}}
 #   scope "family" (family = the Pocket family digest): doing {quiet, tasks of that family}, resources, can
 #     {capabilities {search}, limits {writes, background_research}}, provenance {software {version}}, recent
+#   owner fields added at integration: internal_state (the snapshot), uncertain.answers [{task_id, at, confidence,
+#     confidence_note, below_threshold, decision, sufficiency}] (the monitoring record of the latest finished
+#     research; confidence is null with confidence_note "not enough development data" while no fitted map has 30
+#     development items in 3 blocks, which none of the shipped maps has), uncertain.to_recheck {open, by_kind},
+#     decisions.improvement_ledger, can.capabilities.imagination; scope "agent" (MCP) is the owner record restricted
+#     to family IS NULL research, without file paths, web-derived text wrapped (table below)
 #   recent: [{task_id, objective (≤120 chars), status, device, at, finished_at, openable}]: person-asked tasks; a
 #     family sees its own and, with web setting pocket_recent, the owner's (openable false)
 self_description.short(record) -> [str]            # plain sentences from the values; no model

@@ -1628,14 +1628,14 @@
    {
     "claim_as_first_written": "learning progress: web information gain 0.093 -> 0.163 (held-out)",
     "verdict": "B1 overstated",
-    "wording_now": "split seeds 0.093 -> 0.163; 12 further seeds on the held-out worlds 0.139 -> 0.185 (+33 %, per-seed sd 0.08 to 0.12); everything on (re-check first) 0.124 on the split seeds",
-    "status": "to be re-measured after the learning-progress rework (fix lane core)"
+    "wording_now": "superseded by the rework: held-out timer path, learning progress off -> on (reworked): split seeds 0.093 -> 0.134 bits per budget; 12 further seeds 0.139 -> 0.126 (a drop within one per-seed sd: paired -0.013, sd 0.14; 5 better, 1 worse, 6 equal), so it ships off; everything on (re-check first) 0.093 -> 0.124 on the split seeds, 0.139 -> 0.196 on 12 further seeds (12 of 12 better), the re-check's row",
+    "status": "re-measured after the learning-progress rework (genesis_fix1b.json; re-run on the reconciled tree gen-rec1 with identical numbers: genesis_wave1.json, genesis_wave1_wide.json)"
    },
    {
     "claim_as_first_written": "noise share 0.375 on both paths (was 0.537 timer / 0.800 idle)",
     "verdict": "B2 mixes two paths",
-    "wording_now": "timer path 0.537 -> 0.375 (12 seeds 0.41 -> 0.30); idle path 0.800 -> 0.375 (12 seeds 0.71 -> 0.34); the idle path gained no bits per budget on the split held-out seeds (-0.016 -> -0.017) though 12 further seeds show 0.094 -> 0.186",
-    "status": "to be re-measured after the learning-progress rework (fix lane core)"
+    "wording_now": "paths apart, held-out, off -> on (reworked): timer path noise share 0.537 -> 0.512 (12 seeds 0.412 -> 0.394), bits per budget 0.093 -> 0.134 (12 seeds 0.139 -> 0.126); idle path noise share 0.800 -> 0.650 (12 seeds 0.706 -> 0.550), bits per budget -0.016 -> 0.044 (12 seeds 0.094 -> 0.144)",
+    "status": "re-measured after the learning-progress rework (genesis_fix1b.json; re-run on the reconciled tree gen-rec1 with identical numbers: genesis_wave1.json, genesis_wave1_wide.json)"
    },
    {
     "claim_as_first_written": "predictive regulation: held-out memory breaches avoided 0.80 (was 0)",

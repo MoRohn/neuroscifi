@@ -2257,7 +2257,7 @@
     "claim_as_first_written": "information value, re-check then curiosity: held-out 0.124 against 0.093",
     "verdict": "timer path only; seeds",
     "wording_now": "the re-check pick then the timer path, split seeds; the idle path is reported apart; every Wave 1 chooser on, 12 further seeds on the held-out worlds 0.139 -> 0.196 (better in 12 of 12)",
-    "status": "to be re-measured after the learning-progress rework (fix lane core)"
+    "status": "re-measured on the reconciled tree gen-rec1 after the learning-progress rework: unchanged, 0.124 against 0.093 on the split seeds and 0.139 -> 0.196 (12 of 12) on 12 further seeds (genesis_wave1.json, genesis_wave1_wide.json)"
    }
   ]
  }

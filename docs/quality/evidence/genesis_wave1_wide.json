@@ -1,7 +1,7 @@
 {
  "benchmark": "cognition, Wave 1: supplementary wide-seeds run",
  "environment": {
-  "git_commit": "9814c35b66b75db550c32a4940a9c26730d8547b",
+  "git_commit": "04ebecd0370d6c9ee531560662ed67abbde1982b",
   "git_dirty": true,
   "python": "3.12.16",
   "numpy": "2.3.5",
@@ -26,7 +26,7 @@
   5011,
   5012
  ],
- "note": "supplementary: reported beside the frozen split's own 3 seeds, which stay the official numbers; the worlds are the split's, only the seeds differ; the withheld family is never run",
+ "note": "supplementary: reported beside the frozen split's own 3 seeds, which stay the official numbers; the worlds are the split's, only the seeds differ; the withheld family is never run; regenerated on the reconciled tree: learning progress is off as shipped, so the 'as shipped' rows equal 'all off'; lane I's rows switch learning progress on (reworked)",
  "splits": {
   "development": {
    "anticipation: predictive regulation (lane I) vs the reactive gate": {
@@ -512,9 +512,9 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 2.66
+    "run_seconds": 2.97
    },
-   "info_value, timer path: as shipped (learning progress on) vs every Wave 1 setting off": {
+   "info_value, timer path: as shipped (learning progress off) vs every Wave 1 setting off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
     "family": "info_value",
     "split": "development",
@@ -690,10 +690,10 @@
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.244128,
-       "sd": 0.105603,
-       "min": 0.128353,
-       "max": 0.425919,
+       "mean": 0.180272,
+       "sd": 0.073805,
+       "min": 0.085633,
+       "max": 0.317964,
        "n": 12
       },
       "reference": {
@@ -704,23 +704,23 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.063856,
-       "sd": 0.069487,
-       "min": -0.083544,
-       "max": 0.193737,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.146061,
+        "mechanism": 0.229605,
         "reference": 0.229605
        },
        "5002": {
-        "mechanism": 0.146061,
+        "mechanism": 0.128371,
         "reference": 0.128371
        },
        "5003": {
-        "mechanism": 0.329156,
+        "mechanism": 0.228131,
         "reference": 0.228131
        },
        "5004": {
@@ -728,48 +728,48 @@
         "reference": 0.128353
        },
        "5005": {
-        "mechanism": 0.1888,
+        "mechanism": 0.085633,
         "reference": 0.085633
        },
        "5006": {
-        "mechanism": 0.425919,
+        "mechanism": 0.317964,
         "reference": 0.317964
        },
        "5007": {
-        "mechanism": 0.248517,
+        "mechanism": 0.184164,
         "reference": 0.184164
        },
        "5008": {
-        "mechanism": 0.236326,
+        "mechanism": 0.128371,
         "reference": 0.128371
        },
        "5009": {
-        "mechanism": 0.397277,
+        "mechanism": 0.20354,
         "reference": 0.20354
        },
        "5010": {
-        "mechanism": 0.349751,
+        "mechanism": 0.285398,
         "reference": 0.285398
        },
        "5011": {
-        "mechanism": 0.166659,
+        "mechanism": 0.141426,
         "reference": 0.141426
        },
        "5012": {
-        "mechanism": 0.166659,
+        "mechanism": 0.102306,
         "reference": 0.102306
        }
       },
-      "seeds_better": 10,
-      "seeds_worse": 1,
-      "seeds_equal": 1
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
      },
      "web_mean.noise_share": {
       "mechanism": {
-       "mean": 0.192708,
-       "sd": 0.062263,
-       "min": 0.125,
-       "max": 0.25,
+       "mean": 0.375,
+       "sd": 0.119183,
+       "min": 0.25,
+       "max": 0.5,
        "n": 12
       },
       "reference": {
@@ -780,72 +780,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": -0.182292,
-       "sd": 0.062263,
-       "min": -0.25,
-       "max": -0.125,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5002": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5003": {
-        "mechanism": 0.1875,
+        "mechanism": 0.375,
         "reference": 0.375
        },
        "5004": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5005": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5006": {
-        "mechanism": 0.25,
+        "mechanism": 0.375,
         "reference": 0.375
        },
        "5007": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        },
        "5008": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5009": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        },
        "5010": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        },
        "5011": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        },
        "5012": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      },
      "web_mean.stale_share": {
       "mechanism": {
-       "mean": 0.25,
-       "sd": 0.079455,
+       "mean": 0.208334,
+       "sd": 0.043519,
        "min": 0.166667,
-       "max": 0.333333,
+       "max": 0.25,
        "n": 12
       },
       "reference": {
@@ -856,10 +856,10 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.041666,
-       "sd": 0.043519,
+       "mean": 0.0,
+       "sd": 0.0,
        "min": 0.0,
-       "max": 0.083333,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
@@ -872,7 +872,7 @@
         "reference": 0.166667
        },
        "5003": {
-        "mechanism": 0.25,
+        "mechanism": 0.166667,
         "reference": 0.166667
        },
        "5004": {
@@ -888,7 +888,7 @@
         "reference": 0.25
        },
        "5007": {
-        "mechanism": 0.333333,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5008": {
@@ -896,32 +896,32 @@
         "reference": 0.166667
        },
        "5009": {
-        "mechanism": 0.333333,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5010": {
-        "mechanism": 0.333333,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5011": {
-        "mechanism": 0.333333,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5012": {
-        "mechanism": 0.333333,
+        "mechanism": 0.25,
         "reference": 0.25
        }
       },
-      "seeds_better": 6,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 6
+      "seeds_equal": 12
      }
     },
     "regimes": {
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.18
+    "run_seconds": 4.16
    },
    "info_value, idle path: as shipped vs every Wave 1 setting off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -1099,10 +1099,10 @@
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.257708,
-       "sd": 0.061331,
-       "min": 0.187325,
-       "max": 0.349751,
+       "mean": 0.025739,
+       "sd": 0.144978,
+       "min": -0.172532,
+       "max": 0.174943,
        "n": 12
       },
       "reference": {
@@ -1113,72 +1113,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.231969,
-       "sd": 0.137406,
-       "min": 0.05266,
-       "max": 0.43221,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.290032,
+        "mechanism": 0.136138,
         "reference": 0.136138
        },
        "5002": {
-        "mechanism": 0.188798,
+        "mechanism": 0.136138,
         "reference": 0.136138
        },
        "5003": {
-        "mechanism": 0.23442,
+        "mechanism": -0.140671,
         "reference": -0.140671
        },
        "5004": {
-        "mechanism": 0.291539,
+        "mechanism": -0.140671,
         "reference": -0.140671
        },
        "5005": {
-        "mechanism": 0.245612,
+        "mechanism": -0.101866,
         "reference": -0.101866
        },
        "5006": {
-        "mechanism": 0.326366,
+        "mechanism": 0.174943,
         "reference": 0.174943
        },
        "5007": {
-        "mechanism": 0.20925,
+        "mechanism": 0.123489,
         "reference": 0.123489
        },
        "5008": {
-        "mechanism": 0.233785,
+        "mechanism": -0.128023,
         "reference": -0.128023
        },
        "5009": {
-        "mechanism": 0.346818,
+        "mechanism": 0.162294,
         "reference": 0.162294
        },
        "5010": {
-        "mechanism": 0.349751,
+        "mechanism": 0.123489,
         "reference": 0.123489
        },
        "5011": {
-        "mechanism": 0.187325,
+        "mechanism": -0.172532,
         "reference": -0.172532
        },
        "5012": {
-        "mechanism": 0.188798,
+        "mechanism": 0.136138,
         "reference": 0.136138
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      },
      "web_mean.noise_share": {
       "mechanism": {
-       "mean": 0.208333,
-       "sd": 0.040709,
-       "min": 0.125,
-       "max": 0.25,
+       "mean": 0.682292,
+       "sd": 0.114497,
+       "min": 0.5625,
+       "max": 0.8125,
        "n": 12
       },
       "reference": {
@@ -1189,72 +1189,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": -0.473958,
-       "sd": 0.081961,
-       "min": -0.5625,
-       "max": -0.375,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.1875,
+        "mechanism": 0.5625,
         "reference": 0.5625
        },
        "5002": {
-        "mechanism": 0.1875,
+        "mechanism": 0.5625,
         "reference": 0.5625
        },
        "5003": {
-        "mechanism": 0.25,
+        "mechanism": 0.8125,
         "reference": 0.8125
        },
        "5004": {
-        "mechanism": 0.1875,
+        "mechanism": 0.6875,
         "reference": 0.6875
        },
        "5005": {
-        "mechanism": 0.1875,
+        "mechanism": 0.6875,
         "reference": 0.6875
        },
        "5006": {
-        "mechanism": 0.1875,
+        "mechanism": 0.5625,
         "reference": 0.5625
        },
        "5007": {
-        "mechanism": 0.25,
+        "mechanism": 0.8125,
         "reference": 0.8125
        },
        "5008": {
-        "mechanism": 0.125,
+        "mechanism": 0.5625,
         "reference": 0.5625
        },
        "5009": {
-        "mechanism": 0.25,
+        "mechanism": 0.8125,
         "reference": 0.8125
        },
        "5010": {
-        "mechanism": 0.25,
+        "mechanism": 0.8125,
         "reference": 0.8125
        },
        "5011": {
-        "mechanism": 0.25,
+        "mechanism": 0.75,
         "reference": 0.75
        },
        "5012": {
-        "mechanism": 0.1875,
+        "mechanism": 0.5625,
         "reference": 0.5625
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      },
      "web_mean.stale_share": {
       "mechanism": {
-       "mean": 0.215278,
-       "sd": 0.090302,
-       "min": 0.083333,
-       "max": 0.333333,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "reference": {
@@ -1265,74 +1265,74 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.215278,
-       "sd": 0.090302,
-       "min": 0.083333,
-       "max": 0.333333,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5002": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5003": {
-        "mechanism": 0.25,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5004": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5005": {
-        "mechanism": 0.25,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.083333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5007": {
-        "mechanism": 0.333333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.083333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5009": {
-        "mechanism": 0.25,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5010": {
-        "mechanism": 0.333333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5011": {
-        "mechanism": 0.333333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5012": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      }
     },
     "regimes": {
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.33
+    "run_seconds": 4.39
    },
-   "info_value, timer path: lane I instinct (information-v1 core, learning progress) vs all off": {
+   "info_value, timer path: lane I instinct (information-v1 core, learning progress on, reworked) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
     "family": "info_value",
     "split": "development",
@@ -1356,10 +1356,10 @@
     "metrics": {
      "core_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.106017,
-       "sd": 0.130911,
-       "min": 0.01467,
-       "max": 0.3337,
+       "mean": 0.094158,
+       "sd": 0.133047,
+       "min": 0.013688,
+       "max": 0.332602,
        "n": 12
       },
       "reference": {
@@ -1370,72 +1370,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.013584,
-       "sd": 0.02306,
-       "min": 0.000977,
-       "max": 0.062911,
+       "mean": 0.001725,
+       "sd": 0.003616,
+       "min": 0.0,
+       "max": 0.009681,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.332223,
+        "mechanism": 0.330148,
         "reference": 0.320467
        },
        "5002": {
-        "mechanism": 0.023814,
+        "mechanism": 0.022715,
         "reference": 0.01366
        },
        "5003": {
-        "mechanism": 0.274064,
+        "mechanism": 0.272109,
         "reference": 0.272109
        },
        "5004": {
-        "mechanism": 0.017227,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5005": {
-        "mechanism": 0.136339,
+        "mechanism": 0.074525,
         "reference": 0.074525
        },
        "5006": {
-        "mechanism": 0.014787,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5007": {
-        "mechanism": 0.017741,
+        "mechanism": 0.015656,
         "reference": 0.013692
        },
        "5008": {
-        "mechanism": 0.076599,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5009": {
-        "mechanism": 0.016256,
+        "mechanism": 0.013693,
         "reference": 0.013693
        },
        "5010": {
-        "mechanism": 0.01467,
+        "mechanism": 0.013693,
         "reference": 0.013693
        },
        "5011": {
-        "mechanism": 0.014785,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5012": {
-        "mechanism": 0.3337,
+        "mechanism": 0.332602,
         "reference": 0.332602
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 3,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 9
      },
      "core_mean.noise_share": {
       "mechanism": {
-       "mean": 0.135416,
-       "sd": 0.069665,
+       "mean": 0.034722,
+       "sd": 0.048112,
        "min": 0.0,
-       "max": 0.208333,
+       "max": 0.145833,
        "n": 12
       },
       "reference": {
@@ -1446,15 +1446,15 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.100694,
-       "sd": 0.063336,
+       "mean": 0.0,
+       "sd": 0.0,
        "min": 0.0,
-       "max": 0.208333,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.0625,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5002": {
@@ -1462,27 +1462,27 @@
         "reference": 0.0625
        },
        "5003": {
-        "mechanism": 0.208333,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5004": {
-        "mechanism": 0.208333,
+        "mechanism": 0.0625,
         "reference": 0.0625
        },
        "5005": {
-        "mechanism": 0.208333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0625,
         "reference": 0.0625
        },
        "5007": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.083333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5009": {
@@ -1490,28 +1490,28 @@
         "reference": 0.0
        },
        "5010": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5011": {
-        "mechanism": 0.208333,
+        "mechanism": 0.145833,
         "reference": 0.145833
        },
        "5012": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        }
       },
       "seeds_better": 0,
-      "seeds_worse": 10,
-      "seeds_equal": 2
+      "seeds_worse": 0,
+      "seeds_equal": 12
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.244128,
-       "sd": 0.105603,
-       "min": 0.128353,
-       "max": 0.425919,
+       "mean": 0.184377,
+       "sd": 0.151918,
+       "min": -0.157647,
+       "max": 0.396441,
        "n": 12
       },
       "reference": {
@@ -1522,72 +1522,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.063856,
-       "sd": 0.069487,
-       "min": -0.083544,
-       "max": 0.193737,
+       "mean": 0.004105,
+       "sd": 0.140661,
+       "min": -0.299073,
+       "max": 0.140696,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.146061,
+        "mechanism": 0.269277,
         "reference": 0.229605
        },
        "5002": {
-        "mechanism": 0.146061,
+        "mechanism": 0.178655,
         "reference": 0.128371
        },
        "5003": {
-        "mechanism": 0.329156,
+        "mechanism": 0.368827,
         "reference": 0.228131
        },
        "5004": {
-        "mechanism": 0.128353,
+        "mechanism": 0.217442,
         "reference": 0.128353
        },
        "5005": {
-        "mechanism": 0.1888,
+        "mechanism": 0.178655,
         "reference": 0.085633
        },
        "5006": {
-        "mechanism": 0.425919,
+        "mechanism": 0.396441,
         "reference": 0.317964
        },
        "5007": {
-        "mechanism": 0.248517,
+        "mechanism": 0.009093,
         "reference": 0.184164
        },
        "5008": {
-        "mechanism": 0.236326,
+        "mechanism": 0.21746,
         "reference": 0.128371
        },
        "5009": {
-        "mechanism": 0.397277,
+        "mechanism": 0.282017,
         "reference": 0.20354
        },
        "5010": {
-        "mechanism": 0.349751,
+        "mechanism": 0.099715,
         "reference": 0.285398
        },
        "5011": {
-        "mechanism": 0.166659,
+        "mechanism": -0.157647,
         "reference": 0.141426
        },
        "5012": {
-        "mechanism": 0.166659,
+        "mechanism": 0.15259,
         "reference": 0.102306
        }
       },
-      "seeds_better": 10,
-      "seeds_worse": 1,
-      "seeds_equal": 1
+      "seeds_better": 9,
+      "seeds_worse": 3,
+      "seeds_equal": 0
      },
      "web_mean.noise_share": {
       "mechanism": {
-       "mean": 0.192708,
-       "sd": 0.062263,
-       "min": 0.125,
-       "max": 0.25,
+       "mean": 0.369792,
+       "sd": 0.120541,
+       "min": 0.25,
+       "max": 0.5,
        "n": 12
       },
       "reference": {
@@ -1598,72 +1598,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": -0.182292,
-       "sd": 0.062263,
-       "min": -0.25,
-       "max": -0.125,
+       "mean": -0.005208,
+       "sd": 0.018042,
+       "min": -0.0625,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5002": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5003": {
-        "mechanism": 0.1875,
+        "mechanism": 0.3125,
         "reference": 0.375
        },
        "5004": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5005": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5006": {
-        "mechanism": 0.25,
+        "mechanism": 0.375,
         "reference": 0.375
        },
        "5007": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        },
        "5008": {
-        "mechanism": 0.125,
+        "mechanism": 0.25,
         "reference": 0.25
        },
        "5009": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        },
        "5010": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        },
        "5011": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        },
        "5012": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.5
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 1,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 11
      },
      "web_mean.stale_share": {
       "mechanism": {
-       "mean": 0.25,
-       "sd": 0.079455,
-       "min": 0.166667,
-       "max": 0.333333,
+       "mean": 0.131944,
+       "sd": 0.042911,
+       "min": 0.083333,
+       "max": 0.166667,
        "n": 12
       },
       "reference": {
@@ -1674,74 +1674,74 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.041666,
-       "sd": 0.043519,
-       "min": 0.0,
-       "max": 0.083333,
+       "mean": -0.076389,
+       "sd": 0.024056,
+       "min": -0.083334,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.166667
        },
        "5002": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.166667
        },
        "5003": {
-        "mechanism": 0.25,
+        "mechanism": 0.166667,
         "reference": 0.166667
        },
        "5004": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.166667
        },
        "5005": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.166667
        },
        "5006": {
-        "mechanism": 0.25,
+        "mechanism": 0.166667,
         "reference": 0.25
        },
        "5007": {
-        "mechanism": 0.333333,
+        "mechanism": 0.166667,
         "reference": 0.25
        },
        "5008": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.166667
        },
        "5009": {
-        "mechanism": 0.333333,
+        "mechanism": 0.166667,
         "reference": 0.25
        },
        "5010": {
-        "mechanism": 0.333333,
+        "mechanism": 0.166667,
         "reference": 0.25
        },
        "5011": {
-        "mechanism": 0.333333,
+        "mechanism": 0.166667,
         "reference": 0.25
        },
        "5012": {
-        "mechanism": 0.333333,
+        "mechanism": 0.166667,
         "reference": 0.25
        }
       },
-      "seeds_better": 6,
-      "seeds_worse": 0,
-      "seeds_equal": 6
+      "seeds_better": 0,
+      "seeds_worse": 11,
+      "seeds_equal": 1
      }
     },
     "regimes": {
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.4
+    "run_seconds": 4.38
    },
-   "info_value, idle path: lane I instinct-idle vs all off": {
+   "info_value, idle path: lane I instinct-idle (learning progress on, reworked) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
     "family": "info_value",
     "split": "development",
@@ -1765,10 +1765,10 @@
     "metrics": {
      "core_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.106017,
-       "sd": 0.130911,
-       "min": 0.01467,
-       "max": 0.3337,
+       "mean": 0.094158,
+       "sd": 0.133047,
+       "min": 0.013688,
+       "max": 0.332602,
        "n": 12
       },
       "reference": {
@@ -1779,72 +1779,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.013584,
-       "sd": 0.02306,
-       "min": 0.000977,
-       "max": 0.062911,
+       "mean": 0.001725,
+       "sd": 0.003616,
+       "min": 0.0,
+       "max": 0.009681,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.332223,
+        "mechanism": 0.330148,
         "reference": 0.320467
        },
        "5002": {
-        "mechanism": 0.023814,
+        "mechanism": 0.022715,
         "reference": 0.01366
        },
        "5003": {
-        "mechanism": 0.274064,
+        "mechanism": 0.272109,
         "reference": 0.272109
        },
        "5004": {
-        "mechanism": 0.017227,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5005": {
-        "mechanism": 0.136339,
+        "mechanism": 0.074525,
         "reference": 0.074525
        },
        "5006": {
-        "mechanism": 0.014787,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5007": {
-        "mechanism": 0.017741,
+        "mechanism": 0.015656,
         "reference": 0.013692
        },
        "5008": {
-        "mechanism": 0.076599,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5009": {
-        "mechanism": 0.016256,
+        "mechanism": 0.013693,
         "reference": 0.013693
        },
        "5010": {
-        "mechanism": 0.01467,
+        "mechanism": 0.013693,
         "reference": 0.013693
        },
        "5011": {
-        "mechanism": 0.014785,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5012": {
-        "mechanism": 0.3337,
+        "mechanism": 0.332602,
         "reference": 0.332602
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 3,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 9
      },
      "core_mean.noise_share": {
       "mechanism": {
-       "mean": 0.135416,
-       "sd": 0.069665,
+       "mean": 0.034722,
+       "sd": 0.048112,
        "min": 0.0,
-       "max": 0.208333,
+       "max": 0.145833,
        "n": 12
       },
       "reference": {
@@ -1855,15 +1855,15 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.100694,
-       "sd": 0.063336,
+       "mean": 0.0,
+       "sd": 0.0,
        "min": 0.0,
-       "max": 0.208333,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.0625,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5002": {
@@ -1871,27 +1871,27 @@
         "reference": 0.0625
        },
        "5003": {
-        "mechanism": 0.208333,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5004": {
-        "mechanism": 0.208333,
+        "mechanism": 0.0625,
         "reference": 0.0625
        },
        "5005": {
-        "mechanism": 0.208333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0625,
         "reference": 0.0625
        },
        "5007": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.083333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5009": {
@@ -1899,28 +1899,28 @@
         "reference": 0.0
        },
        "5010": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5011": {
-        "mechanism": 0.208333,
+        "mechanism": 0.145833,
         "reference": 0.145833
        },
        "5012": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        }
       },
       "seeds_better": 0,
-      "seeds_worse": 10,
-      "seeds_equal": 2
+      "seeds_worse": 0,
+      "seeds_equal": 12
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.257708,
-       "sd": 0.061331,
-       "min": 0.187325,
-       "max": 0.349751,
+       "mean": 0.232136,
+       "sd": 0.060837,
+       "min": 0.15259,
+       "max": 0.32507,
        "n": 12
       },
       "reference": {
@@ -1931,59 +1931,59 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.231969,
-       "sd": 0.137406,
-       "min": 0.05266,
-       "max": 0.43221,
+       "mean": 0.206397,
+       "sd": 0.128875,
+       "min": 0.042499,
+       "max": 0.37444,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.290032,
+        "mechanism": 0.269259,
         "reference": 0.136138
        },
        "5002": {
-        "mechanism": 0.188798,
+        "mechanism": 0.178637,
         "reference": 0.136138
        },
        "5003": {
-        "mechanism": 0.23442,
+        "mechanism": 0.229992,
         "reference": -0.140671
        },
        "5004": {
-        "mechanism": 0.291539,
+        "mechanism": 0.233769,
         "reference": -0.140671
        },
        "5005": {
-        "mechanism": 0.245612,
+        "mechanism": 0.165988,
         "reference": -0.101866
        },
        "5006": {
-        "mechanism": 0.326366,
+        "mechanism": 0.324391,
         "reference": 0.174943
        },
        "5007": {
-        "mechanism": 0.20925,
+        "mechanism": 0.195181,
         "reference": 0.123489
        },
        "5008": {
-        "mechanism": 0.233785,
+        "mechanism": 0.233769,
         "reference": -0.128023
        },
        "5009": {
-        "mechanism": 0.346818,
+        "mechanism": 0.298343,
         "reference": 0.162294
        },
        "5010": {
-        "mechanism": 0.349751,
+        "mechanism": 0.32507,
         "reference": 0.123489
        },
        "5011": {
-        "mechanism": 0.187325,
+        "mechanism": 0.15259,
         "reference": -0.172532
        },
        "5012": {
-        "mechanism": 0.188798,
+        "mechanism": 0.178637,
         "reference": 0.136138
        }
       },
@@ -1993,10 +1993,10 @@
      },
      "web_mean.noise_share": {
       "mechanism": {
-       "mean": 0.208333,
-       "sd": 0.040709,
-       "min": 0.125,
-       "max": 0.25,
+       "mean": 0.401042,
+       "sd": 0.072781,
+       "min": 0.3125,
+       "max": 0.5,
        "n": 12
       },
       "reference": {
@@ -2007,59 +2007,59 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": -0.473958,
-       "sd": 0.081961,
-       "min": -0.5625,
-       "max": -0.375,
+       "mean": -0.28125,
+       "sd": 0.082141,
+       "min": -0.4375,
+       "max": -0.1875,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.1875,
+        "mechanism": 0.375,
         "reference": 0.5625
        },
        "5002": {
-        "mechanism": 0.1875,
+        "mechanism": 0.375,
         "reference": 0.5625
        },
        "5003": {
-        "mechanism": 0.25,
+        "mechanism": 0.375,
         "reference": 0.8125
        },
        "5004": {
-        "mechanism": 0.1875,
+        "mechanism": 0.3125,
         "reference": 0.6875
        },
        "5005": {
-        "mechanism": 0.1875,
+        "mechanism": 0.4375,
         "reference": 0.6875
        },
        "5006": {
-        "mechanism": 0.1875,
+        "mechanism": 0.3125,
         "reference": 0.5625
        },
        "5007": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.8125
        },
        "5008": {
-        "mechanism": 0.125,
+        "mechanism": 0.3125,
         "reference": 0.5625
        },
        "5009": {
-        "mechanism": 0.25,
+        "mechanism": 0.4375,
         "reference": 0.8125
        },
        "5010": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.8125
        },
        "5011": {
-        "mechanism": 0.25,
+        "mechanism": 0.5,
         "reference": 0.75
        },
        "5012": {
-        "mechanism": 0.1875,
+        "mechanism": 0.375,
         "reference": 0.5625
        }
       },
@@ -2069,10 +2069,10 @@
      },
      "web_mean.stale_share": {
       "mechanism": {
-       "mean": 0.215278,
-       "sd": 0.090302,
+       "mean": 0.111111,
+       "sd": 0.041031,
        "min": 0.083333,
-       "max": 0.333333,
+       "max": 0.166667,
        "n": 12
       },
       "reference": {
@@ -2083,31 +2083,31 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.215278,
-       "sd": 0.090302,
+       "mean": 0.111111,
+       "sd": 0.041031,
        "min": 0.083333,
-       "max": 0.333333,
+       "max": 0.166667,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5002": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5003": {
-        "mechanism": 0.25,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5004": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5005": {
-        "mechanism": 0.25,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5006": {
@@ -2115,7 +2115,7 @@
         "reference": 0.0
        },
        "5007": {
-        "mechanism": 0.333333,
+        "mechanism": 0.166667,
         "reference": 0.0
        },
        "5008": {
@@ -2123,19 +2123,19 @@
         "reference": 0.0
        },
        "5009": {
-        "mechanism": 0.25,
+        "mechanism": 0.166667,
         "reference": 0.0
        },
        "5010": {
-        "mechanism": 0.333333,
+        "mechanism": 0.166667,
         "reference": 0.0
        },
        "5011": {
-        "mechanism": 0.333333,
+        "mechanism": 0.166667,
         "reference": 0.0
        },
        "5012": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        }
       },
@@ -2148,7 +2148,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.49
+    "run_seconds": 4.58
    },
    "info_value: every Wave 1 chooser on (re-check first) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -2174,10 +2174,10 @@
     "metrics": {
      "core_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.106017,
-       "sd": 0.130911,
-       "min": 0.01467,
-       "max": 0.3337,
+       "mean": 0.094158,
+       "sd": 0.133047,
+       "min": 0.013688,
+       "max": 0.332602,
        "n": 12
       },
       "reference": {
@@ -2188,72 +2188,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.013584,
-       "sd": 0.02306,
-       "min": 0.000977,
-       "max": 0.062911,
+       "mean": 0.001725,
+       "sd": 0.003616,
+       "min": 0.0,
+       "max": 0.009681,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.332223,
+        "mechanism": 0.330148,
         "reference": 0.320467
        },
        "5002": {
-        "mechanism": 0.023814,
+        "mechanism": 0.022715,
         "reference": 0.01366
        },
        "5003": {
-        "mechanism": 0.274064,
+        "mechanism": 0.272109,
         "reference": 0.272109
        },
        "5004": {
-        "mechanism": 0.017227,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5005": {
-        "mechanism": 0.136339,
+        "mechanism": 0.074525,
         "reference": 0.074525
        },
        "5006": {
-        "mechanism": 0.014787,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5007": {
-        "mechanism": 0.017741,
+        "mechanism": 0.015656,
         "reference": 0.013692
        },
        "5008": {
-        "mechanism": 0.076599,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5009": {
-        "mechanism": 0.016256,
+        "mechanism": 0.013693,
         "reference": 0.013693
        },
        "5010": {
-        "mechanism": 0.01467,
+        "mechanism": 0.013693,
         "reference": 0.013693
        },
        "5011": {
-        "mechanism": 0.014785,
+        "mechanism": 0.013688,
         "reference": 0.013688
        },
        "5012": {
-        "mechanism": 0.3337,
+        "mechanism": 0.332602,
         "reference": 0.332602
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 3,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 9
      },
      "core_mean.noise_share": {
       "mechanism": {
-       "mean": 0.135416,
-       "sd": 0.069665,
+       "mean": 0.034722,
+       "sd": 0.048112,
        "min": 0.0,
-       "max": 0.208333,
+       "max": 0.145833,
        "n": 12
       },
       "reference": {
@@ -2264,15 +2264,15 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.100694,
-       "sd": 0.063336,
+       "mean": 0.0,
+       "sd": 0.0,
        "min": 0.0,
-       "max": 0.208333,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.0625,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5002": {
@@ -2280,27 +2280,27 @@
         "reference": 0.0625
        },
        "5003": {
-        "mechanism": 0.208333,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5004": {
-        "mechanism": 0.208333,
+        "mechanism": 0.0625,
         "reference": 0.0625
        },
        "5005": {
-        "mechanism": 0.208333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0625,
         "reference": 0.0625
        },
        "5007": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.083333,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5009": {
@@ -2308,21 +2308,21 @@
         "reference": 0.0
        },
        "5010": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5011": {
-        "mechanism": 0.208333,
+        "mechanism": 0.145833,
         "reference": 0.145833
        },
        "5012": {
-        "mechanism": 0.145833,
+        "mechanism": 0.0,
         "reference": 0.0
        }
       },
       "seeds_better": 0,
-      "seeds_worse": 10,
-      "seeds_equal": 2
+      "seeds_worse": 0,
+      "seeds_equal": 12
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
@@ -2557,7 +2557,7 @@
      "mechanism": "all_on",
      "reference": "all_off"
     },
-    "run_seconds": 4.36
+    "run_seconds": 4.74
    },
    "counterfactual: imagination (lane M) vs today's answerer": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -3480,7 +3480,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 1.44
+    "run_seconds": 2.58
    },
    "self_model: one self-description record (lane W) vs today's surfaces": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -3889,7 +3889,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 1.77
+    "run_seconds": 1.93
    }
   },
   "held_out": {
@@ -4376,9 +4376,9 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 2.66
+    "run_seconds": 3.14
    },
-   "info_value, timer path: as shipped (learning progress on) vs every Wave 1 setting off": {
+   "info_value, timer path: as shipped (learning progress off) vs every Wave 1 setting off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
     "family": "info_value",
     "split": "held_out",
@@ -4554,10 +4554,10 @@
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.184546,
-       "sd": 0.118184,
-       "min": 0.030716,
-       "max": 0.443768,
+       "mean": 0.138718,
+       "sd": 0.082911,
+       "min": -0.011711,
+       "max": 0.272822,
        "n": 12
       },
       "reference": {
@@ -4568,72 +4568,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.045829,
-       "sd": 0.068955,
-       "min": 0.001488,
-       "max": 0.210213,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.030716,
+        "mechanism": -0.011711,
         "reference": -0.011711
        },
        "5002": {
-        "mechanism": 0.29085,
+        "mechanism": 0.125785,
         "reference": 0.125785
        },
        "5003": {
-        "mechanism": 0.127274,
+        "mechanism": 0.086518,
         "reference": 0.086518
        },
        "5004": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.127553
        },
        "5005": {
-        "mechanism": 0.292699,
+        "mechanism": 0.271054,
         "reference": 0.271054
        },
        "5006": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.127553
        },
        "5007": {
-        "mechanism": 0.129041,
+        "mechanism": 0.088286,
         "reference": 0.088286
        },
        "5008": {
-        "mechanism": 0.294467,
+        "mechanism": 0.272822,
         "reference": 0.272822
        },
        "5009": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.127553
        },
        "5010": {
-        "mechanism": 0.443768,
+        "mechanism": 0.233555,
         "reference": 0.233555
        },
        "5011": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.127553
        },
        "5012": {
-        "mechanism": 0.089579,
+        "mechanism": 0.088091,
         "reference": 0.088091
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      },
      "web_mean.noise_share": {
       "mechanism": {
-       "mean": 0.3,
-       "sd": 0.073855,
-       "min": 0.25,
-       "max": 0.4,
+       "mean": 0.4125,
+       "sd": 0.14771,
+       "min": 0.3125,
+       "max": 0.6125,
        "n": 12
       },
       "reference": {
@@ -4644,72 +4644,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": -0.1125,
-       "sd": 0.073855,
-       "min": -0.2125,
-       "max": -0.0625,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.4,
+        "mechanism": 0.6125,
         "reference": 0.6125
        },
        "5002": {
-        "mechanism": 0.4,
+        "mechanism": 0.6125,
         "reference": 0.6125
        },
        "5003": {
-        "mechanism": 0.4,
+        "mechanism": 0.6125,
         "reference": 0.6125
        },
        "5004": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5005": {
-        "mechanism": 0.4,
+        "mechanism": 0.6125,
         "reference": 0.6125
        },
        "5006": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5007": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5008": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5009": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5010": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5011": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5012": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      },
      "web_mean.stale_share": {
       "mechanism": {
-       "mean": 0.166667,
+       "mean": 0.083333,
        "sd": 0.0,
-       "min": 0.166667,
-       "max": 0.166667,
+       "min": 0.083333,
+       "max": 0.083333,
        "n": 12
       },
       "reference": {
@@ -4720,72 +4720,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.083334,
+       "mean": 0.0,
        "sd": 0.0,
-       "min": 0.083334,
-       "max": 0.083334,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5002": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5003": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5004": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5005": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5006": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5007": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5008": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5009": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5010": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5011": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5012": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      }
     },
     "regimes": {
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 3.95
+    "run_seconds": 4.0
    },
    "info_value, idle path: as shipped vs every Wave 1 setting off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -4963,10 +4963,10 @@
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.186249,
-       "sd": 0.109039,
-       "min": -0.101201,
-       "max": 0.33521,
+       "mean": 0.093551,
+       "sd": 0.007725,
+       "min": 0.0848,
+       "max": 0.099802,
        "n": 12
       },
       "reference": {
@@ -4977,72 +4977,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.092698,
-       "sd": 0.1115,
-       "min": -0.201003,
-       "max": 0.235408,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.130518,
+        "mechanism": 0.099802,
         "reference": 0.099802
        },
        "5002": {
-        "mechanism": 0.29085,
+        "mechanism": 0.0848,
         "reference": 0.0848
        },
        "5003": {
-        "mechanism": 0.165876,
+        "mechanism": 0.0848,
         "reference": 0.0848
        },
        "5004": {
-        "mechanism": 0.252793,
+        "mechanism": 0.099802,
         "reference": 0.099802
        },
        "5005": {
-        "mechanism": 0.244014,
+        "mechanism": 0.0848,
         "reference": 0.0848
        },
        "5006": {
-        "mechanism": 0.169785,
+        "mechanism": 0.099802,
         "reference": 0.099802
        },
        "5007": {
-        "mechanism": 0.169785,
+        "mechanism": 0.099802,
         "reference": 0.099802
        },
        "5008": {
-        "mechanism": 0.33521,
+        "mechanism": 0.099802,
         "reference": 0.099802
        },
        "5009": {
-        "mechanism": 0.169785,
+        "mechanism": 0.099802,
         "reference": 0.099802
        },
        "5010": {
-        "mechanism": -0.101201,
+        "mechanism": 0.099802,
         "reference": 0.099802
        },
        "5011": {
-        "mechanism": 0.169785,
+        "mechanism": 0.0848,
         "reference": 0.0848
        },
        "5012": {
-        "mechanism": 0.23779,
+        "mechanism": 0.0848,
         "reference": 0.0848
        }
       },
-      "seeds_better": 11,
-      "seeds_worse": 1,
-      "seeds_equal": 0
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
      },
      "web_mean.noise_share": {
       "mechanism": {
-       "mean": 0.34375,
-       "sd": 0.03392,
-       "min": 0.325,
-       "max": 0.4,
+       "mean": 0.70625,
+       "sd": 0.10176,
+       "min": 0.65,
+       "max": 0.875,
        "n": 12
       },
       "reference": {
@@ -5053,72 +5053,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": -0.3625,
-       "sd": 0.06784,
-       "min": -0.475,
-       "max": -0.325,
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        },
        "5002": {
-        "mechanism": 0.4,
+        "mechanism": 0.875,
         "reference": 0.875
        },
        "5003": {
-        "mechanism": 0.4,
+        "mechanism": 0.875,
         "reference": 0.875
        },
        "5004": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        },
        "5005": {
-        "mechanism": 0.4,
+        "mechanism": 0.875,
         "reference": 0.875
        },
        "5006": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        },
        "5007": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        },
        "5008": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        },
        "5009": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        },
        "5010": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        },
        "5011": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        },
        "5012": {
-        "mechanism": 0.325,
+        "mechanism": 0.65,
         "reference": 0.65
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      },
      "web_mean.stale_share": {
       "mechanism": {
-       "mean": 0.166667,
+       "mean": 0.0,
        "sd": 0.0,
-       "min": 0.166667,
-       "max": 0.166667,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "reference": {
@@ -5129,74 +5129,74 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.166667,
+       "mean": 0.0,
        "sd": 0.0,
-       "min": 0.166667,
-       "max": 0.166667,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5002": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5003": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5004": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5005": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5007": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5009": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5010": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5011": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5012": {
-        "mechanism": 0.166667,
+        "mechanism": 0.0,
         "reference": 0.0
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      }
     },
     "regimes": {
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.18
+    "run_seconds": 5.06
    },
-   "info_value, timer path: lane I instinct (information-v1 core, learning progress) vs all off": {
+   "info_value, timer path: lane I instinct (information-v1 core, learning progress on, reworked) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
     "family": "info_value",
     "split": "held_out",
@@ -5220,10 +5220,10 @@
     "metrics": {
      "core_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.105536,
-       "sd": 0.101154,
-       "min": 0.021507,
-       "max": 0.266501,
+       "mean": 0.060281,
+       "sd": 0.087026,
+       "min": 0.012083,
+       "max": 0.246387,
        "n": 12
       },
       "reference": {
@@ -5234,59 +5234,59 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.095234,
-       "sd": 0.103714,
-       "min": 0.020115,
-       "max": 0.255794,
+       "mean": 0.04998,
+       "sd": 0.086919,
+       "min": 0.010671,
+       "max": 0.236217,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.030819,
+        "mechanism": 0.021375,
         "reference": 0.010704
        },
        "5002": {
-        "mechanism": 0.247046,
+        "mechanism": 0.237603,
         "reference": 0.001386
        },
        "5003": {
-        "mechanism": 0.030822,
+        "mechanism": 0.021398,
         "reference": 0.0107
        },
        "5004": {
-        "mechanism": 0.037529,
+        "mechanism": 0.028102,
         "reference": 0.010429
        },
        "5005": {
-        "mechanism": 0.028072,
+        "mechanism": 0.019439,
         "reference": 0.001383
        },
        "5006": {
-        "mechanism": 0.1022,
+        "mechanism": 0.082086,
         "reference": 0.071388
        },
        "5007": {
-        "mechanism": 0.225344,
+        "mechanism": 0.012091,
         "reference": 0.001386
        },
        "5008": {
-        "mechanism": 0.215217,
+        "mechanism": 0.012084,
         "reference": 0.001385
        },
        "5009": {
-        "mechanism": 0.039839,
+        "mechanism": 0.018637,
         "reference": 0.001382
        },
        "5010": {
-        "mechanism": 0.266501,
+        "mechanism": 0.246387,
         "reference": 0.010707
        },
        "5011": {
-        "mechanism": 0.021507,
+        "mechanism": 0.012083,
         "reference": 0.001385
        },
        "5012": {
-        "mechanism": 0.021534,
+        "mechanism": 0.012091,
         "reference": 0.001386
        }
       },
@@ -5296,10 +5296,10 @@
      },
      "core_mean.noise_share": {
       "mechanism": {
-       "mean": 0.256696,
-       "sd": 0.111461,
-       "min": 0.071429,
-       "max": 0.473214,
+       "mean": 0.029762,
+       "sd": 0.047754,
+       "min": 0.0,
+       "max": 0.142857,
        "n": 12
       },
       "reference": {
@@ -5310,72 +5310,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.203125,
-       "sd": 0.135308,
-       "min": 0.0,
-       "max": 0.473214,
+       "mean": -0.02381,
+       "sd": 0.046524,
+       "min": -0.142857,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.258929,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5002": {
-        "mechanism": 0.330357,
+        "mechanism": 0.071429,
         "reference": 0.071429
        },
        "5003": {
-        "mechanism": 0.142857,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5004": {
-        "mechanism": 0.330357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5005": {
-        "mechanism": 0.473214,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.142857,
+        "mechanism": 0.071429,
         "reference": 0.142857
        },
        "5007": {
-        "mechanism": 0.330357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.1875,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5009": {
-        "mechanism": 0.276786,
+        "mechanism": 0.142857,
         "reference": 0.214286
        },
        "5010": {
-        "mechanism": 0.330357,
+        "mechanism": 0.071429,
         "reference": 0.214286
        },
        "5011": {
-        "mechanism": 0.205357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5012": {
-        "mechanism": 0.071429,
+        "mechanism": 0.0,
         "reference": 0.0
        }
       },
-      "seeds_better": 0,
-      "seeds_worse": 11,
-      "seeds_equal": 1
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.184546,
-       "sd": 0.118184,
-       "min": 0.030716,
-       "max": 0.443768,
+       "mean": 0.126085,
+       "sd": 0.139903,
+       "min": -0.226441,
+       "max": 0.311993,
        "n": 12
       },
       "reference": {
@@ -5386,72 +5386,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.045829,
-       "sd": 0.068955,
-       "min": 0.001488,
-       "max": 0.210213,
+       "mean": -0.012633,
+       "sd": 0.14586,
+       "min": -0.459996,
+       "max": 0.123947,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.030716,
+        "mechanism": -0.011711,
         "reference": -0.011711
        },
        "5002": {
-        "mechanism": 0.29085,
+        "mechanism": 0.249732,
         "reference": 0.125785
        },
        "5003": {
-        "mechanism": 0.127274,
+        "mechanism": 0.151502,
         "reference": 0.086518
        },
        "5004": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.127553
        },
        "5005": {
-        "mechanism": 0.292699,
+        "mechanism": 0.311993,
         "reference": 0.271054
        },
        "5006": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.127553
        },
        "5007": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.088286
        },
        "5008": {
-        "mechanism": 0.294467,
+        "mechanism": 0.272822,
         "reference": 0.272822
        },
        "5009": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.127553
        },
        "5010": {
-        "mechanism": 0.443768,
+        "mechanism": -0.226441,
         "reference": 0.233555
        },
        "5011": {
-        "mechanism": 0.129041,
+        "mechanism": 0.127553,
         "reference": 0.127553
        },
        "5012": {
-        "mechanism": 0.089579,
+        "mechanism": 0.127358,
         "reference": 0.088091
        }
       },
-      "seeds_better": 12,
-      "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_better": 5,
+      "seeds_worse": 1,
+      "seeds_equal": 6
      },
      "web_mean.noise_share": {
       "mechanism": {
-       "mean": 0.3,
-       "sd": 0.073855,
-       "min": 0.25,
-       "max": 0.4,
+       "mean": 0.39375,
+       "sd": 0.121602,
+       "min": 0.3125,
+       "max": 0.6125,
        "n": 12
       },
       "reference": {
@@ -5462,72 +5462,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": -0.1125,
-       "sd": 0.073855,
-       "min": -0.2125,
-       "max": -0.0625,
+       "mean": -0.01875,
+       "sd": 0.03392,
+       "min": -0.075,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.4,
+        "mechanism": 0.6125,
         "reference": 0.6125
        },
        "5002": {
-        "mechanism": 0.4,
+        "mechanism": 0.5375,
         "reference": 0.6125
        },
        "5003": {
-        "mechanism": 0.4,
+        "mechanism": 0.5375,
         "reference": 0.6125
        },
        "5004": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5005": {
-        "mechanism": 0.4,
+        "mechanism": 0.5375,
         "reference": 0.6125
        },
        "5006": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5007": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5008": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5009": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5010": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5011": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        },
        "5012": {
-        "mechanism": 0.25,
+        "mechanism": 0.3125,
         "reference": 0.3125
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 3,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 9
      },
      "web_mean.stale_share": {
       "mechanism": {
-       "mean": 0.166667,
+       "mean": 0.083333,
        "sd": 0.0,
-       "min": 0.166667,
-       "max": 0.166667,
+       "min": 0.083333,
+       "max": 0.083333,
        "n": 12
       },
       "reference": {
@@ -5538,74 +5538,74 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.083334,
+       "mean": 0.0,
        "sd": 0.0,
-       "min": 0.083334,
-       "max": 0.083334,
+       "min": 0.0,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5002": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5003": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5004": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5005": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5006": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5007": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5008": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5009": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5010": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5011": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        },
        "5012": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.083333
        }
       },
-      "seeds_better": 12,
+      "seeds_better": 0,
       "seeds_worse": 0,
-      "seeds_equal": 0
+      "seeds_equal": 12
      }
     },
     "regimes": {
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.24
+    "run_seconds": 4.26
    },
-   "info_value, idle path: lane I instinct-idle vs all off": {
+   "info_value, idle path: lane I instinct-idle (learning progress on, reworked) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
     "family": "info_value",
     "split": "held_out",
@@ -5629,10 +5629,10 @@
     "metrics": {
      "core_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.105536,
-       "sd": 0.101154,
-       "min": 0.021507,
-       "max": 0.266501,
+       "mean": 0.060281,
+       "sd": 0.087026,
+       "min": 0.012083,
+       "max": 0.246387,
        "n": 12
       },
       "reference": {
@@ -5643,59 +5643,59 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.095234,
-       "sd": 0.103714,
-       "min": 0.020115,
-       "max": 0.255794,
+       "mean": 0.04998,
+       "sd": 0.086919,
+       "min": 0.010671,
+       "max": 0.236217,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.030819,
+        "mechanism": 0.021375,
         "reference": 0.010704
        },
        "5002": {
-        "mechanism": 0.247046,
+        "mechanism": 0.237603,
         "reference": 0.001386
        },
        "5003": {
-        "mechanism": 0.030822,
+        "mechanism": 0.021398,
         "reference": 0.0107
        },
        "5004": {
-        "mechanism": 0.037529,
+        "mechanism": 0.028102,
         "reference": 0.010429
        },
        "5005": {
-        "mechanism": 0.028072,
+        "mechanism": 0.019439,
         "reference": 0.001383
        },
        "5006": {
-        "mechanism": 0.1022,
+        "mechanism": 0.082086,
         "reference": 0.071388
        },
        "5007": {
-        "mechanism": 0.225344,
+        "mechanism": 0.012091,
         "reference": 0.001386
        },
        "5008": {
-        "mechanism": 0.215217,
+        "mechanism": 0.012084,
         "reference": 0.001385
        },
        "5009": {
-        "mechanism": 0.039839,
+        "mechanism": 0.018637,
         "reference": 0.001382
        },
        "5010": {
-        "mechanism": 0.266501,
+        "mechanism": 0.246387,
         "reference": 0.010707
        },
        "5011": {
-        "mechanism": 0.021507,
+        "mechanism": 0.012083,
         "reference": 0.001385
        },
        "5012": {
-        "mechanism": 0.021534,
+        "mechanism": 0.012091,
         "reference": 0.001386
        }
       },
@@ -5705,10 +5705,10 @@
      },
      "core_mean.noise_share": {
       "mechanism": {
-       "mean": 0.256696,
-       "sd": 0.111461,
-       "min": 0.071429,
-       "max": 0.473214,
+       "mean": 0.029762,
+       "sd": 0.047754,
+       "min": 0.0,
+       "max": 0.142857,
        "n": 12
       },
       "reference": {
@@ -5719,72 +5719,72 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.203125,
-       "sd": 0.135308,
-       "min": 0.0,
-       "max": 0.473214,
+       "mean": -0.02381,
+       "sd": 0.046524,
+       "min": -0.142857,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.258929,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5002": {
-        "mechanism": 0.330357,
+        "mechanism": 0.071429,
         "reference": 0.071429
        },
        "5003": {
-        "mechanism": 0.142857,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5004": {
-        "mechanism": 0.330357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5005": {
-        "mechanism": 0.473214,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.142857,
+        "mechanism": 0.071429,
         "reference": 0.142857
        },
        "5007": {
-        "mechanism": 0.330357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.1875,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5009": {
-        "mechanism": 0.276786,
+        "mechanism": 0.142857,
         "reference": 0.214286
        },
        "5010": {
-        "mechanism": 0.330357,
+        "mechanism": 0.071429,
         "reference": 0.214286
        },
        "5011": {
-        "mechanism": 0.205357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5012": {
-        "mechanism": 0.071429,
+        "mechanism": 0.0,
         "reference": 0.0
        }
       },
-      "seeds_better": 0,
-      "seeds_worse": 11,
-      "seeds_equal": 1
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.186249,
-       "sd": 0.109039,
-       "min": -0.101201,
-       "max": 0.33521,
+       "mean": 0.143918,
+       "sd": 0.101011,
+       "min": -0.083667,
+       "max": 0.296263,
        "n": 12
       },
       "reference": {
@@ -5795,59 +5795,59 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.092698,
-       "sd": 0.1115,
-       "min": -0.201003,
-       "max": 0.235408,
+       "mean": 0.050367,
+       "sd": 0.103905,
+       "min": -0.183469,
+       "max": 0.211463,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.130518,
+        "mechanism": -0.083667,
         "reference": 0.099802
        },
        "5002": {
-        "mechanism": 0.29085,
+        "mechanism": 0.273632,
         "reference": 0.0848
        },
        "5003": {
-        "mechanism": 0.165876,
+        "mechanism": 0.110055,
         "reference": 0.0848
        },
        "5004": {
-        "mechanism": 0.252793,
+        "mechanism": 0.125058,
         "reference": 0.099802
        },
        "5005": {
-        "mechanism": 0.244014,
+        "mechanism": 0.296263,
         "reference": 0.0848
        },
        "5006": {
-        "mechanism": 0.169785,
+        "mechanism": 0.125058,
         "reference": 0.099802
        },
        "5007": {
-        "mechanism": 0.169785,
+        "mechanism": 0.125058,
         "reference": 0.099802
        },
        "5008": {
-        "mechanism": 0.33521,
+        "mechanism": 0.270327,
         "reference": 0.099802
        },
        "5009": {
-        "mechanism": 0.169785,
+        "mechanism": 0.125058,
         "reference": 0.099802
        },
        "5010": {
-        "mechanism": -0.101201,
+        "mechanism": 0.125058,
         "reference": 0.099802
        },
        "5011": {
-        "mechanism": 0.169785,
+        "mechanism": 0.125058,
         "reference": 0.0848
        },
        "5012": {
-        "mechanism": 0.23779,
+        "mechanism": 0.110055,
         "reference": 0.0848
        }
       },
@@ -5857,10 +5857,10 @@
      },
      "web_mean.noise_share": {
       "mechanism": {
-       "mean": 0.34375,
-       "sd": 0.03392,
-       "min": 0.325,
-       "max": 0.4,
+       "mean": 0.55,
+       "sd": 0.04885,
+       "min": 0.525,
+       "max": 0.675,
        "n": 12
       },
       "reference": {
@@ -5871,59 +5871,59 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": -0.3625,
-       "sd": 0.06784,
-       "min": -0.475,
-       "max": -0.325,
+       "mean": -0.15625,
+       "sd": 0.059472,
+       "min": -0.275,
+       "max": -0.125,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        },
        "5002": {
-        "mechanism": 0.4,
+        "mechanism": 0.6,
         "reference": 0.875
        },
        "5003": {
-        "mechanism": 0.4,
+        "mechanism": 0.6,
         "reference": 0.875
        },
        "5004": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        },
        "5005": {
-        "mechanism": 0.4,
+        "mechanism": 0.675,
         "reference": 0.875
        },
        "5006": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        },
        "5007": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        },
        "5008": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        },
        "5009": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        },
        "5010": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        },
        "5011": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        },
        "5012": {
-        "mechanism": 0.325,
+        "mechanism": 0.525,
         "reference": 0.65
        }
       },
@@ -5933,10 +5933,10 @@
      },
      "web_mean.stale_share": {
       "mechanism": {
-       "mean": 0.166667,
+       "mean": 0.083333,
        "sd": 0.0,
-       "min": 0.166667,
-       "max": 0.166667,
+       "min": 0.083333,
+       "max": 0.083333,
        "n": 12
       },
       "reference": {
@@ -5947,59 +5947,59 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.166667,
+       "mean": 0.083333,
        "sd": 0.0,
-       "min": 0.166667,
-       "max": 0.166667,
+       "min": 0.083333,
+       "max": 0.083333,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5002": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5003": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5004": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5005": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5007": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5009": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5010": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5011": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        },
        "5012": {
-        "mechanism": 0.166667,
+        "mechanism": 0.083333,
         "reference": 0.0
        }
       },
@@ -6012,7 +6012,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 4.5
+    "run_seconds": 4.45
    },
    "info_value: every Wave 1 chooser on (re-check first) vs all off": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -6038,10 +6038,10 @@
     "metrics": {
      "core_mean.realised_bits_per_budget": {
       "mechanism": {
-       "mean": 0.105536,
-       "sd": 0.101154,
-       "min": 0.021507,
-       "max": 0.266501,
+       "mean": 0.060281,
+       "sd": 0.087026,
+       "min": 0.012083,
+       "max": 0.246387,
        "n": 12
       },
       "reference": {
@@ -6052,59 +6052,59 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.095234,
-       "sd": 0.103714,
-       "min": 0.020115,
-       "max": 0.255794,
+       "mean": 0.04998,
+       "sd": 0.086919,
+       "min": 0.010671,
+       "max": 0.236217,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.030819,
+        "mechanism": 0.021375,
         "reference": 0.010704
        },
        "5002": {
-        "mechanism": 0.247046,
+        "mechanism": 0.237603,
         "reference": 0.001386
        },
        "5003": {
-        "mechanism": 0.030822,
+        "mechanism": 0.021398,
         "reference": 0.0107
        },
        "5004": {
-        "mechanism": 0.037529,
+        "mechanism": 0.028102,
         "reference": 0.010429
        },
        "5005": {
-        "mechanism": 0.028072,
+        "mechanism": 0.019439,
         "reference": 0.001383
        },
        "5006": {
-        "mechanism": 0.1022,
+        "mechanism": 0.082086,
         "reference": 0.071388
        },
        "5007": {
-        "mechanism": 0.225344,
+        "mechanism": 0.012091,
         "reference": 0.001386
        },
        "5008": {
-        "mechanism": 0.215217,
+        "mechanism": 0.012084,
         "reference": 0.001385
        },
        "5009": {
-        "mechanism": 0.039839,
+        "mechanism": 0.018637,
         "reference": 0.001382
        },
        "5010": {
-        "mechanism": 0.266501,
+        "mechanism": 0.246387,
         "reference": 0.010707
        },
        "5011": {
-        "mechanism": 0.021507,
+        "mechanism": 0.012083,
         "reference": 0.001385
        },
        "5012": {
-        "mechanism": 0.021534,
+        "mechanism": 0.012091,
         "reference": 0.001386
        }
       },
@@ -6114,10 +6114,10 @@
      },
      "core_mean.noise_share": {
       "mechanism": {
-       "mean": 0.256696,
-       "sd": 0.111461,
-       "min": 0.071429,
-       "max": 0.473214,
+       "mean": 0.029762,
+       "sd": 0.047754,
+       "min": 0.0,
+       "max": 0.142857,
        "n": 12
       },
       "reference": {
@@ -6128,65 +6128,65 @@
        "n": 12
       },
       "paired_difference": {
-       "mean": 0.203125,
-       "sd": 0.135308,
-       "min": 0.0,
-       "max": 0.473214,
+       "mean": -0.02381,
+       "sd": 0.046524,
+       "min": -0.142857,
+       "max": 0.0,
        "n": 12
       },
       "per_seed": {
        "5001": {
-        "mechanism": 0.258929,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5002": {
-        "mechanism": 0.330357,
+        "mechanism": 0.071429,
         "reference": 0.071429
        },
        "5003": {
-        "mechanism": 0.142857,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5004": {
-        "mechanism": 0.330357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5005": {
-        "mechanism": 0.473214,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5006": {
-        "mechanism": 0.142857,
+        "mechanism": 0.071429,
         "reference": 0.142857
        },
        "5007": {
-        "mechanism": 0.330357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5008": {
-        "mechanism": 0.1875,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5009": {
-        "mechanism": 0.276786,
+        "mechanism": 0.142857,
         "reference": 0.214286
        },
        "5010": {
-        "mechanism": 0.330357,
+        "mechanism": 0.071429,
         "reference": 0.214286
        },
        "5011": {
-        "mechanism": 0.205357,
+        "mechanism": 0.0,
         "reference": 0.0
        },
        "5012": {
-        "mechanism": 0.071429,
+        "mechanism": 0.0,
         "reference": 0.0
        }
       },
-      "seeds_better": 0,
-      "seeds_worse": 11,
-      "seeds_equal": 1
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
      },
      "web_mean.realised_bits_per_budget": {
       "mechanism": {
@@ -6421,7 +6421,7 @@
      "mechanism": "all_on",
      "reference": "all_off"
     },
-    "run_seconds": 4.28
+    "run_seconds": 4.27
    },
    "counterfactual: imagination (lane M) vs today's answerer": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -7344,7 +7344,7 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 1.55
+    "run_seconds": 1.52
    },
    "self_model: one self-description record (lane W) vs today's surfaces": {
     "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
@@ -7753,8 +7753,9 @@
      "mechanism": "defaults",
      "reference": "all_off"
     },
-    "run_seconds": 2.7
+    "run_seconds": 2.65
    }
   }
- }
+ },
+ "code_commit": "197533d (benchmark run at 04ebecd plus the reconciliation's then uncommitted edits, all in 197533d; the cognitive benchmark does not exercise the gate change in 197533d)"
 }

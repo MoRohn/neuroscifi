@@ -2155,7 +2155,8 @@ Each piece has its own setting. Nothing here is a feeling or awareness; the name
    consequence and prediction discrepancy (each in [0, 1], declared weights summing to 1), with every signal's value
    and a one-line explanation, stored with the decision event of a queued investigation (`autonomy.decision_inputs`).
    It changes nothing that is admitted or its order. `nsf web config --set salience_record=false` hides it.
-4. **Curiosity by learning progress (`curiosity.progress`), on.** Per subject, its last six looks in `web_feedback`:
+4. **Curiosity by learning progress (`curiosity.progress`), off** (on in the first build; reworked and turned off
+   before release, see the amendment below). Per subject, its last six looks in `web_feedback`:
    a look's realised gain is the entropy it removed, and a look that changed what is held (new, reversed,
    strengthened, weakened; not an unresolved disagreement) is credited with the gain expected of it; a look made
    progress when it realised at least half the expected gain. With n looks without progress since the last that made
@@ -2163,7 +2164,7 @@ Each piece has its own setting. Nothing here is a feeling or awareness; the name
    multiplied by P(resolvable) / p (only ever down). Applied in `curiosity.rank` (both launch paths read it) and to
    derived hypotheses in `autonomy.candidates`; never to the owner's own records. Hard caps, `min_gain`,
    `autonomy.admission`, `background.allowed` and `quiet` are unchanged.
-   `nsf web config --set curiosity_learning_progress=false` turns it off.
+   `nsf web config --set curiosity_learning_progress=true` turns it on.
 5. **Information gain beside decisions (`instance/information.py`), display, on; rule information-v1, opt-in.**
    For a new reference root, each camera root and each partner: the exact mutual information between the hidden bits
    and the next 3 readings, H(Y) from the ratio of marginal likelihoods with and without each hypothetical sequence
@@ -2180,7 +2181,7 @@ Each piece has its own setting. Nothing here is a feeling or awareness; the name
    and changepoints. No new automation.
 
 Settings: `InstanceConfig.internal_state_history` (true), `predictive_regulation` (false), `executive_rule`
-("rules-v1"), `decision_information` (true); `WebConfig.curiosity_learning_progress` (true), `salience_record`
+("rules-v1"), `decision_information` (true); `WebConfig.curiosity_learning_progress` (false since the amendment), `salience_record`
 (true). A damaged saved value reads as the behaviour before the setting (no history, no forecast holds, rules-v1, no
 display) and `store.setting_problems` names it. No schema change, no migration.
 
@@ -2224,25 +2225,33 @@ worded more strongly than the evidence; these are the claims now made (`genesis_
   mainly the memory reserved per background task: without the trend the held-out share stays 0.80 (on development
   the trend carries more of it: 0.56 → 0.11 without it). Costs:
   background work given up 0.044 → 0.106, false alarms 0.009 → 0.043.
-- **Learning progress, web information gain** (B1, overstated as written): held-out 0.093 → 0.163 bits per budget
-  on the split's 3 seeds; on 12 further seeds 0.139 → 0.185 (+33 %, per-seed sd 0.08 to 0.12); with every Wave 1
-  chooser on (the re-check first) 0.124 on the split seeds. The timer's and the idle investigator's paths are
-  reported apart (B2): timer noise share 0.537 → 0.375 (12 seeds 0.41 → 0.30); idle noise share 0.800 → 0.375
-  (12 seeds 0.71 → 0.34); the idle path gained no bits per budget on the split's held-out seeds (−0.016 → −0.017)
-  though 12 further seeds show 0.094 → 0.186. **These curiosity numbers are to be re-measured after the
-  learning-progress rework (fix lane "core")**; the wide-seeds machinery is in `scripts/bench_wave1.py wide`.
-- **Retention** holds for the shipped defaults only: with information-v1 on it fails
-  `asks_only_while_partner_ambiguous` (as stated above).
+- **Learning progress, web information gain** (B1, B2). The first build's numbers (held-out timer path 0.093 →
+  0.163 bits per budget on the split's 3 seeds, 0.139 → 0.185 on 12 further seeds) were overstated as written and
+  are superseded by the rework (amendment below). Re-measured, held-out, off → on (reworked), the two paths apart
+  (`genesis_fix1b.json`; re-run on the reconciled tree with identical numbers, `genesis_wave1.json`,
+  `genesis_wave1_wide.json`):
+  - timer path, split seeds: noise share 0.537 → 0.512, bits per budget 0.093 → 0.134; 12 further seeds: noise
+    0.412 → 0.394, bits per budget **0.139 → 0.126** (paired difference −0.013, per-seed sd 0.14: within one sd;
+    5 seeds better, 1 worse, 6 equal);
+  - idle path, split seeds: noise share 0.800 → 0.650, bits per budget −0.016 → 0.044; 12 further seeds: noise
+    0.706 → 0.550, bits per budget 0.094 → 0.144 (11 of 12 seeds better).
+  The timer path loses bits per budget on the wider seeds, so learning progress ships off. With every Wave 1
+  chooser on (the knowledge re-check's pick first) the held-out timer path is 0.093 → 0.124 on the split seeds and
+  0.139 → 0.196 (12 of 12 seeds better, noise 0.412 → 0) on 12 further seeds; that row is the re-check's (ADR-055),
+  whose numbers the rework did not move.
+- **Retention** held for the shipped defaults only: the first build of information-v1 failed
+  `asks_only_while_partner_ambiguous` (as stated above). With information-v1 amended (below), retention passes with
+  every Wave 1 setting on, on both splits (reconciled tree, `genesis_wave1.json`).
 
 ## Defaults and why
 
-- On: the record and its history, the salience record, the information display, learning progress (held-out: a
-  clear drop in budget on noise on both paths, the stale subject kept and reached more often, retention and the
-  offline metrics unchanged).
+- On: the record and its history, the salience record, the information display (display and record only).
+- Off since the amendment: learning progress (the first build was on; reworked, it lowers the timer path's bits per
+  budget on the held-out wider seeds, 0.139 → 0.126).
 - Off: predictive regulation. It shows a clear held-out gain, but it gives up 2.4 times the background work and
   raises the false-alarm share fivefold on the benchmark's plant, whose constants are declared, not measured on the
   host, and its footprint estimate on the real host is unmeasured. `nsf config --predictive-regulation` turns it on.
-- Opt-in: information-v1 (it changes a retention scenario's rules-v1 property; existing individuals keep their rule).
+- Opt-in: information-v1 (rule versions are the owner's to adopt; existing individuals keep their rule).
 
 ## Amendment (review1, before release)
 
@@ -2251,7 +2260,7 @@ worded more strongly than the evidence; these are the claims now made (`genesis_
   read the same `web_feedback` rows, so the stronger of the two applies, never their product; the down-weight halves
   every 7 days after the subject's newest look and never goes below 0.05 (constants chosen on development only).
   Re-measured on the held-out worlds with the split's seeds and 12 further ones (`genesis_fix1b.json`): on the wider
-  seeds the timer path's noise share fell (0.413 to 0.394) but its realised bits per budget fell too (0.139 to
+  seeds the timer path's noise share fell (0.412 to 0.394) but its realised bits per budget fell too (0.139 to
   0.126); the idle path gained (0.094 to 0.144, noise 0.706 to 0.550). The rule was to keep it on only if bits per
   budget did not fall on both paths, so `curiosity_learning_progress` defaults to false. The reduced gain is what
   admission compares with its minimum (`curiosity.MIN_GAIN`, `min_gain`): "ranking only" was wrong.
@@ -2528,6 +2537,25 @@ and the measurements below are not scores of anything but the function they name
 - **R8:** with the start commit's voice hub the answer is not delivered after a restart (the test fails); with this
   change it is, once. Real microphone and handset: unverified.
 
+## Amendment (review1, before release)
+
+- **Scopes.** MCP `self_status` builds scope `agent`: the owner's own research only (`family IS NULL`), no file
+  path, web-derived text inside `safety.untrusted` envelopes; MCP `web_task` / `web_evidence` refuse a family's task.
+  The family scope carries the resource level and reasons only and a generic background-gate reason (S1, S5, S6).
+- **Robustness.** Every field is built under its own guard (a part that cannot be read is that field with `value:
+  null` and `error`); the record is read in one read transaction; the console asks `GET /api/self` in its own
+  request; the internal-state copy counts knowledge in SQL and decisions are read through migration 19's index
+  (A1–A4; owner build at 10,000 knowledge items 188 → 14.9 ms, `genesis_fix1a.json`).
+- **Answer monitoring in the record.** `uncertain.answers` gives each latest result's `confidence` and the monitoring
+  record's own `confidence_note`: while no fitted map has 30 development items in 3 blocks (none of the shipped maps
+  has), the confidence is null and the note says "not enough development data"; the field's source says why
+  (reconciliation of review A6 with this record).
+- **Voice.** The follow-up is delivered once to the person's live session, claimed in the database; with
+  `resume_follow` off nothing is written; a new owner voice setting `status_questions` (default off) keeps "what are
+  you doing?" starting research as before; "status report" and "status" are the status command (A9, A10, A15, S9).
+- **Broadcast.** With `log` or `on`, a finding is offered with the higher of its own salience and its candidate's;
+  log mode counts what would have been broadcast, so it shows the hourly limit (A7, A8).
+
 ## Alternatives rejected
 
 - A bus, a listener or a daemon for broadcast: the existing pending/web_events/state_version channels and polling
@@ -2729,7 +2757,11 @@ Simulated worlds driven through the real modules, offline.
 - *Information value, after the Wave 1 review:* the 0.124 held-out figure is the re-check's pick then the **timer's**
   curiosity, on the split's 3 seeds; the idle investigator's path is reported apart (`genesis_wave1.json`
   `idle_path`). With every Wave 1 chooser on, 12 further seeds on the held-out worlds give 0.139 → 0.196 (paired,
-  better in 12 of 12), noise share 0.41 → 0; to be re-measured after the learning-progress rework (fix lane "core").
+  better in 12 of 12), noise share 0.41 → 0. Re-measured on the reconciled tree after the learning-progress rework
+  (learning progress on in that regime, reworked): the same 0.139 → 0.196 and 0.412 → 0, 12 of 12; the
+  numbers did not move with the rework (on the split's seeds the re-check alone gives the everything-on numbers;
+  `genesis_wave1.json`, `genesis_wave1_wide.json`). The idle re-check stays off: no gain on
+  retention under change (above).
 - **Cost** (aarch64, while other lanes' suites ran): consolidation 1.35 -> 1.38 ms median per one-cluster task
   with premises; re-check rank 82 ms and admission 168 ms per pass over 200 items; a reflection report 2 ms; a
   Thompson ranking 1.5 ms. 0 model calls in every benchmark.
@@ -2744,6 +2776,12 @@ Simulated worlds driven through the real modules, offline.
 
 ## Consequences
 
+- After the Wave 1 review (fix lane B, before release): a mark closes, with its reason, when any normal path
+  re-verifies its subject, when the subject is no longer live, or after 3 failed re-verifications, and a hypothesis
+  is marked only while it rests on live knowledge (60 simulated days: at most 2 marks open); migration 18 was amended
+  in place so the improvement ledger also refuses a DELETE (a file of 18's first build gets the trigger at its next
+  open); the strategy gate checks the named line of `genesis_final_uses.jsonl`; a restore carries the owner's revert.
+  No default changed.
 - Defaults: hypothesis fields and premises on (display-only records; retention and adversarial unchanged); the idle
   re-check, abandonment and reflection off; strategy selection off until its gate passes. The idle re-check showed a
   gain on information value and none on retention under change: turning it on is the owner's call.

@@ -357,6 +357,50 @@ not within `cooldown` (24 h) of the last investigation of the subject, as `nsf w
 task records the rule that admitted it in its decision event. To return to the tick's earlier rule for this release:
 `nsf web config --set tick_admission='"legacy"'` (and `'"unified"'` back).
 
+### Cognitive mechanisms of Wave 1 (ADR-051 to ADR-055)
+
+Upgrading: the first command that opens an individual moves it to **schema 19** (18: five empty tables for knowledge
+premises, re-check marks, reflections, hypothesis details and the append-only improvement ledger; 19: one index on
+`web_events(kind, created_at)`). Both are additive and take milliseconds; take a checkpoint first (MIGRATIONS.md).
+**At the shipped defaults nothing changes in what the individual researches, answers, believes or asks**: the
+offline research benchmark's deterministic results and `nsf acceptance --all` equal Wave 0's. What is on by default
+only records or displays. Everything that changes behaviour is off until you turn it on.
+
+Read-only commands (each answers from the stores; none writes, none calls a model):
+
+```sh
+nsf self [--short] --db DB                     # the self-description record: doing, knows, unsure of, can do, why
+nsf internal-state [--history N] --db DB       # the internal-state record, each reading with its source and age
+nsf decide EPOCH --db DB                       # now also: each question's exact information gain, habitual or deliberate
+nsf regulation --precision --db DB             # how the executive's questions turned out, per rule and epoch
+nsf imagine what-if|questions|retrospect EPOCH --db DB   # computed on a private copy; imagined, not evidence
+nsf imagine forecast CONTEXT --state '[...]' --db DB    # several steps ahead from the active graph
+nsf imagine scm FILE.json                      # a question about a declared linear causal model
+nsf knowledge rechecks|reflections|ledger|strategy --db DB   # re-check marks, reflections, the improvement ledger
+```
+
+`--keep` on an `nsf imagine` command keeps the answer in the imagined store (never evidence; it goes when any reading,
+camera, partner or epoch it names is forgotten). `nsf knowledge reflect` runs one bounded reflection when you ask.
+
+Settings (owner only; carried by a restore; a damaged value reads as the behaviour before the setting):
+
+| Setting | Default | Turn on (or off) |
+|---|---|---|
+| internal-state history, information display, imagination what-if/forecast/retrospect | on | `nsf config --no-internal-state-history`, `--no-decision-information`, `--no-imagine-what-if` (and the others) |
+| salience record, answer monitoring record, hypothesis fields, premise re-check marks | on (records only) | `nsf web config --set salience_record=false` (likewise `answer_monitoring`, `hypothesis_fields`, `premise_recheck`) |
+| predictive regulation | off | `nsf config --predictive-regulation` |
+| executive rule | `rules-v1` | `nsf config --executive-rule information-v1` (and back with `rules-v1`) |
+| scenario records | off | `nsf config --imagine-scenarios` |
+| selective broadcast | `off` | `nsf config --broadcast log` (record only) or `on`; `--broadcast-threshold 0.5` |
+| curiosity learning progress, selective answering, verification escalation, adaptive depth, idle re-check, hypothesis abandon, reflection, Pocket "what we were just doing" | off | `nsf web config --set curiosity_learning_progress=true` (likewise each name: `selective_answering`, `verification_escalation`, `adaptive_depth`, `idle_recheck`, `hypothesis_abandon`, `reflection`, `pocket_recent`) |
+| strategy selection | `"gate"` (inactive: no promotion has passed the gate) | `nsf knowledge strategy --revert` records your revert; `nsf web config --set strategy_selection='"off"'` |
+| voice: follow a spoken question's answer across a restart | on | `nsf voice settings --set '{"resume_follow": false}'` |
+| voice: "what are you doing?" answers with the status instead of starting research | off | `nsf voice settings --set '{"status_questions": true}'` |
+
+`quiet` holds every new background activity (scenario records, the idle re-check, reflection) like the others.
+Every Wave 1 setting switched off gives Wave 0's behaviour (cognitive benchmark: 0 differences from the recorded
+baseline). How each piece is backed out: `docs/genesis/WAVE1.md`.
+
 ### Crashed worker
 
 Each lease records the worker's host digest, pid and process start time. On the same host a dead worker is detected at once: `cancel`, `resume` and `requeue` act immediately and the worker service picks the task up from its checkpoint without waiting for the 600 s lease to expire. Task JSON carries `worker_alive` (`true`, `false`, or `null` when no worker holds it or it runs on another host).
