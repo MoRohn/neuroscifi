@@ -332,14 +332,50 @@ class Server:
         return {"short": self_description.short(record)} if args.get("short") else record
 
     def _web_knowledge(self, db, args, now):
+        """Knowledge is the whole individual's (consolidation does not ask whose research found it), so an item may
+        come from a Pocket family's research; the family's task ids it names are blanked here, as web_task and
+        web_evidence do not show that research either (review1b R4)."""
         from . import knowledge
         known = knowledge.query(db, args["topic"], now)
+        known["items"] = _without_family_tasks(db, known["items"])
         return {"topic": known["topic"], "as_of": known["as_of"], "matched": known["matched"], "known": known["known"],
                 "items": [{"id": i["id"], "status": i["status"], "confidence": i["confidence"], "stale": i["stale"],
                            "contested": i["contested"], "last_verified_at": i["last_verified_at"],
                            "content": _wrap(i, (i["sources"] or [{}])[0].get("url") or
                                             f"neuroscifi:web-knowledge/{i['id']}")}
                           for i in known["items"]]}
+
+
+def _without_family_tasks(db, value):
+    """`value` with every string that is the id of a Pocket family's research task replaced by None."""
+    found = set()
+
+    def collect(v):
+        if isinstance(v, dict):
+            for x in v.values():
+                collect(x)
+        elif isinstance(v, list):
+            for x in v:
+                collect(x)
+        elif isinstance(v, str) and 1 <= len(v) <= 64:
+            found.add(v)
+    collect(value)
+    found = sorted(found)
+    family = set()
+    for i in range(0, len(found), 500):
+        part = found[i:i + 500]
+        family |= {t for (t,) in db.execute("SELECT id FROM web_tasks WHERE family IS NOT NULL AND id IN "
+                                            f"({','.join('?' * len(part))})", part)}
+    if not family:
+        return value
+
+    def scrub(v):
+        if isinstance(v, dict):
+            return {k: scrub(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [scrub(x) for x in v]
+        return None if isinstance(v, str) and v in family else v
+    return scrub(value)
 
 
 def _result(rid, result):

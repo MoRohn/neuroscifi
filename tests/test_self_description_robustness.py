@@ -218,6 +218,68 @@ def test_the_episode_log_is_read_by_kind_and_time_through_an_index(individual):
             assert "web_events_kind_time" in plan, (name, plan)
 
 
+def _finished(db, task, at, monitoring):
+    with store.write(db):
+        state.update_task(db, task["id"], at, status="completed", finished_at=at,
+                          result={"answer": [], "monitoring": monitoring})
+
+
+def test_the_agent_scope_lists_monitoring_decisions_of_the_owners_own_research_only(individual):
+    """review1b R4: uncertain.answers listed a Pocket family's task ids with their monitoring decisions to the agent
+    scope (MCP self_status). The owner's own record still lists every finished task's."""
+    record = {"version": 1, "confidence": None, "confidence_note": "not enough development data",
+              "below_threshold": False, "decision": "answer", "sufficiency": {"enough": True, "why": []}}
+    with closing(store.connect(individual)) as db:
+        own = orchestrator.submit(db, "Is the Okapi compiler 2.0 out yet?", T0, origin="console")
+        fam = orchestrator.submit(db, "Family B private: is my lawyer any good?", T0, origin="pocket", family="famB")
+        _finished(db, own, T0 + 1, record)
+        _finished(db, fam, T0 + 2, record)
+        owner = sd.build(db, individual, T0 + 5)
+        agent = sd.build(db, individual, T0 + 5, scope="agent")
+    assert {a["task_id"] for a in sd.value(owner, "uncertain.answers")} == {own["id"], fam["id"]}
+    assert [a["task_id"] for a in sd.value(agent, "uncertain.answers")] == [own["id"]]
+    error, mcp_record = call(individual, "self_status")
+    assert not error and fam["id"] not in json.dumps(mcp_record)
+
+
+def test_mcp_web_knowledge_does_not_name_a_familys_task(individual):
+    """review1b R4: knowledge is the whole individual's (consolidation does not ask whose research found it, by
+    design), but the item MCP returned named the Pocket family's task that contradicted it. The id is blanked; the
+    owner's own task ids stay."""
+    with closing(store.connect(individual)) as db:
+        own = orchestrator.submit(db, "Is the Okapi compiler 2.0 out yet?", T0, origin="console")
+        fam = orchestrator.submit(db, "Family B private: is the Okapi compiler 2.0 out?", T0, origin="pocket",
+                                  family="famB")
+        against = [{"claim": 1, "task": fam["id"], "reason": "value", "text": "no", "url": "https://a.example/x"},
+                   {"claim": 2, "task": own["id"], "reason": "value", "text": "no", "url": "https://b.example/y"}]
+        with store.write(db):
+            db.execute("INSERT INTO web_knowledge(key, version, statement, status, confidence, uncertainty, "
+                       "freshness_class, first_verified_at, last_verified_at, created_at, updated_at, contradicting, "
+                       "task_id) VALUES('okapi compiler', 1, 'The Okapi compiler 2.0 is out.', 'accepted', 0.8, 0.2, "
+                       "'stable', ?, ?, ?, ?, ?, ?)", (T0, T0, T0, T0, json.dumps(against), fam["id"]))
+    error, known = call(individual, "web_knowledge", {"topic": "Okapi compiler"})
+    assert not error and known["matched"] == 1
+    text = json.dumps(known)
+    assert fam["id"] not in text and own["id"] in text and "Okapi compiler 2.0 is out" in text
+
+
+def test_a_stored_confidence_no_shipped_map_gives_is_not_shown(individual):
+    """review1b R6: reports stored before the fix round carry monitoring.confidence 0.941; no shipped map applies,
+    so the record shows none with the "not enough development data" note. The stored report is unchanged."""
+    from neuroscifi.webcortex import monitoring
+    assert not any(monitoring.applied(t) for t in (monitoring.calibration().get("strata") or {}).values())
+    old = {"version": 1, "confidence": 0.941, "confidence_note": None, "below_threshold": False, "decision": "answer",
+           "sufficiency": {"enough": True, "why": []}, "calibration": {"stratum": "answer", "applied": True}}
+    with closing(store.connect(individual)) as db:
+        task = orchestrator.submit(db, "Is the Okapi compiler 2.0 out yet?", T0, origin="console")
+        _finished(db, task, T0 + 1, old)
+        record = sd.build(db, individual, T0 + 5)
+        stored = json.loads(db.execute("SELECT result FROM web_tasks WHERE id=?", (task["id"],)).fetchone()[0])
+    [answer] = sd.value(record, "uncertain.answers")
+    assert answer["confidence"] is None and answer["confidence_note"] == "not enough development data"
+    assert stored["monitoring"]["confidence"] == 0.941
+
+
 def test_no_readings_is_said_in_plain_words(individual):
     """review1 A16: an epoch without a single reading read as "every factor is settled"."""
     with closing(store.connect(individual)) as db:

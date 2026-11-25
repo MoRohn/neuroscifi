@@ -489,22 +489,32 @@ def _internal_state(db, path, now, *, agent=False) -> dict:
     return _f(snap, "internal_state.snapshot (ADR-051; `nsf internal-state`)", snap.get("at"), now)
 
 
-def _answer_monitoring(db, now) -> dict:
+def _answer_monitoring(db, now, own_only=False) -> dict:
     """Lane C's monitoring record (ADR-054) of the latest research results that carry one: the answer confidence
     (none while no fitted map has enough development data, with the record's own "not enough development data"
-    note), whether the answer was weak, what was decided, and whether the evidence was enough."""
-    latest = (f"SELECT id, updated_at, result FROM web_tasks WHERE status IN ({','.join('?' * len(TERMINAL))}) "
-              "ORDER BY updated_at DESC LIMIT 50")            # the latest finished tasks only: never every report
+    note), whether the answer was weak, what was decided, and whether the evidence was enough. own_only (scope
+    agent): the owner's own research only (family IS NULL; review1b R4). A confidence stored by an earlier build
+    for a stratum no shipped map now applies to is shown as none, with the same note (review1b R6); the stored
+    report is not changed."""
+    from .webcortex import monitoring
+    mine = " AND family IS NULL" if own_only else ""
+    latest = (f"SELECT id, updated_at, result FROM web_tasks WHERE status IN ({','.join('?' * len(TERMINAL))})"
+              f"{mine} ORDER BY updated_at DESC LIMIT 50")     # the latest finished tasks only: never every report
     rows = db.execute(
         "SELECT id, updated_at, json_extract(result,'$.monitoring.confidence'), "
         "json_extract(result,'$.monitoring.confidence_note'), "
         "json_extract(result,'$.monitoring.below_threshold'), json_extract(result,'$.monitoring.decision'), "
-        f"json_extract(result,'$.monitoring.sufficiency') FROM ({latest}) WHERE json_valid(result) AND "
+        "json_extract(result,'$.monitoring.sufficiency'), json_extract(result,'$.monitoring.calibration.stratum') "
+        f"FROM ({latest}) WHERE json_valid(result) AND "
         "json_extract(result,'$.monitoring.version') IS NOT NULL ORDER BY updated_at DESC LIMIT ?",
         (*TERMINAL, MAX_ITEMS)).fetchall()
-    items = [{"task_id": tid, "at": at, "confidence": conf, "confidence_note": note, "below_threshold": bool(below),
-              "decision": decision, "sufficiency": _json(enough)}
-             for tid, at, conf, note, below, decision, enough in rows]
+    strata = monitoring.calibration().get("strata") or {}
+    items = []
+    for tid, at, conf, note, below, decision, enough, stratum in rows:
+        if conf is not None and not monitoring.applied(strata.get(stratum) if isinstance(stratum, str) else None):
+            conf, note = None, monitoring.NOT_ENOUGH_DATA
+        items.append({"task_id": tid, "at": at, "confidence": conf, "confidence_note": note,
+                      "below_threshold": bool(below), "decision": decision, "sufficiency": _json(enough)})
     return _f(items, "web_tasks.result monitoring record (webcortex/monitoring.py, ADR-054; answer_monitoring). "
               "confidence is null with confidence_note \"not enough development data\" while no fitted map has 30 "
               "development items in 3 blocks (monitoring.applied; webcortex/data/monitoring_calibration.json): none "
@@ -676,7 +686,8 @@ def _build(db, path, now, scope, family) -> dict:
             uncertain |= {"contradictions": g("web_hypotheses", lambda: _contradictions(db, now)),
                           "low_confidence": g("web_knowledge", lambda: _low_confidence(db, now)),
                           "predictions": g("web_predictions", lambda: _predictions(db, now)),
-                          "answers": g("web_tasks.result monitoring record", lambda: _answer_monitoring(db, now)),
+                          "answers": g("web_tasks.result monitoring record",
+                                       lambda: _answer_monitoring(db, now, own_only=agent)),
                           "to_recheck": g("web_rechecks", lambda: _to_recheck(db, now))}
         record["uncertain"] = uncertain
         record["can"] = {"capabilities": {

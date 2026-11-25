@@ -648,7 +648,11 @@ Every push is an empty POST to the stored endpoint, with `TTL: 43200`, `Urgency:
 **MCP (`nsf web mcp`, stdio JSON-RPC 2.0, protocol 2025-06-18).** Tools: `web_search`, `web_research`, `web_task`,
 `web_evidence`, `web_knowledge`, `self_status` (read-only, ADR-053, §13). Retrieved content is wrapped in
 `safety.untrusted` envelopes. There are no forget, review or configuration tools. `serverInfo.version` is the
-package's `neuroscifi.__version__` (it was a hard-coded "0.7.0").
+package's `neuroscifi.__version__` (it was a hard-coded "0.7.0"). `web_task`, `web_evidence` and `self_status` read
+the owner's own research only (`family IS NULL`, table in §13). `web_knowledge` returns **knowledge, which is shared
+by the whole individual**: consolidation does not ask whose research verified a statement, so an item may come from a
+Pocket family's research. Its items name no family's task: a family task id anywhere in an item is blanked (`null`)
+(review1b R4).
 
 ## 9. Resource scheduling (0.7, RD-46)
 
@@ -875,7 +879,7 @@ presence.activity.remote(db_path, now=None) -> [entries of other live processes]
 | console `GET /api/imagined[?kind=K&limit=N]` | `imagined.listing` (labelled "imagined, not evidence"); 400 for an unknown kind or a limit outside 1–100; read-only (POST 405) |
 | console `POST /api/web/config {"pocket_recent": bool}` | the web setting `pocket_recent` (default false) |
 | Pocket `self_status` `{}` | a research route (gated, signed and limited like the others; 404 while research is off): 200 `{record (scope "family"), short}`; 400 for any body key |
-| MCP tool `self_status` `{short?: bool}` | the record in scope `agent` (the owner's own research only: tasks, questions, goals and recent research with `family IS NULL`; no file path; task objectives, goals, knowledge and contradiction keys and autonomy objectives inside `safety.untrusted` envelopes), or `{short}`; read-only annotations; behind the untrusted header like every tool result. MCP `web_task` / `web_evidence` answer "No research task" for a Pocket family's task (review1 S1, S5) |
+| MCP tool `self_status` `{short?: bool}` | the record in scope `agent` (the owner's own research only: tasks, questions, goals and recent research with `family IS NULL`; no file path; task objectives, goals, knowledge and contradiction keys and autonomy objectives inside `safety.untrusted` envelopes), or `{short}`; read-only annotations; behind the untrusted header like every tool result. MCP `web_task` / `web_evidence` answer "No research task" for a Pocket family's task (review1 S1, S5); `uncertain.answers` lists the owner's own tasks only, and a stored answer confidence no shipped map gives is shown as null with "not enough development data" (review1b R4, R6) |
 | voice intent `self_status` ("status report", "status", and with the owner's `status_questions` on also "what are you doing", "what's your status") | a reply of `short` sentences, label "NeuroSciFi status from its own records (no model involved)"; a Pocket device hears its family scope |
 | voice setting `status_questions` (owner only; default false) | off: a status question that started research before the command existed ("what are you working on?") still starts research; on: it gets the short self-description (review1 A15) |
 | `nsf self [--short] [--db]` | the owner record, or `{"short": [...]}` |
