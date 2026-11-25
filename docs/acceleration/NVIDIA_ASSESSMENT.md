@@ -48,7 +48,7 @@ What the baseline says about where time goes (`accel_baseline_inference.json`, `
 | **LLM NIM** (`nemotron-3.5-lightning-30b-a3b`, others; "each NIM container image embeds one inference engine, vLLM or SGLang") | vLLM 0.33 serving Qwen3-30B-A3B | Packaging | Yes with caveat | None expected: the engine underneath is vLLM. Qwen3-30B-A3B is not offered as a NIM, so an LLM NIM means changing the reasoning model; the model-free NIM (2.1.6) carries vLLM 0.32.0, older than the engine in use | A model change needs the full guard and answer-quality replay; licence acceptance | **Reject** for the current model. Reconsider only together with a deliberate model evaluation |
 | **Triton Inference Server** (`tritonserver:26.10-py3`, arm64 images exist; 26.11 lists a newer driver than this host has) | Three purpose-built servers behind loopback ports | Dynamic batching, ensembles, one lifecycle for many models | Yes with caveat (backends inside the arm64 image **unverified**) | None for the answer model: "all requests are placed on the vLLM AsyncEngine as soon as they are received. Inflight batching … is handled by the vLLM engine". Dynamic batching combines concurrent requests; one owner rarely produces any. The TensorRT-LLM backend image is no longer shipped | A 10 GB image and a model repository to maintain, for no measured gain | **Reject** now. **Research prototype** if several small CPU-side models appear that need one lifecycle |
 | **Dynamo** (1.6.x; arm64 runtime images exist) | One vLLM worker | Routing, disaggregation and autoscaling across workers | Yes with caveat | None on one GPU with one worker, by its own documentation: KV-aware routing "Use two or more workers"; disaggregated prefill and decode "Requires 2 GPUs"; NIXL moves data between those workers; the planner scales replicas. KV-cache offload runs on one worker, but on unified memory a host tier is the same memory | A discovery plane and a frontend in front of a server that already answers in 0.03 ms of queue time | **Reject** for this topology. Revisit when a second GPU node exists |
-| **TensorRT-LLM** (1.3.0; "TensorRT backend removed. PyTorch is the only backend") | vLLM | Decode speed | Yes with caveat (arm64 image; NVIDIA's Spark playbook targets it). Qwen3 MoE is supported; the playbook lists the NVFP4 base model, not Instruct-2507 and not FP8 | **Unverified.** No official comparison with vLLM on Spark exists. It would need the answer model stopped for an A/B on 44 GiB, and probably a different quantisation, which is a model-quality change | An engine swap behind the same OpenAI contract; quality replay required | **Research prototype**, not run in this review (§5) |
+| **TensorRT-LLM** (1.3.0; "TensorRT backend removed. PyTorch is the only backend") | vLLM | Decode speed | Yes with caveat (arm64 image; NVIDIA's Spark playbook targets it). Qwen3 MoE is supported; the playbook lists the NVFP4 base model, not Instruct-2507 and not FP8. **Measured since:** the stable 1.3.0 cannot serve this FP8 format on GB10 (SM 121); 1.4.0rc4 can, on a small dense model of the same format (§5.1) | **Unverified** on the answer model. The proxy shows equal single-stream decode and a shorter first token on a repeated prompt; nothing about the 30B MoE | An engine swap behind the same OpenAI contract; quality replay required | **Research prototype**; the window to settle it is prepared (§5.1) and is the owner's to schedule |
 | **vLLM speculative decoding** (prompt lookup, `--speculative-config {"method":"ngram",…}`) | Plain decoding | Decode speed where the answer restates the prompt | Yes | **Measured worse**: restating decode +20 %, free-form decode 50 → 25 tokens/s, research task mean 4.4 → 5.6 s, 16-problem reasoning set 3.9 → 7.0 s median | — | **Reject** (measured) |
 | **vLLM `--performance-mode interactivity`** | Balanced mode | Single-stream latency | Yes | **Measured none**: decode 50.1 against 50.3 tokens/s; start 83 s against 58 s | — | **Reject** (measured) |
 | **Speech NIMs** (Parakeet, Magpie; Spark listed) | Whisper large-v3-turbo (4 GiB) and Kokoro-82M (1.5 GiB), measured WER 2.1 % clean | Speech accuracy or latency | Yes with caveat (NGC key; the TTS NIM asks for ≥ 16 GB) | Unmeasured; ASR is 0.27 s and TTS 0.12 s per request today | More memory than the services they would replace | **Reject** now (no measured speech deficit that they address) |
@@ -92,11 +92,78 @@ applicable), or a measured TensorRT-LLM result on this model (§5).
 
 | Open item | Why it was not done | The check |
 |---|---|---|
-| TensorRT-LLM against vLLM on this model | Needs the answer model stopped, a second copy of the weights in a quantisation TensorRT-LLM documents for it (NVFP4), and a full answer-quality replay; a multi-hour experiment with a model-quality change inside it | `scripts/bench_inference.py` and `scripts/bench_pipeline.py` against a `trtllm-serve` endpoint on another port, same prompts, then the guard survival replay |
+| TensorRT-LLM against vLLM on this model | Needs the answer model stopped for the length of the run (the two do not fit side by side), which is the owner's to schedule. No second copy of the weights is needed any more: TensorRT-LLM 1.4.0rc4 serves the existing FP8 format on this GPU (§5.1) | `python scripts/trtllm_compare.py --yes` in a window (§5.1) |
 | NVIDIA embedding NIM against Qwen3-Embedding | Licence acceptance and an NGC key are the owner's | `nsf web memory config --embed-url …` at the NIM's port, then `scripts/bench_memory.py` |
 | A lighter server for the two memory models (4.6 GiB each under vLLM for 1.1 GiB of weights; no setting of the pinned image lowers it) | **Done in phase 3** without a new image: one process in the pinned image serves both (`deploy/memory/server.py`; [ENGINEERING_PLAN.md](ENGINEERING_PLAN.md) §5.1), so the candidates below were not needed. Before that: outside the decision that was delegated. `text-embeddings-inference` publishes CUDA images for amd64 only; `ghcr.io/ggml-org/llama.cpp:server-cuda` lists a linux/arm64 manifest (MIT) that was **not pulled or run**: whether its CUDA build runs on GB10, and whether GGUF builds of the two models reproduce the benchmark with the reranker's prompt, is unverified | Pin the image by digest, serve both models, then `scripts/bench_memory.py` against the numbers of [PERFORMANCE.md](PERFORMANCE.md) §4 |
 | Triton backends in the arm64 image | No use for the answer; not pulled (10 GB) | `docker run --rm nvcr.io/nvidia/tritonserver:26.10-py3 ls /opt/tritonserver/backends` |
 | NVIDIA's validation of this operating system | NVIDIA validates DGX OS and Ubuntu | None available; the containers that run here are evidence for those containers only |
+
+### 5.1 TensorRT-LLM: what was settled without stopping the answer model, and the window that settles the rest
+
+Asked of the remaining-items round (2026-11-24): find the best way to compare TensorRT-LLM with vLLM on the answer
+model. Everything below ran beside the answer model, which was never stopped or changed
+(`docs/quality/evidence/remaining_trtllm.json`).
+
+**Does an image run on this GPU with this checkpoint?** The answer model's checkpoint is FP8 with 128×128 block
+scales (e4m3, dynamic activations). NVIDIA's Spark playbook (container 1.3.0rc13) lists Qwen3-30B-A3B only as NVFP4,
+and only the base model. Both images were pulled anonymously from NGC and tried on `Qwen/Qwen3-0.6B-FP8`, a small
+dense model in the same format:
+
+| Image | Result |
+|---|---|
+| `release:1.3.0` (stable, 2026-11-20) | Loads the weights, then fails in its first forward pass: `RuntimeError: Scale dtype must be Int32.` The FP8 block-scale linear layer has a branch for SM 120 (`sm_version == 120`) but not for GB10's SM 121, which falls through to a kernel that expects packed scales |
+| `release:1.4.0rc4` (pre-release, 2026-11-18) | Serves it. The same branch covers the whole SM 12x family (`is_sm_120f`) |
+
+So the comparison needs neither a requantisation nor another model: the pre-release serves the format as is. The
+MoE path of that format on SM 121 is **unverified**, because the proxy is dense. Only the real window shows it.
+
+**Proxy, not the comparison.** The small model ran on each engine alone, capped (KV 2 GiB, length 8192, batch 8, 4096
+tokens per step), with `scripts/bench_inference.py --runs 8`:
+
+| Median | vLLM (pinned image) | TensorRT-LLM 1.4.0rc4 |
+|---|---|---|
+| Single-stream decode, short / evidence-sized prompt | 185 / 131 tokens/s | 182 / 134 tokens/s |
+| First token, evidence-sized prompt (3.8k tokens) | 143 ms | 141 ms |
+| First token, the same prompt repeated | 143 ms | 27 ms |
+| Valid JSON under the answer schema | 3 of 8 | 0 of 8 without a grammar backend; 6 of 8 with `guided_decoding_backend: xgrammar` |
+| 8 concurrent, aggregate | 194 tokens/s | 248 tokens/s |
+| Ready after start | 192 s | 166 to 176 s |
+
+The quality rows mean little here. The model is 0.6B and thinks by default, and TensorRT-LLM answered 6 of 16
+reasoning problems against vLLM's 8 of 16, mostly with no final ANSWER line. The cause is unexplained: the chat
+template or default sampling may differ. The real model does not think, so the window settles this. Each figure is
+one run on a host other tenants share.
+
+**The window.** `scripts/trtllm_compare.py` does the following in order:
+1. Checks everything: Docker, the pinned image, every `trtllm-serve` flag it uses, the answer model running and
+   healthy, and enough free memory.
+2. Captures the answer model's container (secrets redacted in the written copy) and proves that `deploy/vllm/run.sh`
+   would recreate it.
+3. Measures vLLM first.
+4. Stops the answer model, keeping its container.
+5. Starts `trtllm-serve` on the same weights with the same limits: 32,768 tokens, batch 8, 4,096 tokens per step, a
+   KV cache of 141,994 tokens (vLLM's 13 GiB), the `qwen3` tool parser, xgrammar, and 127.0.0.1 only.
+6. Runs the same `bench_inference.py` and `bench_pipeline.py`.
+7. Restarts the same container and compares its configuration with the capture.
+
+Step 7 runs on every exit path: the normal end, an error, Ctrl-C, SIGTERM and SIGHUP. If too little memory frees up,
+the script aborts and restores. The restore logic is unit-tested with fakes (`tests/test_trtllm_compare.py`). The
+dry run passed on this host with no blockers.
+
+```bash
+python scripts/trtllm_compare.py --dry-run     # stops nothing; prints the plan and any blocker
+python scripts/trtllm_compare.py --yes         # the window; results in ~/.cache/neuroscifi/trtllm-compare/<time>
+```
+
+Expected cost, estimated from the durations of earlier runs and not measured for the 30B model:
+- About 10 minutes of vLLM measurement before the stop.
+- Answer-model downtime of about 15 to 35 minutes: TensorRT-LLM loading 31 GB, unknown and allowed 40 minutes;
+  about 6 minutes of `bench_inference.py`; about 4 minutes of `bench_pipeline.py`; and vLLM's restart, measured at
+  58 to 83 s earlier.
+
+Stop the NeuroSciFi services first, or expect their model calls to fail during the window. If the process is killed
+with SIGKILL, run `deploy/vllm/run.sh start`. The image is a pre-release, so a later stable release that includes the
+SM 12x fix is the one to adopt if the result favours it.
 
 ## 6. Licences touched by this review
 
@@ -105,6 +172,8 @@ applicable), or a measured TensorRT-LLM result on this model (§5).
 | `Qwen/Qwen3-Embedding-0.6B`, `Qwen/Qwen3-Reranker-0.6B` | Apache-2.0, not gated | Downloaded at pinned revisions to `~/.local/share/neuroscifi/models/` |
 | NVIDIA NIM containers | NVIDIA AI Product Agreement | Not pulled, not accepted |
 | `nvidia/llama-nemotron-embed-1b-v2`, `nvidia/Nemotron-3.5-Embed-1B` | NVIDIA Open Model License, OpenMDW-1.1 | Not downloaded |
+| `nvcr.io/nvidia/tensorrt-llm/release` 1.3.0 and 1.4.0rc4 | TensorRT-LLM is Apache-2.0; the container is distributed under NVIDIA's container terms; anonymous pull, no NGC key | Pulled for §5.1; 1.3.0 removed afterwards, 1.4.0rc4 kept for the window |
+| `Qwen/Qwen3-0.6B-FP8` (revision `e5be080`) | Apache-2.0, not gated | Downloaded to a temporary folder for the proxy only; not installed |
 
 ## 7. Sources
 
