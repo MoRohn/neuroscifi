@@ -592,7 +592,7 @@ def candidates(db, now, *, limit=10, offered=()) -> dict:
         p = evolution.recalibrate(stated, read["owner" if h["origin"] == "owner" else "hypothesis"])
         gain, gain_as_read, lp = curiosity.info_gain(stated), curiosity.info_gain(p), {}
         if lp_on and h["origin"] != "owner":     # ADR-051: learning progress, never on the owner's own records
-            factor, _, record = curiosity.progress(db, h["key"], gain)
+            factor, _, record = curiosity.progress(db, h["key"], gain, now)
             gain, gain_as_read, lp = gain * factor, gain_as_read * factor, {"learning_progress": record}
         add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", gain,
             {"hypothesis": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6),

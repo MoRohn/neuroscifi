@@ -35,7 +35,7 @@ def test_looks_that_change_nothing_down_weight_the_subject(db):
     factor, note, record = curiosity.progress(db, "coin index", 0.9)
     p, c = curiosity.PRIOR_RESOLVABLE, curiosity.PROGRESS_CHANCE
     expected = p * (1 - c) ** 3 / (p * (1 - c) ** 3 + 1 - p) / p           # the two-kind posterior, by hand
-    assert record["without_progress"] == 3 and factor == pytest.approx(expected)
+    assert record["without_progress"] == 3 and factor == pytest.approx(max(curiosity.LP_FLOOR, expected))
     assert record["realised_bits"] == 0.0 and "learning progress" in note
 
 
@@ -45,15 +45,16 @@ def test_a_look_that_changed_what_is_held_is_progress(db):
     assert record["looks"] >= 1 and record["without_progress"] == 0 and factor == 1.0
 
 
-def test_on_by_default_and_rank_is_as_before_when_off(db):
+def test_off_by_default_and_rank_is_as_before_when_off(db):
+    """review1 CM1: re-measured after the rework it lowered the timer path's bits per budget on the held-out worlds'
+    wider seeds, so it ships off; on, the stronger of it and the futility down-weight applies."""
     accepted(db, "zlib latest version", "zlib 1.3.1 is the latest zlib release.", ("a.example", "b.example"), T0)
     noise(db, "coin index", T0 + DAY, n=2)
-    assert curiosity.learning_progress_on(db) is True
-    lp_on(db, False)
-    off = curiosity.rank(db, T0 + 20 * DAY)
+    assert curiosity.learning_progress_on(db) is False
+    off = curiosity.rank(db, T0 + 2 * DAY)
     assert all("learning_progress" not in c for c in off)
     lp_on(db)
-    on = curiosity.rank(db, T0 + 20 * DAY)
+    on = curiosity.rank(db, T0 + 2 * DAY)
     coin_off = next(c for c in off if c["target"].get("key") == "coin index")
     coin_on = next(c for c in on if c["target"].get("key") == "coin index")
     assert coin_on["info_gain"] < coin_off["info_gain"] and coin_on["learning_progress"]["without_progress"] == 2
@@ -62,10 +63,52 @@ def test_on_by_default_and_rank_is_as_before_when_off(db):
     assert zlib_on["info_gain"] == zlib_off["info_gain"]           # the stale but important subject keeps its gain
 
 
+def test_a_confirming_refresh_is_progress_on_what_it_was_asked_to_settle(db):
+    """review1 CM1 (a): re-verifying a stale item that is still current settles P(current); it is not a failure."""
+    from test_consolidate import two_sources
+    _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
+    key = db.execute("SELECT key FROM web_knowledge WHERE id=?", (first["provisional"][0],)).fetchone()[0]
+    for i in range(3):
+        consolidated(db, [two_sources(published=T0 - 5 * DAY)], T0 + (i + 1) * DAY)
+    effects = [e for (e,) in db.execute("SELECT effect FROM web_feedback WHERE key=? ORDER BY id", (key,))]
+    assert effects[0] == "new" and len(effects) >= 3 and set(effects[1:]) == {"unchanged"}
+    for expected in (0.1, 0.5, 1.0):
+        factor, note, record = curiosity.progress(db, key, expected, T0 + 4 * DAY)
+        assert factor == 1.0 and record["without_progress"] == 0 and note == ""
+
+
+def test_progress_and_futility_take_the_stronger_never_the_product(db):
+    """review1 CM1 (b): both read the same web_feedback rows."""
+    noise(db, "coin index", T0 + DAY, n=3)
+    now = T0 + DAY + 3
+    lp_on(db)
+    coin = next(c for c in curiosity.rank(db, now) if c["target"].get("key") == "coin index")
+    gain = curiosity.categorical_gain([0.35, 0.35, 0.15, 0.15])
+    futility, _ = curiosity._futility(db, "coin index")
+    lp, _, _ = curiosity.progress(db, "coin index", gain, now)
+    assert futility == 0.25 and lp < futility
+    assert coin["info_gain"] == pytest.approx(gain * min(futility, lp), abs=1e-6)
+    assert coin["info_gain"] > gain * futility * lp + 1e-3
+
+
+def test_a_down_weighted_subject_recovers_with_time_and_has_a_floor(db):
+    """review1 CM1 (c): half of the down-weight is gone LP_HALF_LIFE after the newest look; never below LP_FLOOR."""
+    noise(db, "coin index", T0, n=2)
+    last = T0 + 1
+    at_once, _, _ = curiosity.progress(db, "coin index", 0.9, last)
+    half, _, record = curiosity.progress(db, "coin index", 0.9, last + curiosity.LP_HALF_LIFE)
+    late, _, _ = curiosity.progress(db, "coin index", 0.9, last + 20 * curiosity.LP_HALF_LIFE)
+    assert half == pytest.approx(1 - (1 - at_once) / 2) and record["days_since_last_look"] == pytest.approx(7.0)
+    assert at_once < half < late and late > 0.99
+    noise(db, "coin index", T0 + 10, n=4)                       # six looks without progress: far below the floor
+    floor, _, record = curiosity.progress(db, "coin index", 0.9, T0 + 13)
+    assert record["without_progress"] == 6 and floor == curiosity.LP_FLOOR
+
+
 def test_the_noisy_subject_falls_behind_the_stale_one_sooner(db):
     stale = accepted(db, "zlib latest version", "zlib 1.3.1 is the latest zlib release.", ("a.example", "b.example"),
                      T0)
-    noise(db, "coin index", T0 + DAY, n=1)
+    noise(db, "coin index", T0 + 19 * DAY, n=1)
     now = T0 + 20 * DAY
     lp_on(db, False)
     assert [c for c in curiosity.rank(db, now) if not c["excluded"]][0]["target"].get("key") == "coin index"

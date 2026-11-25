@@ -125,11 +125,17 @@ class WebConfig:
     # (autonomy.admission: recorded enable, min_gain, lineage, cooldown). "legacy" restores the tick's rule before
     # it for one release: `nsf web config --set tick_admission='"legacy"'`.
     tick_admission: str = "unified"
-    # ADR-051 (lane I). curiosity_learning_progress: curiosity.rank down-weights a subject whose recent looks realised
-    # nothing like the gain expected of them (curiosity.progress); ranking only, every cap and admission unchanged.
+    # ADR-051 (lane I). curiosity_learning_progress: curiosity.rank (and derived hypotheses in autonomy.candidates)
+    # down-weight a subject whose recent looks realised nothing like the gain expected of them (curiosity.progress;
+    # the stronger of it and the futility down-weight applies, it fades with a 7-day half-life and has a floor). The
+    # reduced gain is what admission compares with its minimum (curiosity.MIN_GAIN on the timer, min_gain on the idle
+    # path), so a down-weighted subject can fall below it and not be researched; caps and budgets are unchanged.
+    # Off by default (review1 CM1 re-measure): on the held-out worlds' 12 further seeds it lowered the timer path's
+    # realised bits per budget (0.139 -> 0.126) while lowering its noise share.
+    # On: `nsf web config --set curiosity_learning_progress=true`.
     # salience_record: each autonomy candidate carries one explainable salience score with its signals, logged with
     # the decision (salience.py); display and record only, it never changes what is admitted or its order.
-    curiosity_learning_progress: bool = True
+    curiosity_learning_progress: bool = False
     salience_record: bool = True
     # Recursive knowledge evolution (lane K, ADR-055). None of these changes a belief, a verification state or an
     # answer: a knowledge item changes only through the evidence path (consolidate.run).

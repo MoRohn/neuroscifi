@@ -27,10 +27,13 @@ def test_predictive_regulation_avoids_memory_breaches_the_reactive_gate_does_not
     assert on["breach_ticks_all_channels"]["mean"] < base["breach_ticks_all_channels"]["mean"]
 
 
-def test_learning_progress_spends_less_on_noise_and_keeps_the_stale_subject():
+def test_learning_progress_spends_less_on_noise_and_its_ablation_is_the_baseline():
+    """review1 CM1: after the rework (refreshes count as progress, the stronger of it and futility, recovery with a
+    half-life) the noise share still falls on development, but so does the stale share (0.194 -> 0.139), and the
+    held-out wider seeds lose bits per budget on the timer path: it ships off (WebConfig)."""
     out = cognition.run(["info_value"], mechanism="instinct")["families"]["info_value"]["result"]["web_mean"]
     base = BASELINE["development"]["families"]["info_value"]["result"]["web_mean"]
-    assert out["noise_share"] < base["noise_share"] and out["stale_share"] >= base["stale_share"]
+    assert out["noise_share"] < base["noise_share"]
     ablated = cognition.run(["info_value"], mechanism="instinct", ablate=("learning_progress",))
     assert ablated["families"]["info_value"]["result"]["web_mean"]["noise_share"] == base["noise_share"]
 

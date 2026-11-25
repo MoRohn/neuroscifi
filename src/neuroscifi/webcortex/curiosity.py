@@ -47,6 +47,10 @@ PRIOR_RESOLVABLE = 0.5        # prior that a subject further looks can resolve
 PROGRESS_CHANCE = 0.8         # chance that a look at a resolvable subject makes progress
 PROGRESS_SHARE = 0.5          # a look made progress when it realised at least this share of the expected gain
 CHANGED_EFFECTS = ("new", "reversed", "strengthened", "weakened")
+# review1 CM1, chosen on the development split only (lane fix1b's report has the grid): a subject's down-weight
+# halves every LP_HALF_LIFE seconds after its newest look and the factor never goes below LP_FLOOR.
+LP_HALF_LIFE = 7 * 86400.0
+LP_FLOOR = 0.05
 REFERENCE_COST = wconfig.MODE_BUDGETS["fact_verification"].max_requests
 
 
@@ -110,26 +114,31 @@ def learning_progress_on(db) -> bool:
     return getattr(state.get_config(db), "curiosity_learning_progress", False) is True
 
 
-def progress(db, key, expected) -> tuple[float, str, dict]:
+def progress(db, key, expected, now=None) -> tuple[float, str, dict]:
     """(factor, note, record): learning progress of a subject (ADR-051), from its last LP_WINDOW looks in
     web_feedback (every research outcome about the key, newest first) compared with the gain expected of a look now.
 
     A look's realised gain is the entropy it removed (web_feedback.info_gain, never below 0); a look that changed what
     is held (effect new, reversed, strengthened or weakened, and not an unresolved disagreement) answered the question
-    a look asks and is credited with the expected gain. A look made progress when it realised at least PROGRESS_SHARE
-    of the expected gain. Two kinds of subject are told apart from the looks without progress since the last one that
-    made some (n): a resolvable one makes progress on a look with chance PROGRESS_CHANCE, an irreducible one (noise
-    that never resolves, or a subject that keeps changing nothing) never does; with the prior PRIOR_RESOLVABLE,
-    P(resolvable | n) = p (1 - c)^n / (p (1 - c)^n + 1 - p). The factor is that posterior over the prior (1 at n = 0),
-    so the expected gain is down-weighted only, never raised. Hard caps, min_gain and every admission rule apply to
-    the down-weighted gain as before."""
-    rows = db.execute("SELECT effect, info_gain, json_extract(detail,'$.contested') FROM web_feedback WHERE key=? "
+    a look asks and is credited with the expected gain, and so is a re-verification that found the stored item still
+    current (a refresh: effect unchanged, written by consolidation's refresh, not a disagreement): it settled what a
+    look at a stale or due item is asked, whether the item is still current. A look made progress when it realised at
+    least PROGRESS_SHARE of the expected gain. Two kinds of subject are told apart from the looks without progress
+    since the last one that made some (n): a resolvable one makes progress on a look with chance PROGRESS_CHANCE, an
+    irreducible one (noise that never resolves, or a subject that keeps changing nothing) never does; with the prior
+    PRIOR_RESOLVABLE, P(resolvable | n) = p (1 - c)^n / (p (1 - c)^n + 1 - p). The factor is that posterior over the
+    prior (1 at n = 0), so the expected gain is down-weighted only, never raised. The down-weight then fades with the
+    time since the subject's newest look (half of it is gone after LP_HALF_LIFE; `now`, default the newest look's
+    time, i.e. no fading) and never goes below LP_FLOOR, so a subject is never shut out for good. The caller compares
+    the down-weighted gain with every admission floor (curiosity.MIN_GAIN, autonomy's min_gain)."""
+    rows = db.execute("SELECT effect, info_gain, json_extract(detail,'$.contested'), "
+                      "json_extract(detail,'$.new_claims') IS NOT NULL, created_at FROM web_feedback WHERE key=? "
                       "ORDER BY id DESC LIMIT ?", (key, LP_WINDOW)).fetchall()
     expected = max(0.0, float(expected or 0.0))
     looks = []
-    for effect, gain, contested in rows:
+    for effect, gain, contested, refresh, _ in rows:
         realised = max(0.0, state.finite(gain, 0.0))
-        if effect in CHANGED_EFFECTS and not contested:
+        if not contested and (effect in CHANGED_EFFECTS or (effect == "unchanged" and refresh)):
             realised = max(realised, expected)
         looks.append((realised, realised > 0 and realised >= PROGRESS_SHARE * expected))
     streak = 0
@@ -139,14 +148,17 @@ def progress(db, key, expected) -> tuple[float, str, dict]:
         streak += 1
     miss = (1.0 - PROGRESS_CHANCE) ** streak
     posterior = PRIOR_RESOLVABLE * miss / (PRIOR_RESOLVABLE * miss + 1.0 - PRIOR_RESOLVABLE)
-    factor = posterior / PRIOR_RESOLVABLE
+    evidence_factor = posterior / PRIOR_RESOLVABLE
+    since = 0.0 if not rows or now is None else max(0.0, float(now) - state.finite(rows[0][4], float(now)))
+    faded = 1.0 - (1.0 - evidence_factor) * 0.5 ** (since / LP_HALF_LIFE)
+    factor = 1.0 if not streak else max(LP_FLOOR, faded)
     record = {"looks": len(looks), "without_progress": streak, "expected_bits_per_look": round(expected, 6),
               "realised_bits": round(sum(r for r, _ in looks), 6), "p_resolvable": round(posterior, 6),
-              "factor": round(factor, 6)}
+              "days_since_last_look": round(since / 86400.0, 3), "factor": round(factor, 6)}
     note = ("" if not streak else
             f"; learning progress: the last {streak} look(s) realised {sum(r for r, _ in looks[:streak]):.3f} bits "
-            f"against {expected:.3f} expected each, so P(resolvable)={posterior:.2f} and the gain is down-weighted "
-            f"x{factor:.3g}")
+            f"against {expected:.3f} expected each, so P(resolvable)={posterior:.2f}; "
+            f"{since / 86400.0:.1f} day(s) since the last look, the gain is down-weighted x{factor:.3g}")
     return factor, note, record
 
 
@@ -250,11 +262,15 @@ def rank(db, now, *, limit=10) -> list[dict]:
     lp_on = learning_progress_on(db)
 
     def damp(key, gain, factor, futile):
-        """The futility factor times learning progress (when the owner's setting is on), and the record."""
+        """The futility factor, or learning progress when the owner's setting is on and it down-weights more (both
+        read the same web_feedback rows, so the stronger of the two applies, never their product), and the
+        record."""
         if not lp_on:
             return factor, futile, {}
-        lp, note, record = progress(db, key, gain)
-        return factor * lp, futile + note, {"learning_progress": record}
+        lp, note, record = progress(db, key, gain, now)
+        if lp >= factor:
+            return factor, futile, {"learning_progress": record}
+        return lp, note, {"learning_progress": record}
 
     live = knowledge.rows(db, f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})", state.LIVE_KNOWLEDGE)
     for item in live:
