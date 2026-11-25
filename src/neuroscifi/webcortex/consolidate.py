@@ -460,7 +460,8 @@ def _pair_messages(statement, stored) -> list[dict]:
     return [{"role": "system", "content": PAIR_CHECK_SYSTEM},
             {"role": "user", "private": True,
              "content": f"Statement A: {semantic._masked(' '.join(statement.split())[:600])}\n\nStatement B: "
-                        f"{semantic._masked(' '.join(stored.split())[:600])}\n\nDo A and B state the same property "
+                        f"{semantic._masked(' '.join(stored.split())[:600], like=' '.join(statement.split())[:600])}"
+                        "\n\nDo A and B state the same property "
                         "of the same subject?"}]
 
 

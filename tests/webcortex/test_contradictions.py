@@ -22,7 +22,7 @@ DEEP = "At its deepest point the Varnel River is 38 metres deep."
 OTHER_RIVER = "From its source to the sea the Ostrel runs for 389 km."
 UNNAMED = "From its source to the sea the river runs for 389 km."
 # what each statement is about, for the stand-in models: one axis per property
-ABOUT = {"kilometres long": "length", "runs for": "length", "drains a basin": "basin", "metres tall": "height",
+ABOUT = {"kilometres long": "length", "km long": "length", "metres long": "length", "runs for": "length", "drains a basin": "basin", "metres tall": "height",
          "metres deep": "depth", "metres wide": "width"}
 AXES = ("length", "basin", "height", "depth", "width")
 
@@ -176,6 +176,27 @@ def test_the_reranker_reads_the_statements_with_their_numbers_masked():
     assert semantic._masked("The Varnel runs for 412 km, or 256.0 miles, since 1,874.") == \
         "The Varnel runs for # km, or # miles, since #."
     assert semantic._masked("Lumen-7 carries 220 bands") == "Lumen-# carries # bands"
+
+
+@pytest.mark.parametrize("statement, like, read", [
+    ("The Varnel flows 256 miles to the sea.", "The Varnel River is 412 kilometres long.",
+     "The Varnel flows # kilometres to the sea."),
+    ("Yearly sales came to 0.61 billion euros.", "Revenue was 610 million euros.", "Yearly sales came to # million euros."),
+    ("Sennet counts 61.5 thousand inhabitants.", "The town of Sennet has 61,500 inhabitants.",
+     "Sennet counts # inhabitants."),
+    ("Orbix wants 4,000 MB of memory.", "Orbix needs 4 GB of memory.", "Orbix wants # GB of memory."),
+    ("The ferry cruises at 40.7 km/h.", "The ferry has a speed of 22 knots.", "The ferry cruises at # knots."),
+    ("The spring is 161.6 °F.", "The spring is 72 °C.", "The spring is # °C."),
+    # nothing of the other's kind: as written; the same unit: as before
+    ("The dam generates 740 MW.", "The dam stands 186 metres tall.", "The dam generates # MW."),
+    ("The Varnel runs for 389 km.", "The Varnel River runs for 412 km.", "The Varnel runs for # km."),
+    # binary prefixes are not decimal ones (text._DIMENSION): never rewritten into GB
+    ("Quorra uses 8 GiB of memory.", "Quorra needs 8 GB of memory.", "Quorra uses # GiB of memory."),
+])
+def test_each_statement_is_read_in_the_units_of_the_other(statement, like, read):
+    """What the units are is not what the models are asked: a restatement in miles of a length in kilometres read
+    under the reranker's floor one way round (scripts/bench_knowledge.py, lane K of the remaining-items round)."""
+    assert semantic._masked(statement, like=like) == read
 
 
 # ---- off, or a model down: what consolidation was ----------------------------------------------------------------------
@@ -485,7 +506,11 @@ def test_pairs_sends_the_reranker_masked_text_and_the_pair_instruction(db, model
     semantic.pairs(db, [CONTRADICTED], rows_of(db))
     read = [t for t in models[1].seen]
     assert any(semantic.PAIR_INSTRUCTION in t and "the Varnel runs for # km" in t for t in read)
-    assert any("The Varnel River is # kilometres long." in t for t in read)
+    # each side is read in the unit the other wrote it in: forward the stored statement in the new one's km, back
+    # the new statement in the stored one's kilometres
+    assert any("The Varnel River is # km long." in t for t in read)
+    assert any(semantic.PAIR_INSTRUCTION in t and "The Varnel River is # kilometres long." in t for t in read)
+    assert any("the Varnel runs for # kilometres." in t for t in read)
     assert not any("389" in t or "412" in t for t in read)
     assert CONTRADICTED in models[0].seen                 # the embedding model reads the statement as it is
 
@@ -537,7 +562,7 @@ def test_the_confirmation_is_one_private_masked_question_per_pair(db):
     assert schema == consolidate.PAIR_CHECK_SCHEMA and messages[0]["content"] == consolidate.PAIR_CHECK_SYSTEM
     assert messages[1]["private"] is True
     assert "Statement A: From its source to the sea the Varnel runs for # km." in messages[1]["content"]
-    assert "Statement B: The Varnel River is # kilometres long." in messages[1]["content"]
+    assert "Statement B: The Varnel River is # km long." in messages[1]["content"]       # in A's unit
     assert "389" not in messages[1]["content"] and "412" not in messages[1]["content"]
     assert kw["purpose"] == "memory_pair_check" and kw["temperature"] == 0.0 and kw["priority"] == 10
     assert 0 < kw["timeout"] <= consolidate.PAIR_CHECK_TIMEOUT

@@ -686,6 +686,54 @@ def _scan_values(s: str) -> list[tuple[str, str | None]]:
 
 _NEXT_WORD = re.compile(r"[ \t]+([^\W\d_][\w'’-]*)")
 
+def _quantity_key(g: dict):
+    """(kind of quantity, unit as written, magnitude word as written) of one _VALUE_RE match, or None: the kind is a
+    physical dimension, a currency or a count noun, or "plain" for a number without a unit."""
+    if g["money1"]:
+        return "money:" + _CURRENCY_SYMBOL[g["cur"]], None, g["mag1"]
+    if not g["num"]:
+        return None
+    if g["curw"]:
+        return "money:" + _CURRENCY_WORD[g["curw"].lower()], g["curw"], g["mag"]
+    unit = _unit(g["unit"] or "")
+    if unit in _DIMENSION:
+        return "dimension:" + _DIMENSION[unit][0], g["unit"], g["mag"]
+    if unit in _AFFINE:
+        return "dimension:temperature", g["unit"], g["mag"]
+    if unit:
+        return "noun:" + unit, g["unit"], g["mag"]
+    return "plain", None, g["mag"]
+
+
+def mask_quantities(s: str, like: str | None = None) -> str:
+    """`s` with every number replaced by "#", and, given `like`, every quantity of a kind that `like` also states
+    written in `like`'s unit and magnitude word: mask_quantities("The Varnel flows 256 miles", like="The Varnel
+    River is 412 kilometres long") -> "The Varnel flows # kilometres"; "0.61 billion euros" like "610 million
+    euros" -> "# million euros"; "61.5 thousand inhabitants" like "61,500 inhabitants" -> "# inhabitants". Two
+    statements of one property in other units then read alike to a model asked only whether they state the same
+    property (semantic.pairs, consolidate._pair_messages); what the values are is the value comparison's part.
+    Without `like`, or where the units already agree, the text is only masked, as before the units were taken
+    into account."""
+    s = s or ""
+    if like:
+        want = {}
+        for m in _VALUE_RE.finditer(like):
+            key = _quantity_key(m.groupdict())
+            if key and key[0] not in want:
+                want[key[0]] = key[1:]
+
+        def one(m):
+            key = _quantity_key(m.groupdict())
+            if not key or key[0] not in want or (key[1], key[2]) == want[key[0]]:
+                return m.group(0)
+            g = m.groupdict()
+            unit, mag = want[key[0]]
+            if g["money1"]:
+                return g["cur"] + g["m1"] + (" " + mag if mag else "")
+            return g["num"] + (" " + mag if mag else "") + (" " + unit if unit else "")
+        s = _VALUE_RE.sub(one, s)
+    return re.sub(r"\d[\d.,]*\d|\d", "#", s)
+
 
 def _unit(raw: str) -> str:
     """Canonical unit of a unit spelling: '%', 'pp', a physical unit ('km', 'km²', ...) or a count noun."""
