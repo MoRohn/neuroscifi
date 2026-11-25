@@ -2601,10 +2601,39 @@ _NEG_AFTER = (r"on|in|at|of|from|for|under|with|within|without|by|into|inside|ou
               r"\w+ing|\w+ed|" + "|".join(sorted(("built bought brought caught chosen done drawn driven given grown "
                                                    "held hidden kept known made paid run seen sent set shown sold "
                                                    "spent taken told written").split())))
+# "not only" and its kin add before a preposition or an adverb ("all versions not only in Europe but worldwide") and
+# restrict before a participle ("all files not only encrypted but also signed are accepted": only those files).
+_PARTICIPLE_AHEAD = r"(?=(?:\w+ed|" + "|".join(sorted(_PARTICIPLES)) + r")(?![\w-]))"
 _NEGATED_EXCEPTION = re.compile(rf"(?<![\w-])(?:every|all|each|any)\s+(?:(?!(?:{_NEG_AUX})\b)[\w.'’-]+\s+){{1,4}}?"
                                 rf"(?:(?:who|that|which)\s+(?:{_NEG_AUX})\s+)?"
-                                rf"(not\s+(?!{_NOT_ADDING}\b)(?:yet\s+|\w+ly\s+)?(?:{_NEG_AFTER}))"
+                                rf"(not\s+(?:{_NOT_ADDING}\s+{_PARTICIPLE_AHEAD}|(?!{_NOT_ADDING}\b)(?:yet\s+|\w+ly\s+)?)"
+                                rf"(?:{_NEG_AFTER}))"
                                 r"(?![\w-])", re.IGNORECASE)
+# "not to" right after the quantified noun restricts it ("every account not to be renewed is closed", "all packages not
+# to exceed 2 kg ship free"), unless the noun takes an infinitive of its own ("made every effort not to break the
+# API", "took every care not to", "every reason not to"): _restriction drops those.
+_NEGATED_INFINITIVE = re.compile(rf"(?<![\w-])(?:every|all|each|any)\s+((?:(?!(?:{_NEG_AUX})\b)[\w.'’-]+\s+){{1,4}}?)"
+                                 r"(not\s+to)(?![\w-])", re.IGNORECASE)
+_INFINITIVE_NOUNS = frozenset("""effort efforts attempt attempts reason reasons care way ways intention intentions
+decision decisions promise promises chance chances opportunity opportunities right rights need needs obligation
+obligations incentive incentives temptation temptations step steps measure measures precaution precautions plan plans
+order orders instruction instructions request requests wish wishes desire choice choices pressure motive motives
+encouragement advice warning warnings""".split())
+# ... and a verb that takes it ("every member chose not to renew", "all staff were told not to"): the "not" negates
+# the verb's infinitive, it excepts nothing. A past form in -ed or a participle (_PARTICIPLES) counts as a verb too.
+_INFINITIVE_VERBS = frozenset("""chose choose chooses decide decides try tries want wants ask asks prefer prefers
+refuse refuses agree agrees promise promises seem seems appear appears tend tends hope hopes intend intends vow vows
+swear swears swore opt opts elect elects learn learns learnt get gets got begin begins began continue continues fail
+fails manage manages offer offers threaten threatens pledge pledges wish wishes pretend pretends""".split())
+
+
+def _infinitive_excepts(before: str) -> bool:
+    """Whether a "not to" after `before` (the words between the quantifier and "not") restricts the quantified noun:
+    not when the last of them takes the infinitive itself (_INFINITIVE_NOUNS, _INFINITIVE_VERBS, a form in -ed or a
+    participle)."""
+    last = before.split()[-1].strip(".'’").casefold()
+    return not (last in _INFINITIVE_NOUNS or last in _INFINITIVE_VERBS or last in _PARTICIPLES or
+                last.endswith("ed"))
 # Conditions: the claim holds only under what follows. "when" only in its reduced form ("safe when used with TLS
 # 1.3", "when built from source"), and not the reporting kind ("when asked", "when speaking"); a "when" with its own
 # subject is mostly one of time ("when the ship sank").
@@ -2648,6 +2677,8 @@ def _restriction(text: str) -> str | None:
     found = [(m.start(), m.group(0)) for m in _RESTRICTION.finditer(text or "")]
     found += [(m.start(m.lastindex), m.group(m.lastindex)) for m in _QUANTIFIED_EXCEPTION.finditer(text or "")]
     found += [(m.start(1), m.group(1)) for m in _NEGATED_EXCEPTION.finditer(text or "")]
+    found += [(m.start(2), m.group(2)) for m in _NEGATED_INFINITIVE.finditer(text or "")
+              if _infinitive_excepts(m.group(1))]
     found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _if_excused(text, m.start())]
     return _SPACE.sub(" ", min(found, key=lambda f: (f[0], -len(f[1])))[1]) if found else None   # longest first
 

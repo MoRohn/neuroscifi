@@ -586,3 +586,29 @@ def test_an_adverb_ends_no_name_but_a_name_is_no_adverb():
     assert ("acquired", ["kelly"], ["acme", "corp"]) in reasoning._roles("Kelly acquired Acme Corp")
     assert ("acquired", ["acme", "corp"], ["globex"]) in reasoning._roles(
         "It was by Acme Corp that Globex was acquired")
+
+
+# ---- re-review N3: "not to" after the quantified noun, "not only/just" before a participle -----------------------
+
+@pytest.mark.parametrize("text, marker", [
+    ("Every account not to be renewed is closed", "not to"),
+    ("All packages not to exceed 2 kg ship free", "not to"),
+    ("All files not only encrypted but also signed are accepted", "not only encrypted"),
+    ("Every user not just registered but verified can vote", "not just registered"),
+    ("All parcels not merely sent but delivered are insured", "not merely sent"),
+])
+def test_a_negated_infinitive_or_participle_after_the_quantified_noun_restricts_it(text, marker):
+    assert reasoning._restriction(text) == marker
+
+
+@pytest.mark.parametrize("text", [
+    "Orbix shipped on time, and the team made every attempt not to delay the launch",
+    "The vendor shipped the patch and took every care not to break the plug-ins",
+    "All staff were told not to open the attachment",
+    "Every member decided not to renew",
+    "All tenants agreed not to sublet",
+    "The outage affected all regions not just in Europe but worldwide",
+    "The update reaches all devices not only in offices but at home",
+])
+def test_a_not_that_belongs_to_a_verb_or_adds_still_restricts_nothing(text):
+    assert reasoning._restriction(text) is None
