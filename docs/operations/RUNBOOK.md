@@ -393,7 +393,7 @@ Settings (owner only; carried by a restore; a damaged value reads as the behavio
 | scenario records | off | `nsf config --imagine-scenarios` |
 | selective broadcast | `off` | `nsf config --broadcast log` (record only) or `on`; `--broadcast-threshold 0.5` |
 | curiosity learning progress, selective answering, verification escalation, adaptive depth, idle re-check, hypothesis abandon, reflection, Pocket "what we were just doing" | off | `nsf web config --set curiosity_learning_progress=true` (likewise each name: `selective_answering`, `verification_escalation`, `adaptive_depth`, `idle_recheck`, `hypothesis_abandon`, `reflection`, `pocket_recent`) |
-| strategy selection | `"gate"` (inactive: no promotion has passed the gate) | `nsf knowledge strategy --revert` records your revert; `nsf web config --set strategy_selection='"off"'` |
+| strategy selection | `"gate"` (inactive: no promotion has passed the gate) | `nsf knowledge strategy --revert [--reason CODE]` (CODE: `not_wanted`, `worse_results`, `unexpected_behaviour` or `testing`) records your revert (the ledger is permanent and keeps no free text); `nsf web config --set strategy_selection='"off"'` |
 | voice: follow a spoken question's answer across a restart | on | `nsf voice settings --set '{"resume_follow": false}'` |
 | voice: "what are you doing?" answers with the status instead of starting research | off | `nsf voice settings --set '{"status_questions": true}'` |
 

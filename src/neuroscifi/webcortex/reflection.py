@@ -345,7 +345,7 @@ def _cli_strategy(db, a, now):
             raise ValidationError("the evidence file must hold a JSON object")
         return strategies.promote(db, evidence, now)
     if a.revert:
-        return strategies.revert(db, now, reason=a.reason or "")
+        return strategies.revert(db, now, reason=a.reason)
     return strategies.status(db, now)
 
 
@@ -363,6 +363,7 @@ def _cli_compete(db, a, now):
 def register_cli(cmd):
     """Add lane K's commands to `nsf knowledge` (evolution.register passes its command helper)."""
     from ..instance.cli import LIMIT, days
+    from .strategies import REVERT_REASONS
     p = cmd("rechecks", _cli_rechecks, "re-check marks: what rests on a changed premise or a failed prediction")
     p.add_argument("--status", choices=("marked", "queued", "done", "dropped"))
     p.add_argument("--limit", type=LIMIT, default=50)
@@ -378,7 +379,8 @@ def register_cli(cmd):
     group = p.add_mutually_exclusive_group()
     group.add_argument("--promote", metavar="EVIDENCE_JSON", help="run the promotion gate over benchmark evidence")
     group.add_argument("--revert", action="store_true")
-    p.add_argument("--reason")
+    p.add_argument("--reason", choices=REVERT_REASONS,
+                   help="why the owner reverts it, as a code (the ledger is permanent and keeps no free text)")
     p = cmd("ledger", _cli_ledger, "the improvement ledger: adopted and reverted strategy and rule changes")
     p.add_argument("--capability")
     p.add_argument("--limit", type=LIMIT, default=50)

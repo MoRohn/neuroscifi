@@ -8,7 +8,7 @@ import pytest
 
 from neuroscifi import background
 from neuroscifi.instance import checkpoints, governance, imagined, schema, store
-from neuroscifi.instance.errors import Conflict
+from neuroscifi.instance.errors import Conflict, ValidationError
 from neuroscifi.webcortex import autonomy, curiosity, evolution, knowledge, orchestrator, predictions, premises, \
     recheck, reflection, scheduler, state, strategies
 from test_consolidate import DAY, T0, consolidated, open_db, two_sources
@@ -599,11 +599,85 @@ GOOD = {"held_out": {"run_id": "h", "strategy": {"mechanism": {"verified_per_inv
 
 @pytest.fixture
 def final_ledger(tmp_path):
-    """A final-runs ledger whose line 2 is the withheld run GOOD names (run id "w")."""
+    """A final-runs ledger whose line 2 is the withheld run GOOD names (run id "w"): a run of strategy selection
+    without ablations that the main session recorded as not worse (review1b N1)."""
     path = tmp_path / "genesis_final_uses.jsonl"
-    path.write_text(json.dumps({"at": "b", "families": ["withheld"], "mechanism": "baseline"}) + "\n"
-                    + json.dumps({"at": "w", "families": ["withheld"], "mechanism": "strategy"}) + "\n")
+    path.write_text(json.dumps({"at": "b", "families": ["withheld"], "mechanism": "baseline", "ablate": []}) + "\n"
+                    + json.dumps({"at": "w", "families": ["withheld"], "mechanism": strategies.FINAL_MECHANISM,
+                                  "ablate": [], "not_worse": True}) + "\n")
     return path
+
+
+def test_the_gate_refuses_a_final_run_that_never_evaluated_strategy_selection(db, final_ledger):
+    """review1b N1: the gate accepted any withheld line (the repository's only one is the baseline's) and took "not
+    worse" from the evidence file. Now the named line must be a run of strategy selection without ablations that
+    itself records "not worse"."""
+    from pathlib import Path
+    repository = Path(strategies.__file__).resolve().parents[3] / "docs/quality/evidence/genesis_final_uses.jsonl"
+    first = json.loads(repository.read_text().splitlines()[0])
+    today = GOOD | {"withheld": {"ledger_line": 1, "run_id": first["at"], "not_worse": True}}
+    check = strategies.gate(today)["checks"]["withheld_by_main_session"]          # the repository's ledger as it is
+    if not any(json.loads(t).get("mechanism") == strategies.FINAL_MECHANISM for t in repository.read_text().splitlines()
+               if t.strip()):
+        assert check["pass"] is False and "no withheld run evaluated strategy selection" in check["detail"]
+    lines = [{"at": "b", "families": ["withheld"], "mechanism": "baseline", "ablate": []},
+             {"at": "w", "families": ["withheld"], "mechanism": strategies.FINAL_MECHANISM, "ablate": [],
+              "not_worse": True}]
+    for change, why in (({"ablate": ["thompson"]}, "no withheld run evaluated"),     # an ablation is not the mechanism
+                        ({"not_worse": None}, "does not record the run as not worse"),
+                        ({"not_worse": False}, "does not record the run as not worse")):
+        final_ledger.write_text("\n".join(json.dumps(e | (change if e["at"] == "w" else {})) for e in lines))
+        check = strategies.gate(GOOD, ledger=final_ledger)["checks"]["withheld_by_main_session"]
+        assert check["pass"] is False and why in check["detail"], (change, check)
+    final_ledger.write_text("\n".join(json.dumps(e) for e in lines))
+    baseline = GOOD | {"withheld": {"ledger_line": 1, "run_id": "b", "not_worse": True}}   # the baseline's line
+    check = strategies.gate(baseline, ledger=final_ledger)["checks"]["withheld_by_main_session"]
+    assert check["pass"] is False and "not a run of the strategy_selection mechanism" in check["detail"]
+    assert strategies.gate(GOOD, ledger=final_ledger)["passed"] is True
+
+
+def test_an_installation_without_the_ledger_records_no_path(db, tmp_path, monkeypatch):
+    """review1b N2: installed without the docs folder, the gate's reason named the absolute install path, and that
+    reason went into the permanent improvement ledger."""
+    fake = tmp_path / "site" / "pkgs" / "neuroscifi" / "webcortex" / "strategies.py"
+    monkeypatch.setattr(strategies, "__file__", str(fake))
+    verdict = strategies.promote(db, GOOD, T0)
+    check = verdict["checks"]["withheld_by_main_session"]
+    assert check["pass"] is False and check["detail"] == "the final-runs ledger is not available in this installation"
+    stored = json.dumps(strategies.ledger(db, capability=strategies.CAPABILITY))
+    assert str(tmp_path) not in stored and "/" not in stored.replace("\\/", "")
+
+
+def test_the_permanent_ledger_keeps_no_free_text(db, final_ledger):
+    """review1b N3: the owner's free-text reason and the evidence file's strings went into a ledger that no forget
+    reaches. A revert takes a reason code; of the evidence only numbers, booleans and run ids are kept."""
+    with pytest.raises(ValidationError, match="reason must be one of"):
+        strategies.revert(db, T0, reason="my neighbour Alice said it was bad")
+    strategies.revert(db, T0, reason="worse_results")
+    strategies.revert(db, T0 + 1)
+    secret = "Alice Example, 12 Some Street"
+    evidence = json.loads(json.dumps(GOOD))
+    evidence["held_out"]["run_id"] = secret
+    evidence["retention"]["all_retained"] = secret
+    evidence["cost"] = {"seconds": 12.5, "note": secret, secret: 1, "calls": [3, secret], "nested": {"a": {"b": {}}}}
+    evidence["reproducibility"] = {"commit": "19f80e2", "command": secret}
+    strategies.promote(db, evidence, T0 + 2, ledger=final_ledger)
+    rows = strategies.ledger(db, capability=strategies.CAPABILITY)
+    assert [r["change"] for r in rows[1:]] == ["reverted by the owner", "reverted by the owner (worse_results)"]
+    assert secret not in json.dumps(rows) and "Alice" not in json.dumps(rows)
+    assert rows[0]["cost"] == {"seconds": 12.5, "note": None, "calls": [3, None], "nested": {"a": {"b": None}}}
+    assert rows[0]["reproducibility"] == {"commit": "19f80e2", "command": None}
+    assert rows[0]["evidence"]["runs"]["held_out"] is None and rows[0]["evidence"]["runs"]["withheld"] == "w"
+
+
+def test_the_cli_takes_a_reason_code_only(db, capsys):
+    from neuroscifi.cli import main
+    path = db.execute("PRAGMA database_list").fetchone()[2]
+    with pytest.raises(SystemExit):
+        main(["knowledge", "strategy", "--db", path, "--revert", "--reason", "free text about a person"])
+    assert "invalid choice" in capsys.readouterr().err
+    assert main(["knowledge", "strategy", "--db", path, "--revert", "--reason", "testing"]) == 0
+    assert strategies.ledger(db, capability=strategies.CAPABILITY)[0]["change"] == "reverted by the owner (testing)"
 
 
 def test_the_gate_checks_the_named_final_run_in_the_ledger(db, final_ledger):
@@ -623,7 +697,7 @@ def test_the_gate_checks_the_named_final_run_in_the_ledger(db, final_ledger):
 def test_the_ledger_refuses_a_delete_and_an_older_file_gets_the_trigger(db):
     """Security S7: deleting the owner's revert row switched strategy selection back on. Migration 18 is unreleased
     and amended; a file migrated by its first build (no delete trigger) gets it at its next open."""
-    strategies.revert(db, T0, reason="owner")
+    strategies.revert(db, T0, reason="not_wanted")
     with pytest.raises(sqlite3.IntegrityError, match="append-only"):
         with store.write(db):
             db.execute("DELETE FROM improvement_ledger")
@@ -641,7 +715,7 @@ def test_a_restore_keeps_the_owners_revert_in_force(db, tmp_path, final_ledger):
     assert strategies.active(db) is True
     path = __import__("pathlib").Path(db.execute("PRAGMA database_list").fetchone()[2])
     cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 1)
-    strategies.revert(db, T0 + 2, reason="owner")
+    strategies.revert(db, T0 + 2, reason="not_wanted")
     out = checkpoints.restore(db, cp["id"], tmp_path / "restored.sqlite", T0 + 3)
     assert out["settings_carried"][f"improvement_ledger:{strategies.CAPABILITY}"] == {"from": "retain",
                                                                                       "to": "revert"}
@@ -666,7 +740,7 @@ def test_strategy_selection_is_off_until_its_gate_passes_and_the_owner_can_rever
     state.set_config(db, {"strategy_selection": "off"}, T0)
     assert strategies.active(db) is False
     state.set_config(db, {"strategy_selection": "gate"}, T0)
-    strategies.revert(db, T0 + 1, reason="owner")
+    strategies.revert(db, T0 + 1, reason="not_wanted")
     assert strategies.active(db) is False
     rows = strategies.ledger(db, capability=strategies.CAPABILITY)
     assert [r["decided_by"] for r in rows][:2] == ["owner", "gate"] and rows[0]["decision"] == "revert"

@@ -17,13 +17,18 @@ It is off until promoted. active() is True only when the owner's setting `strate
 AND the latest improvement-ledger row for CAPABILITY says 'retain'. A row with decided_by 'gate' is written only by
 promote(), which runs gate() over benchmark evidence: better than the incumbent on the HELD-OUT split by at least
 MIN_EFFECT (pre-registered), the strategy's investigations on the reward-inflating arm not above the incumbent's
-(reward hacking), the retention suite not worse, and one evaluation by the main session on the withheld family (a
-`--final` run named in docs/quality/evidence/genesis_final_uses.jsonl, which this lane never runs). The owner can
-revert at any time (`nsf knowledge strategy --revert`), and `strategy_selection=off` stops it whatever the ledger says.
+(reward hacking), the retention suite not worse, and one evaluation by the main session on the withheld family: a
+`--final` run of the FINAL_MECHANISM mechanism without ablations, named in
+docs/quality/evidence/genesis_final_uses.jsonl (which this lane never runs), whose line there records that it was not
+worse (`"not_worse": true`); the evidence file cannot say so in its place (review1b N1). The owner can revert at any
+time (`nsf knowledge strategy --revert`), and `strategy_selection=off` stops it whatever the ledger says.
 
 The improvement ledger (improvement_ledger, append-only) records every adopted or reverted change of a strategy or rule:
 capability, level (1 context, 2 memory, 3 procedural), what changed, evidence (benchmark run ids), generalisation,
 regressions checked, cost, reproducibility, decision (retain / revise / revert) and who decided (owner or gate).
+It is permanent: no forget reaches it and nothing deletes or updates a row. So it holds no free text (review1b N3):
+the owner's revert carries a reason code (REVERT_REASONS), and of the evidence file only numbers, booleans and run
+ids matching RUN_ID are kept; the gate's details are fixed sentences with numbers.
 Levels 4 (model weights) and 5 (architecture) are out of scope: they need the owner's authorisation (the
 model-adaptation guard, evolution.model_adaptation_guard, refuses them) and are never recorded here as adopted.
 """
@@ -31,7 +36,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import random
+import re
 
 from ..instance import store
 from ..instance.errors import Conflict, ValidationError
@@ -46,6 +53,10 @@ OUT_OF_SCOPE = {4: "model adaptation (weights): needs the owner's authorisation,
                    "(evolution.model_adaptation_guard); never adopted here",
                 5: "architecture optimisation: needs the owner's authorisation; never adopted here"}
 DECISIONS = ("retain", "revise", "revert")
+FINAL_MECHANISM = "strategy_selection"   # the benchmark mechanism a withheld --final run must have evaluated
+REVERT_REASONS = ("not_wanted", "worse_results", "unexpected_behaviour", "testing")   # the owner's revert, coded
+RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._-]{0,63}$")   # a benchmark run id (its generated_at) or a label
+MAX_FIELDS = 32                          # entries kept of one evidence object or list
 
 
 def present(db) -> bool:
@@ -168,9 +179,10 @@ def gate(evidence: dict, *, ledger=None) -> dict:
                   held-out run: verified_per_investigation and inflator_share means
       retention   scripts/bench_cognition.py's retention family result with the mechanism (all_scenarios_pass,
                   all_retained)
-      withheld    {"ledger_line": n, "run_id": str, "not_worse": bool}: the main session's one --final run; the line
-                  (1-based) must exist in the final-runs ledger (`ledger`, default the repository's
-                  genesis_final_uses.jsonl), be a run of the withheld family, and its "at" must be the run id
+      withheld    {"ledger_line": n, "run_id": str}: the main session's one --final run; the line (1-based) must
+                  exist in the final-runs ledger (`ledger`, default the repository's genesis_final_uses.jsonl), be a
+                  run of the withheld family for FINAL_MECHANISM without ablations, its "at" must be the run id, and
+                  the line must record `"not_worse": true` (a "not_worse" in the evidence is not read: review1b N1)
     {"passed", "checks": {name: {"pass", "detail"}}}."""
     checks = {}
     try:
@@ -184,40 +196,88 @@ def gate(evidence: dict, *, ledger=None) -> dict:
     except (KeyError, TypeError, ValueError):
         checks["held_out_gain"] = {"pass": False, "detail": "no held-out strategy result in the evidence"}
         checks["reward_hacking"] = {"pass": False, "detail": "no held-out strategy result in the evidence"}
-    retention = evidence.get("retention") or {}
+    retention = evidence.get("retention") if isinstance(evidence.get("retention"), dict) else {}
     checks["retention"] = {"pass": retention.get("all_scenarios_pass") is True and retention.get("all_retained")
-                           is True, "detail": {k: retention.get(k) for k in ("all_scenarios_pass", "all_retained")}}
-    withheld = evidence.get("withheld") or {}
+                           is True, "detail": {k: retention.get(k) if isinstance(retention.get(k), bool) else None
+                                               for k in ("all_scenarios_pass", "all_retained")}}
+    withheld = evidence.get("withheld") if isinstance(evidence.get("withheld"), dict) else {}
     named = _final_run(ledger, withheld.get("ledger_line"), withheld.get("run_id")) if withheld else None
     checks["withheld_by_main_session"] = {
-        "pass": named is None and withheld.get("not_worse") is True,
+        "pass": bool(withheld) and named is None,
         "detail": ("missing: the main session has not evaluated the withheld family" if not withheld else
-                   named or "one --final run named in genesis_final_uses.jsonl, evaluated by the main session")}
+                   named or "one --final run of strategy selection named in genesis_final_uses.jsonl, recorded "
+                            "there as not worse")}
     return {"passed": all(c["pass"] for c in checks.values()), "checks": checks, "min_effect": MIN_EFFECT}
 
 
 def _final_run(ledger, line, run_id) -> str | None:
     """None when line `line` (1-based) of the final-runs ledger (docs/quality/evidence/genesis_final_uses.jsonl) is a
-    --final run of the withheld family whose run id - its "at", the run's generated_at, which its output carries
-    too - is `run_id`; else why not (review1 CL4: the gate took any line number and run id on trust)."""
-    if isinstance(line, bool) or not isinstance(line, int) or line < 1 or not isinstance(run_id, str) or not run_id:
+    --final run of the withheld family for FINAL_MECHANISM without ablations, whose run id - its "at", the run's
+    generated_at, which its output carries too - is `run_id`, and which records that it was not worse
+    (`"not_worse": true`); else why not (review1 CL4: the gate took any line number and run id on trust; review1b N1:
+    it took a run of another mechanism, and "not worse" from the caller). The reason is a fixed sentence: it goes into
+    the permanent improvement ledger, so it carries no path and no text read from a file (review1b N2, N3)."""
+    if isinstance(line, bool) or not isinstance(line, int) or line < 1 or not isinstance(run_id, str) \
+            or not RUN_ID.match(run_id):
         return "the withheld evidence names no ledger line (a positive integer) and run id"
     if ledger is None:          # the repository's ledger (acceptance.cognition.LEDGER; that package is not imported)
         from pathlib import Path
         ledger = Path(__file__).resolve().parents[3] / "docs" / "quality" / "evidence" / "genesis_final_uses.jsonl"
+        if not ledger.is_file():
+            return "the final-runs ledger is not available in this installation"
     try:
         with open(ledger, encoding="utf-8") as fh:
-            lines = [text for text in fh.read().splitlines() if text.strip()]
-    except OSError:
-        return f"the final-runs ledger {ledger} cannot be read"
+            lines = [text for text in fh.read(1 << 20).splitlines() if text.strip()]
+    except (OSError, ValueError):
+        return "the final-runs ledger cannot be read"
+    entries = []
+    for text in lines:
+        try:
+            entry = json.loads(text)
+        except ValueError:
+            entry = None
+        entries.append(entry if isinstance(entry, dict) else None)
+
+    def evaluated(entry):
+        return entry is not None and entry.get("mechanism") == FINAL_MECHANISM and entry.get("ablate") in ([], None) \
+            and "withheld" in (entry.get("families") or ())
+    if not any(evaluated(e) for e in entries):
+        return "no withheld run evaluated strategy selection (no such line in the final-runs ledger)"
     if line > len(lines):
         return f"the final-runs ledger has {len(lines)} line(s), not line {line}"
-    try:
-        entry = json.loads(lines[line - 1])
-    except ValueError:
-        return f"line {line} of the final-runs ledger is not JSON"
-    if not isinstance(entry, dict) or entry.get("at") != run_id or "withheld" not in (entry.get("families") or ()):
+    entry = entries[line - 1]
+    if entry is None:
+        return f"line {line} of the final-runs ledger is not a JSON object"
+    if entry.get("at") != run_id or "withheld" not in (entry.get("families") or ()):
         return f"line {line} of the final-runs ledger is not a --final run of the withheld family with run id {run_id}"
+    if not evaluated(entry):
+        return (f"no withheld run evaluated strategy selection: line {line} is not a run of the {FINAL_MECHANISM} "
+                "mechanism without ablations")
+    if entry.get("not_worse") is not True:
+        return f"line {line} of the final-runs ledger does not record the run as not worse than the incumbent"
+    return None
+
+
+def _bounded(value, depth=0):
+    """What of an evidence object the permanent ledger keeps (review1b N3): finite numbers, booleans, None and strings
+    matching RUN_ID (run ids, labels), in objects and lists of at most MAX_FIELDS entries and three levels deep; an
+    object's keys must match RUN_ID too. Anything else is dropped (None)."""
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        try:
+            return value if math.isfinite(value) else None
+        except OverflowError:
+            return None
+    if isinstance(value, str):
+        return value if RUN_ID.match(value) else None
+    if depth >= 3:
+        return None
+    if isinstance(value, dict):
+        return {k: _bounded(v, depth + 1) for k, v in list(value.items())[:MAX_FIELDS]
+                if isinstance(k, str) and RUN_ID.match(k)}
+    if isinstance(value, list):
+        return [_bounded(v, depth + 1) for v in value[:MAX_FIELDS]]
     return None
 
 
@@ -225,20 +285,27 @@ def promote(db, evidence: dict, now, *, ledger=None) -> dict:
     """Run the gate; record its decision in the ledger (decided_by 'gate'): 'retain' when every check passes (the
     selection is then in force), else 'revise' (it stays off)."""
     verdict = gate(evidence, ledger=ledger)
-    run_ids = {k: (evidence.get(k) or {}).get("run_id") for k in ("held_out", "retention", "withheld")}
+    run_ids = {k: _bounded((evidence.get(k) if isinstance(evidence.get(k), dict) else {}).get("run_id"))
+               for k in ("held_out", "retention", "withheld")}
     rid = record(db, capability=CAPABILITY, level=3,
                  change="rank admitted autonomous candidates by Thompson sampling over research modes from external "
                         "outcomes", evidence={"runs": run_ids, "checks": verdict["checks"]},
                  generalisation=verdict["checks"].get("withheld_by_main_session"),
                  regressions={"retention": verdict["checks"]["retention"]},
-                 cost=evidence.get("cost") or {}, reproducibility=evidence.get("reproducibility") or {},
+                 cost=_bounded(evidence.get("cost")) or {},
+                 reproducibility=_bounded(evidence.get("reproducibility")) or {},
                  decision="retain" if verdict["passed"] else "revise", decided_by="gate", now=now)
     return {"ledger_id": rid} | verdict
 
 
-def revert(db, now, *, reason="") -> dict:
-    """The owner's revert: a ledger row 'revert' decided by the owner; selection stops at once."""
-    rid = record(db, capability=CAPABILITY, level=3, change=f"reverted by the owner{': ' + reason if reason else ''}",
+def revert(db, now, *, reason=None) -> dict:
+    """The owner's revert: a ledger row 'revert' decided by the owner; selection stops at once. `reason`: one of
+    REVERT_REASONS or none; the ledger is permanent, so it takes no free text (review1b N3)."""
+    if reason in ("", None):
+        reason = None
+    elif reason not in REVERT_REASONS:
+        raise ValidationError("reason must be one of " + ", ".join(REVERT_REASONS))
+    rid = record(db, capability=CAPABILITY, level=3, change="reverted by the owner" + (f" ({reason})" if reason else ""),
                  evidence={}, generalisation={}, regressions={}, cost={}, reproducibility={}, decision="revert",
                  decided_by="owner", now=now)
     return {"ledger_id": rid, "active": active(db)}

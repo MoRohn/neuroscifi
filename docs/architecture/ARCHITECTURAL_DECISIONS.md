@@ -2723,11 +2723,21 @@ because `ALTER TABLE ADD COLUMN` cannot run twice), `web_premises` (refuses an `
    prediction decisively, read from the records. Self-reported mode statistics are never rewarded. It only re-orders
    the candidates `autonomy.admission` admitted. In force only after `strategies.promote` passes its gate (held-out
    gain of at least 0.02 verified items per investigation, no larger share on the self-reporting arm, retention not
-   worse, one withheld evaluation by the main session) and while the owner has not reverted it or set "off".
+   worse, one withheld evaluation by the main session) and while the owner has not reverted it or set "off". The
+   withheld evaluation is a line of `docs/quality/evidence/genesis_final_uses.jsonl`: a `--final` run of the
+   `strategy_selection` mechanism without ablations whose line records `"not_worse": true`; the evidence file cannot
+   say "not worse" in its place (review1b N1). The harness records a final run before it starts and does not write
+   that result, so until such a line exists the gate fails closed ("no withheld run evaluated strategy selection").
+   Installed without the docs folder, it fails closed with "the final-runs ledger is not available in this
+   installation", naming no path (review1b N2).
 6. **Improvement ledger** (`improvement_ledger`, `nsf knowledge ledger`): capability, level (1 to 3), change,
    evidence (run ids), generalisation, regressions, cost, reproducibility, decision (retain/revise/revert), decided by
    (owner/gate). Levels 4 (weights) and 5 (architecture) are refused: they need the owner's authorisation
-   (`evolution.model_adaptation_guard`).
+   (`evolution.model_adaptation_guard`). **The ledger is permanent**: no forget reaches it and triggers refuse every
+   update and delete. So it holds no free text (review1b N3): the owner's revert takes a reason code
+   (`--reason not_wanted|worse_results|unexpected_behaviour|testing`, or none), and of a promotion's evidence file
+   only finite numbers, booleans and run ids matching `^[A-Za-z0-9][A-Za-z0-9:._-]{0,63}$` are kept (anything else is
+   stored as null); the gate's own details are fixed sentences with numbers.
 
 ## Measured
 
