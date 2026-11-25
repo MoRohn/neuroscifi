@@ -392,6 +392,103 @@ SEARXNG_PROBES = {"general": "open source software", "news": "technology news", 
                   "science": "predictive coding"}
 
 
+CONFIG_TEXT_LIMIT = 1 << 20          # bytes of the Web Cortex configuration read from a database another account owns
+
+
+def _reads_only(path) -> bool:
+    """Whether this account may read the instance database but not write it: the account that runs the containers
+    in a two-account install (deploy/install.sh --idle with --searxng), which the installer makes a reader of the
+    service account's database and nothing more. A missing or unreadable file is not such a case: the ordinary
+    path reports it as before."""
+    try:
+        return os.path.isfile(path) and os.access(path, os.R_OK) and not os.access(path, os.W_OK)
+    except (OSError, ValueError):
+        return False
+
+
+def _shared_config(path):
+    """The Web Cortex configuration read from a database this account does not own (resources.shared
+    .read_database: read only, no link or FIFO, nothing of its schema trusted). The text is the other account's:
+    bounded, and nested too deeply is malformed, never a crash."""
+    from ..instance.errors import InstanceError
+    from ..resources import shared
+    from . import config as wconfig
+    try:
+        with shared.read_database(path) as db:
+            if not shared.table(db, "meta"):
+                raise InstanceError(f"{path} is not an instance database (no meta table)")
+            row = db.execute("SELECT substr(value, 1, ?), length(value) FROM meta WHERE key=?",
+                             (CONFIG_TEXT_LIMIT + 1, wconfig.META_KEY)).fetchone()
+    except shared.NotAFile as error:
+        raise InstanceError(f"the instance database is not read: {error}") from None
+    text = row[0] if row else None
+    if text is not None and (not isinstance(text, str) or len(text) > CONFIG_TEXT_LIMIT):
+        raise InstanceError("the Web Cortex configuration in the instance database is not readable text")
+    try:
+        raw = shared.loads(text) if text else {}
+    except ValueError as error:
+        raise InstanceError(f"the Web Cortex configuration is malformed: {error}"[:300]) from None
+    if not isinstance(raw, dict):
+        raise InstanceError("the Web Cortex configuration is not an object")
+    try:
+        cfg = wconfig.WebConfig.from_json(json.dumps(raw))
+    except (TypeError, ValueError) as error:
+        raise InstanceError(f"the Web Cortex configuration is malformed: {error}"[:300]) from None
+    if not isinstance(cfg.enabled, bool) or not isinstance(cfg.searxng_url, str):
+        raise InstanceError("the Web Cortex configuration is malformed: enabled or searxng_url has the wrong type")
+    return cfg
+
+
+def _searxng_shared(a):
+    """`nsf web searxng start|stop|status` by an account that may read the instance database but not write it.
+
+    In a two-account install (deploy/install.sh --idle --searxng) SearXNG's unit, and the idle policy's reload of
+    it, run as the account that may run containers, which reads the service account's database and may not write
+    it. The ordinary path opened it to write (migration, the evidence sweep, setting searxng_url on a first start)
+    and so could not start SearXNG there at all. This path writes nothing: it reads the Web Cortex configuration
+    (whether web access is on, and searxng_url for the port), starts or stops the container, and when searxng_url
+    is still empty says which command the database's owner runs once to use it. `health --probe` records what it
+    found, so it stays with the account that owns the database."""
+    from ..instance.errors import Conflict
+    from . import state
+    path = _db_path(a)
+    if a.action == "health":
+        raise Conflict("`nsf web searxng health` reads and records provider health in the instance database, which "
+                       "this account may only read: run it as the account that owns "
+                       f"{path} (deploy/install.sh: neuroscifi)")
+    cfg = _shared_config(path)
+    try:
+        container = _searxng_container(cfg)
+    except ValueError as error:          # a port that is not one
+        raise ValidationError(f"searxng_url is not usable: {error}"[:300]) from None
+    out = {"database": "read only (this account may not write it; nothing was written)"}
+    if a.action == "start":
+        if not cfg.enabled:
+            raise Conflict(state.DISABLED_MESSAGE)
+        out.update(container.start())
+        if not cfg.searxng_url:
+            out["configured"] = None
+            out["note"] = ("SearXNG runs, but this individual does not use it yet: the database's owner runs once  "
+                           f"nsf web config --db {path} --set 'searxng_url=\"{container.base_url}\"'")
+        return out
+    if a.action == "stop":
+        out.update(container.stop())
+        return out
+    out["searxng"] = {"configured": bool(cfg.searxng_url), "url": cfg.searxng_url or None,
+                      "container": container.status()}
+    return out
+
+
+def _searxng_entry(full, shared_path):
+    """The handler of `nsf web searxng`: the ordinary path, or the read-only one for an account that may read the
+    database but not write it (_reads_only)."""
+    def entry(a):
+        if a.action in ("start", "stop", "status", "health") and _reads_only(_db_path(a)):
+            return shared_path(a)
+        return full(a)
+    return entry
+
+
 def _searxng_cmd(db, a, now):
     """start | stop | status | health [--probe]. `start` also sets searxng_url when it is empty, making SearXNG the
     primary general provider; `health --probe` sends one real query per category and records the outcome, which
@@ -937,6 +1034,7 @@ def register(sub):
     p.add_argument("action", choices=("start", "stop", "status"))
 
     p = cmd("searxng", _searxng_cmd, "start, stop, inspect or probe the loopback SearXNG container (ADR-034)")
+    p.set_defaults(handler=_searxng_entry(with_db(_network_errors(_searxng_cmd)), run(_searxng_shared)))
     p.add_argument("action", choices=("start", "stop", "status", "health"))
     p.add_argument("--probe", action="store_true", help="health: one real query per category")
 

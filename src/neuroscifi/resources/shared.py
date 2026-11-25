@@ -16,8 +16,10 @@ call. A folder that is not setgid and group-writable keeps private files, whatev
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 from pathlib import Path
+import sqlite3
 import stat
 
 PRIVATE_FILE = 0o600
@@ -163,5 +165,60 @@ def touch(path, when=None) -> None:
         os.close(fd)
 
 
+@contextmanager
+def read_database(path, *, timeout=5.0):
+    """An open, read-only connection to an instance database another account owns and writes (the service
+    account's, read by the idle account in a two-account install: the idle pass, and SearXNG's start and stop).
+
+    The database and its write-ahead log's two files are the writer's, and SQLite opens all three: a link, a FIFO
+    (an open that never returns) or a device under any of the three names is refused with NotAFile before anything
+    is opened (review L5, L4b); a missing database raises FileNotFoundError. Nothing of the writer's choosing runs
+    here (review L5): no function a view or a trigger names is trusted (`trusted_schema=OFF`), and nothing is
+    written (`mode=ro`, `query_only=ON`). A reader that may not write beside the database cannot create the
+    write-ahead log's files. While a process has the database open they exist and the ordinary read-only open
+    works; when they do not exist nobody has it open, so the file is complete as it stands and is read as it stands
+    (immutable: no lock file is needed). What remains is a swap after the look and before SQLite's open, which needs
+    a race; its worst is a read that waits for `timeout`. sqlite3.Error when the database cannot be read."""
+    path = Path(path)
+    for name in (str(path), f"{path}-wal", f"{path}-shm"):
+        try:
+            kind = os.lstat(name).st_mode
+        except FileNotFoundError:
+            if name == str(path):
+                raise
+            continue
+        if not stat.S_ISREG(kind):
+            raise NotAFile(f"{os.path.basename(name)} is not a plain file")
+    if not os.access(path, os.R_OK):     # SQLite may reuse a descriptor this process holds: ask the kernel first
+        raise PermissionError(f"{path.name} is not readable by this account")
+    plain = f"file:{path}?mode=ro"
+    attempts = [plain]
+    if not os.path.exists(f"{path}-wal") and not os.access(path.parent, os.W_OK):
+        attempts.append(f"{plain}&immutable=1")
+    for n, uri in enumerate(attempts):
+        db = sqlite3.connect(uri, uri=True, timeout=timeout)
+        try:
+            db.execute("PRAGMA trusted_schema=OFF")
+            db.execute("PRAGMA query_only=ON")
+            db.execute("SELECT count(*) FROM sqlite_schema").fetchone()      # opens the log: fails here if it must
+        except sqlite3.OperationalError:
+            db.close()
+            if n + 1 == len(attempts):
+                raise
+            continue
+        try:
+            yield db
+        finally:
+            db.close()
+        return
+
+
+def table(db, name) -> bool:
+    """Whether `name` is a table of `db` (a view or a trigger of the same name is not read in its place)."""
+    row = db.execute("SELECT type FROM sqlite_schema WHERE name=?", (name,)).fetchone()
+    return row is not None and row[0] == "table"
+
+
 __all__ = ["NotAFile", "PRIVATE_FILE", "PRIVATE_FOLDER", "READ_LIMIT", "SHARED_FILE", "ensure_folder", "file_mode",
-           "is_shared", "loads", "open_file", "read_json", "read_text", "touch", "write_text"]
+           "is_shared", "loads", "open_file", "read_database", "read_json", "read_text", "table", "touch",
+           "write_text"]

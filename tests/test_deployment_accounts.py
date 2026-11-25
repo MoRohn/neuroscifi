@@ -192,6 +192,30 @@ def test_idle_access_arranges_what_the_two_accounts_share_and_nothing_else():
     assert "gpasswd" not in plain.stdout and "0710" not in plain.stdout and "polkit" not in plain.stdout
 
 
+def test_with_two_accounts_searxng_runs_as_the_idle_account_and_the_owner_is_told_the_one_write():
+    """§6 item 2: SearXNG's unit needs an account that may run containers; its command no longer writes the
+    database, so that account is the idle account, named in a drop-in, with no right added to it."""
+    from neuroscifi.webcortex.providers import searxng as sx
+    two = _dry("--searxng", "--idle", "--idle-user", "nsfmodels", "--db", "/var/lib/neuroscifi/ind.sqlite")
+    assert two.returncode == 0, two.stderr
+    out = two.stdout
+    assert "+ write /etc/systemd/system/neuroscifi-searxng.service.d/10-two-accounts.conf (mode 0644):\n" \
+           "#   [Service]\n#   User=nsfmodels\n#   Environment=NSF_DB=/var/lib/neuroscifi/ind.sqlite\n" in out
+    assert f"sudo -u neuroscifi /opt/neuroscifi/venv/bin/nsf web config --db /var/lib/neuroscifi/ind.sqlite " \
+           f"--set 'searxng_url=\"{sx.DEFAULT_URL}\"'" in out
+    assert "set User= and NSF_DB" not in out and "# set User= (a docker user)" not in out
+    inside = [row for row in out.splitlines() if row.startswith("+ ") and "/var/lib/neuroscifi/" in row]
+    assert inside and all(row.startswith("+ (as neuroscifi) ") for row in inside), inside
+    # No widening: the database is still the group's to read, the polkit rule the same units, nothing else changes.
+    assert "+ (as neuroscifi) chmod 0640 /var/lib/neuroscifi/ind.sqlite\n" in out
+    assert "0660 /var/lib/neuroscifi/ind.sqlite\n" not in out and "chmod 0664" not in out
+    without = _dry("--idle", "--idle-user", "nsfmodels").stdout
+    assert out.count("neuroscifi-searxng.service") > 0
+    assert re.findall(r"\[(\"neuroscifi-[^\]]*)\]", out) == re.findall(r"\[(\"neuroscifi-[^\]]*)\]", without)
+    one = _dry("--searxng").stdout                               # one account: as before, the owner sets User=
+    assert "10-two-accounts.conf" not in one and "set User= and NSF_DB" in one
+
+
 @pytest.mark.parametrize("args,why", [
     (("--idle-access", "--idle-user", "neuroscifi"), "must not be neuroscifi"),
     (("--idle-access", "--idle-user", "root"), "must not be root"),

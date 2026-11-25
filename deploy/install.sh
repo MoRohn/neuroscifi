@@ -24,7 +24,9 @@
 # --websearch   also install the pinned open-webSearch daemon into PREFIX/open-websearch with
 #               `npm ci --ignore-scripts --omit=dev` (needs node and npm; no package install scripts run)
 # --searxng     also install neuroscifi-searxng.service (ADR-034) and copy deploy/searxng/settings.yml to
-#               PREFIX/searxng/settings.yml (the path the unit names); needs docker. Set User= and NSF_DB in a drop-in.
+#               PREFIX/searxng/settings.yml (the path the unit names); needs docker. Set User= and NSF_DB in a drop-in;
+#               with --idle the installer writes that drop-in: the unit runs as the idle account, which reads the
+#               instance database and does not write it (`nsf web searxng` writes nothing for such an account)
 # --llm         also install neuroscifi-vllm.service (ADR-036): vLLM in docker on 127.0.0.1:8811 through
 #               deploy/vllm/run.sh in the source folder (NSF_REPO); needs docker and the weights (COGNITIVE_INFERENCE §4)
 # --llm-user U  the account the vLLM unit runs as (default: $SUDO_USER); it must be in the docker group and own the
@@ -436,6 +438,18 @@ install_unit() {
     mv -f "$UNIT_DIR/$unit.tmp" "$UNIT_DIR/$unit"
   fi
 }
+# install_dropin UNIT NAME LINE...: UNIT_DIR/UNIT.d/NAME holding LINE..., mode 0644 (root's folder, root's file).
+install_dropin() {
+  local unit="$1" name="$2"; shift 2
+  if [ "$DRY" -eq 1 ]; then
+    echo "+ write $UNIT_DIR/$unit.d/$name (mode 0644):"; printf '#   %s\n' "$@"
+  else
+    install -d -m 0755 "$UNIT_DIR/$unit.d"
+    printf '%s\n' "$@" > "$UNIT_DIR/$unit.d/$name.tmp"
+    chmod 0644 "$UNIT_DIR/$unit.d/$name.tmp"
+    mv -f "$UNIT_DIR/$unit.d/$name.tmp" "$UNIT_DIR/$unit.d/$name"
+  fi
+}
 # With --idle the units that call the model services may also write the wake-request folder (they run under
 # ProtectSystem=strict, so every writable path is named). "-": a folder that is missing is not an error.
 WAKE_SED="s#^ReadWritePaths=%S/neuroscifi\$#ReadWritePaths=%S/neuroscifi -$WAKE_DIR#"
@@ -456,7 +470,16 @@ if [ "$SEARXNG" -eq 1 ]; then
   act install -d -m 0755 "$PREFIX/searxng"
   act install -m 0644 "$SOURCE/deploy/searxng/settings.yml" "$PREFIX/searxng/settings.yml"
   install_unit neuroscifi-searxng.service
-  echo "# set User= (a docker user) and Environment=NSF_DB=... with: systemctl edit neuroscifi-searxng.service"
+  if [ "$IDLE" -eq 1 ]; then
+    # Two accounts: SearXNG runs as the account that may run containers, which reads the instance database and may
+    # not write it. `nsf web searxng start|stop|status` then reads the configuration and writes nothing
+    # (webcortex/cli.py, _searxng_shared); the service account sets searxng_url once (the closing message says how).
+    # The idle pass starts and stops this unit as the same account (the polkit rule), so the two agree.
+    install_dropin neuroscifi-searxng.service 10-two-accounts.conf "[Service]" "User=$IDLE_USER" \
+      "Environment=NSF_DB=$IDLE_DB"
+  else
+    echo "# set User= (a docker user) and Environment=NSF_DB=... with: systemctl edit neuroscifi-searxng.service"
+  fi
 fi
 if [ "$LLM" -eq 1 ]; then
   note "local model server (ADR-036): unit neuroscifi-vllm.service runs $SOURCE/deploy/vllm/run.sh as $LLM_USER"
@@ -509,7 +532,16 @@ Nothing is enabled or running. Next steps are in docs/operations/RUNBOOK.md:
 Web Cortex stays off until the owner runs \`nsf web config --enable\`; its units (neuroscifi-webcortex.service,
 neuroscifi-webcortex-tick.timer, neuroscifi-websearch.service) are installed disabled like the others.
 MSG
-[ "$SEARXNG" -eq 0 ] || echo "neuroscifi-searxng.service is installed disabled: set User= and NSF_DB (systemctl edit), then enable it."
+if [ "$SEARXNG" -eq 1 ] && [ "$IDLE" -eq 1 ]; then
+  cat <<MSG
+neuroscifi-searxng.service is installed disabled and runs as $IDLE_USER for $IDLE_DB (a drop-in), which only reads
+that database. Once, as $SVC_USER, let the individual use it:
+  sudo -u $SVC_USER $PREFIX/venv/bin/nsf web config --db $IDLE_DB --set 'searxng_url="http://127.0.0.1:8888"'
+then enable the unit.
+MSG
+elif [ "$SEARXNG" -eq 1 ]; then
+  echo "neuroscifi-searxng.service is installed disabled: set User= and NSF_DB (systemctl edit), then enable it."
+fi
 [ "$LLM" -eq 0 ] || echo "neuroscifi-vllm.service is installed disabled: enable it after the weights are in place (COGNITIVE_INFERENCE.md §5)."
 if [ "$IDLE" -eq 1 ]; then
   cat <<MSG

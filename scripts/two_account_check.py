@@ -202,6 +202,46 @@ def act(args):
         from neuroscifi.resources import idle
         served = idle.serve_wake_requests(DB, WAKE, idle=policy(DB), hold=0.0)
         out = {"served": served, "left": sorted(os.listdir(WAKE)), "host": Host().state()}
+    elif what in ("searxng", "searxng-before"):
+        # SearXNG's unit command `nsf web searxng ACTION --db DB` with a fake Docker; "searxng-before" is the path
+        # every account took before (the database opened to write: migration, the sweep, searxng_url on a first
+        # start), which the unit's account in a two-account install could not take.
+        import contextlib
+        import hashlib
+        import io
+        from neuroscifi.cli import main
+        from neuroscifi.instance.cli import with_db
+        from neuroscifi.webcortex import cli as wcli
+        from neuroscifi.webcortex.providers import searxng as sx
+        calls = []
+        sx.Container.start = lambda self, **kw: calls.append(["start", self.port]) or {"started": True}
+        sx.Container.stop = lambda self: calls.append(["stop", self.port]) or {"stopped": True}
+        sx.Container.status = lambda self: {"running": bool(calls)}
+
+        def digest():
+            return {name: hashlib.sha256(Path(name).read_bytes()).hexdigest() if os.path.exists(name) else None
+                    for name in (DB, f"{DB}-wal")}
+        before = digest()
+        printed, said = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(said):
+            if what == "searxng":
+                code = main(["web", "searxng", rest[0], "--db", DB])
+            else:
+                import argparse
+                code = with_db(wcli._network_errors(wcli._searxng_cmd))(
+                    argparse.Namespace(db=Path(DB), action=rest[0], probe=False, command="web"))
+        try:
+            result = json.loads(printed.getvalue())
+        except ValueError:
+            result = said.getvalue().strip()[-300:]
+        out = {"exit": code, "calls": calls, "result": result, "unchanged": digest() == before}
+    elif what == "searxng-url":
+        from neuroscifi.instance import store
+        from neuroscifi.webcortex import state
+        db = store.open_existing(DB)
+        state.set_config(db, {"searxng_url": rest[0]}, time.time())
+        db.close()
+        out = {"set": rest[0]}
     elif what == "cli":                 # the units' own commands, as the unit's account
         done = subprocess.run([sys.executable, "-m", "neuroscifi.cli", "resources", *rest], capture_output=True,
                               text=True, cwd="/")
@@ -494,6 +534,39 @@ def inside(repo, prefix, site, rel_python):
     closed = run(OPS, "tasks")
     check("the idle account reads a database nobody has open (no write-ahead log beside it)",
           closed.get("tasks") == 0 and closed.get("wal") is False, closed)
+
+    # 5b. SearXNG's own command as the account that runs the containers (ENGINEERING_PLAN.md §6 item 2).
+    before = run(OPS, "searxng-before", "start")
+    check("the path SearXNG's command took before cannot start it as the idle account (it opens the database to "
+          "write)", before.get("exit") not in (0, None) and before.get("calls") == [] and before.get("unchanged"),
+          before)
+    first = run(OPS, "searxng", "start")
+    check("as the idle account a first start runs SearXNG, writes nothing, and names the owner's one command",
+          first.get("exit") == 0 and first.get("calls") == [["start", 8888]] and first.get("unchanged") is True
+          and first["result"].get("configured", "missing") is None
+          and "nsf web config --db" in first["result"].get("note", ""), first)
+    run(SVC, "searxng-url", "http://127.0.0.1:18888")
+    holder = stage.hold(SVC, "hold")
+    try:
+        held = run(OPS, "searxng", "start")
+        check("with searxng_url set by the service account and the database open, the idle account starts it on "
+              "that port and writes nothing", held.get("exit") == 0 and held.get("calls") == [["start", 18888]]
+              and held.get("unchanged") is True and "note" not in held.get("result", {}), held)
+    finally:
+        stage.release(holder)
+    stopped = run(OPS, "searxng", "stop")
+    status = run(OPS, "searxng", "status")
+    check("the idle account's stop and status read the port and write nothing",
+          stopped.get("exit") == 0 and stopped.get("calls") == [["stop", 18888]] and stopped.get("unchanged")
+          and status.get("exit") == 0 and status["result"]["searxng"].get("url") == "http://127.0.0.1:18888"
+          and status.get("unchanged"), {"stop": stopped, "status": status})
+    probe_by_ops = run(OPS, "searxng", "health")
+    check("SearXNG's health probe, which records what it finds, stays with the service account",
+          probe_by_ops.get("exit") == 2 and "may only read" in str(probe_by_ops.get("result"))
+          and probe_by_ops.get("unchanged"), probe_by_ops)
+    after = run(OPS, "probe")
+    check("the idle account still cannot write the database or create a file beside it",
+          after["write_db"]["ok"] is False and after["create"]["ok"] is False, after)
 
     # 6. The folder both write, under UMask 0077.
     written = run(OPS, "configure")
