@@ -18,7 +18,8 @@ sentences this tree does not yet treat so, and goes to zero gap by gap.
 
 Closed so far:
   restriction  a cited claim that carries an exception or a condition is restated whole or not at all
-               (reasoning.RESTRICTION_LOST). Stricter only.
+               (reasoning.RESTRICTION_LOST), an exception written as a negated phrase too ("every release not
+               built from source", "not counting"), however far into the claim. Stricter only.
   case         a word the sentence shares with its cited claims is written as they write it
                (reasoning.CASE_CHANGED). Stricter only.
   unseen       a claim that holds a character nobody sees is not cited (reasoning.UNSEEN_IN_CLAIM). Stricter
@@ -31,8 +32,6 @@ Closed so far:
                and text again. Still stricter only against 307b907.
 
 Labelled, not yet closed (UNMET counts them; each closes in a commit of its own):
-  restriction  an exception written as a negated phrase ("every release not built from source"; "not counting");
-               a restriction after character 600 of a claim
   cut          a group of people named as the author of the source ("the advisory from Windows Users")
   case         a pronoun of the sentence's own beside the claim's acronym ("US sanctions hit us")
   restatement  a version or number joined in one clause with what its cited claims say of another
@@ -57,7 +56,7 @@ GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording", "role"
 INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 419}
 SIZES = {"restriction": 133, "case": 54, "unseen": 37, "restatement": 68, "cut": 55, "wording": 33, "role": 39}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 6, "case": 3, "unseen": 0, "restatement": 7, "cut": 6, "wording": 0, "role": 12}
+UNMET = {"restriction": 0, "case": 3, "unseen": 0, "restatement": 7, "cut": 6, "wording": 0, "role": 12}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
@@ -65,9 +64,9 @@ UNSEEN_MARK = reasoning.UNSEEN_IN_CLAIM.split("{")[0]
 PASSIVE_MARK = reasoning.PASSIVE_SWAP.split("'")[0]
 ROLE_MARK = reasoning.ROLE_SWAP.split("{")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
-STRICTER = {"review": 24, "gap": 157}
+STRICTER = {"review": 24, "gap": 163}
 LOOSENED = {"review": 6, "gap": 11}
-REFUSED = {CUT_MARK: 40, RESTRICTION_MARK: 74, CASE_MARK: 24, UNSEEN_MARK: 18, PASSIVE_MARK: 23, ROLE_MARK: 12}
+REFUSED = {CUT_MARK: 40, RESTRICTION_MARK: 80, CASE_MARK: 24, UNSEEN_MARK: 18, PASSIVE_MARK: 23, ROLE_MARK: 12}
 
 
 @pytest.fixture(scope="module")

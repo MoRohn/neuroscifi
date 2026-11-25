@@ -2551,7 +2551,8 @@ _PARTICIPLES = frozenset("""beaten bitten blown broken brought built bought caug
 felt found forgiven forgotten frozen given gone grown hidden held hit hurt kept known laid led left lent lost made met
 paid put read ridden rung risen run said seen sent set shaken shot shown shut sold spent spoken stolen struck sung sunk
 taken taught thrown told torn understood won worn woven written""".split())# Exceptions: what follows is taken out of what the claim says.
-_EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exclusive of|other than|apart from|"
+_EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|not counting|exclusive of|other than|"
+              r"apart from|"
               r"aside from|save for|barring|but not|besides(?!\s*,)|"
               r"(?:all|everything|everyone|everybody|anything|anyone|nothing|none|no one|nobody) but")
 # Exceptions written around a quantifier: "every release but 2.5.4", "every release is patched save 2.5.4" (a "save"
@@ -2560,6 +2561,20 @@ _EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|exc
 _QUANTIFIED_EXCEPTION = re.compile(r"(?<![\w-])(?:every|all|each|any|no)(?:\s+[\w.-]+){1,5}?\s+(but|save)(?![\w-])|"
                                    r"(?<![\w-])with\s+(?:[^,.;:]|\.(?=\w)){1,40}?\s+(excepted)(?![\w-])",
                                    re.IGNORECASE)
+# Exceptions written as a negated phrase after a quantified noun: "all users not on Windows", "every release not built
+# from source", "any student not yet enrolled", "all customers who are not on the legacy plan". Between the quantifier
+# and "not" stand one to four words, none of them an auxiliary ("all releases are not affected" negates the verb and
+# excepts nothing), and no punctuation ("every release, not only 2.5.5, ..." adds, it excepts nothing); after "not"
+# (and an optional "yet" or -ly adverb) a preposition or a participle.
+_NEG_AUX = (r"is|are|was|were|be|been|being|am|do|does|did|has|have|had|can|could|will|would|may|might|must|should|"
+            r"shall|cannot")
+_NEG_AFTER = (r"on|in|at|of|from|for|under|with|within|without|by|to|into|inside|outside|behind|among|"
+              r"\w+ing|\w+ed|" + "|".join(sorted(("built bought brought caught chosen done drawn driven given grown "
+                                                   "held hidden kept known made paid run seen sent set shown sold "
+                                                   "spent taken told written").split())))
+_NEGATED_EXCEPTION = re.compile(rf"(?<![\w-])(?:every|all|each|any)\s+(?:(?!(?:{_NEG_AUX})\b)[\w.'’-]+\s+){{1,4}}?"
+                                rf"(?:(?:who|that|which)\s+(?:{_NEG_AUX})\s+)?(not\s+(?:yet\s+|\w+ly\s+)?(?:{_NEG_AFTER}))"
+                                r"(?![\w-])", re.IGNORECASE)
 # Conditions: the claim holds only under what follows. "when" only in its reduced form ("safe when used with TLS
 # 1.3", "when built from source"), and not the reporting kind ("when asked", "when speaking"); a "when" with its own
 # subject is mostly one of time ("when the ship sank").
@@ -2585,13 +2600,14 @@ _IF_BEFORE = re.compile(r"\b(?:even|as|what|or|whether|unclear|unknown|uncertain
 
 
 def _restriction(text: str) -> str | None:
-    """The first restriction `text` carries, as written ("except", "unless", "only if", "when used", "if"), or
-    None. A closed list (_EXCEPTION, _CONDITION, _QUANTIFIED_EXCEPTION) and "if" where it is a condition (_IF,
-    _IF_BEFORE). Left out on
+    """The first restriction `text` carries, as written ("except", "unless", "only if", "when used", "if", "not on"),
+    or None. A closed list (_EXCEPTION, _CONDITION, _QUANTIFIED_EXCEPTION, _NEGATED_EXCEPTION) and "if" where it is a
+    condition (_IF, _IF_BEFORE). Left out on
     purpose: bounds of time ("until", "before", "after", "since", "while" and a "when" with its own subject), whose
     loss generalises over time and inverts nothing, and "only" and "without", whose loss says less, not more."""
     found = [(m.start(), m.group(0)) for m in _RESTRICTION.finditer(text or "")]
     found += [(m.start(m.lastindex), m.group(m.lastindex)) for m in _QUANTIFIED_EXCEPTION.finditer(text or "")]
+    found += [(m.start(1), m.group(1)) for m in _NEGATED_EXCEPTION.finditer(text or "")]
     found += [(m.start(), m.group(0)) for m in _IF.finditer(text or "") if not _IF_BEFORE.search(text[:m.start()])]
     return _SPACE.sub(" ", min(found, key=lambda f: (f[0], -len(f[1])))[1]) if found else None   # longest first
 
@@ -2604,11 +2620,12 @@ def _holds_whole(words: list[str], claim_words: list[str]) -> bool:
 
 def _restriction_lost(text: str, used) -> list[str]:
     """RESTRICTION_LOST for each cited claim that carries a restriction (_restriction) and whose words (letter case,
-    punctuation and bracketed reference marks aside) are not all in the sentence, unbroken and in order."""
+    punctuation and bracketed reference marks aside) are not all in the sentence, unbroken and in order. The whole
+    claim is read, however long: a restriction after its 600th character restricts it all the same."""
     mine = [w.casefold() for w in _WORD_RX.findall(text)]
     out = []
     for c in used:
-        theirs = _inline_refs(_clean(_norm(c["text"])))[0]
+        theirs = _inline_refs(_SPACE.sub(" ", _norm(c["text"])).strip())[0]
         marker = _restriction(theirs)
         if marker is not None and not _holds_whole(mine, [w.casefold() for w in _WORD_RX.findall(theirs)]):
             out.append(RESTRICTION_LOST.format(claim=c["id"], words=marker))

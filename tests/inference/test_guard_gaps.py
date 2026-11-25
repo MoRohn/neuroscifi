@@ -58,6 +58,15 @@ def judged(b, text, ids=("C1",)):
     ("Every release is patched with 2.5.4 excepted", "excepted"),
     ("Every release but 2.5.4 is patched", "but"),
     ("All versions save the oldest are patched", "save"),
+    # remaining items: exceptions written as a negated phrase
+    ("The flaw is fixed for all users not on Windows", "not on"),
+    ("The patch applies to every release not built from source", "not built"),
+    ("Every account not using two-factor login was locked", "not using"),
+    ("All customers who are not on the legacy plan get the refund", "not on"),
+    ("The fee is waived for any student not yet enrolled", "not yet enrolled"),
+    ("All the tickets not sold by Friday go on sale again", "not sold"),
+    ("Every test passed, not counting the flaky network tests", "not counting"),
+    ("All rights not expressly granted are reserved", "not expressly granted"),
 ])
 def test_a_restriction_is_found_by_its_closed_list_of_words(text, marker):
     assert reasoning._restriction(text) == marker
@@ -85,6 +94,13 @@ def test_a_restriction_is_found_by_its_closed_list_of_words(text, marker):
     "Besides, the vendor published version 4",
     "The vendor was given the patch in May",
     "Every release shipped on time, but the docs lagged behind",               # "but" too far from "every"
+    # remaining items: a "not" that negates a verb, or adds, excepts nothing
+    "All NumPy releases are not affected by the parser flaw",
+    "Each user did not receive the update in May",
+    "Every NumPy release, not only 2.5.5, is patched against the flaw",
+    "Not all users on Windows are affected by the flaw",
+    "The flaw is not fixed for all users",
+    "All of the fixes, not just the parser fix, landed in 2.5.5",
 ])
 def test_words_that_restrict_nothing_are_not_restrictions(text):
     assert reasoning._restriction(text) is None
@@ -419,3 +435,14 @@ def test_roles_read_a_reduced_passive_negation_and_a_joined_clause():
     assert ("affected", ["flaw"], ["numpy", "2.5.4", "is"]) in roles or ("affected", ["flaw"], ["numpy", "2.5.4"]) \
         in [(v, d, [x for x in t if x != "is"] if t else t) for v, d, t in roles]
     assert any(v == "affected" and t and "2.5.5" in t and "2.5.4" not in t for v, d, t in roles)
+
+
+def test_a_restriction_after_the_600th_character_of_a_claim_is_read():
+    """The rule read a claim cut at 600 characters, so an exception further on was never seen. Production cuts claims
+    at 420 (QUOTE_CHARS); a claim reaching the guard by another road is read whole."""
+    claim = "The plant supplies drinking water to the whole region" + ", and it has done so reliably" * 22 + \
+        ", every household except those on private wells"
+    assert len(claim) > 600 and claim.index("except") > 600
+    b = one_claim("supported", (1, 2), text=claim, question="Who gets the water?")
+    ok, bad = judged(b, "The plant supplies drinking water to the whole region.")
+    assert ok == [] and bad[0]["reasons"][0].startswith(reasoning.RESTRICTION_LOST.split("{")[0])
