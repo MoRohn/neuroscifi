@@ -8,7 +8,7 @@
 ![Version](https://img.shields.io/badge/version-0.7.0-3A3437)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-3A3437)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-3A3437?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-5039%20passed-3A3437)
+![Tests](https://img.shields.io/badge/tests-5053%20passed-3A3437)
 ![Browser](https://img.shields.io/badge/browser%20e2e-206%20passed-3A3437)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-3A3437)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-3A3437)
@@ -603,7 +603,7 @@ python scripts/guard_differential.py compare   # the answer guard against its at
 
 | Gate | Result |
 |---|---|
-| Quality gate (`bash scripts/check.sh`) | **5039 passed**, 18 skipped (live-service and platform tests), 0 failed |
+| Quality gate (`bash scripts/check.sh`) | **5053 passed**, 18 skipped (live-service and platform tests), 0 failed |
 | Browser end-to-end (`tests/e2e`) | **206 passed**, 1 skipped (opt-in degraded-voice test) |
 | Acceptance scenarios | 7 of 7 pass ([pre-registered](docs/quality/PREREGISTRATION_D1.md) D-1 redesign) |
 | Reproduction | 8 of 8 analyses within tolerance |
