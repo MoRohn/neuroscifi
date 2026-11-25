@@ -96,7 +96,9 @@ DISPLAYS: dict[str, str] = {
                               "and a time, never content)",
 }
 WRITE_API = {"record", "observe", "example", "written_by", "present", "KINDS", "REF_KINDS", "OBSERVATION_KINDS",
-             "MAX_REFS", "NOT_EVIDENCE"}
+             "MAX_REFS", "NOT_EVIDENCE",
+             # read-only helpers of a writer (review1 CH1, CL8): refuse before writing, find what is not imagined yet
+             "unresolved", "derived_ids", "room"}
 DISPLAY_API = {"listing", "show", "counts", "present", "KINDS", "NOT_EVIDENCE"}
 FORBIDDEN = ["webcortex/knowledge.py", "webcortex/claims.py", "webcortex/consolidate.py", "webcortex/synthesis.py",
              "webcortex/evolution.py", "webcortex/predictions.py", "webcortex/semantic.py",

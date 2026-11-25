@@ -111,6 +111,28 @@ def _unresolved(db, refs):
     return missing
 
 
+def unresolved(db, refs):
+    """The references among `refs` ((kind, id) pairs) that name nothing this file holds, as record() judges them: a
+    caller can refuse before it asks the store to keep something."""
+    return _unresolved(db, [_ref(r) for r in refs])
+
+
+def derived_ids(db, mechanism, ref_kind):
+    """The ids of `ref_kind` that one mechanism's records are derived from (one read): how a writer finds what it has
+    not imagined yet without reading every record."""
+    if not present(db):
+        return set()
+    return {i for (i,) in db.execute("SELECT DISTINCT r.ref_id FROM imagined_refs r JOIN imagined i ON i.id=r.record_id "
+                                     "WHERE i.mechanism=? AND r.ref_kind=? AND r.observed=0", (mechanism, ref_kind))}
+
+
+def room(db):
+    """How many more records fit under max_imagined_rows without evicting any (0 when the store is absent)."""
+    if not present(db):
+        return 0
+    return max(0, store.config(db).max_imagined_rows - db.execute("SELECT count(*) FROM imagined").fetchone()[0])
+
+
 def _stale_checkpoints(db, since):
     """Mark valid checkpoints written at or after `since` (they may hold a removed record) stale. Caller owns the
     transaction."""

@@ -126,18 +126,18 @@ def imagine(db, prediction_id, now) -> str:
 
 def imagine_open(db, now, *, limit=PER_TICK) -> list[str]:
     """Records for open predictions that have none yet, oldest first, at most `limit`: the predictions without one
-    are found by one anti-join (review1 CL8: a read of every record per prediction), and nothing is made while the
-    store is at max_imagined_rows, so the timer never evicts a record (the owner's kept answers among them) to make
-    room for its own."""
-    from ..instance import store
-    room = store.config(db).max_imagined_rows - db.execute("SELECT count(*) FROM imagined").fetchone()[0]
+    are found from one read of the ids its records derive from (imagined.derived_ids; review1 CL8: it read every
+    record once per prediction), and nothing is made while the store is at max_imagined_rows, so the timer never
+    evicts a record (the owner's kept answers among them) to make room for its own."""
+    room = imagined.room(db)
+    done = imagined.derived_ids(db, MECHANISM, "prediction")
     made = []
-    for (pid,) in db.execute(
-            "SELECT p.id FROM web_predictions p WHERE p.outcome IS NULL AND p.probability IS NOT NULL AND NOT EXISTS "
-            "(SELECT 1 FROM imagined_refs r JOIN imagined i ON i.id=r.record_id WHERE r.ref_kind='prediction' AND "
-            "r.ref_id=CAST(p.id AS TEXT) AND r.observed=0 AND i.mechanism=?) ORDER BY p.id", (MECHANISM,)).fetchall():
+    for (pid,) in db.execute("SELECT id FROM web_predictions WHERE outcome IS NULL AND probability IS NOT NULL "
+                             "ORDER BY id").fetchall():
         if len(made) >= min(limit, room):
             break
+        if str(pid) in done:
+            continue
         try:
             made.append(imagine(db, pid, now))
         except (ValidationError, NotFound):

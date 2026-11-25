@@ -477,7 +477,7 @@ def keep(db, answer, now, *, lifetime=None):
         raise Refused(f"this answer names {len(refs)} readings, cameras, partners and setups; a kept answer may name "
                       f"at most {imagined.MAX_REFS}, so that forgetting any of them removes it: ask a narrower "
                       "question (fewer readings, or a smaller --top) to keep it")
-    if imagined._unresolved(db, refs):
+    if imagined.unresolved(db, refs):
         raise Refused("this answer names a camera, partner or reading this individual holds nothing of (an imagined "
                       "one), so a later forget could not find it: it is shown but not kept")
     question = answer.get("question") or f"{answer['mechanism']} on epoch {answer['epoch']}"
