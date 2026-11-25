@@ -2200,7 +2200,7 @@ each component ablated; constants chosen on development, held-out run once; the 
   on the stale-but-important subject 0.167 (0.083), realised bits per budget 0.163 (0.093). Idle path: noise 0.375
   (0.800), stale 0.167 (0.000), realised bits per budget -0.017 (-0.016). Without learning progress both paths
   return exactly to their baselines.
-- **information-v1 (information value, core).** Realised bits per investigation 0.118 (rules-v1 0.092; oracle
+- **information-v1 (information value, core).** Realised bits per unit of budget 0.118 (rules-v1 0.092; oracle
   0.119, random 0.083); share of investigations on noise partners 0.31 (0.10).
 - **Retention.** With predictive regulation and learning progress on: 4/4 scenarios, 7/7 offline metrics retained,
   adversarial 12 (baseline 12). With information-v1 on as well: `lifelong_correction` fails its check
@@ -2223,7 +2223,8 @@ worded more strongly than the evidence; these are the claims now made (`genesis_
   history file and the worker's sampler are not exercised by it (`tests/test_predictive_wiring.py` now drives them
   end to end on a staged individual: the gate holds exactly when the benchmark's forecaster does). The gain is
   mainly the memory reserved per background task: without the trend the held-out share stays 0.80 (on development
-  the trend carries more of it: 0.56 → 0.11 without it). Costs:
+  the trend carries more of it: 0.56 → 0.11 without it). On held-out the trend adds lead time (5.7 → 9.9 ticks) but
+  avoids no further breaches and accounts for all the added false alarms (without it 0.009). Costs:
   background work given up 0.044 → 0.106, false alarms 0.009 → 0.043.
 - **Learning progress, web information gain** (B1, B2). The first build's numbers (held-out timer path 0.093 →
   0.163 bits per budget on the split's 3 seeds, 0.139 → 0.185 on 12 further seeds) were overstated as written and
@@ -2417,19 +2418,20 @@ The table above scores "coverage", which counts any answer: the review (B3) show
 1e6) reaches coverage, interval coverage and abstention 1.0. "Coverage 0.071 → 1.0" is **not** a supported headline.
 The family is now scored on the share of answerable questions answered within 0.1 × scale of the truth, with the
 interval score of the stated 95 % interval, in three groups never pooled in a claim, and the confounded questions
-relabelled answerable by the front door (a decline there is an honest abstention, reported on its own line;
-COGNITIVE_BENCHMARK.md §3). Held-out, split seeds (12 further seeds in brackets), baseline → imagination:
+relabelled answerable by the front door (a decline there is not within tolerance, and the declines are also counted
+on their own line; corrected at the re-review of the fix round; COGNITIVE_BENCHMARK.md §3). Held-out, split seeds (12 further seeds in brackets), baseline → imagination:
 
 | Group (questions per seed) | Within tolerance | What it measures |
 |---|---|---|
-| all answerable (28) | 0.071 → 1.000 (0.065 → 0.985) | |
+| all answerable (32, front door included; pooled, not a claim) | 0.063 → 0.875 (84 of 96; 0.057 → 0.862) | the front-door questions declined |
+| answerable other than the 4 front-door ones (28) | 0.071 → 1.000 (28 of 28 per seed; 0.065 → 0.985) | |
 | equations handed to the engine (16) | 0 → 1.000 | exact arithmetic on the given model |
 | belief what-ifs (3) | 0 → 1.000 | plumbing: the truth is the same posterior function on a copy |
-| learned graph forecasts and actions (9) | 0.222 → 1.000 (0.204 → 0.954) | **the substantive part**: relative error 0.024 / 0.008 / 0.043 at horizon 2 / 5 / pushes |
-| front door (4) | declined: an honest abstention | identifiable; this engine has no front-door adjustment |
+| learned graph forecasts and actions (9) | 0.222 → 1.000 within 0.1 × sd (largest error 0.092; 0.778 within 0.05; the tolerance was set in the same commit as the results; 0.204 → 0.954) | **the substantive part**: relative error 0.024 / 0.008 / 0.043 at horizon 2 / 5 / pushes |
+| front door (4) | declined (each not within tolerance) | identifiable; this engine has no front-door adjustment |
 
 The `zero` reference (the review's trivial answerer) is within tolerance on 0.111 (development) and 0.407 (held-out)
-of the learned-graph questions, because a 5-step forecast decays towards 0; its interval score is above 10^7.
+of the learned-graph questions (0.037 and 0.148 within 0.05), because a 5-step forecast decays towards 0; its interval score is above 10^7.
 Imagination's interval score is about 2.4 (the stated sd is the outcome's spread, so the width dominates). Adversarial: 13 of the original 13 under the redefinition in §6 (it is a different test: a
 reading labelled provenance='simulated' still moves the belief, as an observation of a simulated environment should);
 the original concern is now staged as `system_made_content_never_enters_the_journal`, which passes in every regime.
