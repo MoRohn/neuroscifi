@@ -107,6 +107,16 @@ i = interpret({ ...speechDown, sources: { ...speechDown.sources, search: 'degrad
 ok(/speech recognition/.test(i.text) && /search providers are failing/.test(i.text), 'both causes named');
 i = interpret({ ...research, condition: ['network_degraded'] }, { connection: 'ok' }, now);
 ok(/search providers are failing/.test(i.text), 'provider failure keeps its words');
+// ADR-053: memory pressure is never described as paused writes; each cause has its own words
+i = interpret({ ...research, condition: ['resource_constrained'], sources: { resources: 'critical' } }, { connection: 'ok' }, now);
+ok(/memory is nearly full/.test(i.text) && !/storage/.test(i.text), 'memory pressure named as memory');
+i = interpret({ ...research, condition: ['resource_constrained'], sources: { resources: 'ok', writes: 'paused' } }, { connection: 'ok' }, now);
+ok(/writes paused to protect storage/.test(i.text) && !/memory/.test(i.text), 'paused writes named as storage');
+i = interpret({ ...research, condition: ['resource_constrained'], sources: { resources: 'elevated', writes: 'paused' } }, { connection: 'ok' }, now);
+ok(/memory is getting tight/.test(i.text) && /protect storage/.test(i.text), 'both causes named');
+for (const a of ['planning', 'predicting', 'simulating', 'analyzing', 'interpreting', 'executing']) {
+  ok(ACTIVITY_CONCEPT[a], `${a} has a composition`);
+}
 
 // ---- motion: continuity, limits, interruption, reduced motion, settling
 const e = new MotionEngine();
