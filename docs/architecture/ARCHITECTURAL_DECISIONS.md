@@ -2210,6 +2210,30 @@ each component ablated; constants chosen on development, held-out run once; the 
   `background_gate` 0.47 ms with the setting off (it now reads the setting with a read-only connection) and 2.05 ms
   with it on over a full history. Every benchmark family ran with 0 model calls and 0 refused connections.
 
+## After the Wave 1 review (fix lane C): the wording the evidence supports
+
+The bullets above are the lane's measurement on the split's 3 seeds. The review (B1, B2, B6) found three of them
+worded more strongly than the evidence; these are the claims now made (`genesis_wave1.json`, wide-seeds run
+`genesis_wave1_wide.json`: 12 further seeds 5001-5012 on the held-out worlds, supplementary to the split's seeds):
+
+- **Predictive regulation**, sound within the simulated plant: held-out memory breaches avoided 0.80 (split seeds);
+  12 further seeds 0.80 ± 0.07 against 0.06 ± 0.11 for the reactive gate, better in 12 of 12. The plant's constants
+  are declared, not measured on the host; the benchmark feeds the forecaster directly, so the gate's wiring, the
+  history file and the worker's sampler are not exercised by it (`tests/test_predictive_wiring.py` now drives them
+  end to end on a staged individual: the gate holds exactly when the benchmark's forecaster does). The gain is
+  mainly the memory reserved per background task: without the trend the held-out share stays 0.80 (on development
+  the trend carries more of it: 0.56 → 0.11 without it). Costs:
+  background work given up 0.044 → 0.106, false alarms 0.009 → 0.043.
+- **Learning progress, web information gain** (B1, overstated as written): held-out 0.093 → 0.163 bits per budget
+  on the split's 3 seeds; on 12 further seeds 0.139 → 0.185 (+33 %, per-seed sd 0.08 to 0.12); with every Wave 1
+  chooser on (the re-check first) 0.124 on the split seeds. The timer's and the idle investigator's paths are
+  reported apart (B2): timer noise share 0.537 → 0.375 (12 seeds 0.41 → 0.30); idle noise share 0.800 → 0.375
+  (12 seeds 0.71 → 0.34); the idle path gained no bits per budget on the split's held-out seeds (−0.016 → −0.017)
+  though 12 further seeds show 0.094 → 0.186. **These curiosity numbers are to be re-measured after the
+  learning-progress rework (fix lane "core")**; the wide-seeds machinery is in `scripts/bench_wave1.py wide`.
+- **Retention** holds for the shipped defaults only: with information-v1 on it fails
+  `asks_only_while_partner_ambiguous` (as stated above).
+
 ## Defaults and why
 
 - On: the record and its history, the salience record, the information display, learning progress (held-out: a
@@ -2360,6 +2384,29 @@ and says nothing about real-world causal questions; the core mechanisms' share i
 rows. Interval coverage is a weak test here: the stated sd includes each population's own noise while the truth is
 the conditional mean.
 
+## After the Wave 1 review (fix lane C): what the evidence supports
+
+The table above scores "coverage", which counts any answer: the review (B3) showed a trivial answerer (0 with sd
+1e6) reaches coverage, interval coverage and abstention 1.0. "Coverage 0.071 → 1.0" is **not** a supported headline.
+The family is now scored on the share of answerable questions answered within 0.1 × scale of the truth, with the
+interval score of the stated 95 % interval, in three groups never pooled in a claim, and the confounded questions
+relabelled answerable by the front door (a decline there is an honest abstention, reported on its own line;
+COGNITIVE_BENCHMARK.md §3). Held-out, split seeds (12 further seeds in brackets), baseline → imagination:
+
+| Group (questions per seed) | Within tolerance | What it measures |
+|---|---|---|
+| all answerable (28) | 0.071 → 1.000 (0.065 → 0.985) | |
+| equations handed to the engine (16) | 0 → 1.000 | exact arithmetic on the given model |
+| belief what-ifs (3) | 0 → 1.000 | plumbing: the truth is the same posterior function on a copy |
+| learned graph forecasts and actions (9) | 0.222 → 1.000 (0.204 → 0.954) | **the substantive part**: relative error 0.024 / 0.008 / 0.043 at horizon 2 / 5 / pushes |
+| front door (4) | declined: an honest abstention | identifiable; this engine has no front-door adjustment |
+
+The `zero` reference (the review's trivial answerer) is within tolerance on 0.111 (development) and 0.407 (held-out)
+of the learned-graph questions, because a 5-step forecast decays towards 0; its interval score is above 10^7.
+Imagination's interval score is about 2.4 (the stated sd is the outcome's spread, so the width dominates). Adversarial: 13 of the original 13 under the redefinition in §6 (it is a different test: a
+reading labelled provenance='simulated' still moves the belief, as an observation of a simulated environment should);
+the original concern is now staged as `system_made_content_never_enters_the_journal`, which passes in every regime.
+
 ## Consequences
 
 - New owner commands `nsf imagine what-if | questions | retrospect | forecast | scm | scenarios`; every answer is
@@ -2442,6 +2489,13 @@ and the measurements below are not scores of anything but the function they name
   accuracy 0.80 from 4 surfaces on development and held-out; the record 1.00 and 1.00 from 1 surface on both.
   Ablations (held-out): without the capabilities/resources sections 0.80; without uncertainty, decisions or tools
   0.933 each. Cost about 0.1–0.2 s per family run, 0 model calls.
+  *After the Wave 1 review (B4), the wording the evidence supports:* sound with caveats. Held-out, per seed: 29 of 30
+  under the original answer key and 30 of 30 under this lane's changed key (`uncertain_about` = "nothing" when every
+  factor is settled; the baseline scores 24 of 30 under both). Two probes are plumbing checks, not accuracy:
+  `authorised_model_tools` compares the tool list with itself and `last_decision` re-runs the executive's own
+  decision; without them the record answers 26 of 26 and the baseline 24 of 26. The lane printed the record's
+  answers on the held-out states once during development. Both keys are scored side by side
+  (`summary_original_key`, `summary_without_plumbing`).
 - **Consistency:** 8 of 8 staged records (96 field checks) and 12 of 12 steps of a scripted day agree with
   store.regulation, store.inventory, autonomy.status, resources.status and presence.derive at the same
   state_version; build 1.3 ms median on these small individuals (it computes one epoch's beliefs: linear in its
@@ -2498,10 +2552,19 @@ but nothing computes it; the self-critique's marks were never checked against go
    development split only and shipped as `webcortex/data/monitoring_calibration.json`. It changes no verification
    state, posterior, guard decision, answer or knowledge, and calls no model. The self-critique's marks are one
    named input with weight 0 (measured: they do not predict wrong sentences), never a gate.
-2. **Selective answering (`selective_answering`, off).** Below the threshold chosen on development data for a 10 %
-   target risk, the answer opens with a plain "Not enough evidence for a confident answer: <why>" line; the quotes
-   stay.
-3. **Verification escalation (`verification_escalation`, off).** Below the threshold, and only inside the task's own
+   **Changed after the Wave 1 review (A5, A6, A13, B5):** the claim probability is the *unfitted* score (the fitted
+   claim map was worse on development: Brier 0.034 against 0.016 on 8 items; held-out agrees, 0.042 against 0.022 on
+   10); a fitted map is applied only with at least 30 development items in at least 3 blocks, and none of the shipped
+   maps has that (6 to 15 items, 1 to 3 blocks), so the record shows no answer confidence and says "not enough
+   development data" (before, every fact check showed the same 0.941, an "insufficient" one too); the guard's
+   refusals and the model abstaining have weight 0 and are shown only (the development data has no model calls); a
+   monitoring failure is logged as the task's error event and adds nothing to the owner's report.
+2. **Selective answering (`selective_answering`, off).** When the evidence is weak the answer opens with a plain
+   "Not enough evidence for a confident answer: <why>" line; the quotes stay. Weak means: for a fact check, and
+   wherever no map is applied (everywhere today), `monitoring.sufficiency` says the sources are not enough (fewer
+   than two independent groups, one family of sites, one source citing another, stale, or a state that is not
+   verified); only an applied map would use the threshold chosen on development data for a 10 % target risk.
+3. **Verification escalation (`verification_escalation`, off).** When the evidence is weak (as in 2), and only inside the task's own
    budget (a page, a query, two requests, 15 s left), one search for the weakest statement and one more page from a
    family of sites not read yet, then evaluation and synthesis again; once per task; the owner's stops apply.
 4. **Adaptive depth (`adaptive_depth`, off).** Reading stops once 4 pages were read, a statement is verified and
@@ -2516,10 +2579,21 @@ forgetting a task removes it.
 
 ## Measured
 
-`docs/quality/evidence/genesis_monitoring.json` (`scripts/bench_monitoring.py evidence`; offline, no model):
-held-out claim probability Brier 0.122 → 0.042, ECE 0.341 → 0.199 (debiased 0.348 → 0.204), AUROC 1.0 → 1.0;
-held-out answer confidence ECE 0.372 → 0.181; development AURC 0.080 → 0.027. Selective answering: no held-out gain
-(no held-out answer is wrong), so off. Escalation: no metric changed at +2 pages: off. Adaptive depth: equal rates
+`docs/quality/evidence/genesis_monitoring.json` (`scripts/bench_monitoring.py evidence`; offline, no model).
+*As first recorded by the lane (superseded; kept in the file under `before_wave1_review`):* held-out claim
+probability Brier 0.122 → 0.042, ECE 0.341 → 0.199, AUROC 1.0 → 1.0; held-out answer confidence ECE 0.372 → 0.181;
+development AURC 0.080 → 0.027. The review (B5) found this is not a calibration gain: 10 held-out claims, all
+answered correctly (AUROC 1.0 before and after); 10-bin ECE is meaningless at n = 10; the fitted map was worse than
+the unfitted score; the two-line rule on the verdict word scores Brier 0.0025.
+*The wording the evidence supports, as shipped now:* on 10 held-out claims, adding the verification state to the
+posterior lowers Brier 0.122 → 0.022 with the unfitted score (0.042 with the fitted map, no longer shipped; the
+verdict-word rule 0.0025; Brier is all reliability error in every row, resolution 0.24 = the uncertainty); development
+8 claims 0.095 → 0.016. **No held-out evidence about selective answering:** no held-out answer is wrong, and the
+sufficiency decision would withhold 12 of 20 right held-out answers (development: it withholds 3 of the 3 wrong and
+12 of the 18 right). The terms `independence`, `guard` and `critique` are 0 on every item of the corpus, so their
+ablations change nothing: they are **untested** here. Selective answering: off (on the offline corpus the
+sufficiency basis opens 36 questions with the plain line, key metrics unchanged). Escalation: no key metric changed
+(+2 pages with the old threshold; +6 pages, +28 queries for 14 tasks with the sufficiency basis): off. Adaptive depth: equal rates
 at 22 fewer pages of 581, wall time not lower: off (an owner decision). Offline benchmark with the settings off:
 identical to the unchanged code (digest); with `answer_monitoring` on: 0 differences. Guard differential: 0
 different. Ablations of every term are in the evidence file.
@@ -2631,7 +2705,13 @@ Simulated worlds driven through the real modules, offline.
   checks pass, retention passes, the withheld check is missing, so the decision is **revise: off**.
 - **Retention family**: 4/4 scenarios, 7/7 offline metrics retained, with the lane's mechanisms on and off.
   **Adversarial**: 16/17 on and off (the recorded baseline 12/13; the 4 lane-K cases added pass; the one failure is
-  `simulated_reading_moves_no_belief`, outside this lane).
+  `simulated_reading_moves_no_belief`, outside this lane). *Wording after the Wave 1 review:* the four cases are
+  invariants that pass in every regime, with every Wave 1 setting off too; they are reported as their own line
+  ("4 new invariant cases pass in every regime"), never added to the original 13 as an improvement.
+- *Information value, after the Wave 1 review:* the 0.124 held-out figure is the re-check's pick then the **timer's**
+  curiosity, on the split's 3 seeds; the idle investigator's path is reported apart (`genesis_wave1.json`
+  `idle_path`). With every Wave 1 chooser on, 12 further seeds on the held-out worlds give 0.139 → 0.196 (paired,
+  better in 12 of 12), noise share 0.41 → 0; to be re-measured after the learning-progress rework (fix lane "core").
 - **Cost** (aarch64, while other lanes' suites ran): consolidation 1.35 -> 1.38 ms median per one-cluster task
   with premises; re-check rank 82 ms and admission 168 ms per pass over 200 items; a reflection report 2 ms; a
   Thompson ranking 1.5 ms. 0 model calls in every benchmark.

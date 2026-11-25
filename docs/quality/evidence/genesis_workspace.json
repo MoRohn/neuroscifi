@@ -2573,5 +2573,15 @@
   "test": "tests/voice/test_follow_restart.py::test_the_answer_reaches_the_next_session_after_a_restart",
   "with_this_lane": "answer delivered to the next session: 1 of 1 (test passes)"
  },
- "wall_seconds": 2.4
+ "wall_seconds": 2.4,
+ "review_wave1": {
+  "note": "Wave 1 review (review1/findings-runtime-bench.md); corrected by fix lane C. The numbers above are the lane's measurement and stay as recorded; these are the claims the evidence supports. Re-measured numbers: genesis_wave1.json (split seeds), genesis_wave1_wide.json (12 further seeds 5001-5012, supplementary), genesis_baseline_rescored.json.",
+  "claims": [
+   {
+    "claim_as_first_written": "self-description 0.80 over 4 surfaces -> 1.00 over 1 (development and held-out)",
+    "verdict": "B4 sound with caveats",
+    "wording_now": "held-out, per seed: 29 of 30 under the original answer key, 30 of 30 under the changed key (baseline 24 of 30 under both); authorised_model_tools and last_decision are plumbing checks (without them 26 of 26 against 24 of 26); the lane printed the held-out states once during development"
+   }
+  ]
+ }
 }

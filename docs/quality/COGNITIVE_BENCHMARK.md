@@ -30,9 +30,26 @@ $PY scripts/bench_cognition.py run --family withheld --final --mechanism NAME --
 $PY scripts/bench_cognition.py baseline --out docs/quality/evidence/genesis_baseline.json   # what was recorded
 ```
 
-`compare BEFORE AFTER` prints the headline metrics of each family side by side with which direction is better. Given
-the recorded baseline file as BEFORE, it uses the baseline's run of AFTER's split. The results are deterministic per
-seed, so re-running the baseline gives the same numbers (only the cost differs).
+`compare BEFORE AFTER` prints the headline metrics of each family side by side with which direction is better (a
+metric whose direction is `None` is reported but never called better or worse). Given the recorded baseline file as
+BEFORE, it uses the baseline's run of AFTER's split; metrics renamed after the Wave 1 review are read there under
+their old names (`cognition.RENAMED`). The results are deterministic per seed, so re-running the baseline gives the
+same numbers (only the cost differs).
+
+Wave 1 runs (`scripts/bench_wave1.py`; the withheld family is never run there):
+
+```bash
+$PY scripts/bench_wave1.py run --out wave1.json          # all off / as shipped / all on, references, ablations
+$PY scripts/bench_wave1.py wide --out wide.json          # SUPPLEMENTARY: 12 further seeds, paired comparisons
+$PY scripts/bench_wave1.py rescore --out rescored.json   # the baseline under the review's scoring
+```
+
+The **wide-seeds run** (`cognition.wide_seeds`, seeds `cognition.WIDE_SEEDS` = 5001-5012, disjoint from every split
+and the withheld family) runs a family on a split's worlds once per seed for a mechanism and its reference and
+reports, per headline metric, each one's mean and per-seed sd and the paired difference with the number of seeds it
+was better, worse or equal in. It is supplementary: the frozen split's own seeds stay the official numbers, and the
+wide run is reported beside them, never instead. Only the families a seed changes take part (anticipation,
+info_value, counterfactual, self_model).
 
 Options: `--seeds 11,12` replaces a split's seeds; `--quick` uses the offline corpus's quick subset (selective and
 retention; retention then calls nothing retained or lost against the recorded full-corpus baseline, since the two
@@ -105,7 +122,12 @@ Scores: breach ticks and episodes per channel against the same trace with no reg
 lead time of the first hold before each reference breach (horizon 20 ticks), false-alarm share of holds (no breach
 coming on any channel), background work given up.
 **Cannot show:** that the real host behaves like this plant; the plant constants (12 GiB, 450 ms, 6 ticks, the
-latency limit and the 2 GiB floor) are declared in the bench, not measured on the Spark.
+latency limit and the 2 GiB floor) are declared in the bench, not measured on the Spark. A regulator is called
+directly with the plant's history: the product's wiring (the gate `resources.policy.background_gate`, the history file
+`<db>.resources/internal-state.jsonl`, the worker's sampler `internal_state.record`) is not exercised by the family.
+Every result carries this as `scope`; `tests/test_predictive_wiring.py` drives that wiring end to end on a staged
+individual for one development trace (sampler → history file → gate) and checks the gate holds exactly when the
+benchmark's forecaster (or the reactive gate) does, on every tick.
 
 ### 2. Information value (`infovalue.py`)
 Staged worlds whose expected information gain per candidate is known. **Core**: a real individual with the mechanism
@@ -126,15 +148,41 @@ in the belief model today); real subjects; with three seeds the realised bits ca
 
 ### 3. Counterfactual and prospective validity (`counterfactual.py`)
 Linear Gaussian SCMs (chain, fork, collider, mediator) with the model given: observational, interventional and
-counterfactual questions with exact answers; "confounded" models (a hidden common cause, only the observational
-covariance given) where the effect of `do(X)` is not identifiable and the right answer is to decline. A graph learned
-and promoted through the product path on a `lab.graph_bench` world: "what follows k steps after this state", with
-and without pushing one population (exact from the world's true matrix). Belief what-ifs: the posterior had one
-reading been the other bit (exact, on an in-memory copy).
-Scores: coverage of answerable queries, mean relative error, share within two stated sd, correct abstention on
-unanswerable queries; also per query kind.
-**Cannot show:** causal validity on real-world questions; these models are small and fully specified. Today's
-`abstention_correct = 1.0` is vacuous: the system declines everything it cannot compute.
+counterfactual questions with exact answers; "confounded" models (a hidden common cause of X and Y; the observed
+graph, the observational means and covariance given). Back-door adjustment cannot identify `do(X)` there, but X
+reaches Y only through an observed mediator, so the **front-door** adjustment does: these questions carry the exact
+interventional truth (a test checks a front-door solver reproduces it). A graph learned and promoted through the
+product path on a `lab.graph_bench` world: "what follows k steps after this state", with and without pushing one
+population (exact from the world's true matrix). Belief what-ifs: the posterior had one reading been the other bit
+(exact, on an in-memory copy).
+
+Scores (after the Wave 1 review, B3; `scoring.answer_scores`):
+- **Headline: `answered_within_tolerance`**, the share of answerable questions answered within 0.1 × the question's
+  scale of the truth (a tenth of the outcome's standard deviation; 0.1 for a probability). A decline is not within
+  tolerance. Stated before any answer was scored with it.
+- **`interval_score`**: the interval score (Winkler; Gneiting and Raftery 2007, a proper scoring rule) of the stated
+  95 % normal interval, in units of the scale, over the questions answered (`interval_score_answered` says how
+  many). A uselessly wide interval pays its width; an overconfident one pays 40 × its miss. It compares answerers
+  only where they answered the same questions, so `compare` never calls it better or worse. The answerers here state
+  the spread of the outcome as their sd while the truth asked for is an expectation, so their interval scores are
+  dominated by width (about 2 to 3.4 scale units against 0 for an exact point answer).
+- **Three groups, always reported separately** (`summary_by_group`), never pooled in a claim: `handed_equations`
+  (exact arithmetic on the equations the question hands over), `belief_what_if` (the truth is the same posterior
+  function recomputed on a copy: a plumbing check), `learned_graph` (forecasts and pushes on a graph the individual
+  learned: **the substantive group**). The front-door questions are a fourth line, `front_door`: a decline there is
+  an honest abstention, neither right nor wrong (`front_door_declined`), an answer is scored for tolerance.
+- Kept for comparison with the recorded files under names that cannot be mistaken for the headline:
+  `answered_share` (was `coverage`: any answer counts, however wrong), `mean_relative_error`, `interval_coverage`
+  (within 2 stated sd) and `declined_confounded_share` (was `abstention_correct`: it is not a correctness score).
+- Reference `zero` (the review's trivial answerer: 0 with sd 1e6): under the old scores it reached coverage,
+  interval coverage and abstention 1.0; on the headline it scores 0.12 (development, one seed) and its interval
+  score is above 10^6 (held-out 0.25 overall and 0.41 on the learned graph: see Cannot show). A test keeps it that
+  way.
+
+**Cannot show:** causal validity on real-world questions; these models are small and fully specified. Within
+tolerance is a weak test for long horizons: a forecast 5 steps ahead decays towards 0, so 0 is near the truth there.
+The `zero` reference says how near: on held-out it is within tolerance on 0.407 of the learned-graph questions, more
+than today's one-step answerer (0.222, which answers only horizon 1); read every learned-graph figure against it.
 
 ### 4. Self-description (`selfmodel.py`)
 A staged individual and runtime state with ground truth: running and queued tasks, open owner questions, the autonomy
@@ -142,15 +190,27 @@ switch and searches left, memory pressure, paused writes (a full disk), an activ
 unloaded by the idle policy, an unresolved factor, the executive's latest decision, the journal limit, the tools the
 model may use, whether it is researching. The staging is verified against the database before any probe. 15 probes.
 Scores: coverage, accuracy, accuracy when answered, number of separate surfaces the answers came from.
+Two answer keys are scored side by side (Wave 1 review B4): `summary` uses the current key, in which "nothing" is the
+right answer to `uncertain_about` when every factor is settled (lane W's change); `summary_original_key` the key the
+baseline was recorded with (`None` there, which no answer matches). Two probes are **plumbing checks**
+(`plumbing_check`): `authorised_model_tools` compares the tool list with itself and `last_decision` re-runs the
+executive's own decision, so they check that a value reaches the surface, not that it is right;
+`summary_without_plumbing` leaves them out. Disclosure: lane W printed its describer's answers on the held-out states
+once during development (carried in every result as `disclosure`).
 **Cannot show:** whether the answers are clear to a person; continuity over a long-running process.
 
 ### 5. Selective answering (`selective.py`)
 The offline Web Cortex benchmark run once, every report kept; items are its verification questions (gold state) and
 authoritative questions (gold answer). Risk-coverage curve, AURC, coverage at 5 % and 10 % risk, AUROC of the
 confidence for correctness; for the claim probability on supported/disputed items, Brier with Murphy's decomposition
-and ECE (10 equal-width bins and 5 equal-mass bins).
+and the number of items. ECE (10 equal-width bins and 5 equal-mass bins) is still computed but is not a headline and
+backs no claim: with 8 and 10 claim items, ten bins hold about one item each (Wave 1 review B5). A mechanism with a
+`decision(item)` is also scored on its selective decision (answered share, risk among the answered, wrong and right
+answers withheld). Reference `verdict_word` (the review's two-line rule: P(claim true) 0.95 / 0.05 / 0.5 from the
+verdict's state word) scores claim Brier 0.0025 on both splits; a calibration claim is read against it.
 **Cannot show:** calibration on the open web; about 20 items per split, so differences between settings are rarely
-outside noise, and on the held-out split today's answers are all correct (AUROC undefined).
+outside noise, and on the held-out split today's answers are all correct (AUROC undefined; nothing for selective
+answering to gain there).
 
 ### 6. Retention (`retention.py`) and the withheld family (`withheld.py`)
 Retention: acceptance scenarios `birth`, `grounding` (40 lifetimes), `lifelong_correction`, `graph_development`, and
@@ -167,6 +227,12 @@ offered as knowledge, an imagined reading (a what-if; until ADR-052 §9 this cas
 critical memory pressure, a full disk, a spent budget, the owner's stop, acting on a suspected change, syndicated
 misinformation, an autonomous request to adapt the model, a lost worker, a constant forecast gaming ECE. Items that
 cannot be staged today are listed with the reason or the family that measures them.
+Results are reported by origin (`by_origin`, `adversarial.ORIGIN`), never added up into an improvement: `original`
+(the 13 Wave 0 cases, one of them redefined by ADR-052 §6), `added_wave1` (lane K's four invariant cases, which pass
+with every Wave 1 setting off as well) and `restored` (`system_made_content_never_enters_the_journal`: the original
+concern of the redefined case, staged where it applies — a quarantined what-if record's id offered as a reading's
+id, root and sample, and readings labelled inference, simulation or speculation, all refused with the belief, the
+journal and the state version unchanged; it guards lane P's Wave 0 mechanism, so it passes in every regime).
 **Cannot show:** behaviour under real adversaries; it is a regression set, not a tuning set (no split).
 
 ## Baseline (unchanged system)
@@ -204,6 +270,29 @@ selective and retention are deterministic single runs). Full numbers, per world,
 | retention | scenarios pass; offline metrics | 4 / 4; recorded as the reference values | 4 / 4 | |
 | adversarial | cases passing | 12 of 13 | 12 of 13 | failing: `simulated_reading_moves_no_belief` (relabelled by ADR-052 §9: now `imagined_reading_moves_no_belief`, passing) |
 | withheld (`--final`, once) | anticipation breach ticks; web noise share; counterfactual coverage; self coverage | 137.3 (6.7); 0.857; 0.143; 0.80 | | ledger: one entry |
+
+### The baseline re-scored after the Wave 1 review
+
+`genesis_baseline.json` above is unchanged and stays the recorded baseline. The same unchanged behaviour (every Wave 1
+setting off, the baseline mechanisms) re-run under the scoring the review asked for is in
+`docs/quality/evidence/genesis_baseline_rescored.json` (`scripts/bench_wave1.py rescore`), beside the old numbers.
+Renamed metrics keep their old values (`answered_share` = the old `coverage`, `declined_confounded_share` = the old
+`abstention_correct`).
+
+| Family | New metric | Development | Held-out |
+|---|---|---|---|
+| counterfactual | answered within tolerance, all answerable (28 per seed) | 0.083 | 0.071 |
+| | — equations handed over (16) / belief what-ifs (3) / learned graph (9) | 0 / 0 / 0.259 | 0 / 0 / 0.222 |
+| | front-door questions declined (an honest abstention, 4 per seed) | 4 | 4 |
+| | interval score of the answered (95 %, scale units; 3 / 2 answered) | 1.95 | 1.92 |
+| | reference `zero` (0, sd 1e6): within tolerance, all / learned graph; interval score | 0.119 / 0.111; > 10^7 | 0.250 / 0.407; > 10^7 |
+| self_model | accuracy, original key / current key / without the 2 plumbing probes | 0.80 / 0.80 / 0.923 | 0.80 / 0.80 / 0.923 |
+| selective | claim Brier = reliability, resolution (n) — unchanged | 0.095, 0.250 (8) | 0.122, 0.240 (10) |
+| | reference `verdict_word`: claim Brier | 0.0025 | 0.0025 |
+| adversarial | original / added in Wave 1 / restored, passing | 13 of 13 / 4 of 4 / 1 of 1 | same |
+
+The recorded 12 of 13 counted `simulated_reading_moves_no_belief` as failing; under ADR-052 §6's redefinition the
+original 13 pass. That is a change of definition, not a change of behaviour.
 
 Cost (wall seconds on this host, development run): anticipation 0.05, information value 0.45, counterfactual 0.11,
 self-description 0.09, selective 14.1 (the offline corpus is run once per process; the held-out run reuses it, so its
@@ -258,11 +347,13 @@ these numbers measures "intelligence". They are task scores on synthetic worlds 
 ## Registered mechanisms
 
 - **`imagination` (lane M, ADR-052; counterfactual, retention, adversarial).** Components `scm`, `what_if`,
-  `forecast`, `action`. Counterfactual coverage 1.0 on both splits (baseline 0.107 / 0.071), mean relative error 0.011
-  / 0.010, interval coverage and correct abstention 1.0; each ablation and the costs are in
-  `docs/quality/evidence/genesis_imagination.json`. The confounded structures of this family are identifiable by the
-  front-door criterion through X1; "decline" is scored correct, which fits an engine without front-door adjustment
-  (ADR-052, benchmark note). The splits are unchanged.
+  `forecast`, `action`. *As first recorded:* "coverage 1.0 on both splits (baseline 0.107 / 0.071)" — withdrawn as a
+  headline after the Wave 1 review (B3): coverage counted any answer. *Now:* answered within tolerance 0.964 / 1.000
+  (baseline 0.083 / 0.071; 12 further seeds on held-out 0.985 against 0.065), by group handed equations 1.0 / 1.0,
+  belief what-ifs 1.0 / 1.0 (plumbing), learned graph forecasts and actions 0.889 / 1.000 (baseline 0.259 / 0.222;
+  12 seeds 0.954 against 0.204); the front-door questions are declined (an honest abstention). Ablations, held-out
+  within tolerance: without the causal engine 0.429, without the what-if 0.893, without forecasts 0.750, without
+  pushes 0.893. The splits are unchanged.
 
 ## Wave 1 integration (lanes I, M, K, C, W on one tree)
 
@@ -279,5 +370,26 @@ list changed:
 |---|---|---|
 | `selfmodel.truth`: `uncertain_about` is `"nothing"` when every factor is settled (was `None`, which no answer could match) | W | none: the baseline answers `None` (0.80 / 0.80 reproduced) |
 | adversarial `simulated_reading_moves_no_belief` relabelled `imagined_reading_moves_no_belief` (a what-if never reaches the live belief); ADR-052 §6 | M | the case that failed now passes: 12 → 13 of 13 on the old list |
-| four adversarial cases added (`no_self_confirmation_without_evidence`, `reflection_summary_is_never_evidence`, `recheck_and_reflection_stay_bounded`, `self_reported_success_earns_no_reward`); the "not staged: Excessive internal reflection" row is gone (the third case stages it) | K | 17 of 17 scored, all passing, in every regime |
+| four adversarial cases added (`no_self_confirmation_without_evidence`, `reflection_summary_is_never_evidence`, `recheck_and_reflection_stay_bounded`, `self_reported_success_earns_no_reward`); the "not staged: Excessive internal reflection" row is gone (the third case stages it) | K | 4 new invariant cases pass in every regime (they pass with every Wave 1 setting off); reported as their own line, never as 12 → 17 |
+| counterfactual scoring (Wave 1 review B3): `answered_within_tolerance`, `interval_score`, three groups, the confounded questions relabelled answerable by the front door (their queries now also carry the observational means); `coverage` → `answered_share`, `abstention_correct` → `declined_confounded_share` | fix C | old metrics reproduced under their new names (0 differences); the re-scored baseline is a separate file |
+| self-description scored under both answer keys; two probes marked as plumbing checks (B4) | fix C | none (fields added) |
+| selective: decision scoring, reference `verdict_word`; no 10-bin ECE in any headline (B5) | fix C | none (fields added) |
+| adversarial: `system_made_content_never_enters_the_journal` restored; results by origin | fix C | the case list grows by one (it passes in every regime) |
+
+### What the Wave 1 evidence supports (after the review, fix lane C)
+
+Each claim with the wording now used. Split = the frozen split's 3 seeds (official); wide = 12 further seeds
+5001-5012 on the same worlds (supplementary, `docs/quality/evidence/genesis_wave1_wide.json`). Held-out unless
+said otherwise.
+
+| Claim as first written | Review | Wording now used |
+|---|---|---|
+| web information gain 0.093 → 0.163 | B1 overstated | split 0.093 → 0.163; wide 0.139 → 0.185 (+33 %, per-seed sd 0.08 to 0.12); everything on (re-check first) 0.124 on the split. *To be re-measured after the learning-progress rework.* |
+| noise share 0.537 / 0.800 → 0.375 "both paths" | B2 mixes two paths | timer path 0.537 → 0.375 (wide 0.41 → 0.30); idle path 0.800 → 0.375 (wide 0.71 → 0.34); idle bits per budget −0.016 → −0.017 on the split, 0.094 → 0.186 wide. *To be re-measured after the learning-progress rework.* |
+| counterfactual coverage 0.071 → 1.0 | B3 not supported | answered within tolerance 0.071 → 1.000 (wide 0.065 → 0.985); handed equations 0 → 1.0 (exact arithmetic), belief what-ifs 0 → 1.0 (plumbing), learned graph forecasts and actions 0.222 → 1.000 (wide 0.204 → 0.954; the substantive part); front-door questions declined, an honest abstention |
+| self-description 0.80 → 1.00 | B4 sound with caveats | 29 of 30 under the original answer key, 30 of 30 under lane W's key (baseline 24 of 30); `authorised_model_tools` and `last_decision` are plumbing checks; the held-out states were printed once during development |
+| claim Brier 0.122 → 0.042, ECE 0.341 → 0.199 | B5 not a calibration gain | on 10 held-out claims, adding the verification state to the posterior lowers Brier 0.122 → 0.022 with the unfitted score now shipped (0.042 with the fitted map, no longer applied; the verdict-word rule 0.0025); no held-out evidence about selective answering; `-independence`, `-guard`, `-critique` untested (0 on every item) |
+| predictive regulation avoids 0.80 of memory breaches | B6 sound within the plant | within the simulated plant with declared constants: 0.80 (wide 0.80 ± 0.07 against 0.06 ± 0.11); the forecaster is fed directly (the wiring is covered by `tests/test_predictive_wiring.py`, not by the benchmark); on held-out the gain is mainly the per-task memory reserve (without the trend 0.80; on development 0.56 → 0.11 without it); background work given up 0.044 → 0.106, false alarms 0.009 → 0.043; not measured on the host |
+| retention holds | Other | holds for the shipped defaults; fails `asks_only_while_partner_ambiguous` with information-v1 on |
+| adversarial 12 → 17 of 17 | Other: not an improvement | 13 of the original 13 under the redefinition in ADR-052 §6; 4 new invariant cases pass in every regime (they pass with every Wave 1 setting off); 1 restored case passes in every regime |
 | frozen worlds for re-checking and strategy selection, `knowledge_splits.py` (own digest, pinned in its test) | K | a new file; `splits.py` and `withheld.py` and their pinned digests are unchanged |

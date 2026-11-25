@@ -223,9 +223,9 @@ SCOPE = {
               "resources.policy.background_gate, the history file <db>.resources/internal-state.jsonl and the "
               "worker's sampler internal_state.record) is not exercised by this family; "
               "tests/test_predictive_wiring.py drives it end to end on a staged individual",
-    "reading": "a gain here is a gain inside this plant; for lane I's forecaster it comes mainly from reserving "
-               "memory per background task (removing the trend leaves most of it; scripts/bench_wave1.py "
-               "ablations)"}
+    "reading": "a gain here is a gain inside this plant; for lane I's forecaster on held-out it comes from reserving "
+               "memory per background task (removing the trend leaves all of it there; on development the trend "
+               "matters more: scripts/bench_wave1.py ablations, trend_share_of_avoided)"}
 
 
 class ReactiveRegulator:

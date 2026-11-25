@@ -2244,5 +2244,21 @@
    "decided_by": "owner",
    "note": "needs the owner's authorisation, isolated evaluation and rollback (model_adaptation_guard)"
   }
- ]
+ ],
+ "review_wave1": {
+  "note": "Wave 1 review (review1/findings-runtime-bench.md); corrected by fix lane C. The numbers above are the lane's measurement and stay as recorded; these are the claims the evidence supports. Re-measured numbers: genesis_wave1.json (split seeds), genesis_wave1_wide.json (12 further seeds 5001-5012, supplementary), genesis_baseline_rescored.json.",
+  "claims": [
+   {
+    "claim_as_first_written": "adversarial: 4 lane-K cases added pass (16/17, later 17/17)",
+    "verdict": "not an improvement",
+    "wording_now": "4 new invariant cases pass in every regime (they pass with every Wave 1 setting off); reported on their own line, never as 12 -> 17"
+   },
+   {
+    "claim_as_first_written": "information value, re-check then curiosity: held-out 0.124 against 0.093",
+    "verdict": "timer path only; seeds",
+    "wording_now": "the re-check pick then the timer path, split seeds; the idle path is reported apart; every Wave 1 chooser on, 12 further seeds on the held-out worlds 0.139 -> 0.196 (better in 12 of 12)",
+    "status": "to be re-measured after the learning-progress rework (fix lane core)"
+   }
+  ]
+ }
 }

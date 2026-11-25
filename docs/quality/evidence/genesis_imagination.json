@@ -828,5 +828,20 @@
    "horizon_5_seconds": 0.0024,
    "horizon_5_with_push_seconds": 0.0024
   }
+ },
+ "review_wave1": {
+  "note": "Wave 1 review (review1/findings-runtime-bench.md); corrected by fix lane C. The numbers above are the lane's measurement and stay as recorded; these are the claims the evidence supports. Re-measured numbers: genesis_wave1.json (split seeds), genesis_wave1_wide.json (12 further seeds 5001-5012, supplementary), genesis_baseline_rescored.json.",
+  "claims": [
+   {
+    "claim_as_first_written": "counterfactual coverage 0.107 / 0.071 -> 1.0 / 1.0; correct abstention 1.0",
+    "verdict": "B3 not supported as a headline: coverage counts any answer (0 with sd 1e6 scores 1.0); the confounded questions are front-door answerable",
+    "wording_now": "held-out answered within 0.1 x scale 0.071 -> 1.000 on the split seeds (12 further seeds 0.065 -> 0.985); handed equations 0 -> 1.0 (exact arithmetic), belief what-ifs 0 -> 1.0 (plumbing), learned graph forecasts and actions 0.222 -> 1.000 (12 seeds 0.204 -> 0.954; the substantive part; relative error 0.024 / 0.008 / 0.043 at horizon 2 / 5 / pushes); front-door questions declined: an honest abstention, neither right nor wrong"
+   },
+   {
+    "claim_as_first_written": "adversarial 13 of 13",
+    "verdict": "a redefinition, not a mechanism",
+    "wording_now": "13 of the original 13 under the redefinition in ADR-052 section 6 (a reading labelled provenance=simulated still moves the belief, as an observation of a simulated environment should); the original concern is staged again as system_made_content_never_enters_the_journal, passing in every regime"
+   }
+  ]
  }
 }

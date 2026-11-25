@@ -1621,5 +1621,32 @@
   "history_bytes": 180872,
   "gate_ms_predictive_off": 0.466,
   "gate_ms_predictive_on_full_history": 2.046
+ },
+ "review_wave1": {
+  "note": "Wave 1 review (review1/findings-runtime-bench.md); corrected by fix lane C. The numbers above are the lane's measurement and stay as recorded; these are the claims the evidence supports. Re-measured numbers: genesis_wave1.json (split seeds), genesis_wave1_wide.json (12 further seeds 5001-5012, supplementary), genesis_baseline_rescored.json.",
+  "claims": [
+   {
+    "claim_as_first_written": "learning progress: web information gain 0.093 -> 0.163 (held-out)",
+    "verdict": "B1 overstated",
+    "wording_now": "split seeds 0.093 -> 0.163; 12 further seeds on the held-out worlds 0.139 -> 0.185 (+33 %, per-seed sd 0.08 to 0.12); everything on (re-check first) 0.124 on the split seeds",
+    "status": "to be re-measured after the learning-progress rework (fix lane core)"
+   },
+   {
+    "claim_as_first_written": "noise share 0.375 on both paths (was 0.537 timer / 0.800 idle)",
+    "verdict": "B2 mixes two paths",
+    "wording_now": "timer path 0.537 -> 0.375 (12 seeds 0.41 -> 0.30); idle path 0.800 -> 0.375 (12 seeds 0.71 -> 0.34); the idle path gained no bits per budget on the split held-out seeds (-0.016 -> -0.017) though 12 further seeds show 0.094 -> 0.186",
+    "status": "to be re-measured after the learning-progress rework (fix lane core)"
+   },
+   {
+    "claim_as_first_written": "predictive regulation: held-out memory breaches avoided 0.80 (was 0)",
+    "verdict": "B6 sound within the simulated plant",
+    "wording_now": "within the simulated plant with declared constants: 0.80 on the split seeds; 12 further seeds 0.80 +- 0.07 against 0.06 +- 0.11; the benchmark feeds the forecaster directly (gate wiring, history file and sampler covered by tests/test_predictive_wiring.py only); the gain is mainly the per-task memory reserve (without the trend 0.80 on held-out); background work given up 0.044 -> 0.106, false alarms 0.009 -> 0.043; not measured on the host"
+   },
+   {
+    "claim_as_first_written": "retention holds",
+    "verdict": "only for the shipped defaults",
+    "wording_now": "retention holds for the shipped defaults; with information-v1 on, lifelong_correction fails asks_only_while_partner_ambiguous"
+   }
+  ]
  }
 }
