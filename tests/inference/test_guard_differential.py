@@ -53,10 +53,10 @@ gd = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gd)
 
 GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording", "role")
-INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 419}
-SIZES = {"restriction": 133, "case": 54, "unseen": 37, "restatement": 68, "cut": 55, "wording": 33, "role": 39}
+INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 448}
+SIZES = {"restriction": 138, "case": 56, "unseen": 37, "restatement": 81, "cut": 64, "wording": 33, "role": 39}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0, "role": 0}
+UNMET = {"restriction": 3, "case": 1, "unseen": 0, "restatement": 6, "cut": 3, "wording": 0, "role": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
@@ -65,10 +65,10 @@ PASSIVE_MARK = reasoning.PASSIVE_SWAP.split("'")[0]
 ROLE_MARK = reasoning.ROLE_SWAP.split("{")[0]
 JOINED_MARK = reasoning.JOINED_APART.split("'")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
-STRICTER = {"review": 24, "gap": 191}
+STRICTER = {"review": 24, "gap": 206}
 LOOSENED = {"review": 6, "gap": 11}
-REFUSED = {CUT_MARK: 46, RESTRICTION_MARK: 80, CASE_MARK: 27, UNSEEN_MARK: 18, PASSIVE_MARK: 37, ROLE_MARK: 21,
-           JOINED_MARK: 7}
+REFUSED = {CUT_MARK: 52, RESTRICTION_MARK: 85, CASE_MARK: 29, UNSEEN_MARK: 18, PASSIVE_MARK: 37, ROLE_MARK: 21,
+           JOINED_MARK: 9}
 
 
 @pytest.fixture(scope="module")
@@ -98,7 +98,7 @@ def test_the_reference_is_the_attack_tested_commit_and_its_inputs_are_of_four_ki
     assert reference["commit"] == "307b9070f973be63b1cdbd8da222da8114bd32d6"
     assert reference["reference_guard_tests"] == "827 passed"          # that commit's own guard tests, while recording
     assert reference["cases_by_origin"] == INPUTS
-    assert len(reference["cases"]) == sum(INPUTS.values()) == 1895
+    assert len(reference["cases"]) == sum(INPUTS.values()) == 1924
     kinds = {c["kind"] for c in reference["cases"]}
     assert kinds == {"compose", "guard", "answer"}
 

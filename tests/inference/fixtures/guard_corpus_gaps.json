@@ -5511,8 +5511,8 @@
 [
 "C1"
 ],
-"lost",
-"faithful; a name built on a word for a group of people reads as a scope"
+"accept",
+"faithful; the group word does not head the name"
 ]
 ]
 },
@@ -6139,6 +6139,559 @@
 "C1"
 ],
 "accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"NumPy 2.5.5 fixes CVE-2026-1234",
+[
+1,
+2
+]
+],
+[
+"supported",
+"CVE-2026-1234 affects Windows builds since NumPy 2.4.0",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"q": "What fixes CVE-2026-1234?",
+"s": [
+[
+"NumPy 2.5.5 fixes CVE-2026-1234 in Windows builds.",
+[
+"C1",
+"C2"
+],
+"accept",
+"two claims joined through the CVE; 2.4.0 is where the flaw starts, not the version the Windows builds are tied to"
+],
+[
+"NumPy 2.5.5 fixes CVE-2026-1234, which affects Windows builds since NumPy 2.4.0.",
+[
+"C1",
+"C2"
+],
+"accept"
+],
+[
+"NumPy 2.4.0 fixes CVE-2026-1234.",
+[
+"C1",
+"C2"
+],
+"reject",
+"the version the flaw starts in named as its fix"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Lumen 3.2 patches the memory leak",
+[
+1,
+2
+]
+],
+[
+"supported",
+"The memory leak affects ARM boards since Lumen 3.0",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"q": "What patches the memory leak?",
+"s": [
+[
+"Lumen 3.2 patches the memory leak on ARM boards.",
+[
+"C1",
+"C2"
+],
+"accept",
+"a bound ('since 3.0') owns nothing exclusively"
+],
+[
+"Lumen 3.2 patches the memory leak that affects ARM boards since Lumen 3.0.",
+[
+"C1",
+"C2"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Orbix 7 removes the legacy importer",
+[
+1,
+2
+]
+],
+[
+"supported",
+"The legacy importer was written by Lumen Labs in 2019",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"q": "What does Orbix 7 remove?",
+"s": [
+[
+"Orbix 7 removes the legacy importer written by Lumen Labs.",
+[
+"C1",
+"C2"
+],
+"accept",
+"a year is no version of Orbix"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux",
+[
+1,
+2
+]
+]
+],
+"gap": "restatement",
+"q": "What does Zephyr support?",
+"s": [
+[
+"Windows is supported by Zephyr 4.2.",
+[
+"C1"
+],
+"reject",
+"the swap with the name the claim ties to 4.1 first in the sentence"
+],
+[
+"Windows: supported by Zephyr 4.2.",
+[
+"C1"
+],
+"reject",
+"the same with a colon"
+],
+[
+"Linux is supported by Zephyr 4.1.",
+[
+"C1"
+],
+"reject",
+"the swap the other way"
+],
+[
+"Windows is supported by Zephyr 4.1.",
+[
+"C1"
+],
+"accept"
+],
+[
+"Linux is supported by Zephyr 4.2.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Zephyr 4.1 supports Windows"
+],
+[
+"supported",
+"Zephyr 4.2 supports Linux"
+]
+],
+"gap": "restatement",
+"q": "What does Zephyr support?",
+"s": [
+[
+"Windows is supported by Zephyr 4.2.",
+[
+"C1",
+"C2"
+],
+"reject",
+"versions swapped across two cited claims, the name first"
+],
+[
+"Linux is supported by Zephyr 4.2.",
+[
+"C1",
+"C2"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"The Kestrel blender is the most reliable model according to a review by Consumer Reports"
+]
+],
+"gap": "cut",
+"q": "Which blender is the most reliable?",
+"s": [
+[
+"The Kestrel blender is the most reliable model according to a review by Consumer Reports.",
+[
+"C1"
+],
+"accept",
+"a group word inside a name is not its head"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix phones are the most trusted brand according to a report by Reader's Digest"
+]
+],
+"gap": "cut",
+"s": [
+[
+"Orbix phones are the most trusted brand according to a report by Reader's Digest.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix shares are undervalued according to a report by Investor's Business Daily"
+]
+],
+"gap": "cut",
+"s": [
+[
+"Orbix shares are undervalued according to a report by Investor's Business Daily.",
+[
+"C1"
+],
+"accept"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Python is the most used language according to a survey by Stack Overflow Developers"
+]
+],
+"gap": "cut",
+"s": [
+[
+"Python is the most used language according to a survey by Stack Overflow Developers.",
+[
+"C1"
+],
+"lost",
+"faithful; a name headed by a word for a group of people, with no organisation noun, reads as a scope ('Windows Users')"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Child poverty rose in 2025 according to a report by Save the Children"
+]
+],
+"gap": "cut",
+"s": [
+[
+"Child poverty rose in 2025 according to a report by Save the Children.",
+[
+"C1"
+],
+"lost",
+"faithful; refused by the article inside the name (as 307b907 did) and by its head"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix 9 is stable according to the advisory from Premium Customers"
+]
+],
+"gap": "cut",
+"s": [
+[
+"Orbix 9 is stable according to the advisory from Premium Customers.",
+[
+"C1"
+],
+"reject",
+"a group named as the advisory's author: source or scope"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"NumPy 2.5.5 is secure according to the report by Linux Developers"
+]
+],
+"gap": "cut",
+"s": [
+[
+"NumPy 2.5.5 is secure according to the report by Linux Developers.",
+[
+"C1"
+],
+"reject",
+"a group named as the report's author: source or scope"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The update affects all versions not only in Europe but worldwide",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The update affects all versions worldwide.",
+[
+"C1"
+],
+"accept",
+"'not only' adds, it excepts nothing"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The recall covers every model not merely in the US but abroad",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The recall covers every model abroad.",
+[
+"C1"
+],
+"accept",
+"'not merely' adds, it excepts nothing"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The fix reaches all users not yet on version 3",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The fix reaches all users.",
+[
+"C1"
+],
+"reject",
+"a negated exception with 'yet' dropped"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The discount applies to all members not paying by card",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"s": [
+[
+"The discount applies to all members.",
+[
+"C1"
+],
+"reject",
+"a negated exception with a participle dropped"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Orbix 3.0 was released in May, and the team made every effort not to break the API",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "When was Orbix 3.0 released?",
+"s": [
+[
+"Orbix 3.0 was released in May.",
+[
+"C1"
+],
+"accept",
+"'not to' is an infinitive, not an exception"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Acme's IT department migrated to Linux in 2024",
+[
+1,
+2
+]
+],
+[
+"supported",
+"The IT department reported fewer outages after the migration",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"q": "What did the IT department do?",
+"s": [
+[
+"Acme's IT department migrated to Linux in 2024, and it reported fewer outages after the migration.",
+[
+"C1",
+"C2"
+],
+"accept",
+"'it' stands where the claim's 'The IT department' stood"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The IT department audited the servers in May",
+[
+1,
+2
+]
+]
+],
+"gap": "case",
+"s": [
+[
+"The IT department audited it in May.",
+[
+"C1"
+],
+"reject",
+"a pronoun of the sentence's own where the claim names the servers"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix phones are the most trusted brand according to a report by People"
+]
+],
+"gap": "cut",
+"s": [
+[
+"Orbix phones are the most trusted brand according to a report by People.",
+[
+"C1"
+],
+"lost",
+"faithful; a name that is a single word for a group of people reads as a scope"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix 9 is stable according to the report by the Orbix User Association"
+]
+],
+"gap": "cut",
+"s": [
+[
+"Orbix 9 is stable according to the report by the Orbix User Association.",
+[
+"C1"
+],
+"accept",
+"a group word that does not head the name"
 ]
 ]
 }
