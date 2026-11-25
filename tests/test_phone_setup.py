@@ -346,7 +346,9 @@ def test_start_runs_the_services_and_stops_them_all_on_sigterm(home, capsys):
     reader = threading.Thread(target=lambda: lines.extend(iter(proc.stdout.readline, "")), daemon=True)
     reader.start()
     deadline = time.monotonic() + 30
-    while time.monotonic() < deadline and not any("NeuroSciFi is running." in line for line in lines):
+    wanted = ("NeuroSciFi is running.", '[pocket] Pairing: in the console choose "Add a phone"')
+    # The services print independently: Pocket's line may come just after the summary, so wait for both.
+    while time.monotonic() < deadline and not all(any(w in line for line in lines) for w in wanted):
         assert proc.poll() is None, "".join(lines)
         time.sleep(0.1)
     text = "".join(lines)
