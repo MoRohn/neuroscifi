@@ -92,7 +92,10 @@ def sandbox(db, *, max_bytes=None, max_seconds=None):
 
     copy = sqlite3.connect(":memory:", isolation_level=None)
     try:
-        db.backup(copy, pages=4096, progress=late)
+        # One step, one read snapshot (review1 Q2): a paged copy restarts whenever another connection commits, and
+        # under a writer committing every 2 ms a 257 MiB file never finished in 10 s (a single step: 0.07 s; the
+        # numbers are in lane fix1b's report). A WAL reader does not hold writers back, and the size is bounded above.
+        db.backup(copy, pages=-1, progress=late)
         if store.database_path(copy) is not None:      # by construction; checked so no change can make it a file
             raise RuntimeError("a sandbox must be an in-memory database")
         copy.execute("PRAGMA foreign_keys=ON")

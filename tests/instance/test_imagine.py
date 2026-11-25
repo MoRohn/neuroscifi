@@ -84,6 +84,33 @@ def test_the_sandbox_is_bounded_by_size_and_by_time(individual):
                            "WHERE i < 10000000000").fetchone()
 
 
+def test_the_sandbox_copies_a_file_another_connection_keeps_writing(individual):
+    """review1 Q2: the paged copy restarted at every commit of another connection; under a busy writer it ran out of
+    time on every try. One step reads one snapshot."""
+    import threading
+    db, path = individual
+    with store.write(db):
+        db.execute("CREATE TABLE pad(x BLOB)")
+        db.executemany("INSERT INTO pad VALUES(randomblob(4000))", [()] * 10000)     # ~40 MiB: several paged steps
+    stop = threading.Event()
+
+    def writer():
+        with closing(store.connect(path)) as other:
+            while not stop.is_set():
+                other.execute("BEGIN IMMEDIATE")
+                other.execute("INSERT INTO pad VALUES(randomblob(10))")
+                other.execute("COMMIT")
+    thread = threading.Thread(target=writer)
+    thread.start()
+    try:
+        for _ in range(3):
+            with imagine.sandbox(db, max_seconds=1.0) as box:
+                assert box.db.execute("SELECT count(*) FROM evidence").fetchone()[0] == 19
+    finally:
+        stop.set()
+        thread.join()
+
+
 # ---- what if ---------------------------------------------------------------------------------------------------------
 
 def test_what_if_is_the_exact_posterior_of_the_altered_individual_and_writes_nothing(individual):
