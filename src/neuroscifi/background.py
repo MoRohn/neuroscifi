@@ -70,6 +70,17 @@ ACTIVITIES = {
         "kind": "cognition", "what": "the timer's scenario records for open predictions and their comparison once "
                                      "settled (imagined store only; off unless imagine_scenarios is on)",
         "sites": ("neuroscifi.webcortex.scenarios:tick",)},
+    "tick.knowledge_recheck": {
+        "kind": "cognition", "what": "the timer's re-check of the knowledge most at risk of being stale (lane K, "
+                                     "setting idle_recheck, off by default): refresh tasks admitted by "
+                                     "autonomy.admission",
+        "sites": ("neuroscifi.webcortex.scheduler:tick", "neuroscifi.webcortex.recheck:run",
+                  "neuroscifi.webcortex.recheck:submit")},
+    "tick.reflection": {
+        "kind": "cognition", "what": "the timer's bounded reflection over the records (lane K, setting reflection, "
+                                     "off by default): a report, at most 5 actions (re-check marks, abandoned "
+                                     "hypotheses, one owner question)",
+        "sites": ("neuroscifi.webcortex.scheduler:tick", "neuroscifi.webcortex.reflection:scheduled")},
     "task.background_run": {
         "kind": "cognition", "what": "a background task already running: it stops at its next stop check, "
                                      "before any further network step",
@@ -160,7 +171,8 @@ MEASUREMENT_ONLY = ("neuroscifi.acceptance.cognition",)
 # systemd units that start something on their own (deploy/systemd), with the activities they run.
 UNITS = {
     "neuroscifi-webcortex-tick.timer": ("tick.monitors", "tick.prediction_refresh", "tick.curiosity",
-                                        "tick.cache_retention", "tick.scenarios"),
+                                        "tick.cache_retention", "tick.scenarios", "tick.knowledge_recheck",
+                                        "tick.reflection"),
     "neuroscifi-checkpoint.timer": ("instance.sweep", "instance.checkpoint"),
     "neuroscifi-idle.timer": ("resources.idle_unload",),
     "neuroscifi-wake.path": ("resources.wake",),

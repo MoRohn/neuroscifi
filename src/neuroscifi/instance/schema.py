@@ -715,6 +715,63 @@ MIGRATIONS = [
     """ + ";\n".join(_STORE_TRIGGERS_17.values()) + """;
     -- No reference column of an evidence-side table may name an imagined record (schema._NO_IMAGINED).
     """ + ";\n".join(NO_IMAGINED_TRIGGERS.values()) + ";\n",
+    # ---- recursive knowledge evolution (lane K, ADR-055; webcortex/premises.py, reflection.py, strategies.py) -------
+    """
+    -- Hypothesis fields of directive 7.2: the assumptions it makes (template statements from its own records), the
+    -- claims that speak against it, the expected information gain (bits) and the cost of one investigation when it
+    -- was recorded, and its revision record (every status change, with the evidence that made it). Rows written
+    -- before this migration keep the defaults: nothing is invented for them.
+    ALTER TABLE web_hypotheses ADD COLUMN assumptions TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE web_hypotheses ADD COLUMN counter_evidence TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE web_hypotheses ADD COLUMN expected_info_gain REAL;
+    ALTER TABLE web_hypotheses ADD COLUMN cost REAL;
+    ALTER TABLE web_hypotheses ADD COLUMN revisions TEXT NOT NULL DEFAULT '[]';
+    -- What a knowledge item or a hypothesis rests on (its premises), recorded when it is derived. Never rewritten for
+    -- older rows. A premise is a stored record of the individual; an imagined record is never a premise.
+    CREATE TABLE IF NOT EXISTS web_premises(
+      dependent_kind TEXT NOT NULL CHECK(dependent_kind IN ('knowledge','hypothesis')),
+      dependent_id INTEGER NOT NULL,
+      premise_kind TEXT NOT NULL CHECK(premise_kind IN ('knowledge','claim','hypothesis')),
+      premise_id TEXT NOT NULL CHECK(length(premise_id) BETWEEN 1 AND 128 AND premise_id NOT GLOB 'imagined:*'),
+      relation TEXT NOT NULL CHECK(relation IN ('supported_by','alternative_to','revision_of')),
+      created_at REAL NOT NULL,
+      PRIMARY KEY(dependent_kind, dependent_id, premise_kind, premise_id));
+    CREATE INDEX IF NOT EXISTS web_premises_premise ON web_premises(premise_kind, premise_id);
+    -- A mark "to re-check": a premise changed (superseded, contradicted, forgotten), a prediction the subject rested
+    -- on failed, or the idle re-check chose it. A mark never changes a belief; it queues a re-verification, and the
+    -- subject changes only through the normal evidence path. cause holds kind and id of what changed (never text).
+    CREATE TABLE IF NOT EXISTS web_rechecks(
+      id INTEGER PRIMARY KEY,
+      subject_kind TEXT NOT NULL CHECK(subject_kind IN ('knowledge','hypothesis')),
+      subject_id INTEGER NOT NULL,
+      reason TEXT NOT NULL CHECK(reason IN ('premise_superseded','premise_contradicted','premise_forgotten',
+        'prediction_failed','idle','reflection')),
+      cause TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(cause)),
+      status TEXT NOT NULL CHECK(status IN ('marked','queued','done','dropped')),
+      task_id TEXT, outcome TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL);
+    CREATE INDEX IF NOT EXISTS web_rechecks_subject ON web_rechecks(subject_kind, subject_id, status);
+    CREATE INDEX IF NOT EXISTS web_rechecks_task ON web_rechecks(task_id);
+    -- Reflection reports (webcortex/reflection.py): deterministic, over a period, every line naming the record ids it
+    -- was read from; the bounded actions it took. Numbers, ids and template text only (no statement is quoted).
+    CREATE TABLE IF NOT EXISTS web_reflections(
+      id INTEGER PRIMARY KEY, period_from REAL NOT NULL, period_to REAL NOT NULL,
+      report TEXT NOT NULL CHECK(json_valid(report)), actions TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(actions)),
+      trigger TEXT NOT NULL CHECK(trigger IN ('owner','schedule')), created_at REAL NOT NULL);
+    -- The improvement ledger (directive 7.7): every adopted or reverted change of a strategy or rule, with its
+    -- evidence (benchmark run ids), generalisation, regressions checked, cost, reproducibility, the decision and who
+    -- decided. Append-only: a later row supersedes an earlier one for the same capability.
+    CREATE TABLE IF NOT EXISTS improvement_ledger(
+      id INTEGER PRIMARY KEY, capability TEXT NOT NULL CHECK(length(capability) BETWEEN 1 AND 80),
+      level INTEGER NOT NULL CHECK(level BETWEEN 1 AND 3),
+      change TEXT NOT NULL CHECK(length(change) BETWEEN 1 AND 500),
+      evidence TEXT NOT NULL CHECK(json_valid(evidence)), generalisation TEXT NOT NULL CHECK(json_valid(generalisation)),
+      regressions TEXT NOT NULL CHECK(json_valid(regressions)), cost TEXT NOT NULL CHECK(json_valid(cost)),
+      reproducibility TEXT NOT NULL CHECK(json_valid(reproducibility)),
+      decision TEXT NOT NULL CHECK(decision IN ('retain','revise','revert')),
+      decided_by TEXT NOT NULL CHECK(decided_by IN ('owner','gate')), created_at REAL NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS improvement_ledger_append_only BEFORE UPDATE ON improvement_ledger
+      BEGIN SELECT RAISE(ABORT,'the improvement ledger is append-only'); END;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

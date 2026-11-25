@@ -468,10 +468,34 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     imagined_report = scenarios.tick(db, now)
     if imagined_report is not None:
         report["scenarios"] = imagined_report
+    from . import recheck, reflection
+    reflected = reflection.scheduled(db, now)    # lane K: the bounded reflection (setting `reflection`, off)
+    if reflected is not None:
+        if "skipped" in reflected:
+            report["skipped"].append({"what": "reflection", "reason": reflected["skipped"]})
+        else:
+            report["reflection"] = {"id": reflected["id"], "actions": len(reflected["actions"])}
     if not cfg.autonomous:
         report["skipped"].append({"what": "predictions and curiosity",
                                   "reason": "autonomous research is off (nsf web config --autonomous)"})
         return _retention(report, services, now)
+    # lane K: the re-check of the knowledge most at risk of being stale, before the due-order refreshes (setting
+    # `idle_recheck`, off by default; its own share of the daily allowance; recheck.run asks the owner's quiet)
+    if recheck.enabled(db) and budget_left > 0:
+        rechecked = recheck.run(db, now, limit=min(cfg.recheck_per_tick, budget_left),
+                                over_cap=lambda: _over_cap(db, now, cfg))
+        report["skipped"] += rechecked["skipped"]
+        for item in rechecked["submitted"]:
+            budget_left -= 1
+            if queue:
+                report["queued"].append({"task_id": item["task_id"], "origin": "recheck"})
+                continue
+            try:
+                done = orchestrator.run(db, item["task_id"], services)
+            except (LeaseHeld, Conflict) as exc:
+                report["queued"].append({"task_id": item["task_id"], "origin": "recheck", "note": str(exc)[:200]})
+                continue
+            report["ran"].append({"task_id": done["id"], "origin": "recheck", "status": done["status"]})
     refreshes, quiet = owner_switch.allowed(db, "tick.prediction_refresh")
     if not refreshes:
         report["skipped"].append({"what": "prediction refreshes", "reason": quiet})

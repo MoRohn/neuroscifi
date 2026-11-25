@@ -49,8 +49,9 @@ MIN_LINKED_COVERAGE = 0.5             # a cluster of the hypothesis' own task mu
 _DECISIVE = ("supported", "disputed")
 H_COLUMNS = ("id", "key", "statement", "origin", "status", "verification", "claims", "claim_values", "polarity",
              "alternatives", "knowledge_id", "parent_id", "task_id", "note", "created_at", "updated_at",
-             "resolved_at")
-_H_JSON = {"verification": {}, "claims": [], "claim_values": [], "alternatives": []}
+             "resolved_at", "assumptions", "counter_evidence", "expected_info_gain", "cost", "revisions")
+_H_JSON = {"verification": {}, "claims": [], "claim_values": [], "alternatives": [], "assumptions": [],
+           "counter_evidence": [], "revisions": []}
 P_COLUMNS = ("id", "knowledge_id", "hypothesis_id", "expectation", "criteria", "probability", "check_after",
              "deadline", "created_at", "task_id", "checked_at", "outcome", "detail")
 
@@ -301,6 +302,8 @@ def open_hypothesis(db, *, key, statement, origin, verification, claims, values,
                       now)).lastrowid
     for cid in claims:
         link(db, task_id, "claim", cid, "evidence_for", "hypothesis", hid, {"origin": origin}, now)
+    _describe(db, hid, origin=origin, verification=verification, claims=claims, knowledge_id=knowledge_id,
+              parent_id=parent_id, now=now)
     if with_prediction:
         try:
             horizon = min(temporal.ttl(freshness_class, ttl_overrides), MAX_HORIZON)
@@ -308,6 +311,136 @@ def open_hypothesis(db, *, key, statement, origin, verification, claims, values,
             horizon = MAX_HORIZON
         predict(db, hid, now, deadline=now + horizon)
     return hid, True
+
+
+# ---- directive 7.2: what a hypothesis assumes, what speaks against it, what checking it is worth (lane K) ---------
+MAX_REVISIONS = 20                    # status changes kept on a hypothesis (the oldest go first)
+MAX_COUNTER_EVIDENCE = 20
+COMPETITION_DAMPING = 0.5             # likelihood ratios are raised to this power (shrunk toward 1), research.md 4.5
+COMPETITION_RELIABILITY = 0.8         # one independent source group's report reliability (curiosity.RELIABILITY)
+_ASSUMPTION = {
+    "conflicting": "one side of the disagreement is right: the sources do not describe different scopes or periods",
+    "disputed": "one side of the disagreement is right: the sources do not describe different scopes or periods",
+    "temporally_unresolved": "the statement and its sources refer to the same reference period",
+    "insufficient": "a further independent source would report the statement if it holds",
+    "gap": "a further independent source would report the statement if it holds",
+    "not_evaluated": "the statement can be checked against sources at all",
+    "prediction_error": "the observation that refuted the hypothesis it revises was itself correct",
+    "owner": "the owner's statement is what is to be tested, as stated",
+}
+
+
+def fields_enabled(db) -> bool:
+    return bool(getattr(state.get_config(db), "hypothesis_fields", True)) and _has_k_columns(db)
+
+
+def _has_k_columns(db) -> bool:
+    return any(r[1] == "revisions" for r in db.execute("PRAGMA table_info(web_hypotheses)"))
+
+
+def _describe(db, hid, *, origin, verification, claims, knowledge_id, parent_id, now):
+    """A new hypothesis' assumptions (template statements read from its own records), counter-evidence (the claims
+    of the knowledge item it is an alternative to), expected information gain and cost of one investigation (the
+    numbers autonomy.candidates ranks it by), and its premises (premises.record). Caller owns the txn."""
+    from . import curiosity, premises
+    if fields_enabled(db):
+        groups = (verification.get("independent_groups") or {}).get("supporting", 0) if verification else 0
+        assumptions = [_ASSUMPTION.get(origin, _ASSUMPTION["insufficient"]),
+                       f"the {groups} independent source group(s) behind it are not copies of one another",
+                       "claims under the same or a near-identical key are about the same subject"]
+        counter = []
+        if knowledge_id is not None:
+            assumptions.append(f"knowledge #{knowledge_id} may be wrong or out of date")
+            row = db.execute("SELECT supporting FROM web_knowledge WHERE id=?", (knowledge_id,)).fetchone()
+            counter = list(dict.fromkeys(state.loads(row[0], [])))[:MAX_COUNTER_EVIDENCE] if row else []
+        if parent_id is not None:
+            assumptions.append(f"hypothesis #{parent_id} failed for the reason its error analysis states")
+        p = _clip((verification or {}).get("confidence"))
+        db.execute("UPDATE web_hypotheses SET assumptions=?, counter_evidence=?, expected_info_gain=?, cost=?, "
+                   "revisions=? WHERE id=?",
+                   (state.dumps(assumptions), state.dumps(counter),
+                    round(curiosity.info_gain(0.5 if p is None else p), 6), round(curiosity.cost("fact_verification"), 6),
+                    state.dumps([{"at": now, "to": "open", "evidence": {"origin": origin, "claims": list(claims)[:20],
+                                                                        "task_id": None}}]), hid))
+    if premises.enabled(db):
+        premises.record(db, "hypothesis", hid, [("claim", c, "supported_by") for c in claims]
+                        + ([("knowledge", knowledge_id, "alternative_to")] if knowledge_id is not None else [])
+                        + ([("hypothesis", parent_id, "revision_of")] if parent_id is not None else []), now)
+
+
+def record_revision(db, hid, to, evidence, now):
+    """Append one evidence-based status change to a hypothesis' revision record (at most MAX_REVISIONS kept).
+    Caller owns the txn; nothing while hypothesis_fields is off."""
+    if not fields_enabled(db):
+        return
+    row = db.execute("SELECT revisions FROM web_hypotheses WHERE id=?", (hid,)).fetchone()
+    if row is None:
+        return
+    revisions = (state.loads(row[0], []) + [{"at": now, "to": to, "evidence": evidence}])[-MAX_REVISIONS:]
+    db.execute("UPDATE web_hypotheses SET revisions=? WHERE id=?", (state.dumps(revisions), hid))
+
+
+def refresh_counter_evidence(db, hids) -> None:
+    """Add the claims that contradict each hypothesis (its 'contradicts' edges) to its counter-evidence. Caller owns
+    the txn."""
+    if not fields_enabled(db):
+        return
+    for hid in dict.fromkeys(hids or []):
+        row = db.execute("SELECT counter_evidence FROM web_hypotheses WHERE id=?", (hid,)).fetchone()
+        if row is None:
+            continue
+        found = [s for (s,) in db.execute("SELECT DISTINCT src FROM web_claim_links WHERE kind='contradicts' AND "
+                                          "dst_kind='hypothesis' AND dst=? ORDER BY id", (str(hid),))]
+        merged = list(dict.fromkeys(state.loads(row[0], []) + found))[:MAX_COUNTER_EVIDENCE]
+        if merged != state.loads(row[0], []):
+            db.execute("UPDATE web_hypotheses SET counter_evidence=? WHERE id=?", (state.dumps(merged), hid))
+
+
+def abandon_if_unsupported(db, hid, now) -> bool:
+    """The evidence rule for 'abandoned' (setting hypothesis_abandon): a derived (not the owner's) open hypothesis
+    with no open prediction whose every settled prediction expired 'inconclusive' without a single tracked
+    observation - nothing about it was found in the time it gave itself. Recorded with that evidence. The owner's
+    hypotheses are never abandoned automatically. Caller owns the txn. Returns whether it was abandoned."""
+    if not getattr(state.get_config(db), "hypothesis_abandon", False):
+        return False
+    row = db.execute("SELECT status, origin FROM web_hypotheses WHERE id=?", (hid,)).fetchone()
+    if row is None or row[0] != "open" or row[1] == "owner":
+        return False
+    preds = [_p_row(r) for r in db.execute(f"SELECT {','.join(P_COLUMNS)} FROM web_predictions WHERE "
+                                           "hypothesis_id=? ORDER BY id", (hid,))]
+    if not preds or any(p["outcome"] != "inconclusive" for p in preds) or \
+            any(p["detail"].get("observations") for p in preds):
+        return False
+    db.execute("UPDATE web_hypotheses SET status='abandoned', resolved_at=?, updated_at=? WHERE id=?", (now, now, hid))
+    record_revision(db, hid, "abandoned", {"rule": "no evidence by the deadline of any of its predictions",
+                                           "predictions": [p["id"] for p in preds]}, now)
+    state.log_event(db, None, "decision", {"hypothesis_id": hid, "abandoned": [p["id"] for p in preds]}, now)
+    return True
+
+
+def compete(db, key, *, damping=COMPETITION_DAMPING, reliability=COMPETITION_RELIABILITY) -> dict:
+    """The open hypotheses of one question (claim key) compared, with "other" (none of them) as a member of the set.
+    Each hypothesis' recorded evidence - independent source groups for it and against it (its verification) - gives a
+    likelihood ratio r/(1-r) per group, deliberately dampened (raised to `damping`, research.md 4.5: elicited and
+    lexical likelihoods are over-confident); the prior is uniform. Read-only and display-only: it ranks nothing and
+    changes no hypothesis. {key, members: [{hypothesis_id|"other", posterior, support, against}], damping}."""
+    lr = (reliability / (1.0 - reliability)) ** damping
+    members = []
+    for h in hypotheses(db, status="open", key=key, limit=50):
+        groups = (h["verification"] or {}).get("independent_groups") or {}
+        support, against = int(groups.get("supporting") or 0), int(groups.get("contradicting") or 0)
+        members.append({"hypothesis_id": h["id"], "statement": h["statement"], "support": support,
+                        "against": against,
+                        "weight": lr ** (support - against)})
+    if not members:
+        return {"key": key, "members": [], "damping": damping}
+    members.append({"hypothesis_id": "other", "statement": None, "support": 0, "against": 0, "weight": 1.0})
+    total = sum(m["weight"] for m in members)
+    for m in members:
+        m["posterior"] = round(m.pop("weight") / total, 6)
+    members.sort(key=lambda m: (-m["posterior"], str(m["hypothesis_id"])))
+    return {"key": key, "members": members, "damping": damping, "reliability": reliability,
+            "label": "dampened comparison of the recorded evidence; ranks nothing and decides nothing"}
 
 
 def _relation(values, polarity, other_values, other_polarity, other_statement=None) -> str:
@@ -446,6 +579,8 @@ def observe(db, task_id, observed, now, *, freshness_class="stable", ttl_overrid
             db.execute("UPDATE web_hypotheses SET status='supported', resolved_at=?, updated_at=?, "
                        "knowledge_id=coalesce(?, knowledge_id), verification=? WHERE id=?",
                        (now, now, knowledge_by_key.get(cluster.key), state.dumps(verdict), hyp["id"]))
+            record_revision(db, hyp["id"], "supported", {"prediction_id": pred["id"], "task_id": task_id,
+                                                         "state": verdict["state"], "relation": relation}, now)
             out.append({"prediction_id": pred["id"], "hypothesis_id": hyp["id"], "outcome": outcome})
             continue
         reason = (f"expected {hyp['claim_values'] or 'the statement'} (polarity {hyp['polarity']:+d}); the "
@@ -459,6 +594,9 @@ def observe(db, task_id, observed, now, *, freshness_class="stable", ttl_overrid
         db.execute("UPDATE web_hypotheses SET status=?, resolved_at=?, updated_at=?, alternatives=? WHERE id=?",
                    ("refuted" if verdict["state"] == "disputed" else "revised", now, now,
                     state.dumps(analysis["alternatives"]), hyp["id"]))
+        record_revision(db, hyp["id"], "refuted" if verdict["state"] == "disputed" else "revised",
+                        {"prediction_id": pred["id"], "task_id": task_id, "state": verdict["state"],
+                         "relation": relation}, now)
         revised = None
         if verdict["state"] == "supported":
             revised = _revise(db, pred, hyp, task_id=task_id, statement=statement, values=values, polarity=polarity,
@@ -485,6 +623,9 @@ def expire(db, now) -> list[dict]:
                 observation={"state": None, "reason": f"no decisive evidence by {_day(pred['deadline'])}",
                              "at": now})
         out.append({"prediction_id": pred["id"], "hypothesis_id": pred["hypothesis_id"], "outcome": "inconclusive"})
+    for item in out:                    # lane K: the evidence rule for 'abandoned' (setting hypothesis_abandon)
+        if abandon_if_unsupported(db, item["hypothesis_id"], now):
+            item["abandoned"] = True
     return out
 
 
@@ -1277,4 +1418,6 @@ def register(sub):
                                  "evaluation and a rollback plan (nothing is executed)")
     p.add_argument("action")
     p.add_argument("--request-json", help="{owner_authorization, isolated_evaluation, rollback_plan, ...}")
+    from . import reflection          # lane K: rechecks, reflect, reflections, strategy, ledger, compete
+    reflection.register_cli(cmd)
 

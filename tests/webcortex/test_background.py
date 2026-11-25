@@ -351,12 +351,36 @@ def drive_tick_scenarios(db, path, site, monkeypatch):
     assert db.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
     quiet(db, False)
     assert scheduler.tick(db, T0, None, queue=True)["scenarios"] == {"settled": 0, "imagined": 1}
+def drive_tick_knowledge_recheck(db, path, site, monkeypatch):
+    from test_consolidate import consolidated, two_sources
+    _, done = consolidated(db, [two_sources(published=T0 - 91 * 86400.0)], T0 - 90 * 86400.0)
+    autonomy.enable(db, T0)
+    state.set_config(db, {"idle_recheck": True}, T0)
+    quiet(db)
+    report = scheduler.tick(db, T0, None, queue=True)
+    refresh = f"refresh:{done['provisional'][0]}"
+    assert {"what": "knowledge re-check", "reason": background.QUIET_REASON} in report["skipped"]
+    assert queued(db, refresh) == [] and report["queued"] == []
+    quiet(db, False)
+    report = scheduler.tick(db, T0, None, queue=True)
+    assert [q["origin"] for q in report["queued"]][:1] == ["recheck"] and len(queued(db, refresh)) == 1
+
+
+def drive_tick_reflection(db, path, site, monkeypatch):
+    state.set_config(db, {"reflection": True}, T0)
+    quiet(db)
+    report = scheduler.tick(db, T0, None, queue=True)
+    assert {"what": "reflection", "reason": background.QUIET_REASON} in report["skipped"] and "reflection" not in report
+    assert db.execute("SELECT count(*) FROM web_reflections").fetchone()[0] == 0
+    quiet(db, False)
+    assert scheduler.tick(db, T0, None, queue=True)["reflection"]["id"] == 1
 
 
 DRIVERS = {"tick.monitors": drive_tick_monitors, "tick.prediction_refresh": drive_tick_prediction_refresh,
            "tick.curiosity": drive_tick_curiosity, "worker.idle_investigation": drive_worker_idle_investigation,
            "worker.claim_background": drive_worker_claim_background,
-           "task.background_run": drive_task_background_run, "tick.scenarios": drive_tick_scenarios}
+           "task.background_run": drive_task_background_run, "tick.scenarios": drive_tick_scenarios,
+           "tick.knowledge_recheck": drive_tick_knowledge_recheck, "tick.reflection": drive_tick_reflection}
 
 
 def test_every_registered_cognition_activity_has_a_driver():

@@ -947,9 +947,22 @@ def _web_cascade(db, removed_claims, now):
     return effects
 
 
+def _premise_cascade(db, effects, now):
+    """Lane K (ADR-055): premise rows and re-check marks naming what this forget removed go; what rested on it is
+    marked "to re-check" (webcortex.premises.purge); reflection lines naming it go (reflection.purge).
+    effects["premises"] only when something changed."""
+    from ..webcortex import premises, reflection     # lazy, as the other webcortex imports here
+    found = premises.purge(db, now)
+    found["reflection_lines_removed"] = reflection.purge(db)
+    if any(found.values()):
+        effects["premises"] = found
+    return effects
+
+
 def _web_finish(db, kind, target, effects, now):
     """Stale checkpoints, state version and deletion_log. Caller owns the txn. `target` is persisted: it must
     not carry forgotten payload (a URL or domain goes in as its digest label)."""
+    _premise_cascade(db, effects, now)
     _imagined_cascade(db, effects, now)
     effects["checkpoints_stale"] = _stale_all(db)
     effects["state_version"] = store.bump_state_version(db)
@@ -1312,6 +1325,8 @@ def replay_web_forgets(db, forgotten, now):
     for domain in sorted({s for d in domains for s in _suffixes(d)}):
         if wanted("source_domain", domain) and _forget_source_core(db, domain, now) is not None:
             out["sources"] += 1
+    if any(out.values()):
+        _premise_cascade(db, {}, now)       # lane K: premises and re-check marks of what the replay removed
     return out
 
 

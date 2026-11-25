@@ -503,7 +503,7 @@ def _overlap_share(a: set, b: set) -> float:
     return len(a & b) / min(len(a), len(b)) if a and b else 0.0
 
 
-def candidates(db, now, *, limit=10) -> dict:
+def candidates(db, now, *, limit=10, offered=()) -> dict:
     """{"chosen": ranked candidates at or above min_gain, "refused": those below it or cooling down}. Each has
     kind, key, statement, objective, mode, info_gain, cost, signals, priority, owner, depth and the reason.
 
@@ -511,7 +511,9 @@ def candidates(db, now, *, limit=10) -> dict:
     assertions) are always considered, never cut by MAX_CANDIDATES, and listed ahead of every derived candidate
     (chosen and refused alike); `total` counts both lists before `limit`, so nothing is dropped silently (T1-03).
     A derived subject that only autonomous research produced is pursued only within MAX_DERIVATION_DEPTH steps of
-    an owner record and when it shares MIN_RELEVANCE of its words with the owner subject it came from (T1-02)."""
+    an owner record and when it shares MIN_RELEVANCE of its words with the owner subject it came from (T1-02).
+    `offered`: further candidates offered by a caller (the knowledge re-check, recheck.rank: {kind, key, statement,
+    mode, info_gain, signals, extra}); they go through exactly the same rule as every other candidate."""
     from . import claims, curiosity, evolution, intent
     from .config import MODE_BUDGETS
     pol = policy(db)
@@ -609,6 +611,9 @@ def candidates(db, now, *, limit=10) -> dict:
         add("owner_assertion", key, statement, "fact_verification", curiosity.info_gain(p),
             {"gap": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6)}, {"knowledge_id": kid,
                                                                                     "owner": True})
+    for item in offered:        # lane K: the knowledge re-check's pool, admitted by this same rule
+        add(item["kind"], item["key"], item.get("statement") or "", item["mode"], float(item["info_gain"]),
+            item.get("signals") or {}, item.get("extra"))
     chosen, refused = [], []
     from . import salience
     salient = salience.enabled(db)
@@ -680,7 +685,7 @@ ADMISSION_RULES = ("unified", "legacy")
 _TICK_SCOPE = "autonomous research is limited to items already in knowledge and owner monitors; propose it instead"
 
 
-def admission(db, now, *, path, rule="unified", limit=5) -> dict:
+def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
     """The one admission rule for autonomous investigations: both launch paths (the worker's idle investigation,
     path 'idle', and the timer's curiosity, path 'tick') ask here. {"rule", "path", "gate": None or why nothing
     may be admitted, "chosen": [...], "refused": [...]}; a chosen item carries objective, mode, key and the
@@ -696,8 +701,13 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
     'legacy' (path 'tick' only, kept one release: `nsf web config --set tick_admission="legacy"`): the tick's rule
     before ADR-050 - curiosity.rank's own floor (curiosity.MIN_GAIN), knowledge items only, no goal weighting, no
     lineage, no cooldown, no recorded enable (the `autonomous` switch suffices), the statement's own words as the
-    objective."""
-    if rule not in ADMISSION_RULES or (rule == "legacy" and path != "tick"):
+    objective.
+    Path 'recheck' (lane K, recheck.py): the pool is `offered`, the knowledge re-check's ranked items, admitted by the
+    'unified' rule through candidates(); the admitted ones keep the pool's order (value), each with its
+    knowledge_id.
+    When strategy selection is in force (strategies.active: promoted through its gate, never by default), the admitted
+    candidates are re-ordered by it; it never admits or refuses one."""
+    if rule not in ADMISSION_RULES or (rule == "legacy" and path != "tick") or (path == "recheck" and rule != "unified"):
         raise ValidationError(f"admission rule {rule!r} does not apply to path {path!r}")
     out = {"rule": rule, "path": path, "gate": None, "chosen": [], "refused": []}
     if rule == "legacy":
@@ -723,6 +733,15 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
         out["gate"] = ("autonomy is not enabled by a recorded owner switch (`nsf web autonomy enable` or the "
                        "console switch)")
         return out
+    if path == "recheck":     # lane K: only the re-check's own pool, in its order, by the same rule
+        order = {item["key"]: (n, item) for n, item in enumerate(offered)}
+        ranked = candidates(db, now, limit=10 ** 6, offered=offered)
+        out["min_gain"] = ranked["min_gain"]
+        out["refused"] = [r for r in ranked["refused"] if r["key"] in order]
+        picked = sorted((c for c in ranked["chosen"] if c["key"] in order), key=lambda c: order[c["key"]][0])
+        out["chosen"] = [c | {k: order[c["key"]][1][k] for k in ("knowledge_id", "value", "p_current", "dependents",
+                                                                 "mark_id")} for c in picked][:limit]
+        return out
     pool = None
     if path == "tick":       # the tick's own pool, as before: knowledge items among curiosity.rank's top ten
         from . import curiosity
@@ -746,6 +765,9 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
                                           f"{item['kind']} (the idle investigator's)"})
             continue
         out["chosen"].append(item)
+    from . import strategies
+    if strategies.active(db):       # lane K: ranks the admitted candidates only, once promoted through its gate
+        out["chosen"], out["strategy"] = strategies.rank(db, now, out["chosen"])
     out["chosen"] = out["chosen"][:limit]
     return out
 

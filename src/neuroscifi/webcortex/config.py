@@ -131,6 +131,36 @@ class WebConfig:
     # the decision (salience.py); display and record only, it never changes what is admitted or its order.
     curiosity_learning_progress: bool = True
     salience_record: bool = True
+    # Recursive knowledge evolution (lane K, ADR-055). None of these changes a belief, a verification state or an
+    # answer: a knowledge item changes only through the evidence path (consolidate.run).
+    # A new hypothesis records its assumptions (template statements from its own records), the claims against it,
+    # the expected information gain and cost of one investigation, and every status change with its evidence.
+    # Display-only records; off: `nsf web config --set hypothesis_fields=false`.
+    hypothesis_fields: bool = True
+    # A derived hypothesis whose prediction found no evidence at all by its deadline is marked 'abandoned' (with the
+    # evidence: the expired predictions). Off by default: no benchmark measures it.
+    hypothesis_abandon: bool = False
+    # Record what a new knowledge item or hypothesis rests on (premises.py) and mark its dependents "to re-check"
+    # when a premise is superseded, contradicted or forgotten, or a prediction it rested on fails. Display-only
+    # records (a mark queues a re-verification, it changes nothing); off: `--set premise_recheck=false`.
+    premise_recheck: bool = True
+    # The timer's re-check of the knowledge most at risk of being stale (recheck.py; importance x staleness x
+    # dependents), before the due-order refreshes, admitted by autonomy.admission, at most recheck_per_tick per pass
+    # and recheck_daily per UTC day inside the daily autonomous allowance; held by quiet. Off by default (ADR-055
+    # has the measured numbers and why).
+    idle_recheck: bool = False
+    recheck_per_tick: int = 1
+    recheck_daily: int = 4
+    # The bounded reflection routine (reflection.py) on the timer, every reflection_interval_days; `nsf knowledge
+    # reflect` runs it when the owner asks. Off by default. reflection_model_summary lets a local model phrase the
+    # report (display only, stored as an 'inference' in the imagined store); off by default.
+    reflection: bool = False
+    reflection_interval_days: float = 7.0
+    reflection_model_summary: bool = False
+    # Strategy selection (strategies.py, Thompson sampling over research modes from external outcomes): "gate"
+    # follows the improvement ledger (off until a promotion passed the gate, and the owner can revert it); "off"
+    # never ranks by it.
+    strategy_selection: str = "gate"
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":
