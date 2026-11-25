@@ -327,6 +327,12 @@ def test_a_mechanism_switched_on_never_reads_a_corpus_run_cached_without_it(monk
     selective._CACHE[False] = "a baseline run"
     with cognition._activation(lambda: object()):                     # no mechanism to switch on: the cache stands
         assert selective._CACHE == {False: "a baseline run"}
+    # review0b N9: the baseline of retention and adversarial switches nothing on either: it reads the cached run, as
+    # the recorded baseline costs did (clearing it re-ran the corpus: 29.5 s instead of 14.6 s)
+    for family in ("retention", "adversarial"):
+        with cognition._activation(cognition._maker(cognition._REGISTRY[(family, "baseline")], frozenset())):
+            assert selective._CACHE == {False: "a baseline run"}
+    assert selective._CACHE == {False: "a baseline run"}
 
 
 def test_retention_compares_only_with_a_baseline_of_the_same_corpus():

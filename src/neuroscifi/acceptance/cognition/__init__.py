@@ -240,7 +240,8 @@ def _activation(make):
     if make == "oracle" or not callable(make):
         return nullcontext()
     agent = make()
-    return _switched_on(agent) if hasattr(agent, "activate") else nullcontext()
+    # the baseline switches nothing on: it reads the cached corpus run, as the recorded baseline costs did (review0b N9)
+    return _switched_on(agent) if hasattr(agent, "activate") and not isinstance(agent, _Inert) else nullcontext()
 
 
 @contextmanager
