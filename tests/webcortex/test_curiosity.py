@@ -68,7 +68,10 @@ def test_stale_contested_beats_stale_corroborated_and_fresh_is_excluded(db):
 
 def test_irreducibly_noisy_subject_stops_dominating(db):
     """Balanced contradictory sources whose disagreement persists however often they are read: high expected gain
-    on paper, zero realised gain. After two futile investigations ('unchanged' feedback) it is down-weighted."""
+    on paper, zero realised gain. After two futile investigations ('unchanged' feedback) it is down-weighted.
+    The futility streak alone (learning progress, on by default since ADR-051, removes it sooner:
+    test_curiosity_progress.py)."""
+    state.set_config(db, {"curiosity_learning_progress": False}, T0)
     stale = accepted(db, "zlib latest version", "zlib 1.3.1 is the latest zlib release.", ("a.example", "b.example"),
                      T0)
     a = claim("http://n1.example/coin", "The coin index stands at 41 points today.", key="coin index level")

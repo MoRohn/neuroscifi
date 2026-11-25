@@ -560,6 +560,8 @@ def candidates(db, now, *, limit=10) -> dict:
                    "stale": 1.0 if c["kind"] == "stale" else 0.0, "gap": 1.0 if c["kind"] == "gap" else 0.0,
                    "hypothesis": 1.0 if c["kind"] == "hypothesis" else 0.0}
         extra = {"knowledge_id": target["knowledge_id"]} if "knowledge_id" in target else {}
+        if "learning_progress" in c:     # ADR-051: shown and logged with the candidate
+            extra["learning_progress"] = c["learning_progress"]
         if target.get("knowledge_id") in asserted:
             extra["owner"] = True
         if c["kind"] == "prediction":
@@ -580,19 +582,24 @@ def candidates(db, now, *, limit=10) -> dict:
     rows += db.execute("SELECT p.id, p.hypothesis_id FROM web_predictions p JOIN web_hypotheses h ON "
                        "h.id=p.hypothesis_id WHERE p.outcome IS NULL AND h.status='open' AND h.origin!='owner' "
                        "ORDER BY p.id DESC LIMIT ?", (MAX_CANDIDATES,)).fetchall()
+    lp_on = curiosity.learning_progress_on(db)
     for pid, hid in rows:
         h = evolution.hypothesis(db, hid)
         found = db.execute("SELECT probability FROM web_predictions WHERE id=?", (pid,)).fetchone() if pid else None
         stated = state.finite(found[0] if found else h["verification"].get("confidence"), 0.5)
         p = evolution.recalibrate(stated, read["owner" if h["origin"] == "owner" else "hypothesis"])
-        add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", curiosity.info_gain(stated),
+        gain, gain_as_read, lp = curiosity.info_gain(stated), curiosity.info_gain(p), {}
+        if lp_on and h["origin"] != "owner":     # ADR-051: learning progress, never on the owner's own records
+            factor, _, record = curiosity.progress(db, h["key"], gain)
+            gain, gain_as_read, lp = gain * factor, gain_as_read * factor, {"learning_progress": record}
+        add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", gain,
             {"hypothesis": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6),
              "contradiction": 1.0 if h["origin"] in ("conflicting", "disputed") else 0.0,
              "gap": 1.0 if h["origin"] in ("insufficient", "gap", "not_evaluated") else 0.0},
             {"hypothesis_id": hid, "prediction_id": pid, "forecast": stated} |
             ({"forecast_as_read": p} if p != stated else {}) |
-            ({"owner": True} if h["origin"] == "owner" else {}),
-            gain_as_read=curiosity.info_gain(p))
+            ({"owner": True} if h["origin"] == "owner" else {}) | lp,
+            gain_as_read=gain_as_read)
     # The owner's assertions that no evidence has been examined for yet (ADR-038: not_evaluated, no support).
     for kid, key, statement, confidence in db.execute(
             "SELECT id, key, statement, confidence FROM web_knowledge WHERE provenance='user_asserted' AND "
@@ -603,7 +610,11 @@ def candidates(db, now, *, limit=10) -> dict:
             {"gap": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6)}, {"knowledge_id": kid,
                                                                                     "owner": True})
     chosen, refused = [], []
+    from . import salience
+    salient = salience.enabled(db)
     for item in by_key.values():
+        if salient:             # ADR-051: one explainable score per candidate, recorded; it changes no decision
+            item["salience"] = salience.score(db, item, now)
         mode_cost = curiosity.cost(item["mode"])
         budget = MODE_BUDGETS.get(item["mode"], MODE_BUDGETS["fact_verification"])
         est = budget.max_queries * float(prices.get("search", 0)) + budget.max_pages * float(prices.get("page", 0))
@@ -744,7 +755,8 @@ def decision_inputs(pick, admitted) -> dict:
     inputs = {k: pick[k] for k in ("kind", "key", "mode", "info_gain", "cost", "priority", "signals", "reason")
               if k in pick}
     inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast",
-                                    "forecast_as_read", "info_gain_as_read", "owner", "depth") if k in pick}
+                                    "forecast_as_read", "info_gain_as_read", "owner", "depth", "salience",
+                                    "learning_progress") if k in pick}
     return inputs | {"admission": {"rule": admitted["rule"], "path": admitted["path"]}}
 
 

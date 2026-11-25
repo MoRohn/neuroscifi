@@ -41,6 +41,12 @@ FUTILITY_FACTOR = 0.25
 GAP_WINDOW = 7 * 86400
 ERROR_WINDOW = 30 * 86400
 IMPORTANCE = {"accepted": 1.0, "provisional": 0.7, "stale": 0.7, "held": 0.4, "monitor": 1.2}
+# Learning progress (ADR-051; progress(); WebConfig.curiosity_learning_progress). Declared before measurement.
+LP_WINDOW = 6                 # a subject's newest looks considered
+PRIOR_RESOLVABLE = 0.5        # prior that a subject further looks can resolve
+PROGRESS_CHANCE = 0.8         # chance that a look at a resolvable subject makes progress
+PROGRESS_SHARE = 0.5          # a look made progress when it realised at least this share of the expected gain
+CHANGED_EFFECTS = ("new", "reversed", "strengthened", "weakened")
 REFERENCE_COST = wconfig.MODE_BUDGETS["fact_verification"].max_requests
 
 
@@ -97,6 +103,51 @@ def _futility(db, key):
     factor = FUTILITY_FACTOR ** (streak - FUTILE_STREAK + 1)
     return factor, (f"; the last {streak} investigations of this key changed nothing (disagreement looks "
                     f"irreducible), so the gain is down-weighted x{factor:g}")
+
+
+def learning_progress_on(db) -> bool:
+    """The owner's curiosity_learning_progress setting (WebConfig; ADR-051)."""
+    return getattr(state.get_config(db), "curiosity_learning_progress", False) is True
+
+
+def progress(db, key, expected) -> tuple[float, str, dict]:
+    """(factor, note, record): learning progress of a subject (ADR-051), from its last LP_WINDOW looks in
+    web_feedback (every research outcome about the key, newest first) compared with the gain expected of a look now.
+
+    A look's realised gain is the entropy it removed (web_feedback.info_gain, never below 0); a look that changed what
+    is held (effect new, reversed, strengthened or weakened, and not an unresolved disagreement) answered the question
+    a look asks and is credited with the expected gain. A look made progress when it realised at least PROGRESS_SHARE
+    of the expected gain. Two kinds of subject are told apart from the looks without progress since the last one that
+    made some (n): a resolvable one makes progress on a look with chance PROGRESS_CHANCE, an irreducible one (noise
+    that never resolves, or a subject that keeps changing nothing) never does; with the prior PRIOR_RESOLVABLE,
+    P(resolvable | n) = p (1 - c)^n / (p (1 - c)^n + 1 - p). The factor is that posterior over the prior (1 at n = 0),
+    so the expected gain is down-weighted only, never raised. Hard caps, min_gain and every admission rule apply to
+    the down-weighted gain as before."""
+    rows = db.execute("SELECT effect, info_gain, json_extract(detail,'$.contested') FROM web_feedback WHERE key=? "
+                      "ORDER BY id DESC LIMIT ?", (key, LP_WINDOW)).fetchall()
+    expected = max(0.0, float(expected or 0.0))
+    looks = []
+    for effect, gain, contested in rows:
+        realised = max(0.0, state.finite(gain, 0.0))
+        if effect in CHANGED_EFFECTS and not contested:
+            realised = max(realised, expected)
+        looks.append((realised, realised > 0 and realised >= PROGRESS_SHARE * expected))
+    streak = 0
+    for _, made in looks:
+        if made:
+            break
+        streak += 1
+    miss = (1.0 - PROGRESS_CHANCE) ** streak
+    posterior = PRIOR_RESOLVABLE * miss / (PRIOR_RESOLVABLE * miss + 1.0 - PRIOR_RESOLVABLE)
+    factor = posterior / PRIOR_RESOLVABLE
+    record = {"looks": len(looks), "without_progress": streak, "expected_bits_per_look": round(expected, 6),
+              "realised_bits": round(sum(r for r, _ in looks), 6), "p_resolvable": round(posterior, 6),
+              "factor": round(factor, 6)}
+    note = ("" if not streak else
+            f"; learning progress: the last {streak} look(s) realised {sum(r for r, _ in looks[:streak]):.3f} bits "
+            f"against {expected:.3f} expected each, so P(resolvable)={posterior:.2f} and the gain is down-weighted "
+            f"x{factor:.3g}")
+    return factor, note, record
 
 
 def _monitor_keys(db):
@@ -196,6 +247,15 @@ def rank(db, now, *, limit=10) -> list[dict]:
     due = {kid: pid for pid, kid in db.execute("SELECT id, knowledge_id FROM web_predictions WHERE outcome IS NULL "
                                                "AND check_after<=? ORDER BY id", (now,))}
     chosen, excluded = [], []
+    lp_on = learning_progress_on(db)
+
+    def damp(key, gain, factor, futile):
+        """The futility factor times learning progress (when the owner's setting is on), and the record."""
+        if not lp_on:
+            return factor, futile, {}
+        lp, note, record = progress(db, key, gain)
+        return factor * lp, futile + note, {"learning_progress": record}
+
     live = knowledge.rows(db, f"status IN ({','.join('?' * len(state.LIVE_KNOWLEDGE))})", state.LIVE_KNOWLEDGE)
     for item in live:
         importance = IMPORTANCE["monitor"] if item["task_id"] in monitor_tasks else IMPORTANCE[item["status"]]
@@ -210,11 +270,12 @@ def rank(db, now, *, limit=10) -> list[dict]:
             against = max(1, len({c.get("claim") for c in item["contradicting"] if isinstance(c, dict)}))
             share = 0.7 / (support + against)
             gain = categorical_gain([support * share, against * share, 0.15, 0.15])
+            factor, futile, lp = damp(item["key"], gain, factor, futile)
             chosen.append(_entry(
                 "contested", target, gain, "fact_verification", importance,
                 f"contested: {support} supporting vs {against} contradicting claim(s); distinguishing 4 hypotheses "
                 f"gains {gain:.3f} bits{boost}{futile}", factor=factor,
-                extra={"hypotheses": hypotheses(item, now)}))
+                extra={"hypotheses": hypotheses(item, now)} | lp))
             continue
         stale, why = knowledge.staleness(item, now, cfg, db)
         if item["status"] == "stale" or (stale and why.startswith(("stale: a newer", "stale: a new version"))):
@@ -223,22 +284,24 @@ def rank(db, now, *, limit=10) -> list[dict]:
             elapsed = max(0.0, now - item["last_verified_at"])
             p = 1.0 - (1.0 - math.exp(-elapsed / max(1.0, _ttl(cfg, item["freshness_class"])))) / 2.0
         gain = info_gain(p)
+        factor, futile, lp = damp(item["key"], gain, factor, futile)
         age = temporal.describe_age(item["last_verified_at"], now)
         if item["id"] in due:
             chosen.append(_entry("prediction", target | {"prediction_id": due[item["id"]]}, gain,
                                  "fact_verification", importance,
                                  f"prediction due: '{item['statement'][:60]}' was expected to still hold; "
-                                 f"P(current)={p:.2f}, gain {gain:.3f} bits{boost}{futile}", factor=factor))
+                                 f"P(current)={p:.2f}, gain {gain:.3f} bits{boost}{futile}", factor=factor,
+                                 extra=lp))
         elif stale and gain * factor >= MIN_GAIN:
             chosen.append(_entry("stale", target, gain, "fact_verification", importance,
                                  f"stale ({why}; verified {age}); P(current)={p:.2f}, gain {gain:.3f} bits"
-                                 f"{boost}{futile}", factor=factor))
+                                 f"{boost}{futile}", factor=factor, extra=lp))
         else:
             why_not = (f"expected gain {gain * factor:.3f} bits < {MIN_GAIN}" if gain * factor < MIN_GAIN else
                        f"not due: {why}")
             excluded.append(_entry("stale" if stale else "fresh", target, gain, "fact_verification", importance,
                                    f"excluded: {why_not} (verified {age}, well supported){futile}; avoid unnecessary "
-                                   "searches", factor=factor) | {"excluded": True, "utility": 0.0})
+                                   "searches", factor=factor, extra=lp) | {"excluded": True, "utility": 0.0})
     # Contested subjects that never became knowledge (open questions from consolidation).
     seen_keys = {i["key"] for i in live}
     for (key,) in db.execute("SELECT DISTINCT key FROM web_feedback WHERE knowledge_id IS NULL "
@@ -248,6 +311,7 @@ def rank(db, now, *, limit=10) -> list[dict]:
             continue
         factor, futile = _futility(db, key)
         gain = categorical_gain([0.35, 0.35, 0.15, 0.15])
+        factor, futile, lp = damp(key, gain, factor, futile)
         terms = search_terms(None, key, db)
         said = db.execute("SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC LIMIT 1", (key,)).fetchone()
         target = {"key": key} | ({"statement": knowledge.quote(said[0])} if said else {})   # shown, never the key
@@ -255,7 +319,7 @@ def rank(db, now, *, limit=10) -> list[dict]:
                        f"sources disagree and nothing is known yet; distinguishing hypotheses gains {gain:.3f} bits"
                        f"{futile}", factor=factor,
                        extra={"hypotheses": [{"label": "A holds", "query": f"{terms} official source"},
-                                             {"label": "B holds", "query": f"{terms} latest"}]})
+                                             {"label": "B holds", "query": f"{terms} latest"}]} | lp)
         (chosen if gain * factor >= MIN_GAIN else excluded).append(entry)
     # Knowledge gaps: single-source claims of recent tasks that no knowledge row covers.
     gaps = db.execute("SELECT key, max(confidence), min(text) FROM web_claims WHERE cluster_status='single_source' "
@@ -266,9 +330,10 @@ def rank(db, now, *, limit=10) -> list[dict]:
         factor, futile = _futility(db, key)
         p = state.finite(conf, 0.5)
         gain = info_gain(p)
+        factor, futile, lp = damp(key, gain, factor, futile)
         entry = _entry("gap", {"key": key, "statement": knowledge.quote(sample)}, gain, "gap_resolution",
                        IMPORTANCE["held"], f"held single-source claim (confidence {p:.2f}); a second independent "
-                       f"source would gain {gain:.3f} bits{futile}", factor=factor)
+                       f"source would gain {gain:.3f} bits{futile}", factor=factor, extra=lp)
         (chosen if gain * factor >= MIN_GAIN else excluded).append(
             entry if gain * factor >= MIN_GAIN else entry | {"excluded": True, "utility": 0.0})
     chosen.sort(key=lambda e: (-e["utility"], str(e["target"])))

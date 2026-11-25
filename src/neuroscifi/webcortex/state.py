@@ -90,7 +90,8 @@ def _str_list(name, value, *, max_items=200, max_len=256):
 def _validate(name, value):
     """Return the validated value for one WebConfig field, or raise ValidationError."""
     if name in ("enabled", "autonomous", "pocket_research", "browser_rendering", "news_rendering", "memory_check",
-                "search_browser_user_agent", "calibrated_forecasts"):
+                "search_browser_user_agent", "calibrated_forecasts", "curiosity_learning_progress",
+                "salience_record"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value

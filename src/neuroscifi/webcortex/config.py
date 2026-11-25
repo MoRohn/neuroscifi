@@ -125,6 +125,12 @@ class WebConfig:
     # (autonomy.admission: recorded enable, min_gain, lineage, cooldown). "legacy" restores the tick's rule before
     # it for one release: `nsf web config --set tick_admission='"legacy"'`.
     tick_admission: str = "unified"
+    # ADR-051 (lane I). curiosity_learning_progress: curiosity.rank down-weights a subject whose recent looks realised
+    # nothing like the gain expected of them (curiosity.progress); ranking only, every cap and admission unchanged.
+    # salience_record: each autonomy candidate carries one explainable salience score with its signals, logged with
+    # the decision (salience.py); display and record only, it never changes what is admitted or its order.
+    curiosity_learning_progress: bool = True
+    salience_record: bool = True
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":
