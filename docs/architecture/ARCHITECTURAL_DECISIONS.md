@@ -2105,3 +2105,129 @@ Cognitive Genesis (owner directive 2026-11-25) adds new autonomous mechanisms on
   systemd units, the owner-only surfaces including MCP, a damaged value, restore, the other switches unchanged and
   owner work running, Presence in both scopes, a running worker within one poll, the unified rule against the legacy
   one), `tests/presence/client_check.mjs`, `tests/e2e/test_console.py` and `tests/e2e/test_presence.py`.
+
+# ADR-051 (draft) Instinct-like regulation as measurements: an internal-state record, predictive regulation, salience, curiosity by learning progress, information gain beside decisions
+
+## Context
+
+Cognitive Genesis §4 (lane I). Verified in code at the start commit (2aee516): the individual measured much about its
+own condition, but only `store.write_allowed` and the ask budget acted on it, and the measurements lived in five
+separate views (`resources.status`, `store.regulation`, the gateway's health and token ledger, Presence, the voice
+hub), none persisted. Regulation was reactive only: `policy.background_gate` refuses new background research at
+"critical" memory pressure or while audio is active, and a background task already running continues, so a task
+started just before a slow leak reaches the critical line still adds its memory on top. The executive chose by a
+fixed rule order with no information-gain computation. Curiosity's only outcome signal was the futility streak
+(`curiosity._futility`). The cognitive benchmark's baseline (`genesis_baseline.json`) measured 0 of 3 (development)
+and 0 of 7 (held-out) memory breaches avoided, 0.014 bits per core investigation (random 0.037), and 38 % / 54 % of
+the timer's curiosity budget (idle investigator about 80 %) spent on a subject that never resolves.
+
+## Decision
+
+Each piece has its own setting. Nothing here is a feeling or awareness; the names describe what is measured.
+
+1. **Internal-state record (`neuroscifi/internal_state.py`), display, on.** `snapshot()` assembles one typed,
+   versioned record (`nsf.internal_state/1`) from what already exists: memory and pressure, the background gate,
+   audio, background model slots in use and model services in use (read from `/proc/locks`, never by taking a
+   lock), the idle policy's unloaded services, write regulation and backlog, the research queue (owner and
+   background), the worker's heartbeat, the token ledger's last five minutes (read only; a missing ledger is not
+   created), the endpoint's health on request (`--gateway`), knowledge staleness, prediction errors and open change
+   questions, open contradictions, and `quiet`. Every field carries `value`, `source`, `at` and `age_seconds`.
+   `nsf internal-state [--gateway] [--history N]`. The research worker's heartbeat thread appends one compact sample
+   (numbers and flags only) every 30 s to `<db>.resources/internal-state.jsonl` (the audio beacon's folder and file
+   rules: no link followed, bounded reads, the folder's file mode, so the idle account can read it); 720 samples are
+   kept (6 h). No new daemon, timer or listener; the heartbeat stays a maintenance activity (`background.py`). Like
+   `idle-events.jsonl` and the token ledger it is telemetry: no text, not in checkpoints, nothing `forget` must
+   reach. `nsf config --no-internal-state-history` stops it.
+2. **Predictive regulation (`resources/forecast.py`), off.** `assess(history)`: available memory as it would be with
+   no background task running (available + footprint x running, the footprint being the median memory change per
+   change in running background tasks), Holt's linear smoothing (level 0.5, trend 0.3) over the last 40 samples, a
+   declared horizon of 180 s; hold when the forecast less the existing cap's worth of background tasks
+   (`BACKGROUND_MODEL_SLOTS`) falls under the code's critical line (`monitor.thresholds`). A regular pattern of voice
+   sessions (at least two starts, intervals within 25 % of their median) is anticipated the same way. With
+   `nsf config --predictive-regulation` on, `policy.background_gate` adds the refusal `why="forecast"` after the
+   audio and critical checks: it can only add a hold on NEW background research, never lift one, never touch owner
+   work, a running task, idle unloading or any other lever, and never keeps anything alive. Too little or stale
+   history (fewer than 4 samples, newest older than 300 s) gives no forecast.
+3. **Salience record (`webcortex/salience.py`), display and record, on.** One score per autonomy candidate,
+   `sum(weight x signal)` over novelty, contradiction, staleness, confidence shortfall, owner importance, potential
+   consequence and prediction discrepancy (each in [0, 1], declared weights summing to 1), with every signal's value
+   and a one-line explanation, stored with the decision event of a queued investigation (`autonomy.decision_inputs`).
+   It changes nothing that is admitted or its order. `nsf web config --set salience_record=false` hides it.
+4. **Curiosity by learning progress (`curiosity.progress`), on.** Per subject, its last six looks in `web_feedback`:
+   a look's realised gain is the entropy it removed, and a look that changed what is held (new, reversed,
+   strengthened, weakened; not an unresolved disagreement) is credited with the gain expected of it; a look made
+   progress when it realised at least half the expected gain. With n looks without progress since the last that made
+   some, P(resolvable) = p (1 - c)^n / (p (1 - c)^n + 1 - p) with p = 0.5 and c = 0.8, and the expected gain is
+   multiplied by P(resolvable) / p (only ever down). Applied in `curiosity.rank` (both launch paths read it) and to
+   derived hypotheses in `autonomy.candidates`; never to the owner's own records. Hard caps, `min_gain`,
+   `autonomy.admission`, `background.allowed` and `quiet` are unchanged.
+   `nsf web config --set curiosity_learning_progress=false` turns it off.
+5. **Information gain beside decisions (`instance/information.py`), display, on; rule information-v1, opt-in.**
+   For a new reference root, each camera root and each partner: the exact mutual information between the hidden bits
+   and the next 3 readings, H(Y) from the ratio of marginal likelihoods with and without each hypothetical sequence
+   (`beliefs._infer`, as the change detector rescores hypothetical counts) minus the reading noise; beside it
+   `p_informative`, a Bayes factor of the subject's own readings between the reporter the model assumes and coin
+   flips (prior 1/2). `nsf decide` and `nsf explain` show it; the decision is unchanged (`decision_information`).
+   Rule versions are immutable: `rules-v1` is the existing order, unchanged; `information-v1` keeps rules 1-4b and
+   replaces 5-7 by the subject with the greatest EIG x p_informative if it reaches 0.01 bits, else act. Existing and
+   new individuals keep `rules-v1`; the owner adopts the other with `nsf config --executive-rule information-v1`
+   (logged, carried by restore). The ask budget and the "answered, wait for 3 events" rule apply to both.
+6. **Habitual or deliberate (`information.processing`, `information.report`), display, on.** A decision in an epoch
+   that continues a matched earlier setup (an epoch link) is habitual, otherwise deliberate; a change suspected in a
+   linked epoch says the habit may no longer apply. `report()` gives the rates from the recorded decisions, links
+   and changepoints. No new automation.
+
+Settings: `InstanceConfig.internal_state_history` (true), `predictive_regulation` (false), `executive_rule`
+("rules-v1"), `decision_information` (true); `WebConfig.curiosity_learning_progress` (true), `salience_record`
+(true). A damaged saved value reads as the behaviour before the setting (no history, no forecast holds, rules-v1, no
+display) and `store.setting_problems` names it. No schema change, no migration.
+
+## Measured
+
+`docs/quality/evidence/genesis_instinct.json` (the cognitive benchmark, `--mechanism instinct` / `instinct-idle`,
+each component ablated; constants chosen on development, held-out run once; the withheld family not run). Held-out:
+
+- **Predictive regulation (anticipation, 8 traces x 3 seeds).** Memory breaches avoided 0.80 of reference episodes
+  (baseline 0.00); memory breach ticks 18.0 (54.7); lead before a memory breach 9.9 ticks (5.8); voice-session
+  breaches avoided 0.53 (0.00); breach ticks over all channels 160.3 (217.7). Cost: false-alarm share 0.043 (0.009)
+  and background work given up 0.106 (0.044). Ablations: without the footprint, memory avoided 0.00; without the
+  voice pattern, audio avoided 0.00; without the trend, memory avoided stays 0.80 on held-out (on development 0.11
+  against 0.56). Latency and backlog channels are not addressed (the product has no latency target to hold to).
+- **Learning progress (information value, web).** Timer path: budget on the noise subjects 0.375 (baseline 0.537),
+  on the stale-but-important subject 0.167 (0.083), realised bits per budget 0.163 (0.093). Idle path: noise 0.375
+  (0.800), stale 0.167 (0.000), realised bits per budget -0.017 (-0.016). Without learning progress both paths
+  return exactly to their baselines.
+- **information-v1 (information value, core).** Realised bits per investigation 0.118 (rules-v1 0.092; oracle
+  0.119, random 0.083); share of investigations on noise partners 0.31 (0.10).
+- **Retention.** With predictive regulation and learning progress on: 4/4 scenarios, 7/7 offline metrics retained,
+  adversarial 12 (baseline 12). With information-v1 on as well: `lifelong_correction` fails its check
+  `asks_only_while_partner_ambiguous`, a property of rules-v1's order (information-v1 asks about whatever is most
+  informative), so information-v1 stays the owner's choice.
+
+## Defaults and why
+
+- On: the record and its history, the salience record, the information display, learning progress (held-out: a
+  clear drop in budget on noise on both paths, the stale subject kept and reached more often, retention and the
+  offline metrics unchanged).
+- Off: predictive regulation. It shows a clear held-out gain, but it gives up 2.4 times the background work and
+  raises the false-alarm share fivefold on the benchmark's plant, whose constants are declared, not measured on the
+  host, and its footprint estimate on the real host is unmeasured. `nsf config --predictive-regulation` turns it on.
+- Opt-in: information-v1 (it changes a retention scenario's rules-v1 property; existing individuals keep their rule).
+
+## Alternatives rejected
+
+- A learned forecaster or learned salience weights: not transparent, and nothing external to train them against.
+- Taking each lock to see whether it is held: it would block a slot taker or the idle pass for a moment.
+- Writing the history from the console or the CLI too: the worker is the process that runs continuously and may
+  write there; a second writer would add a second cadence.
+- Pure EIG under the belief model as the rule: a partner whose words are coin flips keeps its belief near 1/2 and so
+  can keep the greatest EIG (the noisy TV); the check of its readings against coin flips is what removes it.
+- Changing rules-v1 in place: rule versions are immutable; the owner adopts a new one.
+
+## Consequences
+
+- `nsf decide` gains `rule`, `information` and `processing`; `nsf explain` gains `information`. Autonomy candidates
+  and their decision events gain `salience` and, where it applied, `learning_progress`.
+- The worker writes one small file in `<db>.resources/`; lane W surfaces the record in the console.
+- Tests: `tests/test_internal_state.py`, `tests/instance/test_information.py`,
+  `tests/webcortex/test_curiosity_progress.py`, `tests/acceptance/test_cognition_instinct.py`.
