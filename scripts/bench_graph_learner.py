@@ -309,6 +309,72 @@ def run_sizes():
             "noise_floor_mse": round(.065 ** 2, 6), "sizes": out}
 
 
+def run_migration():
+    """The graph-rule migration (ADR-047) on individuals as older software left them: born under gate-v1 alone, a
+    graph learned under it and made active without check (f) (its metrics without beats_no_graph, as before that
+    check existed), no migration record. Per population count: what the first open does (kept or archived), what it
+    costs, what a second open costs, and the graph learned afterwards (under best-learner-v1)."""
+    import tempfile
+    from pathlib import Path
+
+    from neuroscifi.instance import datasets, graph_migration, graphs, rules
+
+    now = 1_800_000_000.0
+    out = []
+    for n in (24, 96, 128, 160, 256):
+        rows = []
+        for seed in range(3):
+            rng = np.random.default_rng(1000 * n + seed)
+            a = world(n, 3, rng)
+            data = {"train": stream(a, 1536, rng), "validation": stream(a, 256, rng), "heldout": stream(a, 512, rng)}
+            later = {"train": stream(a, 1536, rng), "validation": stream(a, 256, rng)}
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "individual.sqlite"
+                db = store.create(path, now, birth_rules=(store.GATE_V1,))
+                ids = {split: datasets.add(db, "panel", split, *pair, "simulated", now) for split, pair in data.items()}
+                old = graphs.learn(db, "panel", now + 1, train=ids["train"], validation=ids["validation"],
+                                   holder="bench")
+                old_heldout = graphs.evaluate(db, old, now + 2)["heldout_mse"]
+                metrics = graphs.show(db, old)["metrics"]
+                for key in ("beats_no_graph", "no_graph_validation_mse"):
+                    metrics.pop(key)
+                with store.write(db):
+                    db.execute("UPDATE graph_revisions SET status='active', metrics=?, decision=?, decided_at=? "
+                               "WHERE id=?", (json.dumps(metrics), json.dumps({"action": "promote"}), now + 3, old))
+                    db.execute("DELETE FROM meta WHERE key=?", (graph_migration.MARKER,))
+                db.close()
+                started = time.perf_counter()
+                db = store.open_existing(path)
+                first_open_ms = (time.perf_counter() - started) * 1000
+                record = graph_migration.status(db)
+                db.close()
+                started = time.perf_counter()
+                db = store.open_existing(path)
+                second_open_ms = (time.perf_counter() - started) * 1000
+                new_ids = {split: datasets.add(db, "panel", split, *pair, "simulated", now + 10)
+                           for split, pair in later.items()}
+                new = graphs.learn(db, "panel", now + 11, train=new_ids["train"], validation=new_ids["validation"],
+                                   holder="bench")
+                new_heldout = graphs.evaluate(db, new, now + 12)["heldout_mse"]
+                decision = graphs.promote(db, new, now + 13)
+                rows.append({
+                    "old_graph": "archived" if record["demote"] else "kept",
+                    "old_check": (record["demote"] or record["keep"])[0]["check"],
+                    "old_heldout_mse": old_heldout, "rule_after": rules.latest(db),
+                    "new_rule": graphs.show(db, new)["rule_version"], "new_heldout_mse": new_heldout,
+                    "new_promoted": decision["promoted"], "new_failed_checks": decision["decision"]["failed"],
+                    "first_open_ms": round(first_open_ms, 2), "second_open_ms": round(second_open_ms, 2)})
+                db.close()
+        summary = {"n": n, "worlds": len(rows), "old_graph": [r["old_graph"] for r in rows],
+                   "old_heldout_mse": float(np.median([r["old_heldout_mse"] for r in rows])),
+                   "new_heldout_mse": float(np.median([r["new_heldout_mse"] for r in rows])),
+                   "new_promoted": [r["new_promoted"] for r in rows], "rows": rows}
+        out.append(summary)
+        print(json.dumps({k: v for k, v in summary.items() if k != "rows"}), flush=True)
+    return {"stream": "lab.graph_bench.stream for N populations, 3 true inputs per receiver, 1536 training steps",
+            "noise_floor_mse": round(.065 ** 2, 6), "sizes": out}
+
+
 NOT_COMPARED = ("seconds", "latency", "_ms.", "_ms[", "p50", "p95", "p99", "cpu", "duration", "elapsed", "wall",
                 "bytes", "path", "high_water", "throughput", "per_second", "mean_us", "max_us", "gpu")
 GRAPH_SCENARIOS = ("birth", "graph_development", "growth_retention", "device_ownership", "first_physical_test")
@@ -360,7 +426,7 @@ def run_birth():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("mode", choices=("time", "select", "sizes", "birth"))
+    ap.add_argument("mode", choices=("time", "select", "sizes", "birth", "migration"))
     ap.add_argument("--out")
     ap.add_argument("--repeats", type=int, default=7)
     ap.add_argument("--worlds", type=int, default=64)
@@ -369,6 +435,7 @@ def main():
               "environment": {"machine": platform.machine(), "python": platform.python_version(),
                               "numpy": np.__version__, "load_average_at_start": list(os.getloadavg())}}
     result |= (run_time(args.repeats) if args.mode == "time" else run_sizes() if args.mode == "sizes"
+               else run_migration() if args.mode == "migration"
                else run_birth() if args.mode == "birth" else run_select(args.worlds, store.GATE_V1))
     if args.out:
         with open(args.out, "w") as fh:
