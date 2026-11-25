@@ -332,11 +332,27 @@ def _live_settings(db):
     return carried, warnings
 
 
+def _acting_rule(value):
+    """The timer's admission rule a saved tick_admission acts as (scheduler.tick: only "legacy" is the old rule)."""
+    return "legacy" if value == "legacy" else "unified"
+
+
+def _live_rule(db):
+    """The live file's acting tick_admission, carried into a copy like CARRIED_SETTINGS; None when unreadable."""
+    from ..webcortex.config import META_KEY
+    row = db.execute("SELECT value FROM meta WHERE key=?", (META_KEY,)).fetchone()
+    try:
+        saved = json.loads(row[0]) if row else {}
+    except ValueError:
+        return None
+    return _acting_rule(saved.get("tick_admission")) if isinstance(saved, dict) else None
+
+
 def _read_forgets(db, now, wanted=None):
     from ..webcortex.signing import FRESH_SECONDS
     settings, warnings = _live_settings(db)
     return {
-        "settings": settings, "settings_warnings": warnings,
+        "settings": settings, "settings_warnings": warnings, "tick_admission": _live_rule(db),
         # Cameras and partners forgotten by name (governance.SCOPE_KINDS): their changepoints carry no tombstone, so
         # the deletion log is the record, as for epochs below.
         "scopes": [(kind, label, json.loads(effects).get("state_version", float("inf")), requested_at, effects)
@@ -428,6 +444,27 @@ def _replay(copy, forgets, now):
                 copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
                              (store.SETTING_KIND, name, now, json.dumps(change | {"carried_by_restore": True},
                                                                         sort_keys=True)))
+    if forgets and forgets.get("tick_admission"):
+        # The timer's admission rule (ADR-050) is the owner's current choice too: an archive taken under "legacy"
+        # never brings the looser rule back, nor one taken under "unified" undoes a later choice. The other web
+        # settings stay as the archive has them.
+        from ..webcortex.config import META_KEY
+        row = copy.execute("SELECT value FROM meta WHERE key=?", (META_KEY,)).fetchone()
+        try:
+            web_saved = json.loads(row[0]) if row else {}
+        except ValueError:
+            web_saved = None
+            settings_warnings.append("the archive's web settings could not be read: tick_admission was not written "
+                                     "into the copy")
+        rule = forgets["tick_admission"]
+        if isinstance(web_saved, dict) and _acting_rule(web_saved.get("tick_admission")) != rule:
+            change = {"from": _acting_rule(web_saved.get("tick_admission")), "to": rule}
+            copy.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                         (META_KEY, json.dumps(web_saved | {"tick_admission": rule}, sort_keys=True)))
+            copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                         (store.SETTING_KIND, "tick_admission", now,
+                          json.dumps(change | {"carried_by_restore": True}, sort_keys=True)))
+            carried["tick_admission"] = change
     candidates = _root_candidates(copy) if roots or kind_scopes else {}
     applied = 0
     for tomb in tombstones:

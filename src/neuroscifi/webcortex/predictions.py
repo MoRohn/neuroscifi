@@ -179,5 +179,6 @@ def check_due(db, now, services=None, *, limit=MAX_REFRESHES) -> list[dict]:
         with store.write(db):
             db.execute("UPDATE web_predictions SET task_id=? WHERE id=?", (task["id"], pred["id"]))
             store.bump_state_version(db)
-        actions.append({"prediction_id": pred["id"], "action": "refresh_submitted", "task_id": task["id"]})
+        actions.append({"prediction_id": pred["id"], "action": "refresh_submitted", "task_id": task["id"],
+                        "knowledge_id": pred["knowledge_id"]})
     return actions

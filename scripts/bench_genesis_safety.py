@@ -17,6 +17,9 @@ honour     A research worker runs as `nsf web work` does (its own thread and con
            task reading a slow site (1 s per page) is running when quiet is turned on: the time until it stops and
            the page requests sent after the switch.
 cost       background.allowed and claim_next with quiet off and on (median of repeated calls).
+mutations  Each safeguard the Wave 0 review (review0) asked for, broken one at a time in a copy of src/ (the working
+           tree is never touched), must fail tests/webcortex/test_background.py (scripts/genesis_provenance.py's
+           runner). Only with --only mutations.
 """
 from __future__ import annotations
 
@@ -282,12 +285,59 @@ def cost(root: Path, reps: int = 2000) -> dict:
     return out
 
 
+BACKGROUND_TESTS = "tests/webcortex/test_background.py"
+# (name, safeguard, file under src/neuroscifi, text, replacement, tests): scripts/genesis_provenance.py's format.
+MUTATIONS = [
+    ("quiet_not_asked_before_the_model", "quiet turned on while a background task synthesizes stops it before the "
+     "model call (review0 L2)", "webcortex/orchestrator.py",
+     "                run.quiet_stop()\n                _reason(db, run, report)",
+     "                _reason(db, run, report)", [BACKGROUND_TESTS]),
+    ("quiet_not_asked_before_consolidation", "quiet turned on during the model call stops consolidation (L2)",
+     "webcortex/orchestrator.py",
+     "            run.quiet_stop()              # quiet turned on during the model call: nothing is consolidated",
+     "            pass", [BACKGROUND_TESTS]),
+    ("owner_requeue_held", "a failed background task the owner queues again is never held (L6)",
+     "webcortex/orchestrator.py", "            background.asked_by_owner(db, task_id, task[\"origin\"], now)\n", "",
+     [BACKGROUND_TESTS]),
+    ("owner_resume_held", "a background task the owner resumes is never held (L6)", "webcortex/cli.py",
+     "            background.asked_by_owner(db, task[\"id\"], task[\"origin\"], now)", "            pass",
+     [BACKGROUND_TESTS]),
+    ("owner_asked_not_honoured", "what the owner asked for is not held, at claim and while it runs (L6)",
+     "background.py", "(task_id, OWNER_CONFIRMED, OWNER_ASKED)", "(task_id, OWNER_CONFIRMED, OWNER_CONFIRMED)",
+     [BACKGROUND_TESTS]),
+    ("origin_matched_without_case", "background origins are matched with case everywhere (note)", "background.py",
+     "ORIGIN_SQL = \"(origin='curiosity' OR origin GLOB 'refresh:*' OR origin GLOB 'monitor:*')\"",
+     "ORIGIN_SQL = \"(origin='curiosity' OR origin LIKE 'refresh:%' OR origin LIKE 'monitor:%')\"",
+     [BACKGROUND_TESTS]),
+    ("tick_launches_a_refreshed_subject", "the tick never launches curiosity on a subject its refresh queued (note)",
+     "webcortex/scheduler.py",
+     "        if admitted[\"rule\"] == \"unified\" and (pick.get(\"knowledge_id\") in refreshed or pick[\"key\"] in "
+     "refreshed_keys):", "        if False:", [BACKGROUND_TESTS]),
+    ("restore_brings_the_old_rule_back", "a restore carries the owner's tick_admission (note)",
+     "instance/checkpoints.py", '"tick_admission": _live_rule(db),', '"tick_admission": None,', [BACKGROUND_TESTS]),
+    ("thread_launch_unregistered", "an entry point handed to a thread is a launch site (L8)", "webcortex/cli.py",
+     "def _resume(db, a, now):", "def _spawn(path):\n    import threading\n    from . import scheduler\n"
+     "    return threading.Thread(target=scheduler.work, args=(path,))\n\n\ndef _resume(db, a, now):",
+     [BACKGROUND_TESTS]),
+    ("forwarded_origin_unregistered", "an origin= that is not written out is a launch site (L8)", "webcortex/cli.py",
+     "def _resume(db, a, now):", "def _forward(db, origin):\n    from . import orchestrator\n"
+     "    return orchestrator.submit(db, 'x', 0, origin=origin)\n\n\ndef _resume(db, a, now):",
+     [BACKGROUND_TESTS]),
+]
+
+
+def mutations():
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import genesis_provenance
+    return genesis_provenance.mutations(MUTATIONS, [BACKGROUND_TESTS])
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("--trials", type=int, default=5)
     p.add_argument("--poll", type=float, default=5.0, help="the worker's poll (as `nsf web work`; default 5)")
     p.add_argument("--out", type=Path)
-    p.add_argument("--only", choices=("admission", "honour", "cost"))
+    p.add_argument("--only", choices=("admission", "honour", "cost", "mutations"))
     a = p.parse_args(argv)
     try:
         commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
@@ -296,6 +346,8 @@ def main(argv=None):
         commit = None
     out = {"schema": "nsf.genesis.safety/1", "software": __version__, "commit": commit,
            "python": platform.python_version(), "machine": platform.machine(), "measured_at": time.time()}
+    if a.only == "mutations":
+        out["mutations"] = mutations()
     with tempfile.TemporaryDirectory(prefix="nsf-genesis-s-") as tmp:
         root = Path(tmp)
         if a.only in (None, "cost"):

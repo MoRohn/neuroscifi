@@ -20,9 +20,10 @@ systemd units for launch sites nobody registered. Kinds:
 
 The switch sits above the others. It never changes the stored values of the `autonomous` switch, the autonomy
 enable record, monitors or timers: turning quiet off leaves exactly what they say. Work the owner asks for (console,
-CLI, Pocket, voice, MCP, research nodes, a curiosity proposal the owner confirmed) is never held. A background task
-already running when quiet is turned on stops at its next stop check (before every network step, as the owner's
-cancel does), ends 'partial', and nothing it read is consolidated (no model call after the stop). Queued background
+CLI, Pocket, voice, MCP, research nodes, a curiosity proposal the owner confirmed, a background task the owner
+resumed or queued again) is never held. A background task already running when quiet is turned on stops at its next
+stop check (before every network step, as the owner's cancel does, and again before the model is called and before
+consolidation), ends 'partial', and nothing it read is consolidated (no model call after the stop). Queued background
 tasks stay queued and run after quiet is turned off.
 """
 from __future__ import annotations
@@ -33,10 +34,14 @@ QUIET_REASON = ("quiet is on: the owner stopped background work, nothing runs un
 STOPPED = "stopped by quiet (the owner stopped background work): nothing was consolidated into knowledge"
 # A proposal the owner confirmed (knowledge.apply_review) is owner-asked work although its origin is 'curiosity'.
 OWNER_CONFIRMED = "proposal authorised by the owner"
-# Task origins of background work (orchestrator.is_autonomous plus monitors' scheduled runs).
-ORIGIN_SQL = "(origin='curiosity' OR origin LIKE 'refresh:%' OR origin LIKE 'monitor:%')"
+# So is a background task the owner resumed or queued again (`nsf web resume|requeue`, the console, Pocket, voice):
+# asked_by_owner records it with the task.
+OWNER_ASKED = "resumed or requeued by the owner"
+# Task origins of background work (orchestrator.is_autonomous plus monitors' scheduled runs). GLOB, not LIKE: matched
+# with case, exactly as held_origin and orchestrator.is_autonomous match them.
+ORIGIN_SQL = "(origin='curiosity' OR origin GLOB 'refresh:*' OR origin GLOB 'monitor:*')"
 HELD_SQL = (f"({ORIGIN_SQL} AND id NOT IN (SELECT task_id FROM web_events WHERE kind='decision' AND task_id IS NOT "
-            f"NULL AND json_extract(detail,'$.decision')='{OWNER_CONFIRMED}'))")
+            f"NULL AND json_extract(detail,'$.decision') IN ('{OWNER_CONFIRMED}','{OWNER_ASKED}')))")
 
 KINDS = ("cognition", "maintenance", "delivery", "owner")
 
@@ -119,6 +124,28 @@ RUNNERS = {
     "neuroscifi.acceptance.cognition.adversarial:owner_first_under_contention": "benchmark: owner work first",
 }
 
+# Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored
+# task or hypothesis. None chooses a background origin itself. The source scan flags every origin= that is not a
+# literal (tests/webcortex/test_background.py), so a new one must be named here (or among the sites above) with what
+# it forwards.
+FORWARDERS = {
+    "neuroscifi.webcortex.orchestrator:submit": "a task's origin, as its caller gave it",
+    "neuroscifi.webcortex.orchestrator:requeue": "the owner surface's origin, or the task's own (an owner action)",
+    "neuroscifi.webcortex.knowledge:refresh": "its caller's origin (check_due's refresh:<id>, the owner's surface)",
+    "neuroscifi.webcortex.mcp:Server._web_research": "orchestrator.MCP_ORIGIN ('mcp'), a constant",
+    "neuroscifi.inference.tools:_web_research": "the conversation's origin (the owner surface the model answers on)",
+    "neuroscifi.pocket.research_routes:handle": "a requeue from the owner's paired device, with the task's own origin",
+    "neuroscifi.voice.bridge:Bridge._submit_locked": "the speaking principal's origin (the owner's voice)",
+    "neuroscifi.voice.bridge:Bridge._continue_research": "a requeue by the owner's voice, with the principal's origin",
+    "neuroscifi.webcortex.bench.live:_task": "a live benchmark's origin on its own temporary individual",
+    "neuroscifi.acceptance.cognition.infovalue:_Web._consolidate": "benchmark: a staged task on a temporary individual",
+    # not a task's origin at all: a hypothesis's (evolution.HYPOTHESIS_ORIGINS), a claim's sources, a Presence label
+    "neuroscifi.webcortex.consolidate:run": "a hypothesis's origin (verdict state), not a task's",
+    "neuroscifi.webcortex.consolidate:_research_opportunity": "a hypothesis's origin (verdict state), not a task's",
+    "neuroscifi.webcortex.claims:stamp_origins": "the list of feeds a claim came from (claim flags), not a task's",
+    "neuroscifi.presence.aggregator:derive": "the class of a task's origin, shown on Presence (starts nothing)",
+}
+
 # A package that only measures (its functions appear in RUNNERS): no module of the product outside it may import it,
 # so no service can start its work; scripts/bench_cognition.py is its one caller. tests/webcortex/test_background.py
 # checks it.
@@ -160,11 +187,22 @@ def held_origin(origin) -> bool:
 
 
 def held_task(db, task_id, origin) -> bool:
-    """Whether quiet holds this task: a background origin and not a proposal the owner confirmed."""
+    """Whether quiet holds this task: a background origin, not a proposal the owner confirmed and not a task the owner
+    resumed or queued again."""
     if not held_origin(origin):
         return False
     return db.execute("SELECT 1 FROM web_events WHERE task_id=? AND kind='decision' AND "
-                      "json_extract(detail,'$.decision')=? LIMIT 1", (task_id, OWNER_CONFIRMED)).fetchone() is None
+                      "json_extract(detail,'$.decision') IN (?,?) LIMIT 1",
+                      (task_id, OWNER_CONFIRMED, OWNER_ASKED)).fetchone() is None
+
+
+def asked_by_owner(db, task_id, origin, now):
+    """The owner resumed or queued again a background task: record it with the task (a 'decision' event), so quiet
+    never holds it (owner-asked work is never held, ADR-050). Nothing for a task quiet would not hold. Caller owns the
+    transaction."""
+    if held_task(db, task_id, origin):
+        from .webcortex import state
+        state.log_event(db, task_id, "decision", {"decision": OWNER_ASKED}, now)
 
 
 def status(db) -> dict:

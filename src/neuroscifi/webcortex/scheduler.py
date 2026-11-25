@@ -403,6 +403,11 @@ def _over_cap(db, now, cfg, *, ignore_tasks=False):
     return None
 
 
+# Under the unified rule a curiosity pick may name the subject a due prediction's refresh queued in the same tick
+# (any version of that knowledge item): one task per subject, the refresh.
+REFRESHED_THIS_TICK = "its due prediction's refresh was queued in this tick"
+
+
 def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     """One timer pass: due monitors, then (autonomous only) predictions and curiosity. Returns what happened."""
     from . import orchestrator, predictions
@@ -507,8 +512,14 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         report["skipped"].append({"target": refused.get("target") or {"key": refused.get("key"),
                                                                         "knowledge_id": refused.get("knowledge_id")},
                                   "reason": refused["reason"]})
+    refreshed = {a.get("knowledge_id") for a in report["predictions"] if a["action"] == "refresh_submitted"} - {None}
+    refreshed_keys = {k for (k,) in db.execute(f"SELECT key FROM web_knowledge WHERE id IN "
+                                               f"({','.join('?' * len(refreshed))})", tuple(refreshed))}
     for pick in admitted["chosen"]:
         target = pick.get("target") or {"key": pick["key"], "knowledge_id": pick.get("knowledge_id")}
+        if admitted["rule"] == "unified" and (pick.get("knowledge_id") in refreshed or pick["key"] in refreshed_keys):
+            report["skipped"].append({"target": target, "reason": REFRESHED_THIS_TICK})
+            continue
         cap = _over_cap(db, now, cfg)
         if cap or budget_left <= 0:
             report["skipped"].append({"target": target, "reason": cap or f"max_tasks {max_tasks} reached"})

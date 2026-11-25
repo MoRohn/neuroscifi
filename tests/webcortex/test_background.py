@@ -19,7 +19,7 @@ from test_orchestrator import QUESTION, T0, _other, build, corpus, open_individu
     serve, HookFetcher
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src" / "neuroscifi"
+SRC = Path(background.__file__).resolve().parent      # the package under test (a mutated copy too), not the checkout
 HOUR = 3600.0
 COGNITION = sorted(k for k, v in background.ACTIVITIES.items() if v["kind"] == "cognition")
 
@@ -100,6 +100,30 @@ def drive_tick_curiosity(db, path, site, monkeypatch):
     assert len(scheduler.tick(db, T0, None, queue=True)["queued"]) == 1
 
 
+@pytest.mark.parametrize("refreshed", [3, 2, None])
+def test_the_tick_never_launches_curiosity_on_a_subject_its_refresh_just_queued(individual, monkeypatch, refreshed):
+    """review0 note: under the unified rule the tick's curiosity could launch the subject a due prediction's refresh
+    (check_due) had just queued in the same tick: two tasks on one subject. Matched by knowledge id or by key (another
+    version of the item)."""
+    db, _ = individual
+    with store.write(db):
+        db.execute("INSERT INTO web_knowledge(id,key,version,statement,status,confidence,uncertainty,freshness_class,"
+                   "first_verified_at,last_verified_at,created_at,updated_at) VALUES(2,?,1,?,'superseded',0.6,0.4,"
+                   "'stable',1,1,1,1)", (GOOD[1], GOOD[2]))
+    monkeypatch.setattr(curiosity, "rank", ranked(GOOD))
+    refresh = [] if refreshed is None else [{"prediction_id": 1, "action": "refresh_submitted",
+                                             "task_id": "refresh-task", "knowledge_id": refreshed}]
+    monkeypatch.setattr(predictions, "check_due", lambda *a, **k: refresh)
+    autonomy.enable(db, T0)
+    report = scheduler.tick(db, T0, None, queue=True)
+    launched = [q for q in report["queued"] if q["origin"] == "curiosity"]
+    if refreshed is None:
+        assert len(launched) == 1                                     # the control: the subject is launched
+        return
+    assert launched == [] and report["queued"] == [{"task_id": "refresh-task", "origin": "refresh"}]
+    assert any(s.get("reason") == scheduler.REFRESHED_THIS_TICK for s in report["skipped"])
+
+
 def drive_worker_idle_investigation(db, path, site, monkeypatch):
     monkeypatch.setattr(curiosity, "rank", ranked(GOOD))
     autonomy.enable(db, T0)
@@ -158,6 +182,88 @@ def drive_task_background_run(db, path, site, monkeypatch):
     assert stop and stop[0]["reason"] == background.QUIET_REASON
 
 
+@pytest.mark.parametrize("when", ["never", "synthesizing", "model_call"])
+def test_quiet_turned_on_after_the_reading_stops_before_the_model_and_before_consolidation(individual, site,
+                                                                                         monkeypatch, when):
+    """review0 L2: quiet turned on while a background task synthesized or reasoned used to let it call the answer
+    model and consolidate; both now ask quiet again first, and a refusal ends the run as any quiet stop does."""
+    db, path = individual
+    task = orchestrator.submit(db, QUESTION, T0, mode="fact_verification", origin="curiosity")
+    reasoned, real_synthesize, real_reason = [], orchestrator._Run.synthesize, orchestrator._reason
+
+    def synthesize(run):
+        out = real_synthesize(run)
+        if when == "synthesizing":
+            _other(path, lambda o: quiet(o))
+        return out
+
+    def reason(db, run, report):
+        reasoned.append(run.id)
+        if when == "model_call":
+            _other(path, lambda o: quiet(o))
+        return real_reason(db, run, report)
+    monkeypatch.setattr(orchestrator._Run, "synthesize", synthesize)
+    monkeypatch.setattr(orchestrator, "_reason", reason)
+    services = build(db, path, site)
+    try:
+        done = orchestrator.run(db, task["id"], services)
+    finally:
+        services.close()
+    knowledge = db.execute("SELECT count(*) FROM web_knowledge").fetchone()[0]
+    if when == "never":                    # the control: the same run consolidates what it read
+        assert done["status"] == "completed" and "consolidation" in done["result"] and knowledge > 0
+        return
+    assert done["status"] == "partial" and background.STOPPED in done["result"]["limitations"]
+    assert reasoned == ([] if when == "synthesizing" else [task["id"]])
+    assert "consolidation" not in done["result"] and knowledge == 0
+    assert [e for e in state.events(db, task["id"]) if e["detail"].get("stopped") == "quiet"]
+
+
+def test_a_background_task_the_owner_resumes_or_requeues_is_never_held(individual, site, monkeypatch):
+    """review0 L6: `nsf web resume <curiosity task>` and `nsf web requeue <failed curiosity task>` by the owner were
+    held by quiet (and the resumed run stopped by it), against ADR-050: owner-asked work is never held."""
+    from types import SimpleNamespace
+    from neuroscifi.webcortex import cli as wcli
+    db, path = individual
+
+    def failed_curiosity(text):
+        tid = orchestrator.submit(db, text, T0, mode="quick_lookup", origin="curiosity")["id"]
+        with store.write(db):
+            state.update_task(db, tid, T0, status="failed", finished_at=T0, error="no pages")
+        return tid
+    requeued, resumed, other = failed_curiosity("Zephyr board 0"), failed_curiosity(QUESTION), \
+        failed_curiosity("Zephyr board 2")
+    with store.write(db):
+        state.update_task(db, other, T0, status="partial")
+    untouched = orchestrator.submit(db, "Zephyr board 3", T0, mode="quick_lookup", origin="curiosity")["id"]
+    quiet(db)
+    runs = []                     # resumed first: no other lease is held, so only quiet could stop it
+    monkeypatch.setattr(wcli, "_run_task", lambda db, a, task_id, resume=False: runs.append(task_id) or
+                        orchestrator.resume(db, task_id, build(db, path, site)))
+    done = wcli._resume(db, SimpleNamespace(task=resumed), T0 + 1)
+    assert runs == [resumed] and done["status"] == "completed"
+    assert background.STOPPED not in done["result"]["limitations"]
+    assert orchestrator.requeue(db, requeued, T0 + 2, origin="cli")["requeued"] == "same"
+    child = orchestrator.requeue(db, other, T0 + 2, origin="curiosity")      # as Pocket passes the task's own origin
+    assert child["requeued"] == "child" and child["origin"] == "curiosity"
+    claimed = []
+    while (row := scheduler.claim_next(db, "w", T0 + 3)) is not None:
+        claimed.append(row[0])
+    assert sorted(claimed) == sorted([requeued, child["id"]]) and untouched not in claimed   # nobody asked: held
+    decisions = [e["detail"].get("decision") for t in (requeued, child["id"], resumed) for e in state.events(db, t)]
+    assert decisions.count(background.OWNER_ASKED) == 3
+
+
+def test_background_origins_are_matched_with_case_everywhere(individual):
+    """review0 note: ORIGIN_SQL matched with LIKE (no case) where held_origin and is_autonomous match with case."""
+    db, _ = individual
+    for origin in ("curiosity", "refresh:7", "monitor:3", "Refresh:7", "MONITOR:3", "Curiosity", "cli"):
+        tid = orchestrator.submit(db, f"Zephyr {origin}", T0, mode="quick_lookup", origin=origin)["id"]
+        held_sql = db.execute(f"SELECT 1 FROM web_tasks WHERE id=? AND {background.HELD_SQL}", (tid,)).fetchone()
+        assert (held_sql is not None) == background.held_origin(origin) == background.held_task(db, tid, origin), \
+            origin
+
+
 DRIVERS = {"tick.monitors": drive_tick_monitors, "tick.prediction_refresh": drive_tick_prediction_refresh,
            "tick.curiosity": drive_tick_curiosity, "worker.idle_investigation": drive_worker_idle_investigation,
            "worker.claim_background": drive_worker_claim_background,
@@ -193,8 +299,8 @@ def test_maintenance_and_delivery_keep_running_and_an_unregistered_activity_is_r
 
 BACKGROUND_ORIGIN = ("curiosity",)
 BACKGROUND_PREFIX = ("refresh:", "monitor:")
-ENTRY_CALLS = {("autonomy", "idle"), ("scheduler", "tick"), ("scheduler", "work"), (None, "check_due"),
-               (None, "claim_next")}
+ENTRY_MODULES = {"autonomy": {"idle"}, "scheduler": {"tick", "work"}}
+ENTRY_ANYWHERE = {"check_due", "claim_next"}
 
 
 def _origin_is_background(node) -> bool:
@@ -205,31 +311,58 @@ def _origin_is_background(node) -> bool:
     return False
 
 
-def launch_sites(tree, module):
-    """{"module:qualname"} of every call in `tree` that creates a task of a background origin or calls a background
-    entry point (autonomy.idle, scheduler.tick / work, check_due, claim_next), and the activities passed to
-    allowed() there."""
-    sites, checks = set(), set()
+def _origin_is_fixed(node) -> bool:
+    """A literal origin (a string, None, or an f-string with a fixed prefix): what it names can be read here."""
+    if isinstance(node, ast.Constant) and (node.value is None or isinstance(node.value, str)):
+        return True
+    return isinstance(node, ast.JoinedStr) and bool(node.values) and isinstance(node.values[0], ast.Constant)
 
-    def visit(node, scope):
+
+def launch_sites(tree, module):
+    """{"module:qualname"} of every function in `tree` that creates a task of a background origin, passes on an origin
+    it did not write out (a variable, an attribute: it may be a background one), or refers to a background entry
+    point (autonomy.idle, scheduler.tick / work, check_due, claim_next) - called, handed to a thread or
+    functools.partial, or imported under another name - and the activities passed to allowed() there (review0 L8)."""
+    sites, checks = set(), set()
+    owners = {name: name for name in ENTRY_MODULES}     # local name -> the entry module it is bound to
+    entries = set(ENTRY_ANYWHERE) | ({"idle"} if module.endswith(".autonomy") else set())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            source = (node.module or "").rpartition(".")[2]
+            for alias in node.names:
+                if alias.name in ENTRY_MODULES:
+                    owners[alias.asname or alias.name] = alias.name
+                if alias.name in ENTRY_MODULES.get(source, ()) or alias.name in ENTRY_ANYWHERE:
+                    entries.add(alias.asname or alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.rpartition(".")[2] in ENTRY_MODULES:
+                    owners[alias.asname or alias.name.rpartition(".")[2]] = alias.name.rpartition(".")[2]
+
+    def refers(node):
+        if isinstance(node, ast.Attribute):
+            owner = node.value.id if isinstance(node.value, ast.Name) else None
+            return node.attr in ENTRY_ANYWHERE or node.attr in ENTRY_MODULES.get(owners.get(owner), ())
+        return isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in entries
+
+    def visit(node, scope, in_function=False):
         for child in ast.iter_child_nodes(node):
             inner = scope
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 inner = f"{scope}.{child.name}" if scope else child.name
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    inner = scope          # a nested function belongs to the function that defines it
+                if in_function:            # a nested function belongs to the function that defines it
+                    inner = scope
             if isinstance(child, ast.Call):
                 func = child.func
                 name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-                owner = func.value.id if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) else None
-                if any(kw.arg == "origin" and _origin_is_background(kw.value) for kw in child.keywords):
-                    sites.add(f"{module}:{scope}")
-                if (owner, name) in ENTRY_CALLS or (None, name) in ENTRY_CALLS or \
-                        (module.endswith(".autonomy") and owner is None and name == "idle"):
+                if any(kw.arg == "origin" and (_origin_is_background(kw.value) or not _origin_is_fixed(kw.value))
+                       for kw in child.keywords):
                     sites.add(f"{module}:{scope}")
                 if name == "allowed" and len(child.args) >= 2 and isinstance(child.args[1], ast.Constant):
                     checks.add(child.args[1].value)
-            visit(child, inner)
+            if refers(child):
+                sites.add(f"{module}:{scope}")
+            visit(child, inner, in_function or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)))
     visit(tree, "")
     return sites, checks
 
@@ -252,11 +385,26 @@ def test_the_scanner_finds_a_launch_nobody_registered():
               "def owner(db):\n    orchestrator.submit(db, 'x', 0, origin='cli')\n")
     sites, _ = launch_sites(ast.parse(sample), "neuroscifi.new")
     assert sites == {"neuroscifi.new:dream", "neuroscifi.new:Muse.wander", "neuroscifi.new:refresh_all"}
+    # review0 L8: an entry point handed to a thread or to functools.partial, imported under another name, or an
+    # origin that is not written out
+    sample = ("import functools, threading\nfrom . import scheduler as s\nfrom .predictions import check_due as due\n"
+              "from .autonomy import idle as wander\n"
+              "def spawn(path):\n    threading.Thread(target=scheduler.work, args=(path,)).start()\n"
+              "def later(db):\n    return functools.partial(s.tick, db)\n"
+              "def renamed(db, now):\n    return due(db, now)\n"
+              "def drift(db):\n    return wander(db, 0)\n"
+              "def forward(db, origin):\n    orchestrator.submit(db, 'x', 0, origin=origin)\n"
+              "def stored(db, task):\n    orchestrator.submit(db, 'x', 0, origin=task['origin'])\n"
+              "def fixed(db, k):\n    orchestrator.submit(db, 'x', 0, origin=f'user:{k}')\n"
+              "def owner(db):\n    orchestrator.submit(db, 'x', 0, origin=None)\n")
+    sites, _ = launch_sites(ast.parse(sample), "neuroscifi.new")
+    assert sites == {f"neuroscifi.new:{f}" for f in ("spawn", "later", "renamed", "drift", "forward", "stored")}
 
 
 def test_every_launch_site_in_the_source_is_registered_and_every_registered_site_exists():
     sites, checks = _scan()
-    registered = {s for spec in background.ACTIVITIES.values() for s in spec["sites"]} | set(background.RUNNERS)
+    registered = ({s for spec in background.ACTIVITIES.values() for s in spec["sites"]} | set(background.RUNNERS)
+                  | set(background.FORWARDERS))
     assert sites - registered == set(), "unregistered background launch sites: register them in background.py"
     for site_name in registered:          # the registry names real functions (no stale entry)
         module, _, qualname = site_name.partition(":")
@@ -359,6 +507,24 @@ def test_a_restore_carries_the_owners_quiet(individual, tmp_path):
     copy = store.open_existing(tmp_path / "restored.sqlite")
     try:
         assert background.quiet(copy) is True
+    finally:
+        copy.close()
+
+
+@pytest.mark.parametrize("archived,live", [("legacy", "unified"), ("unified", "legacy")])
+def test_a_restore_carries_the_owners_tick_admission_rule(individual, tmp_path, archived, live):
+    """review0 note: restoring an archive taken under tick_admission "legacy" brought the looser rule back. The live
+    value wins, as for quiet."""
+    db, path = individual
+    state.set_config(db, {"tick_admission": archived}, T0)
+    archive = checkpoints.create(db, path, tmp_path / "cps", T0 + 1)
+    state.set_config(db, {"tick_admission": live}, T0 + 2)
+    report = checkpoints.restore(db, archive["id"], tmp_path / "restored.sqlite", T0 + 3)
+    assert report["settings_carried"]["tick_admission"] == {"from": archived, "to": live}
+    copy = store.open_existing(tmp_path / "restored.sqlite")
+    try:
+        assert state.get_config(copy).tick_admission == live
+        assert state.get_config(copy).enabled is True                     # the other web settings are the archive's
     finally:
         copy.close()
 
