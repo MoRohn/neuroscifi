@@ -101,6 +101,11 @@ def test_a_restriction_is_found_by_its_closed_list_of_words(text, marker):
     "Not all users on Windows are affected by the flaw",
     "The flaw is not fixed for all users",
     "All of the fixes, not just the parser fix, landed in 2.5.5",
+    # correctness review of the round: "not only/merely ... but" adds
+    "The update affects all versions not only in Europe but worldwide",
+    "The recall covers every model not merely in the US but abroad",
+    "Every plan not simply on paper but in practice was audited",
+    "All tenants not just in the east wing but everywhere were told",
 ])
 def test_words_that_restrict_nothing_are_not_restrictions(text):
     assert reasoning._restriction(text) is None

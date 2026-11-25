@@ -2573,15 +2573,18 @@ _EXCEPTION = (r"with the exception of|except(?:ing)?|excluding|not including|not
               r"(?:all|everything|everyone|everybody|anything|anyone|nothing|none|no one|nobody) but")
 # Exceptions written around a quantifier: "every release but 2.5.4", "every release is patched save 2.5.4" (a "save"
 # or "but" within five words after every/all/each/any/no; "save" alone is mostly the verb), and "with 2.5.4
-# excepted".
-_QUANTIFIED_EXCEPTION = re.compile(r"(?<![\w-])(?:every|all|each|any|no)(?:\s+[\w.-]+){1,5}?\s+(but|save)(?![\w-])|"
+# excepted". The "but" that closes a "not only" adds ("all versions not only in Europe but worldwide"): no exception.
+_NOT_ADDING = r"(?:only|merely|simply|solely|exclusively|just)"
+_QUANTIFIED_EXCEPTION = re.compile(r"(?<![\w-])(?:every|all|each|any|no)(?:\s+(?!not\s+" + _NOT_ADDING +
+                                   r"\b)[\w.-]+){1,5}?\s+(but|save)(?![\w-])|"
                                    r"(?<![\w-])with\s+(?:[^,.;:]|\.(?=\w)){1,40}?\s+(excepted)(?![\w-])",
                                    re.IGNORECASE)
 # Exceptions written as a negated phrase after a quantified noun: "all users not on Windows", "every release not built
 # from source", "any student not yet enrolled", "all customers who are not on the legacy plan". Between the quantifier
 # and "not" stand one to four words, none of them an auxiliary ("all releases are not affected" negates the verb and
 # excepts nothing), and no punctuation ("every release, not only 2.5.5, ..." adds, it excepts nothing); after "not"
-# (and an optional "yet" or -ly adverb) a preposition or a participle.
+# (and an optional "yet" or -ly adverb) a preposition or a participle. "not only", "not merely", "not simply", "not
+# solely", "not exclusively" and "not just" add ("all versions not only in Europe but worldwide"): no exception.
 _NEG_AUX = (r"is|are|was|were|be|been|being|am|do|does|did|has|have|had|can|could|will|would|may|might|must|should|"
             r"shall|cannot")
 _NEG_AFTER = (r"on|in|at|of|from|for|under|with|within|without|by|to|into|inside|outside|behind|among|"
@@ -2589,7 +2592,8 @@ _NEG_AFTER = (r"on|in|at|of|from|for|under|with|within|without|by|to|into|inside
                                                    "held hidden kept known made paid run seen sent set shown sold "
                                                    "spent taken told written").split())))
 _NEGATED_EXCEPTION = re.compile(rf"(?<![\w-])(?:every|all|each|any)\s+(?:(?!(?:{_NEG_AUX})\b)[\w.'’-]+\s+){{1,4}}?"
-                                rf"(?:(?:who|that|which)\s+(?:{_NEG_AUX})\s+)?(not\s+(?:yet\s+|\w+ly\s+)?(?:{_NEG_AFTER}))"
+                                rf"(?:(?:who|that|which)\s+(?:{_NEG_AUX})\s+)?"
+                                rf"(not\s+(?!{_NOT_ADDING}\b)(?:yet\s+|\w+ly\s+)?(?:{_NEG_AFTER}))"
                                 r"(?![\w-])", re.IGNORECASE)
 # Conditions: the claim holds only under what follows. "when" only in its reduced form ("safe when used with TLS
 # 1.3", "when built from source"), and not the reporting kind ("when asked", "when speaking"); a "when" with its own
