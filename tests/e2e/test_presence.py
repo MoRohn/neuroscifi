@@ -555,6 +555,30 @@ def test_pocket_presence_shows_own_family_task(bridge, new_page, tmp_path):
     assert page.problems == []
 
 
+def test_quiet_is_said_in_plain_words_on_pocket(bridge, new_page, tmp_path):
+    """ADR-050: the owner's quiet switch is a global condition, shown to a paired phone in plain words: the entity
+    is idle or rests, its word is "Quiet", and its details say that nothing runs unless you ask. Off again, the words
+    go."""
+    instance = tmp_path / "individual.sqlite"
+    with closing(store.create(instance, time.time())) as db:
+        state.set_config(db, {"enabled": True, "pocket_research": True}, time.time())
+        store.set_config(db, {"quiet": True})
+    bridge.server.instance_db = str(instance)
+    page = new_page(390, 844)
+    page.goto(bridge.url)
+    pair(page)
+    root = page.locator(".nsf-presence")
+    expect(root).to_have_attribute("data-activity", re.compile("idle|resting"), timeout=15_000)
+    expect(page.locator(".pc-word")).to_have_text("Quiet", timeout=15_000)
+    page.locator(".pc-toggle").click()
+    expect(page.locator(".pc-status")).to_contain_text("Quiet: nothing runs unless you ask")
+    page.keyboard.press("Escape")
+    with closing(store.open_existing(instance)) as db:
+        store.set_config(db, {"quiet": False})
+    expect(page.locator(".pc-word")).not_to_have_text("Quiet", timeout=30_000)
+    assert page.problems == []
+
+
 # ---- sizes in the app: the hero on an interaction stage (console research and voice, Pocket), small indicator (Pocket nav) ---
 
 def test_console_research_and_voice_views_stage_the_presence_as_the_hero(idle_spark, new_page):

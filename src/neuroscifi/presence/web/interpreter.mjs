@@ -124,7 +124,9 @@ function finish(intent) {
 // Accessible description: what is happening, from which real source, never a percentage that is not known.
 export function describe(intent) {
   const base = intent.concept === 'disconnected' ? 'Not connected' : intent.concept === 'asking' ? 'Waiting for your answer'
-    : intent.concept === 'error' ? 'A task failed' : intent.concept === 'achievement' ? 'Finished' : ACTIVITY_TEXT[intent.activity] ?? 'Present';
+    : intent.concept === 'error' ? 'A task failed' : intent.concept === 'achievement' ? 'Finished'
+    : ['idle', 'resting'].includes(intent.activity) && intent.sources?.background === 'quiet' ? 'Quiet'
+    : ACTIVITY_TEXT[intent.activity] ?? 'Present';
   const parts = [base];
   if (intent.step) parts[0] += ` (step ${intent.step.index} of ${intent.step.of})`;
   if (intent.label) parts.push(`“${intent.label}”`);
@@ -132,6 +134,8 @@ export function describe(intent) {
   const also = [...new Set([...intent.others.map((o) => ACTIVITY_TEXT[o.activity]?.toLowerCase()),
     ...intent.secondary.filter((s) => s === 'background_investigation').map((s) => SECONDARY_TEXT[s])])].filter(Boolean);
   if (also.length) parts.push(`Also: ${also.join(', ')}`);
+  // The owner's quiet switch (background.py, ADR-050): said once, in plain words, whatever is shown.
+  if (intent.sources?.background === 'quiet' && !String(intent.detail ?? '').startsWith('Quiet')) parts.push('Quiet: nothing runs unless you ask');
   const conds = conditionNotes(intent.condition, intent.sources);
   if (conds.length) parts.push(`Note: ${conds.join('; ')}`);
   if (intent.interaction.includes('voice_muted')) parts.push('Voice output muted');

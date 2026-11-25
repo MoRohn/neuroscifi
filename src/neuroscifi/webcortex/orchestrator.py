@@ -165,6 +165,11 @@ class _Disabled(Exception):
     """The owner turned web access off while the task ran: it stops at the next check and ends 'partial'."""
 
 
+class _Quiet(Exception):
+    """The owner turned quiet on while a background task ran (background.py, ADR-050): it stops at the next check,
+    ends 'partial' and consolidates nothing."""
+
+
 class _Denied(Exception):
     """Raised by the run's gate inside a fetch (_Run.still_wanted): the host about to be contacted is on the owner's
     deny list now. _Run.fetch turns it into the FetchError('blocked_policy') of that page."""
@@ -175,7 +180,7 @@ class _Denied(Exception):
 
 
 # Control flow that per-document isolation must never swallow.
-_STOP = (_Cancelled, _OutOfTime, _Paused, _Disabled, BudgetExceeded, state.LostLease)
+_STOP = (_Cancelled, _OutOfTime, _Paused, _Disabled, _Quiet, BudgetExceeded, state.LostLease)
 
 
 def daily_capped(origin) -> bool:
@@ -221,10 +226,16 @@ class _Lookout:
             rows = self.db.execute("SELECT cancel_requested, lease_holder FROM web_tasks WHERE id=?",
                                    (run.id,)).fetchall()
             cfg = state.get_config(self.db)
+            quiet = None
+            if getattr(run, "held_when_quiet", False):       # a run-like reader without it is not background work
+                from .. import background
+                quiet = background.allowed(self.db, "task.background_run")[1]
         if not rows or rows[0][1] != run.holder:
             return "the task was forgotten or taken over"
         if rows[0][0]:
             return "the task was cancelled"
+        if quiet:
+            return quiet
         if not cfg.enabled:
             return "web access was turned off"
         if url and denied_by(cfg.deny_domains, url) is not None:
@@ -681,6 +692,8 @@ class _Run:
         self.config_read = time.monotonic()
         self.lookout = None               # what fetches ask from other threads while the task reads (_Lookout)
         self.deferred = []                # events noted inside a fetch, written after it (flush_deferred)
+        from .. import background         # background work the owner's quiet stops (ADR-050)
+        self.held_when_quiet = background.held_task(db, self.id, self.origin)
 
     def clock(self):
         return float(self.services.clock())
@@ -748,9 +761,20 @@ class _Run:
         allowed, reason = state.write_allowed(self.db, self.services_db_path())
         if not allowed:
             raise _Paused(reason)
+        self.quiet_stop()                 # read at every check, like cancel (one meta row)
         self.recheck_config()
         if self.elapsed() > self.budget.max_seconds:
             raise _OutOfTime()
+
+    def quiet_stop(self):
+        """_Quiet when this is background work and the owner's quiet is on (ADR-050). Asked at every stop check and
+        again before the model is called and before anything is consolidated, so quiet turned on while a background
+        task synthesizes stops it there too."""
+        if self.held_when_quiet:
+            from .. import background
+            allowed, reason = background.allowed(self.db, "task.background_run")
+            if not allowed:
+                raise _Quiet(reason)
 
     def recheck_config(self, *, force=False, defer=False):
         """Re-read the owner's web configuration (one meta row) at most every CONFIG_RECHECK seconds: web access
@@ -2360,7 +2384,7 @@ def _execute(db, task_id, services, *, resume):
     if task is None:
         return get(db, task_id)
     run = _Run(db, task, services, resume)
-    report, status, error, consolidation = None, None, None, None
+    report, status, error, consolidation, quieted = None, None, None, None, False
     try:
         needs_web = True
         if not run.is_done("discovering"):
@@ -2399,6 +2423,7 @@ def _execute(db, task_id, services, *, resume):
             _mark_knowledge_status(report, items)
             _memory_lead(report, items)
             status = "completed"
+            run.quiet_stop()             # quiet turned on while it synthesized: no model call
             _reason(db, run, report)
         else:
             run.stage("reading")
@@ -2431,6 +2456,7 @@ def _execute(db, task_id, services, *, resume):
             elif run.mode == "change_detection":
                 _compare_with_previous(db, run, report)
             if status != "failed":
+                run.quiet_stop()
                 _reason(db, run, report)
     except state.LostLease:
         return _lost_lease(db, task_id, run)
@@ -2443,19 +2469,24 @@ def _execute(db, task_id, services, *, resume):
                 _cancelled_before_extraction(report, len(run.documents))
         except Exception as exc:  # a partial report is best effort; the cancellation itself must stand
             error = f"no partial report: {type(exc).__name__}"
-    except (_Paused, _Disabled) as exc:
+    except (_Paused, _Disabled, _Quiet) as exc:
         status = "partial"
         disabled = isinstance(exc, _Disabled)
-        run.limit(WEB_OFF if disabled else f"writes paused by instance regulation: {exc}")
+        if isinstance(exc, _Quiet):
+            from ..background import STOPPED
+            quieted = True
+            run.limit(STOPPED)
+        else:
+            run.limit(WEB_OFF if disabled else f"writes paused by instance regulation: {exc}")
         try:
-            run.event("decision", {"stopped": "web access turned off" if disabled else "writes paused",
-                                   "reason": str(exc)[:300]})
+            run.event("decision", {"stopped": "quiet" if quieted else "web access turned off" if disabled else
+                                   "writes paused", "reason": str(exc)[:300]})
             report = run.synthesize()
         except state.LostLease:
             return _lost_lease(db, task_id, run)
         except Exception as inner:  # best effort; the stop itself must stand
-            report, error = None, f"{'stopped' if disabled else 'writes paused'}: {str(exc)[:200]}; no partial " \
-                                  f"report: {type(inner).__name__}"
+            stopped = "stopped" if disabled or quieted else "writes paused"
+            report, error = None, f"{stopped}: {str(exc)[:200]}; no partial report: {type(inner).__name__}"
     except Exception as exc:
         error = f"{type(exc).__name__}: {str(exc)[:500]}"
         try:
@@ -2475,7 +2506,20 @@ def _execute(db, task_id, services, *, resume):
         if not any(str(why).startswith("writes paused") for why in report.get("limitations", [])):
             report.setdefault("limitations", []).append("writes paused by instance regulation: nothing was "
                                                         "consolidated into knowledge")
-    if report is not None and status in ("completed", "partial") and needs_web_report(report) and not paused:
+    if report is not None and status in ("completed", "partial") and not quieted:
+        try:
+            run.quiet_stop()              # quiet turned on during the model call: nothing is consolidated
+        except _Quiet as exc:
+            from ..background import STOPPED
+            quieted, status = True, "partial"
+            report.setdefault("limitations", []).append(STOPPED)
+            try:
+                run.event("decision", {"stopped": "quiet", "reason": str(exc)[:300]})
+            except state.LostLease:
+                return _lost_lease(db, task_id, run)
+    # A task quiet stopped consolidates nothing: no model or memory call runs for it after the owner's stop.
+    if report is not None and status in ("completed", "partial") and needs_web_report(report) and not paused \
+            and not quieted:
         try:
             from . import consolidate
             # the answer's read-not-cited sources (report.set_aside) never feed knowledge either (T1-07)
@@ -2531,11 +2575,13 @@ def _reason(db, run, report):
 
     # F6, N4: the plain note only for what the owner typed or said in the console, by voice or on Pocket. Any other
     # origin (the CLI, which the model's own web_research tool also uses; MCP; refresh-owner; monitors; the bench) may
-    # carry a statement the owner did not word: quoted. An autonomous task needs the owner's authorisation.
+    # carry a statement the owner did not word: quoted. An autonomous task needs the owner's authorisation: a proposal
+    # the owner confirmed, or a background task the owner resumed or queued again (review0b N12).
     asked = "owner" if run.origin in OWNER_NOTE_ORIGINS else "autonomous" if is_autonomous(run.origin) else "confirmed"
     if asked == "autonomous":
+        from ..background import OWNER_ASKED, OWNER_CONFIRMED
         try:
-            if any(e["kind"] == "decision" and e["detail"].get("decision") == "proposal authorised by the owner"
+            if any(e["kind"] == "decision" and e["detail"].get("decision") in (OWNER_CONFIRMED, OWNER_ASKED)
                    for e in state.events(db, run.id)):
                 asked = "confirmed"
         except sqlite3.Error:
@@ -2866,7 +2912,10 @@ def requeue(db, task_id, now, *, origin=None, family=None) -> dict:
                             queued or running it is returned (requeued 'existing') instead of creating another; the
                             check and the insert are one transaction.
     anything else        -> Conflict.
-    Returns the queued task with `resumed_from` (the given id) and `requeued` ('same', 'child' or 'existing')."""
+    Returns the queued task with `resumed_from` (the given id) and `requeued` ('same', 'child' or 'existing').
+    Every caller is an owner surface (CLI, console, Pocket, voice): a background task queued again here is owner-asked
+    work, recorded with it (background.asked_by_owner), so the owner's quiet never holds it (ADR-050)."""
+    from .. import background
     task_id = str(task_id)
     with store.write(db):
         task = state.task(db, task_id, family=family)
@@ -2877,6 +2926,7 @@ def requeue(db, task_id, now, *, origin=None, family=None) -> dict:
                               lease_holder=None, lease_expires_at=None, cancel_requested=0)
             state.log_event(db, task_id, "resumed", {"requeued": True, "worker_stopped": crashed, "stages_done":
                                                      (task["checkpoint"] or {}).get("stages_done", [])}, now)
+            background.asked_by_owner(db, task_id, task["origin"], now)
             store.bump_state_version(db)
     if task["status"] == "failed" or crashed:
         return get(db, task_id, family=family) | {"resumed_from": task_id, "requeued": "same"}
@@ -2896,6 +2946,7 @@ def requeue(db, task_id, now, *, origin=None, family=None) -> dict:
         existing = _open_child(db, task_id)
         if existing is None:
             child = insert(db, prepared, now)
+            background.asked_by_owner(db, child, origin or task["origin"], now)
             store.bump_state_version(db)
     if existing is not None:
         return get(db, existing, family=family) | {"resumed_from": task_id, "requeued": "existing"}

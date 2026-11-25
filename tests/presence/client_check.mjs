@@ -77,6 +77,17 @@ i = interpret(research, { connection: 'ok', voice: { mic_capturing: true, speaki
 ok(i.activity === 'searching' && i.level === null && i.interaction.includes('text_only'), 'text-only: no audio-driven motion');
 i = interpret(research, { connection: 'disconnected' }, now);
 ok(i.concept === 'disconnected' && /unknown/.test(i.text), 'disconnected claims no activity');
+// the owner's quiet switch (ADR-050): said in plain words, as the word itself when nothing runs
+const quietRest = { schema: 'nsf.presence.state/1', condition: ['healthy'], interaction: [], intensity: 0, activities: [],
+  sources: { background: 'quiet' }, primary: { activity: 'resting', priority: 'idle', rank: 0, subsystem: 'executive', detail: 'Quiet: nothing runs unless you ask' } };
+i = interpret(quietRest, { connection: 'ok' }, now);
+ok(i.short === 'Quiet' && /nothing runs unless you ask/.test(i.text) && i.text.split('nothing runs unless you ask').length === 2, 'quiet shown once, in plain words');
+i = interpret(quietRest, { connection: 'ok', interactedAt: now - 1000 }, now);
+ok(i.activity === 'idle' && i.short === 'Quiet' && /Ready; nothing is running\. Quiet: nothing runs unless you ask/.test(i.text), 'quiet while the owner uses the page');
+i = interpret({ ...research, sources: { background: 'quiet' } }, { connection: 'ok' }, now);
+ok(i.activity === 'searching' && /Quiet: nothing runs unless you ask/.test(i.text), 'work the owner asked for runs and quiet is still said');
+i = interpret(research, { connection: 'ok' }, now);
+ok(!/Quiet/.test(i.text), 'no quiet note while quiet is off');
 const bg = { ...research, activities: [{ ...research.activities[0], priority: 'background', rank: 1 }] };
 i = interpret(bg, { connection: 'ok' }, now);
 ok(i.subtle && i.concept === 'exploring', 'background research shown subtly');

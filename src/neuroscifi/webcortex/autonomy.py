@@ -39,6 +39,8 @@ admitted; it never admits or refuses one (ADR-046, review F3).
 A subject investigated autonomously within `cooldown` seconds is skipped. The owner's own records always rank first;
 a subject only autonomous research produced is pursued at most one step from the owner's records and only when it
 stays on the owner subject it came from (UAT T1-02, T1-03).
+Both launch paths, this idle investigator and the timer's curiosity (scheduler.tick), admit through admission(),
+the one rule above (ADR-050); and the owner's quiet (background.py) holds both.
 """
 from __future__ import annotations
 
@@ -399,7 +401,9 @@ def status(db, now) -> dict:
     decisions = [{"at": at, "task_id": tid, **state.loads(detail, {})} for tid, detail, at in db.execute(
         "SELECT task_id, detail, created_at FROM web_events WHERE kind='decision' AND "
         "json_extract(detail,'$.autonomy') IS NOT NULL ORDER BY id DESC LIMIT 10")]
+    from .. import background
     return {"day": day_of(now), "switch": cfg.autonomous, "enabled": enabled(db), "record": pol["record"],
+            "quiet": background.quiet(db),          # the owner's switch above this one (ADR-050)
             "autonomous": _scope_status(db, "autonomous", now, pol), "user": _scope_status(db, "user", now, pol),
             "prices_usd": pol["prices_usd"], "min_gain": pol["min_gain"], "weights": dict(WEIGHTS),
             "idle_interval": pol["idle_interval"], "cooldown": pol["cooldown"], "decisions": decisions}
@@ -659,6 +663,91 @@ def candidates(db, now, *, limit=10) -> dict:
             "total": {"chosen": len(chosen), "refused": len(refused)}}
 
 
+# ---- the one admission rule (ADR-050) ------------------------------------------------------------------------------
+
+ADMISSION_RULES = ("unified", "legacy")
+_TICK_SCOPE = "autonomous research is limited to items already in knowledge and owner monitors; propose it instead"
+
+
+def admission(db, now, *, path, rule="unified", limit=5) -> dict:
+    """The one admission rule for autonomous investigations: both launch paths (the worker's idle investigation,
+    path 'idle', and the timer's curiosity, path 'tick') ask here. {"rule", "path", "gate": None or why nothing
+    may be admitted, "chosen": [...], "refused": [...]}; a chosen item carries objective, mode, key and the
+    inputs it was ranked by, and `rule` is recorded with the task that item becomes.
+
+    'unified' (the default; ADR-050): the owner's recorded enable (enabled()), then every candidate through
+    candidates(): min_gain on the stated forecast, derivation depth and relevance to the owner's subject, the
+    cooldown, record templates, claim shapes and searchable words, ranked by goal-weighted priority. The tick keeps
+    its own pool on top, exactly as before (knowledge items among curiosity.rank's ten best, each of the kind the
+    ranking gave it; due predictions left to its refreshes), so it can only admit fewer subjects than the legacy
+    rule, never others, and none of another kind or mode (a subject a due prediction or a hypothesis took in
+    candidates() is refused).
+    'legacy' (path 'tick' only, kept one release: `nsf web config --set tick_admission="legacy"`): the tick's rule
+    before ADR-050 - curiosity.rank's own floor (curiosity.MIN_GAIN), knowledge items only, no goal weighting, no
+    lineage, no cooldown, no recorded enable (the `autonomous` switch suffices), the statement's own words as the
+    objective."""
+    if rule not in ADMISSION_RULES or (rule == "legacy" and path != "tick"):
+        raise ValidationError(f"admission rule {rule!r} does not apply to path {path!r}")
+    out = {"rule": rule, "path": path, "gate": None, "chosen": [], "refused": []}
+    if rule == "legacy":
+        from . import claims, curiosity, intent
+        for c in curiosity.rank(db, now, limit=10):
+            target = c["target"]
+            statement = target.get("statement") or ""
+            why = (c["reason"] if c["excluded"] else _TICK_SCOPE if "knowledge_id" not in target else
+                   None if c["kind"] == "prediction" else
+                   "a structured record's template is not a statement to research; the record is re-read by its "
+                   "own refresh" if claims.record_template(statement) is not None else
+                   "nothing searchable in the statement" if not intent.query_text(statement) else "")
+            if why is None:
+                continue        # a due prediction: handled by predictions.check_due
+            if why:
+                out["refused"].append({"target": target, "reason": why})
+                continue
+            out["chosen"].append({"kind": c["kind"], "key": target.get("key"), "mode": c["mode"],
+                                  "info_gain": c.get("info_gain"), "knowledge_id": target["knowledge_id"],
+                                  "target": target, "objective": intent.query_text(statement)})
+        return out
+    if not enabled(db):
+        out["gate"] = ("autonomy is not enabled by a recorded owner switch (`nsf web autonomy enable` or the "
+                       "console switch)")
+        return out
+    pool = None
+    if path == "tick":       # the tick's own pool, as before: knowledge items among curiosity.rank's top ten
+        from . import curiosity
+        pool = {c["target"].get("key"): c["kind"] for c in curiosity.rank(db, now, limit=10)
+                if not c["excluded"] and "knowledge_id" in c["target"] and c["kind"] != "prediction"}
+    ranked = candidates(db, now, limit=10 ** 6 if path == "tick" else limit)
+    out["min_gain"], out["refused"] = ranked["min_gain"], ranked["refused"]
+    for item in ranked["chosen"]:
+        if pool is not None and item["key"] not in pool:
+            out["refused"].append(item | {"reason": _TICK_SCOPE if "knowledge_id" not in item else
+                                          "a due prediction is refreshed by predictions.check_due"
+                                          if item["kind"] == "prediction" else
+                                          "not among the timer's ten best curiosity candidates (curiosity.rank)"})
+            continue
+        if pool is not None and item["kind"] != pool[item["key"]]:
+            # candidates() keeps one item per subject: a due prediction or a hypothesis on a pooled subject may have
+            # taken it, in a shape the timer never launched (review0b): the refresh or the idle investigator has it
+            out["refused"].append(item | {"reason": "a due prediction is refreshed by predictions.check_due"
+                                          if item["kind"] == "prediction" else
+                                          f"the timer investigates this subject as {pool[item['key']]}, not as "
+                                          f"{item['kind']} (the idle investigator's)"})
+            continue
+        out["chosen"].append(item)
+    out["chosen"] = out["chosen"][:limit]
+    return out
+
+
+def decision_inputs(pick, admitted) -> dict:
+    """What a queued investigation's decision event records: its ranking inputs and the rule that admitted it."""
+    inputs = {k: pick[k] for k in ("kind", "key", "mode", "info_gain", "cost", "priority", "signals", "reason")
+              if k in pick}
+    inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast",
+                                    "forecast_as_read", "info_gain_as_read", "owner", "depth") if k in pick}
+    return inputs | {"admission": {"rule": admitted["rule"], "path": admitted["path"]}}
+
+
 # ---- the idle investigator -----------------------------------------------------------------------------------------
 
 MAX_IDLE_WORKERS = 32
@@ -688,7 +777,11 @@ def idle(db, now, *, worker=None) -> dict:
     as an autonomous task (origin 'curiosity') with its ranking inputs logged. At most once per idle_interval per
     worker (default: the calling process and thread), so two workers can run two investigations at once."""
     from ..instance.errors import Conflict, WritesPaused
+    from .. import background
     from . import orchestrator
+    ok, why = background.allowed(db, "worker.idle_investigation")
+    if not ok:              # the owner's quiet (ADR-050): no decision event, nothing is ranked
+        return {"action": "quiet", "reason": why}
     if not enabled(db):
         return {"action": "off"}
     pol = policy(db)
@@ -702,7 +795,7 @@ def idle(db, now, *, worker=None) -> dict:
         return {"action": "refused", "reason": reason}
     if full(db, now):
         return {"action": "busy", "running": running(db, now)}
-    ranked = candidates(db, now, limit=5)
+    ranked = admission(db, now, path="idle", limit=5)
     if not ranked["chosen"]:
         best = ranked["refused"][0] if ranked["refused"] else None
         why = best["reason"] if best else "no candidate in the records"
@@ -723,9 +816,7 @@ def idle(db, now, *, worker=None) -> dict:
                 _decide(db, now, {"autonomy": "refused", "reason": str(exc)}, worker=worker)
                 return {"action": "refused", "reason": str(exc)}
             continue
-        inputs = {k: pick[k] for k in ("kind", "key", "mode", "info_gain", "cost", "priority", "signals", "reason")}
-        inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast",
-                                        "forecast_as_read", "info_gain_as_read", "owner", "depth") if k in pick}
+        inputs = decision_inputs(pick, ranked)
         _decide(db, now, {"autonomy": inputs | {"weights": dict(WEIGHTS), "min_gain": ranked["min_gain"]}},
                 task_id=task["id"], worker=worker)
         return {"action": "queued", "task_id": task["id"], "candidate": inputs}

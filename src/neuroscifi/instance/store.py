@@ -91,6 +91,14 @@ class InstanceConfig:
     # Both are recorded and `nsf graph migration undo --owner-approved` reverses them. False before that open = the
     # file is left as it is (the owner opts out with `nsf config --no-graph-rule-migration`, which never migrates).
     graph_rule_migration: bool = True
+    # The imagined store (ADR-049, schema 17): content the system produced itself that is not evidence (simulation,
+    # speculation, inference). At most this many records are kept (the oldest goes first; 0 = none may be stored), each
+    # for at most this long. Nothing writes to the store by default; these bound whatever mechanism does.
+    max_imagined_rows: int = 1000
+    imagined_lifetime_seconds: float = 7 * 86400
+    # The owner's one switch for everything done unasked (background.py, ADR-050): on = background research,
+    # monitors, refreshes and idle investigations are held; work the owner asks for is not. Off by default.
+    quiet: bool = False
 
     @classmethod
     def from_json(cls, text):
@@ -106,10 +114,18 @@ class InstanceConfig:
         # The same for the graph-rule migration: a damaged value never changes an individual's rules or graphs.
         if not isinstance(values.get("graph_rule_migration", True), bool):
             values["graph_rule_migration"] = False
+        # Quiet the other way round: a damaged value holds background work, the reading that cannot run work the
+        # owner may have stopped.
+        if not isinstance(values.get("quiet", False), bool):
+            values["quiet"] = True
         # A limit that is not a whole number from 0 up (a hand-edited "none", a -1, true) is not a limit: the default
         # stands, never "no limit" by accident. setting_problems() reports it.
         if "max_consolidated_rows" in values and not _row_limit(values["max_consolidated_rows"]):
             del values["max_consolidated_rows"]
+        # The imagined store's bounds: a damaged value reads as the default, never as "unbounded".
+        for name in ("max_imagined_rows", "imagined_lifetime_seconds"):
+            if name in values and not _SETTABLE[name](values[name]):
+                del values[name]
         return cls(**values)
 
 
@@ -261,7 +277,13 @@ _SETTABLE = {
     "consolidation": lambda v: isinstance(v, bool),
     "max_consolidated_rows": _row_limit,
     "graph_rule_migration": lambda v: isinstance(v, bool),
+    "max_imagined_rows": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= MAX_IMAGINED_ROWS,
+    "imagined_lifetime_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
+                                            and math.isfinite(v) and 60 <= v <= MAX_IMAGINED_LIFETIME),
+    "quiet": lambda v: isinstance(v, bool),
 }
+MAX_IMAGINED_ROWS = 100_000
+MAX_IMAGINED_LIFETIME = 365 * 86400    # also how long an imagined tombstone is kept (imagined.expire)
 
 
 SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
@@ -287,7 +309,13 @@ def setting_problems(db):
              "max_consolidated_rows": f"; the default limit of {InstanceConfig.max_consolidated_rows} consolidated "
                                       "readings applies until it is set with `nsf config --max-consolidated-rows N`",
              "graph_rule_migration": "; the graph-rule migration is treated as off until it is set with "
-                                     "`nsf config --graph-rule-migration` or `--no-graph-rule-migration`"}
+                                     "`nsf config --graph-rule-migration` or `--no-graph-rule-migration`",
+             "max_imagined_rows": f"; the default limit of {InstanceConfig.max_imagined_rows} imagined records applies "
+                                  "until it is set with `nsf config --max-imagined-rows N`",
+             "imagined_lifetime_seconds": "; the default lifetime of imagined records applies until it is set with "
+                                          "`nsf config --imagined-lifetime-days D`",
+             "quiet": "; quiet is treated as on (background work held) until it is set with `nsf quiet on` or "
+                      "`nsf quiet off`"}
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
             for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
 
@@ -332,7 +360,9 @@ def set_config(db, changes, now=None):
     bumps the state version and leaves a row in the deletion log (kind 'setting', the name, {"from", "to"}), beside
     the forgets and sweeps whose meaning it changes: the log then shows from when to when expired events left no
     consolidated reading. Settings saved by older software keep every field they have; a field they lack reads as
-    its default (InstanceConfig.from_json).
+    its default (InstanceConfig.from_json). A lower max_imagined_rows or imagined_lifetime_seconds applies to the
+    imagined records already held, in the same transaction (imagined.bound; "imagined_removed" counts what it removed,
+    absent while zero).
     """
     if not isinstance(changes, dict):
         raise ValidationError("settings must be a JSON object")
@@ -342,6 +372,7 @@ def set_config(db, changes, now=None):
             raise ValidationError(f"{name!r} cannot be changed (changeable: {', '.join(sorted(_SETTABLE))})")
         if not check(value):
             raise ValidationError(f"{name}: value {value!r} is out of range")
+    removed = 0
     with write(db):
         raw = json.loads(_meta(db, "config"))
         current = asdict(InstanceConfig.from_json(json.dumps(raw)))
@@ -357,7 +388,13 @@ def set_config(db, changes, now=None):
                 (SETTING_KIND, name, time.time() if now is None else now, json.dumps(
                     {"from": current[name], "to": changes[name], "state_version": version}, sort_keys=True))
                 for name in changed])
-    return {"config": asdict(config(db)), "changed": changed}
+            if {"max_imagined_rows", "imagined_lifetime_seconds"} & set(changed):
+                from . import imagined     # a lower limit applies to the records already held (ADR-049)
+                removed = imagined.bound(db, time.time() if now is None else now)
+    out = {"config": asdict(config(db)), "changed": changed}
+    if removed:
+        out["imagined_removed"] = removed       # absent while zero
+    return out
 
 
 def birth(db):

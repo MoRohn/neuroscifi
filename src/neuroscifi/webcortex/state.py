@@ -94,6 +94,11 @@ def _validate(name, value):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
+    if name == "tick_admission":
+        from .autonomy import ADMISSION_RULES
+        if value not in ADMISSION_RULES:
+            raise ValidationError(f"tick_admission must be one of {', '.join(ADMISSION_RULES)}")
+        return value
     if name == "openwebsearch_url":
         parts = urlsplit(value) if isinstance(value, str) else None
         if parts is None or parts.scheme != "http" or (parts.hostname or "") not in LOOPBACK_HOSTS:

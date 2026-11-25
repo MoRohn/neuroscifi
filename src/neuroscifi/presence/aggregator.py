@@ -202,7 +202,12 @@ def _regulation(db, db_path, now):
 
     def compute():
         allowed, reason = store.write_allowed(db, str(db_path) if db_path else None)
-        return {"writes_allowed": allowed, "reason": reason}
+        from .. import background
+        try:
+            quiet = background.quiet(db)        # the owner's switch for everything done unasked (ADR-050)
+        except (sqlite3.Error, ValueError):
+            quiet = False                       # shown only: never a reason to invent a state
+        return {"writes_allowed": allowed, "reason": reason, "quiet": quiet}
     return _cached(("regulation", str(db_path)), now, compute)
 
 
@@ -427,6 +432,8 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
     reg = _regulation(db, db_path, now)
     if not reg["writes_allowed"]:
         conditions.add("resource_constrained")
+    if reg.get("quiet"):
+        sources["background"] = "quiet"     # the owner holds background work: shown in plain words by the client
     level = _resource_level()
     sources["resources"] = level
     if level in ("elevated", "critical"):      # measured memory/GPU pressure (resources.monitor; RD-46)
@@ -472,10 +479,12 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
         primary = cands[0]
     else:
         quiet_since = max([x for x in (last_change, newest_call, last_question) if x is not None], default=None)
-        resting = quiet_since is None or now - quiet_since >= RESTING_AFTER
+        held = sources.get("background") == "quiet"   # nothing will start unasked: resting at once
+        resting = held or quiet_since is None or now - quiet_since >= RESTING_AFTER
         primary = _candidate("resting" if resting else "idle", subsystem="executive", priority="idle",
                              since=quiet_since,
-                             detail="Nothing is running; conserving resources" if resting else "Ready; nothing is running")
+                             detail="Quiet: nothing runs unless you ask" if held else
+                             "Nothing is running; conserving resources" if resting else "Ready; nothing is running")
     raw = (0.12 * signals["running"] + signals["events_30s"] / 12 + signals["tokens_30s"] / 600
            + 0.5 * signals["inflight_inference"] + 0.05 * signals["queued"])
     intensity = round(1 - math.exp(-raw), 1)

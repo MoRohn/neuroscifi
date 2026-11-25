@@ -318,6 +318,45 @@ nsfs web status                                                # switches, provi
 - An identical submission (same objective, mode and origin) while one is queued or running returns that task (`deduplicated: true`). `requeue` of a partial or cancelled task returns the child already queued instead of creating another.
 - Curiosity proposals are sized to the daily autonomous allowance left when they are made, and are checked again when you confirm them and when the worker starts them.
 
+### Quiet: one switch for everything done unasked (ADR-050)
+
+```sh
+nsf quiet on  --db DB      # nothing runs unless you ask: background research, monitors, refreshes, idle investigations
+nsf quiet off --db DB      # back to what your other settings say
+nsf quiet     --db DB      # status: the switch, when it last changed, what it holds and what keeps running
+```
+
+`nsf config --quiet` / `--no-quiet` is the same setting. It is off by default. Only the owner sets it, on this
+command line: no console, Pocket, voice or MCP route changes it. The console overview (Regulation: "Background
+work") and the Presence entity on the console and on Pocket say "Quiet: nothing runs unless you ask" while it is on.
+Every change is a `setting` row in the deletion log, and `nsf checkpoint restore` carries it into the copy like the
+other settings.
+
+While quiet is on:
+
+- The worker claims and resumes no background task (curiosity, prediction refresh, a monitor's run) and makes no idle
+  investigation; queued ones stay queued and run after `nsf quiet off`. A running worker notices within one poll
+  (5 s; it records "holding background work" once); a claim always reads the setting at that moment.
+- `nsf web tick` (the 15-minute timer) runs no monitor (they stay due), no refresh and no curiosity. Cache retention
+  still runs.
+- A background task already running stops before its next network step, as a cancel does, and ends `partial`
+  ("stopped by quiet"); nothing it read is consolidated, so no model call runs for it after the stop.
+- Everything you ask for runs as before: console, CLI, Pocket, voice, MCP, research nodes, and a curiosity proposal
+  you confirmed.
+- Upkeep keeps running: evidence expiry and its consolidated readings (every command and the nightly timer), the
+  nightly checkpoint, cache retention, unloading idle model services, the worker's heartbeat, the voice and Pocket
+  sweeps, finding questions and Pocket pushes for work that already finished.
+
+Quiet never changes the other switches: `autonomous`, the autonomy enable record, monitors and timers keep their
+values and apply again as they were after `nsf quiet off`.
+
+**The timer's curiosity uses the idle investigator's rule (ADR-050).** The tick admits an investigation only with the
+recorded autonomy enable (`nsf web autonomy enable` or the console switch; `--set autonomous=true` without it is not
+enough), at least `min_gain` (0.05 bits) of expected information gain, at most one step from your own records, and
+not within `cooldown` (24 h) of the last investigation of the subject, as `nsf web autonomy candidates` shows; each
+task records the rule that admitted it in its decision event. To return to the tick's earlier rule for this release:
+`nsf web config --set tick_admission='"legacy"'` (and `'"unified"'` back).
+
 ### Crashed worker
 
 Each lease records the worker's host digest, pid and process start time. On the same host a dead worker is detected at once: `cancel`, `resume` and `requeue` act immediately and the worker service picks the task up from its checkpoint without waiting for the 600 s lease to expire. Task JSON carries `worker_alive` (`true`, `false`, or `null` when no worker holds it or it runs on another host).

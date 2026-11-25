@@ -98,6 +98,7 @@ import unicodedata
 
 from . import safety
 from . import text as T
+from ..provenance import QUARANTINED
 
 # Labels say what the answer is, no more (T4-02): one model call over the collected evidence, which may include
 # single-source claims; the guard checks each sentence against its cited sources and claim states.
@@ -790,14 +791,16 @@ def _clean(text, n=600) -> str:
 
 def bundle(report: dict, question: str) -> dict:
     """What the model may see: claims (id, state, confidence, text, source ids, dates) and the sources they cite
-    (a finding's citations plus its corroborating sources)."""
-    by_n = {s["n"]: s for s in report.get("sources") or [] if isinstance(s.get("n"), int)}
-    items = [f for f in report.get("findings") or [] if f.get("statement")]
+    (a finding's citations plus its corroborating sources). Content of a quarantined provenance kind (simulation,
+    speculation, inference: ADR-049) is never evidence, so it never becomes a claim or a source here."""
+    by_n = {s["n"]: s for s in report.get("sources") or [] if isinstance(s.get("n"), int)
+            and s.get("provenance") not in QUARANTINED}
+    items = [f for f in report.get("findings") or [] if f.get("statement") and f.get("provenance") not in QUARANTINED]
     if not items:
         items = [{"statement": a.get("text"), "status": a.get("status"), "confidence": a.get("confidence"),
                   "citations": a.get("citations"), "verification": a.get("verification")}
                  for a in report.get("answer") or []
-                 if a.get("status") != "summary" and a.get("text")]
+                 if a.get("status") != "summary" and a.get("text") and a.get("provenance") not in QUARANTINED]
     claims, cited = [], []
     for f in items:
         if len(claims) >= MAX_CLAIMS:
@@ -2340,10 +2343,11 @@ def _meaning_changes(text: str, used) -> list[str]:
 
 def check_sentence(s: dict, b: dict) -> tuple[str, list[int], list[str], list[dict], bool, list[str]]:
     """The objective checks of one model sentence against the bundle -> (text, cited source ids, claim ids, the
-    claims used, hedged, reasons it fails). Shared by the guard and the confirmation of self-critique flags."""
-    claims = {c["id"]: c for c in b["claims"]}
-    source_ids = {x["id"] for x in b["sources"]}
-    by_source = {x["id"]: x for x in b["sources"]}
+    claims used, hedged, reasons it fails). Shared by the guard and the confirmation of self-critique flags.
+    A claim or source of a quarantined provenance kind (ADR-049) is not evidence: citing it cites an unknown id."""
+    claims = {c["id"]: c for c in b["claims"] if c.get("provenance") not in QUARANTINED}
+    by_source = {x["id"]: x for x in b["sources"] if x.get("provenance") not in QUARANTINED}
+    source_ids = set(by_source)
     question = b.get("question") or ""
     text, inline_sources, inline_claims = _inline_refs(_clean(_norm(s.get("text"))))
     cites = [n for n in s.get("sources") or [] if isinstance(n, int) and not isinstance(n, bool)]

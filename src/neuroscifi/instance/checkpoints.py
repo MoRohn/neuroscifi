@@ -36,7 +36,7 @@ import shutil
 import sqlite3
 
 from .. import archive
-from . import governance, store
+from . import governance, imagined, store
 from .errors import Conflict, Gone, NotFound, ValidationError, WritesPaused
 from .schema import migrate
 
@@ -202,7 +202,7 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
 # window. The settings fixed at `nsf init` (lifetime, journal limit, free-space reserve, temperature limit) cannot
 # differ between an individual and its own archives, so they stay as the archive has them.
 CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds",
-                    "graph_rule_migration")
+                    "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet")
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
@@ -321,21 +321,38 @@ def _live_settings(db):
         value = raw.get(name, effective[name])
         if store.valid_setting(name, value):
             carried[name] = value
-        elif name in ("consolidation", "graph_rule_migration"):
+        elif name in ("consolidation", "graph_rule_migration", "quiet"):
             carried[name] = effective[name]
+            acts = "on" if effective[name] else "off"
             warnings.append(f"the live instance's saved {name} ({value!r}) is not true or false; it acts as "
-                            "off there, and off was carried into the copy")
+                            f"{acts} there, and {acts} was carried into the copy")
         else:
             warnings.append(f"the live instance's saved {name} ({value!r}) is not a valid value and was not carried; "
                             "the copy keeps the archive's")
     return carried, warnings
 
 
+def _acting_rule(value):
+    """The timer's admission rule a saved tick_admission acts as (scheduler.tick: only "legacy" is the old rule)."""
+    return "legacy" if value == "legacy" else "unified"
+
+
+def _live_rule(db):
+    """The live file's acting tick_admission, carried into a copy like CARRIED_SETTINGS; None when unreadable."""
+    from ..webcortex.config import META_KEY
+    row = db.execute("SELECT value FROM meta WHERE key=?", (META_KEY,)).fetchone()
+    try:
+        saved = json.loads(row[0]) if row else {}
+    except ValueError:
+        return None
+    return _acting_rule(saved.get("tick_admission")) if isinstance(saved, dict) else None
+
+
 def _read_forgets(db, now, wanted=None):
     from ..webcortex.signing import FRESH_SECONDS
     settings, warnings = _live_settings(db)
     return {
-        "settings": settings, "settings_warnings": warnings,
+        "settings": settings, "settings_warnings": warnings, "tick_admission": _live_rule(db),
         # Cameras and partners forgotten by name (governance.SCOPE_KINDS): their changepoints carry no tombstone, so
         # the deletion log is the record, as for epochs below.
         "scopes": [(kind, label, json.loads(effects).get("state_version", float("inf")), requested_at, effects)
@@ -365,6 +382,9 @@ def _read_forgets(db, now, wanted=None):
                        "SELECT target_id, requested_at, effects FROM deletion_log WHERE target_kind='epoch' "
                        "ORDER BY id")],
         "web": db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall(),
+        # Imagined records the live file removed (purged, forgotten with a source, expired, evicted; ADR-049).
+        "imagined": db.execute("SELECT digest,reason,forgotten_at FROM imagined_forgotten").fetchall()
+        if imagined.present(db) else [],
         # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
         "streams": set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()),
         # Retained raw audio likewise: a row the live instance no longer holds was forgotten, swept or expired.
@@ -424,6 +444,27 @@ def _replay(copy, forgets, now):
                 copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
                              (store.SETTING_KIND, name, now, json.dumps(change | {"carried_by_restore": True},
                                                                         sort_keys=True)))
+    if forgets and forgets.get("tick_admission"):
+        # The timer's admission rule (ADR-050) is the owner's current choice too: an archive taken under "legacy"
+        # never brings the looser rule back, nor one taken under "unified" undoes a later choice. The other web
+        # settings stay as the archive has them.
+        from ..webcortex.config import META_KEY
+        row = copy.execute("SELECT value FROM meta WHERE key=?", (META_KEY,)).fetchone()
+        try:
+            web_saved = json.loads(row[0]) if row else {}
+        except ValueError:
+            web_saved = None
+            settings_warnings.append("the archive's web settings could not be read: tick_admission was not written "
+                                     "into the copy")
+        rule = forgets["tick_admission"]
+        if isinstance(web_saved, dict) and _acting_rule(web_saved.get("tick_admission")) != rule:
+            change = {"from": _acting_rule(web_saved.get("tick_admission")), "to": rule}
+            copy.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                         (META_KEY, json.dumps(web_saved | {"tick_admission": rule}, sort_keys=True)))
+            copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                         (store.SETTING_KIND, "tick_admission", now,
+                          json.dumps(change | {"carried_by_restore": True}, sort_keys=True)))
+            carried["tick_admission"] = change
     candidates = _root_candidates(copy) if roots or kind_scopes else {}
     applied = 0
     for tomb in tombstones:
@@ -530,6 +571,9 @@ def _replay(copy, forgets, now):
         for row in copy.execute("SELECT segment_id,created_at FROM voice_audio").fetchall():
             if row not in live_audio:
                 audio += copy.execute("DELETE FROM voice_audio WHERE segment_id=?", (row[0],)).rowcount
+    # Last, after every other replay: imagined records the live file removed since, those past their lifetime, and
+    # those derived from anything the replay above removed (ADR-049).
+    imagined_removed = imagined.replay(copy, forgets.get("imagined", []) if forgets else [], now)
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
@@ -541,7 +585,8 @@ def _replay(copy, forgets, now):
             "datasets_blanked": blobs, "graph_effects_removed": effects,
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
-            "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked}
+            "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked,
+            "imagined_removed": imagined_removed}
 
 
 # ---- rewrite in place after a forget ------------------------------------------------------------------------------
@@ -550,7 +595,7 @@ def _replay(copy, forgets, now):
 # without the forgotten rows and is valid again. Other kinds (evidence, epoch, partner, dataset, expiry) leave derived
 # rows the replay does not reach, and an archive made stale while it was written has no recorded cause: those stay
 # stale until `rebuild` replaces them.
-REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source"})
+REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND})
 JOURNAL_SUFFIX = ".rewrite"
 
 

@@ -429,7 +429,7 @@ Idle unloading never stops a service during a voice session in use, a running ta
 
 ### Upgrading an individual you already have
 
-The file format is now schema 16. The first command that opens an individual made by older software upgrades it, so read [Migrations](docs/operations/MIGRATIONS.md) section 2 first and take a checkpoint. At that first open, once and recorded:
+The file format is now schema 17 (17 adds an empty store for imagined content, never evidence: [ADR-049](docs/architecture/ARCHITECTURAL_DECISIONS.md)). The first command that opens an individual made by older software upgrades it, so read [Migrations](docs/operations/MIGRATIONS.md) section 2 first and take a checkpoint. At that first open, once and recorded:
 
 - an individual still on the original graph rule (`gate-v1`) moves to `best-learner-v1`, and an active graph that predicts worse than no graph at all is archived (nothing is deleted);
 - datasets you forgot under an earlier version lose the graph weights learned from them, as a forget now does.
@@ -654,6 +654,7 @@ neuroscifi/
 | **Presence** | [Architecture](docs/presence/PRESENCE_CORTEX_ARCHITECTURE.md) · [Visual design](docs/presence/VISUAL_DESIGN_SYSTEM.md) · [State mapping](docs/presence/COGNITIVE_STATE_MAPPING.md) · [Accessibility](docs/presence/ACCESSIBILITY.md) |
 | **Operations** | [Runbook](docs/operations/RUNBOOK.md) · [Pocket guide](mobile/README.md) · [TLS for Pocket](docs/operations/TLS.md) · [Environment](docs/operations/ENVIRONMENT.md) · [Migrations](docs/operations/MIGRATIONS.md) · [Hardening verification](docs/operations/HARDENING_VERIFICATION.md) · [Testing](docs/operations/TESTING.md) |
 | **Engineering review** | [Overview](docs/acceleration/README.md) · [Engineering plan](docs/acceleration/ENGINEERING_PLAN.md) · [Performance](docs/acceleration/PERFORMANCE.md) · [Regression report](docs/acceleration/REGRESSION_REPORT.md) · [Verification report](docs/acceleration/VERIFICATION_REPORT.md) · [NVIDIA assessment](docs/acceleration/NVIDIA_ASSESSMENT.md) |
+| **Cognitive Genesis** | [Overview](docs/genesis/README.md) · [Architecture audit](docs/genesis/COGNITIVE_ARCHITECTURE_AUDIT.md) · [Research assessment](docs/genesis/RESEARCH_ASSESSMENT.md) · [Gap matrix](docs/genesis/COGNITIVE_GAP_MATRIX.md) · [Roadmap](docs/genesis/IMPLEMENTATION_ROADMAP.md) · [Wave 0](docs/genesis/WAVE0.md) · [Cognitive benchmark](docs/quality/COGNITIVE_BENCHMARK.md) |
 | **QA and research** | [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md) · [Release decisions](docs/qa/RELEASE_DECISIONS.md) · [Acceptance criteria](docs/quality/ACCEPTANCE_CRITERIA.md) · [Research workflow](research/README.md) |
 
 ## Known limitations

@@ -50,6 +50,7 @@ def import_legacy(db, legacy_path, now, *, path=None):
     for name in epochs:
         if not isinstance(name, str) or not name.strip() or len(name) > 64:
             raise ValidationError(f"prototype epoch name {name!r} must be a non-blank string of at most 64 characters")
+        evidence._not_imagined("prototype epoch name", name)
     created_epochs, created, present, forgotten, touched = 0, {}, 0, 0, set()
     with store.write(db):
         store.require_write_allowed(db, path)

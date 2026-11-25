@@ -6,6 +6,7 @@ a different payload is a Conflict, and a forgotten or expired id is Gone forever
 """
 import hashlib
 import math
+import re
 
 from . import beliefs, datasets, store
 from .errors import Conflict, Gone, ValidationError
@@ -19,10 +20,21 @@ _TEXT_LIMITS = {"id": 128, "epoch": 64, "root": 128, "sample_id": 128, "actor": 
 _CHOICES = {"channel": CHANNELS, "consent": ("learn", "memory_only"), "provenance": ("observed", "simulated")}
 
 
+# An imagined record's id in any case (schema._IMAGINED_ID; SQLite's lower() folds ASCII only). An event id, root or
+# sample id, or an epoch name, that holds one is refused here: the database would refuse it in the row or in a belief
+# revision's cause ("evidence:<id>", "forget:epoch:<name>"), as a raw IntegrityError (review0b N10).
+_IMAGINED_ID = re.compile(r"imagined:[0-9a-f]{32}", re.IGNORECASE | re.ASCII)
+
+
 def _text(name, value, limit):
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise ValidationError(f"{name} must be a non-blank string of at most {limit} characters")
     return value
+
+
+def _not_imagined(name, value):
+    if _IMAGINED_ID.search(value):
+        raise ValidationError(f"{name} must not hold an imagined record's id (an imagined record is never evidence)")
 
 
 def normalize(obs):
@@ -39,6 +51,8 @@ def normalize(obs):
     for name, limit in _TEXT_LIMITS.items():
         if record[name] is not None or name in REQUIRED or name == "actor":
             _text(name, record[name], limit)
+            if name != "actor":
+                _not_imagined(name, record[name])
     for name, choices in _CHOICES.items():
         if record[name] not in choices:
             raise ValidationError(f"{name} must be one of {', '.join(choices)}")
@@ -61,6 +75,7 @@ def start_epoch(db, name, now, note=None, context=None):
     writes (free space of the instance's own file included).
     """
     _text("epoch name", name, 64)
+    _not_imagined("epoch name", name)
     if note is not None and (not isinstance(note, str) or len(note) > 1024):
         raise ValidationError("note must be a string of at most 1024 characters")
     if context is not None:

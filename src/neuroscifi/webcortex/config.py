@@ -121,6 +121,10 @@ class WebConfig:
     # the kind have settled; stored forecasts, verification states, verdicts and answers never change.
     # Off: `nsf web config --set calibrated_forecasts=false`.
     calibrated_forecasts: bool = True
+    # ADR-050: the timer's curiosity admits investigations by the one rule the idle investigator uses
+    # (autonomy.admission: recorded enable, min_gain, lineage, cooldown). "legacy" restores the tick's rule before
+    # it for one release: `nsf web config --set tick_admission='"legacy"'`.
+    tick_admission: str = "unified"
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

@@ -25,12 +25,28 @@ store.bump_state_version(db) -> int ; store.state_version(db) -> int
 store.bump(db, name, amount=1) ; store.counter(db, name) -> int
 store.config(db) -> InstanceConfig(evidence_ttl_seconds, max_evidence_rows, min_free_bytes, ask_budget_per_epoch,
                                    ask_budget_window_seconds, consolidation, max_consolidated_rows,
-                                   max_thermal_celsius)
+                                   max_thermal_celsius, graph_rule_migration, max_imagined_rows,
+                                   imagined_lifetime_seconds)
 store.set_config(db, changes: dict, now=None) -> {"config": dict, "changed": [names]}   # owner-settable settings only
-#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation, max_consolidated_rows); ValidationError
+#   (ask_budget_per_epoch, ask_budget_window_seconds, consolidation, max_consolidated_rows, graph_rule_migration,
+#   max_imagined_rows, imagined_lifetime_seconds); ValidationError
 #   otherwise. `nsf config` is its CLI.
 #   Each real change adds a deletion_log row: target_kind "setting", target_id the name, effects {"from", "to",
 #   "state_version"} (from a restore: {"from", "to", "carried_by_restore": true}).
+#   ADR-050 adds InstanceConfig.quiet (bool, default false; owner-settable; carried by restore; a saved value that is
+#   not a JSON boolean reads as true and is listed by store.setting_problems()). `nsf quiet on|off|status` and
+#   `nsf config --quiet|--no-quiet` set it; store.regulation()["config"]["quiet"] shows it.
+#
+# The owner's quiet switch (ADR-050, `neuroscifi/background.py`):
+#   background.quiet(db) -> bool                       the setting now (False for a file without instance settings)
+#   background.allowed(db, activity) -> (bool, reason | None)   (False, QUIET_REASON) for a 'cognition' activity
+#                                                      while quiet is on; KeyError for an unregistered activity
+#   background.ACTIVITIES {name: {kind, what, sites}}  kinds cognition | maintenance | delivery | owner; RUNNERS
+#                                                      and UNITS name the callers and systemd units that run them
+#   background.held_task(db, task_id, origin) -> bool  origin curiosity, refresh:* or monitor:*, and not a
+#                                                      proposal the owner confirmed
+#   background.status(db) -> {quiet, changed_at, summary, held_while_quiet, keeps_running,
+#                             background_tasks_waiting?}   (`nsf quiet status`)
 #
 # Consolidation (ADR-044, schema 14). Additive fields, each absent while zero unless noted:
 #   beliefs.compute()["evidence"]["consolidated"]      learning readings that are consolidated (counted in "learning"
@@ -101,6 +117,8 @@ evidence.observe(db, obs: dict, now, *, path=None) -> {"status": "created"|"dupl
 #   Unknown keys -> ValidationError. Unknown epoch -> NotFound. Tombstoned id -> Gone.
 #   Same id + identical payload -> "duplicate" (bumps repeat_views, never extends expiry).
 #   Same id + different payload -> Conflict. Regulation -> WritesPaused (checked before insert).
+#   An id, root or sample_id (and start_epoch's name) holding "imagined:" + 32 hex digits, any case -> ValidationError
+#   (ADR-049: the database would refuse it, in the row or in the belief revision's cause).
 #   expires_at = now + config.evidence_ttl_seconds.
 #   After insert: recompute beliefs; if MAP state or identifiability changed, insert belief_revisions(cause='evidence:<id>').
 evidence.list_evidence(db, epoch, *, channel=None, root=None, limit=500) -> list[dict]
@@ -563,6 +581,37 @@ unaffected.
   `decision` event of a queued investigation carries `forecast_as_read` and `info_gain_as_read` when present.
 - No table, column or stored value is added or changed.
 
+**Quiet and the one admission rule (ADR-050).** Additive, nothing renamed or removed:
+- While the instance setting `quiet` is on: `scheduler.claim_next` claims and resumes no task of a background origin
+  (`curiosity`, `refresh:*`, `monitor:*`) unless the owner confirmed it as a proposal; `scheduler.tick` reports
+  `{"what": "monitors" | "prediction refreshes" | "curiosity", "reason": background.QUIET_REASON}` in `skipped` and
+  launches none of them (cache retention still runs); `autonomy.idle` returns `{"action": "quiet", "reason"}` and
+  writes no event; the worker logs one `decision` event `{"worker": "holding background work: quiet is on"}` when it
+  notices and `{"worker": "background work may run again: quiet is off"}` when it ends. A background task running
+  when quiet is turned on stops at its next check (before every network step; the run's gate answers the same to
+  its other threads) and ends `partial` with the limitation `background.STOPPED` and the event `{"stopped":
+  "quiet", "reason"}`; it is not consolidated.
+- Presence (`presence.aggregator.derive`, owner and family scope): `sources.background = "quiet"` while it is on
+  (absent otherwise); with nothing running the primary is `resting` with the detail "Quiet: nothing runs unless you
+  ask". The client says "Quiet" as the word and adds that sentence to its description.
+- `autonomy.admission(db, now, *, path: "idle" | "tick", rule="unified" | "legacy", limit=5) -> {rule, path, gate,
+  chosen, refused, min_gain?}`: the one admission rule both paths use. `autonomy.decision_inputs(pick, admitted)`.
+  `rule` "legacy" applies to path "tick" only (ValidationError otherwise).
+- `scheduler.tick` reports `admission` (the rule used). A tick-launched investigation's `decision` event is
+  `{"autonomy": {kind, key, mode, info_gain, cost, priority, signals, reason, ..., "admission": {"rule": "unified",
+  "path": "tick"}}}` (its key feeds the cooldown and the lineage, as the idle investigator's does), or under the
+  legacy rule `{"autonomy": "admitted by the legacy tick rule", "key", "admission": {"rule": "legacy", "path":
+  "tick"}}`. The idle investigator's event gains `admission: {"rule": "unified", "path": "idle"}`.
+- A background task the owner resumes (`nsf web resume`) or queues again (`orchestrator.requeue`: CLI, console,
+  Pocket, voice) gets a `decision` event `{"decision": "resumed or requeued by the owner"}`
+  (`background.asked_by_owner`): quiet does not hold it. A running background task asks quiet again before the model
+  call and before consolidation. `predictions.check_due`'s `refresh_submitted` actions gain `knowledge_id`; the
+  tick's unified curiosity skips a subject refreshed in the same tick (`scheduler.REFRESHED_THIS_TICK`).
+- Web setting `tick_admission` ("unified" default | "legacy"; `nsf web config --set tick_admission='"legacy"'`;
+  carried into a restored copy, `restore()["settings_carried"]["tick_admission"]`),
+  kept for one release.
+- `autonomy.status` (`nsf web autonomy status`, console `GET /api/web/autonomy`) gains `quiet` (bool).
+
 **Web question budget.** `knowledge.web_question_load(db, now=None, cfg=None) -> {open, stale, counted, cap,
 stale_after_days, room}` and `knowledge.stale_web_questions(db, now, cfg=None) -> [{id, scope, question, created_at,
 age_days}]`. A web question open longer than `web_question_stale_days` (setting, default 30; 0 = never stale) is
@@ -663,3 +712,57 @@ process. Extraction (`webcortex/extract.py`, `text.as_seen`, `text.reorders`): a
 and `zero_width_removed` also counts characters that came out of character references. A raw-text element (title,
 textarea, script, style, xmp, …) holding a direction control loses its content. A line of right-to-left text keeps
 its direction marks, embeddings and isolates in `text`.
+
+## 11. Provenance kinds and the imagined store (schema 17, ADR-049)
+
+`neuroscifi/provenance.py` (vocabulary) and `instance/imagined.py` (owner of `imagined`, `imagined_refs`,
+`imagined_forgotten`). Nothing in the evidence, knowledge, claims, verification, calibration, belief or retrieval code
+reads or writes these tables (an allow-list in tests/webcortex/test_imagined_quarantine.py: the store's lifecycle,
+WRITERS that may call `record`/`observe`, DISPLAYS that may call `listing`/`show`); the database refuses an id of the
+form `imagined:` + 32 hex digits (any case, padded) in a reference column of the evidence side, never in free text
+(`schema._NO_IMAGINED`; sqlite3.IntegrityError "an imagined record is never evidence"; INSERT OR REPLACE of a held
+record: "an imagined record is never rewritten").
+
+```python
+provenance.KINDS = ("evidence", "inference", "prediction", "simulation", "speculation")
+provenance.QUARANTINED = {"inference", "simulation", "speculation"} ; provenance.NOT_EVIDENCE = "imagined, not evidence"
+provenance.mapping() -> [{"record", "table", "kind", "basis"}]      # read-only; retags nothing
+imagined.record(db, kind, *, payload, assumptions: [str], uncertainty: str, mechanism: str, mechanism_version: str,
+                question: str, now, derived_from=[(ref_kind, id)], model=None, lifetime=None) -> "imagined:<32 hex>"
+#   kind in imagined.KINDS; ref_kind in imagined.REF_KINDS (task, knowledge, claim, source, hypothesis, prediction,
+#   evidence, consolidated, epoch, camera, partner, dataset, graph, imagined), each must name a held record
+#   (ValidationError); lifetime only shortens InstanceConfig.imagined_lifetime_seconds; at max_imagined_rows the oldest
+#   are evicted (deletion_log kind "imagined", target "evicted"); with max_imagined_rows 0 ValidationError;
+#   WritesPaused while regulation pauses writes
+imagined.observe(db, id, *, observation, now, evidence=[(ref_kind, id)]) -> show()  # once; never an imagined ref
+#   observation: a number (an integer within +-2**53, imagined.MAX_INT, or a finite float), true/false or null, or
+#   {payload key: such a value} (ValidationError otherwise: no text);
+#   the evidence (at most MAX_REFS) joins imagined_refs (observed 1), so forgetting it removes the record;
+#   WritesPaused while regulation pauses writes; derived_from in show() stays what the record was derived from
+imagined.listing(db, now, *, kind=None, limit=100) -> {"label", "counts" {kind: n}, "items": [{"id", "kind", "label",
+                 "mechanism", "mechanism_version", "model", "question", "created_at", "expires_at", "observed"}]}
+imagined.show(db, id) -> item + {"payload", "assumptions", "uncertainty", "derived_from", "outcome", "observed_at"}
+imagined.purge(db, now, *, record_id=None, kind=None) -> {"status": "purged"|"absent", "effects": {"imagined_removed",
+               "checkpoints_stale", "state_version", "wal_checkpoint"}}   # neither given: everything
+imagined.section(records) -> {"label": "imagined, not evidence", "items": [{"kind", "payload", "assumptions",
+                 "uncertainty"}]}                                         # no ids: never citable
+imagined.example(seed, *, question=..., derived_from=()) -> record() keyword arguments  # writes nothing
+imagined.purge_orphans(db, now) -> int ; imagined.expire(db, now) -> int ; imagined.replay(copy, forgotten, now) -> int
+imagined.bound(db, now) -> int   # the current limits applied to the records held (store.set_config, replay)
+#   caller owns the transaction (governance forgets, governance.sweep, checkpoints._replay); expire also removes
+#   orphans whatever expired and drops tombstones older than store.MAX_IMAGINED_LIFETIME (365 days)
+```
+
+Additive fields, absent while zero unless noted: forget results `effects["imagined_removed"]` (every forget kind);
+`governance.sweep()["imagined_expired"]`; `checkpoints.restore()["imagined_removed"]` (always present);
+`store.set_config()["imagined_removed"]` (a lowered max_imagined_rows or imagined_lifetime_seconds).
+`reasoning.bundle` leaves out findings, answer items and sources whose `provenance` is quarantined;
+`reasoning.check_sentence` resolves no citation to a claim or source whose `provenance` is quarantined.
+
+| CLI | Result |
+|---|---|
+| `nsf imagined list [--kind K] [--limit N]` | `imagined.listing` |
+| `nsf imagined show ID` | `imagined.show` |
+| `nsf imagined purge --id ID \| --kind K \| --all` | `imagined.purge`, then the rewrite of the archives it made stale (as `nsf forget`) |
+| `nsf imagined kinds` | `{"kinds", "never_evidence", "records": provenance.mapping()}` |
+| `nsf config --max-imagined-rows N --imagined-lifetime-days D` | `store.set_config` (N 0–100,000; D one minute to 365 days) |

@@ -365,6 +365,9 @@ async function loadOverview() {
     r.writes_allowed ? null : h('p', { class: 'sub', text: 'New evidence, research and other writes are refused until this clears. Free disk space, forget evidence or raise the limit.' }),
     (r.warnings ?? []).map((w) => h('p', { class: 'sub', role: 'status' }, badge('Attention', 'warn'), ` ${w}`)),
     kv([
+    // The owner's one switch for everything done unasked (ADR-050; `nsf quiet on|off`).
+    ['Background work', r.config.quiet ? 'Quiet: nothing runs unless you ask (turn it off with nsf quiet off)'
+      : 'Runs as your autonomy and monitor settings say (nsf quiet on holds it all)'],
     ['Evidence rows', `${r.evidence_rows} of ${r.config.max_evidence_rows}`],
     ['Open questions', r.open_questions],
     ['Evidence written', r.write_volume],

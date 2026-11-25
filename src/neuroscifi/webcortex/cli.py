@@ -755,6 +755,13 @@ def _cancel(db, a, now):
 
 
 def _resume(db, a, now):
+    """`nsf web resume`: the owner asks for the task, so quiet never holds it (background.asked_by_owner)."""
+    from .. import background
+    from . import state
+    task = state.task(db, a.task)
+    if task["status"] not in ("partial", "cancelled", "completed"):        # those are refused by resume itself
+        with store.write(db):
+            background.asked_by_owner(db, task["id"], task["origin"], now)
     return _run_task(db, a, a.task, resume=True)
 
 
