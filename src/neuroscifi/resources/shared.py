@@ -145,14 +145,25 @@ def _finite(text):
     return value
 
 
+INT_DIGITS = 18                      # the longest integer a file of the folder may hold (a time, a count, bytes)
+
+
+def _bounded_int(text):
+    if len(text.lstrip("-")) > INT_DIGITS:
+        raise ValueError(f"{text[:20]}... is too large a number")
+    return int(text)
+
+
 def loads(text):
     """json.loads for text another account wrote: anything that is not JSON raises ValueError, including text nested
     deeply enough to exhaust the parser's recursion (a state file of 200,000 '[' raised RecursionError, which the
-    callers' ValueError handlers did not catch: review L4c), and a number that is not finite (NaN, Infinity, 1e400:
-    Python's json accepts them, and one NaN in the internal-state history made every reader raise: review1 S2)."""
+    callers' ValueError handlers did not catch: review L4c), a number that is not finite (NaN, Infinity, 1e400:
+    Python's json accepts them, and one NaN in the internal-state history made every reader raise: review1 S2), and
+    an integer of more than INT_DIGITS digits (a 1 followed by 400 zeros is a Python int that no float can hold:
+    every reader comparing it with a time raised OverflowError: review1b R1)."""
     import json
     try:
-        return json.loads(text, parse_constant=_no_constant, parse_float=_finite)
+        return json.loads(text, parse_constant=_no_constant, parse_float=_finite, parse_int=_bounded_int)
     except RecursionError:
         raise ValueError("nested too deeply to be read") from None
 

@@ -362,8 +362,12 @@ def _read_history(db_path, limit=HISTORY_KEPT, now=None) -> tuple[list[dict], in
             ignored += 1
             continue
         at = item.get("at") if isinstance(item, dict) else None
-        if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at) \
-                or at > now + FUTURE_SECONDS:
+        try:
+            if isinstance(at, bool) or not isinstance(at, (int, float)) or not math.isfinite(at) \
+                    or at > now + FUTURE_SECONDS:
+                ignored += 1
+                continue
+        except OverflowError:          # an int no float can hold (shared.loads refuses them: review1b R1)
             ignored += 1
             continue
         out.append(item)

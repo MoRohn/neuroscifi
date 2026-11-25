@@ -88,17 +88,22 @@ def local_used() -> float | None:
 
 
 def _read_beacon(db_path, now) -> dict | None:
-    """The beacon when it is fresh (written less than BEACON_STALE seconds ago), else None."""
+    """The beacon when it is fresh (written less than BEACON_STALE seconds ago), else None. The beacon is written by
+    the processes that host a voice hub (the console, the Pocket bridge: the service account), so a file another
+    account created is not read (shared.writers), and one that cannot be read counts as no beacon (review1b R1)."""
     path = _beacon_path(db_path)
     if path is None:
         return None
-    try:
-        beacon = shared.read_json(path)       # no link, no FIFO, bounded, not too deep (review L4, L4c)
+    try:     # no link, no FIFO, bounded, not too deep, no number too large (review L4, L4c, review1b R1)
+        beacon = shared.read_json(path, owners=shared.writers(db_path))
     except (OSError, ValueError):
         return None
     now = time.time() if now is None else now
     at = beacon.get("at") if isinstance(beacon, dict) else None
-    if isinstance(at, bool) or not isinstance(at, (int, float)) or not 0 <= now - at <= BEACON_STALE:
+    try:
+        if isinstance(at, bool) or not isinstance(at, (int, float)) or not 0 <= now - at <= BEACON_STALE:
+            return None
+    except OverflowError:
         return None
     return beacon
 
@@ -117,7 +122,10 @@ def _in_use(used_at, now, quiet) -> bool:
     (None), or no time of last use (a beacon written before it was published), counts as in use."""
     if quiet is None or isinstance(used_at, bool) or not isinstance(used_at, (int, float)):
         return True
-    return now - used_at <= quiet
+    try:
+        return now - used_at <= quiet
+    except OverflowError:       # not a time: as if no time of last use were given
+        return True
 
 
 def voice_session_active(db_path=None, *, now=None, quiet=None) -> bool:
@@ -179,7 +187,11 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
     (autonomous) research start now? With the owner's predictive_regulation on (ADR-051), a forecast from the
     internal-state history (resources/forecast.py) can refuse too; it can only add a refusal, never lift one."""
     s = sample or monitor.sample()
-    audio = audio_active(db_path) if audio is None else audio
+    if audio is None:
+        try:
+            audio = audio_active(db_path)
+        except Exception:      # noqa: BLE001 - fail open: a beacon that cannot be read claims no audio (review1b R1)
+            audio = False
     reason = why = None
     if audio:
         reason, why = AUDIO_REASON + "; new autonomous research waits until it ends", "audio"
@@ -252,6 +264,7 @@ class AudioBeacon:
 
     def __init__(self, db_path, *, clock=time.time):
         self.path = _beacon_path(db_path)
+        self.db_path = db_path
         self.clock = clock
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._loop, name="nsf-audio-beacon", daemon=True)

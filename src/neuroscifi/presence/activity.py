@@ -152,7 +152,11 @@ def _alive(pid, started=None) -> bool:
 
 
 def _number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    """A finite int or float; an int too large for a float (review1b R1) is not a number here."""
+    try:
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    except OverflowError:
+        return False
 
 
 def _capped(priority) -> str:

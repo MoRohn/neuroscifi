@@ -487,7 +487,11 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
         signals["tokens_30s"] += int(tokens or 0)
     if owner:
         # this process's in-flight work, then what other processes published (the research worker; ADR-053)
-        for entry in inflight.snapshot() + inflight.remote(db_path, now):
+        try:
+            published = inflight.remote(db_path, now)
+        except Exception:          # noqa: BLE001 - another process's file must not take the owner's Presence down
+            published = []         # (review1b R1)
+        for entry in inflight.snapshot() + published:
             act = entry["activity"] if entry["activity"] in ACTIVITIES else "generating"
             if act in _INFLIGHT_DETAIL:
                 detail = _INFLIGHT_DETAIL[act].format(purpose=_short(entry["purpose"], 40))

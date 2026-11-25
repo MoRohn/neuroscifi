@@ -32,7 +32,10 @@ def _alive(pid) -> bool:
 
 
 def _number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    try:
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    except OverflowError:       # an int too large for a float (review1b R1)
+        return False
 
 
 class SharedAudioBeacon(AudioBeacon):
@@ -63,7 +66,8 @@ class SharedAudioBeacon(AudioBeacon):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX)
             try:
-                current = shared.read_json(self.path)
+                # another account's file is not merged in (policy._read_beacon reads it the same way)
+                current = shared.read_json(self.path, owners=shared.writers(self.db_path))
             except (OSError, ValueError):
                 current = {}
             current = current if isinstance(current, dict) else {}

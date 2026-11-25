@@ -93,3 +93,98 @@ def test_shared_loads_refuses_numbers_that_are_not_finite():
         with pytest.raises(ValueError):
             shared.loads(text)
     assert shared.loads('{"x": 1.5, "y": 2}') == {"x": 1.5, "y": 2}
+
+
+# ---- review1b R1: an integer too large for a float ------------------------------------------------------------------
+
+BIG = "1" + "0" * 400
+
+
+def test_shared_loads_refuses_integers_too_large():
+    for text in ('{"x": %s}' % BIG, '{"x": -%s}' % BIG, '[1234567890123456789]'):
+        with pytest.raises(ValueError):
+            shared.loads(text)
+    assert shared.loads('{"x": 123456789012345678, "y": -123456789012345678}') == {
+        "x": 123456789012345678, "y": -123456789012345678}
+
+
+BIG_HISTORY = {
+    "at": '{"v":1,"at":%s,"available_bytes":4000000000,"total_bytes":16000000000,"background_running":0}' % BIG,
+    "available": '{"v":1,"at":%f,"available_bytes":' + BIG + ',"total_bytes":16000000000,"background_running":0}',
+}
+
+
+@pytest.mark.parametrize("kind", sorted(BIG_HISTORY))
+def test_a_huge_integer_in_the_history_never_breaks_a_reader(individual, kind):
+    path, history, now = individual
+    row = BIG_HISTORY[kind]
+    history.write_text(lines((row % (now - 30 * (5 - i))) if "%f" in row else row for i in range(5)))
+    with closing(store.connect(path)) as db:
+        snap = internal_state.snapshot(db, str(path), now)                  # `nsf internal-state`
+        assert snap["history"]["samples"] == 0 and snap["history"]["ignored_samples"] == 5
+        store.set_config(db, {"predictive_regulation": True}, now)
+        policy._predictive_cache.clear()
+        assert policy.background_gate(str(path))["allowed"] is True
+        assert scheduler.claim_next(db, "h1", now + 1)               # the owner's task is still claimed
+
+
+def test_a_huge_integer_the_parser_let_through_is_never_compared(individual, monkeypatch):
+    """The readers' own guard, apart from shared.loads: a Python int no float can hold is not a number to them."""
+    from neuroscifi.presence import activity
+    from neuroscifi.voice import beacon
+    assert activity._number(int(BIG)) is False and beacon._number(int(BIG)) is False
+    assert activity._number(12) is True and beacon._number(1.5) is True
+    path, history, now = individual
+    monkeypatch.setattr(shared, "loads", json.loads)                   # a parser with no bound on integers
+    history.write_text(lines([BIG_HISTORY["at"]] * 3))
+    assert internal_state.history(str(path), now=now) == []
+
+
+def test_a_beacon_with_a_huge_integer_leaves_the_worker_working(individual):
+    from neuroscifi import resources
+    path, _, now = individual
+    beacon = policy._beacon_path(str(path))
+    beacon.write_text('{"at": %s, "active": true, "session": true}' % BIG)
+    assert policy.audio_active(str(path)) is False
+    assert policy.voice_session_active(str(path)) is False
+    assert policy.background_gate(str(path))["allowed"] is True
+    assert resources.status(str(path), full=False)["level"]
+    with closing(store.connect(path)) as db:
+        assert scheduler.claim_next(db, "h1", now + 1)               # the owner's task is still claimed
+
+
+def test_the_background_gate_fails_open_when_the_audio_check_raises(individual, monkeypatch):
+    path, _, _ = individual
+    monkeypatch.setattr(policy, "audio_active", lambda *a, **k: 1 / 0)
+    gate = policy.background_gate(str(path), sample={"level": "ok", "reasons": []})
+    assert gate["allowed"] is True and gate["audio"] is False
+
+
+def test_a_beacon_another_account_created_is_not_read(individual, monkeypatch):
+    path, _, _ = individual
+    beacon = policy._beacon_path(str(path))
+    beacon.write_text(json.dumps({"at": time.time(), "active": True, "session": True}))
+    assert policy.audio_active(str(path)) is True
+    monkeypatch.setattr(shared, "writers", lambda db_path: {os.getuid() + 12345})
+    assert policy.audio_active(str(path)) is False
+
+
+def test_owner_presence_survives_a_huge_integer_in_another_process_file(individual):
+    from neuroscifi.presence import activity, aggregator
+    path, _, now = individual
+    started = activity.process_started(1)
+    folder = internal_state.folder(path)
+    for text in ('{"pid":1,"started":%s,"at":%s,"entries":[]}' % (started, BIG),
+                 '{"pid":1,"started":%s,"at":%f,"entries":[{"activity":"call","since":%s}]}' % (started, now, BIG)):
+        (folder / "inflight-1.json").write_text(text)
+        assert activity.remote(str(path), now) == []
+        with closing(store.connect(path)) as db:
+            assert aggregator.derive(db, str(path), now) is not None
+
+
+def test_owner_presence_survives_a_reader_of_other_processes_that_raises(individual, monkeypatch):
+    from neuroscifi.presence import activity, aggregator
+    path, _, now = individual
+    monkeypatch.setattr(activity, "remote", lambda *a, **k: 1 / 0)
+    with closing(store.connect(path)) as db:
+        assert aggregator.derive(db, str(path), now) is not None
