@@ -137,18 +137,33 @@ one run on a host other tenants share.
 **The window.** `scripts/trtllm_compare.py` does the following in order:
 1. Checks everything: Docker, the pinned image, every `trtllm-serve` flag it uses, the answer model running and
    healthy, and enough free memory.
-2. Captures the answer model's container (secrets redacted in the written copy) and proves that `deploy/vllm/run.sh`
-   would recreate it.
-3. Measures vLLM first.
-4. Stops the answer model, keeping its container.
-5. Starts `trtllm-serve` on the same weights with the same limits: 32,768 tokens, batch 8, 4,096 tokens per step, a
-   KV cache of 141,994 tokens (vLLM's 13 GiB), the `qwen3` tool parser, xgrammar, and 127.0.0.1 only.
-6. Runs the same `bench_inference.py` and `bench_pipeline.py`.
-7. Restarts the same container and compares its configuration with the capture.
+2. Captures the answer model's container (secrets redacted in the written copy, environment values and
+   `--api-key`-style arguments alike; every file 0600, written without following a link) and proves that
+   `deploy/vllm/run.sh` would recreate it.
+3. Pauses what calls the answer model. While it is stopped its port is free, and any local account could listen
+   there and receive the key the worker, console or Pocket send with each call. The NeuroSciFi units that call it or
+   reload it (the research worker and its timer, the console, Pocket, the idle timer, the wake path) are stopped
+   with `systemctl --no-ask-password` and started again after the restore. NeuroSciFi processes started by hand
+   (`nsf start` in a terminal, `nsf web work`), or a unit this account may not stop, refuse the run unless the
+   owner passes `--i-stopped-the-services` after stopping them.
+4. Measures vLLM first.
+5. Stops the answer model, keeping its container.
+6. Starts `trtllm-serve` on the same weights with the same limits: 32,768 tokens, batch 8, 4,096 tokens per step, a
+   KV cache of 141,994 tokens (vLLM's 13 GiB), the `qwen3` tool parser, xgrammar, and 127.0.0.1 only. The
+   container runs as the owner's uid with a read-only root and one tmpfs, a pids limit of 4,096, no capability, on
+   a network of its own with traffic between containers off (the server has no key option, so nothing else on
+   Docker's default bridge may reach it).
+7. Runs the same `bench_inference.py` and `bench_pipeline.py`.
+8. Restarts the same container, compares its configuration with the capture, and starts the paused units again.
+   If something else listens on the answer model's port, the restore reports it (`ss -ltnp`) rather than retrying.
 
-Step 7 runs on every exit path: the normal end, an error, Ctrl-C, SIGTERM and SIGHUP. If too little memory frees up,
+Step 8 runs on every exit path: the normal end, an error, Ctrl-C, SIGTERM and SIGHUP. If too little memory frees up,
 the script aborts and restores. The restore logic is unit-tested with fakes (`tests/test_trtllm_compare.py`). The
-dry run passed on this host with no blockers.
+dry run on this host (2026-11-24) passed its checks; the `trtllm-serve` probe ran under the window's restrictions
+(the owner's uid, read-only root, pids limit). It reported as blockers the NeuroSciFi processes running by hand at
+the time, which is what step 3 is for. **Unverified:** TensorRT-LLM loading and serving the 30B model under those
+restrictions (only the import and `--help` ran under them), and `systemctl` stopping the units (none is installed
+on this host).
 
 ```bash
 python scripts/trtllm_compare.py --dry-run     # stops nothing; prints the plan and any blocker
@@ -161,8 +176,9 @@ Expected cost, estimated from the durations of earlier runs and not measured for
   about 6 minutes of `bench_inference.py`; about 4 minutes of `bench_pipeline.py`; and vLLM's restart, measured at
   58 to 83 s earlier.
 
-Stop the NeuroSciFi services first, or expect their model calls to fail during the window. If the process is killed
-with SIGKILL, run `deploy/vllm/run.sh start`. The image is a pre-release, so a later stable release that includes the
+The script pauses the NeuroSciFi units itself; stop anything started by hand first (the dry run lists it). If the
+process is killed with SIGKILL, run `deploy/vllm/run.sh start` and start the paused units again
+(`sudo systemctl start` each one the result lists under `pause`). The image is a pre-release, so a later stable release that includes the
 SM 12x fix is the one to adopt if the result favours it.
 
 ## 6. Licences touched by this review
