@@ -208,11 +208,13 @@ def bound(db, now):
 
 
 def record(db, kind, *, payload, assumptions, uncertainty, mechanism, mechanism_version, question, now,
-           derived_from=(), model=None, lifetime=None):
+           derived_from=(), model=None, lifetime=None, once_per=None):
     """Store one imagined record and return its id ('imagined:' + 32 hex). Every reference in `derived_from`
     ((kind, id) pairs, kind in REF_KINDS) must name a record this file holds. `lifetime` (seconds) may only shorten
     InstanceConfig.imagined_lifetime_seconds. At max_imagined_rows the oldest records are evicted first; with 0 the
-    store takes nothing (ValidationError). Writes are refused while regulation pauses them."""
+    store takes nothing (ValidationError). Writes are refused while regulation pauses them. `once_per` (a reference):
+    when this mechanism already holds a record derived from it, that record's id is returned and nothing is written,
+    decided inside the write transaction (two concurrent writers make one record; review1 CL7)."""
     if kind not in KINDS:
         raise ValidationError(f"an imagined record is one of {', '.join(KINDS)}; evidence and predictions have their "
                               "own tables")
@@ -244,7 +246,14 @@ def record(db, kind, *, payload, assumptions, uncertainty, mechanism, mechanism_
         life = min(life, lifetime)
     store.require_write_allowed(db)
     record_id = "imagined:" + secrets.token_hex(16)
+    once = None if once_per is None else _ref(once_per)
     with store.write(db):
+        if once is not None:
+            found = db.execute("SELECT i.id FROM imagined i JOIN imagined_refs r ON r.record_id=i.id WHERE "
+                               "i.mechanism=? AND r.ref_kind=? AND r.ref_id=? AND r.observed=0 ORDER BY i.created_at, "
+                               "i.id LIMIT 1", (mechanism, *once)).fetchone()
+            if found is not None:
+                return found[0]
         missing = _unresolved(db, refs)
         if missing:
             raise ValidationError(f"derived_from names records this instance does not hold: {missing}")

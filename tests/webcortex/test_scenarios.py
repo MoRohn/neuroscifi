@@ -105,3 +105,33 @@ def test_the_timer_reports_scenarios_only_when_they_are_on(db):
     report = scheduler.tick(db, T0 + 20, services=None)
     assert report["scenarios"] == {"settled": 0, "imagined": 1}
     assert json.dumps(report)          # the report stays JSON
+
+
+def test_two_concurrent_writers_make_one_record_per_prediction(db, monkeypatch):
+    """review1 CL7: the 'already imagined?' check ran outside the write; two ticks could both write."""
+    store.set_config(db, {"imagine_scenarios": True}, T0)
+    _, _, pid = _open_prediction(db)
+    other = store.connect(db.execute("PRAGMA database_list").fetchone()[2])
+    real = scenarios.futures
+    raced = []
+
+    def futures(conn, prediction_id):
+        if not raced:                       # the other process writes its record while this one computes
+            raced.append(True)
+            raced.append(scenarios.imagine(other, prediction_id, T0 + 10))
+        return real(conn, prediction_id)
+    monkeypatch.setattr(scenarios, "futures", futures)
+    try:
+        assert scenarios.imagine(db, pid, T0 + 10) == raced[1]
+    finally:
+        other.close()
+    assert db.execute("SELECT count(*) FROM imagined").fetchone()[0] == 1
+
+
+def test_at_the_store_limit_the_timer_makes_nothing_and_evicts_nothing(db):
+    """review1 CL8: each pass evicted the oldest records (an owner's kept answer among them) to make room."""
+    store.set_config(db, {"imagine_scenarios": True, "max_imagined_rows": 1}, T0)
+    kept = imagined.record(db, **imagined.example(1), now=T0)
+    _open_prediction(db)
+    assert scenarios.tick(db, T0 + 10) == {"settled": 0, "imagined": 0}
+    assert [i["id"] for i in imagined.listing(db, T0 + 11)["items"]] == [kept]

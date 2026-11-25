@@ -111,10 +111,7 @@ def imagine(db, prediction_id, now) -> str:
     pred = evolution.prediction(db, prediction_id)
     if pred["outcome"] is not None:
         raise ValidationError(f"prediction {prediction_id} has settled: there is nothing left to imagine")
-    found = _existing(db, prediction_id)
-    if found:
-        return found
-    f = futures(db, prediction_id)
+    f = futures(db, prediction_id)      # the existing record, when there is one: record(once_per=...) returns it
     end = state.finite(pred.get("deadline")) or state.finite(pred.get("check_after"))
     lifetime = None if end is None or end <= now else max(60.0, end - now + 30 * 86400)
     payload = {"prediction_id": prediction_id, "kind": f["kind"], "expectation": f["expectation"],
@@ -123,18 +120,24 @@ def imagine(db, prediction_id, now) -> str:
     return imagined.record(db, provenance.SIMULATION, payload=payload, assumptions=f["assumptions"],
                            uncertainty=f["uncertainty"], mechanism=MECHANISM, mechanism_version=VERSION,
                            question=f"what may happen to prediction {prediction_id}: {f['expectation']}"[:2000],
-                           now=now, derived_from=f["derived_from"], lifetime=lifetime)
+                           now=now, derived_from=f["derived_from"], lifetime=lifetime,
+                           once_per=("prediction", prediction_id))
 
 
 def imagine_open(db, now, *, limit=PER_TICK) -> list[str]:
-    """Records for open predictions that have none yet, oldest first, at most `limit`."""
+    """Records for open predictions that have none yet, oldest first, at most `limit`: the predictions without one
+    are found by one anti-join (review1 CL8: a read of every record per prediction), and nothing is made while the
+    store is at max_imagined_rows, so the timer never evicts a record (the owner's kept answers among them) to make
+    room for its own."""
+    from ..instance import store
+    room = store.config(db).max_imagined_rows - db.execute("SELECT count(*) FROM imagined").fetchone()[0]
     made = []
-    for (pid,) in db.execute("SELECT id FROM web_predictions WHERE outcome IS NULL AND probability IS NOT NULL "
-                             "ORDER BY id").fetchall():
-        if len(made) >= limit:
+    for (pid,) in db.execute(
+            "SELECT p.id FROM web_predictions p WHERE p.outcome IS NULL AND p.probability IS NOT NULL AND NOT EXISTS "
+            "(SELECT 1 FROM imagined_refs r JOIN imagined i ON i.id=r.record_id WHERE r.ref_kind='prediction' AND "
+            "r.ref_id=CAST(p.id AS TEXT) AND r.observed=0 AND i.mechanism=?) ORDER BY p.id", (MECHANISM,)).fetchall():
+        if len(made) >= min(limit, room):
             break
-        if _existing(db, pid):
-            continue
         try:
             made.append(imagine(db, pid, now))
         except (ValidationError, NotFound):
