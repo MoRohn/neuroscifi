@@ -202,6 +202,15 @@ def _config(db, args, now):
     return out | ({"warnings": problems} if problems else {}) | ({"notes": notes} if notes else {})
 
 
+def _regulation(db, args, now):
+    """`nsf regulation`; --precision adds executive.precision (ADR-054), computed only when asked."""
+    out = store.regulation(db, store.resolve_db(args), measure=True)
+    if getattr(args, "precision", False):
+        from .executive import precision
+        out["precision"] = precision(db)
+    return out
+
+
 def register(sub):
     import argparse
     from pathlib import Path
@@ -292,7 +301,10 @@ def register(sub):
 
     p = sub.add_parser("regulation", help="write budget, backlog and pause state")
     store.add_db_argument(p)
-    p.set_defaults(handler=with_db(lambda db, args, now: store.regulation(db, store.resolve_db(args), measure=True)))
+    p.add_argument("--precision", action="store_true",
+                   help="also report how the executive's questions turned out (confirmed, rejected, expired) per "
+                        "rule and per epoch: how often a change alarm was a change you confirmed (display only)")
+    p.set_defaults(handler=with_db(_regulation))
 
     for name in SUBMODULES:
         try:

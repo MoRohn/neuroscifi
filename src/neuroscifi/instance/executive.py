@@ -311,6 +311,99 @@ def pending(db, *, epoch=None, include_resolved=False):
     return [dict(zip(_PENDING_COLUMNS, row)) for row in db.execute(sql + " ORDER BY id", params)]
 
 
+PRECISION_RULES = {
+    "change_alarm": "rule 2: the change detector asked to confirm a change (kind 'calibrate')",
+    "change_ambiguous": "rule 3: an ambiguous change, asked which scope changed (kind 'ask')",
+    "epoch_match": "rule 4b: asked whether this is an earlier setup (scope 'epoch:...')",
+    "partner_meaning": "rule 6: asked what a partner means by their words (kind 'ask')",
+    "reference_test": "rules 3 and 5: asked for a known reference reading (kind 'test_reference')",
+    "web_knowledge": "Web Cortex: asked to accept a knowledge candidate (scope 'web:knowledge:...')",
+    "web_other": "Web Cortex: other owner questions (reviews, contested subjects, proposals)",
+}
+_OUTCOMES = ("confirmed", "rejected", "answered", "withdrawn", "expired", "open")
+
+
+def _rule_of(kind, scope, question):
+    scope = scope or ""
+    if scope.startswith("web:knowledge:"):
+        return "web_knowledge"
+    if scope.startswith("web:"):
+        return "web_other"
+    if kind == "calibrate":
+        return "change_alarm"
+    if kind == "test_reference":
+        return "reference_test"
+    if kind == "ask" and scope.startswith("epoch:"):
+        return "epoch_match"
+    if kind == "ask" and (question or "").startswith("Something changed"):
+        return "change_ambiguous"
+    if kind == "ask":
+        return "partner_meaning"
+    return None
+
+
+def _rates(counts):
+    decided = counts["confirmed"] + counts["rejected"]
+    closed = sum(counts[k] for k in _OUTCOMES if k != "open")
+    owner = decided + counts["answered"]
+    return {"asked": sum(counts.values()), **counts,
+            "precision": round(counts["confirmed"] / decided, 4) if decided else None,
+            "owner_answered_share": round(owner / closed, 4) if closed else None}
+
+
+def precision(db) -> dict:
+    """How the executive's questions turned out, from records that already exist (ADR-054; display only, nothing
+    reads it back and nothing is written). Per rule (PRECISION_RULES) and per epoch, every question asked: confirmed
+    (a change question answered with confirm=True: a changepoint row confirmed=1; an earlier-setup question
+    answered "continue there": an epoch_links row; a knowledge candidate the owner accepted), rejected (confirm=False:
+    a changepoint row confirmed=0; the earlier setup declined; a candidate rejected), answered (the owner answered
+    without confirming or rejecting), withdrawn ("resolved by evidence": the executive no longer asks it), expired
+    (no answer within 7 days) or open. precision = confirmed / (confirmed + rejected): for change_alarm, how often
+    the change detector's alarm was a change the owner confirmed. An earlier-setup question the owner closed without
+    a link counts as rejected (confirm=False and a bare close leave the same record). Questions about forgotten roots are counted with
+    their scrubbed scope; a forgotten epoch's questions are gone with it."""
+    cps = {}
+    if beliefs._has_changepoints(db):
+        for pid, confirmed in db.execute("SELECT pending_id, confirmed FROM changepoints WHERE pending_id IS NOT NULL"):
+            cps[pid] = bool(confirmed)
+    links = set()
+    if beliefs._has_table(db, "epoch_links"):
+        links = {pid for (pid,) in db.execute("SELECT pending_id FROM epoch_links WHERE pending_id IS NOT NULL")}
+    web_status = {}
+    if beliefs._has_table(db, "web_knowledge"):
+        web_status = dict(db.execute("SELECT 'web:knowledge:' || id, status FROM web_knowledge"))
+    by_rule, by_epoch = {}, {}
+    for pid, epoch, kind, scope, question, resolved_at, resolution in db.execute(
+            "SELECT id, epoch, kind, scope, question, resolved_at, resolution FROM pending ORDER BY id"):
+        rule = _rule_of(kind, scope, question)
+        if rule is None:
+            continue
+        resolution = resolution or ""
+        if resolved_at is None:
+            outcome = "open"
+        elif resolution.startswith("expired:"):
+            outcome = "expired"
+        elif resolution.startswith("resolved by evidence:"):
+            outcome = "withdrawn"
+        elif pid in cps:
+            outcome = "confirmed" if cps[pid] else "rejected"
+        elif rule == "epoch_match":
+            outcome = "confirmed" if pid in links else "rejected"
+        elif rule == "web_knowledge" and web_status.get(scope) in ("accepted", "rejected"):
+            outcome = "confirmed" if web_status[scope] == "accepted" else "rejected"
+        else:
+            outcome = "answered"
+        counts = by_rule.setdefault(rule, dict.fromkeys(_OUTCOMES, 0))
+        counts[outcome] += 1
+        if epoch is not None:
+            per = by_epoch.setdefault(epoch, {}).setdefault(rule, dict.fromkeys(_OUTCOMES, 0))
+            per[outcome] += 1
+    return {"display_only": True, "rules": PRECISION_RULES,
+            "by_rule": {rule: _rates(c) for rule, c in sorted(by_rule.items())},
+            "by_epoch": {epoch: {rule: _rates(c) for rule, c in sorted(rules.items())}
+                         for epoch, rules in sorted(by_epoch.items())}}
+
+
 def _changepoint(db, pending_id):
     if not beliefs._has_changepoints(db):
         return None
