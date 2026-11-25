@@ -5,6 +5,8 @@ Real SQLite throughout; research runs offline against FixtureWeb + CorpusProvide
 from contextlib import closing
 from datetime import datetime, timezone
 import multiprocessing
+import queue
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -254,21 +256,39 @@ def test_two_concurrent_autonomous_investigations_at_most_across_processes(indiv
     for n in range(6):
         curious(db, f"Zephyr compiler question {n}")
     # Started fresh, not forked (race_helper.py says why): six separate processes on one database file.
+    # Timing (a slow runner): each process reports what happened, an error included, and the test waits on those
+    # reports against one generous deadline rather than on fixed joins; the race itself is decided by SQLite's write
+    # lock, not by timing, so a longer wait proves the same thing.
     ctx = multiprocessing.get_context("spawn")
     barrier, out = ctx.Barrier(6), ctx.Queue()
     procs = [ctx.Process(target=race_helper.race, args=(path, n, T0, barrier, out)) for n in range(6)]
     for p in procs:
         p.start()
-    for p in procs:
-        p.join(60)
-    # A process that did not finish must not outlive the test: it would hold the runner's log pipe until the CI
-    # job's timeout.
-    stuck = [p for p in procs if p.is_alive()]
-    for p in stuck:
-        p.kill()
-        p.join(5)
+    reports, deadline = {}, time.monotonic() + race_helper.BARRIER_TIMEOUT + 60
+    try:
+        while len(reports) < len(procs) and time.monotonic() < deadline:
+            ended = not any(p.is_alive() for p in procs)     # read before the get: a report sent before the
+            try:                                               # end is in the pipe by then
+                n, tid, error = out.get(timeout=1.0)
+            except queue.Empty:
+                if ended:
+                    break                   # every process ended; a missing report is a failure below
+                continue
+            reports[n] = (tid, error)
+        for p in procs:
+            p.join(max(0.0, deadline - time.monotonic()))
+    finally:
+        # A process that did not finish must not outlive the test: it would hold the runner's log pipe until the CI
+        # job's timeout.
+        stuck = [p for p in procs if p.is_alive()]
+        for p in stuck:
+            p.kill()
+            p.join(5)
     assert not stuck, f"{len(stuck)} of {len(procs)} racing processes never finished (killed)"
-    started = [tid for _, tid in (out.get(timeout=5) for _ in procs) if tid]
+    errors = {n: error for n, (_, error) in reports.items() if error}
+    assert not errors, errors
+    assert sorted(reports) == list(range(6)), f"reports from {sorted(reports)} only"
+    started = [tid for tid, _ in reports.values() if tid]
     assert len(started) == 2
     assert autonomy.running(db, T0) == 2 and autonomy.full(db, T0)
     queued = db.execute("SELECT count(*) FROM web_tasks WHERE status='queued' AND lease_holder IS NOT NULL").fetchone()
