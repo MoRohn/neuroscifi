@@ -2369,6 +2369,110 @@ the conditional mean.
 - Not done: model-written scenarios, conceptual blending, front-door identification, actions on the belief model,
   parameter uncertainty in forecast intervals, a refusal of mixed simulated and real readings (owner question).
 
+# ADR-053 (draft) Self-description record, selective broadcast, Presence from real activity, and continuity. R
+
+## Context
+
+Cognitive Genesis §6.1, §6.2, §6.4, §6.5, §6.7 and §8 ask for a mechanism that makes important information
+available across subsystems without broadcasting everything, a structured functional self-model that answers "what
+am I doing, what do I know, what am I uncertain about, what can I do next, what evidence supports that decision",
+continuity across sessions and devices, and measurements of access and consistency. The runtime audit found five
+partial status views and no record; `pending` plus `autonomy.after_task` already a salience-gated, budgeted
+broadcast for findings, Presence's RANK already a contention rule; six Presence activities declared and never shown;
+worker model calls invisible to the console's Presence; the memory-pressure condition described as paused writes;
+MCP's version hard-coded; no console view of `GET /api/resources` or of the imagined store; and a spoken question's
+answer lost when the console restarts (R8). The baseline self-description benchmark answered 12 of 15 probes from four
+surfaces (never: what it is uncertain about, its last decision, which tools the model may use).
+
+None of this is a claim about experience. The names are functional ("self-description", "selective broadcast"); the
+literature (research.md §3) gives no support for reading a workspace or a self-model as evidence of consciousness,
+and the measurements below are not scores of anything but the function they name.
+
+## Decision
+
+1. **One self-description record (`self_description.py`, schema `nsf.self-description/1`).** Built on request from
+   the existing stores, read-only. Every field is `{value, source, at, age_seconds}`; nothing in it is text a model
+   wrote (objectives are the owner's words, reasons are the executive's own sentences, knowledge keys come from
+   sources and are shown as data). Sections: doing, knows, uncertain, can, decisions, resources, provenance, recent,
+   and `answers` mapping the five questions to field paths. "Uncertain" is the current epoch's least certain factor
+   by the exact posterior (mechanism first while it is not identifiable), open contradictions, the lowest-confidence
+   knowledge in use and unsettled predictions; "decisions" carries the executive's decision for the most recently
+   started epoch computed now (not recorded) with its reason, and the recorded ones with their state_version.
+   Served by `GET /api/inventory?self=1` (the overview's plain-words panel; the header's reload does not pay for it),
+   `nsf self [--short]`, the Pocket research route `self_status` (signed like every research reply, family scope:
+   its own tasks and the global conditions only), the voice intent `self_status` ("what are you doing") and the
+   read-only MCP tool `self_status`. MCP's `serverInfo.version` is now `neuroscifi.__version__`.
+2. **Selective broadcast (`broadcast.py`), one function.** `offer(db, kind, now, signals, deliver, ...)`: the two
+   existing producers (autonomous findings, monitor findings) call it with their own delivery. Salience is a small
+   local function of the producer's counts (`score`, 1 − e^(−Σ weight·min(n, 5))). Mode `off` (default) delivers
+   exactly as before and logs nothing; `log` delivers as before and logs the salience decision; `on` delivers only at
+   or above `broadcast_threshold` (0.5) and within 12 broadcasts an hour, the rest stays local with its reason. Only
+   existing channels: the owner question (`pending`: Presence, console Questions, Pocket push), `web_events` (the
+   log), `state_version` (the producer's own bump). Contention: `presence.aggregator.arbitrate` (rank, then newest),
+   the ordering Presence itself uses, records which live question is shown first. Seam for lane I: `offer(...,
+   salience=, salience_inputs=)` takes the salience record's value; or `score()` is pointed at it.
+3. **Presence from real activity.** planning (a discovery stage's `decision` with `needs_web`, before the query
+   plan), predicting (a `prediction` event in the last 8 s), simulating (an imagined record in the last 8 s),
+   analyzing (an unexpired graph lease), interpreting (the voice hub while the bridge handles a request; rank
+   communication), executing (an allow-listed model tool while it runs; secondary `tool_execution`). The research
+   worker's streamed model calls are published the way the audio beacon publishes audio: `presence.activity.track(
+   ..., publish=<db>)` writes `<db>.resources/inflight-<pid>.json` (no text: activity, purpose, task id, start, token
+   count) on start and end and at most once a second while tokens stream; the console reads the other live
+   processes' files and ignores dead or stale (600 s) ones. Paused writes now set `sources.writes = "paused"`, and
+   the client names each cause of `resource_constrained` in its own words. The console overview shows the
+   self-description, "What we were just doing", Resources (`GET /api/resources`, which had no view) and a read-only
+   "Imagined, not evidence" list (`GET /api/imagined`).
+4. **Continuity.** (a) R8: the voice session context keeps `follow_task_id` while an answer is awaited; the
+   principal's next session (after a restart) follows it again and delivers the answer once; owner voice setting
+   `resume_follow`, on by default (it fixes a recorded finding and stores one task id). (b) "What we were just
+   doing": `self_description.recent` lists the latest person-asked tasks by reference; the owner sees all devices,
+   a Pocket family its own, and the owner's own questions only with the web setting `pocket_recent` (off by default:
+   a pairing family may include devices that are not the owner's; even then a phone cannot open the owner's report).
+   (c) Instrumentation (`scripts/bench_workspace.py`): which subsystems can read an event right after its commit and
+   their polling periods, and the record's agreement with the existing surfaces over a scripted sequence.
+
+## Measured
+
+`docs/quality/evidence/genesis_workspace.json` (`scripts/bench_workspace.py`), offline, temporary individuals:
+
+- **Self-description family** (cognitive benchmark, 15 probes, 2 states × 2 seeds per split): baseline coverage and
+  accuracy 0.80 from 4 surfaces on development and held-out; the record 1.00 and 1.00 from 1 surface on both.
+  Ablations (held-out): without the capabilities/resources sections 0.80; without uncertainty, decisions or tools
+  0.933 each. Cost about 0.1–0.2 s per family run, 0 model calls.
+- **Consistency:** 8 of 8 staged records (96 field checks) and 12 of 12 steps of a scripted day agree with
+  store.regulation, store.inventory, autonomy.status, resources.status and presence.derive at the same
+  state_version; build 1.3 ms median on these small individuals (it computes one epoch's beliefs: linear in its
+  readings, as the overview's largest-epoch measurement already is).
+- **Broadcast**, a fixed mix of 10 findings: off 10 owner questions; log 10 (each with its salience logged); on 4 at
+  threshold 0.5. A broadcast event is readable by 6 subsystems at once (Presence, console Questions, Pocket push's
+  query, the self-description, the worker's data_version wake, state_version); one kept local by 3 (the
+  self-description's log, and the change signals of the producer's own record), never by Presence, Questions or
+  push. Readers then see it within their existing polling periods: Presence 0.35 s, worker 0.1 s, push 5 s.
+- **Presence:** 6 of the 6 declared-but-unused activities now shown from real rows; one derive 0.13 ms median, 0.15
+  ms with one other process's in-flight file.
+- **R8:** with the start commit's voice hub the answer is not delivered after a restart (the test fails); with this
+  change it is, once. Real microphone and handset: unverified.
+
+## Alternatives rejected
+
+- A bus, a listener or a daemon for broadcast: the existing pending/web_events/state_version channels and polling
+  readers already carry it; a new mechanism would be a second source of truth.
+- Broadcast on by default: no benchmark shows that holding a finding back helps the owner.
+- A persisted self-model table: the record is computed from the stores, so it cannot drift from them, and forget
+  and restore need no new rule.
+- A model-written self-summary: model text never becomes a statement about the system.
+- Showing the owner's Pocket tasks' reports on another family's phone: references only, and only with the switch.
+
+## Consequences
+
+- New settings: InstanceConfig `broadcast` ("off") and `broadcast_threshold` (0.5), carried by restore; web
+  setting `pocket_recent` (false); voice setting `resume_follow` (true). No schema change, no migration.
+- The benchmark's self-description truth for `uncertain_about` is "nothing" when every factor is settled (it was
+  `None`, which no answer could match); the baseline's numbers do not change.
+- Tests: `tests/test_self_description.py`, `tests/test_self_description_surfaces.py`,
+  `tests/webcortex/test_broadcast.py`, `tests/presence/test_workspace_states.py`, `tests/voice/test_follow_restart.py`,
+  `tests/presence/client_check.mjs`, `tests/e2e/test_console.py`.
+
 # ADR-054 (draft) Answer monitoring: a calibrated confidence from existing signals, selective answering, source dependence and the executive's precision report. R
 
 ## Context

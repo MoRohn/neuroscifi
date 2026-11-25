@@ -356,7 +356,8 @@ Loopback only (`127.0.0.1`), started with `nsf console --db PATH [--port 8766]`.
 
 | Method | Route | Service call |
 |---|---|---|
-| GET | /api/inventory | store.inventory + store.regulation |
+| GET | /api/inventory | store.inventory + store.regulation (+ `self`, `self_short` with `?self=1`, §13) |
+| GET | /api/imagined | imagined.listing, read-only (`?kind=`, `?limit=` 1–100; §13) |
 | GET | /api/epochs | epochs plus evidence counts |
 | GET | /api/epochs/{e}/beliefs | beliefs.explain |
 | GET | /api/epochs/{e}/decision | executive.decide(record=False) |
@@ -560,7 +561,7 @@ unaffected.
   "lexical", "reason", "retry_in_seconds"?, "waking"?}`) and `paired_by_meaning` (`[{key, knowledge_id, relation:
   "same" | "conflict", similarity, score, score_back}]`). With the switch off the summary has neither key.
 
-`POST /api/web/config` accepts only the four switches listed above; `memory_check` is set with
+`POST /api/web/config` accepts only the four switches listed above and `pocket_recent` (ADR-053, §13); `memory_check` is set with
 `nsf web config --memory-check|--no-memory-check`.
 
 **Forecasts as read (ADR-046).** Additive, nothing renamed or removed:
@@ -644,8 +645,9 @@ JSON content type and 512-byte body rules apply.
 Every push is an empty POST to the stored endpoint, with `TTL: 43200`, `Urgency: normal` and `Authorization: vapid t=<ES256 JWT>, k=<key>`. 404 or 410 deletes the subscription (after a 120 s grace for new registrations). 429 and 5xx are retried after `Retry-After`, and every attempt counts for the one-a-minute interval. Every reply of the `push` route, like every research reply, carries `X-NSF-Spark-Signature` (ADR-042 §4).
 
 **MCP (`nsf web mcp`, stdio JSON-RPC 2.0, protocol 2025-06-18).** Tools: `web_search`, `web_research`, `web_task`,
-`web_evidence`, `web_knowledge`. Retrieved content is wrapped in `safety.untrusted` envelopes. There are no forget,
-review or configuration tools.
+`web_evidence`, `web_knowledge`, `self_status` (read-only, ADR-053, §13). Retrieved content is wrapped in
+`safety.untrusted` envelopes. There are no forget, review or configuration tools. `serverInfo.version` is the
+package's `neuroscifi.__version__` (it was a hard-coded "0.7.0").
 
 ## 9. Resource scheduling (0.7, RD-46)
 
@@ -809,3 +811,56 @@ scenarios.tick(db, now) -> None (off) | {"held"} | {"settled", "imagined"} | {"s
 | `nsf imagine scm FILE.json` | `causal.answer` |
 | `nsf imagine scenarios [--prediction ID [--record]]` | `scenarios.errors` after `settle`, or one prediction's futures |
 | `nsf config --[no-]imagine-what-if --[no-]imagine-forecast --[no-]imagine-retrospect --[no-]imagine-scenarios --imagine-max-seconds S --imagine-max-mib M` | `store.set_config` |
+
+## 13. Self-description, selective broadcast and continuity (ADR-053)
+
+`neuroscifi/self_description.py`, `neuroscifi/broadcast.py`. Additive; nothing renamed or removed.
+
+```python
+self_description.build(db, path, now, *, scope="owner", family=None) -> record     # read-only, writes nothing
+#   record = {"schema": "nsf.self-description/1", "scope": "owner"|"family", "built_at", "state_version", "note",
+#             "doing", "resources", "knows"?, "uncertain"?, "can", "decisions"?, "provenance", "recent"?, "answers"}
+#   every leaf field is {"value", "source": str, "at": float | None, "age_seconds": float | None}
+#   owner sections: doing {quiet, tasks {running, queued, proposals_waiting, items}, questions {open, web, items},
+#     epoch, goals}; knows {memory, knowledge}; uncertain {beliefs {epoch, least_certain: "mechanism" |
+#     "camera:<root>" | "partner:<root>" | "nothing" | None, margin, factors}, contradictions {open_hypotheses,
+#     contested_knowledge, items}, low_confidence [..], predictions {unsettled, items}}; can {capabilities {models,
+#     speech, devices, search}, limits {writes, background_research, journal, ask_budget, autonomy, web_questions},
+#     tools {model_tools [{name, permission, granted_by_default}], mcp_tools, voice_commands, voice_owner_only}};
+#     decisions {executive_now {epoch, decision, scope, reason, pending_id} (executive.decide(record=False) for the
+#     most recently started epoch), executive_recorded [5], autonomy [5], broadcast [5]}; provenance {software
+#     {version, schema_version, software_at_birth, instance_id, models}, counts {evidence, prediction, imagined}}
+#   scope "family" (family = the Pocket family digest): doing {quiet, tasks of that family}, resources, can
+#     {capabilities {search}, limits {writes, background_research}}, provenance {software {version}}, recent
+#   recent: [{task_id, objective (≤120 chars), status, device, at, finished_at, openable}]: person-asked tasks; a
+#     family sees its own and, with web setting pocket_recent, the owner's (openable false)
+self_description.short(record) -> [str]            # plain sentences from the values; no model
+self_description.consistency(db, path, record, now) -> {"state_version", "comparable", "checks", "mismatches"}
+self_description.value(record, "doing.tasks") -> the field's value
+
+broadcast.offer(db, kind, *, now, signals, deliver, scope=None, task_id=None, salience=None, salience_inputs=None)
+#   kind in broadcast.KINDS ("autonomy.finding", "monitor.finding"); caller owns the transaction. Returns
+#   {"outcome": "delivered" (mode off or log) | "broadcast" | "local", "pending_id", ...}; modes log and on add a
+#   web_events 'decision' row {"broadcast": {kind, mode, salience, inputs, threshold, outcome, would, reason, scope,
+#   pending_id, channels, contention?}}
+broadcast.score(kind, signals) -> (salience in [0, 1), inputs)     # 1 - exp(-sum SIGNAL_WEIGHTS * min(n, CAP))
+broadcast.log(db, *, limit=20) -> [{at, task_id, kind, mode, salience, threshold, outcome, would, reason, scope,
+                                     pending_id, channels, contention}]
+presence.aggregator.arbitrate(cands) -> cands sorted by rank, then newest     # Presence and broadcast contention
+presence.activity.track(activity, *, subsystem, purpose, task_id=None, clock=..., priority="tool", secondary=(),
+                        publish=None)          # publish=<db path>: <db>.resources/inflight-<pid>.json
+presence.activity.remote(db_path, now=None) -> [entries of other live processes]
+```
+
+| Surface | Result |
+|---|---|
+| console `GET /api/inventory?self=1` | adds `self` (the owner record) and `self_short` ([str]); without it, unchanged |
+| console `GET /api/imagined[?kind=K&limit=N]` | `imagined.listing` (labelled "imagined, not evidence"); 400 for an unknown kind or a limit outside 1–100; read-only (POST 405) |
+| console `POST /api/web/config {"pocket_recent": bool}` | the web setting `pocket_recent` (default false) |
+| Pocket `self_status` `{}` | a research route (gated, signed and limited like the others; 404 while research is off): 200 `{record (scope "family"), short}`; 400 for any body key |
+| MCP tool `self_status` `{short?: bool}` | the owner record, or `{short}`; read-only annotations; behind the untrusted header like every tool result |
+| voice intent `self_status` ("what are you doing", "what's your status", "status report") | a reply of `short` sentences, label "NeuroSciFi status from its own records (no model involved)"; a Pocket device hears its family scope |
+| `nsf self [--short] [--db]` | the owner record, or `{"short": [...]}` |
+| `nsf config --broadcast off\|log\|on --broadcast-threshold X` | InstanceConfig.broadcast ("off" default) and broadcast_threshold (0–1, default 0.5); owner-settable, carried by restore; a damaged value reads as the default and is listed by store.setting_problems() |
+| voice setting `resume_follow` (owner only; default true) | R8: the session context keeps `follow_task_id` while a spoken question's answer is awaited; the principal's next session (another process after a restart) follows it again and delivers the answer once |
+| Presence (`docs/presence/COGNITIVE_STATE_MAPPING.md`) | activities planning, predicting, simulating, analyzing, interpreting, executing from real rows; `sources.writes = "paused"` while writes are paused; worker model calls through `inflight-<pid>.json` |

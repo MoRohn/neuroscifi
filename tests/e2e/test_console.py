@@ -478,6 +478,50 @@ def test_the_overview_says_whether_background_work_is_quiet(console, new_page):
     assert page.problems == []
 
 
+def test_the_overview_describes_what_it_is_doing_its_resources_and_what_is_imagined(console, new_page):
+    """ADR-053: the self-description in plain words (the five questions, each value with its source in a
+    disclosure), what we were just doing (by reference, opening the task), the resources /api/resources reports, and
+    a read-only "Imagined, not evidence" view. The overview passes the accessibility scan with all four shown."""
+    from neuroscifi.instance import imagined
+    from neuroscifi.webcortex import orchestrator, state
+    db = store.open_existing(console.path)
+    try:
+        now = time.time()
+        state.set_config(db, {"enabled": True}, now)
+        task = orchestrator.submit(db, "Where does the okapi live?", now, origin="console")
+        evidence.start_epoch(db, "day", now)
+        imagined.record(db, now=now, **imagined.example(2, question="what if the next reading differs?"))
+    finally:
+        db.close()
+    page = new_page(1280, 900, bypass_csp=True)        # only so axe can be injected for the scan at the end
+    page.goto(console.url)
+    expect(page.locator("#h-overview")).to_be_visible()
+    me = page.locator("#selfdesc")
+    expect(me).to_contain_text("0 research tasks running and 1 queued")
+    for question in ("What am I doing?", "What do I know?", "What am I uncertain about?", "What can I do next?",
+                     "What supports that decision?"):
+        expect(me).to_contain_text(question)
+    expect(me).to_contain_text("not an inner experience")
+    expect(me.locator("details")).to_contain_text("web_tasks (status, stage, origin)")
+    expect(page.locator("#resources")).to_contain_text("Background research")
+    expect(page.locator("#resources")).to_contain_text("Memory is")
+    imag = page.locator("#imagined")
+    expect(imag).to_contain_text("Imagined, not evidence")
+    expect(imag).to_contain_text("what if the next reading differs?")
+    assert imag.locator("button, input, form").count() == 0              # read-only
+    recent = page.locator("#recent")
+    expect(recent).to_contain_text("“Where does the okapi live?” · console")
+    page.add_script_tag(path=str(AXE))
+    found = {}
+    scan(page, found, "overview-self-description")
+    assert not found, found
+    recent.get_by_role("button", name="Open: Where does the okapi live?").click()
+    expect(page.locator("#research")).to_be_visible()
+    expect(page.locator("#report")).to_contain_text("Where does the okapi live?")
+    assert task["id"]
+    assert page.problems == []
+
+
 def test_locked_states_and_api_errors(console, new_page):
     page = new_page(1280, 900)
     requests = []

@@ -85,24 +85,19 @@ def _tasks(db, now, family=None) -> dict:
     where, args = "", []
     if family is not None:
         where, args = " AND family=?", [family]
-    rows = db.execute("SELECT id, objective, status, stage, origin, created_at, started_at, updated_at FROM web_tasks "
-                      f"WHERE status NOT IN ('completed','partial','failed','cancelled'){where} "
-                      "ORDER BY created_at DESC, rowid DESC LIMIT 200", args).fetchall()
-    running = queued = proposed = 0
-    items = []
-    for tid, objective, status, stage, origin, created, started, updated in rows:
-        if stage == "proposed":
-            proposed += 1          # a proposal waits for the owner's yes (counted through its question)
-            continue
-        if status == "queued":
-            queued += 1
-        else:
-            running += 1
-        if len(items) < MAX_ITEMS:
-            items.append({"id": tid, "objective": _short(objective), "status": status, "stage": stage,
-                          "origin": origin, "origin_class": _origin_class(origin), "created_at": created,
-                          "started_at": started})
-    at = max((r[7] for r in rows if r[7] is not None), default=None)
+    active = f"status NOT IN ('completed','partial','failed','cancelled'){where}"
+    # a proposal (stage 'proposed') waits for the owner's yes and is counted through its question, as Presence does
+    running, queued, proposed, at = db.execute(
+        "SELECT coalesce(sum(status!='queued' AND coalesce(stage,'')!='proposed'),0), "
+        "coalesce(sum(status='queued' AND coalesce(stage,'')!='proposed'),0), "
+        f"coalesce(sum(coalesce(stage,'')='proposed'),0), max(updated_at) FROM web_tasks WHERE {active}",
+        args).fetchone()
+    rows = db.execute("SELECT id, objective, status, stage, origin, created_at, started_at FROM web_tasks "
+                      f"WHERE {active} AND coalesce(stage,'')!='proposed' ORDER BY created_at DESC, rowid DESC "
+                      f"LIMIT {MAX_ITEMS}", args).fetchall()
+    items = [{"id": tid, "objective": _short(objective), "status": status, "stage": stage, "origin": origin,
+              "origin_class": _origin_class(origin), "created_at": created, "started_at": started}
+             for tid, objective, status, stage, origin, created, started in rows]
     return _f({"running": running, "queued": queued, "proposals_waiting": proposed, "items": items},
               "web_tasks (status, stage, origin)", at if at is not None else now, now)
 
@@ -398,24 +393,22 @@ def recent(db, now, *, family=None, include_owner=False, limit=RECENT_ITEMS) -> 
     the question as asked, device, status, time). Owner (family None): every person-asked task, from every device.
     A Pocket family: its own tasks, and the owner's only with include_owner (the owner's pocket_recent switch); an
     owner task is then a reference the phone cannot open (its routes stay family-scoped)."""
-    from .webcortex.orchestrator import user_initiated
+    from .webcortex.orchestrator import USER_ORIGIN_PREFIXES, USER_ORIGINS
     if not _web(db):
         return []
-    rows = db.execute("SELECT id, objective, status, origin, family, created_at, finished_at FROM web_tasks "
-                      "ORDER BY created_at DESC, rowid DESC LIMIT 200").fetchall()
-    out = []
-    for tid, objective, status, origin, fam, created, finished in rows:
-        if not user_initiated(origin):
-            continue
-        mine = family is not None and fam == family
-        if family is not None and not mine and not (include_owner and fam is None):
-            continue
-        out.append({"task_id": tid, "objective": _short(objective), "status": status,
-                    "device": DEVICE.get(str(origin), "Pocket" if fam else str(origin)), "at": created,
-                    "finished_at": finished, "openable": family is None or mine})
-        if len(out) >= limit:
-            break
-    return out
+    # orchestrator.user_initiated as SQL: a person asked for it
+    person = (f"(origin IN ({','.join('?' * len(USER_ORIGINS))})"
+              + "".join(" OR origin LIKE ?" for _ in USER_ORIGIN_PREFIXES) + ")")
+    args = [*USER_ORIGINS, *(p + "%" for p in USER_ORIGIN_PREFIXES)]
+    if family is not None:
+        person += " AND (family=?" + (" OR family IS NULL)" if include_owner else ")")
+        args.append(family)
+    rows = db.execute("SELECT id, objective, status, origin, family, created_at, finished_at FROM web_tasks WHERE "
+                      f"{person} ORDER BY created_at DESC, rowid DESC LIMIT ?", (*args, int(limit))).fetchall()
+    return [{"task_id": tid, "objective": _short(objective), "status": status,
+             "device": DEVICE.get(str(origin), "Pocket" if fam else str(origin)), "at": created,
+             "finished_at": finished, "openable": family is None or fam == family}
+            for tid, objective, status, origin, fam, created, finished in rows]
 
 
 # ---- the record ----------------------------------------------------------------------------------------------------
