@@ -106,6 +106,13 @@ _STORE_TRIGGERS_17 = {
       BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END""",
 }
 _TRIGGERS_17 = _STORE_TRIGGERS_17 | NO_IMAGINED_TRIGGERS
+# Version 18 was amended while unreleased (review1 S7): its first build let a row of the improvement ledger be
+# deleted, and deleting the owner's 'revert' row switched strategy selection back on. ensure_triggers adds this
+# trigger to a file migrated by that build.
+_TRIGGERS_18 = {
+    "improvement_ledger_no_delete": """CREATE TRIGGER IF NOT EXISTS improvement_ledger_no_delete BEFORE DELETE ON
+      improvement_ledger BEGIN SELECT RAISE(ABORT,'the improvement ledger is append-only'); END""",
+}
 _INDEX_17 = "CREATE INDEX IF NOT EXISTS imagined_forgotten_age ON imagined_forgotten(forgotten_at)"
 # The reference triggers of the first build of 17 that the current build no longer has (by name: a trigger of that
 # name pattern a later migration adds is never dropped).
@@ -776,7 +783,7 @@ MIGRATIONS = [
     CREATE INDEX IF NOT EXISTS improvement_ledger_capability ON improvement_ledger(capability, id);
     CREATE TRIGGER IF NOT EXISTS improvement_ledger_append_only BEFORE UPDATE ON improvement_ledger
       BEGIN SELECT RAISE(ABORT,'the improvement ledger is append-only'); END;
-    """,
+    """ + _TRIGGERS_18["improvement_ledger_no_delete"] + ";\n",
     # ---- version 19 (review1 A2/A3: the request-path reads of web_events by kind and time) ----------------------
     """
     -- Presence's recent predictions and findings, the selective broadcast's hourly count, the autonomy windows and
@@ -829,6 +836,8 @@ def _repairs(db):
     if "imagined_refs" in present:
         wanted |= _TRIGGERS_17
         observed = any(c[1] == "observed" for c in db.execute("PRAGMA table_info(imagined_refs)"))
+    if "improvement_ledger" in present:
+        wanted |= _TRIGGERS_18
     stale = [name for name, sql in wanted.items() if present.get(name) != ("trigger", _as_stored(sql))]
     retired = [name for name in _RETIRED_17 if name in present]
     index = "imagined_refs" in present and "imagined_forgotten_age" not in present
@@ -836,8 +845,9 @@ def _repairs(db):
 
 
 def ensure_triggers(db):
-    """Bring the triggers of the two migrations amended while unreleased to their current statements: the graph
-    triggers of version 15 (_TRIGGERS_15) and the imagined store's of version 17 (_TRIGGERS_17, with
+    """Bring the triggers of the migrations amended while unreleased to their current statements: the graph
+    triggers of version 15 (_TRIGGERS_15), the improvement ledger's delete trigger of version 18 (_TRIGGERS_18), and
+    the imagined store's of version 17 (_TRIGGERS_17, with
     imagined_refs.observed and the tombstones' age index, and without the reference triggers the current build retired,
     _RETIRED_17), for a file of either earlier build of 17. The same one-time repair removes, with a tombstone each,
     every record observed under the first build of 17 (its outcomes kept text and evidence that no forget reached) and
@@ -870,7 +880,8 @@ def ensure_triggers(db):
             for name in stale:
                 db.execute(f"DROP TRIGGER IF EXISTS {name}")
                 db.execute(wanted[name])
-            if "imagined_never_rewritten" in wanted and (stale or retired or not observed or index):
+            if "imagined_never_rewritten" in wanted and ([n for n in stale if n in _TRIGGERS_17] or retired
+                                                        or not observed or index):
                 _purge_unsupported_outcomes(db, "outcome IS NOT NULL" if not observed else _OUTCOME_UNSUPPORTED)
             db.execute("COMMIT")
         except BaseException:
@@ -942,7 +953,7 @@ def migrate(db):
     refuse_newer(current)
     if current == SCHEMA_VERSION:
         ensure_indexes(db)                   # nothing to do but for a file of the first version-14 build
-        ensure_triggers(db)                  # nothing to do but for a file of a first version-15 or -17 build
+        ensure_triggers(db)                  # nothing to do but for a file of a first version-15, -17 or -18 build
         return SCHEMA_VERSION                # an up-to-date file is opened without taking the write lock
     control = db.autocommit
     db.autocommit = True                     # so executescript does not commit the transaction holding the lock

@@ -162,13 +162,15 @@ def active(db) -> bool:
 
 # ---- the gate ------------------------------------------------------------------------------------------------------------
 
-def gate(evidence: dict) -> dict:
+def gate(evidence: dict, *, ledger=None) -> dict:
     """Deterministic checks over benchmark evidence (never the system's own judgement). `evidence`:
       held_out    {"strategy": {"mechanism": {...}, "incumbent": {...}}} from scripts/bench_genesis_knowledge.py's
                   held-out run: verified_per_investigation and inflator_share means
       retention   scripts/bench_cognition.py's retention family result with the mechanism (all_scenarios_pass,
                   all_retained)
-      withheld    {"ledger_line": n, "run_id": str, "not_worse": bool}: the main session's one --final run
+      withheld    {"ledger_line": n, "run_id": str, "not_worse": bool}: the main session's one --final run; the line
+                  (1-based) must exist in the final-runs ledger (`ledger`, default the repository's
+                  genesis_final_uses.jsonl), be a run of the withheld family, and its "at" must be the run id
     {"passed", "checks": {name: {"pass", "detail"}}}."""
     checks = {}
     try:
@@ -186,18 +188,42 @@ def gate(evidence: dict) -> dict:
     checks["retention"] = {"pass": retention.get("all_scenarios_pass") is True and retention.get("all_retained")
                            is True, "detail": {k: retention.get(k) for k in ("all_scenarios_pass", "all_retained")}}
     withheld = evidence.get("withheld") or {}
+    named = _final_run(ledger, withheld.get("ledger_line"), withheld.get("run_id")) if withheld else None
     checks["withheld_by_main_session"] = {
-        "pass": isinstance(withheld.get("ledger_line"), int) and bool(withheld.get("run_id"))
-        and withheld.get("not_worse") is True,
-        "detail": "one --final run named in genesis_final_uses.jsonl, evaluated by the main session"
-        if withheld else "missing: the main session has not evaluated the withheld family"}
+        "pass": named is None and withheld.get("not_worse") is True,
+        "detail": ("missing: the main session has not evaluated the withheld family" if not withheld else
+                   named or "one --final run named in genesis_final_uses.jsonl, evaluated by the main session")}
     return {"passed": all(c["pass"] for c in checks.values()), "checks": checks, "min_effect": MIN_EFFECT}
 
 
-def promote(db, evidence: dict, now) -> dict:
+def _final_run(ledger, line, run_id) -> str | None:
+    """None when line `line` (1-based) of the final-runs ledger (docs/quality/evidence/genesis_final_uses.jsonl) is a
+    --final run of the withheld family whose run id - its "at", the run's generated_at, which its output carries
+    too - is `run_id`; else why not (review1 CL4: the gate took any line number and run id on trust)."""
+    if isinstance(line, bool) or not isinstance(line, int) or line < 1 or not isinstance(run_id, str) or not run_id:
+        return "the withheld evidence names no ledger line (a positive integer) and run id"
+    if ledger is None:
+        from ..acceptance.cognition import LEDGER as ledger
+    try:
+        with open(ledger, encoding="utf-8") as fh:
+            lines = [text for text in fh.read().splitlines() if text.strip()]
+    except OSError:
+        return f"the final-runs ledger {ledger} cannot be read"
+    if line > len(lines):
+        return f"the final-runs ledger has {len(lines)} line(s), not line {line}"
+    try:
+        entry = json.loads(lines[line - 1])
+    except ValueError:
+        return f"line {line} of the final-runs ledger is not JSON"
+    if not isinstance(entry, dict) or entry.get("at") != run_id or "withheld" not in (entry.get("families") or ()):
+        return f"line {line} of the final-runs ledger is not a --final run of the withheld family with run id {run_id}"
+    return None
+
+
+def promote(db, evidence: dict, now, *, ledger=None) -> dict:
     """Run the gate; record its decision in the ledger (decided_by 'gate'): 'retain' when every check passes (the
     selection is then in force), else 'revise' (it stays off)."""
-    verdict = gate(evidence)
+    verdict = gate(evidence, ledger=ledger)
     run_ids = {k: (evidence.get(k) or {}).get("run_id") for k in ("held_out", "retention", "withheld")}
     rid = record(db, capability=CAPABILITY, level=3,
                  change="rank admitted autonomous candidates by Thompson sampling over research modes from external "

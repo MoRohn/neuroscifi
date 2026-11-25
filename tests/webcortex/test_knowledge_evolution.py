@@ -597,14 +597,72 @@ GOOD = {"held_out": {"run_id": "h", "strategy": {"mechanism": {"verified_per_inv
         "withheld": {"ledger_line": 2, "run_id": "w", "not_worse": True}}
 
 
-def test_strategy_selection_is_off_until_its_gate_passes_and_the_owner_can_revert_it(db):
+@pytest.fixture
+def final_ledger(tmp_path):
+    """A final-runs ledger whose line 2 is the withheld run GOOD names (run id "w")."""
+    path = tmp_path / "genesis_final_uses.jsonl"
+    path.write_text(json.dumps({"at": "b", "families": ["withheld"], "mechanism": "baseline"}) + "\n"
+                    + json.dumps({"at": "w", "families": ["withheld"], "mechanism": "strategy"}) + "\n")
+    return path
+
+
+def test_the_gate_checks_the_named_final_run_in_the_ledger(db, final_ledger):
+    """review1 CL4 / security S7: any line number and run id passed."""
+    assert strategies.gate(GOOD, ledger=final_ledger)["passed"] is True
+    for withheld, why in (({"ledger_line": 3, "run_id": "w"}, "2 line(s)"),
+                          ({"ledger_line": 1, "run_id": "w"}, "run id w"),
+                          ({"ledger_line": 0, "run_id": "w"}, "names no ledger line")):
+        evidence = GOOD | {"withheld": withheld | {"not_worse": True}}
+        check = strategies.gate(evidence, ledger=final_ledger)["checks"]["withheld_by_main_session"]
+        assert check["pass"] is False and why in check["detail"]
+    final_ledger.write_text(json.dumps({"at": "b"}) + "\n" + json.dumps({"at": "w", "families": ["info_value"]}))
+    assert strategies.gate(GOOD, ledger=final_ledger)["passed"] is False         # not a withheld run
+    assert strategies.gate(GOOD, ledger=final_ledger.with_name("missing.jsonl"))["passed"] is False
+
+
+def test_the_ledger_refuses_a_delete_and_an_older_file_gets_the_trigger(db):
+    """Security S7: deleting the owner's revert row switched strategy selection back on. Migration 18 is unreleased
+    and amended; a file migrated by its first build (no delete trigger) gets it at its next open."""
+    strategies.revert(db, T0, reason="owner")
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        with store.write(db):
+            db.execute("DELETE FROM improvement_ledger")
+    db.execute("DROP TRIGGER improvement_ledger_no_delete")           # the first build of 18
+    assert schema.ensure_triggers(db) == ["improvement_ledger_no_delete"]
+    assert schema.ensure_triggers(db) == []
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        with store.write(db):
+            db.execute("DELETE FROM improvement_ledger")
+
+
+def test_a_restore_keeps_the_owners_revert_in_force(db, tmp_path, final_ledger):
+    """review1 CL3: restoring an archive taken before the owner's revert switched strategy selection back on."""
+    strategies.promote(db, GOOD, T0, ledger=final_ledger)
+    assert strategies.active(db) is True
+    path = __import__("pathlib").Path(db.execute("PRAGMA database_list").fetchone()[2])
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 1)
+    strategies.revert(db, T0 + 2, reason="owner")
+    out = checkpoints.restore(db, cp["id"], tmp_path / "restored.sqlite", T0 + 3)
+    assert out["settings_carried"][f"improvement_ledger:{strategies.CAPABILITY}"] == {"from": "retain",
+                                                                                      "to": "revert"}
+    copy = store.open_existing(tmp_path / "restored.sqlite")
+    try:
+        assert strategies.active(copy) is False
+    finally:
+        copy.close()
+    later = checkpoints.create(db, path, tmp_path / "cps", T0 + 4)       # an archive that already holds it
+    again = checkpoints.restore(db, later["id"], tmp_path / "again.sqlite", T0 + 5)
+    assert f"improvement_ledger:{strategies.CAPABILITY}" not in again["settings_carried"]
+
+
+def test_strategy_selection_is_off_until_its_gate_passes_and_the_owner_can_revert_it(db, final_ledger):
     assert strategies.active(db) is False
     chosen = [{"key": "a", "mode": "quick_lookup", "priority": 1.0}, {"key": "b", "mode": "continuous",
                                                                        "priority": 2.0}]
     for missing in ("held_out", "retention", "withheld"):
-        verdict = strategies.promote(db, {k: v for k, v in GOOD.items() if k != missing}, T0)
+        verdict = strategies.promote(db, {k: v for k, v in GOOD.items() if k != missing}, T0, ledger=final_ledger)
         assert verdict["passed"] is False and strategies.active(db) is False
-    assert strategies.promote(db, GOOD, T0)["passed"] is True and strategies.active(db) is True
+    assert strategies.promote(db, GOOD, T0, ledger=final_ledger)["passed"] is True and strategies.active(db) is True
     state.set_config(db, {"strategy_selection": "off"}, T0)
     assert strategies.active(db) is False
     state.set_config(db, {"strategy_selection": "gate"}, T0)
@@ -615,14 +673,14 @@ def test_strategy_selection_is_off_until_its_gate_passes_and_the_owner_can_rever
     assert chosen      # the ranking itself is tested above; admission only calls it while active
 
 
-def test_reward_hacking_is_never_promoted(db):
+def test_reward_hacking_is_never_promoted(db, final_ledger):
     hacked = json.loads(json.dumps(GOOD))
     hacked["held_out"]["strategy"]["mechanism"]["inflator_share"] = 0.5      # more on the self-reporting arm
-    verdict = strategies.promote(db, hacked, T0)
+    verdict = strategies.promote(db, hacked, T0, ledger=final_ledger)
     assert verdict["checks"]["reward_hacking"]["pass"] is False and strategies.active(db) is False
     small = json.loads(json.dumps(GOOD))
     small["held_out"]["strategy"]["mechanism"]["verified_per_investigation"] = 0.31   # below the minimum effect
-    assert strategies.promote(db, small, T0)["passed"] is False
+    assert strategies.promote(db, small, T0, ledger=final_ledger)["passed"] is False
 
 
 def test_levels_four_and_five_are_never_recorded_as_adopted(db):
