@@ -88,13 +88,13 @@ def _similar(a, b) -> float:
     return len(ta & tb) / len(ta | tb) if ta and tb else 0.0
 
 
-_LEADING_NUMBER = re.compile(r"(-?\d[\d.]*)(?: |$)")
+_LEADING_NUMBER = re.compile(r"(-?\d[\d.,]*)(?: |$)")     # "2,900" (text._plain) as well as "120 km"
 
 
 def _leading_number(value):
     m = _LEADING_NUMBER.match(value or "")
     try:
-        return float(m.group(1)) if m else None
+        return float(m.group(1).replace(",", "")) if m else None
     except ValueError:
         return None
 
@@ -1140,7 +1140,7 @@ def _research_opportunity(db, task_id, cluster, verdict, now, summary, *, freshn
         return same[0]
     created = db.execute("SELECT count(*) FROM web_hypotheses WHERE task_id=?", (task_id,)).fetchone()[0]
     if task_id is not None and created >= MAX_NEW_HYPOTHESES_PER_TASK and not any(
-            evolution._relation(values, polarity, h["claim_values"], h["polarity"]) == "same"
+            evolution._relation(values, polarity, h["claim_values"], h["polarity"], h.get("statement")) == "same"
             for h in evolution.hypotheses(db, status="open", key=cluster.key, limit=50)):
         return None             # this task already opened its share; only an existing hypothesis is refreshed
     origin = origin or (verdict["state"] if verdict["state"] in evolution.HYPOTHESIS_ORIGINS else "insufficient")

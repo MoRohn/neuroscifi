@@ -567,6 +567,17 @@ def _num(raw: str) -> float:
     return float(raw.replace(",", "").replace("−", "-"))
 
 
+def _plain(x: float, written: str) -> str:
+    """Canonical string of a plain number (no unit). A whole number of four digits is written with its thousands
+    separator ("2,900") unless it was written as four bare digits: "2,900 residents", "2.9 thousand" and "2900.0"
+    are quantities, never years, and "2900" would read as one (value_kind). Four bare digits keep the year reading
+    ("in 1999"); the owner's ruling of 2026-11-25."""
+    out = _fmt(x)
+    if re.fullmatch(r"\d{4}", out) and not re.fullmatch(r"\d{4}", written or ""):
+        return f"{int(x):,}"
+    return out
+
+
 def _date_values(s: str) -> list[tuple[int, str]]:
     out = []
     for rx, order in ((_DATE_ISO, "ymd"), (_DATE_DMY, "dmy"), (_DATE_MDY, "mdy")):
@@ -670,14 +681,14 @@ def _scan_values(s: str) -> list[tuple[str, str | None]]:
                 found.append((m.start(), raw))                 # a year
             else:
                 numbers.append([m.start(), m.end(), x, None, len(found), mag])
-                found.append((m.start(), _fmt(x)))
+                found.append((m.start(), _plain(x, raw if mag == 1.0 else "")))
     for here, nxt in reversed(list(zip(numbers, numbers[1:]))):
         join = _RANGE_JOIN.fullmatch(text[here[1]:nxt[0]])
         if not join or ("and" in join.group(0).lower() and not _BETWEEN.search(text[:here[0]])):
             continue
         if here[5] == 1.0 and nxt[5] != 1.0 and here[3] is None and math.isfinite(here[2] * nxt[5]):
             here[2], here[5] = here[2] * nxt[5], nxt[5]       # "14–16 billion": both ends in billions
-            found[here[4]] = (here[0], _fmt(here[2]))
+            found[here[4]] = (here[0], _plain(here[2], ""))
         if here[3] is None and nxt[3]:
             here[3] = nxt[3]
             found[here[4]] = (here[0], _with_unit(here[2], nxt[3]))
@@ -779,6 +790,9 @@ def value_kind(v: str) -> tuple[str, str, object]:
         return "date", "date", ts
     if re.fullmatch(r"\d{4}", v):
         return "year", "year", int(v)
+    if re.fullmatch(r"-?\d{1,3}(?:,\d{3})+", v):
+        # a whole number written with its thousands separator (_plain): a quantity, never a year
+        return "number", "number:int", float(v.replace(",", ""))
     if v.startswith("v") and re.match(r"v\d", v):
         return "version", "version", v[1:]
     m = re.fullmatch(r"([A-Z]{3}) (-?[\d.e+]+)", v)
@@ -874,8 +888,8 @@ def _written_unit(v: str) -> str | None:
 
 
 def _magnitude(v: str) -> int | None:
-    m = re.match(r"-?[\d.]+", v)
-    x = abs(float(m.group(0))) if m else 0.0
+    m = re.match(r"-?\d[\d.,]*", v)
+    x = abs(float(m.group(0).replace(",", ""))) if m else 0.0
     return math.floor(math.log10(x)) if x else None
 
 
@@ -897,7 +911,7 @@ def _attach_bare(x: dict, y: dict) -> None:
             unit = y[group][0][0].split(" ", 1)[1]
             if _unit(unit) in _AFFINE:
                 # a plain number read as a temperature in y's unit, and written so (_same_temperature)
-                x.setdefault(group, []).append((f"{hits[0][0]} {_unit(unit)}", _kelvin(hits[0][1], _unit(unit)),
+                x.setdefault(group, []).append((f"{_fmt(hits[0][1])} {_unit(unit)}", _kelvin(hits[0][1], _unit(unit)),
                                                 "quantity"))
                 continue
             factor = _DIMENSION.get(_unit(unit), ("", 1.0))[1]

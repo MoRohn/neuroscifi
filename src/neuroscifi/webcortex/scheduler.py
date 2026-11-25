@@ -174,15 +174,25 @@ def _similar_seen(key, seen_tokens) -> bool:
     return bool(tokens) and any(len(tokens & t) / len(tokens | t) >= SIMILAR_KEY for t in seen_tokens if t)
 
 
+_GROUPED = re.compile(r"-?\d{1,3}(?:,\d{3})+")
+
+
+def _written(values) -> list:
+    """Values in the order compared between a baseline and a run. A whole number written with its thousands
+    separator ("2,900", text._plain) compares as its digits: a baseline saved when that number was stored as "2900"
+    is the same value, not a change to report to the owner."""
+    return sorted(v.replace(",", "") if isinstance(v, str) and _GROUPED.fullmatch(v) else v for v in values or [])
+
+
 def _restated(key, info, old_claims) -> bool:
     """A known statement under a reworded key (another page joined the cluster and its first claim names the key):
     the same non-empty values and polarity as a baseline key sharing at least RESTATED_KEY of its tokens."""
     from .consolidate import _key_tokens
     if not info["values"]:
         return False
-    tokens, values = _key_tokens(key), sorted(info["values"])
+    tokens, values = _key_tokens(key), _written(info["values"])
     for old_key, before in old_claims.items():
-        if sorted(before.get("values") or []) != values or before.get("polarity") != info["polarity"]:
+        if _written(before.get("values")) != values or before.get("polarity") != info["polarity"]:
             continue
         other = _key_tokens(old_key)
         if tokens and other and len(tokens & other) / len(tokens | other) >= RESTATED_KEY:
@@ -207,7 +217,7 @@ def compare(baseline: dict, current: dict, consolidation=None) -> dict:
             # A value change needs a value before and after: a value appearing where none was stated is a new
             # statement, judged below like any new claim, not a change of a known one.
             values_changed = bool(before["values"]) and bool(info["values"]) and \
-                sorted(before["values"]) != sorted(info["values"])
+                _written(before["values"]) != _written(info["values"])
             if (before["polarity"] != info["polarity"] or values_changed) and (corroborated or primary):
                 changed_values.append({"key": key, "before": before["values"], "after": info["values"],
                                        "polarity": [before["polarity"], info["polarity"]]})

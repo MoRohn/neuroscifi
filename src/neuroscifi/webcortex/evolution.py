@@ -287,7 +287,7 @@ def open_hypothesis(db, *, key, statement, origin, verification, claims, values,
         raise ValidationError("statement must be a non-blank string")
     polarity = -1 if polarity is not None and polarity < 0 else 1
     for h in hypotheses(db, status="open", key=key, limit=50):
-        if _relation(values, polarity, h["claim_values"], h["polarity"]) == "same":
+        if _relation(values, polarity, h["claim_values"], h["polarity"], h.get("statement")) == "same":
             merged = list(dict.fromkeys(h["claims"] + list(claims)))
             db.execute("UPDATE web_hypotheses SET claims=?, verification=?, updated_at=?, "
                        "knowledge_id=coalesce(knowledge_id, ?) WHERE id=?",
@@ -310,10 +310,13 @@ def open_hypothesis(db, *, key, statement, origin, verification, claims, values,
     return hid, True
 
 
-def _relation(values, polarity, other_values, other_polarity) -> str:
-    """'same' | 'conflict' | 'series' (consolidate._compare over plain values)."""
+def _relation(values, polarity, other_values, other_polarity, other_statement=None) -> str:
+    """'same' | 'conflict' | 'series' | 'incomparable' (consolidate._compare over plain values). Given the other
+    side's statement (a hypothesis's), its stored values are read as this version reads that statement, as a
+    knowledge item's are (consolidate._read_values): a forecast saved when "2,900 residents" read as the year 2900
+    is settled as a quantity."""
     from .consolidate import _compare
-    return _compare(list(values or []), polarity, {"polarity": other_polarity,
+    return _compare(list(values or []), polarity, {"polarity": other_polarity, "statement": other_statement,
                                                    "claim_values": list(other_values or [])})[0]
 
 
@@ -422,7 +425,7 @@ def observe(db, task_id, observed, now, *, freshness_class="stable", ttl_overrid
             continue
         cluster, verdict, statement = match
         values, polarity = _values(cluster)
-        relation = _relation(values, polarity, hyp["claim_values"], hyp["polarity"])
+        relation = _relation(values, polarity, hyp["claim_values"], hyp["polarity"], hyp.get("statement"))
         observation = {"task_id": task_id, "state": verdict["state"], "basis": verdict.get("basis"),
                        "statement": statement, "values": values, "polarity": polarity, "relation": relation,
                        "confidence": verdict.get("confidence"), "at": now, "match": how, "key": cluster.key}

@@ -2255,7 +2255,8 @@ def _memory_documents(items):
                                       retrieval_mode="cache", kind="text", published_at=s.get("published_at")))
             members.append(Claim(id=f"knowledge-{item['id']}-{n}", text=item["statement"], source_url=s["url"],
                                  domain=s.get("domain") or "", title=s.get("title") or "",
-                                 retrieved_at=item["last_verified_at"], key=item["key"], values=item["values"],
+                                 retrieved_at=item["last_verified_at"], key=item["key"],
+                                 values=state._as_read(item["values"], item["statement"]),
                                  polarity=item["polarity"], published_at=s.get("published_at"), relevance=1.0))
         clusters.append(ClaimCluster(key=item["key"], claims=members, independent_sources=len(sources),
                                      supporting=[c.id for c in members], contradicting=[],
