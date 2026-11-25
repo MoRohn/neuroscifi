@@ -57,8 +57,7 @@ def _migration():
 
 
 def test_the_migration_is_the_last_and_changes_no_row_of_a_version_16_file(tmp_path):
-    number = _migration()
-    assert number == len(schema.MIGRATIONS) - 1
+    number = _migration()       # later migrations (ADR-055) follow it; the file below migrates through all of them
     path = tmp_path / "old.sqlite"
     with closing(sqlite3.connect(path, isolation_level=None)) as raw:
         for version, script in enumerate(schema.MIGRATIONS[:number], start=1):
@@ -68,7 +67,7 @@ def test_the_migration_is_the_last_and_changes_no_row_of_a_version_16_file(tmp_p
                     "VALUES('a','e1','word',0,1,'r',1)")
         before = raw.execute("SELECT * FROM evidence").fetchall()
         schema.migrate(raw)
-        assert raw.execute("PRAGMA user_version").fetchone()[0] == number + 1 == schema.SCHEMA_VERSION
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION > number
         assert raw.execute("SELECT * FROM evidence").fetchall() == before
         assert raw.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
 

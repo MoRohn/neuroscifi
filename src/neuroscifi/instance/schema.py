@@ -717,15 +717,19 @@ MIGRATIONS = [
     """ + ";\n".join(NO_IMAGINED_TRIGGERS.values()) + ";\n",
     # ---- recursive knowledge evolution (lane K, ADR-055; webcortex/premises.py, reflection.py, strategies.py) -------
     """
-    -- Hypothesis fields of directive 7.2: the assumptions it makes (template statements from its own records), the
+    -- Hypothesis fields of directive 7.2, one row per hypothesis recorded after this migration (older hypotheses have
+    -- none: nothing is invented for them): the assumptions it makes (template statements from its own records), the
     -- claims that speak against it, the expected information gain (bits) and the cost of one investigation when it
-    -- was recorded, and its revision record (every status change, with the evidence that made it). Rows written
-    -- before this migration keep the defaults: nothing is invented for them.
-    ALTER TABLE web_hypotheses ADD COLUMN assumptions TEXT NOT NULL DEFAULT '[]';
-    ALTER TABLE web_hypotheses ADD COLUMN counter_evidence TEXT NOT NULL DEFAULT '[]';
-    ALTER TABLE web_hypotheses ADD COLUMN expected_info_gain REAL;
-    ALTER TABLE web_hypotheses ADD COLUMN cost REAL;
-    ALTER TABLE web_hypotheses ADD COLUMN revisions TEXT NOT NULL DEFAULT '[]';
+    -- was recorded, and its revision record (every status change, with the evidence that made it). A table beside
+    -- web_hypotheses, not new columns, so the migration can run again on a file that already holds it (IF NOT EXISTS
+    -- throughout, as version 17).
+    CREATE TABLE IF NOT EXISTS web_hypothesis_details(
+      hypothesis_id INTEGER PRIMARY KEY,
+      assumptions TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(assumptions)),
+      counter_evidence TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(counter_evidence)
+        AND counter_evidence NOT GLOB '*"imagined:*'),
+      expected_info_gain REAL, cost REAL,
+      revisions TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(revisions)), created_at REAL NOT NULL);
     -- What a knowledge item or a hypothesis rests on (its premises), recorded when it is derived. Never rewritten for
     -- older rows. A premise is a stored record of the individual; an imagined record is never a premise.
     CREATE TABLE IF NOT EXISTS web_premises(
@@ -769,6 +773,7 @@ MIGRATIONS = [
       reproducibility TEXT NOT NULL CHECK(json_valid(reproducibility)),
       decision TEXT NOT NULL CHECK(decision IN ('retain','revise','revert')),
       decided_by TEXT NOT NULL CHECK(decided_by IN ('owner','gate')), created_at REAL NOT NULL);
+    CREATE INDEX IF NOT EXISTS improvement_ledger_capability ON improvement_ledger(capability, id);
     CREATE TRIGGER IF NOT EXISTS improvement_ledger_append_only BEFORE UPDATE ON improvement_ledger
       BEGIN SELECT RAISE(ABORT,'the improvement ledger is append-only'); END;
     """,

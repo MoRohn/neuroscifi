@@ -47,9 +47,12 @@ def marks(db, **where):
 # ---- the migration ---------------------------------------------------------------------------------------------------
 
 def test_the_migration_is_additive_and_refuses_an_imagined_premise_and_a_ledger_rewrite(db):
-    assert MIGRATION == len(schema.MIGRATIONS) - 1 or MIGRATION >= 17
-    columns = {r[1] for r in db.execute("PRAGMA table_info(web_hypotheses)")}
+    assert MIGRATION >= 17 and "ALTER TABLE" not in schema.MIGRATIONS[MIGRATION]     # may run again on a copy
+    columns = {r[1] for r in db.execute("PRAGMA table_info(web_hypothesis_details)")}
     assert {"assumptions", "counter_evidence", "expected_info_gain", "cost", "revisions"} <= columns
+    path = db.execute("PRAGMA database_list").fetchone()[2]
+    with sqlite3.connect(path, isolation_level=None) as raw:    # IF NOT EXISTS throughout: it can run again
+        raw.executescript(schema.MIGRATIONS[MIGRATION])
     with pytest.raises(sqlite3.IntegrityError):
         with store.write(db):
             db.execute("INSERT INTO web_premises VALUES('knowledge',1,'claim',?, 'supported_by', 0)",

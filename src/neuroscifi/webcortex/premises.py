@@ -4,7 +4,7 @@ A knowledge item or a hypothesis records, when it is derived, what it rests on (
   knowledge   supported_by  the claims that verified it (its `supporting` list)
   hypothesis  supported_by  the claims it states; alternative_to the knowledge item it was opened against;
               revision_of   the hypothesis a failed prediction revised
-Older rows are never rewritten: only records derived after migration 18 have premises.
+Older rows are never rewritten: only records derived after lane K's migration have premises.
 
 When a premise changes - a knowledge item is superseded or contradicted, a record is forgotten, or a prediction a
 subject rested on fails - every dependent still held is marked "to re-check" (web_rechecks, status 'marked'). A mark
@@ -39,7 +39,7 @@ _TABLES = {"knowledge": "web_knowledge", "hypothesis": "web_hypotheses", "claim"
 
 
 def present(db) -> bool:
-    """Migration 18 is present (web_premises and web_rechecks exist)."""
+    """Lane K's migration is present (web_premises and web_rechecks exist)."""
     return db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_rechecks'").fetchone() is not None
 
 
@@ -268,8 +268,9 @@ def purge(db, now) -> dict:
     """After records were forgotten (live forget or a restore's replay): the held dependents of a premise that is
     gone are marked 'premise_forgotten' (the mark names no forgotten id); then every premise row and mark naming a
     record no longer held is deleted, and a mark's cause that names one loses that cause. Caller owns the txn.
-    Returns {"premises_removed", "rechecks_removed", "marked"} (zeros when migration 18 is absent)."""
-    out = {"premises_removed": 0, "rechecks_removed": 0, "marked": 0}
+    Hypothesis details naming a removed record are pruned too. Returns {"premises_removed", "rechecks_removed",
+    "marked", "details_removed"} (zeros when lane K's migration is absent)."""
+    out = {"premises_removed": 0, "rechecks_removed": 0, "marked": 0, "details_removed": 0}
     if not present(db):
         return out
     gone = db.execute(f"SELECT DISTINCT p.premise_kind, p.premise_id FROM web_premises p WHERE {_GONE_PREMISE}"
@@ -293,7 +294,31 @@ def purge(db, now) -> dict:
             db.execute("UPDATE web_rechecks SET cause=? WHERE id=?", (state.dumps(kept), mid))
     db.execute("UPDATE web_rechecks SET task_id=NULL WHERE task_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM web_tasks "
                "t WHERE t.id=web_rechecks.task_id)")
+    out["details_removed"] = _purge_details(db)
     return out
+
+
+def _purge_details(db) -> int:
+    """Hypothesis details (evolution._describe) of a hypothesis no longer held go; counter-evidence loses claims no
+    longer held; a revision's evidence loses a task no longer held. Caller owns the txn."""
+    removed = db.execute("DELETE FROM web_hypothesis_details WHERE NOT EXISTS (SELECT 1 FROM web_hypotheses h WHERE "
+                         "h.id=web_hypothesis_details.hypothesis_id)").rowcount
+    for hid, counter, revisions in db.execute("SELECT hypothesis_id, counter_evidence, revisions FROM "
+                                              "web_hypothesis_details").fetchall():
+        kept = [c for c in state.loads(counter, []) if _exists(db, "claim", c)]
+        revs = state.loads(revisions, [])
+        for r in revs:
+            evidence = r.get("evidence") or {}
+            if evidence.get("task_id") is not None and not db.execute("SELECT 1 FROM web_tasks WHERE id=?",
+                                                                      (evidence["task_id"],)).fetchone():
+                evidence["task_id"] = None
+                evidence["forgotten"] = True
+            if evidence.get("claims"):
+                evidence["claims"] = [c for c in evidence["claims"] if _exists(db, "claim", c)]
+        if kept != state.loads(counter, []) or revs != state.loads(revisions, []):
+            db.execute("UPDATE web_hypothesis_details SET counter_evidence=?, revisions=? WHERE hypothesis_id=?",
+                       (state.dumps(kept), state.dumps(revs), hid))
+    return removed
 
 
 def _kept_cause(db, cause: dict) -> dict:

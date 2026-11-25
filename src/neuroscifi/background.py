@@ -139,6 +139,8 @@ RUNNERS = {
     "neuroscifi.acceptance.cognition.adversarial:critical_memory_stops_background_only": "benchmark: critical memory",
     "neuroscifi.acceptance.cognition.adversarial:owner_stop_holds": "benchmark: the owner's stop",
     "neuroscifi.acceptance.cognition.adversarial:owner_first_under_contention": "benchmark: owner work first",
+    "neuroscifi.acceptance.cognition.knowledge:_World.investigate": "benchmark (lane K): one re-check outcome fed "
+                                                                    "through consolidation on a staged individual",
 }
 
 # Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored

@@ -49,9 +49,13 @@ MIN_LINKED_COVERAGE = 0.5             # a cluster of the hypothesis' own task mu
 _DECISIVE = ("supported", "disputed")
 H_COLUMNS = ("id", "key", "statement", "origin", "status", "verification", "claims", "claim_values", "polarity",
              "alternatives", "knowledge_id", "parent_id", "task_id", "note", "created_at", "updated_at",
-             "resolved_at", "assumptions", "counter_evidence", "expected_info_gain", "cost", "revisions")
-_H_JSON = {"verification": {}, "claims": [], "claim_values": [], "alternatives": [], "assumptions": [],
-           "counter_evidence": [], "revisions": []}
+             "resolved_at")
+_H_JSON = {"verification": {}, "claims": [], "claim_values": [], "alternatives": []}
+# Lane K (ADR-055): directive 7.2's fields, in web_hypothesis_details (absent for hypotheses recorded before it).
+K_COLUMNS = ("assumptions", "counter_evidence", "expected_info_gain", "cost", "revisions")
+_K_JSON = {"assumptions": [], "counter_evidence": [], "revisions": []}
+_H_SELECT = (",".join("h." + c for c in H_COLUMNS) + "," + ",".join("d." + c for c in K_COLUMNS)
+             + " FROM web_hypotheses h LEFT JOIN web_hypothesis_details d ON d.hypothesis_id=h.id")
 P_COLUMNS = ("id", "knowledge_id", "hypothesis_id", "expectation", "criteria", "probability", "check_after",
              "deadline", "created_at", "task_id", "checked_at", "outcome", "detail")
 
@@ -193,15 +197,15 @@ def graph(db, node_kind, node_id, *, depth=1, limit=MAX_GRAPH_EDGES) -> dict:
 # ---- PREDICT: hypotheses and their predictions ----------------------------------------------------------------
 
 def _decode_h(values) -> dict:
-    out = dict(zip(H_COLUMNS, values))
-    for key, default in _H_JSON.items():
+    out = dict(zip(H_COLUMNS + K_COLUMNS, values))
+    for key, default in (_H_JSON | _K_JSON).items():
         out[key] = state.loads(out[key], default)
     out["provenance"] = "provisional_claim"
     return out
 
 
 def hypothesis(db, hypothesis_id) -> dict:
-    found = db.execute(f"SELECT {','.join(H_COLUMNS)} FROM web_hypotheses WHERE id=?", (hypothesis_id,)).fetchone()
+    found = db.execute(f"SELECT {_H_SELECT} WHERE h.id=?", (hypothesis_id,)).fetchone()
     if found is None:
         raise NotFound(f"No hypothesis {hypothesis_id}")
     return _decode_h(found)
@@ -214,14 +218,14 @@ def hypotheses(db, *, status=None, key=None, limit=100) -> list[dict]:
         raise ValidationError("limit must be a positive integer")
     where, params = [], []
     if status:
-        where.append("status=?")
+        where.append("h.status=?")
         params.append(status)
     if key:
-        where.append("key=?")
+        where.append("h.key=?")
         params.append(key)
     sql = " AND ".join(where) or "1"
-    return [_decode_h(r) for r in db.execute(f"SELECT {','.join(H_COLUMNS)} FROM web_hypotheses WHERE {sql} "
-                                             "ORDER BY id DESC LIMIT ?", (*params, int(limit)))]
+    return [_decode_h(r) for r in db.execute(f"SELECT {_H_SELECT} WHERE {sql} ORDER BY h.id DESC LIMIT ?",
+                                             (*params, int(limit)))]
 
 
 def _p_row(values) -> dict:
@@ -331,11 +335,7 @@ _ASSUMPTION = {
 
 
 def fields_enabled(db) -> bool:
-    return bool(getattr(state.get_config(db), "hypothesis_fields", True)) and _has_k_columns(db)
-
-
-def _has_k_columns(db) -> bool:
-    return any(r[1] == "revisions" for r in db.execute("PRAGMA table_info(web_hypotheses)"))
+    return bool(getattr(state.get_config(db), "hypothesis_fields", True))
 
 
 def _describe(db, hid, *, origin, verification, claims, knowledge_id, parent_id, now):
@@ -356,12 +356,12 @@ def _describe(db, hid, *, origin, verification, claims, knowledge_id, parent_id,
         if parent_id is not None:
             assumptions.append(f"hypothesis #{parent_id} failed for the reason its error analysis states")
         p = _clip((verification or {}).get("confidence"))
-        db.execute("UPDATE web_hypotheses SET assumptions=?, counter_evidence=?, expected_info_gain=?, cost=?, "
-                   "revisions=? WHERE id=?",
-                   (state.dumps(assumptions), state.dumps(counter),
+        db.execute("INSERT OR REPLACE INTO web_hypothesis_details(hypothesis_id,assumptions,counter_evidence,"
+                   "expected_info_gain,cost,revisions,created_at) VALUES(?,?,?,?,?,?,?)",
+                   (hid, state.dumps(assumptions), state.dumps(counter),
                     round(curiosity.info_gain(0.5 if p is None else p), 6), round(curiosity.cost("fact_verification"), 6),
                     state.dumps([{"at": now, "to": "open", "evidence": {"origin": origin, "claims": list(claims)[:20],
-                                                                        "task_id": None}}]), hid))
+                                                                        "task_id": None}}]), now))
     if premises.enabled(db):
         premises.record(db, "hypothesis", hid, [("claim", c, "supported_by") for c in claims]
                         + ([("knowledge", knowledge_id, "alternative_to")] if knowledge_id is not None else [])
@@ -373,11 +373,14 @@ def record_revision(db, hid, to, evidence, now):
     Caller owns the txn; nothing while hypothesis_fields is off."""
     if not fields_enabled(db):
         return
-    row = db.execute("SELECT revisions FROM web_hypotheses WHERE id=?", (hid,)).fetchone()
-    if row is None:
+    if db.execute("SELECT 1 FROM web_hypotheses WHERE id=?", (hid,)).fetchone() is None:
         return
-    revisions = (state.loads(row[0], []) + [{"at": now, "to": to, "evidence": evidence}])[-MAX_REVISIONS:]
-    db.execute("UPDATE web_hypotheses SET revisions=? WHERE id=?", (state.dumps(revisions), hid))
+    row = db.execute("SELECT revisions FROM web_hypothesis_details WHERE hypothesis_id=?", (hid,)).fetchone()
+    revisions = (state.loads(row[0] if row else None, []) + [{"at": now, "to": to,
+                                                              "evidence": evidence}])[-MAX_REVISIONS:]
+    db.execute("INSERT INTO web_hypothesis_details(hypothesis_id,revisions,created_at) VALUES(?,?,?) "
+               "ON CONFLICT(hypothesis_id) DO UPDATE SET revisions=excluded.revisions",
+               (hid, state.dumps(revisions), now))
 
 
 def refresh_counter_evidence(db, hids) -> None:
@@ -386,14 +389,16 @@ def refresh_counter_evidence(db, hids) -> None:
     if not fields_enabled(db):
         return
     for hid in dict.fromkeys(hids or []):
-        row = db.execute("SELECT counter_evidence FROM web_hypotheses WHERE id=?", (hid,)).fetchone()
-        if row is None:
+        row = db.execute("SELECT counter_evidence FROM web_hypothesis_details WHERE hypothesis_id=?",
+                         (hid,)).fetchone()
+        if row is None:         # recorded before lane K's migration, or with the fields off: nothing to extend
             continue
         found = [s for (s,) in db.execute("SELECT DISTINCT src FROM web_claim_links WHERE kind='contradicts' AND "
                                           "dst_kind='hypothesis' AND dst=? ORDER BY id", (str(hid),))]
         merged = list(dict.fromkeys(state.loads(row[0], []) + found))[:MAX_COUNTER_EVIDENCE]
         if merged != state.loads(row[0], []):
-            db.execute("UPDATE web_hypotheses SET counter_evidence=? WHERE id=?", (state.dumps(merged), hid))
+            db.execute("UPDATE web_hypothesis_details SET counter_evidence=? WHERE hypothesis_id=?",
+                       (state.dumps(merged), hid))
 
 
 def abandon_if_unsupported(db, hid, now) -> bool:
