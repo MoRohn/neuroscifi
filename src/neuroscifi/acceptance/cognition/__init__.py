@@ -68,7 +68,8 @@ DEFAULT_FAMILIES = FAMILIES[:-1]
 PLUGINS: tuple[str, ...] = (       # dotted module names whose import registers mechanisms (later lanes append)
     "neuroscifi.acceptance.cognition.instinct",
     "neuroscifi.acceptance.cognition.imagination",
-    "neuroscifi.acceptance.cognition.knowledge",)
+    "neuroscifi.acceptance.cognition.knowledge",
+    "neuroscifi.acceptance.cognition.monitoring",)
 REPO = Path(__file__).resolve().parents[4]
 LEDGER = REPO / "docs" / "quality" / "evidence" / "genesis_final_uses.jsonl"
 BASELINE = REPO / "docs" / "quality" / "evidence" / "genesis_baseline.json"

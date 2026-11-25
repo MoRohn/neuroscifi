@@ -2369,6 +2369,73 @@ the conditional mean.
 - Not done: model-written scenarios, conceptual blending, front-door identification, actions on the belief model,
   parameter uncertainty in forecast intervals, a refusal of mixed simulated and real readings (owner question).
 
+# ADR-054 (draft) Answer monitoring: a calibrated confidence from existing signals, selective answering, source dependence and the executive's precision report. R
+
+## Context
+
+Cognitive Genesis §6.3 asks for metacognitive monitoring with task-level evidence. Verified in code at 2aee516:
+the verdict's confidence (a Beta posterior per independent group) ranks supported against disputed claims
+perfectly on the benchmark but is under-confident (held-out ECE 0.34, Brier 0.12); nothing turns the signals the
+pipeline already produces (verification state, groups for and against, guard refusals, the self-critique's marks,
+contradictions, staleness) into one probability; `claims.independence_groups` counts two subdomains of one site, or
+a page and the page it cites, as two independent groups; reading depth follows fixed per-mode budgets; the records
+that say how often the change detector's alarms were confirmed exist (`pending`, `changepoints`, `epoch_links`)
+but nothing computes it; the self-critique's marks were never checked against gold. The research (Huang et al.
+2024; Panickssery et al. 2024) rules out a model judging its own output as a gate.
+
+## Decision
+
+1. **`webcortex/monitoring.py`, a record per research result (`report["monitoring"]`, setting `answer_monitoring`,
+   on).** A transparent sum of named log-odds terms (`WEIGHTS`, fixed, never fitted) over existing signals, mapped to
+   probabilities by monotone maps (isotonic, Beta(1, 1) per block, per stratum) fitted on the cognitive benchmark's
+   development split only and shipped as `webcortex/data/monitoring_calibration.json`. It changes no verification
+   state, posterior, guard decision, answer or knowledge, and calls no model. The self-critique's marks are one
+   named input with weight 0 (measured: they do not predict wrong sentences), never a gate.
+2. **Selective answering (`selective_answering`, off).** Below the threshold chosen on development data for a 10 %
+   target risk, the answer opens with a plain "Not enough evidence for a confident answer: <why>" line; the quotes
+   stay.
+3. **Verification escalation (`verification_escalation`, off).** Below the threshold, and only inside the task's own
+   budget (a page, a query, two requests, 15 s left), one search for the weakest statement and one more page from a
+   family of sites not read yet, then evaluation and synthesis again; once per task; the owner's stops apply.
+4. **Adaptive depth (`adaptive_depth`, off).** Reading stops once 4 pages were read, a statement is verified and
+   the last 2 pages added no verified statement and no contradiction. Deepening is item 3.
+5. **`claims.dependence`**: groups joined by a shared site label or a citation link, reported in the record and in
+   plain words; `independence_groups` and every verdict are unchanged.
+6. **`executive.precision` and `nsf regulation --precision`**: per rule and per epoch, how the executive's
+   questions ended and the precision of the change detector's alarms; display only, computed only when asked.
+
+No schema change, no migration, no new dependency, endpoint or process. The record lives in `web_tasks.result`, so
+forgetting a task removes it.
+
+## Measured
+
+`docs/quality/evidence/genesis_monitoring.json` (`scripts/bench_monitoring.py evidence`; offline, no model):
+held-out claim probability Brier 0.122 → 0.042, ECE 0.341 → 0.199 (debiased 0.348 → 0.204), AUROC 1.0 → 1.0;
+held-out answer confidence ECE 0.372 → 0.181; development AURC 0.080 → 0.027. Selective answering: no held-out gain
+(no held-out answer is wrong), so off. Escalation: no metric changed at +2 pages: off. Adaptive depth: equal rates
+at 22 fewer pages of 581, wall time not lower: off (an owner decision). Offline benchmark with the settings off:
+identical to the unchanged code (digest); with `answer_monitoring` on: 0 differences. Guard differential: 0
+different. Ablations of every term are in the evidence file.
+
+## Alternatives rejected
+
+- Fitting the weights on the 21 development items: too few to fit eight weights without overfitting; the weights
+  stay declared and only the monotone map is fitted.
+- Retuning after seeing ablations: the ablations show `stale` and the posterior term slightly hurt development
+  ranking on this corpus; changing them now would tune against held-out numbers already seen.
+- Calibrating from live settled forecasts (ADR-046) instead: the right next step for the open web once enough
+  research answers have settled outcomes; not available offline.
+- Self-critique as a gate or a strong input: measured not predictive; and a model grading its own output is not a
+  gate under the Genesis rules.
+
+## Consequences
+
+- Every research result is about 2 KB larger. Console, Pocket and Presence do not show the record yet (lane W or
+  the integration pass).
+- The calibration is fitted on a fictional corpus; on the open web it is a starting point.
+- Tests: `tests/webcortex/test_monitoring.py`, `tests/instance/test_precision_report.py`,
+  `tests/acceptance/test_cognition_monitoring.py` (the corpus runs under `NSF_BENCH_COGNITION=1`).
+
 # ADR-055 (draft) Knowledge that knows what it rests on: premises, re-checks, reflection and gated strategy selection. R (H for the schema)
 
 ## Context
