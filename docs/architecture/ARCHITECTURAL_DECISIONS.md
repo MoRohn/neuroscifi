@@ -2368,3 +2368,120 @@ the conditional mean.
   `PLUGINS`) for the counterfactual, retention and adversarial families; the adversarial case is renamed as above.
 - Not done: model-written scenarios, conceptual blending, front-door identification, actions on the belief model,
   parameter uncertainty in forecast intervals, a refusal of mixed simulated and real readings (owner question).
+
+# ADR-055 (draft) Knowledge that knows what it rests on: premises, re-checks, reflection and gated strategy selection. R (H for the schema)
+
+## Context
+
+Cognitive Genesis directive §7 (recursive knowledge evolution) and §6.6 (reflective introspection). Verified in code at
+`2aee516`: a hypothesis had no assumptions, expected information gain or cost, and `abandoned` was never set
+(`evolution.HYPOTHESIS_STATES` only); a failed prediction changed no belief and marked nothing; the research-policy
+weights and the per-mode outcome statistics (`state.record_mode_outcome`) were written and read by nothing;
+knowledge was flat (no record said what a conclusion rests on, so nothing re-checked it when a premise changed); no
+reflection routine ran; transfer was never measured. Lane S measured that the timer's ten-candidate curiosity pool is
+filled by contested subjects that are not knowledge, so stale knowledge is never refreshed through it.
+
+## Decision
+
+Schema (one additive migration, appended last; tests find it by its content `CREATE TABLE IF NOT EXISTS
+web_premises`; IF NOT EXISTS throughout, so it runs again on a file that holds its objects):
+`web_hypothesis_details` beside `web_hypotheses` (`assumptions`, `counter_evidence`, `expected_info_gain`, `cost`,
+`revisions`; one row per hypothesis recorded after it, none invented for older ones; a table rather than columns
+because `ALTER TABLE ADD COLUMN` cannot run twice), `web_premises` (refuses an `imagined:` id by CHECK), `web_rechecks`,
+`web_reflections`, `improvement_ledger` (append-only by trigger). Seven settings, each its own switch:
+
+1. **Hypothesis fields** (`hypothesis_fields`, on: display-only records). A new hypothesis records template
+   assumptions read from its own records, counter-evidence (the supporting claims of the item it is an alternative
+   to, then every claim linked to it by a `contradicts` edge), the expected information gain of its forecast and the
+   cost of one fact-verification investigation (the numbers autonomy ranks it by), and every status change with the
+   evidence that made it (`supported`, `revised`, `refuted`: the prediction and task; `abandoned`: the rule).
+   `evolution.compete(key)` compares the open hypotheses of one key with "other" as a member, likelihood ratio
+   0.8/0.2 per independent group raised to 0.5 (dampened, research.md 4.5); display-only.
+   **`abandoned`** (`hypothesis_abandon`, off: no benchmark measures it): a derived hypothesis whose every prediction
+   expired with no tracked observation and none open. The owner's hypotheses are never abandoned automatically.
+2. **Premises and re-check marks** (`premise_recheck`, on: display-only). New knowledge rests on its supporting
+   claims; a hypothesis on its claims, the item it is an alternative to and the hypothesis it revises. A superseded
+   or contradicted premise, a forgotten one, and a failed prediction (item 4 of the brief: what it rested on) mark
+   every held dependent "to re-check", at most 50 per change, one open mark per subject, 500 open in all. A mark
+   changes nothing: no confidence, status, verification or answer moves (test: the item is identical with the
+   setting on and off). A subject changes only through consolidation of new evidence, which closes its mark with
+   what the evidence did. Forget: `premises.purge` in the forget's transaction and after a restore's replay marks the
+   dependents of a premise that is gone (the mark names no forgotten id) and deletes every row naming it.
+3. **The idle re-check** (`idle_recheck`, **off**; `recheck_per_tick` 1, `recheck_daily` 4). Registered background
+   activity `tick.knowledge_recheck` (cognition: held by quiet). Before the due-order refreshes, the timer ranks live
+   knowledge by importance x staleness x (1 + DEPENDENT_WEIGHT x dependents) x curiosity's futility factor, staleness
+   = TTLs elapsed (+1 when marked, marked stale or a newer release was seen), and admits picks through
+   `autonomy.admission(path="recheck")`: the unified rule unchanged (recorded enable, min_gain on the stated forecast,
+   lineage, cooldown, templates, searchable words), only the pool differs (the re-check's ranked knowledge instead of
+   curiosity's ten best). A pick is a refresh task (`refresh:<id>`, autonomous budget, claimed after owner work), its
+   due prediction linked to it. `curiosity.rank` is not changed.
+4. **Reflection** (`reflection`, off; `reflection_interval_days` 7; `nsf knowledge reflect` on request). Registered
+   activity `tick.reflection` (cognition). A deterministic report over a period (learned, failed, assumptions,
+   missing, strategies) whose every line names its record ids and quotes no statement; at most 5 actions: re-check
+   marks, abandoned hypotheses (only with `hypothesis_abandon`), one owner question within the web question budget.
+   No line is a gate. An optional local-model summary (`reflection_model_summary`, off) is stored as an `inference`
+   in the imagined store and is never evidence. Forget drops every line and action naming a removed record.
+5. **Strategy selection** (`strategy_selection` "gate"). Thompson sampling over research modes, Beta(1 + rewarded,
+   1 + not) over the last 100 finished tasks per mode; reward = the task produced verified knowledge or settled a
+   prediction decisively, read from the records. Self-reported mode statistics are never rewarded. It only re-orders
+   the candidates `autonomy.admission` admitted. In force only after `strategies.promote` passes its gate (held-out
+   gain of at least 0.02 verified items per investigation, no larger share on the self-reporting arm, retention not
+   worse, one withheld evaluation by the main session) and while the owner has not reverted it or set "off".
+6. **Improvement ledger** (`improvement_ledger`, `nsf knowledge ledger`): capability, level (1 to 3), change,
+   evidence (run ids), generalisation, regressions, cost, reproducibility, decision (retain/revise/revert), decided by
+   (owner/gate). Levels 4 (weights) and 5 (architecture) are refused: they need the owner's authorisation
+   (`evolution.model_adaptation_guard`).
+
+## Measured
+
+`docs/quality/evidence/genesis_knowledge.json` (`scripts/bench_genesis_knowledge.py`, worlds frozen at `8b8a9c0`
+before any mechanism; `scripts/bench_cognition.py` with the plugin `neuroscifi.acceptance.cognition.knowledge`).
+Simulated worlds driven through the real modules, offline.
+
+- **Retention under change, held-out** (2 worlds x 4 seeds, run once): share of subjects whose live knowledge states
+  the world's current truth, mean over the steps: due order (today) 0.693, re-check 0.695 (random 0.663, oracle
+  0.803); old subjects weighted by owner importance 0.629 vs 0.638; final step 0.581 vs 0.575; stale facts caught per
+  investigation 0.461 vs 0.432. Per world: sparse budget 0.633 (sd 0.097) vs 0.624 (0.104), busy 0.753 (0.040) vs
+  0.766 (0.036): **within noise of the due order.** 0 subjects lost, 0 belief writes in every run. Ablation: without
+  importance the order is the due order (identical numbers on development, 0.6925 on held-out); marks change nothing
+  here (these worlds raise no mark on knowledge); weighting dependents 1.0 gave 0.629 old-weighted.
+  Development choices (stated before the held-out run): staleness as 1 - P(current) gave 0.682 against the due
+  order's 0.716 (it saturates two TTLs after verification), so staleness is TTLs elapsed; DEPENDENT_WEIGHT 0 (1.0,
+  0.25 and 0.1 gave 0.695, 0.685 and 0.696 old-weighted against 0.713 for 0).
+- **Information value (cognitive benchmark), the re-check's pick then the timer's curiosity:** development 0.222 bits
+  per unit of budget against the recorded baseline's 0.161 (oracle 0.263, random 0.202), share of budget on noise
+  0.000 against 0.375; held-out 0.124 against 0.093 (oracle 0.146, random 0.091), noise 0.000 against 0.538. The core
+  world is unchanged. The withheld (transfer) family is not run by this lane.
+- **Strategy selection, held-out** (2 worlds x 4 seeds): verified items per investigation 0.395 (Thompson) against
+  0.265 (incumbent order); share on the self-reporting arm 0.105 against 0.253. Gate: held-out gain and reward-hacking
+  checks pass, retention passes, the withheld check is missing, so the decision is **revise: off**.
+- **Retention family**: 4/4 scenarios, 7/7 offline metrics retained, with the lane's mechanisms on and off.
+  **Adversarial**: 16/17 on and off (the recorded baseline 12/13; the 4 lane-K cases added pass; the one failure is
+  `simulated_reading_moves_no_belief`, outside this lane).
+- **Cost** (aarch64, while other lanes' suites ran): consolidation 1.35 -> 1.38 ms median per one-cluster task
+  with premises; re-check rank 82 ms and admission 168 ms per pass over 200 items; a reflection report 2 ms; a
+  Thompson ranking 1.5 ms. 0 model calls in every benchmark.
+
+## Alternatives rejected
+
+- Widening the timer's curiosity pool (ADR-050 ablation): a loosening of the admission rule. The re-check keeps the
+  rule and changes only the pool, to knowledge the owner already holds.
+- Letting a mark lower confidence or set `stale`: a belief would move without evidence.
+- A reflection written by a model, or a model judging strategies: self-grading (research.md 4.8).
+- Rewarding the mode statistics tasks write about themselves: gameable by construction (tested).
+
+## Consequences
+
+- Defaults: hypothesis fields and premises on (display-only records; retention and adversarial unchanged); the idle
+  re-check, abandonment and reflection off; strategy selection off until its gate passes. The idle re-check showed a
+  gain on information value and none on retention under change: turning it on is the owner's call.
+- `evolution.py` changed in `_decode_h`, `hypothesis` and `hypotheses` (read the details with a LEFT JOIN: new
+  constants `K_COLUMNS`, `_K_JSON`, `_H_SELECT`), `open_hypothesis` (one call to `_describe`), `observe` (two
+  `record_revision` calls), `expire` (the abandonment rule) and `register` (lane K's commands); new functions
+  `fields_enabled`, `_describe`, `record_revision`, `refresh_counter_evidence`, `abandon_if_unsupported`, `compete`.
+- Tests changed beside the new ones: `tests/instance/test_migrations.py` (19 web tables), `tests/instance/
+  test_imagined.py` (version 17 is no longer the last migration), `tests/webcortex/test_state.py` (table list).
+- New commands under `nsf knowledge`: `rechecks [--rank]`, `reflect`, `reflections`, `strategy [--promote FILE |
+  --revert]`, `ledger`, `compete KEY` (JSON, for the console and Pocket lanes).
+- Tests: `tests/webcortex/test_knowledge_evolution.py`, `tests/acceptance/test_genesis_knowledge_bench.py`, two new
+  drivers in `tests/webcortex/test_background.py`, the table list in `tests/webcortex/test_state.py`.
