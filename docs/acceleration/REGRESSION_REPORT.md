@@ -282,7 +282,7 @@ Branch `remaining-items-round` against `c565c20` ([ENGINEERING_PLAN.md](ENGINEER
 
 ### 5.1 Suites
 
-Final code of the round: <<FINAL-RUN>>.
+Final code of the round: code `1d5d860` (later commits change only these reports): ruff clean, pytest 5039 passed, 18 skipped (the same live-service tests as before), Node checks and `scripts/reproduce.py` pass; browser suite 206 passed, 1 skipped; `nsf acceptance --all` exit 0; guard differential 1,937 inputs, 1,688 identical, 232 stricter, 17 loosened (the proven exact-restatement class), 0 different, every gap corpus met; two-account check 55 of 55. An earlier full browser run on `382d115` had one failure under load (the pairing click in `test_forget_pairing_also_removes_the_vault_copy` waited 30 s for navigation); it passed 6 of 6 on rerun and in the final run.
 
 During the round each lane ran ruff and the full non-browser suite on its own branch before it was merged, and the
 merged branch ran the gate after the lanes (4,892 passed, 1 failed: the test of migration 15, broken by the schema
