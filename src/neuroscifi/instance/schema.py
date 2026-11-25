@@ -501,6 +501,19 @@ MIGRATIONS = [
     CREATE TABLE forgotten_scopes(
       digest TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('camera','partner')), forgotten_at REAL NOT NULL,
       PRIMARY KEY(digest, kind));
+    -- governance.forget_dataset: a graph revision invalidated because it learned from a dataset the owner forgot
+    -- loses its weights (blob X'') and its metrics; it stays listed with its sha256, shape, lineage and decisions.
+    -- The identity trigger allows exactly that one update of an invalidated revision and refuses every other, as
+    -- before; an erased revision can never be made anything but invalidated again.
+    DROP TRIGGER graph_identity_immutable;
+    CREATE TRIGGER graph_identity_immutable BEFORE UPDATE OF blob, sha256, rule_version, context, origin
+      ON graph_revisions WHEN NOT (OLD.status='invalidated' AND NEW.status='invalidated' AND NEW.blob=X''
+        AND NEW.sha256 IS OLD.sha256 AND NEW.rule_version IS OLD.rule_version AND NEW.context IS OLD.context
+        AND NEW.origin IS OLD.origin)
+      BEGIN SELECT RAISE(ABORT,'graph snapshot identity is immutable'); END;
+    CREATE TRIGGER graph_erased_stays_invalidated BEFORE UPDATE OF status ON graph_revisions
+      WHEN OLD.blob=X'' AND NEW.status!='invalidated'
+      BEGIN SELECT RAISE(ABORT,'an erased graph snapshot stays invalidated'); END;
     """,
 ]
 

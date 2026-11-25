@@ -381,7 +381,8 @@ def _as_schema_10(db):
     """Put a live individual back at schema 10: web_forgotten with the v10 kind CHECK (no voice kind), and without
     migration 12's node keys, enrolments and nonces, migration 13's retired keys or migration 14's consolidated
     readings."""
-    db.executescript("BEGIN IMMEDIATE; DROP TABLE forgotten_scopes; DROP TABLE evidence_consolidated; "
+    db.executescript("BEGIN IMMEDIATE; DROP TABLE forgotten_scopes; DROP TRIGGER graph_erased_stays_invalidated; "
+                     "DROP TABLE evidence_consolidated; "
                      "DROP INDEX tombstones_epoch_seq; "
                      "DROP TABLE node_keys_retired; DROP TABLE node_enrolments; DROP TABLE node_nonces; "
                      + "".join(f"ALTER TABLE autonomy_nodes DROP COLUMN {c}; "

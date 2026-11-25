@@ -1051,6 +1051,10 @@ function weightColor(w, max) {
 
 function renderHeatmap(g) {
   const slot = $('graphMatrix');
+  if (g.erased) {     // its weights went with a dataset the owner forgot
+    fill(slot, h('h3', { text: 'Weight matrix' }), h('p', { class: 'sub', text: g.erased }));
+    return;
+  }
   const matrix = g.matrix;
   const rows = matrix.length, cols = matrix[0]?.length ?? 0;
   const values = matrix.flat();

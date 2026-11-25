@@ -3,7 +3,7 @@
 Lifecycle of a revision: 'candidate' (learn) -> 'active' or 'rejected' (promote/reject). Promoting a
 candidate archives the incumbent of its context, so at most one revision per context is active and older
 graphs stay available for rollback and recall. Deleting a dataset turns every revision trained or
-validated on it into 'invalidated' (invalidate_dependents).
+validated on it into 'invalidated' (invalidate_dependents) and erases its weights and metrics (erase_learned_from).
 
 Single writer: learn, promote and rollback hold the context lease (graph_leases) for their duration and
 re-check it inside the committing transaction. Fitting and scoring run under the lease but outside any
@@ -58,9 +58,21 @@ def _row(db, revision_id):
     return rev
 
 
+ERASED = b""      # the blob of a revision whose weights went with a forgotten dataset (schema 15)
+
+
+def _erased_text(revision_id):
+    return (f"Graph revision {revision_id} was erased: it learned from a dataset the owner forgot, so its weights "
+            "and metrics are gone")
+
+
 def _matrix(db, revision_id):
-    blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()[0]
-    return decode(blob)
+    row = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()
+    if row is None:
+        raise NotFound(f"Unknown graph revision {revision_id}")
+    if bytes(row[0]) == ERASED:
+        raise Gone(_erased_text(revision_id))
+    return decode(row[0])
 
 
 def _active(db, context):
@@ -510,6 +522,26 @@ def invalidate_dependents(db, dataset_id, now):
             "failure": "; ".join(failures) if failures else None}
 
 
+def erase_learned_from(db, dataset_id, now):
+    """Erase the weights and metrics of every invalidated revision trained or validated on a deleted dataset (also
+    one invalidated earlier by another forget), and the graph effects measured on those revisions: what was learned
+    from data the owner forgot goes with it (ADR-047). Caller owns the transaction; call after invalidate_dependents.
+
+    The revision stays listed: id, context, status 'invalidated', shape, sha256, lineage and decisions (the audit
+    of what was promoted and why). metrics becomes {"erased": {"dataset": id, "at": now}}. The schema trigger allows
+    exactly this update of an invalidated revision. Returns {"erased": [ids], "effects_deleted": n}."""
+    ids = [r for (r,) in db.execute(
+        "SELECT DISTINCT r.id FROM graph_lineage l JOIN graph_revisions r ON r.id=l.revision_id "
+        "WHERE l.dataset_id=? AND l.role IN ('train','validation') AND r.status='invalidated' AND r.blob!=? "
+        "ORDER BY r.id", (dataset_id, ERASED))]
+    effects = 0
+    for revision in ids:
+        db.execute("UPDATE graph_revisions SET blob=?, metrics=? WHERE id=?",
+                   (ERASED, _dump({"erased": {"dataset": dataset_id, "at": now}}), revision))
+        effects += db.execute("DELETE FROM graph_effects WHERE revision_id=?", (revision,)).rowcount
+    return {"erased": ids, "effects_deleted": effects}
+
+
 # ---- inspection ---------------------------------------------------------------------------------------
 
 def _block_se(per_step, block=LESION_BLOCK):
@@ -651,11 +683,15 @@ def listing(db, context=None):
 
 
 def show(db, revision_id):
-    """Revision record, lineage, the decoded matrix (rounded to 6 decimals) and its support mask."""
+    """Revision record, lineage, the decoded matrix (rounded to 6 decimals) and its support mask. An erased revision
+    (erase_learned_from) has no matrix: `erased` says why, and matrix and support are empty."""
     rev = _public(_row(db, revision_id))
-    matrix = _matrix(db, revision_id).astype(np.float64)
     rev["lineage"] = [{"dataset_id": d, "role": role, "deleted": deleted is not None}
                       for d, role, _, deleted in _lineage(db, revision_id)]
+    try:
+        matrix = _matrix(db, revision_id).astype(np.float64)
+    except Gone as gone:
+        return rev | {"erased": str(gone), "matrix": [], "support": [], "edges": 0}
     rev["matrix"] = np.round(matrix, 6).tolist()
     rev["support"] = (matrix != 0).tolist()
     rev["edges"] = int((matrix != 0).sum())
@@ -666,6 +702,8 @@ def export(db, revision_id, out_path):
     """Write the revision's NSG1 bytes to a new file (mode 0600). Refuses to overwrite or to follow a symlink."""
     rev = _row(db, revision_id)
     blob = db.execute("SELECT blob FROM graph_revisions WHERE id=?", (revision_id,)).fetchone()[0]
+    if bytes(blob) == ERASED:
+        raise Gone(_erased_text(revision_id))
     try:
         fd = os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     except FileExistsError:

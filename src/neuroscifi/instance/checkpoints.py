@@ -401,8 +401,10 @@ def _replay(copy, forgets, now):
     for dataset_id in forgotten:
         blobs += copy.execute("UPDATE datasets SET blob=NULL, note=NULL, deleted_at=? "
                               "WHERE id=? AND deleted_at IS NULL", (now, dataset_id)).rowcount
+        copy.execute("UPDATE datasets SET sha256='' WHERE id=?", (dataset_id,))
         effects += copy.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
         invalidated += graphs.invalidate_dependents(copy, dataset_id, now)["invalidated"]
+        effects += graphs.erase_learned_from(copy, dataset_id, now)["effects_deleted"]
     if roots:
         copy.executemany("INSERT OR IGNORE INTO forgotten_roots(digest,kind,forgotten_at) VALUES(?,?,?)", roots)
         scrubbed += _scrub_copy(copy, candidates, {digest for digest, _, _ in roots})

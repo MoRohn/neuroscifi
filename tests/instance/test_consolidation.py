@@ -776,7 +776,8 @@ def _version_13_file(tmp_path):
     believed = held(db, "desk")
     db.close()
     raw = sqlite3.connect(path, isolation_level=None)
-    raw.executescript("BEGIN; DROP TABLE forgotten_scopes; DROP TABLE evidence_consolidated; DROP INDEX tombstones_epoch_seq; "
+    raw.executescript("BEGIN; DROP TABLE forgotten_scopes; DROP TRIGGER graph_erased_stays_invalidated; "
+                      "DROP TABLE evidence_consolidated; DROP INDEX tombstones_epoch_seq; "
                       "PRAGMA user_version=13; COMMIT;")
     tables = sorted(name for (name,) in raw.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"))

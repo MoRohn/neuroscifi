@@ -1660,3 +1660,15 @@ erasing what it names is correct; nothing else may go, and a restore must end th
    settlements as `settled_by_forgotten_tasks`. Computed on read, so it holds for forgets made before this change
    and in a restored copy. Reopening the prediction instead was rejected: it would be checked again and could
    start a second error analysis for the same failure.
+3. **What graphs learned from a forgotten dataset goes with it (schema 15).** `forget_dataset` already invalidated
+   the revisions trained or validated on the dataset. Now `graphs.erase_learned_from` also empties their blob (the
+   weights are an image of the data they were fitted to) and replaces their metrics with
+   `{"erased": {"dataset", "at"}}`, deletes the graph effects measured on them, and the dataset's digest becomes
+   empty (with it a guessed dataset could be checked against the file). A revision invalidated earlier by another
+   dataset of its lineage is erased too. The revision stays listed with its id, status, shape, sha256, lineage and
+   decisions, the audit of what was promoted and why; `graphs.show` returns it without a matrix and says why,
+   `export`, `lesion` and the other readers of the weights raise Gone. Migration 15 replaces the identity trigger:
+   it allows exactly this update of an invalidated revision (the blob to empty, nothing else of its identity) and
+   refuses every other as before, and a second trigger keeps an erased revision invalidated. A restore replays it.
+   A revision that only scored the dataset as held-out data keeps its weights: it did not learn from it.
+

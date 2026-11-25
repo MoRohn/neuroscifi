@@ -350,7 +350,8 @@ def test_migration_13_releases_sessions_of_unsigned_nodes(tmp_path):
     path = tmp_path / "v12.sqlite"
     store.create(path, T0).close()
     raw = sqlite3.connect(path, isolation_level=None)
-    raw.executescript("BEGIN; DROP TABLE forgotten_scopes; DROP TABLE evidence_consolidated; DROP INDEX tombstones_epoch_seq; "
+    raw.executescript("BEGIN; DROP TABLE forgotten_scopes; DROP TRIGGER graph_erased_stays_invalidated; "
+                      "DROP TABLE evidence_consolidated; DROP INDEX tombstones_epoch_seq; "
                       "DROP TABLE node_keys_retired; "
                       "PRAGMA user_version=12; COMMIT;")
     raw.executemany("INSERT INTO autonomy_nodes(device,family,label,capabilities,enrolled_by,enrolled_at,alg,"

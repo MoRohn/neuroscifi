@@ -282,7 +282,7 @@ governance.forget_epoch(db, epoch, now) -> dict           # every evidence row i
 #   row stays. An epoch holding only a note is forgotten and logged too. Every checkpoint is marked stale whenever
 #   derived rows were removed, also when the epoch's evidence had already expired.
 governance.forget_partner(db, root, now) -> dict          # every word evidence row from that partner
-governance.forget_dataset(db, dataset_id, now) -> dict    # blob NULL, deleted_at set, graphs.invalidate_dependents, stale checkpoints
+governance.forget_dataset(db, dataset_id, now) -> dict    # blob, note and digest erased, deleted_at set, graphs.invalidate_dependents, graphs.erase_learned_from (effects.graphs_erased), stale checkpoints
 #   Also deletes the graph_effects rows measured on the dataset (lesion, lesion_control, coactivation):
 #   effects["graph_effects_deleted"]. Effects measured on other datasets stay.
 governance.promote(db, event_id, now) -> dict             # retention 'promoted', expires_at NULL
