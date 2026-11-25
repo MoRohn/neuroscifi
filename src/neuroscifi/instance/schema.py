@@ -515,6 +515,47 @@ MIGRATIONS = [
       WHEN OLD.blob=X'' AND NEW.status!='invalidated'
       BEGIN SELECT RAISE(ABORT,'an erased graph snapshot stays invalidated'); END;
     """,
+    # ---- version 16 (which consolidated readings may be a later copy of a sample; beliefs._copied_samples) ----------
+    """
+    -- Beliefs count one copy of a sample (the earliest). Finding the samples with more than one reading was a grouped
+    -- pass over every reading of the epoch on every belief computation (about 0.1 to 0.3 s per million readings with
+    -- a sample id), even when no sample was ever recorded twice. `copied` lets SQLite answer "which samples can have
+    -- more than one reading?" from a partial index that holds only the flagged readings.
+    -- The rule, kept by the triggers below and by nothing else: of any two readings of one sample (epoch, channel,
+    -- root, sample_id) at least one has copied=1. The reading that arrives second, by an insert or by an update of
+    -- those columns, finds the first and is flagged. A flag is never cleared, so it can be stale (the other reading
+    -- was forgotten since): a stale flag makes beliefs look at one sample that turns out to have one reading, the
+    -- result is the same. Nothing reads `copied` as a fact about a sample; it only narrows where to look.
+    ALTER TABLE evidence_consolidated ADD COLUMN copied INTEGER NOT NULL DEFAULT 0 CHECK(copied IN (0,1));
+    -- Readings already held: every reading with an earlier reading of its sample (one seek per reading with a sample
+    -- id, once).
+    UPDATE evidence_consolidated SET copied=1 WHERE sample_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM evidence_consolidated d WHERE d.epoch=evidence_consolidated.epoch
+      AND d.channel=evidence_consolidated.channel AND d.root=evidence_consolidated.root
+      AND d.sample_id=evidence_consolidated.sample_id AND d.seq<evidence_consolidated.seq);
+    CREATE INDEX evidence_consolidated_copied ON evidence_consolidated(epoch, channel, root, sample_id)
+      WHERE copied=1;
+    CREATE TRIGGER evidence_consolidated_copied_insert AFTER INSERT ON evidence_consolidated
+      WHEN NEW.sample_id IS NOT NULL AND NEW.copied=0 AND EXISTS (
+        SELECT 1 FROM evidence_consolidated d WHERE d.epoch=NEW.epoch AND d.channel=NEW.channel
+        AND d.root=NEW.root AND d.sample_id=NEW.sample_id AND d.seq<>NEW.seq)
+    BEGIN
+      UPDATE evidence_consolidated SET copied=1 WHERE seq=NEW.seq;
+    END;
+    CREATE TRIGGER evidence_consolidated_copied_update AFTER UPDATE OF epoch, channel, root, sample_id
+      ON evidence_consolidated
+      WHEN NEW.sample_id IS NOT NULL AND NEW.copied=0 AND EXISTS (
+        SELECT 1 FROM evidence_consolidated d WHERE d.epoch=NEW.epoch AND d.channel=NEW.channel
+        AND d.root=NEW.root AND d.sample_id=NEW.sample_id AND d.seq<>NEW.seq)
+    BEGIN
+      UPDATE evidence_consolidated SET copied=1 WHERE seq=NEW.seq;
+    END;
+    CREATE TRIGGER evidence_consolidated_copied_kept BEFORE UPDATE OF copied ON evidence_consolidated
+      WHEN OLD.copied=1 AND NEW.copied=0
+    BEGIN
+      SELECT RAISE(ABORT, 'evidence_consolidated.copied is never cleared');
+    END;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -1308,7 +1308,9 @@ million. Reading those in bounded pieces needs the live file's snapshot held ope
 - Version 14 was amended twice before any release. A file that reached version 14 under an earlier build of this
   branch gets the current indexes when it is next opened (`schema.ensure_indexes`); the sweeps it ran under the
   first build kept only the first copy of a sample, and that history is not repaired.
-- `compute()` is linear in the readings of an epoch, as it was in its events.
+- `compute()` is linear in the readings of an epoch, as it was in its events. (Amended by schema 16, below: the
+  pass that grouped every reading by sample to find the copied samples is gone when few samples are copied; the
+  tallies' pass over the readings stays.)
 - The prototype's `legacy` status reads the same readings, but without event ids to order them by its sums can
   differ from `legacy_live`'s in the last bits once readings are consolidated.
 - Two files that both continue after a restore (the restored copy and the file it was restored from) issue seqs
@@ -1324,6 +1326,39 @@ million. Reading those in bounded pieces needs the live file's snapshot held ope
   `tests/instance/test_consolidation_limit.py` (the limit at, below and across; the warning; the setting; what a
   restore reads), `tests/console/test_console_api.py` (the readings and the two forgets over HTTP), and the expiry
   tests of `test_erasure.py` and `test_journeys.py`, which keep their old assertions under `consolidation=False`.
+
+## Amendment (schema 16): finding the copied samples without a pass over every reading
+
+Beliefs count the earliest copy of a sample. To know which samples have more than one reading, every belief
+computation grouped all of the epoch's readings by sample (about 0.1 to 0.3 s per million readings that carry a
+sample id), even when no sample was ever recorded twice. A belief cache, or a maintained list of copied samples, was
+rejected (phase 3): a second source of truth that every forget, sweep, confirmed change and restore must invalidate.
+
+Decision: a column `copied` on each consolidated reading and three triggers that keep one rule: **of any two
+readings of one sample (epoch, channel, root, sample id), at least one has `copied=1`**. The reading that arrives
+second, by an insert or by an update of those columns, finds the first and is flagged; a flag is never cleared (a
+trigger refuses it). Why this is not the rejected design:
+
+- It is a one-sided hint, not a fact. A flag can be stale (the other reading was forgotten since); beliefs then look
+  up one sample by key, find one reading, and drop it. A missing flag is impossible by the rule, so no sample with
+  several readings is ever missed. Nothing reads `copied` as a statement about a sample.
+- No code path maintains it: SQLite does, in the same statement as the write, whichever path writes (a sweep, a
+  restore's replay, a forget). Nothing needs to invalidate it.
+- Beliefs are computed exactly as before from the same rows. `beliefs._copied_samples` returns the same samples as
+  the grouped pass: up to 256 flagged samples are counted by key; beyond that, or on a connection that has not
+  migrated, the grouped pass runs as before.
+
+Measured on files of a million readings each with its own sample id: see
+`docs/quality/evidence/remaining_consolidation.json`. Tests: `tests/instance/test_consolidation_copied.py` (the rule
+under random inserts, deletes and updates; the migration of a version-14 file; no grouped pass without copies;
+beliefs identical on the three paths), and every test of `test_consolidation.py`, which now runs on three paths:
+flags, the grouped pass, and no flags.
+
+**A restore streams the tombstones.** The live file's tombstones (about 230 MiB per million as Python rows) are no
+longer read whole: the replay applies them in batches of 2,000 while the snapshot of the live file stays open
+(`checkpoints._snapshot`), so a forget committing meanwhile is still wholly in the replay or not at all. The cost:
+the read transaction on the live file lasts as long as the replay, so its WAL cannot be checkpointed past that
+snapshot until the replay ends (writers are not blocked).
 
 # ADR-045 (draft) Which graph is promoted: the better learner's, and never one worse than no graph. R
 

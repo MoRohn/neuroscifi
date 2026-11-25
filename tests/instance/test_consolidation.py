@@ -26,13 +26,18 @@ BELIEF = ("mechanism", "sensors", "partners", "reference_roots", "unidentifiable
           "linked_from", "change")
 
 
-@pytest.fixture(autouse=True, params=["copied_samples_looked_up", "copied_samples_in_one_pass"])
+@pytest.fixture(autouse=True, params=["copied_samples_looked_up", "copied_samples_in_one_pass",
+                                      "copied_samples_without_flags"])
 def copy_rule_path(request, monkeypatch):
-    """Every test of this file runs twice. The readings that do not count (later copies of a sample) are found one
-    sample at a time while few samples have several readings, and in one grouped pass over the index beyond
-    beliefs._FEW_COPIED_SAMPLES; the second run forces the grouped pass, which small test data would never reach."""
+    """Every test of this file runs three times. The readings that do not count (later copies of a sample) are found
+    one sample at a time while few samples have several readings, and in one grouped pass over the index beyond
+    beliefs._FEW_COPIED_SAMPLES; the second run forces the grouped pass, which small test data would never reach. The
+    few samples are found from the flagged readings (schema 16); the third run finds them by the grouped pass over
+    every reading instead, as a connection without the flags does."""
     if request.param == "copied_samples_in_one_pass":
         monkeypatch.setattr(beliefs, "_FEW_COPIED_SAMPLES", -1)
+    elif request.param == "copied_samples_without_flags":
+        monkeypatch.setattr(beliefs, "_has_copied_index", lambda db: False)
 
 
 def obs(db, event_id, epoch, channel, root, corrected, now, *, action=1, sample=None, consent="learn"):
@@ -798,7 +803,7 @@ def test_a_version_13_file_gains_the_table_and_keeps_every_row(tmp_path):
         assert {name for (name,) in db.execute("SELECT name FROM sqlite_master WHERE tbl_name='evidence_consolidated' "
                                                "AND type='index' AND name NOT LIKE 'sqlite_%'")} == \
             {"evidence_consolidated_epoch", "evidence_consolidated_copies", "evidence_consolidated_tally",
-             "evidence_consolidated_root"}
+             "evidence_consolidated_root", "evidence_consolidated_copied"}
         assert db.execute("SELECT tbl_name FROM sqlite_master WHERE name='tombstones_epoch_seq'").fetchone() == \
             ("tombstones",)
         # settings saved by 0.7.0 have no `consolidation`: the default applies, and the individual keeps learning
@@ -1317,7 +1322,7 @@ def test_a_file_migrated_by_the_first_build_of_version_14_gets_the_current_index
     try:
         assert _indexes(db) == current == {"evidence_consolidated_epoch", "evidence_consolidated_tally",
                                            "evidence_consolidated_copies", "evidence_consolidated_root",
-                                           "tombstones_epoch_seq"}
+                                           "tombstones_epoch_seq", "evidence_consolidated_copied"}
         assert governance.held_roots(db) == ["ana", "cam-a"]
         from neuroscifi.webcortex import orchestrator
         from neuroscifi.webcortex.config import WebConfig

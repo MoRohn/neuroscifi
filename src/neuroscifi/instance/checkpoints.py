@@ -180,8 +180,11 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
             except ValueError as error:
                 raise Conflict(f"Checkpoint {checkpoint_id} cannot be decoded: {error}") from None
             with closing(sqlite3.connect(staged, isolation_level=None)) as copy:
-                forgets = _forgets(db, now, _journal_seqs(copy)) if apply_tombstones else None
-                counts = _replay(copy, forgets, now)
+                if apply_tombstones:
+                    with _snapshot(db, now, _journal_seqs(copy)) as forgets:
+                        counts = _replay(copy, forgets, now)
+                else:
+                    counts = _replay(copy, None, now)
             staged.chmod(0o600)
             try:
                 os.link(staged, dest)
@@ -212,23 +215,72 @@ def _journal_seqs(copy):
     return array("q", (seq for (seq,) in copy.execute("SELECT seq FROM evidence ORDER BY seq")))
 
 
-def _forgets(db, now, wanted=None):
+@contextmanager
+def _snapshot(db, now, wanted=None):
     """Everything the live instance has forgotten (or revoked) and the owner's settings, read in one snapshot for a
     replay into an archive copy: a forget committing meanwhile is either wholly in it or not at all (a tombstone
     saying 'forgotten' with the reading still listed as held, or the reverse, could keep a forgotten reading).
+
+    The snapshot (a read transaction on the live file; writers carry on, WAL) stays open until the block ends, because
+    the tombstones are not read here: _Tombstones reads them in batches while the replay applies them, so what is held
+    in memory does not grow with every event the individual ever lost (about 230 MiB per million when they were read
+    whole). Run the replay inside the block.
 
     wanted: the journal seqs of the copy the replay is for (_journal_seqs). The live file's consolidated readings are
     then read for those seqs only, in the same snapshot: a replay asks for a reading only where the copy still holds
     the event, so the result is the same, and what is held in memory is bounded by the archive's journal (one
     lifetime of events, at most its row limit) instead of by every reading the individual ever kept. None reads
-    them all. The tombstones, each a few short fields, are still read whole: the copy takes every one of them."""
+    them all."""
     if db.in_transaction:
-        return _read_forgets(db, now, wanted)
+        yield _read_forgets(db, now, wanted)
+        return
     db.execute("BEGIN")             # deferred: the first read takes the snapshot (WAL)
     try:
-        return _read_forgets(db, now, wanted)
+        yield _read_forgets(db, now, wanted)
     finally:
         db.execute("COMMIT")
+
+
+def _forgets(db, now, wanted=None):
+    """_snapshot's content with the tombstones read whole into a list: for callers that keep it after the snapshot
+    ends (tests and the measurement script); a replay runs inside _snapshot instead."""
+    with _snapshot(db, now, wanted) as forgets:
+        return forgets | {"tombstones": list(forgets["tombstones"])}
+
+
+TOMBSTONE_BATCH = 2000  # tombstones per fetch while a replay applies them
+
+
+class _Tombstones:
+    """The live file's tombstones (id, seq, epoch, deleted_at, reason), read in the caller's snapshot TOMBSTONE_BATCH
+    rows at a time each time they are iterated. Valid only inside _snapshot."""
+
+    def __init__(self, db):
+        self.db = db
+
+    def __iter__(self):
+        cursor = self.db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones")
+        try:
+            while batch := cursor.fetchmany(TOMBSTONE_BATCH):
+                yield from batch
+        finally:
+            cursor.close()
+
+    def among(self, ids):
+        """The ids in `ids` that have a tombstone (by the table's key, READING_BATCH per statement)."""
+        ids, found = list(ids), set()
+        for start in range(0, len(ids), READING_BATCH):
+            chunk = ids[start:start + READING_BATCH]
+            found.update(row[0] for row in self.db.execute(
+                f"SELECT id FROM tombstones WHERE id IN ({','.join('?' * len(chunk))})", chunk))
+        return found
+
+
+def _tombstoned(tombstones, ids):
+    """The ids in `ids` that have a tombstone in `tombstones` (a _Tombstones or a list of rows)."""
+    if isinstance(tombstones, _Tombstones):
+        return tombstones.among(ids)
+    return {tomb[0] for tomb in tombstones} & set(ids)
 
 
 def _held_readings(db, wanted):
@@ -283,7 +335,8 @@ def _read_forgets(db, now, wanted=None):
                    for kind, label, requested_at, effects in db.execute(
                        "SELECT target_kind, target_id, requested_at, effects FROM deletion_log WHERE target_kind IN "
                        f"({','.join('?' * len(governance.SCOPE_KINDS))}) ORDER BY id", governance.SCOPE_KINDS)],
-        "tombstones": db.execute("SELECT id,seq,epoch,deleted_at,reason FROM tombstones").fetchall(),
+        # Read while the replay applies them, in this snapshot (_snapshot).
+        "tombstones": _Tombstones(db),
         # Consolidated readings the live file holds (ADR-044), by seq: an expired event of the copy becomes one only
         # when the live file kept it, with the live row's content. For a replay: only those of the copy's own events.
         "consolidated": _held_readings(db, wanted),
@@ -365,7 +418,9 @@ def _replay(copy, forgets, now):
                              (store.SETTING_KIND, name, now, json.dumps(change | {"carried_by_restore": True},
                                                                         sort_keys=True)))
     candidates = _root_candidates(copy) if roots or kind_scopes else {}
+    applied = 0
     for tomb in tombstones:
+        applied += 1
         event_id, seq, epoch, _, reason = tomb
         # The live file's consolidated reading of this very event (same id, seq and epoch): the copy keeps what the
         # event taught exactly as the live file does, and loses the rest of it like any expired event.
@@ -386,15 +441,15 @@ def _replay(copy, forgets, now):
                      "ON CONFLICT(id) DO UPDATE SET reason=excluded.reason, deleted_at=excluded.deleted_at "
                      "WHERE tombstones.reason='expired' AND excluded.reason!='expired'", tomb)
     if forgets:
-        # Never issue an evidence seq the live file already used (see _forgets "max_seq").
+        # Never issue an evidence seq the live file already used (see _read_forgets "max_seq").
         high = max(forgets.get("max_seq", 0), copy.execute("SELECT coalesce(max(seq),0) FROM evidence").fetchone()[0])
         if copy.execute("UPDATE sqlite_sequence SET seq=max(seq, ?) WHERE name='evidence'", (high,)).rowcount == 0 \
                 and high:
             copy.execute("INSERT INTO sqlite_sequence(name,seq) VALUES('evidence',?)", (high,))
     # Revision causes naming a removed event id become evidence:#forgotten, as in the live forget.
-    gone = {tomb[0] for tomb in tombstones}
     causes = [cause.partition(":")[2] for (cause,) in copy.execute(
         "SELECT DISTINCT cause FROM belief_revisions WHERE cause LIKE 'evidence:%' OR cause LIKE 'forget:%'")]
+    gone = _tombstoned(tombstones, causes)
     scrubbed += governance._forget_causes(copy, [i for i in causes if i in gone])
     if forgotten:
         from . import graphs  # imported lazily, as governance does, to keep modules decoupled
@@ -471,7 +526,7 @@ def _replay(copy, forgets, now):
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
-    return {"tombstones_applied": len(tombstones), "evidence_removed": removed,
+    return {"tombstones_applied": applied, "evidence_removed": removed,
             "evidence_consolidated": consolidated, "consolidated_removed": unconsolidated,
             "settings_carried": carried, "settings_warnings": settings_warnings,
             "scope_changes_removed": scope_changes,
@@ -630,7 +685,8 @@ def rewrite(db, checkpoint_id, now):
                     raise Conflict(f"Checkpoint {checkpoint_id} cannot be decoded: {error}") from None
             vacuumed = directory / "vacuumed.sqlite"
             with closing(sqlite3.connect(staged, isolation_level=None)) as copy:
-                removed = _replay(copy, _forgets(db, now, _journal_seqs(copy)), now)
+                with _snapshot(db, now, _journal_seqs(copy)) as forgets:
+                    removed = _replay(copy, forgets, now)
                 # VACUUM INTO writes the compacted copy here, not into a temporary database in the system temp
                 # directory; no freed page of a removed row is carried over.
                 copy.execute("PRAGMA temp_store=MEMORY")

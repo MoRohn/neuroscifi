@@ -2,7 +2,7 @@
 
 ## 1. How the instance database is versioned
 
-The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (14 in this release; 13 in 0.7.0).
+The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (16 in this release; 13 in 0.7.0).
 
 - **Forward only.** Opening an instance with `nsf` applies every pending migration in order, each in one transaction that also sets `user_version`. The version is read again under the write lock, so two processes opening an old file at once apply each migration once; a migration that fails is rolled back. There are no down-migrations. A released migration is never edited; changes arrive as a new migration.
 - **Newer than the software is refused.** If `user_version` is greater than the software's version, the command stops with "Instance schema N is newer than this software (M)" and changes nothing. Do not run older software on a database an upgrade has opened.
@@ -11,6 +11,21 @@ The instance database (one SQLite file per individual) stores its schema version
 Read the version with `sqlite3 /var/lib/neuroscifi/instance.sqlite 'PRAGMA user_version'` if the sqlite3 tool is installed *(not part of the project)*.
 
 **Version 14 (consolidation, ADR-044).** It adds one empty table, `evidence_consolidated`, with four indexes (by epoch and seq, the tallies, the copies of a sample with their readings, by root), and an index on the tombstones by epoch and seq. A file that was opened by an earlier build of this unreleased version is brought to this set of indexes when it is next opened. No existing row is changed; building the tombstone index reads every tombstone once (well under a second for a million). What changes is the next sweep: with the default setting, an expiring learning event leaves a consolidated reading instead of nothing (RUNBOOK section 6). An individual upgraded from 0.7.0 has no `consolidation` setting saved and gets the default, on. To keep the 0.7.0 meaning of expiry, run `nsfs config --no-consolidation` as the first command after the upgrade, with the services still stopped: `nsf config` is the one instance command besides `nsf sweep` that does not expire due evidence before it runs, so the setting is in place before the first sweep (a test does exactly this on a version-13 file whose events are all past their lifetime). A checkpoint restored later keeps the setting of the file it is restored from, whatever the archive held. 0.7.0 software refuses a version-14 file.
+
+**Version 15 (forgetting reaches what was left behind, ADR-048).** It adds one empty table, `forgotten_scopes`
+(the instance-salted digest and kind of a camera or partner name forgotten while the other channel still holds the
+name), and replaces the graph identity trigger so that exactly one update of an invalidated revision is allowed: its
+weights and metrics erased when `forget_dataset` removes the data it learned from. Every other change to a revision's
+identity is refused as before, and a new trigger keeps an erased revision invalidated. Nothing is written to existing
+rows by the migration.
+
+**Version 16 (which consolidated readings may be a later copy of a sample, ADR-044).** It adds a column `copied` to
+`evidence_consolidated`, a partial index of the flagged readings and three triggers, and flags each reading already
+held that has an earlier reading of the same sample (one indexed lookup per reading with a sample id, once: about a
+second per million). Nothing else is written; no reading is added, removed or changed in what it says. A belief
+computation then finds the samples recorded more than once from the flagged readings instead of grouping every
+reading of the epoch by sample on every read. Software of an earlier schema refuses a version-16 file; rollback is a restore
+of the pre-upgrade checkpoint.
 
 ## 2. Upgrade procedure
 

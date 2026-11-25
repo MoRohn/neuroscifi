@@ -156,6 +156,38 @@ def _chunks(values, size=400):
     return [values[start:start + size] for start in range(0, len(values), size)]
 
 
+def _has_copied_index(db):
+    return db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='evidence_consolidated_copied'"
+                      ).fetchone() is not None
+
+
+def _copied_samples(db, epoch):
+    """The epoch's samples with more than one consolidated reading, up to _FEW_COPIED_SAMPLES + 1 of them, as rows
+    (channel, root, sample_id, first seq, readings).
+
+    Of any two readings of a sample at least one carries copied=1 (schema 16), so every such sample is among the
+    flagged ones: when they are few, each is counted by key and the samples a stale flag names (one reading left) are
+    dropped. When they are many, or the file has no flags (a connection that has not migrated), the grouped pass over
+    every reading of the epoch decides, as before. Either way the rows are those of the grouped pass."""
+    if _has_copied_index(db):
+        flagged = db.execute(
+            "SELECT DISTINCT channel, root, sample_id FROM evidence_consolidated INDEXED BY evidence_consolidated_copied "
+            "WHERE epoch=? AND copied=1 LIMIT ?", (epoch, _FEW_COPIED_SAMPLES + 1)).fetchall()
+        if len(flagged) <= _FEW_COPIED_SAMPLES:
+            rows = []
+            for channel, root, sample in flagged:
+                first, n = db.execute(
+                    "SELECT min(seq), count(*) FROM evidence_consolidated INDEXED BY evidence_consolidated_copies "
+                    "WHERE epoch=? AND channel=? AND root=? AND sample_id=?", (epoch, channel, root, sample)).fetchone()
+                if n > 1:
+                    rows.append((channel, root, sample, first, n))
+            return rows
+    return db.execute(
+        "SELECT channel, root, sample_id, min(seq), count(*) FROM evidence_consolidated "
+        "INDEXED BY evidence_consolidated_copies WHERE epoch=? AND sample_id IS NOT NULL "
+        "GROUP BY channel, root, sample_id HAVING count(*)>1 LIMIT ?", (epoch, _FEW_COPIED_SAMPLES + 1)).fetchall()
+
+
 def _not_counted(db, epoch, predicates, preceded):
     """How many of the epoch's consolidated readings do NOT count as learning readings, per root, corrected reading
     and predicate: {(channel, root): [[n0, n1] for each predicate]}.
@@ -165,8 +197,9 @@ def _not_counted(db, epoch, predicates, preceded):
     exists (a "later copy"), or when it is in `preceded` (_preceded). `predicates`: [(template, params)], SQL
     conditions on a reading's channel, root and seq, the seq written `{s}`.
 
-    Nothing here grows with Python work per reading. One ordered pass over the copies index finds the samples with
-    several readings. Few of them (the usual case): their later copies are read by key and counted in one statement.
+    Nothing here grows with Python work per reading. _copied_samples finds the samples with several readings, from
+    the flagged readings when they are few (no pass over the epoch's readings at all when none is flagged). Few of
+    them (the usual case): their later copies are read by key and counted in one statement.
     Many (every sample recorded by two devices): one grouped pass counts, per sample, all its readings minus its
     first, and sums that per root, so the cost is that of a pass over the index however many samples are copied.
     """
@@ -187,10 +220,7 @@ def _not_counted(db, epoch, predicates, preceded):
             add(db.execute(f"SELECT channel, root{sums} FROM evidence_consolidated WHERE seq IN "
                            f"({','.join('?' * len(chunk))}) GROUP BY channel, root", (*params, *chunk)))
 
-    copied = db.execute(
-        "SELECT channel, root, sample_id, min(seq), count(*) FROM evidence_consolidated "
-        "INDEXED BY evidence_consolidated_copies WHERE epoch=? AND sample_id IS NOT NULL "
-        "GROUP BY channel, root, sample_id HAVING count(*)>1 LIMIT ?", (epoch, _FEW_COPIED_SAMPLES + 1)).fetchall()
+    copied = _copied_samples(db, epoch)
     # (few samples, and few readings of them: one sample recorded thousands of times goes to the grouped pass too)
     if len(copied) <= _FEW_COPIED_SAMPLES and sum(row[4] for row in copied) <= 16 * _FEW_COPIED_SAMPLES:
         later = [seq for channel, root, sample, first, _ in copied for (seq,) in db.execute(
