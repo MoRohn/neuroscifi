@@ -296,6 +296,8 @@ def _read_forgets(db, now, wanted=None):
             db.execute("SELECT max(seq) FROM tombstones").fetchone())),
         "datasets": [r[0] for r in db.execute("SELECT id FROM datasets WHERE deleted_at IS NOT NULL")],
         "roots": db.execute("SELECT digest,kind,forgotten_at FROM forgotten_roots").fetchall(),
+        # One kind of a name the other channel still holds (governance.scrub_roots scoped; schema 15).
+        "forgotten_scopes": db.execute("SELECT digest,kind,forgotten_at FROM forgotten_scopes").fetchall(),
         # Forgotten epochs with the state version their forget committed at: an epoch's derived rows carry no
         # tombstone (and its evidence may have expired first), so deletion_log is the record that it was forgotten.
         "epochs": [(name, json.loads(effects).get("state_version", float("inf")), requested_at, effects)
@@ -328,6 +330,7 @@ def _replay(copy, forgets, now):
     scope_changes = 0
     forgotten = forgets["datasets"] if forgets else []
     roots = forgets["roots"] if forgets else []
+    kind_scopes = forgets.get("forgotten_scopes", []) if forgets else []
     epochs = forgets["epochs"] if forgets else []
     web = forgets["web"] if forgets else []
     live_streams = forgets["streams"] if forgets else None
@@ -361,7 +364,7 @@ def _replay(copy, forgets, now):
                 copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
                              (store.SETTING_KIND, name, now, json.dumps(change | {"carried_by_restore": True},
                                                                         sort_keys=True)))
-    candidates = _root_candidates(copy) if roots else {}
+    candidates = _root_candidates(copy) if roots or kind_scopes else {}
     for tomb in tombstones:
         event_id, seq, epoch, _, reason = tomb
         # The live file's consolidated reading of this very event (same id, seq and epoch): the copy keeps what the
@@ -411,6 +414,10 @@ def _replay(copy, forgets, now):
     # derived rows as in the live forget; a copy written after the forget may hold the same name used again.
     version = store.state_version(copy)
     scope_changes = governance.replay_scope_forgets(copy, forgets.get("scopes", ()) if forgets else (), version)
+    if kind_scopes:     # after the changepoints of a camera or partner forgotten by name (counted there)
+        copy.executemany("INSERT OR IGNORE INTO forgotten_scopes(digest,kind,forgotten_at) VALUES(?,?,?)",
+                         kind_scopes)
+        scrubbed += _scrub_copy_scopes(copy, candidates, {(digest, kind) for digest, kind, _ in kind_scopes})
     for epoch, forgotten_at_version, requested_at, effects_json in epochs:
         if version < forgotten_at_version:
             epoch_rows += sum(governance.drop_epoch_rows(copy, epoch).values())
@@ -723,6 +730,21 @@ def _scrub_copy(copy, candidates, digests):
         if digest in digests and root not in roots and not governance.root_held(copy, root):
             roots[root] = (kind, digest)
     return governance.scrub_roots(copy, roots)
+
+
+def _scrub_copy_scopes(copy, candidates, forgotten):
+    """In a restore's staged copy: scrub the kind of every candidate name that the live instance forgot as that kind
+    while the other channel kept the name (forgotten: {(digest, kind)}), unless the copy still holds evidence of that
+    kind (a newer camera or partner of the same name). A name with no evidence left at all in the copy is scrubbed
+    only as that kind too: its other kind is still held by the live instance."""
+    instance_id = store.birth(copy)["instance_id"]
+    parts = {"camera": {}, "partner": {}}
+    for kind, root in sorted(candidates):
+        digest = governance.root_digest(instance_id, root)
+        channel = "camera" if kind == "camera" else "word"
+        if (digest, kind) in forgotten and not governance.root_held(copy, root, channel):
+            parts[kind][root] = (kind, digest)
+    return sum(governance.scrub_roots(copy, part, scoped=True) for part in parts.values() if part)
 
 
 def _unlink(rows, now, extra):

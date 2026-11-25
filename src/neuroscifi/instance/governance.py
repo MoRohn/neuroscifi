@@ -44,14 +44,30 @@ def _dump(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def _scrubber(roots):
+def _scrubber(roots, *, scoped=False):
     """roots: {root: (kind, digest)}. Returns text -> text replacing each root by its label.
 
     `camera:<root>` / `partner:<root>` keep their own prefix; a bare root takes the kind it was forgotten as.
     Matches need a non-word boundary on both sides so a short root does not rewrite unrelated words, and
     existing labels are left untouched.
+
+    scoped: only the root's forgotten kind goes, because the other channel still holds the name: `<kind>:<root>`
+    (and, for a partner, the executive's "partner <root>"); a bare root is left, since it may name the other one.
     """
     alternatives = "|".join(re.escape(r) for r in sorted(roots, key=len, reverse=True))
+    if scoped:
+        pattern = re.compile(rf"{_LABEL}|(?<![\w-])(camera:|partner:|partner )({alternatives})(?![\w-])")
+
+        def label(match):
+            if match.group(2) is None:
+                return match.group(0)
+            kind, digest = roots[match.group(2)]
+            prefix = match.group(1)
+            if prefix[:-1] != kind:
+                return match.group(0)
+            return f"{kind}:#{digest}" if prefix.endswith(":") else f"partner {kind}:#{digest}"
+
+        return lambda text: pattern.sub(label, text)
     pattern = re.compile(rf"{_LABEL}|(?<![\w-])(?:(camera|partner):)?({alternatives})(?![\w-])")
 
     def label(match):
@@ -63,29 +79,29 @@ def _scrubber(roots):
     return lambda text: pattern.sub(label, text)
 
 
-def _scrub_value(value, roots, sub, kind=None):
+def _scrub_value(value, roots, sub, kind=None, *, scoped=False):
     if isinstance(value, dict):
         out = {}
         for key, item in value.items():
-            if kind is not None and key in roots:
+            if kind is not None and key in roots and (not scoped or roots[key][0] == kind):
                 new_key = f"{kind}:#{roots[key][1]}"
             else:
                 new_key = sub(key)
-            out[new_key] = _scrub_value(item, roots, sub, _MAP_KIND.get(key))
+            out[new_key] = _scrub_value(item, roots, sub, _MAP_KIND.get(key), scoped=scoped)
         return out
     if isinstance(value, list):
-        return [_scrub_value(item, roots, sub) for item in value]
+        return [_scrub_value(item, roots, sub, scoped=scoped) for item in value]
     if isinstance(value, str):
         prefix, _, rest = value.partition(":")
-        if prefix in ("camera", "partner") and rest in roots:
+        if prefix in ("camera", "partner") and rest in roots and (not scoped or roots[rest][0] == prefix):
             return f"{prefix}:#{roots[rest][1]}"
-        if value in roots:
+        if value in roots and not scoped:
             return f"{roots[value][0]}:#{roots[value][1]}"
         return sub(value)
     return value
 
 
-def _scrub_text(text, roots, sub, *, as_json=False):
+def _scrub_text(text, roots, sub, *, as_json=False, scoped=False):
     if text is None:
         return None
     if as_json:
@@ -94,8 +110,8 @@ def _scrub_text(text, roots, sub, *, as_json=False):
         except ValueError:
             parsed = None
         if isinstance(parsed, (dict, list)):
-            return _dump(_scrub_value(parsed, roots, sub))
-    return _scrub_value(text, roots, sub)
+            return _dump(_scrub_value(parsed, roots, sub, scoped=scoped))
+    return _scrub_value(text, roots, sub, scoped=scoped)
 
 
 _SCRUB_TABLES = (  # table, scrubbed columns, columns stored as JSON
@@ -123,7 +139,7 @@ def _drop_in_process_copies():
         pass
 
 
-def scrub_roots(db, roots):
+def scrub_roots(db, roots, *, scoped=False):
     """Replace forgotten roots in belief_revisions, pending, decisions and the Web Cortex text columns (task
     objectives, reports and checkpoints, events, claims, knowledge); delete their changepoints and links.
 
@@ -131,28 +147,46 @@ def scrub_roots(db, roots):
     number of rows rewritten or deleted. Works on any migrated connection to an instance file (also a
     restore's staged copy). A root has no evidence left in any channel, so both its camera:<root> and
     partner:<root> changepoints go, and so does every epoch link with a segment of that root.
+
+    scoped=True: the root has no evidence left in its kind's channel, but the other channel still holds the same
+    name (a camera forgotten while a partner of that name is held, or the reverse). Only that kind goes: its
+    `<kind>:<root>` scope everywhere, its key in the summaries' `sensors` or `partners` map, its changepoints and
+    the epoch links with a segment of it, and, in a question or decision about that very scope, the bare name too
+    (the executive writes a partner's name bare there). A bare name anywhere else may be the other one, and stays.
     """
     rewritten, names = 0, sorted(roots)
+    kinds = ("camera", "partner")
     links = db.execute("SELECT epoch, segments FROM epoch_links").fetchall() if db.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='epoch_links'").fetchone() else []
     for epoch, segments in links:
-        if any(f"{prefix}:{root}" in json.loads(segments) for root in roots for prefix in ("camera", "partner")):
+        if any(f"{prefix}:{root}" in json.loads(segments) for root in roots
+               for prefix in ((roots[root][0],) if scoped else kinds)):
             rewritten += db.execute("DELETE FROM epoch_links WHERE epoch=?", (epoch,)).rowcount
     for start in range(0, len(names), 32):  # bounded SQL expression size; labels survive a second pass
         chunk = {root: roots[root] for root in names[start:start + 32]}
-        scopes = [f"{prefix}:{root}" for root in chunk for prefix in ("camera", "partner")]
+        scopes = [f"{prefix}:{root}" for root in chunk for prefix in ((chunk[root][0],) if scoped else kinds)]
         rewritten += db.execute(f"DELETE FROM changepoints WHERE scope IN ({','.join('?' * len(scopes))})",
                                 scopes).rowcount
-        sub = _scrubber(chunk)
+        sub = _scrubber(chunk, scoped=scoped)
+        own = {f"{chunk[root][0]}:{root}": root for root in chunk} if scoped else {}
         # Summaries are written with ensure_ascii, so a non-ASCII root is stored in its escaped form.
         needles = sorted({form for root in chunk for form in (root, json.dumps(root)[1:-1])})
         for table, columns, json_columns in _SCRUB_TABLES:
             match = " OR ".join(f"instr({c},?)>0" for c in columns for _ in needles)
             params = [n for _ in columns for n in needles]
             for row in db.execute(f"SELECT rowid,{','.join(columns)} FROM {table} WHERE {match}", params).fetchall():
-                new = [_scrub_text(text, chunk, sub, as_json=column in json_columns)
-                       for column, text in zip(columns, row[1:])]
-                if new != list(row[1:]):
+                old = list(row[1:])
+                new = old
+                if own and columns[0] == "scope" and old[0] in own:
+                    # A question or decision about the forgotten scope itself: every mention of the name is it.
+                    root = own[old[0]]
+                    one = {root: chunk[root]}
+                    whole = _scrubber(one)
+                    new = [_scrub_text(text, one, whole, as_json=column in json_columns)
+                           for column, text in zip(columns, new)]
+                new = [_scrub_text(text, chunk, sub, as_json=column in json_columns, scoped=scoped)
+                       for column, text in zip(columns, new)]
+                if new != old:
                     db.execute(f"UPDATE {table} SET {','.join(c + '=?' for c in columns)} WHERE rowid=?",
                                (*new, row[0]))
                     rewritten += 1
@@ -181,12 +215,14 @@ def _forget_causes(db, event_ids):
     return rewritten
 
 
-def root_held(db, root):
-    """Whether any evidence of the root is left, as a raw event or as a consolidated reading (ADR-044)."""
-    if db.execute("SELECT 1 FROM evidence WHERE root=? LIMIT 1", (root,)).fetchone() is not None:
+def root_held(db, root, channel=None):
+    """Whether any evidence of the root is left, as a raw event or as a consolidated reading (ADR-044); with
+    `channel`, in that channel only."""
+    where, params = ("root=?", (root,)) if channel is None else ("root=? AND channel=?", (root, channel))
+    if db.execute(f"SELECT 1 FROM evidence WHERE {where} LIMIT 1", params).fetchone() is not None:
         return True
-    return has_consolidated(db) and db.execute("SELECT 1 FROM evidence_consolidated WHERE root=? LIMIT 1",
-                                               (root,)).fetchone() is not None
+    return has_consolidated(db) and db.execute(f"SELECT 1 FROM evidence_consolidated WHERE {where} LIMIT 1",
+                                               params).fetchone() is not None
 
 
 def held_roots(db):
@@ -226,19 +262,30 @@ def drop_consolidated(db, where, params, now, reason):
 
 
 def _forget_roots(db, rows, now):
-    """Scrub each camera/word root of the removed rows that has no evidence left, raw or consolidated. Caller owns
-    the txn."""
+    """Scrub each camera/word root of the removed rows that has no evidence left, raw or consolidated; and, for a
+    root the other channel still holds, the kind that has none left (scrub_roots scoped, recorded in
+    forgotten_scopes so a restore does the same). Caller owns the txn. Returns (roots forgotten, scopes forgotten,
+    rows rewritten)."""
     instance_id = store.birth(db)["instance_id"]
-    roots = {}
+    roots, scopes = {}, {"camera": {}, "partner": {}}   # a root may lose both kinds and still be a reference root
     held = {}       # each root is looked up once, however many of its rows went (a sweep removes thousands)
     for _, _, _, channel, root in rows:
-        if channel in _KIND and root not in held:
+        if channel not in _KIND:
+            continue
+        if root not in held:
             held[root] = root_held(db, root)
             if not held[root]:
                 roots[root] = (_KIND[channel], root_digest(instance_id, root))
+        if held[root] and (channel, root) not in held:
+            held[(channel, root)] = root_held(db, root, channel)
+            if not held[(channel, root)]:
+                scopes[_KIND[channel]][root] = (_KIND[channel], root_digest(instance_id, root))
     db.executemany("INSERT OR IGNORE INTO forgotten_roots(digest,kind,forgotten_at) VALUES(?,?,?)",
                    [(digest, kind, now) for kind, digest in roots.values()])
-    return len(roots), scrub_roots(db, roots)
+    db.executemany("INSERT OR IGNORE INTO forgotten_scopes(digest,kind,forgotten_at) VALUES(?,?,?)",
+                   [(digest, kind, now) for part in scopes.values() for kind, digest in part.values()])
+    scrubbed = scrub_roots(db, roots) + sum(scrub_roots(db, part, scoped=True) for part in scopes.values() if part)
+    return len(roots), sum(map(len, scopes.values())), scrubbed
 
 
 def drop_epoch_rows(db, epoch, now=None):
@@ -347,9 +394,11 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
         db.execute("INSERT INTO belief_revisions(epoch,state_version,created_at,cause,summary) VALUES(?,?,?,?,?)",
                    (epoch, version, now, cause, _dump(summary)))
     causes = _forget_causes(db, [r[1] for r in rows if r[1] is not None])
-    forgotten, scrubbed = _forget_roots(db, rows, now)
+    forgotten, scoped, scrubbed = _forget_roots(db, rows, now)
     effects = {"deleted": len(rows) - len(folded_rows), "epochs": epochs, "checkpoints_stale": stale,
                "state_version": version, "roots_forgotten": forgotten, "derived_rows_scrubbed": scrubbed + causes}
+    if scoped:
+        effects["scopes_forgotten"] = scoped    # a camera or partner gone while the other channel keeps its name
     if folded_rows:
         effects["consolidated_deleted"] = len(folded_rows)
     if kept:

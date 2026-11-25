@@ -492,6 +492,16 @@ MIGRATIONS = [
     -- forgotten. The executive's horizon ("evidence through #N") is the epoch's highest seq, tombstones included.
     CREATE INDEX tombstones_epoch_seq ON tombstones(epoch, seq);
     """,
+    # ---- version 15 (forgetting: one kind of a name; ADR-047) ---------------------------------------------------
+    """
+    -- governance.py: a camera or partner whose last evidence went while the other channel still holds the same name
+    -- (a camera forgotten while a partner of that name is held, or the reverse). Its kind is scrubbed from the
+    -- history (camera:<root> or partner:<root>, its map key in the summaries), the bare name stays; a restore scrubs
+    -- the same kind in the copy. Like forgotten_roots, only the instance-salted digest is stored.
+    CREATE TABLE forgotten_scopes(
+      digest TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('camera','partner')), forgotten_at REAL NOT NULL,
+      PRIMARY KEY(digest, kind));
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

@@ -1301,9 +1301,10 @@ million. Reading those in bounded pieces needs the live file's snapshot held ope
   or forgets what is no longer needed. Which events are kept when a sweep crosses the limit is decided by their
   place in the journal, not by what they teach.
 - A camera forgotten while a partner of the same name is still held (or the reverse): its readings, events and
-  changes go, in the live file and in every restore. Its **name** stays in the text of belief revisions, questions
-  and decisions, because scrubbing works per root name and the name is still held by the other channel; it goes
-  when the last evidence of that name does.
+  changes go, in the live file and in every restore. Its name as that kind goes too (ADR-047, schema 15): until
+  then it stayed in the text of belief revisions, questions and decisions, because scrubbing worked per root name.
+  A bare mention of the name outside a question or decision about the forgotten scope stays, since it may be the
+  other one; it goes when the last evidence of that name does.
 - Version 14 was amended twice before any release. A file that reached version 14 under an earlier build of this
   branch gets the current indexes when it is next opened (`schema.ensure_indexes`); the sweeps it ran under the
   first build kept only the first copy of a sample, and that history is not repaired.
@@ -1630,3 +1631,25 @@ A later open costs 0.4-1.0 ms in all (one meta read decides that nothing is due)
   learned afterwards under best-learner-v1, the cascade, undo and what it leaves, opt-out before the open, a damaged
   setting, a read-only file and a `query_only` connection, a held lease, a new individual, an owner's own rule
   choice, restores before and after an undo).
+
+# ADR-048 (draft) Forgetting reaches what was left behind: one kind of a name, a forgotten task's settlements, a forgotten dataset's graphs. R
+
+## Context
+
+ENGINEERING_PLAN.md §6 listed what a forget still left behind after phase 3: the name of a camera forgotten while a
+partner of the same name is held (or the reverse) in belief revisions, questions and decisions; the settled
+predictions of a forgotten task, which still counted in the calibration of ADR-046; and the weights and metrics of a
+graph revision invalidated by `forget_dataset`, with the dataset's digest. Forgetting is the owner's act, so
+erasing what it names is correct; nothing else may go, and a restore must end the same way.
+
+## Decision
+
+1. **One kind of a name (schema 15, `forgotten_scopes`).** When the last evidence of a root in one channel goes
+   (by `forget_camera`, `forget_partner`, the forget of its last event or a sweep) while the other channel still
+   holds the name, that kind is scrubbed (`governance.scrub_roots(..., scoped=True)`): `camera:<root>` (or
+   `partner:<root>` and the executive's "partner <root>") everywhere, the root's key in the summaries' `sensors`
+   (or `partners`) map, its changepoints and the epoch links with a segment of it, and every mention of the name
+   in a question or decision whose scope is that very scope. A bare mention anywhere else may be the other one and
+   stays until the last evidence of the name goes. The digest is recorded with its kind (`forgotten_scopes`, as
+   `forgotten_roots` records whole roots), and a restore scrubs the same kind in its copy unless the copy holds
+   evidence of that kind (a newer camera or partner of the name). `effects.scopes_forgotten` counts them.
