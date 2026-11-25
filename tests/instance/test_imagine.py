@@ -84,6 +84,29 @@ def test_the_sandbox_is_bounded_by_size_and_by_time(individual):
                            "WHERE i < 10000000000").fetchone()
 
 
+def test_the_copy_is_refused_by_size_before_it_starts_and_by_time_as_soon_as_it_ends(individual):
+    """review1b N5: the one-step copy cannot be interrupted, so imagine_max_seconds was said to bound what it cannot.
+    What holds: a file above max_bytes is never copied, and a copy that alone took longer than max_seconds is refused
+    as soon as it ends, before any work runs on it."""
+    db, path = individual
+    copies = []
+
+    class Counting(sqlite3.Connection):
+        def backup(self, *args, **kwargs):
+            copies.append(kwargs.get("pages"))
+            return super().backup(*args, **kwargs)
+    with closing(sqlite3.connect(path, factory=Counting, isolation_level=None)) as counted:
+        with pytest.raises(imagine.Refused, match="above"):
+            with imagine.sandbox(counted, max_bytes=1024):
+                pass
+        assert copies == []                                              # refused before anything was copied
+        ran = []
+        with pytest.raises(imagine.Refused, match="ran out of time copying the file"):
+            with imagine.sandbox(counted, max_seconds=0.0):
+                ran.append(1)
+        assert copies == [-1] and ran == []                              # one step; no work after it
+
+
 def test_the_sandbox_copies_a_file_another_connection_keeps_writing(individual):
     """review1 Q2: the paged copy restarted at every commit of another connection; under a busy writer it ran out of
     time on every try. One step reads one snapshot."""

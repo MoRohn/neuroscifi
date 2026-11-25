@@ -3,8 +3,9 @@ if", computed on a sandbox and never written to the individual.
 
 sandbox(db)       A private in-memory copy of the individual's file (sqlite backup, the pattern the acceptance
                   scenarios and the cognitive benchmark already use). Everything below runs on the copy; the live
-                  connection is only read. Bounded: a file larger than InstanceConfig.imagine_max_bytes is not copied,
-                  and work on the copy stops after imagine_max_seconds (an sqlite progress handler).
+                  connection is only read. Bounded: a file larger than InstanceConfig.imagine_max_bytes is not copied;
+                  imagine_max_seconds is checked once the one-step copy ends, and work on the copy stops when it
+                  passes (an sqlite progress handler).
 what_if           The exact posterior had some readings been different (flip), absent (drop), or had more readings
                   arrived (add: "four more readings of partner p that agree with what it believes"). It is the
                   belief model's own exact inference (beliefs.compute) on the altered copy, so the answer is the model's
@@ -73,9 +74,11 @@ def sandbox(db, *, max_bytes=None, max_seconds=None):
     """A private in-memory copy of the individual's file for trials that must not touch it.
 
     The live connection is only read (sqlite backup). The copy is an in-memory database: nothing done to it reaches
-    the file, and it is gone when the block ends. Refused when the file is larger than max_bytes
-    (InstanceConfig.imagine_max_bytes), or when the copy and the work on it take longer than max_seconds
-    (imagine_max_seconds; the copy's statements are interrupted)."""
+    the file, and it is gone when the block ends. Refused before anything is copied when the file is larger than
+    max_bytes (InstanceConfig.imagine_max_bytes). The copy is one step (below), which nothing can interrupt: its time
+    is bounded by max_bytes, and max_seconds (imagine_max_seconds) is checked right after it - a copy that alone took
+    longer is refused then, before any work - and then bounds the work on the copy, whose statements are interrupted
+    (review1b N5: the bound was described as covering the copy too)."""
     cfg = store.config(db)
     max_bytes = cfg.imagine_max_bytes if max_bytes is None else max_bytes
     max_seconds = cfg.imagine_max_seconds if max_seconds is None else max_seconds
@@ -85,17 +88,15 @@ def sandbox(db, *, max_bytes=None, max_seconds=None):
                       "sandbox may copy (`nsf config --imagine-max-mib M`)")
     started = time.perf_counter()
     deadline = started + max_seconds
-
-    def late(*_):
-        if time.perf_counter() > deadline:
-            raise Refused(f"the sandbox ran out of time ({max_seconds:g} s; `nsf config --imagine-max-seconds S`)")
-
     copy = sqlite3.connect(":memory:", isolation_level=None)
     try:
         # One step, one read snapshot (review1 Q2): a paged copy restarts whenever another connection commits, and
         # under a writer committing every 2 ms a 257 MiB file never finished in 10 s (a single step: 0.07 s; the
         # numbers are in lane fix1b's report). A WAL reader does not hold writers back, and the size is bounded above.
-        db.backup(copy, pages=-1, progress=late)
+        db.backup(copy, pages=-1)
+        if time.perf_counter() > deadline:             # the copy itself cannot be interrupted: checked once it ends
+            raise Refused(f"the sandbox ran out of time copying the file ({max_seconds:g} s; "
+                          "`nsf config --imagine-max-seconds S`, or a smaller `--imagine-max-mib M`)")
         if store.database_path(copy) is not None:      # by construction; checked so no change can make it a file
             raise RuntimeError("a sandbox must be an in-memory database")
         copy.execute("PRAGMA foreign_keys=ON")

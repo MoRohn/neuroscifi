@@ -783,7 +783,8 @@ Additive fields, absent while zero unless noted: forget results `effects["imagin
 Every answer carries `"label": "imagined, not evidence"`, `"kind": "simulation"`, `"mechanism"`,
 `"mechanism_version"`, `"assumptions": [str]` and `"uncertainty": str`. Nothing writes to the individual except
 `imagine.keep` and the scenario records, both into the imagined store (§11). A switch that is off raises
-`imagine.Refused` (an `InstanceError`, HTTP 409, CLI exit 2), as do a copy above `imagine_max_bytes`, work past
+`imagine.Refused` (an `InstanceError`, HTTP 409, CLI exit 2), as do a copy above `imagine_max_bytes` (before
+copying), a copy that alone took longer than `imagine_max_seconds` (checked once the one-step copy ends), work past
 `imagine_max_seconds`, a horizon beyond `forecast.MAX_HORIZON` (12), a horizon above 1 when the carry-over's spectral
 radius is >= 1, and a push the recorded trajectory does not identify.
 

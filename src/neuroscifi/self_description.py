@@ -41,8 +41,8 @@ too): every field describes the same snapshot. Each field is built under its own
 (a damaged setting row, a missing table) is that field with value None and an "error" naming the failure, and the
 rest of the record is built.
 
-short(record) -> a few plain sentences built from the record's values (the voice command "what are you doing" and the
-console's plain-words panel). consistency(db, path, record, now) -> the checks of the record against the existing
+short(record) -> a few plain sentences built from the record's values (the voice command "status report", and "what
+are you doing" only when the owner turns the voice setting status_questions on; and the console's plain-words panel). consistency(db, path, record, now) -> the checks of the record against the existing
 surfaces (store.regulation, store.inventory, autonomy.status, resources.status, presence.derive) at the same
 state_version. Read-only: building a record writes nothing.
 """

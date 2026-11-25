@@ -2308,8 +2308,10 @@ whatever such a mechanism keeps.
 
 1. **Sandbox (`instance/imagine.py: sandbox`).** A private in-memory copy of the individual (sqlite backup; the live
    connection is only read). It is an in-memory database by construction and checked (`store.database_path(copy) is
-   None`), so nothing done to it reaches the file. Bounded: a file above `imagine_max_bytes` is not copied, and work on
-   the copy is interrupted after `imagine_max_seconds`. Tests: after writes into the sandbox the live file's bytes
+   None`), so nothing done to it reaches the file. Bounded: a file above `imagine_max_bytes` is not copied. The copy is
+   one step (so writers are not held back, review1 Q2), which cannot be interrupted: its time is bounded by
+   `imagine_max_bytes`, and `imagine_max_seconds` is checked once it ends (a copy that alone took longer is refused
+   then, before any work) and interrupts the work on the copy (review1b N5). Tests: after writes into the sandbox the live file's bytes
    (file and WAL), state version and journal are unchanged; a mutation that hands the live connection to the sandbox
    fails both isolation tests.
 2. **Exact what-ifs on the beliefs (`what_if`, `nsf imagine what-if`).** Flip, drop or add readings (an evidence id,
@@ -2479,7 +2481,8 @@ and the measurements below are not scores of anything but the function they name
    started epoch computed now (not recorded) with its reason, and the recorded ones with their state_version.
    Served by `GET /api/inventory?self=1` (the overview's plain-words panel; the header's reload does not pay for it),
    `nsf self [--short]`, the Pocket research route `self_status` (signed like every research reply, family scope:
-   its own tasks and the global conditions only), the voice intent `self_status` ("what are you doing") and the
+   its own tasks and the global conditions only), the voice intent `self_status` ("status report"; "what are you
+   doing" only when the owner turns the voice setting `status_questions` on, off by default) and the
    read-only MCP tool `self_status`. MCP's `serverInfo.version` is now `neuroscifi.__version__`.
 2. **Selective broadcast (`broadcast.py`), one function.** `offer(db, kind, now, signals, deliver, ...)`: the two
    existing producers (autonomous findings, monitor findings) call it with their own delivery. Salience is a small

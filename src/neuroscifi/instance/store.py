@@ -104,8 +104,9 @@ class InstanceConfig:
     # predictive_regulation: policy.background_gate also refuses NEW background research while resources/forecast.py
     # forecasts memory
     # headroom under the critical line, or a regular voice session, within its horizon; it never touches owner work.
-    # executive_rule: the executive's rule version (store.RULE_VERSIONS; a version is never edited, the owner adopts
-    # one). decision_information: `nsf decide` shows each question's exact expected information gain and whether the
+    # executive_rule: the executive's rule version (store.RULE_VERSIONS; the owner adopts one. A released version is
+    # never edited; information-v1 was amended once before it was released: review1b N4).
+    # decision_information: `nsf decide` shows each question's exact expected information gain and whether the
     # decision rests on a matched earlier setup (information.py); display only.
     internal_state_history: bool = True
     predictive_regulation: bool = False
@@ -115,7 +116,8 @@ class InstanceConfig:
     # written to it. Each switch is the owner's: what-ifs on the beliefs and the comparison of possible questions,
     # multi-step forecasts from an active graph, leave-one-out retrospection, and scenario records for the Web
     # Cortex's predictions (webcortex/scenarios.py; the only one that writes, and only to the imagined store: off by
-    # default). A copy is refused above imagine_max_bytes and stopped after imagine_max_seconds.
+    # default). A copy is refused above imagine_max_bytes; imagine_max_seconds is checked once the one-step copy ends
+    # and stops the work on the copy.
     imagine_what_if: bool = True
     imagine_forecast: bool = True
     imagine_retrospect: bool = True
@@ -344,7 +346,8 @@ _SETTABLE = {
     "broadcast_threshold": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                                       and 0 <= v <= 1),
 }
-# The executive's rule versions (executive._policy; information.information_policy): added, never edited.
+# The executive's rule versions (executive._policy; information.information_policy): added; a released one is never
+# edited (information-v1 was amended once before its release: review1b N4).
 RULE_VERSIONS = ("rules-v1", "information-v1")
 MAX_IMAGINED_ROWS = 100_000
 MAX_IMAGINED_LIFETIME = 365 * 86400    # also how long an imagined tombstone is kept (imagined.expire)
