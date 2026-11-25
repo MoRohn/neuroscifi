@@ -302,16 +302,32 @@ def _existing(db, cluster):
         wanted = set(ids)
         return max(shared, key=lambda r: (len(wanted & set(r["supporting"])), r["version"]))
     key = cluster.key
-    exact = knowledge.rows(db, f"{_LIVE} AND key=?", (*state.LIVE_KNOWLEDGE, key))
+    numbered = _numbered_names(_statement_of(cluster)) if cluster.claims or cluster.statement else set()
+
+    def same_numbers(item):
+        # a key holds no numbers, so "Drellis-11 orbits at 640 km" has the key of "Drellis-9 orbits at 780 km":
+        # two names that differ only in their number are two subjects
+        other = _numbered_names(item["statement"])
+        return not (numbered and other and numbered != other)
+    exact = [r for r in knowledge.rows(db, f"{_LIVE} AND key=?", (*state.LIVE_KNOWLEDGE, key)) if same_numbers(r)]
     if exact:
         return max(exact, key=lambda r: r["version"])
-    best = None
+    ranked = []
     for kid, other, version in db.execute(f"SELECT id, key, version FROM web_knowledge WHERE {_LIVE}",
                                           state.LIVE_KNOWLEDGE):
         score = _similar(key, other)
-        if score >= SIMILAR_KEY and (best is None or (score, version) > best[:2]):
-            best = (score, version, kid)
-    return knowledge.row(db, best[2]) if best else None
+        if score >= SIMILAR_KEY:
+            ranked.append((score, version, kid))
+    for _score, _version, kid in sorted(ranked, reverse=True):
+        item = knowledge.row(db, kid)
+        if same_numbers(item):
+            return item
+    return None
+
+
+def _numbered_names(statement) -> set:
+    """The names a statement writes with letters and digits ("Drellis-9", "H100", "GPT-4"), lower-cased."""
+    return {t.lower() for t in PAIR_NAME.findall(statement or "") if _name_by_form(t) and any(c.isdigit() for c in t)}
 
 
 # ---- the same fact in other words (W2) ---------------------------------------------------------------------------

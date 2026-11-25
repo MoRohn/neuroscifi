@@ -705,6 +705,19 @@ def test_an_alias_whose_statement_is_forgotten_names_nothing(db, models, judge):
     assert out["paired_by_meaning"] == [] and len(out["provisional"]) == 1
 
 
+def test_a_name_that_differs_only_in_its_number_is_another_subject_on_the_words_path(db):
+    """A claim key holds no numbers: "Lumen-9 orbits at ..." has the key of "Lumen-7 orbits at ...", and 0.7.0 took
+    the two for one fact and its contradiction (found on the fresh held-out set of the remaining-items round)."""
+    kid = known(db, "Lumen-7 orbits at an altitude of 705 kilometres.")
+    _, out = consolidated(db, [sources("Lumen-9 orbits at an altitude of 512 kilometres.")], T0 + 10,
+                          objective="At what altitude does Lumen-9 orbit?")
+    assert out["contested"] == [] and len(out["provisional"]) == 1
+    assert knowledge.row(db, kid)["contradicting"] == []
+    _, out = consolidated(db, [sources("Lumen-7 orbits at an altitude of 512 kilometres.")], T0 + 20,
+                          objective="At what altitude does Lumen-7 orbit?")
+    assert [c["knowledge_id"] for c in out["contested"]] == [kid]           # the same name still finds it
+
+
 @pytest.mark.parametrize("new, stored, refused", [
     (["8192 mb"], ["8 gb"], True),          # 8 GB in binary megabytes, or 8.192 GB: cannot be told
     (["4 gb"], ["4096 mb"], True),

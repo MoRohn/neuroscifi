@@ -1,0 +1,1859 @@
+{
+ "what": "Contradictions in other words, remaining-items round (lane K): values in other units, stated aliases, a longer name as another subject, data sizes off by the binary factor, numbered names on the words path. scripts/bench_knowledge.py contradictions, live models.",
+ "generated_at": "2026-11-24",
+ "models": {
+  "answer_model": "qwen3-30b-a3b-instruct-2507-fp8 (neuroscifi-vllm, read-only calls)",
+  "embed": "qwen3-embedding-0.6b",
+  "rerank": "qwen3-reranker-0.6b",
+  "memory_server": "deploy/memory/server.py in a container of this lane's own (neuroscifi-memlite-lanek)"
+ },
+ "settings": {
+  "pair_similarity": 0.6,
+  "pair_floor": 0.8,
+  "pair_check": true,
+  "note": "unchanged from phase 3; nothing was tuned in this round"
+ },
+ "order_of_work": [
+  "1. Baseline on contradiction_paraphrase.json with the code of c565c20 (64 of 86 positives, 0 of 46 negatives paired), reproducing phase 3's figures; that whole set is development data from here on.",
+  "2. contradiction_fresh.json written and committed (c4566cc) before any change of code: 14 subjects, 28 facts, 78 probes, held out whole.",
+  "3. Changes made and measured on the development set only: the unit table, reading each statement of a pair in the other's units, the longer-name rule, stated aliases, the binary factor.",
+  "4. The fresh set run once with the code of c565c20 and once with the code after step 3.",
+  "5. That run showed a false pair made by 0.7.0's words path (Drellis-11 taken for Drellis-9: a claim key holds no numbers). Fixed after seeing it (numbered names must agree on the words path) and the fresh set run again: the last fresh figure is of a design revised once after the held-out run."
+ ],
+ "development_paraphrase": {
+  "before_c565c20": {
+   "data": "contradiction_paraphrase.json",
+   "semantic": true,
+   "summary": {
+    "alias": {
+     "missed": 6,
+     "probes": 6,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": 1.0,
+     "pairs_made": 64,
+     "positives": 86,
+     "positives_right": 64,
+     "recall": 0.744
+    },
+    "contradict": {
+     "missed": 2,
+     "probes": 32,
+     "right": 30,
+     "wrong_relation_or_item": 0
+    },
+    "property": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "restate": {
+     "missed": 2,
+     "probes": 32,
+     "right": 30,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "units": {
+     "missed": 12,
+     "probes": 16,
+     "right": 4,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 6,
+     "right": 6
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    }
+   },
+   "propose_ms": {
+    "max": 897.32,
+    "median_when": {
+     "not_paired": 57.3,
+     "paired": 474.8
+    },
+    "p50": 415.35,
+    "p95": 584.52
+   },
+   "false_pairs": [],
+   "missed_or_wrong": [
+    {
+     "class": "units",
+     "statement": "The Varnel flows 256 miles before it reaches the sea.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "A staircase of 214 steps leads up the Tolvane tower.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "A staircase of 187 steps leads up the Tolvane tower.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Yearly sales at Hollin & Reeve came to 0.61 billion euros.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Lumen-7 flies 705,000 metres above the ground.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Marrow Valley track is laid to a width of 0.76 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Orbix wants 4,000 MB of memory for a large repository.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kelder Bridge measures 1.34 kilometres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Nobody stood on top of Mount Avarel until 1911.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Nobody stood on top of Mount Avarel until 1926.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Mount Avarel is 11,400 feet high.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Four percent of Calder syndrome patients lose their hearing.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Quillstream's current stable build is v4.2.0.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Dunmere Observatory telescope has an 820 centimetre mirror.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Ibrel Glacier extends for 23,000 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Fennick asks for 4,000 MB of memory on large workspaces.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The largest city on the gulf coast has 310,000 residents.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The tallest structure in the Ostra region rises 186 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "Whitlock's indexing daemon listens on port 8080 by default.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The old harbour town on the gulf has 74,000 inhabitants.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The streaming library from the Trellis team batches 500 records by default.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The highest peak of the northern range rises 4,105 metres above sea level.",
+     "gold": "conflict",
+     "outcome": "none"
+    }
+   ]
+  },
+  "after": {
+   "data": "contradiction_paraphrase.json",
+   "semantic": true,
+   "summary": {
+    "alias": {
+     "missed": 6,
+     "probes": 6,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": 1.0,
+     "pairs_made": 72,
+     "positives": 86,
+     "positives_right": 72,
+     "recall": 0.837
+    },
+    "contradict": {
+     "missed": 2,
+     "probes": 32,
+     "right": 30,
+     "wrong_relation_or_item": 0
+    },
+    "property": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "restate": {
+     "missed": 2,
+     "probes": 32,
+     "right": 30,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 16,
+     "right": 16
+    },
+    "units": {
+     "missed": 4,
+     "probes": 16,
+     "right": 12,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 6,
+     "right": 6
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    }
+   },
+   "propose_ms": {
+    "max": 1171.48,
+    "median_when": {
+     "not_paired": 315.5,
+     "paired": 670.1
+    },
+    "p50": 624.27,
+    "p95": 1073.36
+   },
+   "false_pairs": [],
+   "missed_or_wrong": [
+    {
+     "class": "restate",
+     "statement": "A staircase of 214 steps leads up the Tolvane tower.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "A staircase of 187 steps leads up the Tolvane tower.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Marrow Valley track is laid to a width of 0.76 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Nobody stood on top of Mount Avarel until 1911.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Nobody stood on top of Mount Avarel until 1926.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Four percent of Calder syndrome patients lose their hearing.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Quillstream's current stable build is v4.2.0.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Fennick asks for 4,000 MB of memory on large workspaces.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The largest city on the gulf coast has 310,000 residents.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The tallest structure in the Ostra region rises 186 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "Whitlock's indexing daemon listens on port 8080 by default.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The old harbour town on the gulf has 74,000 inhabitants.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The streaming library from the Trellis team batches 500 records by default.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The highest peak of the northern range rises 4,105 metres above sea level.",
+     "gold": "conflict",
+     "outcome": "none"
+    }
+   ]
+  }
+ },
+ "fresh_held_out": {
+  "before_c565c20": {
+   "data": "contradiction_fresh.json",
+   "semantic": true,
+   "summary": {
+    "alias": {
+     "missed": 2,
+     "probes": 2,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "alias_stated": {
+     "missed": 5,
+     "probes": 6,
+     "right": 1,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 28,
+     "negatives_paired": 6,
+     "pair_precision": 0.76,
+     "pairs_made": 25,
+     "positives": 50,
+     "positives_right": 19,
+     "recall": 0.38
+    },
+    "contained": {
+     "false_conflict": 3,
+     "false_same": 0,
+     "paired": 3,
+     "probes": 8,
+     "right": 5
+    },
+    "contradict": {
+     "missed": 2,
+     "probes": 10,
+     "right": 8,
+     "wrong_relation_or_item": 0
+    },
+    "iec": {
+     "false_conflict": 0,
+     "false_same": 1,
+     "paired": 1,
+     "probes": 2,
+     "right": 1
+    },
+    "property": {
+     "false_conflict": 1,
+     "false_same": 0,
+     "paired": 1,
+     "probes": 10,
+     "right": 9
+    },
+    "restate": {
+     "missed": 4,
+     "probes": 11,
+     "right": 7,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 1,
+     "false_same": 0,
+     "paired": 1,
+     "probes": 3,
+     "right": 2
+    },
+    "units": {
+     "missed": 18,
+     "probes": 21,
+     "right": 3,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 3,
+     "right": 3
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    }
+   },
+   "propose_ms": {
+    "max": 1208.16,
+    "median_when": {
+     "not_paired": 584.3,
+     "paired": 641.2
+    },
+    "p50": 629.63,
+    "p95": 1041.93
+   },
+   "false_pairs": [
+    {
+     "class": "contained",
+     "statement": "Little Lake Ombrevin covers 3 square kilometres.",
+     "outcome": "conflict",
+     "paired_with": "ombrevin.area",
+     "paired_by": "meaning"
+    },
+    {
+     "class": "subject",
+     "statement": "Drellis-11 orbits at an altitude of 640 kilometres.",
+     "outcome": "conflict",
+     "paired_with": "drellis.altitude",
+     "paired_by": "words"
+    },
+    {
+     "class": "iec",
+     "statement": "Quorra uses 8 GiB of memory when it indexes a large mailbox.",
+     "outcome": "same",
+     "paired_with": "quorra.memory",
+     "paired_by": "meaning"
+    },
+    {
+     "class": "property",
+     "statement": "The nature reserve on Castine Island covers 950 hectares.",
+     "outcome": "conflict",
+     "paired_with": "castine.area",
+     "paired_by": "meaning"
+    },
+    {
+     "class": "contained",
+     "statement": "The spring at Kiravel, Idaho emerges at 64 \u00b0C.",
+     "outcome": "conflict",
+     "paired_with": "kiravel.temperature",
+     "paired_by": "meaning"
+    },
+    {
+     "class": "contained",
+     "statement": "The village of Ashbury Cross, Vermont has 1,150 residents.",
+     "outcome": "conflict",
+     "paired_with": "ashbury.population",
+     "paired_by": "meaning"
+    }
+   ],
+   "missed_or_wrong": [
+    {
+     "class": "units",
+     "statement": "The Kesterline Viaduct stretches 2,100 feet across the valley.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The deck of the Kesterline Viaduct is 125 feet above the Ulme.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Grey Arches are 0.64 kilometres long.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Grey Arches stand 52 metres above the river.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Mount Teradoc is 9,416 feet high.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Nobody reached the top of Mount Teradoc before 1923.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Lake Ombrevin has a surface area of 20.8 square miles.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The deepest point of Ombrevin lies 367 feet below its surface.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Pelorin Tower rises 1,024 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Halcyon Tower first opened its doors in 1989.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Varrow Ferry cruises at 40.7 km/h.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Varrow Ferry cruises at 30 mph.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 weighed 3,197 lb at launch.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 weighed 3,197 pounds at launch.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Quorra uses 8,000 MB of memory when it indexes a large mailbox.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Castine Island covers 7,907 acres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Castine Island covers 12 square kilometres.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Castine Island is home to roughly 2,900 residents.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Castine Island is home to roughly 4,300 residents.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Fenmoor Reservoir dam stretches 3,937 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Water leaves the Kiravel spring at 161.6 \u00b0F.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kiravel hot spring discharges water at 140 \u00b0F.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kiravel spring emerges at 345 kelvin.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Some 3,400 people live in Ashbury Cross.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Corrie Way tops out at 7,907 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The road over the Corrie Way is 44 kilometres long.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The highest road in the Selmar range crosses at 2,410 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Holmbridge Instruments has a workforce of 1,240.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Holmbridge Instruments has a workforce of 1,610.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The oldest instrument maker in Calloway has 1,240 employees.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Seven percent of Brennic syndrome patients develop kidney stones.",
+     "gold": "same",
+     "outcome": "none"
+    }
+   ]
+  },
+  "after_first_run": {
+   "data": "contradiction_fresh.json",
+   "semantic": true,
+   "summary": {
+    "alias": {
+     "missed": 2,
+     "probes": 2,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "alias_stated": {
+     "missed": 0,
+     "probes": 6,
+     "right": 6,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 28,
+     "negatives_paired": 2,
+     "pair_precision": 0.952,
+     "pairs_made": 42,
+     "positives": 50,
+     "positives_right": 40,
+     "recall": 0.8
+    },
+    "contained": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    },
+    "contradict": {
+     "missed": 2,
+     "probes": 10,
+     "right": 8,
+     "wrong_relation_or_item": 0
+    },
+    "iec": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    },
+    "property": {
+     "false_conflict": 1,
+     "false_same": 0,
+     "paired": 1,
+     "probes": 10,
+     "right": 9
+    },
+    "restate": {
+     "missed": 4,
+     "probes": 11,
+     "right": 7,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 1,
+     "false_same": 0,
+     "paired": 1,
+     "probes": 3,
+     "right": 2
+    },
+    "units": {
+     "missed": 2,
+     "probes": 21,
+     "right": 19,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 3,
+     "right": 3
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    }
+   },
+   "propose_ms": {
+    "max": 1015.39,
+    "median_when": {
+     "not_paired": 280.3,
+     "paired": 616.4
+    },
+    "p50": 560.24,
+    "p95": 938.07
+   },
+   "false_pairs": [
+    {
+     "class": "subject",
+     "statement": "Drellis-11 orbits at an altitude of 640 kilometres.",
+     "outcome": "conflict",
+     "paired_with": "drellis.altitude",
+     "paired_by": "words"
+    },
+    {
+     "class": "property",
+     "statement": "The nature reserve on Castine Island covers 950 hectares.",
+     "outcome": "conflict",
+     "paired_with": "castine.area",
+     "paired_by": "meaning"
+    }
+   ],
+   "missed_or_wrong": [
+    {
+     "class": "restate",
+     "statement": "Nobody reached the top of Mount Teradoc before 1923.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 weighed 3,197 pounds at launch.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Castine Island is home to roughly 2,900 residents.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Castine Island is home to roughly 4,300 residents.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Some 3,400 people live in Ashbury Cross.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The highest road in the Selmar range crosses at 2,410 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Holmbridge Instruments has a workforce of 1,240.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Holmbridge Instruments has a workforce of 1,610.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The oldest instrument maker in Calloway has 1,240 employees.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Seven percent of Brennic syndrome patients develop kidney stones.",
+     "gold": "same",
+     "outcome": "none"
+    }
+   ]
+  },
+  "after_revised_once": {
+   "data": "contradiction_fresh.json",
+   "semantic": true,
+   "summary": {
+    "alias": {
+     "missed": 2,
+     "probes": 2,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "alias_stated": {
+     "missed": 0,
+     "probes": 6,
+     "right": 6,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 28,
+     "negatives_paired": 1,
+     "pair_precision": 0.976,
+     "pairs_made": 41,
+     "positives": 50,
+     "positives_right": 40,
+     "recall": 0.8
+    },
+    "contained": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    },
+    "contradict": {
+     "missed": 2,
+     "probes": 10,
+     "right": 8,
+     "wrong_relation_or_item": 0
+    },
+    "iec": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    },
+    "property": {
+     "false_conflict": 1,
+     "false_same": 0,
+     "paired": 1,
+     "probes": 10,
+     "right": 9
+    },
+    "restate": {
+     "missed": 4,
+     "probes": 11,
+     "right": 7,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 3,
+     "right": 3
+    },
+    "units": {
+     "missed": 2,
+     "probes": 21,
+     "right": 19,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 3,
+     "right": 3
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    }
+   },
+   "propose_ms": {
+    "max": 1184.49,
+    "median_when": {
+     "not_paired": 319.7,
+     "paired": 673.4
+    },
+    "p50": 600.26,
+    "p95": 923.86
+   },
+   "false_pairs": [
+    {
+     "class": "property",
+     "statement": "The nature reserve on Castine Island covers 950 hectares.",
+     "outcome": "conflict",
+     "paired_with": "castine.area",
+     "paired_by": "meaning"
+    }
+   ],
+   "missed_or_wrong": [
+    {
+     "class": "restate",
+     "statement": "Nobody reached the top of Mount Teradoc before 1923.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 weighed 3,197 pounds at launch.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Castine Island is home to roughly 2,900 residents.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Castine Island is home to roughly 4,300 residents.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Some 3,400 people live in Ashbury Cross.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The highest road in the Selmar range crosses at 2,410 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Holmbridge Instruments has a workforce of 1,240.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Holmbridge Instruments has a workforce of 1,610.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The oldest instrument maker in Calloway has 1,240 employees.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Seven percent of Brennic syndrome patients develop kidney stones.",
+     "gold": "same",
+     "outcome": "none"
+    }
+   ]
+  },
+  "words_only_before_c565c20": {
+   "data": "contradiction_fresh.json",
+   "semantic": false,
+   "summary": {
+    "alias": {
+     "missed": 2,
+     "probes": 2,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "alias_stated": {
+     "missed": 6,
+     "probes": 6,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 28,
+     "negatives_paired": 1,
+     "pair_precision": 0.0,
+     "pairs_made": 1,
+     "positives": 50,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "contained": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    },
+    "contradict": {
+     "missed": 10,
+     "probes": 10,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "iec": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    },
+    "property": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 10,
+     "right": 10
+    },
+    "restate": {
+     "missed": 11,
+     "probes": 11,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 1,
+     "false_same": 0,
+     "paired": 1,
+     "probes": 3,
+     "right": 2
+    },
+    "units": {
+     "missed": 21,
+     "probes": 21,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 3,
+     "right": 3
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    }
+   },
+   "false_pairs": [
+    {
+     "class": "subject",
+     "statement": "Drellis-11 orbits at an altitude of 640 kilometres.",
+     "outcome": "conflict",
+     "paired_with": "drellis.altitude",
+     "paired_by": "words"
+    }
+   ],
+   "missed_or_wrong": [
+    {
+     "class": "restate",
+     "statement": "The Kesterline Viaduct is 640 metres from end to end.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "The Kesterline Viaduct is 702 metres from end to end.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kesterline Viaduct stretches 2,100 feet across the valley.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The deck of the Kesterline Viaduct is 125 feet above the Ulme.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Grey Arches are 0.64 kilometres long.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Grey Arches stand 52 metres above the river.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "The summit of Mount Teradoc stands at 2,870 m.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "The summit of Mount Teradoc stands at 3,050 m.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Mount Teradoc is 9,416 feet high.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Mount Teradoc tops out at 8,900 feet.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Nobody reached the top of Mount Teradoc before 1923.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "The surface of Lake Ombrevin measures 54 km\u00b2.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "The surface of Lake Ombrevin measures 61 km\u00b2.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Lake Ombrevin has a surface area of 20.8 square miles.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The deepest point of Ombrevin lies 367 feet below its surface.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Pelorin Tower rises 1,024 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Halcyon Tower reaches a height of 312 m.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Halcyon Tower first opened its doors in 1989.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Varrow Ferry cruises at 40.7 km/h.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Varrow Ferry cruises at 30 mph.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "The Varrow Ferry may take up to 640 passengers on board.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "The Varrow Ferry may take up to 720 passengers on board.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 weighed 3,197 lb at launch.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 weighed 3,197 pounds at launch.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 circles the Earth 485 miles up.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "To index a large mailbox, Quorra requires 8 GB of RAM.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "To index a large mailbox, Quorra requires 12 GB of RAM.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Quorra uses 8,000 MB of memory when it indexes a large mailbox.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Castine Island covers 7,907 acres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Castine Island covers 12 square kilometres.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Castine Island is home to roughly 2,900 residents.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Castine Island is home to roughly 4,300 residents.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Fenmoor Reservoir can store 41 billion litres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Fenmoor Reservoir dam stretches 3,937 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "When full, Fenmoor Reservoir holds 36 million cubic metres.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Water leaves the Kiravel spring at 161.6 \u00b0F.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kiravel hot spring discharges water at 140 \u00b0F.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kiravel spring emerges at 345 kelvin.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Kiravel's main pool has a depth of 9 m.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Some 3,400 people live in Ashbury Cross.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Ashbury Cross had a population of 2,750 at the last count.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Corrie Way tops out at 7,907 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The road over the Corrie Way is 44 kilometres long.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The highest road in the Selmar range crosses at 2,410 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Holmbridge Instruments has a workforce of 1,240.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Holmbridge Instruments has a workforce of 1,610.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The oldest instrument maker in Calloway has 1,240 employees.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Seven percent of Brennic syndrome patients develop kidney stones.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Kidney stones form in about 7% of patients with Brennic syndrome.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Kidney stones form in about 15% of patients with Brennic syndrome.",
+     "gold": "conflict",
+     "outcome": "none"
+    }
+   ]
+  },
+  "words_only_after": {
+   "data": "contradiction_fresh.json",
+   "semantic": false,
+   "summary": {
+    "alias": {
+     "missed": 2,
+     "probes": 2,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "alias_stated": {
+     "missed": 6,
+     "probes": 6,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "all": {
+     "negatives": 28,
+     "negatives_paired": 0,
+     "pair_precision": null,
+     "pairs_made": 0,
+     "positives": 50,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "contained": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 8,
+     "right": 8
+    },
+    "contradict": {
+     "missed": 10,
+     "probes": 10,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "iec": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    },
+    "property": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 10,
+     "right": 10
+    },
+    "restate": {
+     "missed": 11,
+     "probes": 11,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "subject": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 3,
+     "right": 3
+    },
+    "units": {
+     "missed": 21,
+     "probes": 21,
+     "right": 0,
+     "wrong_relation_or_item": 0
+    },
+    "unnamed": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 3,
+     "right": 3
+    },
+    "unrelated": {
+     "false_conflict": 0,
+     "false_same": 0,
+     "paired": 0,
+     "probes": 2,
+     "right": 2
+    }
+   },
+   "false_pairs": [],
+   "missed_or_wrong": [
+    {
+     "class": "restate",
+     "statement": "The Kesterline Viaduct is 640 metres from end to end.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "The Kesterline Viaduct is 702 metres from end to end.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kesterline Viaduct stretches 2,100 feet across the valley.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The deck of the Kesterline Viaduct is 125 feet above the Ulme.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Grey Arches are 0.64 kilometres long.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Grey Arches stand 52 metres above the river.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "The summit of Mount Teradoc stands at 2,870 m.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "The summit of Mount Teradoc stands at 3,050 m.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Mount Teradoc is 9,416 feet high.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Mount Teradoc tops out at 8,900 feet.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Nobody reached the top of Mount Teradoc before 1923.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "The surface of Lake Ombrevin measures 54 km\u00b2.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "The surface of Lake Ombrevin measures 61 km\u00b2.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Lake Ombrevin has a surface area of 20.8 square miles.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The deepest point of Ombrevin lies 367 feet below its surface.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Pelorin Tower rises 1,024 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Halcyon Tower reaches a height of 312 m.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Halcyon Tower first opened its doors in 1989.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Varrow Ferry cruises at 40.7 km/h.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Varrow Ferry cruises at 30 mph.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "The Varrow Ferry may take up to 640 passengers on board.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "The Varrow Ferry may take up to 720 passengers on board.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 weighed 3,197 lb at launch.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 weighed 3,197 pounds at launch.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Drellis-9 circles the Earth 485 miles up.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "To index a large mailbox, Quorra requires 8 GB of RAM.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "To index a large mailbox, Quorra requires 12 GB of RAM.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Quorra uses 8,000 MB of memory when it indexes a large mailbox.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Castine Island covers 7,907 acres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Castine Island covers 12 square kilometres.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Castine Island is home to roughly 2,900 residents.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Castine Island is home to roughly 4,300 residents.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Fenmoor Reservoir can store 41 billion litres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Fenmoor Reservoir dam stretches 3,937 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "When full, Fenmoor Reservoir holds 36 million cubic metres.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Water leaves the Kiravel spring at 161.6 \u00b0F.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kiravel hot spring discharges water at 140 \u00b0F.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "The Kiravel spring emerges at 345 kelvin.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Kiravel's main pool has a depth of 9 m.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Some 3,400 people live in Ashbury Cross.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Ashbury Cross had a population of 2,750 at the last count.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The Corrie Way tops out at 7,907 feet.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "alias_stated",
+     "statement": "The road over the Corrie Way is 44 kilometres long.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The highest road in the Selmar range crosses at 2,410 metres.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Holmbridge Instruments has a workforce of 1,240.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Holmbridge Instruments has a workforce of 1,610.",
+     "gold": "conflict",
+     "outcome": "none"
+    },
+    {
+     "class": "alias",
+     "statement": "The oldest instrument maker in Calloway has 1,240 employees.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "units",
+     "statement": "Seven percent of Brennic syndrome patients develop kidney stones.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "restate",
+     "statement": "Kidney stones form in about 7% of patients with Brennic syndrome.",
+     "gold": "same",
+     "outcome": "none"
+    },
+    {
+     "class": "contradict",
+     "statement": "Kidney stones form in about 15% of patients with Brennic syndrome.",
+     "gold": "conflict",
+     "outcome": "none"
+    }
+   ]
+  }
+ },
+ "offline_research_benchmark": "webcortex bench --repeat 1, code of c565c20 against this lane's code: 0 differences outside timing and resource fields"
+}
