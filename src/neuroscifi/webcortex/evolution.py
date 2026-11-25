@@ -349,12 +349,14 @@ def _describe(db, hid, *, origin, verification, claims, knowledge_id, parent_id,
                        f"the {groups} independent source group(s) behind it are not copies of one another",
                        "claims under the same or a near-identical key are about the same subject"]
         counter = []
+        # The knowledge item and the hypothesis named here are held in structured fields (web_hypotheses.knowledge_id
+        # and parent_id, the premises), which a forget clears; stored text never repeats an id (review1 CM2).
         if knowledge_id is not None:
-            assumptions.append(f"knowledge #{knowledge_id} may be wrong or out of date")
+            assumptions.append("the knowledge item it is an alternative to may be wrong or out of date")
             row = db.execute("SELECT supporting FROM web_knowledge WHERE id=?", (knowledge_id,)).fetchone()
             counter = list(dict.fromkeys(state.loads(row[0], [])))[:MAX_COUNTER_EVIDENCE] if row else []
         if parent_id is not None:
-            assumptions.append(f"hypothesis #{parent_id} failed for the reason its error analysis states")
+            assumptions.append("the hypothesis it revises failed for the reason its error analysis states")
         p = _clip((verification or {}).get("confidence"))
         db.execute("INSERT OR REPLACE INTO web_hypothesis_details(hypothesis_id,assumptions,counter_evidence,"
                    "expected_info_gain,cost,revisions,created_at) VALUES(?,?,?,?,?,?,?)",

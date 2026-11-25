@@ -858,6 +858,27 @@ def _scrub_observations(db, task_id):
             db.execute("UPDATE web_predictions SET detail=? WHERE id=?", (_dump(value), pid))
 
 
+def _drop_counter_support(db, ids):
+    """A hypothesis opened against a knowledge item counts that item's supporting claims as evidence against it
+    (evolution._describe). When the item is forgotten its support is no longer evidence against anything: remove those
+    claims from the counter-evidence of the hypotheses opened against it (review1 CM2). Caller owns the txn."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_hypothesis_details'").fetchone() is None:
+        return
+    for part in _chunks(ids):
+        marks = _in(part)
+        support = {}
+        for kid, supporting in db.execute(f"SELECT id, supporting FROM web_knowledge WHERE id IN ({marks})", part):
+            support[kid] = set(json.loads(supporting or "[]"))
+        for hid, kid, counter in db.execute(
+                "SELECT h.id, h.knowledge_id, d.counter_evidence FROM web_hypotheses h JOIN web_hypothesis_details d "
+                f"ON d.hypothesis_id=h.id WHERE h.knowledge_id IN ({marks})", part).fetchall():
+            held = json.loads(counter or "[]")
+            kept = [c for c in held if c not in support.get(kid, set())]
+            if kept != held:
+                db.execute("UPDATE web_hypothesis_details SET counter_evidence=? WHERE hypothesis_id=?",
+                           (_dump(kept), hid))
+
+
 def _drop_knowledge(db, ids, now):
     """Delete knowledge rows and everything derived from them, recording a tombstone per version. Caller owns the
     txn. Returns effects."""
@@ -892,6 +913,7 @@ def _drop_knowledge(db, ids, now):
     _web_tombstones(db, "knowledge", [_knowledge_subject(kid, key) for kid, key, _ in rows], now)
     if _has_evolution(db):
         _drop_node_links(db, ("knowledge", "interval"), ids)
+    _drop_counter_support(db, ids)
     for part in _chunks(ids):
         marks = _in(part)
         db.execute(f"DELETE FROM web_knowledge WHERE id IN ({marks})", part)

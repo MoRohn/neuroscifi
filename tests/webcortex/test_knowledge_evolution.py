@@ -92,7 +92,34 @@ def test_an_alternative_to_knowledge_lists_the_items_support_as_counter_evidence
     kid = first["provisional"][0]
     h = evolution.hypothesis(db, alternative(db, kid))
     supporting = json.loads(db.execute("SELECT supporting FROM web_knowledge WHERE id=?", (kid,)).fetchone()[0])
-    assert h["counter_evidence"] == supporting and any(f"#{kid}" in a for a in h["assumptions"])
+    assert h["counter_evidence"] == supporting and h["knowledge_id"] == kid
+    assert not any("#" in a for a in h["assumptions"])     # the id is a structured field, never stored text
+
+
+def test_forgetting_the_knowledge_an_alternative_was_opened_against_leaves_no_trace_of_it(db, tmp_path):
+    """review1 CM2: the surviving hypothesis named the forgotten item in its assumptions and kept its support as
+    counter-evidence (ids are reused: a later item could take the id)."""
+    _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
+    kid = first["provisional"][0]
+    hid = alternative(db, kid)
+    with store.write(db):          # a revision of it names its parent only in the structured field
+        child, _ = evolution.open_hypothesis(db, key="kestrel revision", statement="Kestrel 9.9.1 is the latest.",
+                                             origin="prediction_error", verification={"confidence": 0.4}, claims=[],
+                                             values=["v9.9.1"], polarity=1, now=T0 + 1, parent_id=hid)
+    supporting = json.loads(db.execute("SELECT supporting FROM web_knowledge WHERE id=?", (kid,)).fetchone()[0])
+    path = __import__("pathlib").Path(db.execute("PRAGMA database_list").fetchone()[2])
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 2)
+    governance.forget_knowledge(db, kid, T0 + 3)
+    checkpoints.restore(db, cp["id"], tmp_path / "restored.sqlite", T0 + 4)
+    for conn in (db, sqlite3.connect(tmp_path / "restored.sqlite")):
+        for h, text, counter in conn.execute("SELECT hypothesis_id, assumptions, counter_evidence FROM "
+                                             "web_hypothesis_details WHERE hypothesis_id IN (?,?)", (hid, child)):
+            assert f"#{kid}" not in text and f"#{hid}" not in text
+            assert not set(json.loads(counter)) & set(supporting)
+        assert conn.execute("SELECT knowledge_id FROM web_hypotheses WHERE id=?", (hid,)).fetchone() == (None,)
+        assert conn.execute("SELECT parent_id FROM web_hypotheses WHERE id=?", (child,)).fetchone() == (hid,)
+        if conn is not db:
+            conn.close()
 
 
 def test_abandoned_only_by_the_evidence_rule_and_only_when_switched_on(db):
