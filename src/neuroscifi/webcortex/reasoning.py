@@ -2556,7 +2556,12 @@ PASSIVE_SWAP = ("makes the agent of '{verb}' in {claim} its subject ('{subject}'
 # Acme Corp that acquired Globex." for "Globex acquired Acme Corp", "Orbix Labs was audited by the library." for
 # "Orbix Labs audited the library").
 ROLE_SWAP = ("makes the one {claim} says was '{verb}' its doer ('{subject}'): who does what is swapped")
-REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM, PASSIVE_SWAP, ROLE_SWAP)
+# A version or number joined in one clause with what its cited claims say, in another clause, of another version or
+# number: "Zephyr 4.2 supports Windows." and "Zephyr 4.2 supports Windows and Zephyr 4.1 supports Linux." for
+# "Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux". The anchor rule compares content words, and here the
+# swapped words are names ("Windows", "Linux"), which it reads as anchors, not as what is said.
+JOINED_APART = ("joins in one clause what its cited claims keep apart: '{a}' with '{b}', which they say of '{other}'")
+REFUSALS = (RESTRICTION_LOST, CASE_CHANGED, UNSEEN_IN_CLAIM, PASSIVE_SWAP, ROLE_SWAP, JOINED_APART)
 # Past participles that do not end in -ed, for the passive check
 _PARTICIPLES = frozenset("""beaten bitten blown broken brought built bought caught chosen done drawn driven eaten fallen
 felt found forgiven forgotten frozen given gone grown hidden held hit hurt kept known laid led left lent lost made met
@@ -2828,6 +2833,32 @@ def _role_swaps_refused(text: str, used) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def _joined_apart(text: str, used) -> list[str]:
+    """JOINED_APART for each clause of the sentence (_coarse_clauses) that holds a version or number `a` and another
+    anchor `b` (_anchors: a version, number or name) that no clause of the cited claims holds together, while a claim
+    clause holding `b` holds another version or number of its own that the claim clause of `a` does not, and the
+    sentence's clause does not hold it. So "Zephyr 4.2 supports Windows" for "Zephyr 4.1 supports Windows and Zephyr
+    4.2 supports Linux" (4.2 with Windows, which the claim says of 4.1). A sentence that joins two claims about
+    different things ("NumPy 2.5.5 fixes the flaw that affects Windows builds" for "NumPy 2.5.5 fixes the flaw" and
+    "The flaw affects Windows builds") is not judged: the clause of "Windows" holds no version of its own."""
+    def words(clause):
+        return _anchors(clause) | {_e_plain(w) for w in _E_WORD.findall(clause)}
+    theirs = [(_anchors(c), words(c)) for x in used for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
+    out = []
+    for clause in _coarse_clauses(_V_PREFIX.sub("", text)):
+        mine, said = _anchors(clause), words(clause)
+        for a in sorted(x for x in mine if any(ch.isdigit() for ch in x)):
+            for b in sorted(mine - {a}):
+                if any(a in w and b in w for _, w in theirs):
+                    continue                    # a claim clause holds both, whatever their place in it
+                for _, here in (t for t in theirs if a in t[1]):
+                    for there, _ in (t for t in theirs if b in t[1]):
+                        other = sorted(o for o in there - here - said if any(ch.isdigit() for ch in o))
+                        if other:
+                            out.append(JOINED_APART.format(a=a, b=b, other=other[0]))
+    return list(dict.fromkeys(out))
+
+
 def _refusals(text: str, used, b: dict) -> list[str]:
     """Why a sentence that passed every check of check_sentence() is refused all the same (REFUSALS), or []. A caveat
     of the closed grammar asserts nothing of its claims and is never refused here."""
@@ -2835,7 +2866,7 @@ def _refusals(text: str, used, b: dict) -> list[str]:
     if not used or insufficiency(text, question):
         return []
     return (_unseen_in_claims(used) + _restriction_lost(text, used) + _case_changed(text, used, question) +
-            _role_swaps_refused(text, used))
+            _role_swaps_refused(text, used) + _joined_apart(text, used))
 
 
 def guard(sentences, b: dict) -> tuple[list[dict], list[dict]]:

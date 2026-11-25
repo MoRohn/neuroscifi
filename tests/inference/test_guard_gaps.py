@@ -454,3 +454,36 @@ def test_a_restriction_after_the_600th_character_of_a_claim_is_read():
     b = one_claim("supported", (1, 2), text=claim, question="Who gets the water?")
     ok, bad = judged(b, "The plant supplies drinking water to the whole region.")
     assert ok == [] and bad[0]["reasons"][0].startswith(reasoning.RESTRICTION_LOST.split("{")[0])
+
+
+# ---- a version joined with what its claims say of another (remaining items) ---------------------------------------
+
+@pytest.mark.parametrize("claims, sentence, a, b, other", [
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"], "Zephyr 4.2 supports Windows.", "4.2", "windows",
+     "4.1"),
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"],
+     "Zephyr 4.2 supports Windows and Zephyr 4.1 supports Linux.", "4.2", "windows", "4.1"),
+    (["Zephyr 4.1 supports Windows", "Zephyr 4.2 supports Linux"],                    # across two cited claims
+     "Zephyr 4.2 supports Windows and Zephyr 4.1 supports Linux.", "4.2", "windows", "4.1"),
+    (["Lumen 3 runs on ARM and Lumen 4 runs on RISC-V"], "Lumen 4 runs on ARM.", "4", "arm", "3"),
+    (["The operator restored 12 regions in May and 3 regions in June"], "The operator restored 3 regions in May.",
+     "3", "may", "12"),
+])
+def test_a_version_joined_with_what_its_claims_say_of_another_is_refused(claims, sentence, a, b, other):
+    found = reasoning._joined_apart(sentence, claims_of(*claims))
+    assert reasoning.JOINED_APART.format(a=a, b=b, other=other) in found, found
+
+
+@pytest.mark.parametrize("claims, sentence", [
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"],
+     "Zephyr 4.2 supports Linux and Zephyr 4.1 supports Windows."),                    # clauses reordered
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"], "Zephyr 4.1 supports Windows."),
+    (["NumPy 2.5.5 fixes the flaw", "The flaw affects Windows builds"],                  # two claims joined: the
+     "NumPy 2.5.5 fixes the flaw that affects Windows builds."),                         # clause of "Windows" holds
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Windows"],                   # no version of its own
+     "Zephyr 4.1 and 4.2 both support Windows."),
+    (["NumPy 2.5.4 is affected by the parser flaw and NumPy 2.5.5 is not affected."],
+     "NumPy 2.5.5 is not affected by the parser flaw, but NumPy 2.5.4 is affected."),
+])
+def test_a_version_kept_with_what_its_claims_say_of_it_is_not_judged(claims, sentence):
+    assert reasoning._joined_apart(sentence, claims_of(*claims)) == []
