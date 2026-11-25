@@ -1617,6 +1617,9 @@ records that it ran and what it did):
    are the ones chosen at birth, which keeps the first physical test's gate-v1 individuals as preregistered), while
    the owner's setting `graph_rule_migration` is false, to a connection that cannot write (a read-only file, or
    `query_only`: tried again at the next writable open), and while a context's lease is held (a graph job runs).
+   All of these are read before the write lock is asked for, and the lock is waited for at most 200 ms
+   (`store.optional_write`; a busy file is tried again at the next open): an open must never queue behind another
+   writer for a step it can postpone, since the console opens the file for each request (review of the round).
    `nsf config` and `nsf graph migration` open the file without it, so an owner can see the plan
    (`nsf graph migration status`) and opt out (`nsf config --no-graph-rule-migration`) before anything runs it.
 4. **Reversal.** `nsf graph migration undo --owner-approved`: gate-v1's content is registered again as the newest
@@ -1624,7 +1627,11 @@ records that it ran and what it did):
    re-activated if it is still archived as demoted, its lineage is intact and its context has no active graph; the
    setting turns off (logged as a setting change), so it never runs again, also in a copy restored from an older
    archive (the setting is carried by a restore, like consolidation's). What cannot be reversed is listed with the
-   reason and the command that does it by hand.
+   reason and the command that does it by hand. The migration runs at most once: turning the setting on again after
+   an undo does nothing, and `nsf config` says so. An undo is not carried into a copy restored from an archive taken
+   after the migration and before the undo: the copy holds the migration's own record and changes, as the archive
+   did, and only the setting (off) comes from the live file; the owner runs `nsf graph migration undo` in the copy
+   if it is to become the individual.
 5. Shown in `nsf birth` and the console's overview (`graph_rule_migration`), and in each demoted revision's
    decision (the console's graph detail says why it was archived).
 
@@ -1665,7 +1672,8 @@ A later open costs 0.4-1.0 ms in all (one meta read decides that nothing is due)
 - Tests: `tests/instance/test_graph_migration.py` (kept and archived graphs, a founding graph not judged, a graph
   learned afterwards under best-learner-v1, the cascade, undo and what it leaves, opt-out before the open, a damaged
   setting, a read-only file and a `query_only` connection, a held lease, a new individual, an owner's own rule
-  choice, restores before and after an undo).
+  choice, restores before and after an undo; an open beside a writer while the migration is pending, a read-only
+  file not judged, `nsf config` after an undo, the record without the scores of an erased graph).
 
 # ADR-048 (draft) Forgetting reaches what was left behind: one kind of a name, a forgotten task's settlements, a forgotten dataset's graphs. R
 
@@ -1700,12 +1708,28 @@ erasing what it names is correct; nothing else may go, and a restore must end th
    weights are an image of the data they were fitted to) and replaces their metrics with
    `{"erased": {"dataset", "at"}}`, deletes the graph effects measured on them, and the dataset's digest becomes
    empty (with it a guessed dataset could be checked against the file). A revision invalidated earlier by another
-   dataset of its lineage is erased too. The revision stays listed with its id, status, shape, sha256, lineage and
-   decisions, the audit of what was promoted and why; `graphs.show` returns it without a matrix and says why,
-   `export`, `lesion` and the other readers of the weights raise Gone. Migration 15 replaces the identity trigger:
-   it allows exactly this update of an invalidated revision (the blob to empty, nothing else of its identity) and
-   refuses every other as before, and a second trigger keeps an erased revision invalidated. A restore replays it.
+   dataset of its lineage is erased too. Nothing kept may confirm a guess of the data either (security review of the
+   round, L3: `learn` is deterministic, so a guessed dataset could be refitted and compared): the digest of the
+   weights becomes `erased`, and every score computed with the weights is removed (set to null) from the revision's
+   own decisions, from the incumbent's side of other revisions' gate decisions where it was the incumbent (its
+   held-out error, and the threshold and limits computed from it; the other candidate's own scores stay), and from
+   the graph-rule migration's record (ADR-047). The revision stays listed with its id, status, shape (bits, degree,
+   byte size: fixed by the shape and the rule, not by the data), lineage and decisions, the audit of what was
+   promoted and why; `graphs.show` returns it without a matrix and says why, `export`, `lesion` and the other readers
+   of the weights raise Gone. Migration 15 replaces the identity trigger: it allows exactly this update of an
+   invalidated revision (the blob to empty and the digest to `erased`, nothing else of its identity) and refuses
+   every other as before; a second trigger keeps an erased revision invalidated, and a third refuses deleting a
+   revision, which also closes INSERT OR REPLACE (its implicit delete fires it; review L2). A restore replays it.
    A revision that only scored the dataset as held-out data keeps its weights: it did not learn from it.
+   **Forgets made by an earlier version** kept all of this. The first writable open of the file finishes them once
+   (`governance.finish_earlier_forgets`, logged as a dataset deletion with `by: upgrade`, valid checkpoints marked
+   stale), so the live file holds what every restored copy holds, and `forget_dataset` on such a dataset finishes
+   it too (status `completed`; `absent` once nothing is left). The owner already named the data; nothing not
+   learned from it is touched (review CM2). Like the graph-rule migration it waits for a writable open and never
+   queues for the lock.
+   **The WAL.** A restore or rewrite keeps one read snapshot of the live file for its whole replay, so a forget
+   committed meanwhile cannot truncate the WAL; when the file changed during the snapshot (`PRAGMA data_version`),
+   the WAL is truncated as soon as it ends (review L4).
 4. **Calibration after a change of habits: tried, not shipped.** After a forecaster's rule reverses, the mapping of
    ADR-046 reads the next 50 forecasts worse than stated (held out: 0.095 against 0.043). `fit_recalibration` can
    now split its window where fitting the two parts apart gains most and drop the older part when twice that gain
@@ -1730,14 +1754,17 @@ dataset kept its 247-byte blob, 2,407 bytes of metrics, 73 effects and the datas
 
 ## Consequences
 
-- Schema 15. An older binary refuses the file, as for every schema. The migration adds a table and replaces two
-  triggers; no row changes (tested on a version-14 file with graphs, datasets and evidence).
+- Schema 15. An older binary refuses the file, as for every schema. The migration adds a table and replaces or
+  adds triggers; no row changes (tested on a version-14 file with graphs, datasets and evidence). The completion of
+  earlier forgets is not part of the migration: it runs at the first writable open after it.
 - An erased revision cannot be exported, lesioned or rolled back to; `graphs.show` lists it without a matrix.
 - The calibration history snapshots in `web_metrics` recorded before a task was forgotten keep the numbers they
-  were computed with.
+  were computed with, by decision: they are a past record of aggregate scores (a Brier score over many forecasts),
+  not the task's content, and the calibration read now leaves the settlement out (review question Q1).
 - Still open: a bare mention of a name whose other kind is held (it may be that other one); tombstones and the
-  deletion log keep epoch names and event ids in clear; the promotion decisions of an erased revision keep their
-  scores; settlements are still treated as independent draws.
+  deletion log keep epoch names and event ids in clear; settlements are still treated as independent draws.
+  A connection that does not turn recursive_triggers on (a raw sqlite3 connection, not `store.connect`) does not
+  fire the delete trigger on INSERT OR REPLACE.
 - Tests: `tests/instance/test_forget_one_kind.py`, `tests/instance/test_forget_dataset_erasure.py`,
   `tests/webcortex/test_recalibration.py` (the settlement of a forgotten task; the change detection, off).
 

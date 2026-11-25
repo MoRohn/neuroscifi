@@ -502,18 +502,25 @@ MIGRATIONS = [
       digest TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('camera','partner')), forgotten_at REAL NOT NULL,
       PRIMARY KEY(digest, kind));
     -- governance.forget_dataset: a graph revision invalidated because it learned from a dataset the owner forgot
-    -- loses its weights (blob X'') and its metrics; it stays listed with its sha256, shape, lineage and decisions.
-    -- The identity trigger allows exactly that one update of an invalidated revision and refuses every other, as
-    -- before; an erased revision can never be made anything but invalidated again.
+    -- loses its weights (blob X''), the digest of its weights (sha256 'erased': with it a guessed dataset could be
+    -- refitted and checked against the file) and its metrics; it stays listed with its shape, lineage and decisions
+    -- (their scores removed, graphs.erase_learned_from). The identity trigger allows exactly that one update of an
+    -- invalidated revision and refuses every other, as before; an erased revision can never be made anything but
+    -- invalidated again.
     DROP TRIGGER graph_identity_immutable;
     CREATE TRIGGER graph_identity_immutable BEFORE UPDATE OF blob, sha256, rule_version, context, origin
       ON graph_revisions WHEN NOT (OLD.status='invalidated' AND NEW.status='invalidated' AND NEW.blob=X''
-        AND NEW.sha256 IS OLD.sha256 AND NEW.rule_version IS OLD.rule_version AND NEW.context IS OLD.context
-        AND NEW.origin IS OLD.origin)
+        AND (NEW.sha256 IS OLD.sha256 OR NEW.sha256='erased') AND NEW.rule_version IS OLD.rule_version
+        AND NEW.context IS OLD.context AND NEW.origin IS OLD.origin)
       BEGIN SELECT RAISE(ABORT,'graph snapshot identity is immutable'); END;
     CREATE TRIGGER graph_erased_stays_invalidated BEFORE UPDATE OF status ON graph_revisions
       WHEN OLD.blob=X'' AND NEW.status!='invalidated'
       BEGIN SELECT RAISE(ABORT,'an erased graph snapshot stays invalidated'); END;
+    -- No code deletes a revision (the audit of what was promoted stays). Refusing deletes also closes INSERT OR
+    -- REPLACE, whose implicit delete fires this trigger (connect() turns recursive_triggers on): without it a REPLACE
+    -- could rewrite a revision's weights, digest and status past the two triggers above.
+    CREATE TRIGGER graph_revisions_never_deleted BEFORE DELETE ON graph_revisions
+      BEGIN SELECT RAISE(ABORT,'graph revisions are never deleted'); END;
     """,
     # ---- version 16 (which consolidated readings may be a later copy of a sample; beliefs._copied_samples) ----------
     """

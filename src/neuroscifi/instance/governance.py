@@ -549,35 +549,103 @@ def forget_consolidated(db, seq, now):
 
 def forget_dataset(db, dataset_id, now):
     """Drop a dataset blob, its note and its digest, delete the graph effects measured on it, invalidate graphs
-    trained on it and erase what they learned (weights, metrics, effects measured on them; ADR-048), and mark every
-    existing checkpoint stale."""
+    trained on it and erase what they learned (weights, the digest of the weights, metrics, the scores of their
+    decisions, effects measured on them; ADR-048), and mark every existing checkpoint stale.
+
+    A dataset forgotten before, by an earlier version that kept what graphs learned from it, has that finished now
+    ("completed"; the owner already named it, and a restore of any archive finishes it in its copy too). Nothing
+    left to do: "absent"."""
     from .graphs import erase_learned_from, invalidate_dependents  # W2-B; imported lazily to keep modules decoupled
     if isinstance(dataset_id, bool) or not isinstance(dataset_id, int) or not -MAX_ROWID - 1 <= dataset_id <= MAX_ROWID:
         raise ValidationError("the dataset id must be an integer SQLite can hold")
+    failure = None
     with store.write(db):
         row = db.execute("SELECT deleted_at FROM datasets WHERE id=?", (dataset_id,)).fetchone()
         if row is None:
             raise NotFound(f"Unknown dataset {dataset_id}")
         if row[0] is not None:
-            return {"status": "absent", "effects": {}}
-        # the note is the owner's free text about the data (as an epoch's note, forget_epoch): it goes with the blob
-        # The digest goes too: with it, a guessed dataset could be checked against the file (ADR-048).
-        db.execute("UPDATE datasets SET blob=NULL, note=NULL, sha256='', deleted_at=? WHERE id=?", (now, dataset_id))
-        effects_deleted = db.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
-        cascade = invalidate_dependents(db, dataset_id, now)
-        erased = erase_learned_from(db, dataset_id, now)
-        stale = [r[0] for r in db.execute("SELECT id FROM checkpoints WHERE status='valid' ORDER BY id")]
-        db.executemany("UPDATE checkpoints SET status='stale' WHERE id=?", [(i,) for i in stale])
-        version = store.bump_state_version(db)
-        effects = {"dataset": dataset_id, "invalidated": cascade.get("invalidated", []),
-                   "reactivated": cascade.get("reactivated"), "checkpoints_stale": stale,
-                   "graph_effects_deleted": effects_deleted + erased["effects_deleted"],
-                   "graphs_erased": erased["erased"], "state_version": version}
-        db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects,failure) "
-                   "VALUES('dataset',?,?,?,?)",
-                   (str(dataset_id), now, json.dumps(effects, sort_keys=True), cascade.get("failure")))
+            effects = _finish_dataset_forget(db, dataset_id, now, by="forget_dataset")
+            status = "completed"
+        else:
+            # the note is the owner's free text about the data (as an epoch's note, forget_epoch): it goes with the
+            # blob. The digest goes too: with it, a guessed dataset could be checked against the file (ADR-048).
+            db.execute("UPDATE datasets SET blob=NULL, note=NULL, sha256='', deleted_at=? WHERE id=?",
+                       (now, dataset_id))
+            effects_deleted = db.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
+            cascade = invalidate_dependents(db, dataset_id, now)
+            erased = erase_learned_from(db, dataset_id, now)
+            stale = _stale_checkpoints(db)
+            version = store.bump_state_version(db)
+            effects = {"dataset": dataset_id, "invalidated": cascade.get("invalidated", []),
+                       "reactivated": cascade.get("reactivated"), "checkpoints_stale": stale,
+                       "graph_effects_deleted": effects_deleted + erased["effects_deleted"],
+                       "graphs_erased": erased["erased"], "decisions_redacted": erased["decisions_redacted"],
+                       "state_version": version}
+            status, failure = "forgotten", cascade.get("failure")
+            db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects,failure) "
+                       "VALUES('dataset',?,?,?,?)",
+                       (str(dataset_id), now, json.dumps(effects, sort_keys=True), failure))
+    if effects is None:
+        return {"status": "absent", "effects": {}}
     effects["wal_checkpoint"] = store.truncate_wal(db)
-    return {"status": "forgotten", "effects": effects, "failure": cascade.get("failure")}
+    return {"status": status, "effects": effects, "failure": failure}
+
+
+def _stale_checkpoints(db):
+    stale = [r[0] for r in db.execute("SELECT id FROM checkpoints WHERE status='valid' ORDER BY id")]
+    db.executemany("UPDATE checkpoints SET status='stale' WHERE id=?", [(i,) for i in stale])
+    return stale
+
+
+# Deleted datasets of which something learned is still held: the digest, effects measured on them, or a revision
+# trained or validated on them that is not fully erased (a forget by a version before ADR-048, or by schema 15's
+# first build, which kept the weights' digest).
+_UNFINISHED = (
+    "SELECT d.id FROM datasets d WHERE d.deleted_at IS NOT NULL AND (d.sha256!='' "
+    "OR EXISTS(SELECT 1 FROM graph_effects e WHERE e.dataset_id=d.id) "
+    "OR EXISTS(SELECT 1 FROM graph_lineage l JOIN graph_revisions r ON r.id=l.revision_id WHERE l.dataset_id=d.id "
+    "AND l.role IN ('train','validation') AND r.status='invalidated' AND (r.blob!=X'' OR r.sha256!='erased'))) "
+    "ORDER BY d.id")
+
+
+def _finish_dataset_forget(db, dataset_id, now, *, by):
+    """For a dataset already deleted: remove its digest and the effects measured on it, erase what invalidated
+    revisions learned from it (graphs.erase_learned_from), mark checkpoints stale when something was removed
+    (archives taken since the first forget hold it), and log it. Caller owns the transaction. None when nothing
+    was left to remove."""
+    from .graphs import erase_learned_from
+    digest = db.execute("UPDATE datasets SET sha256='' WHERE id=? AND sha256!=''", (dataset_id,)).rowcount
+    effects_deleted = db.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
+    erased = erase_learned_from(db, dataset_id, now)
+    if not (digest or effects_deleted or erased["erased"] or erased["effects_deleted"]):
+        return None
+    stale = _stale_checkpoints(db)
+    version = store.bump_state_version(db)
+    effects = {"dataset": dataset_id, "completed": True, "by": by, "digest_removed": bool(digest),
+               "graph_effects_deleted": effects_deleted + erased["effects_deleted"],
+               "graphs_erased": erased["erased"], "decisions_redacted": erased["decisions_redacted"],
+               "checkpoints_stale": stale, "state_version": version}
+    db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES('dataset',?,?,?)",
+               (str(dataset_id), now, json.dumps(effects, sort_keys=True)))
+    return effects
+
+
+def finish_earlier_forgets(db, now):
+    """At an open (store.open_existing): finish, once, the forgets of datasets an earlier version left unfinished
+    (ADR-048), so the live file holds what every restored copy holds. Read first without the write lock; done only
+    when this connection can write, and skipped for this open when the file is busy (store.optional_write). Returns
+    the effects per dataset, or None when there was nothing to do or it could not be done now."""
+    if not db.execute(_UNFINISHED).fetchone() or not store.can_write(db):
+        return None
+
+    def run(db):
+        done = [effects for (dataset_id,) in db.execute(_UNFINISHED).fetchall()
+                if (effects := _finish_dataset_forget(db, dataset_id, now, by="upgrade")) is not None]
+        return done or None
+    done = store.optional_write(db, run)
+    if done:
+        store.truncate_wal(db)
+    return done
 
 
 def promote(db, event_id, now):

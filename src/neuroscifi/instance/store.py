@@ -182,6 +182,39 @@ def write(db):
         raise
 
 
+def can_write(db):
+    """Whether this connection may write its file, read without asking for the write lock: not a query_only
+    connection, and the file (and its folder, for the WAL) writable by this process. A False is final for this open;
+    a True can still meet a busy file (optional_write)."""
+    if db.execute("PRAGMA query_only").fetchone()[0]:
+        return False
+    path = database_path(db)
+    if path is None:
+        return True
+    path = Path(path)
+    return os.access(path, os.W_OK) and os.access(path.parent, os.W_OK)
+
+
+OPTIONAL_BUSY_MS = 200   # how long an optional step at open (optional_write) waits for the write lock
+
+
+def optional_write(db, body):
+    """Run body(db) in a write transaction for a step an open does when it can and retries at the next open
+    otherwise (the graph-rule migration, the completion of earlier forgets): the lock is waited for at most
+    OPTIONAL_BUSY_MS, and a busy, locked or read-only file gives None instead of an error."""
+    db.execute(f"PRAGMA busy_timeout={OPTIONAL_BUSY_MS}")
+    try:
+        with write(db):
+            return body(db)
+    except sqlite3.OperationalError as error:
+        text = str(error)
+        if "readonly" in text or "read-only" in text or "locked" in text or "busy" in text:
+            return None
+        raise
+    finally:
+        db.execute("PRAGMA busy_timeout=10000")
+
+
 def bump(db, name, amount=1):
     db.execute("INSERT INTO counters(name,value) VALUES(?,?) "
                "ON CONFLICT(name) DO UPDATE SET value=value+excluded.value", (name, amount))
@@ -402,6 +435,10 @@ def open_existing(path, *, graph_migration=True):
     try:
         migrate(db)
         birth(db)  # fail early on a non-instance database
+        # A dataset forgotten by an earlier version left the weights learned from it (ADR-048): finish that forget
+        # once, as a restore of any archive does in its copy. Not an owner's choice: the owner already forgot it.
+        from . import governance
+        governance.finish_earlier_forgets(db, time.time())
         if graph_migration:
             from . import graph_migration as adopt
             adopt.apply(db, time.time())

@@ -230,15 +230,22 @@ def _snapshot(db, now, wanted=None):
     then read for those seqs only, in the same snapshot: a replay asks for a reading only where the copy still holds
     the event, so the result is the same, and what is held in memory is bounded by the archive's journal (one
     lifetime of events, at most its row limit) instead of by every reading the individual ever kept. None reads
-    them all."""
+    them all.
+
+    While the snapshot is open, a forget committed by another connection cannot truncate the WAL (its
+    truncate_wal says "busy"): the frames of the rows it removed stay in the WAL until a checkpoint completes. So
+    when the file changed meanwhile (PRAGMA data_version), the WAL is truncated as soon as the snapshot ends."""
     if db.in_transaction:
         yield _read_forgets(db, now, wanted)
         return
+    before = db.execute("PRAGMA data_version").fetchone()[0]
     db.execute("BEGIN")             # deferred: the first read takes the snapshot (WAL)
     try:
         yield _read_forgets(db, now, wanted)
     finally:
         db.execute("COMMIT")
+        if db.execute("PRAGMA data_version").fetchone()[0] != before:
+            store.truncate_wal(db)
 
 
 def _forgets(db, now, wanted=None):

@@ -20,7 +20,6 @@ open). An owner who had already chosen a rule (best-learner-v1 registered, or a 
 The record is one meta row, `graph_rule_migration`: {"status": "settled_at_birth" | "applied" | "reversed", ...}.
 """
 import json
-import sqlite3
 
 from .. import __version__
 from . import graphs, rules, store
@@ -89,37 +88,64 @@ def _leased(db, now):
     return [c for (c,) in db.execute("SELECT context FROM graph_leases WHERE expires_at>? ORDER BY context", (now,))]
 
 
+def redact(db, revisions):
+    """Remove the scores of erased revisions (graphs.erase_learned_from) from the record: its plan quotes each judged
+    graph's validation errors. Caller owns the transaction."""
+    record = _record(db)
+    if not record or record.get("status") == "unreadable":
+        return False
+    changed = False
+    for key in ("demote", "keep", "not_judged"):
+        entries = record.get(key)
+        if not isinstance(entries, list):
+            continue
+        for n, entry in enumerate(entries):
+            if isinstance(entry, dict) and entry.get("revision") in revisions:
+                entries[n], hit = graphs._redact(entry, graphs.SCORE_KEYS)
+                changed |= hit
+    if changed:
+        _save(db, record)
+    return changed
+
+
 def apply(db, now):
     """Run the migration once if it is due; returns the record written, or None when nothing was done (not due,
-    opted out, read-only, busy or a lease held: the next open tries again). Never raises for a file it cannot write."""
+    opted out, read-only, busy or a lease held: the next open tries again). Never raises for a file it cannot write.
+
+    Everything that makes it wait (a lease held, a read-only file or connection) is read before the write lock is
+    asked for, and the lock is asked for briefly (store.optional_write): every open of a file it is due on would
+    otherwise queue behind a writer while a graph job runs (the console opens the file for each request)."""
     if _record(db) is not None or not store.config(db).graph_rule_migration:
         return None
-    try:
-        with store.write(db):
-            if _record(db) is not None:          # another process did it while this one waited for the lock
-                return None
-            if _leased(db, now):
-                return None
-            todo = plan(db)
-            if todo["rule"]:
-                rules.register(db, store.BEST_LEARNER_V1, now, created_by=CREATED_BY)
-            for entry in todo["demote"]:
-                rev = graphs._row(db, entry["revision"])
-                check = entry["check"] | {"why": "it predicts worse than a graph with no edges on its validation "
-                                                 "data, which the promotion gate never lets through (ADR-045)"}
-                decision = {"action": graphs.DEMOTED, "by": CREATED_BY, "decided_at": now, "check": check,
-                            "prior": rev["decision"]}
-                db.execute("UPDATE graph_revisions SET status='archived', decision=?, decided_at=? WHERE id=?",
-                           (graphs._dump(decision), now, entry["revision"]))
-            changed = bool(todo["rule"] or todo["demote"])
-            record = {"status": "applied", "at": now, "software_version": __version__, **todo,
-                      "state_version": store.bump_state_version(db) if changed else store.state_version(db)}
-            _save(db, record)
-    except sqlite3.OperationalError as error:
-        text = str(error)
-        if "readonly" in text or "read-only" in text or "locked" in text or "busy" in text:
+    if _leased(db, now) or not store.can_write(db):
+        return None
+
+    def run(db):
+        if _record(db) is not None:              # another process did it while this one waited for the lock
             return None
-        raise
+        if _leased(db, now):
+            return None
+        return _apply(db, now)
+    return store.optional_write(db, run)
+
+
+def _apply(db, now):
+    """The migration itself, inside the caller's write transaction. Returns the record written."""
+    todo = plan(db)
+    if todo["rule"]:
+        rules.register(db, store.BEST_LEARNER_V1, now, created_by=CREATED_BY)
+    for entry in todo["demote"]:
+        rev = graphs._row(db, entry["revision"])
+        check = entry["check"] | {"why": "it predicts worse than a graph with no edges on its validation "
+                                         "data, which the promotion gate never lets through (ADR-045)"}
+        decision = {"action": graphs.DEMOTED, "by": CREATED_BY, "decided_at": now, "check": check,
+                    "prior": rev["decision"]}
+        db.execute("UPDATE graph_revisions SET status='archived', decision=?, decided_at=? WHERE id=?",
+                   (graphs._dump(decision), now, entry["revision"]))
+    changed = bool(todo["rule"] or todo["demote"])
+    record = {"status": "applied", "at": now, "software_version": __version__, **todo,
+              "state_version": store.bump_state_version(db) if changed else store.state_version(db)}
+    _save(db, record)
     return record
 
 

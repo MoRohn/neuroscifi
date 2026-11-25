@@ -782,6 +782,7 @@ def _version_13_file(tmp_path):
     db.close()
     raw = sqlite3.connect(path, isolation_level=None)
     raw.executescript("BEGIN; DROP TABLE forgotten_scopes; DROP TRIGGER graph_erased_stays_invalidated; "
+                      "DROP TRIGGER graph_revisions_never_deleted; "
                       "DROP TABLE evidence_consolidated; DROP INDEX tombstones_epoch_seq; "
                       "PRAGMA user_version=13; COMMIT;")
     tables = sorted(name for (name,) in raw.execute(
@@ -1138,6 +1139,8 @@ def test_the_live_file_is_read_in_one_snapshot_for_a_restore(instance):
         forgets = checkpoints._forgets(db, T0 + 8 * DAY + 1)
     finally:
         db.set_trace_callback(None)
+    # (the snapshot reads PRAGMA data_version before and after it, to truncate the WAL if a forget ran meanwhile)
+    statements = [s for s in statements if s != "PRAGMA data_version"]
     assert statements[0] == "BEGIN" and statements[-1] == "COMMIT" and not db.in_transaction
     assert len(forgets["consolidated"]) == 6 and forgets["settings"]["consolidation"] is True
     with store.write(db):                               # inside a caller's transaction it opens none of its own

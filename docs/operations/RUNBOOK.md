@@ -472,7 +472,7 @@ nsf graph migration status --db DB             # "pending" with the plan, "appli
 nsf config --no-graph-rule-migration --db DB   # before any other command or service opens the file
 ```
 
-Reverse it (gate-v1 again as `gate-v1-restored`, demoted graphs re-activated where their context has no active graph since, and the migration turned off for good, also in copies restored later): `nsf graph migration undo --owner-approved --db DB`. What it could not reverse is listed with the reason; re-activate a single graph by hand with `nsf graph rollback CONTEXT REV`. A file opened read-only is migrated at its next writable open.
+Reverse it (gate-v1 again as `gate-v1-restored`, demoted graphs re-activated where their context has no active graph since, and the migration turned off for good, also in copies restored later): `nsf graph migration undo --owner-approved --db DB`. What it could not reverse is listed with the reason; re-activate a single graph by hand with `nsf graph rollback CONTEXT REV`. A file opened read-only is migrated at its next writable open; a file busy with another writer, at a later open (an open never waits for it). The migration runs at most once: `nsf config --graph-rule-migration` after an undo does nothing, and says so. An undo is not carried into a copy restored from an archive taken between the migration and the undo; run `nsf graph migration undo --owner-approved --db COPY` there if that copy is to become the individual.
 
 **Adopt the rule on an older individual** (no file needed; services may stay up, the command takes one short write):
 

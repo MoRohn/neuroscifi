@@ -382,6 +382,7 @@ def _as_schema_10(db):
     migration 12's node keys, enrolments and nonces, migration 13's retired keys or migration 14's consolidated
     readings."""
     db.executescript("BEGIN IMMEDIATE; DROP TABLE forgotten_scopes; DROP TRIGGER graph_erased_stays_invalidated; "
+                     "DROP TRIGGER graph_revisions_never_deleted; "
                      "DROP TABLE evidence_consolidated; "
                      "DROP INDEX tombstones_epoch_seq; "
                      "DROP TABLE node_keys_retired; DROP TABLE node_enrolments; DROP TABLE node_nonces; "
@@ -897,3 +898,29 @@ def test_an_epoch_of_the_same_name_created_in_a_restored_copy_survives_that_copy
     rows = _epoch_rows(tmp_path / "r2.sqlite", "room")
     assert rows["evidence"] == 8 and rows["decisions"] == 3 and rows["belief_revisions"] > 0, rows
     assert rows["epoch_contexts"] == 1 and rows["epoch_links"] == 1, rows
+
+
+def test_a_forget_during_a_long_restore_leaves_no_frame_in_the_wal(instance, tmp_path, monkeypatch):
+    """Review L4: the restore's read snapshot stays open for the whole replay, so a forget committed meanwhile could
+    not truncate the WAL ("busy"), and the frames of the rows it removed stayed until some later checkpoint. The
+    WAL is truncated as soon as the snapshot ends when the file changed during it."""
+    db, path = instance
+    add(db, "keep")
+    add(db, "secret", root="zz-secret-root")
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0)
+    wal = path.with_name(path.name + "-wal")
+    replay, seen = checkpoints._replay, {}
+
+    def replay_with_a_forget(copy, forgets, now):
+        other = store.connect(path)
+        try:
+            seen["forget"] = governance.forget_evidence(other, "secret", T0 + 1)["effects"]["wal_checkpoint"]
+        finally:
+            other.close()
+        seen["wal_during"] = wal.stat().st_size if wal.exists() else 0
+        return replay(copy, forgets, now)
+    monkeypatch.setattr(checkpoints, "_replay", replay_with_a_forget)
+    checkpoints.restore(db, cp["id"], tmp_path / "r.sqlite", T0 + 2)
+    assert seen["forget"] == "busy" and seen["wal_during"] > 0      # the forget could not truncate while it ran
+    assert not wal.exists() or wal.stat().st_size == 0
+    assert b"zz-secret-root" not in path.read_bytes()

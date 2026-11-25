@@ -159,7 +159,14 @@ def _config(db, args, now):
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
-    return out | ({"warnings": problems} if problems else {})
+    from . import graph_migration
+    record = graph_migration._record(db) if store.config(db).graph_rule_migration else None
+    notes = []
+    if record is not None and record.get("status") == "reversed":
+        # The setting only decides whether a migration not yet run may run; an undone one never runs again.
+        notes.append("the graph-rule migration was undone (`nsf graph migration undo`); turning "
+                     "--graph-rule-migration on does not run it again")
+    return out | ({"warnings": problems} if problems else {}) | ({"notes": notes} if notes else {})
 
 
 def register(sub):
@@ -199,7 +206,8 @@ def register(sub):
     p.add_argument("--graph-rule-migration", action=argparse.BooleanOptionalAction, default=None,
                    help="at the next open, let an individual still on gate-v1 adopt best-learner-v1 and archive an "
                         "active graph worse than no graph (default: on; `nsf graph migration status` shows what it "
-                        "would do). --no-graph-rule-migration before that open leaves the file as it is")
+                        "would do). --no-graph-rule-migration before that open leaves the file as it is. It runs at "
+                        "most once: after `nsf graph migration undo` turning it on again does nothing")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("birth", help="birth record, memory inventory and development counters")

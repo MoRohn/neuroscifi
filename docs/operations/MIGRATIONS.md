@@ -15,9 +15,12 @@ Read the version with `sqlite3 /var/lib/neuroscifi/instance.sqlite 'PRAGMA user_
 **Version 15 (forgetting reaches what was left behind, ADR-048).** It adds one empty table, `forgotten_scopes`
 (the instance-salted digest and kind of a camera or partner name forgotten while the other channel still holds the
 name), and replaces the graph identity trigger so that exactly one update of an invalidated revision is allowed: its
-weights and metrics erased when `forget_dataset` removes the data it learned from. Every other change to a revision's
-identity is refused as before, and a new trigger keeps an erased revision invalidated. Nothing is written to existing
-rows by the migration.
+weights erased and the digest of its weights set to `erased` when `forget_dataset` removes the data it learned from.
+Every other change to a revision's identity is refused as before, a new trigger keeps an erased revision
+invalidated, and another refuses deleting a revision (which also refuses INSERT OR REPLACE over one). Nothing is
+written to existing rows by the migration. The first writable open after it finishes, once, the forgets of datasets
+an earlier version made, which kept the weights learned from them (logged as dataset deletions with `by: upgrade`;
+valid checkpoints become stale, as after any forget): plan the checkpoint rebuild after the upgrade.
 
 **Version 16 (which consolidated readings may be a later copy of a sample, ADR-044).** It adds a column `copied` to
 `evidence_consolidated`, a partial index of the flagged readings and three triggers, and flags each reading already

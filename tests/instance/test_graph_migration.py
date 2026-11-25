@@ -348,3 +348,113 @@ def test_a_restore_of_an_older_archive_is_migrated_like_the_live_file(older, tmp
         assert rules.latest(copy) == "best-learner-v1" and _statuses(copy)[revs["bad"]] == "archived"
     finally:
         copy.close()
+
+
+# ---- review findings of the remaining-items round (fix lane FI) -------------------------------------------------
+
+def _hold_the_write_lock(path, seconds):
+    """Another process's writer: hold the write lock for `seconds` in a thread; returns the thread once it holds it."""
+    import threading
+    import time
+    held = threading.Event()
+
+    def hold():
+        other = store.connect(path)
+        try:
+            other.execute("BEGIN IMMEDIATE")
+            held.set()
+            time.sleep(seconds)
+            other.execute("COMMIT")
+        finally:
+            other.close()
+    thread = threading.Thread(target=hold)
+    thread.start()
+    held.wait(10)
+    return thread
+
+
+@pytest.mark.parametrize("lease", [True, False], ids=["lease_held", "no_lease"])
+def test_an_open_never_queues_behind_a_writer_while_the_migration_is_pending(older, lease):
+    """Review CM3: apply() took the write lock before checking for a held lease, so while a graph job ran every open
+    of an older individual (the console opens the file for each request) waited up to busy_timeout (10 s) behind any
+    writer. The lease is read first; without one the lock is asked for only briefly and the migration retried."""
+    import time
+    path, _ = older
+    if lease:
+        db = store.connect(path)
+        try:
+            db.execute("INSERT INTO graph_leases(context,holder,expires_at) VALUES('good','job',?)", (4e9,))
+        finally:
+            db.close()
+    writer = _hold_the_write_lock(path, 3)
+    try:
+        start = time.monotonic()
+        db = store.open_existing(path)
+        waited = time.monotonic() - start
+        try:
+            assert graph_migration.status(db)["status"] == "pending"
+        finally:
+            db.close()
+    finally:
+        writer.join()
+    assert waited < 1.5, f"open_existing waited {waited:.2f}s behind another writer"
+    if not lease:
+        db = store.open_existing(path)          # the lock is free now: the next open migrates
+        try:
+            assert graph_migration.status(db)["status"] == "applied"
+        finally:
+            db.close()
+
+
+def test_a_read_only_file_is_not_judged_at_every_open(older, monkeypatch):
+    """Review CM3: a file this process cannot write was still planned (datasets loaded, errors computed) at every
+    open before the write failed."""
+    path, _ = older
+    path.chmod(stat.S_IRUSR)
+    calls = []
+    monkeypatch.setattr(graph_migration, "plan", lambda db: calls.append(1) or {})
+    try:
+        store.open_existing(path).close()
+    finally:
+        for name in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+            if name.exists():
+                name.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    assert calls == []
+
+
+def test_config_says_an_undone_migration_does_not_run_again(older, capsys):
+    """Review CL5: turning --graph-rule-migration on after an undo did nothing, while the help said it would take
+    effect at the next open."""
+    path, _ = older
+    store.open_existing(path).close()
+    code, _ = _nsf(capsys, "graph", "migration", "undo", "--owner-approved", "--db", str(path))
+    assert code == 0
+    code, out = _nsf(capsys, "config", "--graph-rule-migration", "--db", str(path))
+    assert code == 0 and out["config"]["graph_rule_migration"] is True
+    assert any("undone" in note and "does not run it again" in note for note in out["notes"])
+    db = store.open_existing(path)
+    try:
+        assert graph_migration.status(db)["status"] == "reversed"
+    finally:
+        db.close()
+
+
+def test_forgetting_the_data_of_a_demoted_graph_removes_its_scores_from_the_record(older):
+    """Review L3: the migration's record quotes each judged graph's validation errors; once the graph is erased they
+    are scores computed with weights that are gone."""
+    from neuroscifi.instance import governance
+    path, revs = older
+    db = store.open_existing(path)
+    try:
+        before = graph_migration.status(db)
+        assert before["demote"][0]["check"]["validation_mse"] is not None
+        (train,) = db.execute("SELECT dataset_id FROM graph_lineage WHERE revision_id=? AND role='train'",
+                              (revs["bad"],)).fetchone()
+        assert revs["bad"] in governance.forget_dataset(db, train, T0 + 30)["effects"]["graphs_erased"]
+        record = graph_migration.status(db)
+        (entry,) = record["demote"]
+        assert entry["check"]["validation_mse"] is None and entry["check"]["no_graph_validation_mse"] is None
+        assert entry["check"]["passed"] is False
+        assert record["keep"] == before["keep"] and record["not_judged"] == before["not_judged"]   # untouched
+    finally:
+        db.close()
