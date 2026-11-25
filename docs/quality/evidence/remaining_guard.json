@@ -1,0 +1,113 @@
+{
+ "corpus_added_by_this_lane": {
+  "relabelled_open_to_reject": 4,
+  "sentences": 87
+ },
+ "differential": {
+  "by_origin": {
+   "loosened": {
+    "gap": 11,
+    "review": 6
+   },
+   "stricter": {
+    "gap": 191,
+    "review": 24
+   }
+  },
+  "compared": 1895,
+  "different": 0,
+  "identical": 1663,
+  "loosened": 17,
+  "stricter": 215
+ },
+ "gap_corpora": {
+  "case": {
+   "by_label": {
+    "accept": 27,
+    "reject": 27
+   },
+   "sentences": 54,
+   "unmet": 0
+  },
+  "cut": {
+   "by_label": {
+    "accept": 18,
+    "lost": 1,
+    "reject": 36
+   },
+   "sentences": 55,
+   "unmet": 0
+  },
+  "restatement": {
+   "by_label": {
+    "accept": 20,
+    "reject": 48
+   },
+   "sentences": 68,
+   "unmet": 0
+  },
+  "restriction": {
+   "by_label": {
+    "accept": 60,
+    "lost": 7,
+    "open": 1,
+    "reject": 65
+   },
+   "sentences": 133,
+   "unmet": 0
+  },
+  "role": {
+   "by_label": {
+    "accept": 17,
+    "reject": 22
+   },
+   "sentences": 39,
+   "unmet": 0
+  },
+  "unseen": {
+   "by_label": {
+    "accept": 9,
+    "reject": 28
+   },
+   "sentences": 37,
+   "unmet": 0
+  },
+  "wording": {
+   "by_label": {
+    "accept": 11,
+    "reject": 22
+   },
+   "sentences": 33,
+   "unmet": 0
+  }
+ },
+ "loosened_classes": [
+  "restatement"
+ ],
+ "reference": {
+  "commit": "307b9070f973be63b1cdbd8da222da8114bd32d6",
+  "inputs_before_this_lane": {
+   "benchmark": 248,
+   "gap": 332,
+   "harvested": 1137,
+   "review": 91
+  },
+  "inputs_by_origin": {
+   "benchmark": 248,
+   "gap": 419,
+   "harvested": 1137,
+   "review": 91
+  },
+  "its_own_guard_tests_while_recording": "827 passed"
+ },
+ "sentences_refused_by_mark": {
+  "CASE_CHANGED": 27,
+  "CUT_WORDS": 46,
+  "JOINED_APART": 7,
+  "PASSIVE_SWAP": 37,
+  "RESTRICTION_LOST": 80,
+  "ROLE_SWAP": 21,
+  "UNSEEN_IN_CLAIM": 18
+ },
+ "what": "Lane G of the remaining-items round: the sentence guard's gaps still open after phase 3 (ENGINEERING_PLAN.md section 6 item 1). Measured by scripts/guard_differential.py against the recorded verdicts of 307b907; produced by running the tree, nothing typed by hand."
+}
