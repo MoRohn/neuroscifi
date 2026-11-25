@@ -370,11 +370,78 @@ account (`nsf web searxng` reports it as malformed).
 
 ## 7. Validation
 
-<<WAVE1-VALIDATION>>
+Run on the final tree, `816fa12`, 2026-11-25, on this host (shared with other work; nothing below is a measurement of
+the DGX Spark, the open web or a live answer model).
+
+| Check | Result |
+|---|---|
+| Quality gate (`bash scripts/check.sh`: ruff, the non-e2e suite, the JS checks, the numerical reproduction) | 5,624 passed, 22 skipped, 35 subtests; ALL CHECKS PASSED |
+| Browser suite (`scripts/e2e.sh`) | first run 208 passed, 1 failed, 1 skipped: `test_pocket.py::test_handoff_between_devices` collected three `net::ERR_NETWORK_CHANGED` resource errors (the host's network changed during the run). The whole suite run again: 209 passed, 1 skipped |
+| `nsf acceptance --all` | pass |
+| Sentence guard against `307b907` (`scripts/guard_differential.py compare`) | 1,937 compared: 1,688 identical, 232 stricter, 17 loosened, 0 different |
+| Two accounts (`scripts/two_account_check.py`, real uids in a user namespace) | 55 of 55 |
+| Offline research benchmark, every Wave 1 setting off, and as shipped | sha256 `68731d7235cb…` both, the digest of Wave 0 (§5) |
+| Cognitive benchmark, both splits (`scripts/bench_wave1.py run`) | every measured value equal to the committed `genesis_wave1.json` (no leaf differs outside timings and environment) |
+| The information-value mechanism with and without `activate()`, both splits | equal results, and equal to those before the staging change of §6.5 |
+
+Not run here: anything on the open web, a live answer model, real hardware, a real second account, or systemd.
 
 ## 8. The withheld run
 
-<<WAVE1-FINAL-RUN>>
+The withheld family was looked at once for Wave 1, on the clean final tree `816fa12`, after every fix above and
+before anything else was changed: `scripts/bench_wave1.py final` (its output written outside the tree, so the tree
+stayed clean between its two runs). The ledger `docs/quality/evidence/genesis_final_uses.jsonl` gained two lines, both
+`"dirty": false`, and now holds three:
+
+1. the recorded baseline's own run (Wave 0);
+2. the baseline again on this tree with every Wave 1 setting off. It was needed because the recorded baseline's
+   withheld numbers were scored before the reviews corrected the scoring. It is a second look at the unchanged
+   system's withheld numbers, recorded as such; every metric that existed before has the recorded value again;
+3. the Wave 1 mechanisms, one per interface (`wave1`): the look.
+
+Nothing was tuned after it. Result: `docs/quality/evidence/genesis_wave1_withheld.json`. Three seeds, mean (sd where the
+harness reports one); worlds of kinds in neither split.
+
+| Interface, mechanism | A new individual has it | Metric | Baseline | Wave 1 | Held-out, for comparison |
+|---|---|---|---|---|---|
+| Regulator: predictive regulation (simulated plant, declared constants) | **off** | memory breaches avoided (2 reference episodes per seed) | 0 | 0.83 (0.29) | 0.80 |
+| | | memory breach ticks | 21.0 (0) | 0.67 (1.15) | |
+| | | breach ticks, all channels | 137.3 (6.7) | 89.0 (7.0) | |
+| | | cost: false alarms | 0 | 0.013 | 0.009 → 0.043 |
+| | | cost: background work given up | 0.049 | 0.130 | 0.044 → 0.106 |
+| Chooser, core: rule `information-v1` | **off** (opt-in) | realised bits per unit of budget; noise share | 0.043; 0.042 | 0.043; 0.042 (the same choices) | 0.092 → 0.105 |
+| Chooser, web: curiosity learning progress | **off** | share of budget on noise | 0.857 | 0.857 | wide seeds 0.412 → 0.394 |
+| | | realised bits per unit of budget | −0.080 (0.235) | 0.056 (0) | wide seeds 0.139 → 0.126 |
+| Answerer: what-if, forecast (25 questions per seed, pooled, not a claim) | **on** (commands) | answered within 0.1 × scale, the 4 declined front-door questions counted | 0.12 (0) | 0.827 (0.023) | 0.063 → 0.875 |
+| | | within 0.05 | 0.08 (0.04) | 0.76 (0.07) | |
+| – equations handed to the engine (8) | | within tolerance | 0 | 1.000 | 0 → 1.000 |
+| – belief what-ifs (3; plumbing) | | within tolerance | 0 | 1.000 | 0 → 1.000 |
+| – learned graph forecasts and actions (10) | | within tolerance; within 0.05; largest error | 0.30; 0.20; 0.066 | 0.967 (0.058); 0.80 (0.17); 0.135 | 0.222 → 1.000; 0.778; 0.092 |
+| – front door (4) | | declined | 4 | 4 | 4 |
+| Describer: the self-description record (15 probes per seed) | **on** (display) | correct, either answer key | 12 of 15 | 15 of 15 | 24 → 29 or 30 of 30 |
+| | | without the two plumbing probes | 12 of 13 | 13 of 13 | |
+| | | surfaces needed | 4 | 1 | 4 → 1 |
+
+What it says, and what it does not:
+
+- **The two mechanisms that ship on transfer.** What-if and forecast answering and the self-description do on the
+  withheld worlds about what they do on held-out. The learned-graph answers are a little less accurate there (29 of
+  30 within tolerance, one answer 0.135 off; 0.80 within the stricter 0.05). The "answer 0" reference was not run on
+  the withheld worlds, so its floor there is unknown; 15 of the 25 questions per seed are exact arithmetic on handed
+  equations, plumbing, or declined.
+- **Predictive regulation transfers on the simulated plant, with its costs:** most memory breaches avoided, more
+  background work given up (0.049 → 0.130) and a few false alarms. It stays off: the plant's constants are declared,
+  not measured on the host, and turning it on is the owner's decision.
+- **`information-v1` shows nothing on the withheld core world:** it makes the same choices as the rule order. Its
+  held-out gain (0.092 → 0.105) did not transfer to this world. It stays opt-in.
+- **Curiosity learning progress does not avoid noise on the withheld web world:** both rules spend 6 of 7 units on
+  noise and never reach the gap subject. The realised-bits difference (−0.080 → 0.056) is inside the baseline's own
+  spread across seeds (sd 0.235) and comes from the order of the same subjects; it is not a gain under the
+  roadmap's rule. It stays off.
+- **Not evaluated by this look:** selective answering, the monitoring record, knowledge re-checks, reflection and
+  strategy selection have no withheld world (the family has four interfaces); strategy selection therefore cannot
+  pass its gate (§9). Retention and the adversarial cases are not part of the withheld family.
+- Cost of the look: 0.7 s and 1.0 s of wall time, no model call, no connection attempted.
 
 ## 9. What stays open
 

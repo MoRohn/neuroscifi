@@ -280,7 +280,7 @@ selective and retention are deterministic single runs). Full numbers, per world,
 | | claim probability: ECE, 10 bins (lower) | 0.304 | 0.341 | |
 | retention | scenarios pass; offline metrics | 4 / 4; recorded as the reference values | 4 / 4 | |
 | adversarial | cases passing | 12 of 13 | 12 of 13 | failing: `simulated_reading_moves_no_belief` (relabelled by ADR-052 §9: now `imagined_reading_moves_no_belief`, passing) |
-| withheld (`--final`, once) | anticipation breach ticks; web noise share; counterfactual coverage; self coverage | 137.3 (6.7); 0.857; 0.143; 0.80 | | ledger: one entry |
+| withheld (`--final`, once) | anticipation breach ticks; web noise share; counterfactual coverage; self coverage | 137.3 (6.7); 0.857; 0.143; 0.80 | | ledger: one entry then; three since Wave 1's look (below) |
 
 ### The baseline re-scored after the Wave 1 review
 
@@ -394,6 +394,21 @@ list changed:
 | self-description scored under both answer keys; two probes marked as plumbing checks (B4) | fix C | none (fields added) |
 | selective: decision scoring, reference `verdict_word`; no 10-bin ECE in any headline (B5) | fix C | none (fields added) |
 | adversarial: `system_made_content_never_enters_the_journal` restored; results by origin | fix C | the case list grows by one (it passes in every regime) |
+
+### Wave 1's look at the withheld family
+
+`scripts/bench_wave1.py final --note TEXT --out FILE` (FILE outside the tree) ran the family twice on the clean final
+tree `816fa12`, each run recorded in the ledger before it scored: the baseline with every Wave 1 setting off (the
+recorded baseline's withheld numbers predate the corrected scoring; every metric that existed then has the recorded
+value again), then one mechanism per interface under the name `wave1` (anticipation `instinct`, info_value `instinct`,
+counterfactual `imagination`, self_model `self_description`). Evidence: `docs/quality/evidence/genesis_wave1_withheld.json`.
+Baseline → Wave 1, three seeds: memory breaches avoided 0 → 0.83 (false alarms 0 → 0.013, background work given up
+0.049 → 0.130; simulated plant; the mechanism ships off); core information value unchanged (0.043 bits per unit of
+budget, the same choices); web noise share unchanged at 0.857 (realised bits −0.080 → 0.056, inside the baseline's
+spread of 0.235); counterfactual answered within tolerance 0.12 → 0.827 with the 4 front-door questions per seed
+declined (learned graph 0.30 → 0.967, 0.80 within 0.05, largest error 0.135; handed equations and belief what-ifs
+0 → 1.000); self-description 12 of 15 → 15 of 15 under either key (12 of 13 → 13 of 13 without the plumbing probes).
+The "answer 0" reference was not run on the withheld worlds. The full table and what it supports: WAVE1.md §8.
 
 ### What the Wave 1 evidence supports (after the review, fix lane C)
 

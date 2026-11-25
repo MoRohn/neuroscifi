@@ -13,7 +13,9 @@ prerequisite for everything else; **Wave 1** lanes run in parallel after it; **n
 the gap. The research rank (1–12, [RESEARCH_ASSESSMENT.md](RESEARCH_ASSESSMENT.md) §6) is given in brackets where a
 shortlisted mechanism applies. Wave 1 is **integrated, reviewed, fixed and
 reconciled**: its rows give the shipped status measured on the reconciled tree ([WAVE1.md](WAVE1.md)); the final
-validation and the withheld run are still to be recorded there.
+validation and the one look at the withheld family are in its §7 and §8 (row 10: what-if answering 0.12 → 0.827 and
+the self-description 12 → 15 of 15 on the withheld worlds; predictive regulation, off, 0.83 of memory breaches
+avoided on the simulated plant; `information-v1` and learning progress, both off, show no gain there).
 
 The baseline is a set of task scores on synthetic worlds with known answers. It is not a measurement of
 "intelligence", of the real host, of the open web or of the answer model.

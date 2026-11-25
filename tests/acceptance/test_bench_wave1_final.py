@@ -41,7 +41,11 @@ def test_the_look_is_refused_on_a_dirty_tree_before_the_ledger_is_written(bench,
     monkeypatch.setenv("NSF_BENCH_SRC", str(tmp_path))
     with pytest.raises(SystemExit, match="own source"):
         bench.final("a test", tmp_path / "out.json")
-    assert not ledger.exists() and not (tmp_path / "out.json").exists()
+    monkeypatch.delenv("NSF_BENCH_SRC")
+    inside = Path(bench.ROOT) / "docs" / "quality" / "evidence" / "a-test-output.json"
+    with pytest.raises(SystemExit, match="outside this checkout"):
+        bench.final("a test", inside)
+    assert not ledger.exists() and not (tmp_path / "out.json").exists() and not inside.exists()
 
 
 def test_a_final_runs_own_ledger_line_does_not_make_the_tree_read_as_dirty(monkeypatch):

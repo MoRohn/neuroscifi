@@ -37,7 +37,7 @@ Both splits; the withheld family is run only by `final`. Usage:
   scripts/bench_wave1.py rescore [--split ...] [--out FILE]
   scripts/bench_wave1.py offline [--regime all_off|defaults|wave0]    (the offline research benchmark, one run)
   scripts/bench_wave1.py acceptance --regime all_off --out FILE       (`nsf acceptance --all` under a regime)
-  scripts/bench_wave1.py final --note TEXT --out FILE                 (the withheld family; see above)
+  scripts/bench_wave1.py final --note TEXT --out FILE                 (the withheld family; FILE outside the tree)
 """
 from __future__ import annotations
 
@@ -436,6 +436,9 @@ def final(note, out_path) -> dict:
     if os.environ.get("NSF_BENCH_SRC") or cognition.REPO.resolve() != ROOT.resolve():
         raise SystemExit("final: run it on this checkout's own source (no NSF_BENCH_SRC, no installed copy), so the "
                          "ledger line is written here and names this tree")
+    if Path(out_path).resolve().is_relative_to(ROOT.resolve()):
+        raise SystemExit("final: write --out outside this checkout and copy it in afterwards: a new file in the tree "
+                         "after the first run would have the second run recorded as dirty")
     register_wave1()
     env = cognition.environment()
     if env["git_dirty"] or not env["git_commit"]:

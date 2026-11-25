@@ -4,8 +4,8 @@ Status: 2026-11-25. Deliverable D of the directive's §13: the task-level plan w
 and rollback. Wave 0 is integrated on branch `cognitive-genesis` (`76a478e`), reviewed twice and fixed; its final
 validation is recorded in [WAVE0.md](WAVE0.md). Wave 1 (lanes I, M, W, C, K) is **integrated (`3c2a3bc`), reviewed
 three times, fixed by three lanes and reconciled (`gen-rec1`)**; its record, with the shipped defaults and the
-benchmark on the reconciled tree, is [WAVE1.md](WAVE1.md). Its final validation and the one withheld run are still to
-be recorded there. Sources: the
+benchmark on the reconciled tree, is [WAVE1.md](WAVE1.md), which also records the re-review of the fixes, the final
+validation (`816fa12`) and the one look at the withheld family (§6.5, §7, §8). Sources: the
 handoff's build plan and rulings, the lane rules, the lane reports, [COGNITIVE_BENCHMARK.md](../quality/COGNITIVE_BENCHMARK.md),
 ADR-049 and ADR-050.
 
@@ -46,7 +46,8 @@ it"):
 | 1 | I instinct; M imagination; W workspace, self-model, continuity; C metacognition; K knowledge evolution | Wave 0 merged into `main` (the benchmark to measure against, the store to write imagined content to, the switch every new background activity obeys) | built on branches `gen-i`, `gen-m`, `gen-w`, `gen-c`, `gen-k` from `2aee516` |
 | 1 integration | order I, M, K (its migration is 18), C, W last (it surfaces the others) | Wave 0 in `main` | done: `3c2a3bc` on `genesis-wave1` |
 | 1 review and fixes | three independent reviews (security; core; runtime and benchmark integrity); fix lanes A, B, C (A appends migration 19, an index); reconciliation `gen-rec1` | Wave 1 integrated | done; [WAVE1.md](WAVE1.md) §6 |
-| After Wave 1 | final validation, one `--final` withheld run, deliverables E–J in `docs/genesis/`, the owner asked before the PR | Wave 1 reconciled | not started |
+| 1, closing | re-review of the fix round; fix lanes D and E; a second check; final validation; the one `--final` look at the withheld family | Wave 1 reconciled | done: [WAVE1.md](WAVE1.md) §6.5, §7, §8 |
+| 2 | the integration pass (directive §8), regression and cognitive UAT (§12), the recursive knowledge assessment, deliverables E–J in `docs/genesis/` | Wave 1 merged into `main` | not started |
 
 Per wave (the owner's standing instruction, 2026-11-25: "Proceed forward sequentially on waves after each is
 completed and validated with merges into main"): integrate → full validation (gate, browser suite, acceptance, guard
