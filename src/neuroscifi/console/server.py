@@ -104,12 +104,28 @@ def _inventory(c, p, q, b):
     measure = q.get("measure") in ("1", "true")   # the overview asks; the header, reloaded
     # after every teaching action, does not
     out = {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path, measure=measure)}
-    if q.get("self") in ("1", "true"):        # the overview's self-description panel (ADR-053); computed on request
-        from .. import self_description
-        record = self_description.build(c.db, c.path, c.now)
-        out["self"] = record
-        out["self_short"] = self_description.short(record)
+    if q.get("self") in ("1", "true"):        # kept for older pages; the console asks GET /api/self (review1 A1)
+        out |= _self_record(c)
     return out
+
+
+def _self_record(c) -> dict:
+    """{"self", "self_short"}; {"self": None, "self_error"} when the record cannot be built at all (each of its
+    fields already reports its own failure: self_description._guarded)."""
+    from .. import self_description
+    try:
+        record = self_description.build(c.db, c.path, c.now)
+        return {"self": record, "self_short": self_description.short(record)}
+    except Exception as exc:                  # noqa: BLE001 - the overview shows that it could not be read
+        return {"self": None, "self_short": None,
+                "self_error": f"the self-description could not be built ({type(exc).__name__})"}
+
+
+def _self(c, p, q, b):
+    """The self-description record (ADR-053) in its own request, so the header and the overview's other panels never
+    depend on it (review1 A1); computed on request, read-only."""
+    _query(q, ())
+    return {"state_version": store.state_version(c.db)} | _self_record(c)
 
 
 def _imagined(c, p, q, b):
@@ -657,6 +673,7 @@ def _phones_status(c, p, q, b):
 SEGMENT = r"([^/]+)"
 ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern, handler in (
     ("GET", "inventory", _inventory),
+    ("GET", "self", _self),
     ("GET", "imagined", _imagined),
     ("GET", "epochs", _epochs),
     ("POST", "epochs", _start_epoch),

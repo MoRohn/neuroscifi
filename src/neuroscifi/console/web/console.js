@@ -327,8 +327,7 @@ function confirmAction(title, text, okLabel) {
 
 async function loadHeader(measure = false) {
   // measure: also time the largest epoch's belief computation (overview only; the header reloads after every action)
-  // the overview also asks for the self-description record (ADR-053), which is computed on request
-  const inv = await api('GET', measure ? '/api/inventory?measure=1&self=1' : '/api/inventory');
+  const inv = await api('GET', measure ? '/api/inventory?measure=1' : '/api/inventory');
   state.semantics = inv.birth.action_semantics;
   $('instanceId').textContent = inv.birth.instance_id.slice(0, 8);
   $('instanceId').title = inv.birth.instance_id;
@@ -345,12 +344,12 @@ async function loadHeader(measure = false) {
 }
 
 async function loadOverview() {
-  const slots = ['selfdesc', 'recent', 'birth', 'regulation', 'inventory', 'development'].map($);
+  const slots = ['birth', 'regulation', 'inventory', 'development'].map($);
   loadResources();
   loadImagined();
+  loadSelf();   // its own request: the header and these panels never wait for it or fail with it (review1 A1)
   const inv = await load('overview', slots, () => loadHeader(true));
   if (!inv) return;
-  renderSelf(inv.self, inv.self_short);
   const b = inv.birth;
   fill($('birth'), kv([
     ['Instance id', h('code', { text: b.instance_id })],
@@ -413,14 +412,22 @@ function selfFields(rec, prefix = '', out = []) {
   for (const [key, node] of Object.entries(rec ?? {})) {
     if (!node || typeof node !== 'object' || Array.isArray(node)) continue;
     const path = prefix ? `${prefix}.${key}` : key;
-    if ('source' in node && 'value' in node) out.push([path, node.source, node.age_seconds == null ? 'undated' : `${Math.round(node.age_seconds)} s`]);
+    if ('source' in node && 'value' in node) out.push([path, node.source, node.error ? node.error : node.age_seconds == null ? 'undated' : `${Math.round(node.age_seconds)} s`]);
     else selfFields(node, path, out);
   }
   return out;
 }
 
-function renderSelf(rec, short) {
-  if (!rec) { fill($('selfdesc'), empty('Not available.')); fill($('recent'), empty('Not available.')); return; }
+async function loadSelf() {
+  const out = await load('self', [$('selfdesc'), $('recent')], () => api('GET', '/api/self'));
+  if (out) renderSelf(out.self, out.self_short, out.self_error);
+}
+
+function renderSelf(rec, short, error) {
+  if (!rec) {
+    const why = error ? `Could not be read just now: ${error}.` : 'Not available.';
+    fill($('selfdesc'), empty(why)); fill($('recent'), empty(why)); return;
+  }
   const tasks = fieldValue(rec, 'doing.tasks');
   const questions = fieldValue(rec, 'doing.questions');
   const mem = fieldValue(rec, 'knows.memory') ?? {};
@@ -437,7 +444,8 @@ function renderSelf(rec, short) {
     questions ? `${plural(questions.open, 'question')} waiting for you` : null,
     fieldValue(rec, 'doing.quiet') ? 'quiet is on: nothing runs unless you ask' : null].filter(Boolean).join('; ');
   const least = beliefs?.least_certain;
-  const unsure = [beliefs?.epoch ? (least === 'nothing' ? `every factor of epoch ${beliefs.epoch} is settled`
+  const unsure = [beliefs?.epoch ? (beliefs.readings === 0 ? `nothing has been read yet in epoch ${beliefs.epoch}`
+    : least === 'nothing' ? `every factor of epoch ${beliefs.epoch} is settled`
     : `least certain: ${least === 'mechanism' ? 'the mechanism' : String(least).replace(':', ' ')} (epoch ${beliefs.epoch})`) : 'no epoch yet',
     contra ? `${plural(contra.open_hypotheses, 'open contradiction')}` : null,
     preds ? `${plural(preds.unsettled, 'prediction')} not yet settled` : null].filter(Boolean).join('; ');

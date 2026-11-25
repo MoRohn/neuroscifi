@@ -28,8 +28,9 @@ listed by the self-description), but the owner is not interrupted for it.
 
 The salience seam: score(kind, signals) is a small local function over the producer's own counts (SIGNAL_WEIGHTS),
 1 - exp(-sum of weights). Where a finding's task was queued with lane I's salience record (webcortex/salience.py,
-ADR-051), autonomy.after_task passes that record's score as salience= and its explanation and source as
-salience_inputs=; score() stays the fallback (a monitor's finding, a task queued without a record).
+ADR-051), autonomy.after_task passes the higher of that record's score and score() over what the task found as
+salience=, and both with their inputs as salience_inputs= (review1 A7: the pre-task score alone ignored the finding);
+score() alone applies otherwise (a monitor's finding, a task queued without a record).
 """
 from __future__ import annotations
 
@@ -56,6 +57,7 @@ SIGNAL_WEIGHTS = {
     "new_claims": 0.15,               # a new corroborated subject
 }
 CAP = 5
+DECISIONS_READ = 2000           # log(): the latest decision events read at most (web_events_kind_time, schema 19)
 
 
 def mode(db) -> str:
@@ -86,8 +88,10 @@ def score(kind, signals) -> tuple[float, dict]:
 
 
 def _recent_broadcasts(db, now) -> int:
+    """Offers of the last hour that went out, or in mode log would have (review1 A8: log mode records "delivered"
+    as its outcome, so counting outcomes alone never showed the hourly limit)."""
     return db.execute("SELECT count(*) FROM web_events WHERE kind='decision' AND created_at>? AND "
-                      "json_extract(detail,'$.broadcast.outcome')='broadcast'", (now - 3600.0,)).fetchone()[0]
+                      "json_extract(detail,'$.broadcast.would')='broadcast'", (now - 3600.0,)).fetchone()[0]
 
 
 def _contention(db, now, scope) -> dict:
@@ -148,9 +152,11 @@ def log(db, *, limit=20) -> list[dict]:
     if not wstate.has_tables(db):
         return []
     out = []
+    # the latest DECISIONS_READ decision events, newest first, not the whole episode log (review1 A2)
     for task_id, detail, at in db.execute(
-            "SELECT task_id, detail, created_at FROM web_events WHERE kind='decision' AND "
-            "json_extract(detail,'$.broadcast') IS NOT NULL ORDER BY id DESC LIMIT ?", (int(limit),)):
+            "SELECT task_id, detail, created_at FROM (SELECT id, task_id, detail, created_at FROM web_events WHERE "
+            "kind='decision' ORDER BY created_at DESC, id DESC LIMIT ?) WHERE json_extract(detail,'$.broadcast') "
+            "IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT ?", (DECISIONS_READ, int(limit))):
         entry = (wstate.loads(detail, {}) or {}).get("broadcast") or {}
         out.append({"at": at, "task_id": task_id, **{k: entry.get(k) for k in
                                                      ("kind", "mode", "salience", "threshold", "outcome", "would",

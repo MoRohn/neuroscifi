@@ -53,6 +53,23 @@ def test_inventory_carries_the_record_only_when_asked(console):
     assert status == 200 and quick["gpu"] is None and quick["containers"] is None and "policy" in quick
 
 
+def test_the_record_has_its_own_request_and_never_takes_the_overview_down(console, monkeypatch):
+    """review1 A1: the record was bundled into the overview's inventory request, so one damaged part failed the header
+    and all six overview panels. GET /api/self serves it alone; a record that cannot be built at all is a message."""
+    srv, path = console
+    status, own = get(srv, "/api/self")
+    assert status == 200 and own["self"]["schema"] == sd.SCHEMA and own["self_short"]
+    assert own["self"]["state_version"] == own["state_version"]
+    assert get(srv, "/api/self?x=1")[0] == 400
+    monkeypatch.setattr(sd, "_build", lambda *a, **k: 1 / 0)
+    status, inv = get(srv, "/api/inventory?measure=1")                 # what the overview asks now
+    assert status == 200 and "self" not in inv and inv["regulation"]
+    status, broken = get(srv, "/api/self")
+    assert status == 200 and broken["self"] is None and "ZeroDivisionError" in broken["self_error"]
+    status, old = get(srv, "/api/inventory?measure=1&self=1")          # an older page's request still works
+    assert status == 200 and old["self"] is None and old["regulation"]
+
+
 def test_imagined_view_is_read_only_and_labelled(console):
     srv, path = console
     with closing(store.connect(path)) as db:

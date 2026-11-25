@@ -27,8 +27,19 @@ Sections and the five questions they answer (record["answers"] lists the field p
              device, status); Pocket sees the owner's only when the owner switched pocket_recent on
 
 Scope "family" (a Pocket pairing family) carries only what Pocket may already see (ADR-028): its own tasks, the global
-conditions Presence shows a phone (writes, memory level, quiet), its capabilities and the recent research it may see.
-Never the owner's questions, decisions, beliefs or tools.
+conditions Presence shows a phone (writes, memory level, quiet; whether background research may start, with a generic
+reason: never the audio state or the policy's own reason, which tell when the owner speaks), its capabilities and the
+recent research it may see. Never the owner's questions, decisions, beliefs or tools.
+
+Scope "agent" (the MCP self_status tool, review1 S1/S5): the owner scope restricted to what the owner's own research
+holds: tasks, questions, goals and recent research of the owner only (family IS NULL; never a Pocket family's), no
+absolute path, and every string that can come from the web (task objectives, goals, knowledge keys, autonomy
+objectives) inside the untrusted envelope (webcortex.safety.untrusted) the MCP server uses for retrieved content.
+
+Robustness (review1 A1, A4): build() reads in one read transaction (a deferred BEGIN, so a read-only connection works
+too): every field describes the same snapshot. Each field is built under its own guard: a part that cannot be read
+(a damaged setting row, a missing table) is that field with value None and an "error" naming the failure, and the
+rest of the record is built.
 
 short(record) -> a few plain sentences built from the record's values (the voice command "what are you doing" and the
 console's plain-words panel). consistency(db, path, record, now) -> the checks of the record against the existing
@@ -72,6 +83,22 @@ def _f(value, source, at, now) -> dict:
     return {"value": value, "source": source, "at": at, "age_seconds": age}
 
 
+def _guarded(source, now, make):
+    """make() -> a field (or a dict of fields); a failure becomes that one field with value None and its error, so one
+    damaged part never takes the record down (review1 A1)."""
+    try:
+        return make()
+    except Exception as exc:          # noqa: BLE001 - reported in the field, never raised into the reader
+        return {"value": None, "source": source, "at": None, "age_seconds": None,
+                "error": f"this part could not be read ({type(exc).__name__})"}
+
+
+def _untrusted(text, source) -> dict:
+    """Text that can come from the web, in the envelope the MCP server gives retrieved content (scope "agent")."""
+    from .webcortex.safety import untrusted
+    return untrusted(str(text), source)
+
+
 def _short(text, n=TEXT) -> str:
     text = " ".join(str(text or "").split())
     return text if len(text) <= n else text[: n - 1] + "…"
@@ -84,11 +111,14 @@ def _web(db) -> bool:
 
 # ---- doing ---------------------------------------------------------------------------------------------------------
 
-def _tasks(db, now, family=None) -> dict:
+def _tasks(db, now, family=None, own_only=False) -> dict:
+    """Running and queued research: a family's own (family), the owner's own (own_only: family IS NULL), or all."""
     from .presence.aggregator import _origin_class
     where, args = "", []
     if family is not None:
         where, args = " AND family=?", [family]
+    elif own_only:
+        where = " AND family IS NULL"
     active = f"status NOT IN ('completed','partial','failed','cancelled'){where}"
     # a proposal (stage 'proposed') waits for the owner's yes and is counted through its question, as Presence does
     running, queued, proposed, at = db.execute(
@@ -106,9 +136,26 @@ def _tasks(db, now, family=None) -> dict:
               "web_tasks (status, stage, origin)", at if at is not None else now, now)
 
 
-def _questions(db, now) -> dict:
+def _family_scopes(db, rows) -> set:
+    """The scopes of `rows` (pending rows, scope third) that name a Pocket family's research task."""
+    parts = {p for r in rows if str(r[2] or "").startswith("web:") for p in str(r[2]).split(":")[2:] if p}
+    if not parts or not _web(db):
+        return set()
+    family = set()
+    listed = sorted(parts)
+    for i in range(0, len(listed), 300):
+        chunk = listed[i:i + 300]
+        family |= {t for (t,) in db.execute(f"SELECT id FROM web_tasks WHERE family IS NOT NULL AND id IN "
+                                            f"({','.join('?' * len(chunk))})", chunk)}
+    return {r[2] for r in rows if str(r[2] or "").startswith("web:") and family & set(str(r[2]).split(":")[2:])}
+
+
+def _questions(db, now, own_only=False) -> dict:
     rows = db.execute("SELECT id, kind, scope, epoch, created_at FROM pending WHERE resolved_at IS NULL "
                       "ORDER BY created_at DESC, id DESC").fetchall()
+    if own_only:                       # never a question about a Pocket family's research
+        theirs = _family_scopes(db, rows)
+        rows = [r for r in rows if r[2] not in theirs]
     items = [{"id": i, "kind": k, "scope": s, "epoch": e, "created_at": t} for i, k, s, e, t in rows[:MAX_ITEMS]]
     web = sum(1 for r in rows if str(r[2] or "").startswith("web:"))
     at = rows[0][4] if rows else now
@@ -159,7 +206,10 @@ def _beliefs(db, epoch, now) -> dict:
     from .instance import beliefs
     source = "instance.beliefs.compute (exact posterior, computed on read)"
     if epoch is None:
-        return _f({"epoch": None, "least_certain": None, "factors": []}, source, now, now)
+        return _f({"epoch": None, "least_certain": None, "factors": [], "readings": 0}, source, now, now)
+    readings = db.execute("SELECT count(*) FROM evidence WHERE epoch=?", (epoch,)).fetchone()[0]
+    if schema_consolidated(db):
+        readings += db.execute("SELECT count(*) FROM evidence_consolidated WHERE epoch=?", (epoch,)).fetchone()[0]
     result = beliefs.compute(db, epoch)
     margin = beliefs.IDENTIFIABLE_MARGIN
     factors = [{"scope": "mechanism", "p_inverted": result["mechanism"]["p_inverted"],
@@ -181,8 +231,13 @@ def _beliefs(db, epoch, now) -> dict:
         least = open_[0]["scope"] if open_ else "nothing"
     factors.sort(key=lambda f: (f["distance_from_even"], f["scope"]))
     newest = db.execute("SELECT max(recorded_at) FROM evidence WHERE epoch=?", (epoch,)).fetchone()[0]
-    return _f({"epoch": epoch, "least_certain": least, "margin": margin, "factors": factors[:MAX_ITEMS]}, source,
-              newest if newest is not None else now, now)
+    return _f({"epoch": epoch, "least_certain": least, "margin": margin, "factors": factors[:MAX_ITEMS],
+               "readings": readings}, source, newest if newest is not None else now, now)
+
+
+def schema_consolidated(db) -> bool:
+    from .instance import schema
+    return schema.has_consolidated(db)
 
 
 def _contradictions(db, now) -> dict:
@@ -221,7 +276,12 @@ def _predictions(db, now) -> dict:
 def _locality(url) -> str:
     from urllib.parse import urlsplit
     import ipaddress
-    host = (urlsplit(url).hostname or "").lower() if url else ""
+    if not isinstance(url, str) or not url:         # a damaged settings row holds anything (review1 A1)
+        return "not configured"
+    try:
+        host = (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return "not readable"
     if not host:
         return "not configured"
     try:
@@ -290,40 +350,71 @@ def _devices(db, path, now) -> dict:
               "autonomy_nodes + the Pocket pairing file <db>.pocket.sqlite (read-only; None = not found)", now, now)
 
 
-def _limits(db, path, resources, epoch, now) -> dict:
+FAMILY_GATE_REASON = "background research is waiting for now; your own requests still run"
+
+
+def _limits(db, path, resources, epoch, now, *, family=False) -> dict:
+    """The limits, each its own guarded field. family: the background gate's allowed flag with a generic reason only
+    (its own reason names the owner's audio: review1 S6), and nothing but writes and that gate."""
     from .instance import store
     from .webcortex import autonomy, state as wstate
-    cfg = store.config(db)
-    allowed, why = store.write_allowed(db, path)
-    gate = ((resources.get("policy") or {}).get("background_research") or {})
-    out = {"writes": _f({"allowed": allowed, "reason": why}, "instance.store.write_allowed", now, now),
-           "background_research": _f({"allowed": gate.get("allowed"), "reason": gate.get("reason")},
-                                     "resources.policy.background_gate (audio, memory pressure)",
-                                     resources.get("measured_at") or now, now),
-           "journal": _f({"evidence_rows": db.execute("SELECT count(*) FROM evidence").fetchone()[0],
-                          "max_evidence_rows": cfg.max_evidence_rows, "min_free_bytes": cfg.min_free_bytes},
-                         "instance settings + evidence journal", now, now)}
-    asked = None
-    if epoch is not None:
-        window = cfg.ask_budget_window_seconds
-        asked = db.execute("SELECT count(*) FROM pending WHERE epoch=? AND kind IN ('ask','calibrate')"
-                           + (" AND created_at>?" if window else ""),
-                           (epoch, now - window) if window else (epoch,)).fetchone()[0]
-    out["ask_budget"] = _f({"per_epoch": cfg.ask_budget_per_epoch, "window_seconds": cfg.ask_budget_window_seconds,
-                            "used_in_current_epoch": asked}, "instance settings + pending (executive ask budget)",
-                           now, now)
+
+    def writes():
+        allowed, why = store.write_allowed(db, path)
+        return _f({"allowed": allowed, "reason": why}, "instance.store.write_allowed", now, now)
+
+    def gate():
+        if resources is None:
+            raise LookupError("resources.status could not be read")
+        g = ((resources.get("policy") or {}).get("background_research") or {})
+        allowed = g.get("allowed")
+        reason = g.get("reason") if not family else None if allowed or allowed is None else FAMILY_GATE_REASON
+        return _f({"allowed": allowed, "reason": reason},
+                  "resources.policy.background_gate (audio, memory pressure)", resources.get("measured_at") or now,
+                  now)
+
+    out = {"writes": _guarded("instance.store.write_allowed", now, writes),
+           "background_research": _guarded("resources.policy.background_gate", now, gate)}
+    if family:
+        return out
+
+    def journal():
+        cfg = store.config(db)
+        return _f({"evidence_rows": db.execute("SELECT count(*) FROM evidence").fetchone()[0],
+                   "max_evidence_rows": cfg.max_evidence_rows, "min_free_bytes": cfg.min_free_bytes},
+                  "instance settings + evidence journal", now, now)
+
+    def ask_budget():
+        cfg = store.config(db)
+        asked = None
+        if epoch is not None:
+            window = cfg.ask_budget_window_seconds
+            asked = db.execute("SELECT count(*) FROM pending WHERE epoch=? AND kind IN ('ask','calibrate')"
+                               + (" AND created_at>?" if window else ""),
+                               (epoch, now - window) if window else (epoch,)).fetchone()[0]
+        return _f({"per_epoch": cfg.ask_budget_per_epoch, "window_seconds": cfg.ask_budget_window_seconds,
+                   "used_in_current_epoch": asked}, "instance settings + pending (executive ask budget)", now, now)
+
+    out["journal"] = _guarded("instance settings + evidence journal", now, journal)
+    out["ask_budget"] = _guarded("instance settings + pending (executive ask budget)", now, ask_budget)
     if _web(db):
-        status = autonomy.status(db, now)
-        wcfg = wstate.get_config(db)
-        open_web = db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:%'"
-                              ).fetchone()[0]
-        out["autonomy"] = _f({"enabled": status["enabled"], "switch": status["switch"],
-                              "remaining": {"autonomous": status["autonomous"]["remaining"],
-                                            "user": status["user"]["remaining"]},
-                              "refusal": status["autonomous"]["refusal"], "day": status["day"]},
-                             "webcortex.autonomy.status (daily budgets, recorded switch)", now, now)
-        out["web_questions"] = _f({"open": open_web, "max_open": wcfg.max_open_web_questions},
-                                  "pending (scope web:...) + web settings", now, now)
+        def auto():
+            # the parts of autonomy.status this field shows, without its list of recent decisions: that list scans
+            # every decision event of the episode log (27 ms at 500,000 events) and is not shown here (review1 A2)
+            pol = autonomy.policy(db)
+            mine, theirs = (autonomy._scope_status(db, scope, now, pol) for scope in ("autonomous", "user"))
+            return _f({"enabled": autonomy.enabled(db), "switch": wstate.get_config(db).autonomous,
+                       "remaining": {"autonomous": mine["remaining"], "user": theirs["remaining"]},
+                       "refusal": mine["refusal"], "day": autonomy.day_of(now)},
+                      "webcortex.autonomy.status (daily budgets, recorded switch)", now, now)
+
+        def web_questions():
+            open_web = db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL AND scope LIKE 'web:%'"
+                                  ).fetchone()[0]
+            return _f({"open": open_web, "max_open": wstate.get_config(db).max_open_web_questions},
+                      "pending (scope web:...) + web settings", now, now)
+        out["autonomy"] = _guarded("webcortex.autonomy.status", now, auto)
+        out["web_questions"] = _guarded("pending (scope web:...) + web settings", now, web_questions)
     return out
 
 
@@ -361,11 +452,15 @@ def _executive_recorded(db, now) -> dict:
     return _f(items, "decisions (recorded by the executive, with their reasons)", rows[0][5] if rows else None, now)
 
 
+DECISIONS_READ = 2000     # the latest decision events read at most (web_events_kind_time, schema 19; review1 A2)
+
+
 def _autonomy_decisions(db, now) -> dict:
     out = []
     for task_id, detail, at in db.execute(
-            "SELECT task_id, detail, created_at FROM web_events WHERE kind='decision' AND "
-            "json_extract(detail,'$.autonomy') IS NOT NULL ORDER BY id DESC LIMIT 5"):
+            "SELECT task_id, detail, created_at FROM (SELECT id, task_id, detail, created_at FROM web_events WHERE "
+            "kind='decision' ORDER BY created_at DESC, id DESC LIMIT ?) WHERE json_extract(detail,'$.autonomy') IS "
+            "NOT NULL ORDER BY created_at DESC, id DESC LIMIT 5", (DECISIONS_READ,)):
         value = (_json(detail) or {}).get("autonomy")
         if isinstance(value, dict):
             what, reason = "queued an investigation", value.get("objective")
@@ -384,10 +479,13 @@ def _broadcast_decisions(db, now) -> dict:
 
 # ---- the other Wave 1 records (integration): each read from its own module, with its source and age ----------------
 
-def _internal_state(db, path, now) -> dict:
-    """Lane I's internal-state record (ADR-051), numbers only; each of its fields carries its own source and age."""
+def _internal_state(db, path, now, *, agent=False) -> dict:
+    """Lane I's internal-state record (ADR-051), numbers only; each of its fields carries its own source and age.
+    Without the per-item knowledge staleness (`nsf internal-state` has it; review1 A2); scope agent: no file path."""
     from . import internal_state
-    snap = internal_state.snapshot(db, str(path) if path else None, now)
+    snap = internal_state.snapshot(db, str(path) if path else None, now, staleness=False)
+    if agent:
+        snap["history"].pop("file", None)
     return _f(snap, "internal_state.snapshot (ADR-051; `nsf internal-state`)", snap.get("at"), now)
 
 
@@ -457,11 +555,12 @@ def _json(text):
 
 # ---- recent (continuity) -------------------------------------------------------------------------------------------
 
-def recent(db, now, *, family=None, include_owner=False, limit=RECENT_ITEMS) -> list[dict]:
+def recent(db, now, *, family=None, include_owner=False, own_only=False, limit=RECENT_ITEMS) -> list[dict]:
     """What we were just doing: the latest research a person asked for, newest first, by reference only (task id,
     the question as asked, device, status, time). Owner (family None): every person-asked task, from every device.
     A Pocket family: its own tasks, and the owner's only with include_owner (the owner's pocket_recent switch); an
-    owner task is then a reference the phone cannot open (its routes stay family-scoped)."""
+    owner task is then a reference the phone cannot open (its routes stay family-scoped). own_only (scope agent):
+    the owner's own tasks only (family IS NULL)."""
     from .webcortex.orchestrator import USER_ORIGIN_PREFIXES, USER_ORIGINS
     if not _web(db):
         return []
@@ -472,6 +571,8 @@ def recent(db, now, *, family=None, include_owner=False, limit=RECENT_ITEMS) -> 
     if family is not None:
         person += " AND (family=?" + (" OR family IS NULL)" if include_owner else ")")
         args.append(family)
+    elif own_only:
+        person += " AND family IS NULL"
     rows = db.execute("SELECT id, objective, status, origin, family, created_at, finished_at FROM web_tasks WHERE "
                       f"{person} ORDER BY created_at DESC, rowid DESC LIMIT ?", (*args, int(limit))).fetchall()
     return [{"task_id": tid, "objective": _short(objective), "status": status,
@@ -482,86 +583,177 @@ def recent(db, now, *, family=None, include_owner=False, limit=RECENT_ITEMS) -> 
 
 # ---- the record ----------------------------------------------------------------------------------------------------
 
+SCOPES = ("owner", "agent", "family")
+
+
 def build(db, path, now, *, scope="owner", family=None) -> dict:
     """The self-description record (see the module docstring). `path`: the instance file (free-space check, the
-    resources folder, the Pocket pairing file); `family`: the Pocket family digest for scope 'family'."""
+    resources folder, the Pocket pairing file); `family`: the Pocket family digest for scope 'family'; scope 'agent':
+    the MCP client's view. One read transaction (a deferred BEGIN: a read-only connection works too) unless the
+    caller already holds one, so every field describes the same snapshot (review1 A4); nothing is written."""
+    if scope not in SCOPES or (scope == "family") != (family is not None):
+        raise ValueError("scope 'family' needs a family digest; scope 'owner' and 'agent' none")
+    own = not db.in_transaction
+    if own:
+        db.execute("BEGIN")
+    try:
+        return _build(db, path, now, scope, family)
+    finally:
+        if own and db.in_transaction:
+            db.execute("ROLLBACK")          # read only: there is nothing to keep
+
+
+def _goals(db, now, own_only) -> list[str]:
+    """autonomy.goals; own_only (scope agent): the same list from the owner's own research only."""
+    from .webcortex import autonomy
+    if not own_only:
+        return autonomy.goals(db, now)
+    out = [t for (t,) in db.execute("SELECT topic FROM web_monitors WHERE status='active' AND authorized_by='owner'")]
+    out += [o for o, origin in db.execute("SELECT objective, origin FROM web_tasks WHERE created_at>=? AND family IS "
+                                          f"NULL AND NOT {autonomy.AUTONOMOUS_SQL} ORDER BY created_at DESC LIMIT 100",
+                                          (now - autonomy.GOAL_WINDOW,)) if not str(origin).startswith("monitor:")]
+    return out
+
+
+def _build(db, path, now, scope, family) -> dict:
     from . import __version__, resources as res
     from .instance import store
-    if scope not in ("owner", "family") or (scope == "family") != (family is not None):
-        raise ValueError("scope 'family' needs a family digest; scope 'owner' none")
-    owner = scope == "owner"
+    owner = scope != "family"              # owner and agent
+    agent = scope == "agent"
+    g = lambda source, make: _guarded(source, now, make)  # noqa: E731
     version = store.state_version(db)
-    resources = res.status(str(path) if path else None, full=False)
+    try:
+        resources = res.status(str(path) if path else None, full=False)
+    except Exception:                      # noqa: BLE001 - reported in the resources field
+        resources = None
     web = _web(db)
-    epoch, epoch_at = current_epoch(db)
-    birth = store.birth(db)
+    try:
+        epoch, epoch_at = current_epoch(db)
+    except Exception:                      # noqa: BLE001 - the epoch's fields report it
+        epoch = epoch_at = None
     record = {"schema": SCHEMA, "scope": scope, "built_at": now, "state_version": version,
               "note": "functional self-description from stored records; every field names its source and age; "
                       "no field is text a model wrote"}
-    doing = {"quiet": _quiet(db, now)}
+    doing = {"quiet": g("background.quiet", lambda: _quiet(db, now))}
     if web:
-        doing["tasks"] = _tasks(db, now, family)
+        doing["tasks"] = g("web_tasks", lambda: _tasks(db, now, family, own_only=agent))
     if owner:
-        doing["questions"] = _questions(db, now)
+        doing["questions"] = g("pending", lambda: _questions(db, now, own_only=agent))
         doing["epoch"] = _f(epoch, "epochs (most recently started)", epoch_at, now)
         if web:
-            from .webcortex import autonomy
-            doing["goals"] = _f([_short(g) for g in autonomy.goals(db, now)[:MAX_ITEMS]],
-                                "webcortex.autonomy.goals (active owner monitors; research the owner asked for in the "
-                                "last 7 days)", now, now)
+            doing["goals"] = g("webcortex.autonomy.goals", lambda: _f(
+                [_short(x) for x in _goals(db, now, agent)[:MAX_ITEMS]],
+                "webcortex.autonomy.goals (active owner monitors; research the owner asked for in the last 7 days)"
+                + ("; the owner's own research only" if agent else ""), now, now))
     record["doing"] = doing
-    level = {"level": resources["level"], "reasons": resources["reasons"],
-             "audio_active": resources["audio_active"],
-             "background_model_slots": (resources.get("policy") or {}).get("background_model_slots")}
-    record["resources"] = _f(level, "resources.status (nsf resources, GET /api/resources; full=False)",
-                             resources.get("measured_at") or now, now)
-    limits = _limits(db, path, resources, epoch, now)
+
+    def level():
+        if resources is None:
+            raise LookupError("resources.status could not be read")
+        value = {"level": resources["level"], "reasons": resources["reasons"]}
+        if owner:                          # the audio state and slots tell when the owner speaks (review1 S6)
+            value |= {"audio_active": resources["audio_active"],
+                      "background_model_slots": (resources.get("policy") or {}).get("background_model_slots")}
+        return _f(value, "resources.status (nsf resources, GET /api/resources; full=False)",
+                  resources.get("measured_at") or now, now)
+    record["resources"] = g("resources.status", level)
+    limits = _limits(db, path, resources, epoch, now, family=not owner)
     if owner:
-        record["knows"] = {"memory": _f(store.inventory(db)["memory"], "instance.store.inventory (nsf birth)", now,
-                                        now)}
+        record["knows"] = {"memory": g("instance.store.inventory", lambda: _f(
+            store.inventory(db)["memory"], "instance.store.inventory (nsf birth)", now, now))}
         if web:
             from .webcortex import state as wstate
-            record["knows"]["knowledge"] = _f(wstate.counts(db), "webcortex.state.counts (web memory)", now, now)
-        record["internal_state"] = _internal_state(db, path, now)
-        uncertain = {"beliefs": _beliefs(db, epoch, now)}
+            record["knows"]["knowledge"] = g("webcortex.state.counts", lambda: _f(
+                wstate.counts(db), "webcortex.state.counts (web memory)", now, now))
+        record["internal_state"] = g("internal_state.snapshot", lambda: _internal_state(db, path, now, agent=agent))
+        uncertain = {"beliefs": g("instance.beliefs.compute", lambda: _beliefs(db, epoch, now))}
         if web:
-            uncertain |= {"contradictions": _contradictions(db, now), "low_confidence": _low_confidence(db, now),
-                          "predictions": _predictions(db, now), "answers": _answer_monitoring(db, now),
-                          "to_recheck": _to_recheck(db, now)}
+            uncertain |= {"contradictions": g("web_hypotheses", lambda: _contradictions(db, now)),
+                          "low_confidence": g("web_knowledge", lambda: _low_confidence(db, now)),
+                          "predictions": g("web_predictions", lambda: _predictions(db, now)),
+                          "answers": g("web_tasks.result monitoring record", lambda: _answer_monitoring(db, now)),
+                          "to_recheck": g("web_rechecks", lambda: _to_recheck(db, now))}
         record["uncertain"] = uncertain
-        record["can"] = {"capabilities": {"models": _models(db, path, resources, now), "speech": _speech(db, now),
-                                          "devices": _devices(db, path, now), "imagination": _imagination(db, now)},
-                         "limits": limits, "tools": _tools(now)}
+        record["can"] = {"capabilities": {
+            "models": g("inference config rows", lambda: _models(db, path, resources or {}, now)),
+            "speech": g("voice settings", lambda: _speech(db, now)),
+            "devices": g("autonomy_nodes + the Pocket pairing file", lambda: _devices(db, path, now)),
+            "imagination": g("InstanceConfig imagine_*", lambda: _imagination(db, now))},
+            "limits": limits, "tools": g("inference.tools, webcortex.mcp, voice.commands", lambda: _tools(now))}
         if web:
-            record["can"]["capabilities"]["search"] = _search(db, now)
-        record["decisions"] = {"executive_now": _executive_now(db, path, epoch, now),
-                               "executive_recorded": _executive_recorded(db, now)}
+            record["can"]["capabilities"]["search"] = g("web settings", lambda: _search(db, now))
+        record["decisions"] = {
+            "executive_now": g("instance.executive.decide", lambda: _executive_now(db, path, epoch, now)),
+            "executive_recorded": g("decisions", lambda: _executive_recorded(db, now))}
         if web:
-            record["decisions"] |= {"autonomy": _autonomy_decisions(db, now),
-                                    "broadcast": _broadcast_decisions(db, now),
-                                    "improvement_ledger": _improvement_ledger(db, now)}
-        from .inference import config as iconfig
-        models = {p: (iconfig.get_config(db, p).model or None) for p in iconfig.PROVIDERS}
-        record["provenance"] = {
-            "software": _f({"version": __version__, "schema_version": birth.get("schema_version"),
-                            "software_at_birth": birth.get("software_version"), "instance_id": birth["instance_id"],
-                            "models": models}, "neuroscifi.__version__, birth record, inference config", now, now),
-            "counts": _provenance_counts(db, now)}
+            record["decisions"] |= {
+                "autonomy": g("web_events kind=decision (autonomy)", lambda: _autonomy_decisions(db, now)),
+                "broadcast": g("web_events kind=decision (broadcast)", lambda: _broadcast_decisions(db, now)),
+                "improvement_ledger": g("improvement_ledger", lambda: _improvement_ledger(db, now))}
+        record["provenance"] = {"software": g("neuroscifi.__version__, birth record, inference config",
+                                              lambda: _software(db, now, __version__)),
+                                "counts": g("evidence, web_* and imagined tables", lambda: _provenance_counts(db, now))}
         record["answers"] = ANSWERS
     else:
-        caps = {"search": _search(db, now)} if web else {}
-        record["can"] = {"capabilities": caps, "limits": {"writes": limits["writes"],
-                                                          "background_research": limits["background_research"]}}
+        record["can"] = {"capabilities": {"search": g("web settings", lambda: _search(db, now))} if web else {},
+                         "limits": limits}
         record["provenance"] = {"software": _f({"version": __version__}, "neuroscifi.__version__", now, now)}
         record["answers"] = FAMILY_ANSWERS
     if web:
-        from .webcortex import state as wstate
-        share = bool(getattr(wstate.get_config(db), "pocket_recent", False))
-        items = recent(db, now, family=family, include_owner=share and not owner)
-        record["recent"] = _f(items, "web_tasks asked for by a person (by reference)"
-                              + ("" if owner else "; the owner's only with the pocket_recent switch"),
-                              items[0]["at"] if items else None, now)
+        def recent_field():
+            from .webcortex import state as wstate
+            share = bool(getattr(wstate.get_config(db), "pocket_recent", False))
+            items = recent(db, now, family=family, include_owner=share and not owner, own_only=agent)
+            return _f(items, "web_tasks asked for by a person (by reference)"
+                      + ("" if owner else "; the owner's only with the pocket_recent switch")
+                      + ("; the owner's own research only" if agent else ""), items[0]["at"] if items else None, now)
+        record["recent"] = g("web_tasks asked for by a person", recent_field)
+    if agent:
+        _agent_view(record)
     return record
+
+
+def _software(db, now, version) -> dict:
+    from .inference import config as iconfig
+    from .instance import store
+    birth = store.birth(db)
+    models = {}
+    for provider in iconfig.PROVIDERS:
+        try:
+            models[provider] = iconfig.get_config(db, provider).model or None
+        except Exception:                  # noqa: BLE001 - a damaged settings row: that model is not named
+            models[provider] = None
+    return _f({"version": version, "schema_version": birth.get("schema_version"),
+               "software_at_birth": birth.get("software_version"), "instance_id": birth["instance_id"],
+               "models": models}, "neuroscifi.__version__, birth record, inference config", now, now)
+
+
+def _agent_view(record) -> None:
+    """Scope agent: every string that can come from the web goes inside the untrusted envelope (review1 S5)."""
+    source = "neuroscifi:self-description/"
+
+    def each(path, key=None):
+        node = record
+        for part in path.split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+        items = node.get("value") if isinstance(node, dict) else None
+        if isinstance(items, dict):
+            items = items.get("items")
+        if not isinstance(items, list):
+            return
+        for i, item in enumerate(items):
+            if key is None and isinstance(item, str):
+                items[i] = _untrusted(item, source + path)
+            elif isinstance(item, dict):
+                for k in (key if isinstance(key, tuple) else (key,)):
+                    if isinstance(item.get(k), str):
+                        item[k] = _untrusted(item[k], source + path)
+    each("doing.tasks", "objective")
+    each("doing.goals")
+    each("uncertain.contradictions", "key")
+    each("uncertain.low_confidence", "key")
+    each("decisions.autonomy", ("what", "detail"))
+    each("recent", "objective")
 
 
 def value(record, dotted):
@@ -598,7 +790,9 @@ def short(record) -> list[str]:
     beliefs = value(record, "uncertain.beliefs")
     if beliefs and beliefs.get("epoch"):
         least = beliefs["least_certain"]
-        if least == "nothing":
+        if beliefs.get("readings") == 0:              # nothing to be certain or uncertain about (review1 A16)
+            out.append(f"In epoch {beliefs['epoch']} nothing has been read yet.")
+        elif least == "nothing":
             out.append(f"In epoch {beliefs['epoch']} every factor is settled.")
         else:
             what = "the mechanism" if least == "mechanism" else least.replace(":", " ")
@@ -640,32 +834,36 @@ def consistency(db, path, record, now) -> dict:
         if got != want:
             out["mismatches"].append({"field": name, "record": got, "source": want})
 
+    def part(dotted, key=None):
+        """The value at the path (and key); None where the record could not read it (a field with an error)."""
+        got = value(record, dotted)
+        return got if key is None else got.get(key) if isinstance(got, dict) else None
+
     reg = store.regulation(db, path)
     if record["scope"] == "owner":
-        check("doing.questions.open", value(record, "doing.questions")["open"], reg["open_questions"])
+        check("doing.questions.open", part("doing.questions", "open"), reg["open_questions"])
         check("knows.memory", value(record, "knows.memory"), store.inventory(db)["memory"])
         if _web(db):
             from .presence import aggregator
             from .webcortex import autonomy
             signals = aggregator.derive(db, str(path) if path else None, now, worker_alive=True)["signals"]
-            tasks = value(record, "doing.tasks")
-            check("doing.tasks.running", tasks["running"], signals["running"])
-            check("doing.tasks.queued", tasks["queued"], signals["queued"])
+            check("doing.tasks.running", part("doing.tasks", "running"), signals["running"])
+            check("doing.tasks.queued", part("doing.tasks", "queued"), signals["queued"])
             status = autonomy.status(db, now)
-            auto = value(record, "can.limits.autonomy")
-            check("can.limits.autonomy.enabled", auto["enabled"], status["enabled"])
-            check("can.limits.autonomy.remaining", auto["remaining"]["autonomous"],
+            check("can.limits.autonomy.enabled", part("can.limits.autonomy", "enabled"), status["enabled"])
+            check("can.limits.autonomy.remaining", (part("can.limits.autonomy", "remaining") or {}).get("autonomous"),
                   status["autonomous"]["remaining"])
-        check("can.limits.journal.max_evidence_rows", value(record, "can.limits.journal")["max_evidence_rows"],
+        check("can.limits.journal.max_evidence_rows", part("can.limits.journal", "max_evidence_rows"),
               reg["config"]["max_evidence_rows"])
-    check("can.limits.writes.allowed", value(record, "can.limits.writes")["allowed"], reg["writes_allowed"])
+    check("can.limits.writes.allowed", part("can.limits.writes", "allowed"), reg["writes_allowed"])
     check("doing.quiet", value(record, "doing.quiet"), reg["config"]["quiet"])
     fresh = res.status(str(path) if path else None, full=False)
-    check("resources.level", value(record, "resources")["level"], fresh["level"])
-    check("resources.audio_active", value(record, "resources")["audio_active"], fresh["audio_active"])
-    check("can.limits.background_research.allowed", value(record, "can.limits.background_research")["allowed"],
+    check("resources.level", part("resources", "level"), fresh["level"])
+    if record["scope"] != "family":        # a family's record does not carry the audio state (review1 S6)
+        check("resources.audio_active", part("resources", "audio_active"), fresh["audio_active"])
+    check("can.limits.background_research.allowed", part("can.limits.background_research", "allowed"),
           fresh["policy"]["background_research"]["allowed"])
     return out
 
 
-__all__ = ["ANSWERS", "SCHEMA", "build", "consistency", "current_epoch", "recent", "short", "value"]
+__all__ = ["ANSWERS", "SCHEMA", "SCOPES", "build", "consistency", "current_epoch", "recent", "short", "value"]

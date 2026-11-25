@@ -777,6 +777,13 @@ MIGRATIONS = [
     CREATE TRIGGER IF NOT EXISTS improvement_ledger_append_only BEFORE UPDATE ON improvement_ledger
       BEGIN SELECT RAISE(ABORT,'the improvement ledger is append-only'); END;
     """,
+    # ---- version 19 (review1 A2/A3: the request-path reads of web_events by kind and time) ----------------------
+    """
+    -- Presence's recent predictions and findings, the selective broadcast's hourly count, the autonomy windows and
+    -- the self-description's latest decisions read web_events by kind and a recent time; without this index each
+    -- scanned the whole episode log (500,000 events: about 40 ms per Presence poll). Additive, no data changes.
+    CREATE INDEX IF NOT EXISTS web_events_kind_time ON web_events(kind, created_at);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

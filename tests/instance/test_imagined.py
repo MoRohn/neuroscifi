@@ -74,9 +74,11 @@ def test_the_migration_changes_no_row_of_a_version_16_file_and_later_ones_follow
 
 def test_version_17_is_the_imagined_store_and_version_18_the_knowledge_tables_last():
     """Wave 1 integration: the imagined store stays version 17 exactly as Wave 0 left it; lane K's migration (found by
-    its content) is appended after it as version 18, the last."""
+    its content) is appended after it as version 18. Later migrations only append (review1 A2/A3 added an index:
+    found by its content, after 18)."""
     k = next(i for i, script in enumerate(schema.MIGRATIONS) if "CREATE TABLE IF NOT EXISTS web_premises" in script)
-    assert _migration() + 1 == 17 and k + 1 == 18 == len(schema.MIGRATIONS) == schema.SCHEMA_VERSION
+    index = next(i for i, script in enumerate(schema.MIGRATIONS) if "web_events_kind_time" in script)
+    assert _migration() + 1 == 17 and k + 1 == 18 and k < index and len(schema.MIGRATIONS) == schema.SCHEMA_VERSION
 
 
 # What the first, unreleased build of migration 17 left (review0 M2/L1/L4, M1): reference triggers that tested free
