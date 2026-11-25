@@ -270,7 +270,9 @@ def _decide(db, epoch, now, record, path):
                    (epoch, version, decision, scope, reason, now))
     out = {"decision": decision, "scope": scope, "reason": reason, "pending_id": pending_id,
            "asks_used": asks_used, "ask_budget": budget, "ask_budget_window_seconds": window,
-           "closed_pending": closed, "expired_pending": expired, "rule": rule}
+           "closed_pending": closed, "expired_pending": expired}
+    if rule != "rules-v1":      # review1 CL9: the decision of the default rule is exactly as before ADR-051
+        out["rule"] = rule
     if "assessed" in seen and cfg.decision_information:
         # ADR-051, shown beside the decision and never changing it: the exact expected information gain of each
         # question it could ask, and whether it rests on a matched earlier setup (habitual) or its own evidence

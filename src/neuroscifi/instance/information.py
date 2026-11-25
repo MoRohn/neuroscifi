@@ -21,8 +21,12 @@ RULES              "rules-v1" is the executive's fixed rule order (executive._po
                    keeps rules 1-4b (writes paused, change suspected, no evidence, an earlier setup matches) and
                    replaces 5-7 (reference when the mechanism is unidentifiable, then the most ambiguous partner,
                    else act) by: the subject with the greatest score, if it reaches MIN_SCORE bits; else act. A
-                   partner question already answered is not asked again within 3 new events (as in rules-v1). The
-                   owner adopts a version with `nsf config --executive-rule`; no version is ever edited.
+                   partner is scored by what its next words teach about its own convention (`own_bits`, not the
+                   mechanism) and is asked only while its meaning is ambiguous as rule 6 defines it (at least 4
+                   words, |p - .5| < .37); a partner question already answered is not asked again within 3 new events
+                   (as in rules-v1). The owner adopts a version with `nsf config --executive-rule`. (information-v1
+                   was amended before any release, review1 Q1: it asked partners whose meaning was settled, for what
+                   their words teach about the mechanism, and partners with fewer than 4 words.)
 processing(...)    Habitual or deliberate: a decision in an epoch that continues a matched earlier setup (an epoch
                    link, rule 4b answered "continue") reuses that setup's calibration (habitual); otherwise it rests on
                    the epoch's own evidence (deliberate). A change suspected in a linked epoch means the habit may no
@@ -71,25 +75,46 @@ def _with(factors, key, m, n0, n1):
     return out
 
 
-def _eig(factors, segments, key, k=READINGS) -> float:
-    """Exact mutual information (bits) between the hidden bits and k readings of `key` (see the module doc)."""
-    base = beliefs._infer(factors, segments)["log_marginal"]
-    m = segments - 1
-    h_y = 0.0
+def _own(inference, key) -> float:
+    """P(the factor's own bit = 1) under an inference (0.5 for a factor it does not hold)."""
+    given = inference["conditional"].get(key)
+    return 0.5 if given is None else beliefs._factor_p(inference, given[0])
+
+
+def _eig_parts(factors, segments, key, k=READINGS) -> tuple[float, float]:
+    """(joint, own): the exact mutual information (bits) between k readings of `key` and all the hidden bits (see the
+    module doc), and between them and the factor's own bit alone (a camera's alignment, a partner's convention):
+    H(own) - E_Y H(own | Y), from the same exact posteriors."""
+    inference = beliefs._infer(factors, segments)
+    base, m = inference["log_marginal"], segments - 1
+    h_y, h_own = 0.0, 0.0
     for j in range(k + 1):              # j readings of 1; each such sequence has the same probability
-        p = exp(beliefs._infer(_with(factors, key, m, k - j, j), segments)["log_marginal"] - base)
+        after = beliefs._infer(_with(factors, key, m, k - j, j), segments)
+        p = exp(after["log_marginal"] - base)
         if p > 0:
             h_y -= comb(k, j) * p * log2(p)
-    return max(0.0, h_y - _noise_entropy(key[0], k))
+            h_own += comb(k, j) * p * _h(_own(after, key))
+    joint = max(0.0, h_y - _noise_entropy(key[0], k))
+    return joint, (0.0 if key[0] == "reference" else max(0.0, _h(_own(inference, key)) - h_own))
+
+
+def _eig(factors, segments, key, k=READINGS) -> float:
+    """Exact mutual information (bits) between the hidden bits and k readings of `key` (see the module doc)."""
+    return _eig_parts(factors, segments, key, k)[0]
 
 
 def _p_informative(counts) -> float:
-    """Posterior that a reporter with these readings reports as the belief model assumes rather than at random."""
-    n0 = sum(c[0] for c in counts.values())
-    n1 = sum(c[1] for c in counts.values())
+    """Posterior that a reporter with these readings reports as the belief model assumes rather than at random.
+
+    Per mechanism segment (review1 CM4): an informative reporter's readings in segment m equal w_m XOR its own bit,
+    and the mechanism bits of the segments are independent and uniform under the model's prior, so its readings of
+    each segment agree among themselves (either way) with error READING_ERROR, independently of the other segments.
+    Pooling the segments called a reporter whose readings flip exactly when the mechanism changed a coin."""
     hit, miss = log(1 - beliefs.READING_ERROR), log(beliefs.READING_ERROR)
-    model = log(0.5) + beliefs._lse(n1 * hit + n0 * miss, n1 * miss + n0 * hit)       # in logs: no underflow
-    coin = (n0 + n1) * log(0.5)
+    model = coin = 0.0
+    for n0, n1 in counts.values():
+        model += log(0.5) + beliefs._lse(n1 * hit + n0 * miss, n1 * miss + n0 * hit)    # in logs: no underflow
+        coin += (n0 + n1) * log(0.5)
     return beliefs._logistic(model - coin + log(P_INFORMATIVE / (1 - P_INFORMATIVE)))
 
 
@@ -106,11 +131,17 @@ def assessed_gains(assessed, k=READINGS) -> list[dict]:
             "eig_bits": _eig(factors, segments, ("reference", NEW_REFERENCE, 0), k), "p_informative": 1.0}]
     for (channel, root), (key, counts) in sorted(current.items()):
         scope = beliefs.scope_of(channel, root)
-        out.append({"subject": scope, "scope": scope, "decision": "ask" if channel == "word" else "act",
-                    "eig_bits": _eig(factors, segments, key, k), "p_informative": _p_informative(counts),
-                    "readings": sum(a + b for a, b in counts.values())})
+        joint, own = _eig_parts(factors, segments, key, k)
+        row = {"subject": scope, "scope": scope, "decision": "ask" if channel == "word" else "act",
+               "eig_bits": joint, "p_informative": _p_informative(counts),
+               "readings": sum(a + b for a, b in counts.values())}
+        if channel == "word":
+            row["own_bits"] = round(own, 6)
+        out.append(row)
     for row in out:
-        row["score"] = round(row["eig_bits"] * row["p_informative"], 6)
+        # A question to a partner is scored by what it teaches about that partner's own convention (review1 Q1):
+        # its words also inform the mechanism, but that is the reference readings' question, not the partner's.
+        row["score"] = round(row.get("own_bits", row["eig_bits"]) * row["p_informative"], 6)
         row["eig_bits"] = round(row["eig_bits"], 6)
         row["p_informative"] = round(row["p_informative"], 6)
     out.sort(key=lambda r: (-r["score"], r["subject"]))
@@ -143,11 +174,22 @@ def information_policy(db, epoch, result, assessed, horizon, answered):
                     f"{beliefs.LEGACY_REFERENCE_TEXT}",
                     f"Please {beliefs.LEGACY_REFERENCE_TEXT} (the most informative next reading).{through}")
         if row["decision"] == "ask":
+            # A partner is asked only while its own meaning is ambiguous, as rules-v1 defines it (at least
+            # MIN_PARTNER_WORDS words, p_inverted within IDENTIFIABLE_MARGIN of 0.5; review1 Q1): its words would
+            # otherwise be asked for what they teach about something else, or before it has said enough.
+            from .executive import MIN_PARTNER_WORDS
+            root = row["scope"].split(":", 1)[1]
+            partner = result["partners"].get(root) or {"p_inverted": 0.5, "n": 0}
+            if beliefs._identifiable(partner["p_inverted"]):
+                skipped.append(f"{row['scope']} (its meaning is settled)")
+                continue
+            if partner["n"] < MIN_PARTNER_WORDS:
+                skipped.append(f"{row['scope']} (fewer than {MIN_PARTNER_WORDS} words)")
+                continue
             done = answered(db, epoch, "ask", row["scope"])
             if done is not None:
                 skipped.append(f"{row['scope']} (question #{done} answered)")
                 continue
-            root = row["scope"].split(":", 1)[1]
             return ("ask", "ask", row["scope"],
                     f"information-v1: {row['scope']} is the most informative question ({where}); ask",
                     f"What does {root} mean by their words? Their next words are the most informative reading "
@@ -156,7 +198,7 @@ def information_policy(db, epoch, result, assessed, horizon, answered):
                 f"information-v1: readings of {row['scope']} are the most informative ({where}); "
                 f"{beliefs.LEGACY_ACT_TEXT}", None)
     p = result["mechanism"]["p_inverted"]
-    note = f"; already answered: {', '.join(skipped)}" if skipped else ""
+    note = f"; not asked: {', '.join(skipped)}" if skipped else ""
     return ("act", None, None,
             f"information-v1: no question reaches {MIN_SCORE} bits (mechanism p_inverted={p:.3f}); "
             f"{beliefs.LEGACY_ACT_TEXT}{note}", None)

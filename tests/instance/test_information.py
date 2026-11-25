@@ -76,7 +76,7 @@ def test_the_display_never_changes_the_decision(instance):
     plain = executive.decide(db, "desk", T0)
     assert {k: shown[k] for k in ("decision", "scope", "reason")} == {k: plain[k] for k in ("decision", "scope",
                                                                                            "reason")}
-    assert shown["rule"] == plain["rule"] == "rules-v1"
+    assert "rule" not in shown and "rule" not in plain          # review1 CL9: rules-v1's output is as before
     assert "information" in shown and "information" not in plain and "processing" not in plain
     assert shown["information"]["candidates"][0]["score"] >= shown["information"]["candidates"][-1]["score"]
 
@@ -106,10 +106,12 @@ def test_information_v1_asks_the_informative_partner_not_the_noisy_one(instance)
     j.add("camera", "cam-a", 0)
     j.add("camera", "cam-a", 0)
     j.add("camera", "cam-a", 0)
-    for r in (0, 1) * 4:
-        j.add("word", "noisy", r)
-    j.add("word", "bo", 1)
-    assert executive.decide(db, "desk", T0)["scope"] == "partner:noisy"          # rules-v1: most ambiguous partner
+    for r in (0, 1) * 6:
+        j.add("word", "ana-noisy", r)
+    for r in (1, 0, 0, 1):
+        j.add("word", "bo", r)
+    # both ambiguous with >= 4 words; rules-v1 takes the first by name, information-v1 the informative one
+    assert executive.decide(db, "desk", T0)["scope"] == "partner:ana-noisy"
     store.set_config(db, {"executive_rule": "information-v1"}, T0)
     out = executive.decide(db, "desk", T0, record=True)
     assert out["rule"] == "information-v1" and out["decision"] == "ask" and out["scope"] == "partner:bo"
@@ -139,7 +141,8 @@ def test_information_v1_still_honours_the_ask_budget(instance):
     j = Journal(db)
     for root in ("ref-1", "ref-2", "ref-3"):
         j.add("reference", root, 0)
-    j.add("word", "bo", 1)
+    for r in (1, 0, 0, 1):
+        j.add("word", "bo", r)
     out = executive.decide(db, "desk", T0, record=True)
     assert out["decision"] == "defer" and "ask budget exhausted" in out["reason"]
     assert executive.pending(db) == []
@@ -176,3 +179,39 @@ def test_the_model_check_holds_on_thousands_of_readings():
     """Thousands of readings underflow the plain likelihoods (0 / 0); the check is computed in logs."""
     assert information._p_informative({0: (9000, 1000)}) == pytest.approx(1.0)
     assert information._p_informative({0: (5000, 5000)}) == pytest.approx(0.0, abs=1e-12)
+
+
+def test_the_model_check_is_made_per_mechanism_segment():
+    """review1 CM4: a reporter whose readings flip exactly when the mechanism changed is consistent, not a coin."""
+    one = information._p_informative({0: (0, 10)})
+    assert one == pytest.approx(0.994, abs=1e-3)
+    assert information._p_informative({0: (0, 10), 1: (10, 0)}) > 0.999
+    assert information._p_informative({0: (0, 10), 1: (0, 10)}) > 0.999
+    assert information._p_informative({0: (5, 5), 1: (5, 5)}) < 0.01         # a coin in each segment stays a coin
+    assert information._p_informative({0: (0, 10), 1: (0, 0)}) == pytest.approx(one)
+
+
+def test_information_v1_never_asks_a_partner_whose_meaning_is_settled(instance):
+    """review1 Q1: a partner's words also inform the mechanism; information-v1 asked a settled partner for that."""
+    db, _ = instance
+    store.set_config(db, {"executive_rule": "information-v1"}, T0)
+    j = Journal(db)
+    for root in ("ref-1", "ref-2", "ref-3"):
+        for _ in range(3):
+            j.add("reference", root, 0)
+    for r in (1, 1, 1, 0):
+        j.add("word", "cal", r)
+    assert beliefs._identifiable(beliefs.compute(db, "desk")["partners"]["cal"]["p_inverted"])     # 0.98
+    cal = {r["subject"]: r for r in information.gains(db, "desk")["candidates"]}["partner:cal"]
+    assert cal["score"] == pytest.approx(round(cal["own_bits"] * cal["p_informative"], 6), abs=1e-6)
+    out = executive.decide(db, "desk", T0)
+    assert out["decision"] == "act" and "partner:cal (its meaning is settled)" in out["reason"]
+
+
+def test_information_v1_passes_the_lifelong_correction_retention_check():
+    """review1 Q1: with the amended rule on, the retention scenario's ask check holds."""
+    from neuroscifi.acceptance import scenarios
+    from neuroscifi.acceptance.cognition import instinct
+    with instinct.switched_on(ablate=("trend", "footprint", "voice", "learning_progress")):
+        result = scenarios.lifelong_correction()
+    assert result["checks"]["asks_only_while_partner_ambiguous"] and result["pass"]
