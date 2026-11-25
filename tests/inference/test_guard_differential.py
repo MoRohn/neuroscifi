@@ -56,7 +56,7 @@ GAPS = ("restriction", "case", "unseen", "restatement", "cut", "wording", "role"
 INPUTS = {"harvested": 1137, "review": 91, "benchmark": 248, "gap": 461}
 SIZES = {"restriction": 146, "case": 56, "unseen": 37, "restatement": 81, "cut": 69, "wording": 33, "role": 39}
 # Sentences of each gap corpus this tree does not yet treat as the corpus says. A gap is closed when its count is 0.
-UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 3, "wording": 0, "role": 0}
+UNMET = {"restriction": 0, "case": 0, "unseen": 0, "restatement": 0, "cut": 0, "wording": 0, "role": 0}
 CUT_MARK = reasoning.CUT_WORDS.split("'")[0]
 RESTRICTION_MARK = reasoning.RESTRICTION_LOST.split("{")[0]
 CASE_MARK = reasoning.CASE_CHANGED.split("'")[0]
@@ -65,9 +65,9 @@ PASSIVE_MARK = reasoning.PASSIVE_SWAP.split("'")[0]
 ROLE_MARK = reasoning.ROLE_SWAP.split("{")[0]
 JOINED_MARK = reasoning.JOINED_APART.split("'")[0]
 # What differs from 307b907, counted: cases by origin, and the sentences refused under each refusal mark
-STRICTER = {"review": 24, "gap": 205}
+STRICTER = {"review": 24, "gap": 208}
 LOOSENED = {"review": 6, "gap": 11}
-REFUSED = {CUT_MARK: 49, RESTRICTION_MARK: 86, CASE_MARK: 28, UNSEEN_MARK: 18, PASSIVE_MARK: 37, ROLE_MARK: 21,
+REFUSED = {CUT_MARK: 52, RESTRICTION_MARK: 86, CASE_MARK: 28, UNSEEN_MARK: 18, PASSIVE_MARK: 37, ROLE_MARK: 21,
            JOINED_MARK: 11}
 
 

@@ -612,3 +612,17 @@ def test_a_negated_infinitive_or_participle_after_the_quantified_noun_restricts_
 ])
 def test_a_not_that_belongs_to_a_verb_or_adds_still_restricts_nothing(text):
     assert reasoning._restriction(text) is None
+
+
+# ---- re-review N4: an organisation's noun excuses a group word only when "of" follows it --------------------------
+
+@pytest.mark.parametrize("after", ["by University Students", "by Trust Wallet Users", "by the Club Members",
+                                   "from the Union Members"])
+def test_an_organisation_noun_that_qualifies_the_group_word_excuses_nothing(after):
+    assert not reasoning._names_the_source(after)
+
+
+@pytest.mark.parametrize("after", ["by the Federation of Orbix Users", "by the Society of Orbix Users",
+                                   "by the Orbix Members Club", "by Consumer Reports", "by the Orbix User Association"])
+def test_an_organisation_named_with_of_or_headed_by_its_noun_is_a_name(after):
+    assert reasoning._names_the_source(after)

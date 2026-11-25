@@ -186,10 +186,11 @@ refuted unverified unconfirmed alleged purported draft preliminary provisional p
 erroneous incorrect wrong false fake forged hoax satire satirical parody""".split())
 # Words for a group of people that a sentence can be about as well as hear from: "the advisory from Windows Users"
 # names the source or says whom the advisory is for, and code cannot tell which. Refused as the head (the last word)
-# of a name, capitalised or not, unless the name holds a noun of an organisation (_ORGANISATION_NAME_NOUNS: "the
-# Institute of Electrical and Electronics Engineers"); a group word inside a name is not its head ("Consumer
-# Reports", "Citizens Advice", "the Orbix User Association"). A cost: "a survey by Stack Overflow Developers" and
-# "a report by People" are refused.
+# of a name, capitalised or not, unless the name holds a noun of an organisation followed by "of"
+# (_ORGANISATION_NAME_NOUNS: "the Institute of Electrical and Electronics Engineers", "the Society of Orbix Users");
+# before the group word such a noun only qualifies it ("University Students", "the Club Members": refused). A group
+# word inside a name is not its head ("Consumer Reports", "Citizens Advice", "the Orbix User Association"). A cost:
+# "a survey by Stack Overflow Developers" and "a report by People" are refused.
 _PEOPLE_GROUPS = frozenset("""user users customer customers client clients consumer consumers resident residents
 citizen citizens developer developers maintainer maintainers administrator administrators admin admins engineer
 engineers operator operators owner owners member members subscriber subscribers patient patients student students
@@ -213,7 +214,7 @@ def _names_the_source(after: str) -> bool:
     vetoed", "in no case"; "of" and "and" only between two capitalised words: "the Bank of England"), a
     negation, a word of scope, quantity, time or comparison ("Users Only", "NOT The City", "NumPy Two"), a word of
     what became of the source ("Orbix Labs Retracted", _SOURCE_STATUS), a group of people the sentence could be
-    about as the name's head ("Windows Users", _PEOPLE_GROUPS; not in a name that holds a noun of an organisation)
+    about as the name's head ("Windows Users", _PEOPLE_GROUPS; not in a name with a noun of an organisation and "of")
     or a restriction (_restriction); and no word
     without a capital may be an -ed, -ing or -ly form or a verb (a head
     noun of an organisation's name excepted: "team", "desk", _ORGANISATION_NOUNS)."""
@@ -225,7 +226,10 @@ def _names_the_source(after: str) -> bool:
             " ".join(after[lead.end():].split()) != " ".join(words):
         return False
     capital = [any(ch.isupper() for ch in w) for w in words]
-    organisation = any(w.strip(".'’").casefold() in _ORGANISATION_NAME_NOUNS for w in words)
+    # an organisation's noun names the organisation whose members the group word counts only when "of" follows it
+    # ("the Society of Orbix Users"); before the group word it qualifies it ("University Students", "the Club Members")
+    organisation = any(w.strip(".'’").casefold() in _ORGANISATION_NAME_NOUNS and nxt.casefold() == "of"
+                       for w, nxt in zip(words, words[1:]))
     for i, w in enumerate(words):
         low = w.strip(".'’").casefold()
         if low in ("of", "and") and 0 < i < len(words) - 1 and capital[i - 1] and capital[i + 1]:
