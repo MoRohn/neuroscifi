@@ -6694,5 +6694,297 @@
 "a group word that does not head the name"
 ]
 ]
+},
+{
+"claims": [
+[
+"supported",
+"Every account not to be renewed is closed",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Which accounts are closed?",
+"s": [
+[
+"Every account is closed.",
+[
+"C1"
+],
+"reject",
+"'not to be' right after the quantified noun restricts it"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"All packages not to exceed 2 kg ship free",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Which packages ship free?",
+"s": [
+[
+"All packages ship free.",
+[
+"C1"
+],
+"reject",
+"'not to <verb>' right after the quantified noun restricts it"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"All files not only encrypted but also signed are accepted",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Which files are accepted?",
+"s": [
+[
+"All files are accepted.",
+[
+"C1"
+],
+"reject",
+"'not only' before a participle restricts"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Every user not just registered but verified can vote",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Who can vote?",
+"s": [
+[
+"Every user can vote.",
+[
+"C1"
+],
+"reject",
+"'not just' before a participle restricts"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"Orbix shipped on time, and the team made every attempt not to delay the launch",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "When did Orbix ship?",
+"s": [
+[
+"Orbix shipped on time.",
+[
+"C1"
+],
+"accept",
+"'not to' after a noun that takes an infinitive is no exception"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The vendor shipped the patch and took every care not to break the plug-ins",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Did the vendor ship the patch?",
+"s": [
+[
+"The vendor shipped the patch.",
+[
+"C1"
+],
+"accept",
+"'every care not to' is no exception"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The outage affected all regions not just in Europe but worldwide",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Where was the outage?",
+"s": [
+[
+"The outage affected all regions worldwide.",
+[
+"C1"
+],
+"accept",
+"'not just' before a preposition adds"
+]
+]
+},
+{
+"claims": [
+[
+"supported",
+"The update reaches all devices not only in offices but at home",
+[
+1,
+2
+]
+]
+],
+"gap": "restriction",
+"q": "Where does the update reach?",
+"s": [
+[
+"The update reaches all devices at home.",
+[
+"C1"
+],
+"accept",
+"'not only' before a preposition adds"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix wallets are the most trusted according to a survey by University Students"
+]
+],
+"gap": "cut",
+"q": "Which wallets are the most trusted?",
+"s": [
+[
+"Orbix wallets are the most trusted according to a survey by University Students.",
+[
+"C1"
+],
+"reject",
+"an organisation noun that is not the head excuses nothing"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix wallets are the most trusted according to a survey by Trust Wallet Users"
+]
+],
+"gap": "cut",
+"q": "Which wallets are the most trusted?",
+"s": [
+[
+"Orbix wallets are the most trusted according to a survey by Trust Wallet Users.",
+[
+"C1"
+],
+"reject",
+"'Trust' is not the head of the name"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix racquets are the best according to a poll by the Club Members"
+]
+],
+"gap": "cut",
+"q": "Which racquets are the best?",
+"s": [
+[
+"Orbix racquets are the best according to a poll by the Club Members.",
+[
+"C1"
+],
+"reject",
+"'Club' is not the head of the name"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix wallets are the most trusted according to a survey by the Federation of Orbix Users"
+]
+],
+"gap": "cut",
+"q": "Which wallets are the most trusted?",
+"s": [
+[
+"Orbix wallets are the most trusted according to a survey by the Federation of Orbix Users.",
+[
+"C1"
+],
+"accept",
+"an organisation noun followed by 'of' heads the name"
+]
+]
+},
+{
+"claims": [
+[
+"insufficient",
+"Orbix racquets are the best according to a poll by the Orbix Members Club"
+]
+],
+"gap": "cut",
+"q": "Which racquets are the best?",
+"s": [
+[
+"Orbix racquets are the best according to a poll by the Orbix Members Club.",
+[
+"C1"
+],
+"accept",
+"the group word is not the head"
+]
+]
 }
 ]
