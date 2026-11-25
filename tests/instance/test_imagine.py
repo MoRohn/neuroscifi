@@ -194,7 +194,8 @@ def test_retrospection_weighs_the_owners_answers(individual):
                    "VALUES('e','partner:p',16,NULL,?,1)", (T0 + 50,))
     out = imagine.retrospect(db, "e", "partner:p")
     answer = [f for f in out["ranked"] if f["what"] == "owner answer"]
-    assert out["tried"]["owner_answers"] == 1 and answer and "confirmed change of partner:p" in answer[0]["answer"]
+    assert out["tried"]["owner_answers"] == 1 and answer and answer[0]["answer"] == "confirmed change"
+    assert answer[0]["scope"] == "partner:p" and answer[0]["since_seq"] == 16
     assert answer[0]["influence"] != 0
 
 
@@ -228,6 +229,90 @@ def test_a_kept_answer_is_imagined_and_goes_when_its_reading_is_forgotten(indivi
     effects = governance.forget_evidence(db, "r13", T0 + 200)
     assert effects["effects"]["imagined_removed"] == 1
     assert imagined.listing(db, T0 + 300)["items"] == []
+
+
+# ---- a kept answer names every source it shows (review1 CH1) -------------------------------------------------------
+
+def _keep_each(db):
+    """One kept answer of each kind; each names partner p, camera c and some readings of the fixture."""
+    with store.write(db):
+        db.execute("INSERT INTO changepoints(epoch,scope,since_seq,pending_id,created_at,confirmed) "
+                   "VALUES('e','partner:p',16,NULL,?,1)", (T0 + 50,))
+    return {"what_if": imagine.keep(db, imagine.what_if(db, "e", flip=["r1"], add=[{"factor": "partner:p",
+                                                                                     "count": 3}], now=T0 + 100),
+                                    T0 + 100),
+            "question_values": imagine.keep(db, imagine.question_values(db, "e", now=T0 + 100), T0 + 100),
+            "retrospect": imagine.keep(db, imagine.retrospect(db, "e", "partner:p"), T0 + 100)}
+
+
+FORGETS = {"partner": lambda db, now: governance.forget_partner(db, "p", now),
+           "camera": lambda db, now: governance.forget_camera(db, "c", now),
+           "evidence": lambda db, now: [governance.forget_evidence(db, i, now) for i in ("r18", "r19")],
+           "epoch": lambda db, now: governance.forget_epoch(db, "e", now)}
+
+
+def _held(path, rid):
+    with closing(sqlite3.connect(path)) as copy:
+        return copy.execute("SELECT 1 FROM imagined WHERE id=?", (rid,)).fetchone() is not None
+
+
+def test_a_kept_answer_records_every_root_and_reading_it_names(individual):
+    db, _ = individual
+    kept = _keep_each(db)
+    refs = {name: {tuple(r) for r in imagined.show(db, rid)["derived_from"]} for name, rid in kept.items()}
+    for name in kept:
+        assert {("epoch", "e"), ("partner", "p"), ("camera", "c")} <= refs[name], name
+    assert ("evidence", "r1") in refs["what_if"]
+    ranked = imagined.show(db, kept["retrospect"])["payload"]["ranked"]
+    named = {r for f in ranked for r in f.get("readings", ())}
+    assert named and {("evidence", r) for r in named} <= refs["retrospect"]
+    answer = [f for f in ranked if f["what"] == "owner answer"]       # structured: no sentence repeats the root
+    assert answer and answer[0]["scope"] == "partner:p" and "p" not in answer[0]["answer"].split()
+
+
+@pytest.mark.parametrize("forget", sorted(FORGETS))
+def test_forgetting_any_named_source_removes_every_kind_of_kept_answer(individual, forget):
+    db, _ = individual
+    kept = _keep_each(db)
+    FORGETS[forget](db, T0 + 200)
+    for name, rid in kept.items():
+        assert db.execute("SELECT 1 FROM imagined WHERE id=?", (rid,)).fetchone() is None, name
+
+
+@pytest.mark.parametrize("forget", sorted(FORGETS))
+def test_a_restore_after_the_forget_does_not_bring_a_kept_answer_back(individual, tmp_path, forget):
+    from neuroscifi.instance import checkpoints
+    db, path = individual
+    kept = _keep_each(db)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 150)
+    FORGETS[forget](db, T0 + 200)
+    checkpoints.restore(db, cp["id"], tmp_path / "restored.sqlite", T0 + 300)
+    for name, rid in kept.items():
+        assert not _held(tmp_path / "restored.sqlite", rid), name
+
+
+def test_keeping_refuses_more_sources_than_a_record_may_name_and_never_truncates(tmp_path):
+    db = store.create(tmp_path / "y.sqlite", T0)
+    evidence.start_epoch(db, "e", T0)
+    for i in range(80):
+        evidence.observe(db, {"id": f"w{i}", "epoch": "e", "channel": "word", "root": "bob", "action": 0, "bit": 1},
+                         T0 + i)
+    answer = imagine.what_if(db, "e", flip=[f"w{i}" for i in range(80)], now=T0 + 100)
+    with pytest.raises(imagine.Refused, match=f"at most {imagined.MAX_REFS}"):
+        imagine.keep(db, answer, T0 + 100)
+    assert db.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
+    rid = imagine.keep(db, imagine.what_if(db, "e", flip=["w79"], now=T0 + 100), T0 + 100)
+    governance.forget_evidence(db, "w79", T0 + 200)
+    assert db.execute("SELECT 1 FROM imagined WHERE id=?", (rid,)).fetchone() is None
+    db.close()
+
+
+def test_an_answer_about_a_root_with_no_reading_is_shown_but_not_kept(individual):
+    db, _ = individual
+    answer = imagine.what_if(db, "e", add=[{"factor": "partner:newcomer", "reading": 1, "count": 2}], now=T0 + 100)
+    assert "partner:newcomer" in answer["after"]
+    with pytest.raises(imagine.Refused, match="holds nothing of"):
+        imagine.keep(db, answer, T0 + 100)
 
 
 def test_the_decision_path_never_imports_imagination():

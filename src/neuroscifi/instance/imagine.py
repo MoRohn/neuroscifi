@@ -21,7 +21,8 @@ says what an action did to the world. A question about the consequence of an act
 declined (ADR-052); forecast.py answers pushes on a graph where the recorded trajectories identify them.
 
 Nothing here writes to the individual or counts as evidence. keep() stores an answer in the imagined store (kind
-'simulation', derived from the epoch and the readings it names) when the owner asks for it; nowhere else.
+'simulation', derived from every epoch, camera, partner and reading it names, so a forget of any removes it) when the
+owner asks for it; nowhere else.
 """
 from contextlib import contextmanager
 import math
@@ -384,14 +385,17 @@ def retrospect(db, epoch, factor="mechanism", *, limit=200, top=10):
                           "SELECT seq, channel, root, value FROM evidence_consolidated WHERE epoch=? ORDER BY seq DESC "
                           "LIMIT ?", (epoch, limit))]
         items = sorted(items, key=lambda i: -i[1])[:limit]
-        answers = [("changepoints", cid, f"{'confirmed' if ok else 'rejected'} change of {scope} since #{since}")
+        # An owner answer is named by structured fields (the scope it is about, the earlier setup), never by a
+        # sentence that repeats a root: keep() records each name as a source, so forgetting it removes the record.
+        answers = [("changepoints", cid, {"answer": "confirmed change" if ok else "rejected change", "scope": scope,
+                                          "since_seq": since})
                    for cid, scope, since, ok in (copy.execute(
                        "SELECT id, scope, since_seq, confirmed FROM changepoints WHERE epoch=? ORDER BY id", (epoch,))
                        if beliefs._has_changepoints(copy) else ())]
         if beliefs._has_table(copy, "epoch_links") and copy.execute(
                 "SELECT 1 FROM epoch_links WHERE epoch=?", (epoch,)).fetchone():
             source = copy.execute("SELECT source_epoch FROM epoch_links WHERE epoch=?", (epoch,)).fetchone()[0]
-            answers.append(("epoch_links", epoch, f"continuing earlier setup {source}"))
+            answers.append(("epoch_links", epoch, {"answer": "continuing an earlier setup", "source_epoch": source}))
         groups = {}
         for table, seq, name, channel, root, value in items:
             with _trial(copy):
@@ -401,12 +405,12 @@ def retrospect(db, epoch, factor="mechanism", *, limit=200, top=10):
             groups.setdefault(key, []).append(name)
         found = [{"what": "readings", "factor": label, "reading": value, "influence": influence,
                   "count": len(names), "readings": names[:20]} for (label, value, influence), names in groups.items()]
-        for table, key, text in answers:
+        for table, key, fields in answers:
             with _trial(copy):
                 column = "epoch" if table == "epoch_links" else "id"
                 copy.execute(f"DELETE FROM {table} WHERE {column}=?", (key,))
                 influence = p_now - _p(_state(copy, epoch)[0], factor)
-            found.append({"what": "owner answer", "answer": text, "influence": influence})
+            found.append({"what": "owner answer", **fields, "influence": influence})
         cost = box.cost()
     found.sort(key=lambda f: (-abs(f["influence"]), f.get("factor", ""), f.get("answer", "")))
     return {"label": provenance.NOT_EVIDENCE, "kind": provenance.SIMULATION, "mechanism": "imagine.retrospect",
@@ -420,19 +424,61 @@ def retrospect(db, epoch, factor="mechanism", *, limit=200, top=10):
 
 # ---- keeping an answer -----------------------------------------------------------------------------------------------
 
+def _reading_ref(name):
+    return ("consolidated", name[1:]) if name.startswith("#") else ("evidence", name)
+
+
+def sources(payload):
+    """Every record a kept answer names, as imagined references: its epoch (and an earlier setup it continues),
+    each camera and partner root (a key of a beliefs map, a factor, a change's scope) and each reading (flipped,
+    dropped, or grouped by a retrospection). A forget of any of them removes the kept answer (imagined.purge_orphans),
+    so no name it holds outlives its forget. Reference roots are fixtures, not private names, and are not listed."""
+    refs = {("epoch", payload["epoch"])}
+
+    def root(text):
+        kind, _, name = text.partition(":") if isinstance(text, str) else ("", "", "")
+        if kind in ("camera", "partner") and name:
+            refs.add((kind, name))
+
+    def walk(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                root(key)
+                if key in ("factor", "scope"):
+                    root(item)
+                elif key == "source_epoch" and isinstance(item, str):
+                    refs.add(("epoch", item))
+                elif key == "readings" and isinstance(item, list):
+                    refs.update(_reading_ref(r) for r in item)
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+    walk(payload)
+    for change in payload.get("changes", ()):
+        if change["change"] in ("flip", "drop"):
+            refs.add(_reading_ref(change["reading"]))
+    return sorted(refs)
+
+
 def keep(db, answer, now, *, lifetime=None):
     """Store a what_if, question_values or retrospect answer in the imagined store (kind 'simulation'), derived from
-    its epoch and the journal or consolidated readings it names. The only write imagination makes; never evidence."""
+    every record it names (sources): forgetting any of them removes it. Refused, never truncated, when it names more
+    than imagined.MAX_REFS or names a root this individual holds no reading of. The only write imagination makes;
+    never evidence."""
     from . import imagined
-    refs = [("epoch", answer["epoch"])]
-    for change in answer.get("changes", ()):
-        reading = change.get("reading")
-        if change["change"] in ("flip", "drop"):
-            refs.append(("consolidated", reading[1:]) if reading.startswith("#") else ("evidence", reading))
     payload = {k: answer[k] for k in ("epoch", "changes", "before", "after", "difference", "candidates", "factor",
                                       "belief_now", "most", "ranked") if k in answer}
+    refs = sources(payload)
+    if len(refs) > imagined.MAX_REFS:
+        raise Refused(f"this answer names {len(refs)} readings, cameras, partners and setups; a kept answer may name "
+                      f"at most {imagined.MAX_REFS}, so that forgetting any of them removes it: ask a narrower "
+                      "question (fewer readings, or a smaller --top) to keep it")
+    if imagined._unresolved(db, refs):
+        raise Refused("this answer names a camera, partner or reading this individual holds nothing of (an imagined "
+                      "one), so a later forget could not find it: it is shown but not kept")
     question = answer.get("question") or f"{answer['mechanism']} on epoch {answer['epoch']}"
     return imagined.record(db, provenance.SIMULATION, payload=payload, assumptions=answer["assumptions"],
                            uncertainty=answer["uncertainty"], mechanism=answer["mechanism"],
                            mechanism_version=answer["mechanism_version"], question=question[:2000], now=now,
-                           derived_from=refs[:64], lifetime=lifetime)
+                           derived_from=refs, lifetime=lifetime)
