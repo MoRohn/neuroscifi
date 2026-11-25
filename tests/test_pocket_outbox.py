@@ -111,6 +111,15 @@ def test_request_key_rules(spark, devices):
                       ensure_ascii=False).encode()
     assert len(body) <= bridge.RESEARCH_BODY_LIMIT
     assert spark.req("research_submit", token=a, raw=body)[0] == 201
+    # A question the page's counter allows (a compact body of exactly 1024 bytes without its key) fits with its key.
+    widest = "\U0001F600" * 108 + "量" * 192                   # 300 characters, 1008 bytes
+    plain = json.dumps({"objective": widest}, ensure_ascii=False, separators=(",", ":")).encode()
+    keyed = json.dumps({"objective": widest, "request": str(uuid.uuid4())}, ensure_ascii=False,
+                       separators=(",", ":")).encode()
+    assert len(plain) == bridge.RESEARCH_BODY_LIMIT and len(keyed) <= bridge.SUBMIT_BODY_LIMIT
+    assert spark.req("research_submit", token=a, raw=keyed)[0] == 201
+    padded = keyed + b" " * (bridge.SUBMIT_BODY_LIMIT + 1 - len(keyed))    # valid JSON, one byte over the cap
+    assert spark.req("research_submit", token=a, raw=padded)[0] == 400
 
 
 def test_refusals_queue_nothing_and_record_no_key(spark, devices):

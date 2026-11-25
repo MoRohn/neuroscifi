@@ -33,7 +33,7 @@ ASSETS = {"/": ("index.html", "text/html; charset=utf-8"), "/mobile.js": ("mobil
           "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"), "/icon-192.png": ("icon-192.png", "image/png"),
           "/icon-512.png": ("icon-512.png", "image/png"),
           "/icon-maskable-512.png": ("icon-maskable-512.png", "image/png")}
-for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","node-key.mjs","sw.js"):
+for asset in ("field-model.mjs","field-ui.mjs","research-ui.mjs","node-key.mjs","outbox.mjs","sw.js"):
     ASSETS["/"+asset]=(asset,"text/javascript")
 from ..presence import POCKET as PRESENCE_FILES, assets as presence_assets  # noqa: E402  shared presence + theme
 ASSETS.update(presence_assets(PRESENCE_FILES))
@@ -56,6 +56,9 @@ BODY_LIMIT = 512
 # A 300-character question in a non-Latin script needs up to 3 bytes a character; research_submit alone may send
 # 1 KiB (README: deviation from the 512-byte cap of every other route).
 RESEARCH_BODY_LIMIT = 1024
+# The outbox's request key (`,"request":"<UUID>"`, 49 bytes) rides on top of the question's 1 KiB, so a question that
+# fits the page's counter (research-ui.mjs) always fits with its key.
+SUBMIT_BODY_LIMIT = RESEARCH_BODY_LIMIT + 64
 INVITATION_SECONDS = 300
 INVITATION_FORMAT = re.compile(r"[A-Za-z0-9_-]{32}\n?")
 ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_episode","link","mute","unmute"}
@@ -721,7 +724,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(404, nonce=signed)  # invisible while off, like an unknown route
             size = int(self.headers.get("Content-Length", "0"))
             # a push endpoint URL can take several hundred bytes (WNS), so `push` shares research_submit's 1 KiB
-            limit = RESEARCH_BODY_LIMIT if route in ("research_submit", PUSH) else BODY_LIMIT
+            limit = SUBMIT_BODY_LIMIT if route == "research_submit" else RESEARCH_BODY_LIMIT if route == PUSH else BODY_LIMIT
             if self.headers.get_content_type() != "application/json" or not 2 <= size <= limit:
                 return self.reply(400, nonce=signed)
             raw = self.read_body(size)
