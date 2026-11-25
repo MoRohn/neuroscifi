@@ -1,0 +1,671 @@
+{
+  "admission": {
+    "as_researched": {
+      "rows": [
+        {
+          "legacy_admission_ms": 3.5,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 1,
+          "unified_admission_ms": 18.0,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 9,
+            "scope": 71
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.6,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 7,
+          "unified_admission_ms": 9.0,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 6,
+            "min_gain": 1,
+            "scope": 58,
+            "template": 2
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 30,
+          "unified_admission_ms": 7.5,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "min_gain": 1,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 90,
+          "unified_admission_ms": 8.1,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "min_gain": 1,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 180,
+          "unified_admission_ms": 8.1,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "min_gain": 1,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 365,
+          "unified_admission_ms": 8.5,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "min_gain": 2,
+            "prediction": 5,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 400,
+          "unified_admission_ms": 7.7,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "min_gain": 2,
+            "prediction": 5,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 730,
+          "unified_admission_ms": 8.5,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "min_gain": 2,
+            "prediction": 5,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        }
+      ],
+      "totals": {
+        "legacy": {
+          "launches_8_ticks": 0,
+          "one_tick": 0,
+          "relaunched_subjects": 0
+        },
+        "unified": {
+          "launches_8_ticks": 0,
+          "one_tick": 0,
+          "relaunched_subjects": 0
+        }
+      }
+    },
+    "knowledge_items": 7,
+    "no_open_knowledge_predictions": {
+      "rows": [
+        {
+          "legacy_admission_ms": 3.1,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 1,
+          "unified_admission_ms": 13.2,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 9,
+            "scope": 71
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.5,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 7,
+          "unified_admission_ms": 8.4,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 6,
+            "scope": 58,
+            "template": 2
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 30,
+          "unified_admission_ms": 7.4,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 90,
+          "unified_admission_ms": 8.1,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 180,
+          "unified_admission_ms": 7.3,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 365,
+          "unified_admission_ms": 8.5,
+          "unified_if_pool_widened_one_tick": 5,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "pool": 5,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 400,
+          "unified_admission_ms": 8.4,
+          "unified_if_pool_widened_one_tick": 5,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "pool": 5,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.4,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 730,
+          "unified_admission_ms": 8.4,
+          "unified_if_pool_widened_one_tick": 5,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 1,
+            "pool": 5,
+            "scope": 54
+          },
+          "unified_relaunched_subjects": 0
+        }
+      ],
+      "totals": {
+        "legacy": {
+          "launches_8_ticks": 0,
+          "one_tick": 0,
+          "relaunched_subjects": 0
+        },
+        "unified": {
+          "launches_8_ticks": 0,
+          "one_tick": 0,
+          "relaunched_subjects": 0
+        }
+      }
+    },
+    "no_open_knowledge_predictions_and_no_contested_subjects": {
+      "rows": [
+        {
+          "legacy_admission_ms": 1.9,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 1,
+          "unified_admission_ms": 12.0,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 8,
+            "scope": 74
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.0,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 7,
+          "unified_admission_ms": 6.9,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "claim_shape": 5,
+            "scope": 54,
+            "template": 2
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 0.8,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 30,
+          "unified_admission_ms": 6.7,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "scope": 50
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 0.8,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 90,
+          "unified_admission_ms": 6.9,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "scope": 50
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 0.8,
+          "legacy_launches_8_ticks": 0,
+          "legacy_one_tick": [],
+          "legacy_relaunched_subjects": 0,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 180,
+          "unified_admission_ms": 6.6,
+          "unified_if_pool_widened_one_tick": 0,
+          "unified_launches_8_ticks": 0,
+          "unified_one_tick": [],
+          "unified_refused": {
+            "scope": 50
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.1,
+          "legacy_launches_8_ticks": 12,
+          "legacy_one_tick": [
+            {
+              "info_gain": 0.242642,
+              "key": "brisa compiler first releas"
+            },
+            {
+              "info_gain": 0.242639,
+              "key": "brightwater dam ostra tall"
+            },
+            {
+              "info_gain": 0.242638,
+              "key": "built lighthous ostra tolvan"
+            },
+            {
+              "info_gain": 0.242638,
+              "key": "build fennick incremental tool"
+            },
+            {
+              "info_gain": 0.06066,
+              "key": "default orbix port server"
+            }
+          ],
+          "legacy_relaunched_subjects": 5,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 365,
+          "unified_admission_ms": 7.0,
+          "unified_if_pool_widened_one_tick": 5,
+          "unified_launches_8_ticks": 5,
+          "unified_one_tick": [
+            {
+              "info_gain": 0.242642,
+              "key": "brisa compiler first releas"
+            },
+            {
+              "info_gain": 0.242639,
+              "key": "brightwater dam ostra tall"
+            },
+            {
+              "info_gain": 0.242638,
+              "key": "build fennick incremental tool"
+            },
+            {
+              "info_gain": 0.242638,
+              "key": "built lighthous ostra tolvan"
+            },
+            {
+              "info_gain": 0.06066,
+              "key": "default orbix port server"
+            }
+          ],
+          "unified_refused": {
+            "scope": 50
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.1,
+          "legacy_launches_8_ticks": 12,
+          "legacy_one_tick": [
+            {
+              "info_gain": 0.248867,
+              "key": "brisa compiler first releas"
+            },
+            {
+              "info_gain": 0.248865,
+              "key": "brightwater dam ostra tall"
+            },
+            {
+              "info_gain": 0.248864,
+              "key": "built lighthous ostra tolvan"
+            },
+            {
+              "info_gain": 0.248864,
+              "key": "build fennick incremental tool"
+            },
+            {
+              "info_gain": 0.062216,
+              "key": "default orbix port server"
+            }
+          ],
+          "legacy_relaunched_subjects": 5,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 400,
+          "unified_admission_ms": 6.2,
+          "unified_if_pool_widened_one_tick": 5,
+          "unified_launches_8_ticks": 5,
+          "unified_one_tick": [
+            {
+              "info_gain": 0.248867,
+              "key": "brisa compiler first releas"
+            },
+            {
+              "info_gain": 0.248865,
+              "key": "brightwater dam ostra tall"
+            },
+            {
+              "info_gain": 0.248864,
+              "key": "build fennick incremental tool"
+            },
+            {
+              "info_gain": 0.248864,
+              "key": "built lighthous ostra tolvan"
+            },
+            {
+              "info_gain": 0.062216,
+              "key": "default orbix port server"
+            }
+          ],
+          "unified_refused": {
+            "scope": 50
+          },
+          "unified_relaunched_subjects": 0
+        },
+        {
+          "legacy_admission_ms": 1.1,
+          "legacy_launches_8_ticks": 12,
+          "legacy_one_tick": [
+            {
+              "info_gain": 0.273311,
+              "key": "brightwater dam ostra tall"
+            },
+            {
+              "info_gain": 0.273311,
+              "key": "brisa compiler first releas"
+            },
+            {
+              "info_gain": 0.273311,
+              "key": "built lighthous ostra tolvan"
+            },
+            {
+              "info_gain": 0.273311,
+              "key": "build fennick incremental tool"
+            },
+            {
+              "info_gain": 0.068328,
+              "key": "default orbix port server"
+            }
+          ],
+          "legacy_relaunched_subjects": 5,
+          "newly_launched": [],
+          "no_longer_launched": [],
+          "offset_days": 730,
+          "unified_admission_ms": 7.7,
+          "unified_if_pool_widened_one_tick": 5,
+          "unified_launches_8_ticks": 5,
+          "unified_one_tick": [
+            {
+              "info_gain": 0.273311,
+              "key": "brightwater dam ostra tall"
+            },
+            {
+              "info_gain": 0.273311,
+              "key": "brisa compiler first releas"
+            },
+            {
+              "info_gain": 0.273311,
+              "key": "build fennick incremental tool"
+            },
+            {
+              "info_gain": 0.273311,
+              "key": "built lighthous ostra tolvan"
+            },
+            {
+              "info_gain": 0.068328,
+              "key": "default orbix port server"
+            }
+          ],
+          "unified_refused": {
+            "scope": 50
+          },
+          "unified_relaunched_subjects": 0
+        }
+      ],
+      "totals": {
+        "legacy": {
+          "launches_8_ticks": 36,
+          "one_tick": 15,
+          "relaunched_subjects": 15
+        },
+        "unified": {
+          "launches_8_ticks": 15,
+          "one_tick": 15,
+          "relaunched_subjects": 0
+        }
+      }
+    },
+    "questions": 51,
+    "research_seconds": 5.5
+  },
+  "commit": "bcc7d48",
+  "cost": {
+    "allowed_us_quiet_off": 6.4,
+    "allowed_us_quiet_on": 6.4,
+    "claim_next_ms_quiet_off": 0.2,
+    "claim_next_ms_quiet_on": 0.222
+  },
+  "honour": {
+    "hold_max_s": 4.399,
+    "hold_recorded_s": [
+      2.437,
+      1.752,
+      2.547,
+      4.399,
+      1.56
+    ],
+    "page_delay_s": 1.0,
+    "page_requests_sent_after_switch": [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "poll_seconds": 5.0,
+    "release_max_s": 4.493,
+    "released_claimed_s": [
+      3.636,
+      3.744,
+      0.253,
+      3.38,
+      4.493
+    ],
+    "running_task_stop_s": [
+      0.254,
+      0.254,
+      0.254,
+      0.253,
+      0.254
+    ],
+    "trials": 5,
+    "within_one_poll": true
+  },
+  "machine": "aarch64",
+  "measured_at": 1795609135.6717837,
+  "python": "3.12.16",
+  "schema": "nsf.genesis.safety/1",
+  "software": "0.7.0"
+}

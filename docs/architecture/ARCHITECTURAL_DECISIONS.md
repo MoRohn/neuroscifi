@@ -1867,3 +1867,117 @@ the forgotten event, the forget took 9.0 ms and removed all of them; writing a r
 - Tests: `tests/instance/test_imagined.py`, `tests/webcortex/test_imagined_quarantine.py`; mutations:
   `scripts/genesis_provenance.py mutations`.
 
+# ADR-050 (draft) One owner switch for everything done unasked, and one admission rule for autonomous investigations. R
+
+## Context
+
+Cognitive Genesis (owner directive 2026-11-25) adds new autonomous mechanisms only after two safety prerequisites
+(directive §2 items 8 and 9, §4.4, §12 "Unauthorized autonomous actions" and "Unproductive curiosity loops"):
+
+1. Stopping everything the individual does unasked took several commands, each with its own scope: `nsf web
+   autonomy disable` (the idle investigator and the tick's refreshes and curiosity), monitor pause for each monitor,
+   and disabling the 15-minute timer. Nothing said which background mechanisms exist, so a new one could start work
+   without any of these covering it.
+2. Two paths launched autonomous investigations under different rules. `scheduler.tick` took curiosity.rank's top
+   ten with curiosity's own floor (`curiosity.MIN_GAIN` 0.02 bits) and needed only the `autonomous` switch.
+   `autonomy.idle` needed the owner's recorded enable and admitted through `autonomy.candidates`: `min_gain` 0.05
+   bits on the stated forecast, at most `MAX_DERIVATION_DEPTH` (1) step from the owner's records with
+   `MIN_RELEVANCE` (1/3) to the owner subject it came from, `cooldown` (24 h) per subject, record templates and claim
+   shapes refused, goal-weighted priority. Verified in code: the tick had no goal signal, no lineage check, no
+   cooldown, no claim-shape check and no recorded-enable check, and it logged no subject, so its launches fed
+   neither the cooldown nor the lineage. Both paths share the daily budgets, the concurrency limit and the
+   background gate at claim time (`autonomy.admit`, `scheduler._over_cap`); those were already the same.
+
+## Decision
+
+1. **`quiet`, an instance setting (no schema change).** `InstanceConfig.quiet`, default false, beside
+   `graph_rule_migration`: owner-settable (`store._SETTABLE`), every change a deletion-log `setting` row, carried by
+   restore (`checkpoints.CARRIED_SETTINGS`); a saved value that is not a JSON boolean reads as **on**, the reading that
+   cannot run work the owner may have stopped, and `store.setting_problems` lists it. Set only on the owner's command
+   line: `nsf quiet on|off|status`, or `nsf config --quiet|--no-quiet`. No console, Pocket, voice or MCP route sets it
+   (the console's four web switches, Pocket's fixed routes and MCP's five read-mostly tools are unchanged). It sits
+   above the other switches and never writes them: `autonomous`, the enable record, monitors and timers keep their
+   stored values.
+2. **One check and a registry (`neuroscifi/background.py`).** `background.allowed(db, activity) -> (bool, reason)`
+   for an activity named in `ACTIVITIES` (KeyError otherwise). Kinds: *cognition* (held while quiet: the worker's
+   claims and crash resumes of background tasks, its idle investigation, the tick's monitors, refreshes and
+   curiosity, a background task already running); *maintenance* (keeps running: evidence expiry and its consolidated
+   readings, the nightly checkpoint and the rewrite after a forget, cache retention, unloading idle model services,
+   reloading one a request waits for, the worker's heartbeat, the voice and Pocket sweeps); *delivery* (keeps
+   running: a finished autonomous task's finding question, a Pocket push); *owner* (a curiosity proposal waits for
+   the owner's yes). Background origins are `curiosity`, `refresh:*` and `monitor:*`; a proposal the owner confirmed
+   (`knowledge.apply_review`'s decision event) is owner-asked work and never held. `RUNNERS` and `UNITS` name the
+   callers and the systemd timers and path units that run the entry points.
+3. **A background task already running stops at its next stop check**, the owner's cancel's place: `_Run.check`
+   before every network step (unthrottled, one meta row) and the run's `_Lookout` for its other threads, which also
+   cuts requests on the wire. It ends `partial` with the limitation "stopped by quiet" and **consolidates nothing**,
+   so no memory or model call runs for it after the stop (web-off still consolidates what was read; quiet is a
+   stronger stop by design). Queued background tasks stay queued; after `nsf quiet off` they run as before.
+4. **One admission rule (`autonomy.admission`).** Both paths call it. Rule `unified` (the default): the recorded
+   enable, then `autonomy.candidates` (everything listed in Context for the idle path). The tick keeps its own pool,
+   unchanged: knowledge items among curiosity.rank's ten best, due predictions left to the refreshes. So it admits a
+   subset of what the old rule admitted, never another subject. Each tick launch records `{"autonomy": {...,
+   "admission": {"rule", "path"}}}` with its subject, which feeds the cooldown and the lineage as the idle
+   investigator's does; the idle investigator's event gains `admission` too. Rule `legacy` (path tick only), kept for
+   one release: `nsf web config --set tick_admission='"legacy"'` restores the tick's old rule exactly, and its launches
+   record `{"autonomy": "admitted by the legacy tick rule", "key", "admission"}`, which feeds no cooldown, as before.
+   Prediction refreshes (`predictions.check_due`) are not investigations chosen by ranking and keep their rule.
+
+## Measured
+
+`docs/quality/evidence/genesis_safety.json` (`scripts/bench_genesis_safety.py`, at bcc7d48, aarch64):
+
+- **Honouring quiet, worker as `nsf web work` (5 s poll), 5 trials, quiet turned on at a random moment from another
+  connection:** the worker recorded the hold after 1.56, 1.75, 2.44, 2.55 and 4.40 s (all within one poll; a claim
+  reads the setting at that moment, so nothing background could start after the commit in any case). A curiosity
+  task queued meanwhile stayed queued; after `quiet off` it was claimed within 0.25 to 4.49 s. A background task
+  reading a slow site (1 s per page) when quiet was turned on stopped 0.25 s after the switch in all 5 trials, with
+  0 page requests sent after it (the run's gate cut the request on the wire), and ended `partial`.
+- **Cost:** `background.allowed` 6.4 µs (median); `claim_next` 0.200 ms with quiet off, 0.222 ms with it on.
+- **The offline benchmark's world** (51 questions, 7 knowledge items), eight clock offsets from 1 to 730 days, both
+  rules, one tick and eight ticks 15 minutes apart (queued tasks marked finished between ticks; nothing fetched):
+  as researched, **0 launches under either rule** at every offset (the aged items are the refresh path's: each
+  carries an open prediction). Staged without those predictions, still 0 under either rule: the tick's pool
+  (curiosity.rank's ten best) is filled by contested subjects that are not knowledge. Staged also without those
+  subjects (written after the first two showed this): one tick admits the same 5 subjects under both rules at 365,
+  400 and 730 days (15 in all); over eight ticks the legacy rule launched 36 times, relaunching all 5 subjects at
+  each offset until the daily task cap (12) stopped it, the unified rule 15 times, once per subject (cooldown).
+  Nothing the legacy rule launched in one tick was refused; the change on this world is the end of the relaunch
+  loop. Ablation, not shipped: the unified rule over every ranked knowledge item instead of the tick's pool would
+  have admitted 5 subjects at each of 365, 400 and 730 days in the second staged world, where both shipped rules
+  admit none.
+- **The autonomy tests** (`tests/webcortex/test_background.py`) show the launches the legacy rule makes and the
+  unified rule refuses: a subject at 0.03 bits (above the old floor, below `min_gain`), a subject investigated
+  autonomously an hour earlier (cooldown), every subject while autonomy was switched on without the recorded enable;
+  and a record template under both.
+
+## Alternatives rejected
+
+- A second switch per mechanism, or quiet as `autonomous=false` plus monitor pauses: it would change stored values
+  the owner set, and a new mechanism would still need its own switch.
+- A Presence activity or condition for quiet: none fits as a state of activity, and adding vocabulary means the
+  shared contract and the visual-rules tests; the owner's setting is shown through `sources.background` and the
+  existing `resting`.
+- Holding upkeep too: stopping evidence expiry would let expired evidence keep counting (MEM-09), and holding the
+  idle unload would keep memory the owner chose to release; neither starts research or calls a model.
+- Widening the tick's pool to every ranked knowledge item (measured as an ablation): it would admit subjects the old
+  tick never reached, a loosening; left to the owner.
+- A schema change (a table of owner switches): the settings row already gives logging and restore.
+
+## Consequences
+
+- Default off: nothing changes until the owner turns quiet on. With quiet on, a background task already running
+  ends `partial` and loses what it read (it is not consolidated); a curiosity task the owner resumes by hand while
+  quiet is on stops at its first check.
+- The tick under the unified rule needs the recorded enable (`--set autonomous=true` alone no longer runs its
+  curiosity), refuses subjects below 0.05 bits, beyond one step from the owner's records or within the cooldown, and
+  researches the subject's search terms (`curiosity.search_terms`, as the idle investigator does) instead of the
+  statement's own words. `test_curiosity_researches_a_statements_own_words_never_a_record_template` now pins the
+  legacy rule.
+- `autonomy.status` and `store.regulation()["config"]` show `quiet`; the console overview (Regulation, "Background
+  work") and the Presence entity on the console and Pocket say it in plain words.
+- Tests: `tests/webcortex/test_background.py` (each cognition entry point driven with quiet on, a driver for every
+  registered one, an AST scan of the source for unregistered launch sites with a self-test of the scanner, the
+  systemd units, the owner-only surfaces including MCP, a damaged value, restore, the other switches unchanged and
+  owner work running, Presence in both scopes, a running worker within one poll, the unified rule against the legacy
+  one), `tests/presence/client_check.mjs`, `tests/e2e/test_console.py` and `tests/e2e/test_presence.py`.
