@@ -23,6 +23,50 @@ _TRIGGERS_15 = {
       BEGIN SELECT RAISE(ABORT,'graph revisions are never deleted'); END""",
 }
 
+# Version 17 (the imagined store, ADR-049): an imagined record's id is 'imagined:' and 32 lowercase hex digits. No
+# column through which evidence, a claim, a knowledge item, a verification, a corroboration, a calibration settlement or
+# a belief revision names what it rests on may name such an id. _IMAGINED_ID matches a whole value (an id column),
+# _IMAGINED_IN a value that contains one (a revision cause "evidence:<id>"), _IMAGINED_JSON a JSON text holding one as a
+# string (a list of supporting claim ids, a detail object). A page title such as "Reimagined: ..." matches none.
+_IMAGINED_ID = "imagined:" + "[0-9a-f]" * 32
+_IMAGINED_IN = "*" + _IMAGINED_ID + "*"
+_IMAGINED_JSON = '*"' + _IMAGINED_ID + '"*'
+# table -> (whole-id columns, containing columns, JSON columns)
+_NO_IMAGINED = {
+    "evidence": (("id", "root", "sample_id"), (), ()),
+    "evidence_consolidated": (("root", "sample_id"), (), ()),
+    "belief_revisions": ((), ("cause",), ()),
+    "web_sources": (("task_id",), (), ()),
+    "web_claims": (("id", "task_id"), (), ()),
+    "web_claim_links": (("src", "dst", "task_id"), (), ("detail",)),
+    "web_knowledge": (("task_id",), (), ("supporting", "contradicting", "sources", "verification")),
+    "web_hypotheses": (("task_id",), (), ("claims",)),
+    "web_predictions": (("task_id",), (), ("detail",)),
+    "web_feedback": (("task_id",), (), ("detail",)),
+    "web_metrics": ((), (), ("value",)),
+}
+
+
+def _no_imagined_triggers():
+    """The version-17 triggers that refuse an imagined id in a reference column of an evidence-side table, on insert
+    and on update of those columns, as {name: statement}."""
+    out = {}
+    for table, (whole, inside, as_json) in _NO_IMAGINED.items():
+        tests = ([f"coalesce(NEW.{c},'') GLOB '{_IMAGINED_ID}'" for c in whole]
+                 + [f"coalesce(NEW.{c},'') GLOB '{_IMAGINED_IN}'" for c in inside]
+                 + [f"coalesce(NEW.{c},'') GLOB '{_IMAGINED_JSON}'" for c in as_json])
+        when = " OR ".join(tests)
+        columns = ", ".join((*whole, *inside, *as_json))
+        body = "BEGIN SELECT RAISE(ABORT,'an imagined record is never evidence'); END"
+        out[f"{table}_no_imagined_i"] = (f"CREATE TRIGGER IF NOT EXISTS {table}_no_imagined_i BEFORE INSERT ON "
+                                         f"{table} WHEN {when} {body}")
+        out[f"{table}_no_imagined_u"] = (f"CREATE TRIGGER IF NOT EXISTS {table}_no_imagined_u BEFORE UPDATE OF "
+                                         f"{columns} ON {table} WHEN {when} {body}")
+    return out
+
+
+NO_IMAGINED_TRIGGERS = _no_imagined_triggers()
+
 MIGRATIONS = [
     # ---- version 1 ---------------------------------------------------------
     """
@@ -570,6 +614,56 @@ MIGRATIONS = [
       SELECT RAISE(ABORT, 'evidence_consolidated.copied is never cleared');
     END;
     """,
+    # ---- version 17 (the imagined store: provenance kinds and quarantine; ADR-049, instance/imagined.py) ----------
+    """
+    -- instance/imagined.py: content the system produced itself that is not evidence (provenance.QUARANTINED:
+    -- simulation, speculation, inference). Stored apart from every evidence table, bounded (InstanceConfig
+    -- max_imagined_rows, imagined_lifetime_seconds), and empty until a mechanism writes to it. A record is never
+    -- rewritten: only its outcome slot (what was later observed) is filled, once.
+    -- IF NOT EXISTS throughout, as in version 3: a file put back to an earlier version by hand (the tests' downgrade
+    -- helpers) may still hold these objects, and migrating it again must not fail.
+    CREATE TABLE IF NOT EXISTS imagined(
+      id TEXT PRIMARY KEY CHECK(id GLOB 'imagined:""" + "[0-9a-f]" * 32 + """'),
+      kind TEXT NOT NULL CHECK(kind IN ('simulation','speculation','inference')),
+      payload TEXT NOT NULL CHECK(json_valid(payload) AND length(payload) <= 65536),
+      assumptions TEXT NOT NULL CHECK(json_valid(assumptions) AND json_type(assumptions)='array'),
+      uncertainty TEXT NOT NULL CHECK(length(uncertainty) BETWEEN 1 AND 2000),
+      mechanism TEXT NOT NULL CHECK(length(mechanism) BETWEEN 1 AND 64),
+      mechanism_version TEXT NOT NULL CHECK(length(mechanism_version) BETWEEN 1 AND 64),
+      model TEXT CHECK(model IS NULL OR length(model) BETWEEN 1 AND 200),
+      question TEXT NOT NULL CHECK(length(question) BETWEEN 1 AND 2000),
+      created_at REAL NOT NULL,
+      expires_at REAL NOT NULL CHECK(expires_at > created_at),
+      outcome TEXT CHECK(outcome IS NULL OR (json_valid(outcome) AND length(outcome) <= 65536)),
+      observed_at REAL,
+      CHECK((outcome IS NULL) = (observed_at IS NULL)));
+    CREATE INDEX IF NOT EXISTS imagined_expiry ON imagined(expires_at);
+    CREATE INDEX IF NOT EXISTS imagined_age ON imagined(created_at);
+    -- What a record was derived from, by kind and id: forgetting any of them removes the record
+    -- (imagined.purge_orphans).
+    CREATE TABLE IF NOT EXISTS imagined_refs(
+      record_id TEXT NOT NULL REFERENCES imagined(id) ON DELETE CASCADE,
+      ref_kind TEXT NOT NULL CHECK(ref_kind IN ('task','knowledge','claim','source','hypothesis','prediction',
+        'evidence','consolidated','epoch','camera','partner','dataset','graph','imagined')),
+      ref_id TEXT NOT NULL CHECK(length(ref_id) BETWEEN 1 AND 128),
+      PRIMARY KEY(record_id, ref_kind, ref_id));
+    CREATE INDEX IF NOT EXISTS imagined_refs_target ON imagined_refs(ref_kind, ref_id);
+    -- Payload-free tombstones of removed records (digest = governance.root_digest(instance id, 'imagined:' id)), so a
+    -- restore removes them from an older copy too (checkpoints._replay).
+    CREATE TABLE IF NOT EXISTS imagined_forgotten(
+      digest TEXT PRIMARY KEY,
+      reason TEXT NOT NULL CHECK(reason IN ('purged','forgotten','expired','evicted')),
+      forgotten_at REAL NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS imagined_never_rewritten BEFORE UPDATE OF id, kind, payload, assumptions,
+      uncertainty, mechanism, mechanism_version, model, question, created_at, expires_at ON imagined
+      BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END;
+    CREATE TRIGGER IF NOT EXISTS imagined_outcome_once BEFORE UPDATE OF outcome, observed_at ON imagined
+      WHEN OLD.outcome IS NOT NULL
+      BEGIN SELECT RAISE(ABORT,'an imagined record is compared with what was observed once'); END;
+    CREATE TRIGGER IF NOT EXISTS imagined_refs_never_rewritten BEFORE UPDATE ON imagined_refs
+      BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END;
+    -- No reference column of an evidence-side table may name an imagined record (schema._NO_IMAGINED).
+    """ + ";\n".join(NO_IMAGINED_TRIGGERS.values()) + ";\n",
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

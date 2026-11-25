@@ -91,6 +91,11 @@ class InstanceConfig:
     # Both are recorded and `nsf graph migration undo --owner-approved` reverses them. False before that open = the
     # file is left as it is (the owner opts out with `nsf config --no-graph-rule-migration`, which never migrates).
     graph_rule_migration: bool = True
+    # The imagined store (ADR-049, schema 17): content the system produced itself that is not evidence (simulation,
+    # speculation, inference). At most this many records are kept (the oldest goes first; 0 = none may be stored), each
+    # for at most this long. Nothing writes to the store by default; these bound whatever mechanism does.
+    max_imagined_rows: int = 1000
+    imagined_lifetime_seconds: float = 7 * 86400
 
     @classmethod
     def from_json(cls, text):
@@ -110,6 +115,10 @@ class InstanceConfig:
         # stands, never "no limit" by accident. setting_problems() reports it.
         if "max_consolidated_rows" in values and not _row_limit(values["max_consolidated_rows"]):
             del values["max_consolidated_rows"]
+        # The imagined store's bounds: a damaged value reads as the default, never as "unbounded".
+        for name in ("max_imagined_rows", "imagined_lifetime_seconds"):
+            if name in values and not _SETTABLE[name](values[name]):
+                del values[name]
         return cls(**values)
 
 
@@ -261,7 +270,11 @@ _SETTABLE = {
     "consolidation": lambda v: isinstance(v, bool),
     "max_consolidated_rows": _row_limit,
     "graph_rule_migration": lambda v: isinstance(v, bool),
+    "max_imagined_rows": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= MAX_IMAGINED_ROWS,
+    "imagined_lifetime_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
+                                            and math.isfinite(v) and 60 <= v <= 365 * 86400),
 }
+MAX_IMAGINED_ROWS = 100_000
 
 
 SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
@@ -287,7 +300,11 @@ def setting_problems(db):
              "max_consolidated_rows": f"; the default limit of {InstanceConfig.max_consolidated_rows} consolidated "
                                       "readings applies until it is set with `nsf config --max-consolidated-rows N`",
              "graph_rule_migration": "; the graph-rule migration is treated as off until it is set with "
-                                     "`nsf config --graph-rule-migration` or `--no-graph-rule-migration`"}
+                                     "`nsf config --graph-rule-migration` or `--no-graph-rule-migration`",
+             "max_imagined_rows": f"; the default limit of {InstanceConfig.max_imagined_rows} imagined records applies "
+                                  "until it is set with `nsf config --max-imagined-rows N`",
+             "imagined_lifetime_seconds": "; the default lifetime of imagined records applies until it is set with "
+                                          "`nsf config --imagined-lifetime-days D`"}
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
             for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
 

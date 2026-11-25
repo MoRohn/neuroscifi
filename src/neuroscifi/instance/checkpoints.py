@@ -36,7 +36,7 @@ import shutil
 import sqlite3
 
 from .. import archive
-from . import governance, store
+from . import governance, imagined, store
 from .errors import Conflict, Gone, NotFound, ValidationError, WritesPaused
 from .schema import migrate
 
@@ -202,7 +202,7 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
 # window. The settings fixed at `nsf init` (lifetime, journal limit, free-space reserve, temperature limit) cannot
 # differ between an individual and its own archives, so they stay as the archive has them.
 CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds",
-                    "graph_rule_migration")
+                    "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds")
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
@@ -365,6 +365,9 @@ def _read_forgets(db, now, wanted=None):
                        "SELECT target_id, requested_at, effects FROM deletion_log WHERE target_kind='epoch' "
                        "ORDER BY id")],
         "web": db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall(),
+        # Imagined records the live file removed (purged, forgotten with a source, expired, evicted; ADR-049).
+        "imagined": db.execute("SELECT digest,reason,forgotten_at FROM imagined_forgotten").fetchall()
+        if imagined.present(db) else [],
         # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
         "streams": set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()),
         # Retained raw audio likewise: a row the live instance no longer holds was forgotten, swept or expired.
@@ -530,6 +533,9 @@ def _replay(copy, forgets, now):
         for row in copy.execute("SELECT segment_id,created_at FROM voice_audio").fetchall():
             if row not in live_audio:
                 audio += copy.execute("DELETE FROM voice_audio WHERE segment_id=?", (row[0],)).rowcount
+    # Last, after every other replay: imagined records the live file removed since, those past their lifetime, and
+    # those derived from anything the replay above removed (ADR-049).
+    imagined_removed = imagined.replay(copy, forgets.get("imagined", []) if forgets else [], now)
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
@@ -541,7 +547,8 @@ def _replay(copy, forgets, now):
             "datasets_blanked": blobs, "graph_effects_removed": effects,
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
-            "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked}
+            "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked,
+            "imagined_removed": imagined_removed}
 
 
 # ---- rewrite in place after a forget ------------------------------------------------------------------------------
@@ -550,7 +557,7 @@ def _replay(copy, forgets, now):
 # without the forgotten rows and is valid again. Other kinds (evidence, epoch, partner, dataset, expiry) leave derived
 # rows the replay does not reach, and an archive made stale while it was written has no recorded cause: those stay
 # stale until `rebuild` replaces them.
-REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source"})
+REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND})
 JOURNAL_SUFFIX = ".rewrite"
 
 

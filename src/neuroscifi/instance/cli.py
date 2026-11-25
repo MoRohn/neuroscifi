@@ -11,7 +11,8 @@ import time
 from . import store
 from .errors import InstanceError
 
-SUBMODULES = ["neuroscifi.instance.cli_evidence", "neuroscifi.instance.cli_graphs", "neuroscifi.instance.cli_memory"]
+SUBMODULES = ["neuroscifi.instance.cli_evidence", "neuroscifi.instance.cli_graphs", "neuroscifi.instance.cli_memory",
+              "neuroscifi.instance.cli_imagined"]
 
 
 def emit(value):
@@ -69,6 +70,19 @@ def days_or_zero(text):
         raise argparse.ArgumentTypeError(f"expected a number of days, got {text!r}") from None
     if not math.isfinite(value) or not 0 <= value <= 36500:
         raise argparse.ArgumentTypeError(f"expected a number of days from 0 to 36500, got {text}")
+    return value
+
+
+def imagined_days(text):
+    """argparse type: an imagined record's lifetime in days, from one minute to 365 days."""
+    import argparse
+    import math
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number of days, got {text!r}") from None
+    if not math.isfinite(value) or not 60 <= value * 86400 <= 365 * 86400:
+        raise argparse.ArgumentTypeError(f"expected a number of days from one minute to 365, got {text}")
     return value
 
 
@@ -156,6 +170,10 @@ def _config(db, args, now):
         changes["max_consolidated_rows"] = args.max_consolidated_rows
     if args.graph_rule_migration is not None:
         changes["graph_rule_migration"] = args.graph_rule_migration
+    if args.max_imagined_rows is not None:
+        changes["max_imagined_rows"] = args.max_imagined_rows
+    if args.imagined_lifetime_days is not None:
+        changes["imagined_lifetime_seconds"] = args.imagined_lifetime_days * 86400
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
@@ -208,6 +226,12 @@ def register(sub):
                         "active graph worse than no graph (default: on; `nsf graph migration status` shows what it "
                         "would do). --no-graph-rule-migration before that open leaves the file as it is. It runs at "
                         "most once: after `nsf graph migration undo` turning it on again does nothing")
+    p.add_argument("--max-imagined-rows", type=bounded_int(0, store.MAX_IMAGINED_ROWS),
+                   help="the most imagined records kept (`nsf imagined list`; never evidence); the oldest goes first, "
+                        "0 = keep none (default 1000)")
+    p.add_argument("--imagined-lifetime-days", type=imagined_days,
+                   help="how long an imagined record is kept, in days (at least one minute, at most 365 days; "
+                        "default 7)")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("birth", help="birth record, memory inventory and development counters")

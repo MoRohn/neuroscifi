@@ -169,7 +169,7 @@ def test_a_file_from_before_the_flags_gains_them_and_believes_the_same(tmp_path)
     _before_the_flags(path)
     db = store.open_existing(path)
     try:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION == FLAGS
+        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION >= FLAGS
         assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
         assert tc.folded(db) == rows and _pairs_unflagged(db) == []
         # the migration flags exactly the readings with an earlier reading of their sample

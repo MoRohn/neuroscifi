@@ -14,13 +14,15 @@ that epoch's changepoints, every link from or to it, its graph-context associati
 (a deleted stream marks every checkpoint stale; sweep also expires streams). An epoch that continues an epoch losing evidence pools
 fewer events on its next read; it gets a belief revision too. After the commit the WAL is checkpointed and truncated so no
 old frame keeps the payload; a reader that blocks this is reported as effects["wal_checkpoint"] = "busy".
+Every forget also removes, in its transaction, the imagined records (ADR-049) derived from what it removed
+(imagined.purge_orphans; effects["imagined_removed"], absent while zero).
 """
 import hashlib
 import json
 import re
 import secrets
 
-from . import store
+from . import imagined, store
 from .errors import Gone, NotFound, ValidationError
 from .schema import has_consolidated
 
@@ -409,8 +411,20 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
         effects["linked_epochs_revised"] = linked
     if drop_epoch is not None or any(derived.values()):
         effects["derived_deleted"] = derived
-    db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
-               (kind, target, now, json.dumps(effects, sort_keys=True)))
+    logged = db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                        (kind, target, now, json.dumps(effects, sort_keys=True))).lastrowid
+    # after the log row: an epoch's row outlives its forget, so that row is what says the epoch is gone
+    if _imagined_cascade(db, effects, now).get("imagined_removed"):
+        db.execute("UPDATE deletion_log SET effects=? WHERE id=?", (json.dumps(effects, sort_keys=True), logged))
+    return effects
+
+
+def _imagined_cascade(db, effects, now):
+    """Remove the imagined records (ADR-049) derived from anything this forget removed; effects["imagined_removed"]
+    counts them (absent while zero). Caller owns the transaction."""
+    removed = imagined.purge_orphans(db, now)
+    if removed:
+        effects["imagined_removed"] = removed
     return effects
 
 
@@ -581,6 +595,7 @@ def forget_dataset(db, dataset_id, now):
                        "graph_effects_deleted": effects_deleted + erased["effects_deleted"],
                        "graphs_erased": erased["erased"], "decisions_redacted": erased["decisions_redacted"],
                        "state_version": version}
+            _imagined_cascade(db, effects, now)
             status, failure = "forgotten", cascade.get("failure")
             db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects,failure) "
                        "VALUES('dataset',?,?,?,?)",
@@ -625,6 +640,7 @@ def _finish_dataset_forget(db, dataset_id, now, *, by):
                "graph_effects_deleted": effects_deleted + erased["effects_deleted"],
                "graphs_erased": erased["erased"], "decisions_redacted": erased["decisions_redacted"],
                "checkpoints_stale": stale, "state_version": version}
+    _imagined_cascade(db, effects, now)
     db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES('dataset',?,?,?)",
                (str(dataset_id), now, json.dumps(effects, sort_keys=True)))
     return effects
@@ -667,7 +683,8 @@ def promote(db, event_id, now):
 
 
 def sweep(db, now):
-    """Expire unpromoted evidence and epoch streams whose lifetime ended.
+    """Expire unpromoted evidence and epoch streams whose lifetime ended, and imagined records (ADR-049) past
+    theirs ("imagined_expired", absent while zero).
 
     With InstanceConfig.consolidation on (the default, ADR-044) an expiring learning event leaves a consolidated
     reading: its seq, epoch, channel, root, corrected reading and sample id, which beliefs keep counting. Its id,
@@ -686,6 +703,7 @@ def sweep(db, now):
                           consolidate=store.config(db).consolidation)
         streams = db.execute("DELETE FROM epoch_streams WHERE expires_at IS NOT NULL AND expires_at<=?",
                              (now,)).rowcount
+        expired_imagined = imagined.expire(db, now)
         stale = effects["checkpoints_stale"] if effects else []
         if streams:
             stale = _stale_all(db, stale)
@@ -701,6 +719,8 @@ def sweep(db, now):
         out["consolidated"] = effects["consolidated"]       # absent while zero
     if effects and effects.get("not_consolidated"):
         out["not_consolidated"] = effects["not_consolidated"]   # absent while zero
+    if expired_imagined:
+        out["imagined_expired"] = expired_imagined          # absent while zero
     problems = [p for p in store.setting_problems(db) if "consolidat" in p or "settings" in p]
     if effects and (effects.get("consolidated") or effects.get("not_consolidated")):
         # Only a sweep that met learning events looks at the limit: the usual sweep, which expires nothing, costs
@@ -708,7 +728,7 @@ def sweep(db, now):
         problems += store.consolidation_warnings(db)
     if problems:
         out["warnings"] = problems                          # absent for sound settings below the warning share
-    if effects or streams:
+    if effects or streams or expired_imagined:
         out["wal_checkpoint"] = store.truncate_wal(db)
     return out
 
@@ -930,6 +950,7 @@ def _web_cascade(db, removed_claims, now):
 def _web_finish(db, kind, target, effects, now):
     """Stale checkpoints, state version and deletion_log. Caller owns the txn. `target` is persisted: it must
     not carry forgotten payload (a URL or domain goes in as its digest label)."""
+    _imagined_cascade(db, effects, now)
     effects["checkpoints_stale"] = _stale_all(db)
     effects["state_version"] = store.bump_state_version(db)
     db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
