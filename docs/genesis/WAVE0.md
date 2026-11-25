@@ -145,7 +145,7 @@ with quiet off; `store.set_config` returns `imagined_removed`; raising an imagin
 | Validation on `2aee516` | gate 5181 passed, 19 skipped; acceptance 0; guard differential 0 different; two-account check 55 of 55; e2e 207 passed + 1 timing flake (Pocket "enrol this device", 30 s; the file passed 6 of 6 on 5 reruns); benchmark development run equal to the recorded baseline |
 | Validation on `03cbece` | gate 5314 passed, 19 skipped; e2e 208 passed, 1 skipped; acceptance 0; guard differential 0 different; two-account check 55 of 55; benchmark development and held-out ran |
 | Lane fix0b on its branch | full non-e2e suite 5342 passed, 19 skipped, 0 failed; `ruff` clean; `tests/js` 7 of 7; `scripts/reproduce.py` 8 verified; e2e not run (no UI touched) |
-| Final validation on `76a478e` | <<WAVE0-FINAL>> |
+| Final validation on `76a478e` | `bash scripts/check.sh`: ruff clean, pytest 5342 passed, 19 skipped (18 live-service tests and the opt-in benchmark run), Node checks and `scripts/reproduce.py` pass; `nsf acceptance --all` exit 0; guard differential 1,937 inputs, 0 different; two-account check 55 of 55; browser suite 207 passed, 1 skipped, 1 failed (`test_add_a_phone_from_the_console_to_a_paired_phone`: the address was read a moment before the page's first statement removed the pairing code; the file passed 5 of 5 on rerun; the test now waits up to 2 s for the code to go, a test-only change made after this run, 3 of 3). The same suite on `03cbece` (before the second fix round, which changed no page): 208 passed, 1 skipped. Benchmark on development and held-out reproduces `genesis_baseline.json` with 0 differences |
 
 ## 7. What stays open
 

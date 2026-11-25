@@ -129,6 +129,9 @@ def test_add_a_phone_from_the_console_to_a_paired_phone(spark, new_page):
     app = app_url.replace("spark.local", "127.0.0.1")
     page = phone(new_page, IPHONE, trusted=True)
     page.goto(app + "#pair=" + desk.locator("#pairCode").inner_text().replace(" ", ""))
+    # The page's first statement removes it (mobile.js). Wait for that instead of reading the address at one instant:
+    # on a loaded runner `goto` can return a moment before the module has run. It must be gone within two seconds.
+    page.wait_for_function("() => !location.hash", timeout=2000)
     assert "#" not in page.url, "the code is removed from the address bar at once"
     expect(page.locator("#pairhelp")).to_have_text("This device was invited to pair with your Spark. Tap Pair to finish.")
     expect(page.locator("#spark")).to_have_class(re.compile("invited"))
