@@ -105,8 +105,8 @@ def test_the_trigger_still_refuses_every_other_change_of_a_snapshot(instance):
 
 
 def test_migration_15_changes_no_row_of_a_version_14_file(tmp_path):
-    """Additive: a version-14 file with graphs, datasets and evidence gains forgotten_scopes and the new triggers;
-    every row of every table is what it was."""
+    """Additive: a version-14 file with graphs, datasets and evidence gains forgotten_scopes and the new triggers (and,
+    by migration 16 after it, the copied flags); every row of every table is what it was."""
     from neuroscifi.instance import schema
     path = tmp_path / "v14.sqlite"
     db = store.create(path, T0)
@@ -114,19 +114,24 @@ def test_migration_15_changes_no_row_of_a_version_14_file(tmp_path):
     db.close()
     raw = sqlite3.connect(path, isolation_level=None)
     raw.executescript(
-        "BEGIN; DROP TABLE forgotten_scopes; DROP TRIGGER graph_erased_stays_invalidated; "
+        "BEGIN; DROP TRIGGER evidence_consolidated_copied_insert; DROP TRIGGER evidence_consolidated_copied_update; "
+        "DROP TRIGGER evidence_consolidated_copied_kept; DROP INDEX evidence_consolidated_copied; "
+        "ALTER TABLE evidence_consolidated DROP COLUMN copied; "
+        "DROP TABLE forgotten_scopes; DROP TRIGGER graph_erased_stays_invalidated; "
         "DROP TRIGGER graph_identity_immutable; "
         "CREATE TRIGGER graph_identity_immutable BEFORE UPDATE OF blob, sha256, rule_version, context, origin "
         "ON graph_revisions BEGIN SELECT RAISE(ABORT,'graph snapshot identity is immutable'); END; "
         "PRAGMA user_version=14; COMMIT;")
     tables = [n for (n,) in raw.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE "
                                         "'sqlite_%' ORDER BY name")]
-    before = {t: raw.execute(f"SELECT * FROM {t} ORDER BY rowid").fetchall() for t in tables}
+    columns = {t: ",".join(c[1] for c in raw.execute(f"PRAGMA table_info({t})")) for t in tables}
+    before = {t: raw.execute(f"SELECT {columns[t]} FROM {t} ORDER BY rowid").fetchall() for t in tables}
     raw.close()
     db = store.open_existing(path)
     try:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION == 15
-        assert {t: db.execute(f"SELECT * FROM {t} ORDER BY rowid").fetchall() for t in tables} == before
+        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+        # the columns a version-14 file had (migration 16 adds `copied`, tested in test_consolidation_copied.py)
+        assert {t: db.execute(f"SELECT {columns[t]} FROM {t} ORDER BY rowid").fetchall() for t in tables} == before
         assert db.execute("SELECT count(*) FROM forgotten_scopes").fetchone()[0] == 0
         rev = db.execute("SELECT id FROM graph_revisions").fetchone()[0]
         with pytest.raises(sqlite3.IntegrityError, match="immutable"):
