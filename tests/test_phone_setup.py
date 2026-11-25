@@ -342,24 +342,33 @@ def test_start_runs_the_services_and_stops_them_all_on_sigterm(home, capsys):
     (planted / "argparse.py").write_text(f"open({str(marker)!r}, 'w').close()\nraise SystemExit(9)\n")
     proc = subprocess.Popen([sys.executable, "-P", "-m", "neuroscifi.cli", "start", "--no-browser"],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=planted)
-    lines = []
-    reader = threading.Thread(target=lambda: lines.extend(iter(proc.stdout.readline, "")), daemon=True)
-    reader.start()
-    deadline = time.monotonic() + 30
-    wanted = ("NeuroSciFi is running.", '[pocket] Pairing: in the console choose "Add a phone"')
-    # The services print independently: Pocket's line may come just after the summary, so wait for both.
-    while time.monotonic() < deadline and not all(any(w in line for line in lines) for w in wanted):
-        assert proc.poll() is None, "".join(lines)
-        time.sleep(0.1)
-    text = "".join(lines)
-    assert "NeuroSciFi is running." in text and '[pocket] Pairing: in the console choose "Add a phone"' in text
-    assert "One-use pairing code" not in text                                       # the QR codes replace it
-    url_file = Path(record["console_url_file"])
-    assert url_file.exists() and stat.S_IMODE(url_file.stat().st_mode) == 0o600
-    assert url_file.read_text().strip() not in text                                 # the token never in the terminal
-    proc.send_signal(signal.SIGTERM)
-    assert proc.wait(30) == 0
-    reader.join(5)
+    try:
+        lines = []
+        reader = threading.Thread(target=lambda: lines.extend(iter(proc.stdout.readline, "")), daemon=True)
+        reader.start()
+        deadline = time.monotonic() + 30
+        wanted = ("NeuroSciFi is running.", '[pocket] Pairing: in the console choose "Add a phone"')
+        # The services print independently: Pocket's line may come just after the summary, so wait for both.
+        while time.monotonic() < deadline and not all(any(w in line for line in lines) for w in wanted):
+            assert proc.poll() is None, "".join(lines)
+            time.sleep(0.1)
+        text = "".join(lines)
+        assert "NeuroSciFi is running." in text and '[pocket] Pairing: in the console choose "Add a phone"' in text
+        assert "One-use pairing code" not in text                                       # the QR codes replace it
+        url_file = Path(record["console_url_file"])
+        assert url_file.exists() and stat.S_IMODE(url_file.stat().st_mode) == 0o600
+        assert url_file.read_text().strip() not in text                                 # the token never in the terminal
+        proc.send_signal(signal.SIGTERM)
+        assert proc.wait(30) == 0
+        reader.join(5)
+    finally:
+        if proc.poll() is None:       # a failed assertion above: stop it and its services, as the owner's Ctrl-C does
+            proc.send_signal(signal.SIGTERM)
+            try:
+                proc.wait(30)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(5)
     assert not url_file.exists(), "the console was stopped and removed its URL file"
     with pytest.raises(OSError):
         bridge.invitation_status(record["pocket_db"], "0" * 16)                    # the bridge is gone too
