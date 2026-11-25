@@ -37,7 +37,8 @@ WEB_TESTS = "tests/webcortex/test_imagined_quarantine.py"
 MUTATIONS = [
     ("trigger_table_dropped", "no reference column of web_knowledge may name an imagined record",
      "instance/schema.py",
-     '    "web_knowledge": (("task_id",), (), {"supporting": (), "contradicting": ("claim", "task")}),\n', "",
+     '    "web_knowledge": (("task_id",), (), {"supporting": (), "contradicting": ("claim", "task", "claim_id")}),\n',
+     "",
      [INSTANCE_TESTS]),
     ("trigger_json_list_blind", "an imagined id in a JSON list of ids (escaped, in an object's id key) is refused",
      "instance/schema.py",
@@ -51,8 +52,8 @@ MUTATIONS = [
      "instance/schema.py", '    "web_mentions": (("claim_id", "knowledge_id", "task_id"), (), {}),\n', "",
      [INSTANCE_TESTS]),
     ("trigger_tests_free_text", "a page title or quoted text never trips the triggers (M2: consolidation aborted)",
-     "instance/schema.py", '{"supporting": (), "contradicting": ("claim", "task")}',
-     '{"supporting": (), "contradicting": ("claim", "task", "text"), "sources": ("title",)}',
+     "instance/schema.py", '{"supporting": (), "contradicting": ("claim", "task", "claim_id")}',
+     '{"supporting": (), "contradicting": ("claim", "task", "claim_id", "text"), "sources": ("title",)}',
      [INSTANCE_TESTS, WEB_TESTS]),
     ("record_replaceable", "INSERT OR REPLACE never rewrites a record (L1)", "instance/schema.py",
      "WHEN EXISTS (SELECT 1 FROM imagined WHERE id=NEW.id)", "WHEN 0", [INSTANCE_TESTS]),
@@ -143,6 +144,31 @@ MUTATIONS = [
     ("listing_unlabelled", "every listing says 'imagined, not evidence'", "instance/imagined.py",
      'out = {"id": item["id"], "kind": item["kind"], "label": NOT_EVIDENCE,', 'out = {"id": item["id"], "kind": '
      'item["kind"],', [INSTANCE_TESTS]),
+    # review0b (the second Wave 0 fix lane): each finding's safeguard
+    ("repair_reads_the_catalogue_once", "two processes repairing a first-build file at once both open it (N2)",
+     "instance/schema.py",
+     "            wanted, stale, retired, observed, index = _repairs(db)   # another process may have repaired it "
+     "meanwhile\n", "            wanted = _repairs(db)[0]\n", [INSTANCE_TESTS]),
+    ("first_build_observations_kept", "what the first build observed goes with the one-time repair (N3)",
+     "instance/schema.py",
+     '                _purge_unsupported_outcomes(db, "outcome IS NOT NULL" if not observed else _OUTCOME_UNSUPPORTED)',
+     "                pass", [INSTANCE_TESTS]),
+    ("observed_integer_unbounded", "an observed integer is within +-2**53: no text in its digits (N4)",
+     "instance/imagined.py", "(isinstance(value, int) and -MAX_INT <= value <= MAX_INT)", "isinstance(value, int)",
+     [INSTANCE_TESTS]),
+    ("repair_drops_by_name_pattern", "the repair drops only the triggers it retired (N6)", "instance/schema.py",
+     "    retired = [name for name in _RETIRED_17 if name in present]",
+     '    retired = [name for name, (kind, _) in present.items() if kind == "trigger" and name not in wanted\n'
+     '               and name.endswith(("_no_imagined_i", "_no_imagined_u"))]', [INSTANCE_TESTS]),
+    ("monitor_task_unchecked", "web_monitors.last_task_id may not name a record (N8)", "instance/schema.py",
+     '    "web_monitors": (("last_task_id",), (), {}),\n', "", [INSTANCE_TESTS]),
+    ("claim_source_unchecked", "web_claims.source_id may not name a record (N8)", "instance/schema.py",
+     '(("id", "task_id", "source_id"), (), {})', '(("id", "task_id"), (), {})', [INSTANCE_TESTS]),
+    ("event_id_unchecked", "an event id, root or sample id naming a record is refused up front (N10)",
+     "instance/evidence.py", '            if name != "actor":\n                _not_imagined(name, record[name])\n',
+     "", [INSTANCE_TESTS]),
+    ("epoch_name_unchecked", "an epoch named like a record is refused up front (N10)", "instance/evidence.py",
+     '    _not_imagined("epoch name", name)\n', "", [INSTANCE_TESTS]),
 ]
 
 

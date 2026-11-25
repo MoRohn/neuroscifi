@@ -666,13 +666,13 @@
   "machine": "aarch64",
   "measured_at": 1795609135.6717837,
   "mutations": {
-    "caught": 10,
+    "caught": 14,
     "control": {
       "exit": 0,
-      "seconds": 11.6,
-      "summary": "34 passed in 11.39s"
+      "seconds": 13.2,
+      "summary": "43 passed in 13.00s"
     },
-    "of": 10,
+    "of": 14,
     "results": [
       {
         "caught": true,
@@ -680,8 +680,8 @@
         "file": "src/neuroscifi/webcortex/orchestrator.py",
         "mutation": "quiet_not_asked_before_the_model",
         "safeguard": "quiet turned on while a background task synthesizes stops it before the model call (review0 L2)",
-        "seconds": 1.62,
-        "summary": "1 failed, 4 passed in 1.42s",
+        "seconds": 1.66,
+        "summary": "1 failed, 4 passed in 1.46s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -692,8 +692,8 @@
         "file": "src/neuroscifi/webcortex/orchestrator.py",
         "mutation": "quiet_not_asked_before_consolidation",
         "safeguard": "quiet turned on during the model call stops consolidation (L2)",
-        "seconds": 2.22,
-        "summary": "1 failed, 5 passed in 2.03s",
+        "seconds": 2.18,
+        "summary": "1 failed, 5 passed in 1.99s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -704,8 +704,8 @@
         "file": "src/neuroscifi/webcortex/orchestrator.py",
         "mutation": "owner_requeue_held",
         "safeguard": "a failed background task the owner queues again is never held (L6)",
-        "seconds": 2.75,
-        "summary": "1 failed, 6 passed in 2.57s",
+        "seconds": 2.74,
+        "summary": "1 failed, 6 passed in 2.54s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -716,8 +716,8 @@
         "file": "src/neuroscifi/webcortex/cli.py",
         "mutation": "owner_resume_held",
         "safeguard": "a background task the owner resumes is never held (L6)",
-        "seconds": 2.66,
-        "summary": "1 failed, 6 passed in 2.47s",
+        "seconds": 2.72,
+        "summary": "1 failed, 6 passed in 2.53s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -728,8 +728,8 @@
         "file": "src/neuroscifi/background.py",
         "mutation": "owner_asked_not_honoured",
         "safeguard": "what the owner asked for is not held, at claim and while it runs (L6)",
-        "seconds": 2.71,
-        "summary": "1 failed, 6 passed in 2.49s",
+        "seconds": 2.68,
+        "summary": "1 failed, 6 passed in 2.51s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -740,8 +740,8 @@
         "file": "src/neuroscifi/background.py",
         "mutation": "origin_matched_without_case",
         "safeguard": "background origins are matched with case everywhere (note)",
-        "seconds": 2.79,
-        "summary": "1 failed, 7 passed in 2.61s",
+        "seconds": 4.47,
+        "summary": "1 failed, 16 passed in 4.32s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -752,8 +752,8 @@
         "file": "src/neuroscifi/webcortex/scheduler.py",
         "mutation": "tick_launches_a_refreshed_subject",
         "safeguard": "the tick never launches curiosity on a subject its refresh queued (note)",
-        "seconds": 0.26,
-        "summary": "1 failed in 0.15s",
+        "seconds": 0.28,
+        "summary": "1 failed in 0.14s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -764,8 +764,8 @@
         "file": "src/neuroscifi/instance/checkpoints.py",
         "mutation": "restore_brings_the_old_rule_back",
         "safeguard": "a restore carries the owner's tick_admission (note)",
-        "seconds": 7.8,
-        "summary": "1 failed, 24 passed in 7.60s",
+        "seconds": 9.43,
+        "summary": "1 failed, 33 passed in 9.25s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -776,8 +776,8 @@
         "file": "src/neuroscifi/webcortex/cli.py",
         "mutation": "thread_launch_unregistered",
         "safeguard": "an entry point handed to a thread is a launch site (L8)",
-        "seconds": 6.79,
-        "summary": "1 failed, 17 passed in 6.62s",
+        "seconds": 8.57,
+        "summary": "1 failed, 26 passed in 8.41s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -788,8 +788,56 @@
         "file": "src/neuroscifi/webcortex/cli.py",
         "mutation": "forwarded_origin_unregistered",
         "safeguard": "an origin= that is not written out is a launch site (L8)",
-        "seconds": 6.79,
-        "summary": "1 failed, 17 passed in 6.60s",
+        "seconds": 8.68,
+        "summary": "1 failed, 26 passed in 8.49s",
+        "tests": [
+          "tests/webcortex/test_background.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/webcortex/predictions.py",
+        "mutation": "quiet_refresh_settled",
+        "safeguard": "a refresh quiet stopped leaves its prediction due, not 'inconclusive' (N5)",
+        "seconds": 4.5,
+        "summary": "1 failed, 10 passed in 4.34s",
+        "tests": [
+          "tests/webcortex/test_background.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/webcortex/knowledge.py",
+        "mutation": "forwarder_launches_itself",
+        "safeguard": "a forwarder that also launches background work is a launch site (N7; the first fix's scan exempted the whole function)",
+        "seconds": 8.39,
+        "summary": "1 failed, 26 passed in 8.24s",
+        "tests": [
+          "tests/webcortex/test_background.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/webcortex/orchestrator.py",
+        "mutation": "owner_asked_labelled_autonomous",
+        "safeguard": "a background task the owner resumed or requeued reads as owner-confirmed in its answer (N12)",
+        "seconds": 3.27,
+        "summary": "1 failed, 7 passed in 3.10s",
+        "tests": [
+          "tests/webcortex/test_background.py"
+        ]
+      },
+      {
+        "caught": true,
+        "exit": 1,
+        "file": "src/neuroscifi/webcortex/autonomy.py",
+        "mutation": "tick_launches_another_kind",
+        "safeguard": "the unified tick launches a pooled subject only in the kind the timer ranked (tick dedupe)",
+        "seconds": 4.5,
+        "summary": "1 failed, 14 passed in 4.32s",
         "tests": [
           "tests/webcortex/test_background.py"
         ]
@@ -803,6 +851,12 @@
     "honour_and_cost": "not re-run: the quiet check at each network step is unchanged; quiet is now also asked once before the model call and once before consolidation (one meta row each)",
     "old_scan_misses": "the 2aee516 launch-site scan passes with thread_launch_unregistered and forwarded_origin_unregistered applied; the new scan fails both",
     "what": "the Wave 0 fix lane (gen-fix0, from 2aee516): the safeguards the review asked for (L2, L6, L8 and the notes), each broken alone in a copy of src/, fail tests/webcortex/test_background.py (`bench_genesis_safety.py --only mutations`, in 'mutations'); the admission benchmark re-run after the same-tick dedupe gives the same launches, subjects and refusals at every offset and rule (only the admission times differ)"
+  },
+  "review0b": {
+    "admission_rerun": "the admission benchmark run at 03cbece and with this lane's src, same session: identical launches, subjects and refusals at every offset, variant and rule (only times differ); 'admission' above is unchanged",
+    "honour_and_cost": "not re-run: the stop check and the claim path are unchanged",
+    "old_scan_misses": "the 03cbece launch-site scan passes with forwarder_launches_itself applied (test_every_launch_site_in_the_source_is_registered... passes); the new scan fails it",
+    "what": "the second Wave 0 fix lane (gen-fix0b, from 03cbece): N5 (a refresh quiet stopped leaves its prediction due), N7 (a forwarder that also launches work is a launch site), N12 (an owner-asked background task reads as owner-confirmed) and the tick's kind check (tick dedupe), each broken alone in a copy of src/, fail tests/webcortex/test_background.py (mutations 11-14 are new)"
   },
   "schema": "nsf.genesis.safety/1",
   "software": "0.7.0"

@@ -17,9 +17,9 @@ honour     A research worker runs as `nsf web work` does (its own thread and con
            task reading a slow site (1 s per page) is running when quiet is turned on: the time until it stops and
            the page requests sent after the switch.
 cost       background.allowed and claim_next with quiet off and on (median of repeated calls).
-mutations  Each safeguard the Wave 0 review (review0) asked for, broken one at a time in a copy of src/ (the working
-           tree is never touched), must fail tests/webcortex/test_background.py (scripts/genesis_provenance.py's
-           runner). Only with --only mutations.
+mutations  Each safeguard the Wave 0 review and its re-review (review0, review0b) asked for, broken one at a time in
+           a copy of src/ (the working tree is never touched), must fail tests/webcortex/test_background.py
+           (scripts/genesis_provenance.py's runner). Only with --only mutations.
 """
 from __future__ import annotations
 
@@ -323,6 +323,21 @@ MUTATIONS = [
      "def _resume(db, a, now):", "def _forward(db, origin):\n    from . import orchestrator\n"
      "    return orchestrator.submit(db, 'x', 0, origin=origin)\n\n\ndef _resume(db, a, now):",
      [BACKGROUND_TESTS]),
+    # review0b (the second Wave 0 fix lane)
+    ("quiet_refresh_settled", "a refresh quiet stopped leaves its prediction due, not 'inconclusive' (N5)",
+     "webcortex/predictions.py", "            if quieted:", "            if False:", [BACKGROUND_TESTS]),
+    ("forwarder_launches_itself", "a forwarder that also launches background work is a launch site (N7; the "
+     "first fix's scan exempted the whole function)", "webcortex/knowledge.py",
+     "    if origin in (\"cli\", \"console\"):\n        origin = f\"{OWNER_REFRESH}{item['id']}\"\n",
+     "    if origin in (\"cli\", \"console\"):\n        origin = f\"{OWNER_REFRESH}{item['id']}\"\n"
+     "    if origin == \"cli\":\n        orchestrator.submit(db, item[\"statement\"], now, origin=\"curiosity\")\n",
+     [BACKGROUND_TESTS]),
+    ("owner_asked_labelled_autonomous", "a background task the owner resumed or requeued reads as owner-confirmed "
+     "in its answer (N12)", "webcortex/orchestrator.py", "in (OWNER_CONFIRMED, OWNER_ASKED)",
+     "in (OWNER_CONFIRMED,)", [BACKGROUND_TESTS]),
+    ("tick_launches_another_kind", "the unified tick launches a pooled subject only in the kind the timer ranked "
+     "(tick dedupe)", "webcortex/autonomy.py", '        if pool is not None and item["kind"] != pool[item["key"]]:',
+     "        if False:", [BACKGROUND_TESTS]),
 ]
 
 

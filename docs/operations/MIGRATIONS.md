@@ -36,12 +36,14 @@ of the pre-upgrade checkpoint.
 **Version 17 (the imagined store, ADR-049).** It adds three empty tables: `imagined` (content the system produced
 itself that is not evidence: simulations, speculations, model-written inferences), `imagined_refs` (what each record
 was derived from or what its outcome names) and `imagined_forgotten` (payload-free tombstones), with their indexes
-and triggers, and on fourteen evidence-side tables (evidence, consolidated readings, belief revisions, tasks, events,
-web sources, claims, claim links, knowledge, mentions, hypotheses, predictions, feedback, voice segments) a pair of
-triggers that refuse an id of the form `imagined:` plus 32 hex digits in a reference column (free text is never
-tested). No existing row is read or written; the migration takes milliseconds. Version 17 was amended before release:
-a file migrated by its first build gets the current triggers, `imagined_refs.observed` and the tombstone index at its
-next open, in one short transaction (`schema.ensure_triggers`). The
+and triggers, and on fifteen evidence-side tables (evidence, consolidated readings, belief revisions, tasks, events,
+web sources, claims, claim links, knowledge, mentions, hypotheses, predictions, feedback, voice segments, monitors) a
+pair of triggers that refuse an id of the form `imagined:` plus 32 hex digits in a reference column (free text is
+never tested). No existing row is read or written; the migration takes milliseconds. Version 17 was amended twice
+before release: a file migrated by either earlier build gets the current triggers, `imagined_refs.observed` and the
+tombstone index at its next open, in one short transaction (`schema.ensure_triggers`; a second process opening it at
+the same moment waits and finds it done); records observed under the first build are removed in that transaction,
+each with a tombstone and one deletion-log row (kind `imagined`), as their outcomes kept text no forget reached. The
 store stays empty until a mechanism writes to it; nothing does in this release. Two settings come with it,
 `max_imagined_rows` (1000) and `imagined_lifetime_seconds` (7 days), changeable with `nsf config
 --max-imagined-rows N` and `--imagined-lifetime-days D`; a file saved by older software reads them as these

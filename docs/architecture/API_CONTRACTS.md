@@ -117,6 +117,8 @@ evidence.observe(db, obs: dict, now, *, path=None) -> {"status": "created"|"dupl
 #   Unknown keys -> ValidationError. Unknown epoch -> NotFound. Tombstoned id -> Gone.
 #   Same id + identical payload -> "duplicate" (bumps repeat_views, never extends expiry).
 #   Same id + different payload -> Conflict. Regulation -> WritesPaused (checked before insert).
+#   An id, root or sample_id (and start_epoch's name) holding "imagined:" + 32 hex digits, any case -> ValidationError
+#   (ADR-049: the database would refuse it, in the row or in the belief revision's cause).
 #   expires_at = now + config.evidence_ttl_seconds.
 #   After insert: recompute beliefs; if MAP state or identifiability changed, insert belief_revisions(cause='evidence:<id>').
 evidence.list_evidence(db, epoch, *, channel=None, root=None, limit=500) -> list[dict]
@@ -733,7 +735,8 @@ imagined.record(db, kind, *, payload, assumptions: [str], uncertainty: str, mech
 #   are evicted (deletion_log kind "imagined", target "evicted"); with max_imagined_rows 0 ValidationError;
 #   WritesPaused while regulation pauses writes
 imagined.observe(db, id, *, observation, now, evidence=[(ref_kind, id)]) -> show()  # once; never an imagined ref
-#   observation: a number, true/false or null, or {payload key: such a value} (ValidationError otherwise: no text);
+#   observation: a number (an integer within +-2**53, imagined.MAX_INT, or a finite float), true/false or null, or
+#   {payload key: such a value} (ValidationError otherwise: no text);
 #   the evidence (at most MAX_REFS) joins imagined_refs (observed 1), so forgetting it removes the record;
 #   WritesPaused while regulation pauses writes; derived_from in show() stays what the record was derived from
 imagined.listing(db, now, *, kind=None, limit=100) -> {"label", "counts" {kind: n}, "items": [{"id", "kind", "label",

@@ -73,7 +73,9 @@ implements its family's interface (below). Any agent may also have `activate()`,
 mechanism on in the running system (a setting) while its family runs; retention and adversarial use only that.
 The offline corpus run that selective and retention share is cached per process; it is dropped when a mechanism is
 switched on and again when it is switched off, so a family with the mechanism on never reads a run made without it
-(nor a later family one made with it).
+(nor a later family one made with it). The baseline of retention and adversarial switches nothing on, so it reads the
+cached run, as when the baseline was recorded (its costs stay reproducible: retention 14.8 s on development when
+re-run, 14.6 s recorded).
 Register under the same name in every family the mechanism affects; `--mechanism NAME` falls back to the baseline,
 and says so in the output, where it is not registered. Put the `register` calls in a module and append its name to
 `cognition.PLUGINS` (one line) or pass `--plugin`. An unknown `--ablate` component is refused, never silently

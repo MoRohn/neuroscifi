@@ -1806,15 +1806,19 @@ stores such content.
    outcome slot is filled once, while writes are allowed, with an observation that names held evidence and never
    another imagined record (imagine, observe, compare: the comparison is the mechanism's; the store keeps both,
    apart). The evidence it names joins the record's references (`imagined_refs.observed` = 1), so forgetting any of it
-   removes the record, and the observation itself carries no text: a number, true/false or null, or an object of the
-   record's own payload keys to such values. Nothing a forget removes can survive in an outcome.
+   removes the record, and the observation itself carries no text: a number (an integer within ±2^53, so no text fits
+   in its digits, or a finite float), true/false or null, or an object of the record's own payload keys to such
+   values. Nothing a forget removes can survive in an outcome.
 3. **Nothing on the evidence side can name a record.** An id is `imagined:` followed by 32 hex digits. Triggers on
    insert and update refuse such an id in every column that holds a REFERENCE on the evidence side
    (`schema._NO_IMAGINED`): the id columns of evidence, consolidated readings, tasks (parent), events, web sources,
-   claims, claim links, mentions, hypotheses (task, knowledge, parent), predictions (task, knowledge, hypothesis),
-   feedback and voice segments, compared lower-cased and trimmed of white space; a belief revision's cause that
-   contains one; and the elements of the JSON id lists (knowledge supporting, the claim and task of each contradicting
-   entry, a hypothesis's claims), read with `json_each`, so a JSON escape hides nothing. Free text is never tested: a
+   claims (and their source), claim links, mentions, hypotheses (task, knowledge, parent), predictions (task,
+   knowledge, hypothesis), feedback, voice segments and monitors (last task), compared lower-cased and trimmed of white
+   space; a belief revision's cause that contains one; and the elements of the JSON id lists (knowledge supporting,
+   the `claim`, `claim_id` and `task` of each contradicting entry, a hypothesis's claims), read with `json_each`, so a
+   JSON escape hides nothing. An event id, root or sample id, or an epoch name, holding such an id in any case is
+   refused before the database sees it (`ValidationError`; the revision cause would have refused it as a raw
+   integrity error, at the epoch's forget for a name). Free text is never tested: a
    page title copied into a knowledge item's sources, a quote in `contradicting`, a detail, a verification record or
    a metric may read like an id (a web page titled `imagined:<32 hex>` used to abort its task's consolidation). Text
    copied from a record is kept out by the code instead: an AST scan of every module under `src/neuroscifi` allows the
@@ -1823,8 +1827,10 @@ stores such content.
    `observe`); and *displays*, which may list records labelled "imagined, not evidence" (`listing`, `show`), each
    entry with its reason. No evidence path (knowledge, claims, consolidation, synthesis, evolution and calibration,
    predictions, semantic memory, the memory gate, reasoning, web state, temporal reasoning, beliefs, evidence, the
-   executive, memory, datasets, graphs, the learner, recall) may be put on any list. A lane adds its module to
-   WRITERS or DISPLAYS with a one-line reason; the scan checks the names it uses.
+   executive, memory, datasets, graphs, the learner, recall) may be put on any list, nor may the orchestrator (it
+   builds the report the answer model is sent), curiosity or autonomy (they choose what is investigated): a
+   scenario's outcome reaches those only as a settled prediction error, through the ordinary prediction records. A
+   lane adds its module to WRITERS or DISPLAYS with a one-line reason; the scan checks the names it uses.
 4. **The answer model never sees it as evidence.** `reasoning.bundle` drops findings, answer items and sources of a
    quarantined kind. `reasoning.check_sentence`, the guard's only citation resolver, treats a quarantined claim or
    source as unknown. `messages()` sends only the bundle's evidence keys, so a separate part built with
@@ -1859,6 +1865,38 @@ stores such content.
    generator for tests and measurements and writes nothing itself. With no record held, a forget costs one indexed
    read more and the answer path is unchanged.
 
+## What the triggers and the scans cannot see
+
+Only the database triggers (decision 3 and the store's own) and, for ADR-050, the runtime quiet check enforce anything
+while the system runs. The AST scans are tests: they read the source as written, and a lane can defeat them without
+meaning to. Known gaps, measured by the second Wave 0 review (`review0b`):
+
+- **Forms the reference triggers let through.** A JSON id list that SQLite's `json_valid` rejects but Python's
+  `json.loads` reads (a `NaN` or `Infinity` element beside an id: the trigger reads no element of an invalid list);
+  an id padded with characters `trim` does not remove (a no-break space, a zero-width character); an id inside a
+  nested list or an object element of `supporting` (only text elements are tested), or under a `contradicting` key
+  other than `claim`, `claim_id` and `task`.
+- **Reference columns not covered.** `web_predictions.detail`'s `task_id` and its `observation.task_id` (JSON inside
+  a free-text detail), `graph_lineage.dataset_id`. `web_monitors.last_task_id`, `web_claims.source_id` and
+  `contradicting[].claim_id` were added by the second fix round.
+- **A damaged settings row** in a restored or rewritten copy reads the imagined limits as the defaults (1000 records,
+  7 days), so the copy's store may shrink to them on restore (fail-closed: it can only lose records, never keep more).
+- **Tombstones are kept by age, by the wall clock**: a clock set forward by more than 365 days drops them early (the
+  records they name are then past their expiry by the same clock, and a replay expires them, unless the clock is set
+  back again before the restore). They are bounded by age, not by count: a store churned at its row limit leaves one
+  tombstone per removal for 365 days.
+- **Shapes the store scan cannot see** (`tests/webcortex/test_imagined_quarantine.py`): a module imported by
+  `importlib`, `getattr` or `sys.modules`; SQL built from strings, quoted (`"imagined"`), schema-qualified
+  (`main.imagined`), behind a comma join or a comment, or a table name read from `sqlite_master`; a call to an allowed
+  store module (the owner's `cli_imagined` functions). A star import and a dictionary of the store's functions are
+  seen.
+- **Shapes the launch scan cannot see** (`tests/webcortex/test_background.py`, ADR-050): `getattr`, `importlib`,
+  `__dict__` and `operator.attrgetter` access to an entry point, an entry module rebound to another name, a star
+  import, `**{"origin": ...}`, an f-string origin without a fixed background prefix (`f"curiosity{x}"`), a raw
+  `INSERT INTO web_tasks`, `orchestrator.prepare` and `insert` with the origin changed in between, and a subprocess
+  running `nsf web tick`. A forwarder (`background.FORWARDERS`) is exempt only for the origin it passes on: a
+  background origin it writes out, or an entry point it refers to, must be registered as a launch site.
+
 ## Measured
 
 `docs/quality/evidence/genesis_provenance.json` (`python scripts/genesis_provenance.py all`, 5 runs each, medians):
@@ -1879,6 +1917,13 @@ recorded above); a sweep with nothing due 0.085 ms against 0.078 ms with the sto
 with 1,000 records held (it now looks for orphans whatever expired); a forget on an empty store unchanged (about
 1.0 ms); the empty store takes 7 pages (the tombstone age index).
 
+After the re-review's fixes (`genesis_provenance.json`, `review0b` and `mutations`): 42 of 42 safeguards caught
+(control 222 passed), 8 of them new: two processes repairing a first-build file together, the first build's
+observations removed by the repair, observed integers bounded, only retired triggers dropped, the monitor's last task
+and the claim's source checked, event ids and epoch names refused up front. The allow-list's evidence paths are a
+test's own list, so that break is shown by hand: with the orchestrator listed as a display and reading the store, the
+03cbece tests pass and these fail. Costs were not re-measured.
+
 ## Alternatives rejected
 
 - A provenance column on the existing tables: every evidence path would have to filter by it, and one forgotten filter
@@ -1892,11 +1937,21 @@ with 1,000 records held (it now looks for orphans whatever expired); a forget on
 
 - Schema 17. Older software refuses the file. The migration only adds empty tables, indexes and triggers (IF NOT
   EXISTS, so a file a test put back to an earlier version by hand migrates again); no row changes. It was amended
-  before release (the Wave 0 review): a file migrated by its first build is brought to the current triggers,
-  `imagined_refs.observed` and the tombstone index at every open (`schema.ensure_triggers`, as for version 15).
-- An evidence event id, root or sample id of the form `imagined:` + 32 hex digits (in any case, padded or not) is
-  refused: the form is reserved in reference columns, never in free text.
+  before release, twice (the Wave 0 review and its re-review): a file migrated by either earlier build (2aee516's or
+  03cbece's) is brought to the current triggers, `imagined_refs.observed` and the tombstone index at its next open
+  (`schema.ensure_triggers`, as for version 15), which reads the catalogue again once it holds the write lock, so
+  two processes opening such a file together both open it. It drops only the reference triggers it retired by name
+  (`schema._RETIRED_17`). The same one-time repair removes, with a tombstone each and one deletion-log row, every
+  record observed under the first build (its outcomes kept text, and evidence no forget reached) and any outcome
+  today's `observe` could not have written; tested on files built from each commit's own `schema.py` (`git show`; the
+  test skips in a clone without that history).
+- An evidence event id, root or sample id, or an epoch name, that holds `imagined:` + 32 hex digits (in any case) is
+  refused with a `ValidationError`: the form is reserved in reference columns, never in free text.
 - Every forget runs one more query, and a loop to a fixed point when records derive from what it removed.
+- Changed at the defaults by the Wave 0 fixes, beyond the store's own rules: every sweep looks for orphaned records
+  whatever expired (with records held it can remove one and mark checkpoints stale); `store.set_config` returns
+  `imagined_removed` when a limit change removed records; raising either imagined limit, not only lowering it, runs
+  a full expire pass over the store (`imagined.bound`).
 - Tests: `tests/instance/test_imagined.py`, `tests/webcortex/test_imagined_quarantine.py`; mutations:
   `scripts/genesis_provenance.py mutations`.
 
@@ -1952,11 +2007,19 @@ Cognitive Genesis (owner directive 2026-11-25) adds new autonomous mechanisms on
    quiet turned on while the task synthesizes or reasons stops it there. It ends `partial` with the limitation
    "stopped by quiet" and **consolidates nothing**,
    so no memory or model call runs for it after the stop (web-off still consolidates what was read; quiet is a
-   stronger stop by design). Queued background tasks stay queued; after `nsf quiet off` they run as before.
+   stronger stop by design). Queued background tasks stay queued; after `nsf quiet off` they run as before. A
+   prediction whose refresh quiet stopped is not settled by it (it used to be settled "inconclusive: the refresh
+   found no evidence", and calibration counted that): `predictions.check_due` lets the stopped refresh go and the
+   prediction stays due. A background task the owner resumed or queued again is labelled owner-confirmed in its
+   answer note, as a confirmed proposal is (it kept the "autonomous" label, which shows no note).
 4. **One admission rule (`autonomy.admission`).** Both paths call it. Rule `unified` (the default): the recorded
    enable, then `autonomy.candidates` (everything listed in Context for the idle path). The tick keeps its own pool,
    unchanged: knowledge items among curiosity.rank's ten best, due predictions left to the refreshes. So it admits a
-   subset of what the old rule admitted, never another subject. Each tick launch records `{"autonomy": {...,
+   subset of what the old rule admitted, never another subject; and a pooled subject only in the kind the ranking
+   gave it (`candidates` keeps one item per subject, so a due prediction or a hypothesis on the same key could take
+   it, and the tick would have launched a `prediction` or a fact-verified hypothesis it never launched before: such
+   an item is refused, review0b; the offline benchmark's admission is unchanged by this). Each tick launch records
+   `{"autonomy": {...,
    "admission": {"rule", "path"}}}` with its subject, which feeds the cooldown and the lineage as the idle
    investigator's does; the idle investigator's event gains `admission` too. Rule `legacy` (path tick only), kept for
    one release: `nsf web config --set tick_admission='"legacy"'` restores the tick's old rule exactly, and its launches
@@ -1995,6 +2058,11 @@ Cognitive Genesis (owner directive 2026-11-25) adds new autonomous mechanisms on
   carried by restore, an entry point handed to a thread, an origin that is not a literal; the 2aee516 scan misses the
   last two). The admission benchmark re-run gives the same launches, subjects and refusals at every offset under both
   rules.
+- **After the re-review's fixes** (`genesis_safety.json`, `review0b` and `mutations`): 14 of 14 (control 43 passed),
+  4 new: a refresh quiet stopped leaves its prediction due, a forwarder that also launches work is a launch site (the
+  03cbece scan misses it), an owner-asked background task reads as owner-confirmed, the tick's kind check. The
+  admission benchmark run at 03cbece and with these fixes in one session: identical launches, subjects and refusals
+  at every offset, variant and rule.
 - **The autonomy tests** (`tests/webcortex/test_background.py`) show the launches the legacy rule makes and the
   unified rule refuses: a subject at 0.03 bits (above the old floor, below `min_gain`), a subject investigated
   autonomously an hour earlier (cooldown), every subject while autonomy was switched on without the recorded enable;
@@ -2025,6 +2093,13 @@ Cognitive Genesis (owner directive 2026-11-25) adds new autonomous mechanisms on
   legacy rule.
 - `autonomy.status` and `store.regulation()["config"]` show `quiet`; the console overview (Regulation, "Background
   work") and the Presence entity on the console and Pocket say it in plain words.
+- Changed at the defaults by the Wave 0 fixes, beyond quiet and the admission rule themselves: the unified tick
+  skips a subject whose prediction refresh it queued in the same tick (`scheduler.REFRESHED_THIS_TICK`);
+  `predictions.check_due`'s `refresh_submitted` actions carry `knowledge_id`; an owner's requeue or resume of a
+  background-origin task records a decision event with it (`background.asked_by_owner`) even while quiet is off.
+- What the launch scan cannot see is listed in ADR-049 ("What the triggers and the scans cannot see"): only the
+  runtime check (`background.allowed`, `held_task` at claim, the run's stop check) enforces quiet while the system
+  runs.
 - Tests: `tests/webcortex/test_background.py` (each cognition entry point driven with quiet on, a driver for every
   registered one, an AST scan of the source for unregistered launch sites with a self-test of the scanner, the
   systemd units, the owner-only surfaces including MCP, a damaged value, restore, the other switches unchanged and
