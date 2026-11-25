@@ -435,14 +435,20 @@ _UNIT_SPELLINGS = {
     "µm": ("µm", "um", "micrometre", "micrometres", "micrometer", "micrometers", "micron", "microns"),
     "nm": ("nm", "nanometre", "nanometres", "nanometer", "nanometers"),
     "mi": ("mi", "mile", "miles"),
+    "nmi": ("nmi", "nautical mile", "nautical miles"),
     "ft": ("ft", "foot", "feet"),
+    "yd": ("yd", "yard", "yards"),
+    "inch": ("inch", "inches"),
     "km²": ("km²", "km2", "sq km", "square kilometre", "square kilometres", "square kilometer", "square kilometers"),
     "m²": ("m²", "m2", "sq m", "square metre", "square metres", "square meter", "square meters"),
     "mi²": ("mi²", "sq mi", "square mile", "square miles"),
     "ha": ("ha", "hectare", "hectares"),
+    "acre": ("acre", "acres"),
+    "ft²": ("ft²", "ft2", "sq ft", "square foot", "square feet"),
     "m³/s": ("m³/s", "m3/s", "cubic metres per second", "cubic meters per second", "cubic metre per second",
              "cubic meter per second"),
     "m³": ("m³", "m3", "cubic metre", "cubic metres", "cubic meter", "cubic meters"),
+    "ft³": ("ft³", "ft3", "cubic foot", "cubic feet"),
     "l": ("l", "litre", "litres", "liter", "liters"),
     "ml": ("ml", "millilitre", "millilitres", "milliliter", "milliliters"),
     "µl": ("µl", "ul", "microlitre", "microlitres", "microliter", "microliters"),
@@ -451,6 +457,12 @@ _UNIT_SPELLINGS = {
     "g": ("g", "gram", "grams", "gramme", "grammes"),
     "mg": ("mg", "milligram", "milligrams"),
     "µg": ("µg", "ug", "microgram", "micrograms"),
+    "lb": ("lb", "lbs"),
+    "km/h": ("km/h", "kph", "km/hr", "kilometre per hour", "kilometres per hour", "kilometer per hour",
+             "kilometers per hour"),
+    "mph": ("mph", "mile per hour", "miles per hour"),
+    "m/s": ("m/s", "metre per second", "metres per second", "meter per second", "meters per second"),
+    "kn": ("kn", "knot", "knots"),
     "ns": ("ns", "nanosecond", "nanoseconds"),
     "µs": ("µs", "us", "microsecond", "microseconds"),
     "ms": ("ms", "millisecond", "milliseconds"),
@@ -465,6 +477,11 @@ _UNIT_SPELLINGS = {
     "mb": ("mb", "megabyte", "megabytes"),
     "gb": ("gb", "gigabyte", "gigabytes"),
     "tb": ("tb", "terabyte", "terabytes"),
+    "pb": ("pb", "petabyte", "petabytes"),
+    "kib": ("kib", "kibibyte", "kibibytes"),
+    "mib": ("mib", "mebibyte", "mebibytes"),
+    "gib": ("gib", "gibibyte", "gibibytes"),
+    "tib": ("tib", "tebibyte", "tebibytes"),
     "hz": ("hz", "hertz"),
     "khz": ("khz", "kilohertz"),
     "mhz": ("mhz", "megahertz"),
@@ -476,26 +493,41 @@ _UNIT_SPELLINGS = {
     "v": ("v", "volt", "volts"),
     "kv": ("kv", "kilovolt", "kilovolts"),
     "mv": ("mv", "millivolt", "millivolts"),
-    "°c": ("°c",), "°f": ("°f",), "k": ("k",),
+    "°c": ("°c", "ºc", "℃", "degrees celsius", "degree celsius"),
+    "°f": ("°f", "ºf", "℉", "degrees fahrenheit", "degree fahrenheit"),
+    "kelvin": ("kelvin", "kelvins"), "k": ("k",),
 }
 _UNIT_CANONICAL = {spelling: unit for unit, spellings in _UNIT_SPELLINGS.items() for spelling in spellings}
 # Canonical unit -> (dimension, factor to the dimension's base unit). Quantities compare within one dimension,
-# converted to the base unit ("1.2 km" and "1200 m" agree); temperatures and other units compare only with
-# themselves.
+# converted to the base unit ("1.2 km" and "1200 m" agree). Every factor is exact by definition (the international
+# foot, mile, yard, inch, pound, acre and nautical mile). Units whose size depends on a country or a convention
+# (gallons, pints, fluid ounces, short and long tons, "pounds", which is also a currency) are not in the table, so
+# they compare only with themselves. Data sizes in binary prefixes (KiB, MiB, ...) are a dimension of their own:
+# "8 GiB" is never compared with "8 GB" (8 GiB is 7.4 % more). Temperatures are converted by _AFFINE; a bare "K"
+# is not taken for kelvin ("5k" is a count) and compares only with itself.
 _DIMENSION = {
     "km": ("length", 1e3), "m": ("length", 1.0), "cm": ("length", 1e-2), "mm": ("length", 1e-3),
     "µm": ("length", 1e-6), "nm": ("length", 1e-9), "mi": ("length", 1609.344), "ft": ("length", 0.3048),
+    "nmi": ("length", 1852.0), "yd": ("length", 0.9144), "inch": ("length", 0.0254),
     "km²": ("area", 1e6), "m²": ("area", 1.0), "mi²": ("area", 2_589_988.110336), "ha": ("area", 1e4),
+    "acre": ("area", 4046.8564224), "ft²": ("area", 0.09290304),
     "m³/s": ("flow", 1.0), "m³": ("volume", 1.0), "l": ("volume", 1e-3), "ml": ("volume", 1e-6),
-    "µl": ("volume", 1e-9), "t": ("mass", 1e3), "kg": ("mass", 1.0), "g": ("mass", 1e-3), "mg": ("mass", 1e-6),
-    "µg": ("mass", 1e-9), "ns": ("time", 1e-9), "µs": ("time", 1e-6), "ms": ("time", 1e-3), "s": ("time", 1.0),
+    "µl": ("volume", 1e-9), "ft³": ("volume", 0.028316846592), "t": ("mass", 1e3), "kg": ("mass", 1.0),
+    "g": ("mass", 1e-3), "mg": ("mass", 1e-6), "µg": ("mass", 1e-9), "lb": ("mass", 0.45359237),
+    "km/h": ("speed", 1 / 3.6), "mph": ("speed", 0.44704), "m/s": ("speed", 1.0), "kn": ("speed", 1852 / 3600),
+    "ns": ("time", 1e-9), "µs": ("time", 1e-6), "ms": ("time", 1e-3), "s": ("time", 1.0),
     "min": ("time", 60.0), "h": ("time", 3600.0), "days": ("time", 86400.0), "weeks": ("time", 604800.0),
     "months": ("time", 2_629_800.0), "years": ("time", 31_557_600.0), "kb": ("data", 1e3), "mb": ("data", 1e6),
-    "gb": ("data", 1e9), "tb": ("data", 1e12), "hz": ("frequency", 1.0), "khz": ("frequency", 1e3),
+    "gb": ("data", 1e9), "tb": ("data", 1e12), "pb": ("data", 1e15), "kib": ("binary data", 2 ** 10),
+    "mib": ("binary data", 2 ** 20), "gib": ("binary data", 2 ** 30), "tib": ("binary data", 2 ** 40),
+    "hz": ("frequency", 1.0), "khz": ("frequency", 1e3),
     "mhz": ("frequency", 1e6), "ghz": ("frequency", 1e9), "w": ("power", 1.0), "kw": ("power", 1e3),
     "mw": ("power", 1e6), "gw": ("power", 1e9), "v": ("voltage", 1.0), "kv": ("voltage", 1e3),
     "mv": ("voltage", 1e-3),
 }
+# Temperatures: canonical unit -> (scale, offset) to kelvin. Compared by _same_temperature, never by a relative
+# tolerance on the absolute scale (72 °C and 73 °C differ by 0.3 % in kelvin).
+_AFFINE = {"°c": (1.0, 273.15), "°f": (5 / 9, 273.15 - 32 * 5 / 9), "kelvin": (1.0, 0.0)}
 _NUM = r"[-−]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
 _UNIT_RE = "|".join(re.escape(u).replace(r"\ ", r"\s+")
                     for u in sorted(set(_UNITS) | set(_UNIT_CANONICAL), key=len, reverse=True))
@@ -696,6 +728,8 @@ def value_kind(v: str) -> tuple[str, str, object]:
         if unit in _DIMENSION:
             dimension, factor = _DIMENSION[unit]
             return "quantity", "quantity:" + dimension, float(m.group(1)) * factor
+        if unit in _AFFINE:
+            return "quantity", "quantity:temperature", _kelvin(float(m.group(1)), unit)
         return "quantity", "quantity:" + unit, float(m.group(1))
     try:
         x = float(v)
@@ -714,9 +748,43 @@ def _decimals(v: str) -> int:
     return len(m.group(1)) if m else 0
 
 
+def _kelvin(x: float, unit: str) -> float:
+    scale, offset = _AFFINE[unit]
+    return x * scale + offset
+
+
+def _temperature_unit(v: str) -> str | None:
+    m = re.fullmatch(r"-?[\d.e+]+ (.+)", v or "")
+    unit = _unit(m.group(1)) if m else None
+    return unit if unit in _AFFINE else None
+
+
+TEMPERATURE_TOLERANCE = 0.3     # kelvin: a temperature converted and rounded to whole degrees Fahrenheit is within it
+
+
+def _same_temperature(a: float, b: float, sa: str, sb: str) -> bool:
+    """Two temperatures (kelvin). Written in the same unit they compare as before the conversion existed: the
+    written numbers, by _same's rule for numbers. In different units: equal within the larger of
+    TEMPERATURE_TOLERANCE and 1 % of the larger value in degrees Celsius ("161.6 °F" and "72 °C" agree; "140 °F",
+    60 °C, does not)."""
+    ua, ub = _temperature_unit(sa), _temperature_unit(sb)
+    if ua == ub:
+        xa, xb = float(sa.split(" ", 1)[0]), float(sb.split(" ", 1)[0])
+        return _same_number("quantity", xa, xb, sa, sb)
+    ca, cb = a - 273.15, b - 273.15
+    return abs(a - b) <= max(TEMPERATURE_TOLERANCE, 0.01 * max(abs(ca), abs(cb)))
+
+
 def _same(kind: str, a, b, sa: str = "", sb: str = "") -> bool:
     """Equal within tolerance. Two numbers written with the same number of decimal places (>= 1) must be equal:
-    the relative tolerance absorbs rounding ("42%" vs "42.2%"), and "6.12" vs "6.14" is not a rounding."""
+    the relative tolerance absorbs rounding ("42%" vs "42.2%"), and "6.12" vs "6.14" is not a rounding.
+    Temperatures: _same_temperature."""
+    if kind == "quantity" and (_temperature_unit(sa) or _temperature_unit(sb)):
+        return _same_temperature(a, b, sa, sb)
+    return _same_number(kind, a, b, sa, sb)
+
+
+def _same_number(kind: str, a, b, sa: str = "", sb: str = "") -> bool:
     if kind == "date":
         return abs(a - b) <= DATE_TOLERANCE
     if kind in ("version", "year") or kind.startswith("text"):
@@ -749,6 +817,11 @@ def _attach_bare(x: dict, y: dict) -> None:
             if len(hits) != 1:
                 continue
             unit = y[group][0][0].split(" ", 1)[1]
+            if _unit(unit) in _AFFINE:
+                # a plain number read as a temperature in y's unit, and written so (_same_temperature)
+                x.setdefault(group, []).append((f"{hits[0][0]} {_unit(unit)}", _kelvin(hits[0][1], _unit(unit)),
+                                                "quantity"))
+                continue
             factor = _DIMENSION.get(_unit(unit), ("", 1.0))[1]
             x.setdefault(group, []).append((hits[0][0], hits[0][1] * factor, "quantity"))
 

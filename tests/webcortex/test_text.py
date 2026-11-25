@@ -390,3 +390,61 @@ def test_reorders_and_right_to_left():
     assert T.right_to_left("ال") and T.right_to_left("א") and not T.right_to_left("Numéro 7")
     text = "אב ‏72​\nAffected:‏ 3 4\nplain​"
     assert T.as_seen(text) == ("אב ‏72\nplain", 2, 1)
+
+
+# ---- the closed table of exact conversions (remaining-items round, lane K) ---------------------------------------
+
+@pytest.mark.parametrize("a, b", [
+    ("The ferry cruises at 22 knots.", "The ferry cruises at 40.7 km/h."),            # 40.744
+    ("The spring is 72 °C.", "The spring is 161.6 °F."),                               # exactly 72
+    ("The spring is 72 °C.", "The spring is 345 kelvin."),                             # 71.85
+    ("The probe had a mass of 1,450 kilograms.", "The probe weighed 3,197 lb."),       # 1450.13
+    ("The island has an area of 3,200 hectares.", "The island covers 7,907 acres."),   # 3199.85
+    ("The dam is 1.2 kilometres long.", "The dam stretches 3,937 feet."),
+    ("The span is 1,852 metres.", "The span is 1 nautical mile."),
+    ("The hall has 930 square metres.", "The hall has 10,010 square feet."),
+    ("The board is 2.54 cm thick.", "The board is 1 inch thick."),
+    ("The server needs 8 GB.", "The server needs 8,000 MB."),
+])
+def test_values_in_other_units_agree_after_an_exact_conversion(a, b):
+    va, vb = T.values(a), T.values(b)
+    assert T.values_agree(va, vb), (va, vb)
+
+
+@pytest.mark.parametrize("a, b", [
+    ("The ferry cruises at 22 knots.", "The ferry cruises at 30 mph."),                # 26.07 kn
+    ("The spring is 72 °C.", "The spring is 140 °F."),                                 # 60 °C
+    ("The spring is 72 °C.", "The spring is 73 °C."),                                  # as before the table
+    ("The spring is 72 °C.", "The spring is 163.4 °F."),                               # 73 °C
+    ("The mountain is 2,870 metres high.", "The mountain is 8,900 feet high."),
+])
+def test_values_in_other_units_conflict_when_they_differ(a, b):
+    assert T.values_conflict(T.values(a), T.values(b))
+
+
+def test_speeds_are_not_lengths_and_binary_prefixes_are_never_decimal_ones():
+    assert T.values("The ferry cruises at 40 km/h.") == ["40 km/h"]
+    assert T.values("Wind gusts reached 12 m/s.") == ["12 m/s"]
+    # a speed is never compared with a length that happens to have the same number
+    assert T.values_equal("40 km/h", "40 km") is None
+    assert T.values_conflict(["40 km/h"], ["40 km"]) is None
+    # SI and IEC prefixes are not equated: 8 GiB is 7.4 % more than 8 GB, and not comparable with it at all
+    assert T.values("It needs 8 GiB of RAM.") == ["8 gib"]
+    assert T.values_equal("8 gib", "8 gb") is None
+    assert T.values_equal("8 gib", "8192 mib") is True
+    # units whose size depends on a country stay out of the table; "pounds" is still a currency
+    assert T.values("It weighed 3,197 pounds.") == ["GBP 3197"]
+    assert T.values_equal("5 gallons", "18.9 l") is None
+    # a bare K is not kelvin ("5k downloads")
+    assert T.values_equal("300 k", "26.85 °c") is None
+
+
+def test_temperatures_in_one_unit_compare_as_before_the_conversion():
+    """The relative tolerance on the written number, not on kelvin: 72 °C and 73 °C differ (0.3 % in kelvin)."""
+    assert T.values_equal("72 °c", "72.5 °c") is True        # 0.7 %, within 1 % as before
+    assert T.values_equal("72 °c", "73 °c") is False
+    assert T.values_equal("72.1 °c", "72.2 °c") is False     # the same decimals must be equal, as before
+    assert T.values_conflict(["72"], ["73 °c"])              # a plain number read in the other side's unit
+    assert T.values_conflict(["72"], ["72.4 °c"]) is None
+    assert T.values_equal("-40 °c", "-40 °f") is True
+    assert T.values_equal("0 °c", "32 °f") is True and T.values_equal("0 °c", "33 °f") is False
