@@ -478,7 +478,7 @@ def _masked(statement: str, like: str | None = None) -> str:
     return text.mask_quantities(statement, like)
 
 
-def pairs(db, statements: list[str], rows: list[dict], *, admit=None, gateways=None, sweep: bool = False):
+def pairs(db, statements: list[str], rows: list[dict], *, admit=None, gateways=None, sweep: bool = False, read=None):
     """For each new statement, the stored statements the memory models take to state the same property of the same
     subject -> (candidates, info). candidates[n] is a list of {"id", "similarity", "score", "score_back"}, best
     first, for statements[n]; empty when nothing qualifies.
@@ -489,10 +489,16 @@ def pairs(db, statements: list[str], rows: list[dict], *, admit=None, gateways=N
     when nothing was asked: off, no embedding endpoint or no reranker, a failed call (the models are then left
     alone for RETRY_AFTER seconds, as after a failed lookup), a model the idle policy unloaded (its reload is
     started; nothing waits for it). Never raises. `sweep`: no threshold is applied and every candidate is returned
-    with its scores (the benchmark's trace)."""
+    with its scores (the benchmark's trace). `read(text) -> text`: how the models read a statement of the pair
+    (consolidate._read_aliases: a name an alias stands for written as that name); the stored statements' vectors
+    are of their text as it is, since knowledge.query keeps them."""
     from ..inference.gateway import InferenceError
     cfg = get_config(db)
     nothing = [[] for _ in statements]
+    if read is None:
+        def read(text):
+            return text
+    statements = [read(s) for s in statements]
     if not cfg.enabled or not cfg.contradictions:
         return nothing, {"mode": "lexical"}
     try:
@@ -549,14 +555,14 @@ def pairs(db, statements: list[str], rows: list[dict], *, admit=None, gateways=N
                 if not chosen:
                     continue
                 asked += 1
-                query, documents = _pair(cfg, _masked(statement), [_masked(stored[i], like=statement)
+                query, documents = _pair(cfg, _masked(statement), [_masked(read(stored[i]), like=statement)
                                                                    for i in chosen], PAIR_INSTRUCTION)
                 forward = reranker.rerank(query, documents, purpose="memory_pair", timeout=cfg.timeout)
                 found = []
                 for i, score in zip(chosen, forward):
                     back = None
                     if sweep or score >= cfg.pair_floor:     # read the other way round too: both must agree
-                        q, d = _pair(cfg, _masked(stored[i]), [_masked(statement, like=stored[i])],
+                        q, d = _pair(cfg, _masked(read(stored[i])), [_masked(statement, like=read(stored[i]))],
                                      PAIR_INSTRUCTION)
                         back = reranker.rerank(q, d, purpose="memory_pair", timeout=cfg.timeout)[0]
                     if sweep or (back is not None and back >= cfg.pair_floor):

@@ -612,3 +612,108 @@ def test_the_cli_switch_and_what_web_memory_shows(tmp_path, capsys):
     assert code == 0 and out["settings"]["contradictions"] is True and out["settings"]["pair_floor"] == 0.9
     code, err = nsf("web", "memory", "config", "--set", "pair_floor=2", "--db", path)
     assert code != 0 and "pair_floor must be a number between 0 and 1" in err
+
+
+# ---- a longer name, a stated alias, a binary factor (remaining-items round, lane K) --------------------------------------
+
+@pytest.mark.parametrize("longer, shorter", [
+    ("The village of Pemberly Cross, Ohio has 1,100 residents.", "The village of Pemberly Cross has 3,000 residents."),
+    ("Pemberly, Ohio has 1,100 residents.", "In Pemberly there are 3,000 residents."),
+    ("The Orbix Cloud gateway needs 16 GB of memory.", "The Orbix server needs at least 4 GB of memory."),
+    ("Little Lake Arn covers 3 square kilometres.", "Lake Arn covers 54 square kilometres."),
+    ("The Kelder Bridge II is 990 metres long.", "The Kelder Bridge is 1,340 metres long."),
+    ("Hollin & Reeve Asia employs 310 people.", "Hollin & Reeve employs about 3,200 people."),
+    ("The Bank of Tessaly employs 4,100 people.", "Tessaly employs 4,100 civil servants."),
+])
+def test_a_longer_name_that_contains_the_other_names_another_subject(longer, shorter):
+    """'Paris, Texas' is not Paris: the longer name carries a word of its own that says which thing it is."""
+    assert consolidate._same_subject(longer, shorter) is False
+    assert consolidate._same_subject(shorter, longer) is False
+
+
+@pytest.mark.parametrize("a, b", [
+    (RESTATED, LENGTH),                                                            # "River": what kind of thing
+    ("Avarel is 11,400 feet high.", "Mount Avarel rises 3,912 metres above sea level."),
+    ("Visitors climb 214 steps to reach the gallery of the Tolvane Lighthouse.",
+     "A staircase of 214 steps leads up the Tolvane tower."),
+    ("The Marrow Valley railway runs 87 kilometres between Hesket and Pell.",     # other names, not qualifiers
+     "Trains on the Marrow Valley line cover 87 km from end to end."),
+    ("Hollin & Reeve Ltd employs about 3,200 people.", "Hollin & Reeve employs about 3,200 people."),
+])
+def test_a_word_that_only_says_what_kind_of_thing_it_is_does_not_make_another_subject(a, b):
+    assert consolidate._same_subject(a, b) is True and consolidate._same_subject(b, a) is True
+
+
+ALIAS_SOURCE = "The Varnel River, also known as the Old Grey, drains a basin of 9,800 square kilometres."
+
+
+@pytest.mark.parametrize("statement, name, alias", [
+    (ALIAS_SOURCE, "Varnel River", "Old Grey"),
+    ("The Meriden Hall (formerly the Corn Exchange) seats 900 people.", "Meriden Hall", "Corn Exchange"),
+    ("The Brask Line, previously the Northern Spur, is 44 km long.", "Brask Line", "Northern Spur"),
+    ("Hollin & Reeve, formerly known as Hollin Brothers, employs 3,200 people.", "Hollin & Reeve", "Hollin Brothers"),
+    ("Lumen-7 (a.k.a. Skyeye) orbits at 705 km.", "Lumen-7", "Skyeye"),
+])
+def test_an_alias_is_what_a_statement_itself_says_a_name_is_also_called(statement, name, alias):
+    found = consolidate._aliases([{"id": 7, "statement": statement}])
+    assert [(a["name"], a["as"], a["knowledge_id"]) for a in found] == [(name, alias, 7)]
+
+
+@pytest.mark.parametrize("statement", [
+    "The largest city on the gulf coast, Tessaly, has 248,000 residents.",       # a description is no alias
+    "The Varnel River, the longest in the region, is 412 kilometres long.",
+    "The Varnel River and the Ostrel River are 412 and 520 kilometres long.",
+    "The Varnel River was formerly navigable.",                                    # no name after the word
+])
+def test_nothing_else_is_an_alias(statement):
+    assert consolidate._aliases([{"id": 1, "statement": statement}]) == []
+
+
+def test_a_name_and_its_stated_alias_name_one_subject():
+    aliases = consolidate._aliases([{"id": 3, "statement": ALIAS_SOURCE}])
+    used = []
+    new = "From its source to the sea the Old Grey runs for 389 km."
+    assert consolidate._same_subject(new, LENGTH) is False                         # without the alias: two names
+    assert consolidate._same_subject(new, LENGTH, aliases=aliases, used=used) is True
+    assert [u["knowledge_id"] for u in used] == [3]
+    assert consolidate._read_aliases(aliases)(new) == "From its source to the sea the Varnel River runs for 389 km."
+    # an alias does not make a longer name the same: "Old Grey Bridge" is another subject
+    assert consolidate._same_subject("The Old Grey Bridge is 120 metres long.", LENGTH, aliases=aliases) is False
+
+
+def test_a_contradiction_found_through_a_stated_alias_records_the_statement_that_gives_it(db, models, judge):
+    on(db)
+    kid = known(db)
+    source = known(db, ALIAS_SOURCE)
+    new = "From its source to the sea the Old Grey runs for 389 km."
+    _, out = consolidated(db, [sources(new)], T0 + 10, objective="How long is the Old Grey?")
+    assert [(p["knowledge_id"], p["relation"]) for p in out["paired_by_meaning"]] == [(kid, "conflict")]
+    assert out["paired_by_meaning"][0]["alias"] == [{"name": "Varnel River", "as": "Old Grey", "knowledge_id": source}]
+    reason = knowledge.row(db, kid)["contradicting"][0]["reason"]
+    assert f"Old Grey is Varnel River, as knowledge #{source} states" in reason
+    # the answer model reads the alias as the name it stands for
+    assert judge[-1] == ("From its source to the sea the Varnel River runs for 389 km.", LENGTH)
+
+
+def test_an_alias_whose_statement_is_forgotten_names_nothing(db, models, judge):
+    on(db)
+    known(db)
+    source = known(db, ALIAS_SOURCE)
+    knowledge.forget(db, source, T0 + 5)
+    _, out = consolidated(db, [sources("From its source to the sea the Old Grey runs for 389 km.")], T0 + 10,
+                          objective="How long is the Old Grey?")
+    assert out["paired_by_meaning"] == [] and len(out["provisional"]) == 1
+
+
+@pytest.mark.parametrize("new, stored, refused", [
+    (["8192 mb"], ["8 gb"], True),          # 8 GB in binary megabytes, or 8.192 GB: cannot be told
+    (["4 gb"], ["4096 mb"], True),
+    (["1 tb"], ["1099.511627776 gb"], True),
+    (["8100 mb"], ["8 gb"], False),         # a plain disagreement is a contradiction like any other
+    (["8000 mb"], ["8 gb"], False),
+])
+def test_data_sizes_off_by_the_binary_factor_are_not_paired(new, stored, refused):
+    assert consolidate._binary_factor(new, stored) is refused
+    item = {"statement": "The Quorra server needs 8 GB of memory.", "claim_values": stored, "polarity": 1}
+    why = consolidate._admissible("The Quorra server needs 8 GB of memory.", new, 1, item)
+    assert (why is not None and "binary" in why) is refused
