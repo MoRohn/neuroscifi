@@ -1,5 +1,5 @@
 {
- "what": "Lane F of the remaining-items round (ADR-047): forgetting one kind of a name, a forgotten task's settlements, a forgotten dataset's graphs; and calibration after a change of a forecaster's habits",
+ "what": "Lane F of the remaining-items round (ADR-048): forgetting one kind of a name, a forgotten task's settlements, a forgotten dataset's graphs; and calibration after a change of a forecaster's habits",
  "how": "items 1-3: one script run against the source of c565c20 (before) and of lane-f (after), same scenarios as tests/instance/test_forget_one_kind.py, tests/webcortex/test_recalibration.py and tests/instance/test_forget_dataset_erasure.py; item 4: `python scripts/bench_calibration.py change` (deterministic, about 8 minutes)",
  "before": {
   "camera forgotten while a partner of the same name is held": {

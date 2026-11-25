@@ -398,7 +398,7 @@ def test_forgetting_the_task_behind_a_hypothesis_takes_its_settled_forecasts_out
 
 
 def test_a_settlement_whose_task_was_forgotten_stops_counting(db, tmp_path):
-    """ENGINEERING_PLAN §6 item 8 (ADR-047): the task that settled a prediction is forgotten; the prediction keeps
+    """ENGINEERING_PLAN §6 item 8 (ADR-048): the task that settled a prediction is forgotten; the prediction keeps
     its outcome (ADR-029) but its settlement no longer counts in the calibration, the mapping or the accuracy. The
     task that made the item and the item itself stay."""
     from test_consolidate import task_with
@@ -481,7 +481,7 @@ def test_nsf_knowledge_calibration_shows_the_mapping_and_how_it_would_have_fared
 
 
 def test_a_change_of_habits_can_be_detected_but_is_not_acted_on_by_default():
-    """ADR-047: dropping the settlements before a detected change was selected on the development streams and did
+    """ADR-048: dropping the settlements before a detected change was selected on the development streams and did
     not pass the held-out gate, so it stays off; off, the mapping is exactly the one of ADR-046."""
     assert evolution.RECALIBRATION_CHANGE_THRESHOLD is None
     rng = random.Random(7)

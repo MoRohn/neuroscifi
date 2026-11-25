@@ -3,7 +3,7 @@
 
   python scripts/bench_calibration.py report --out calibration.json     # the shipped settings, both sets of streams
   python scripts/bench_calibration.py select --out selection.json       # every setting of the grid, development only
-  python scripts/bench_calibration.py change --out change.json          # a change of habits (ADR-047): select, gate
+  python scripts/bench_calibration.py change --out change.json          # a change of habits (ADR-048): select, gate
 
 Deterministic (seeded, standard library only), no model, no network, no individual: the simulation is
 src/neuroscifi/webcortex/bench/calibration.py and its docstring says what a stream is and how it is scored.
@@ -34,7 +34,7 @@ def main() -> int:
                  "prefixes": "the first 25, 50 and 100 predictions of a stream, and all of it"} | calibration.report()
     elif a.mode == "change":
         rows = calibration.select_change()
-        value = {"benchmark": "calibration, a change of habits (ADR-047)", "grid": calibration.CHANGE_GRID,
+        value = {"benchmark": "calibration, a change of habits (ADR-048)", "grid": calibration.CHANGE_GRID,
                  "rules": calibration.CHANGE_RULES, "shipped": calibration.CHOSEN, "selected": rows[0]["options"],
                  "gate": calibration.change_gate(rows[0]["options"]), "selection": rows}
     else:

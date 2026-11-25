@@ -523,7 +523,7 @@ def knowledge_prediction_error(db, pred, item, reason, consolidation, now) -> di
 def _counted(alias=""):
     """SQL: the prediction's settlement still stands on an observation the individual holds. A task the owner
     forgot takes its observation with it (governance._scrub_observations leaves {"forgotten": true}): the outcome
-    stays on the prediction (ADR-029), but it no longer counts as evidence of how the forecasts fare (ADR-047)."""
+    stays on the prediction (ADR-029), but it no longer counts as evidence of how the forecasts fare (ADR-048)."""
     column = f"{alias}detail"
     return (f"coalesce(CASE WHEN json_valid({column}) THEN json_extract({column},'$.observation.forgotten') END, 0)"
             " IS NOT 1")
@@ -583,7 +583,7 @@ RECALIBRATION_WINDOW = 100        # only the most recent settlements count (a fo
 RECALIBRATION_PRIOR_SHIFT = 16.0  # prior precision of shift: about 64 settlements at even odds weigh as much
 RECALIBRATION_PRIOR_TILT = 16.0   # prior precision of tilt, in the same units
 RECALIBRATION_TILT = (-1.0, 1.0)  # slope 1 + tilt stays in [0, 2]: the mapping never reverses an order
-# A sudden change of a forecaster's habits (ADR-047): the window is tested for a split every STEP settlements; above
+# A sudden change of a forecaster's habits (ADR-048): the window is tested for a split every STEP settlements; above
 # THRESHOLD (twice the log-likelihood gain of fitting the two parts apart) the older part is dropped. None: off.
 RECALIBRATION_CHANGE_STEP = 10
 RECALIBRATION_CHANGE_THRESHOLD = None
@@ -672,7 +672,7 @@ def fit_recalibration(pairs, *, minimum=RECALIBRATION_MINIMUM, window=RECALIBRAT
     describes the old habits and reads the next forecasts worse than they are stated. With change_threshold set,
     the window is split where fitting its two parts apart gains most (_change_point); when twice that gain exceeds
     the threshold, only the settlements after the split are used, and below `minimum` of them the mapping is the
-    identity again until enough have settled. `change` then says where and how strongly (ADR-047)."""
+    identity again until enough have settled. `change` then says where and how strongly (ADR-048)."""
     pairs = [(float(p), 1.0 if y else 0.0) for p, y in pairs if state.finite(p) is not None]
     used = pairs[-int(window):] if window else pairs
     out = {"n": len(pairs), "used": len(used), "minimum": int(minimum)} | IDENTITY

@@ -1,4 +1,4 @@
-"""Forgetting a dataset erases what graphs learned from it (ADR-047, schema 15; ENGINEERING_PLAN §6 item 13).
+"""Forgetting a dataset erases what graphs learned from it (ADR-048, schema 15; ENGINEERING_PLAN §6 item 13).
 
 Before: `forget_dataset` invalidated the revisions trained or validated on the dataset, but their weights (an
 image of the data they were fitted to) and metrics stayed, because the snapshot's blob was immutable by trigger;

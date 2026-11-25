@@ -549,7 +549,7 @@ def forget_consolidated(db, seq, now):
 
 def forget_dataset(db, dataset_id, now):
     """Drop a dataset blob, its note and its digest, delete the graph effects measured on it, invalidate graphs
-    trained on it and erase what they learned (weights, metrics, effects measured on them; ADR-047), and mark every
+    trained on it and erase what they learned (weights, metrics, effects measured on them; ADR-048), and mark every
     existing checkpoint stale."""
     from .graphs import erase_learned_from, invalidate_dependents  # W2-B; imported lazily to keep modules decoupled
     if isinstance(dataset_id, bool) or not isinstance(dataset_id, int) or not -MAX_ROWID - 1 <= dataset_id <= MAX_ROWID:
@@ -561,7 +561,7 @@ def forget_dataset(db, dataset_id, now):
         if row[0] is not None:
             return {"status": "absent", "effects": {}}
         # the note is the owner's free text about the data (as an epoch's note, forget_epoch): it goes with the blob
-        # The digest goes too: with it, a guessed dataset could be checked against the file (ADR-047).
+        # The digest goes too: with it, a guessed dataset could be checked against the file (ADR-048).
         db.execute("UPDATE datasets SET blob=NULL, note=NULL, sha256='', deleted_at=? WHERE id=?", (now, dataset_id))
         effects_deleted = db.execute("DELETE FROM graph_effects WHERE dataset_id=?", (dataset_id,)).rowcount
         cascade = invalidate_dependents(db, dataset_id, now)

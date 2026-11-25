@@ -525,7 +525,7 @@ def invalidate_dependents(db, dataset_id, now):
 def erase_learned_from(db, dataset_id, now):
     """Erase the weights and metrics of every invalidated revision trained or validated on a deleted dataset (also
     one invalidated earlier by another forget), and the graph effects measured on those revisions: what was learned
-    from data the owner forgot goes with it (ADR-047). Caller owns the transaction; call after invalidate_dependents.
+    from data the owner forgot goes with it (ADR-048). Caller owns the transaction; call after invalidate_dependents.
 
     The revision stays listed: id, context, status 'invalidated', shape, sha256, lineage and decisions (the audit
     of what was promoted and why). metrics becomes {"erased": {"dataset": id, "at": now}}. The schema trigger allows

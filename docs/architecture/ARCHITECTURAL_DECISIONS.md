@@ -1301,7 +1301,7 @@ million. Reading those in bounded pieces needs the live file's snapshot held ope
   or forgets what is no longer needed. Which events are kept when a sweep crosses the limit is decided by their
   place in the journal, not by what they teach.
 - A camera forgotten while a partner of the same name is still held (or the reverse): its readings, events and
-  changes go, in the live file and in every restore. Its name as that kind goes too (ADR-047, schema 15): until
+  changes go, in the live file and in every restore. Its name as that kind goes too (ADR-048, schema 15): until
   then it stayed in the text of belief revisions, questions and decisions, because scrubbing worked per root name.
   A bare mention of the name outside a question or decision about the forgotten scope stays, since it may be the
   other one; it goes when the last evidence of that name does.
@@ -1545,7 +1545,7 @@ it is still better (0.046 against 0.053).
   owner asking (CONTINUAL_LEARNING, kind 2b): bounded as above, shown, logged with each decision, and one setting
   away from off.
 - A prediction settled by a task that was later forgotten keeps its outcome (ADR-029: the observation is scrubbed,
-  the outcome stays). Since ADR-047 it no longer counts, here or in `calibration`.
+  the outcome stays). Since ADR-048 it no longer counts, here or in `calibration`.
 - Settlements are treated as independent draws. They are not (one source change can fail several predictions);
   the minimum and the prior are the only allowance for that.
 - Tests: `tests/webcortex/test_recalibration.py` (24; the fit against the objective written out and against a

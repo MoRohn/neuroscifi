@@ -1,4 +1,4 @@
-"""Forgetting one kind of a name the other channel still holds (ADR-047, schema 15).
+"""Forgetting one kind of a name the other channel still holds (ADR-048, schema 15).
 
 Before: a camera forgotten while a partner of the same name was held (or the reverse) left the name in the text of
 belief revisions, questions and decisions, because scrubbing worked per root name and the name was still held

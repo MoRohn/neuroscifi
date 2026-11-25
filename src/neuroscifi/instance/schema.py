@@ -492,7 +492,7 @@ MIGRATIONS = [
     -- forgotten. The executive's horizon ("evidence through #N") is the epoch's highest seq, tombstones included.
     CREATE INDEX tombstones_epoch_seq ON tombstones(epoch, seq);
     """,
-    # ---- version 15 (forgetting: one kind of a name; ADR-047) ---------------------------------------------------
+    # ---- version 15 (forgetting: one kind of a name; ADR-048) ---------------------------------------------------
     """
     -- governance.py: a camera or partner whose last evidence went while the other channel still holds the same name
     -- (a camera forgotten while a partner of that name is held, or the reverse). Its kind is scrubbed from the

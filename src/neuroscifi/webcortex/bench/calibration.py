@@ -194,7 +194,7 @@ def select() -> list[dict]:
     return rows
 
 
-# A sudden change of a forecaster's habits (ADR-047): the window split where fitting its parts apart gains most, the
+# A sudden change of a forecaster's habits (ADR-048): the window split where fitting its parts apart gains most, the
 # older part dropped above a threshold. Selected on the development streams, gated on the held-out ones; both rules
 # were written before either was run. It did not pass, so evolution.RECALIBRATION_CHANGE_THRESHOLD stays None.
 CHANGE_GRID = {"change_step": (5, 10, 20), "change_threshold": (2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0)}
