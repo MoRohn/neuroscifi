@@ -93,3 +93,13 @@ def register(sub):
     p.add_argument("--cold-start", action="store_true",
                    help="also report each neuroscifi-* container's last measured start-to-ready time")
     p.set_defaults(handler=_status)
+
+    from .. import internal_state
+    p = sub.add_parser("internal-state", help="the internal-state record: what the individual measures about its own "
+                                              "operating condition, each reading with its source and age, the kept "
+                                              "history and the predictive regulation's forecast (ADR-051)")
+    store.add_db_argument(p)
+    p.add_argument("--gateway", action="store_true", help="also ask the model endpoint for its health")
+    p.add_argument("--history", type=int, default=0, metavar="N", help="include the N most recent history samples")
+    from ..instance.cli import run
+    p.set_defaults(handler=run(internal_state.cli))

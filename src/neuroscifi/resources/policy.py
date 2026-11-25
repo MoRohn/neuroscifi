@@ -131,9 +131,25 @@ def voice_session_active(db_path=None, *, now=None, quiet=None) -> bool:
     return bool(beacon is not None and beacon.get("session") and _in_use(beacon.get("used_at"), now, quiet))
 
 
+def predictive_on(db_path) -> bool:
+    """The owner's predictive_regulation setting (InstanceConfig, ADR-051), read with a read-only connection; False
+    without a database or when it cannot be read (the gate then behaves as before the setting existed)."""
+    if not db_path:
+        return False
+    import sqlite3
+    from contextlib import closing
+    try:
+        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2)) as db:
+            row = db.execute("SELECT value FROM meta WHERE key='config'").fetchone()
+        return bool(row) and json.loads(row[0]).get("predictive_regulation") is True
+    except (sqlite3.Error, ValueError, AttributeError):
+        return False
+
+
 def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
-    """{"allowed", "reason", "why" ("audio" | "memory" | None), "level", "audio"}: may NEW background
-    (autonomous) research start now?"""
+    """{"allowed", "reason", "why" ("audio" | "memory" | "forecast" | None), "level", "audio"}: may NEW background
+    (autonomous) research start now? With the owner's predictive_regulation on (ADR-051), a forecast from the
+    internal-state history (resources/forecast.py) can refuse too; it can only add a refusal, never lift one."""
     s = sample or monitor.sample()
     audio = audio_active(db_path) if audio is None else audio
     reason = why = None
@@ -142,6 +158,12 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
     elif s["level"] == "critical":
         reason, why = ("memory pressure critical (" + "; ".join(s["reasons"]) + "); background autonomy is not "
                        "started"), "memory"
+    elif predictive_on(db_path):
+        from .. import internal_state
+        from . import forecast
+        verdict = forecast.assess(internal_state.history(db_path), now=time.time())
+        if verdict["hold"]:
+            reason, why = verdict["reason"], "forecast"
     return {"allowed": reason is None, "reason": reason, "why": why, "level": s["level"], "audio": audio}
 
 

@@ -178,6 +178,10 @@ def _config(db, args, now):
         changes["imagined_lifetime_seconds"] = args.imagined_lifetime_days * 86400
     if args.quiet is not None:
         changes["quiet"] = args.quiet
+    for name in ("internal_state_history", "predictive_regulation", "executive_rule",     # ADR-051
+                 "decision_information"):
+        if getattr(args, name) is not None:
+            changes[name] = getattr(args, name)
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
@@ -239,6 +243,19 @@ def register(sub):
     p.add_argument("--quiet", action=argparse.BooleanOptionalAction, default=None,
                    help="hold everything done unasked: background research, monitors, refreshes, idle "
                         "investigations (default: off; the same as `nsf quiet on|off`)")
+    p.add_argument("--internal-state-history", action=argparse.BooleanOptionalAction, default=None,
+                   help="the research worker keeps a 6-hour history of the internal-state record (numbers only; "
+                        "`nsf internal-state`) (default: on)")
+    p.add_argument("--predictive-regulation", action=argparse.BooleanOptionalAction, default=None,
+                   help="new background research also waits while memory headroom is forecast to cross the critical "
+                        "line, or a regular voice session is expected, within 3 minutes; owner work is never held "
+                        "(default: off)")
+    p.add_argument("--executive-rule", choices=store.RULE_VERSIONS, default=None,
+                   help="the executive's rule version: rules-v1 (the fixed rule order) or information-v1 (asks the "
+                        "most informative question); default rules-v1")
+    p.add_argument("--decision-information", action=argparse.BooleanOptionalAction, default=None,
+                   help="`nsf decide` also shows each question's expected information gain and whether the decision "
+                        "rests on a matched earlier setup (display only; default: on)")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("quiet", help="one switch for everything done unasked: on = nothing runs unless you ask "

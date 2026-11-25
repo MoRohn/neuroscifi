@@ -88,7 +88,9 @@ ACTIVITIES = {
         "kind": "maintenance", "what": "reloading a model service a request is waiting for",
         "sites": ("neuroscifi.resources.idle:serve_wake_requests",)},
     "worker.heartbeat": {
-        "kind": "maintenance", "what": "the worker's liveness file every 10 s (no task, no text)",
+        "kind": "maintenance", "what": "the worker's liveness file every 10 s, and a sample of the internal-state "
+                                       "record every 30 s (internal_state.py, ADR-051; numbers only: no task, "
+                                       "no text)",
         "sites": ("neuroscifi.webcortex.scheduler:_beat",)},
     "voice.sweep": {
         "kind": "maintenance", "what": "expiring retained audio and ending idle voice sessions",

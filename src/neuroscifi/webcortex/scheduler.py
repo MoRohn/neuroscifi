@@ -741,8 +741,15 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=None, clock=time.tim
             wait_for_queue(db, seconds, stop)
 
     def beat():
+        from .. import internal_state
+        sampled = None
         while not beating.is_set():
             _beat(db_path, holder)
+            # ADR-051: a compact internal-state sample every RECORD_EVERY s (numbers only), the history that
+            # predictive regulation reads; off with the owner's internal_state_history setting
+            if sampled is None or time.monotonic() - sampled >= internal_state.RECORD_EVERY:
+                internal_state.record_quietly(db_path)
+                sampled = time.monotonic()
             beating.wait(HEARTBEAT_EVERY)
     beater = threading.Thread(target=beat, daemon=True, name="nsf-worker-heartbeat")
     beater.start()

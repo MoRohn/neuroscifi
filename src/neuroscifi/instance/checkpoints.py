@@ -202,7 +202,8 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
 # window. The settings fixed at `nsf init` (lifetime, journal limit, free-space reserve, temperature limit) cannot
 # differ between an individual and its own archives, so they stay as the archive has them.
 CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds",
-                    "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet")
+                    "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet",
+                    "internal_state_history", "predictive_regulation", "executive_rule", "decision_information")
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
@@ -321,7 +322,8 @@ def _live_settings(db):
         value = raw.get(name, effective[name])
         if store.valid_setting(name, value):
             carried[name] = value
-        elif name in ("consolidation", "graph_rule_migration", "quiet"):
+        elif name in ("consolidation", "graph_rule_migration", "quiet", "internal_state_history",
+                      "predictive_regulation", "decision_information"):
             carried[name] = effective[name]
             acts = "on" if effective[name] else "off"
             warnings.append(f"the live instance's saved {name} ({value!r}) is not true or false; it acts as "

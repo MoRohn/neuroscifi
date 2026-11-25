@@ -99,6 +99,18 @@ class InstanceConfig:
     # The owner's one switch for everything done unasked (background.py, ADR-050): on = background research,
     # monitors, refreshes and idle investigations are held; work the owner asks for is not. Off by default.
     quiet: bool = False
+    # ADR-051 (lane I). internal_state_history: the research worker appends a compact sample of the internal-state
+    # record (numbers only) to <db>.resources/internal-state.jsonl every 30 s (internal_state.py).
+    # predictive_regulation: policy.background_gate also refuses NEW background research while resources/forecast.py
+    # forecasts memory
+    # headroom under the critical line, or a regular voice session, within its horizon; it never touches owner work.
+    # executive_rule: the executive's rule version (store.RULE_VERSIONS; a version is never edited, the owner adopts
+    # one). decision_information: `nsf decide` shows each question's exact expected information gain and whether the
+    # decision rests on a matched earlier setup (information.py); display only.
+    internal_state_history: bool = True
+    predictive_regulation: bool = False
+    executive_rule: str = "rules-v1"
+    decision_information: bool = True
 
     @classmethod
     def from_json(cls, text):
@@ -118,6 +130,13 @@ class InstanceConfig:
         # owner may have stopped.
         if not isinstance(values.get("quiet", False), bool):
             values["quiet"] = True
+        # ADR-051: a damaged value reads as the behaviour before these settings existed (no history kept, no
+        # predictive holds, the first rule version).
+        for name in ("internal_state_history", "predictive_regulation", "decision_information"):
+            if name in values and not isinstance(values[name], bool):
+                values[name] = False
+        if "executive_rule" in values and not _SETTABLE["executive_rule"](values["executive_rule"]):
+            del values["executive_rule"]
         # A limit that is not a whole number from 0 up (a hand-edited "none", a -1, true) is not a limit: the default
         # stands, never "no limit" by accident. setting_problems() reports it.
         if "max_consolidated_rows" in values and not _row_limit(values["max_consolidated_rows"]):
@@ -281,7 +300,13 @@ _SETTABLE = {
     "imagined_lifetime_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
                                             and math.isfinite(v) and 60 <= v <= MAX_IMAGINED_LIFETIME),
     "quiet": lambda v: isinstance(v, bool),
+    "internal_state_history": lambda v: isinstance(v, bool),
+    "predictive_regulation": lambda v: isinstance(v, bool),
+    "executive_rule": lambda v: isinstance(v, str) and v in RULE_VERSIONS,
+    "decision_information": lambda v: isinstance(v, bool),
 }
+# The executive's rule versions (executive._policy; information.information_policy): added, never edited.
+RULE_VERSIONS = ("rules-v1", "information-v1")
 MAX_IMAGINED_ROWS = 100_000
 MAX_IMAGINED_LIFETIME = 365 * 86400    # also how long an imagined tombstone is kept (imagined.expire)
 
@@ -315,7 +340,14 @@ def setting_problems(db):
              "imagined_lifetime_seconds": "; the default lifetime of imagined records applies until it is set with "
                                           "`nsf config --imagined-lifetime-days D`",
              "quiet": "; quiet is treated as on (background work held) until it is set with `nsf quiet on` or "
-                      "`nsf quiet off`"}
+                      "`nsf quiet off`",
+             "internal_state_history": "; no internal-state history is kept until it is set with `nsf config "
+                                       "--internal-state-history`",
+             "predictive_regulation": "; predictive regulation is treated as off until it is set with `nsf config "
+                                      "--predictive-regulation`",
+             "executive_rule": "; the executive uses rules-v1 until it is set with `nsf config --executive-rule`",
+             "decision_information": "; decisions are shown without their information gains until it is set with "
+                                     "`nsf config --decision-information`"}
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
             for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
 
