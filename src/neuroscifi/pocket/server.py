@@ -73,6 +73,8 @@ RESEARCH_MODES = ("quick_lookup","deep_research","fact_verification","comparativ
 MAX_OBJECTIVE = 300
 VERDICTS = ("supported", "disputed", "contested", "insufficient")
 SUBMISSIONS_PER_HOUR = 10   # per pairing family, kept in the Pocket database so a restart does not reset it
+REFUSALS_PER_HOUR = 20      # questions the private-data screen refused, per family and hour (each screen reads the
+                            # individual under the submit lock); counted apart, so they never spend the task allowance
 # Pocket's outbox (research-ui.mjs, outbox.mjs): a question written while the Spark is out of reach waits on the
 # device for up to OUTBOX_DAYS and is sent with a `request` key (a UUID v4 made on the device). A request key the
 # family already used is answered with that task (200, replayed) and counts nothing again, so a retry after a lost
@@ -127,6 +129,7 @@ class Store:
                   family TEXT NOT NULL, sponsor TEXT, created INTEGER);
                 INSERT OR IGNORE INTO members(device,family) SELECT key,key FROM devices;
                 CREATE TABLE IF NOT EXISTS submissions(family TEXT NOT NULL, at REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS refusals(family TEXT NOT NULL, at REAL NOT NULL);
                 -- Outbox request keys (OUTBOX_DAYS): which task a family's request key queued; no question text.
                 CREATE TABLE IF NOT EXISTS outbox_requests(family TEXT NOT NULL, request TEXT NOT NULL,
                   task TEXT NOT NULL, at REAL NOT NULL, PRIMARY KEY(family, request));
@@ -191,13 +194,16 @@ class Store:
 
         In this order, under one lock (cheapest first, nothing counted before a task is queued):
         1. With an outbox `request` key this database recorded, `replay(task)` with the task it queued: a reply it
-           returns (200 replayed, 410 forgotten) is returned as it is; on 410 the record goes. None means the task is
-           gone without having been forgotten (a restore from an older archive): the record goes and the key is new.
-        2. The hourly limit (None when it is reached): before any scan of the individual a new key would cost.
+           returns (200 replayed, 410 forgotten) is returned as it is, and the record stays (a later retry is 410
+           again). None means the task is gone without having been forgotten (a restore from an older archive): the
+           record goes and the key is new.
+        2. The hourly limits (None when one is reached): SUBMISSIONS_PER_HOUR queued tasks, REFUSALS_PER_HOUR refusals
+           of the screen; before any scan of the individual a new key would cost.
         3. With a key, `lost()`: the task this key queued when this database lost its record (a crash between the
            two commits); a reply it returns is returned as it is.
         4. `refuse()`: a refusal it returns (the private-data screen) is returned as it is. A retry of a key already
            queued is answered by 1 or 3 first, so a term added to the screen since never refuses a queued question.
+           A refusal is counted toward REFUSALS_PER_HOUR.
         5. `submit()`; a result reporting `replayed` (the key found inside the individual's own transaction, by
            another process) is not counted. A new key is recorded with the task `submit` returned."""
         with _RATE_LOCK:
@@ -208,15 +214,19 @@ class Store:
                                      (family, request)).fetchone()
                 if row is not None:
                     answer = replay(row[0])
-                    if answer is None or answer[0] == 410:
-                        with closing(connect(self.path)) as db, db:
-                            db.execute("DELETE FROM outbox_requests WHERE family=? AND request=?", (family, request))
                     if answer is not None:
+                        # 410 keeps the record: every later retry of the key is answered 410 again until the record
+                        # expires (REQUEST_DAYS, longer than the device keeps a question), so a forgotten question is
+                        # never queued again by a retry whose 410 was lost on the way.
                         return answer
+                    with closing(connect(self.path)) as db, db:   # gone without a forget: the key is new
+                        db.execute("DELETE FROM outbox_requests WHERE family=? AND request=?", (family, request))
             with closing(connect(self.path)) as db:
                 recent = db.execute("SELECT count(*) FROM submissions WHERE family=? AND at>?",
                                     (family, now - 3600)).fetchone()[0]
-            if recent >= SUBMISSIONS_PER_HOUR:
+                refused = db.execute("SELECT count(*) FROM refusals WHERE family=? AND at>?",
+                                     (family, now - 3600)).fetchone()[0]
+            if recent >= SUBMISSIONS_PER_HOUR or refused >= REFUSALS_PER_HOUR:
                 return None
             if request is not None and lost is not None:
                 answer = lost()
@@ -225,6 +235,10 @@ class Store:
             if refuse is not None:
                 answer = refuse()
                 if answer is not None:
+                    # Counted apart from the queued tasks: the screen reads the individual under this lock, so a
+                    # device sending refused questions is limited too, without spending the owner's task allowance.
+                    with closing(connect(self.path)) as db, db:
+                        db.execute("INSERT INTO refusals VALUES(?,?)", (family, now))
                     return answer
             result = submit()
             replayed = isinstance(result, dict) and result.get("replayed")
@@ -280,6 +294,7 @@ class Store:
         db.execute("INSERT OR IGNORE INTO retired_episodes SELECT device,id FROM episodes WHERE until<=?", (now,))
         db.execute("DELETE FROM episodes WHERE until<=?",(now,))
         db.execute("DELETE FROM submissions WHERE at<=? OR family NOT IN (SELECT family FROM members)", (now - 3600,))
+        db.execute("DELETE FROM refusals WHERE at<=? OR family NOT IN (SELECT family FROM members)", (now - 3600,))
         db.execute("DELETE FROM outbox_requests WHERE at<=? OR family NOT IN (SELECT family FROM members)",
                    (now - REQUEST_DAYS * DAY,))
         db.execute("DELETE FROM push_seen WHERE at<=? OR (family!='' AND family NOT IN (SELECT family FROM members))",

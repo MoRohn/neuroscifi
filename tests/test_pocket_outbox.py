@@ -251,16 +251,40 @@ def test_a_task_gone_without_a_forget_is_not_called_forgotten(spark, devices, mo
         assert db.execute("SELECT task FROM outbox_requests").fetchall() == [(new["id"],)]
 
 
-def test_a_forgotten_answer_drops_the_record(spark, devices):
-    a, _, _ = devices
+def test_a_forgotten_answer_keeps_the_record_so_no_retry_queues_it_again(spark, devices):
+    """The 410 can be lost on the way (or two flushes run at once): every later retry of the key is 410 again and the
+    forgotten question is never queued and researched again (re-review S3)."""
+    a, b, _ = devices
     key = str(uuid.uuid4())
     task = submit(spark, a, QUESTION, request=key)[1]["id"]
     from neuroscifi.instance import governance
     with spark.owner() as db:
         governance.forget_research(db, task, time.time())
-    assert submit(spark, a, QUESTION, request=key) == (410, {"error": "forgotten"})
+    for device in (a, a, b):                       # first, second and third retry; the last from a linked device
+        assert submit(spark, device, QUESTION, request=key) == (410, {"error": "forgotten"})
+        assert tasks(spark) == []
     with closing(bridge.connect(spark.server.store.path)) as db:
-        assert db.execute("SELECT count(*) FROM outbox_requests").fetchone()[0] == 0
+        assert db.execute("SELECT count(*) FROM outbox_requests").fetchone()[0] == 1
+
+
+def test_screen_refusals_are_limited_per_family(spark, devices, monkeypatch):
+    """Each refusal of the private-data screen read the individual under the submit lock and counted nothing: a
+    device could run them without limit (re-review S4). They are now limited apart from the task allowance."""
+    a, _, c = devices
+    runs = {"screens": 0}
+    real = orchestrator.screen
+
+    def counting(db, text, cfg):
+        runs["screens"] += 1
+        return real(db, text, cfg)
+    monkeypatch.setattr(orchestrator, "screen", counting)
+    private = "mail alice@example.com about Zephyr"
+    codes = [submit(spark, a, private, request=str(uuid.uuid4()))[0] for _ in range(bridge.REFUSALS_PER_HOUR + 5)]
+    assert codes[:bridge.REFUSALS_PER_HOUR] == [400] * bridge.REFUSALS_PER_HOUR
+    assert codes[bridge.REFUSALS_PER_HOUR:] == [429] * 5
+    assert runs["screens"] == bridge.REFUSALS_PER_HOUR          # no screen once the limit is reached
+    assert submissions(spark) == 0                               # the owner's task allowance is untouched
+    assert submit(spark, c, QUESTION, request=str(uuid.uuid4()))[0] == 201   # another family is not held up
 
 
 def test_a_submit_that_replays_is_not_counted(spark, devices):
