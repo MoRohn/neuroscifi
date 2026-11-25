@@ -267,8 +267,13 @@ def _after_monitor_run(db, mon, task, now) -> dict:
     with store.write(db):
         db.execute("UPDATE web_monitors SET baseline=? WHERE id=?", (state.dumps(baseline), mon["id"]))
         if changes["meaningful"]:
-            changes["pending_id"] = ask(db, f"web:finding:{mon['id']}:{task['id']}", _finding_text(mon, changes),
-                                        now)
+            from .. import broadcast
+            scope, text = f"web:finding:{mon['id']}:{task['id']}", _finding_text(mon, changes)
+            # selective broadcast (ADR-053): mode off (the default) delivers exactly as before
+            changes["pending_id"] = broadcast.offer(
+                db, "monitor.finding", now=now, scope=scope, task_id=task["id"],
+                signals={k: len(changes.get(k) or []) for k in ("changed_values", "new_claims", "superseded")},
+                deliver=lambda: ask(db, scope, text, now))["pending_id"]
             state.log_event(db, task["id"], "finding", {"monitor_id": mon["id"], "changes": changes}, now)
         store.bump_state_version(db)
     return changes

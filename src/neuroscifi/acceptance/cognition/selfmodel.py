@@ -38,6 +38,7 @@ GIB = 1024 ** 3
 MAIN = "main"
 LEVEL_BYTES = {"ok": 64 * GIB, "elevated": 12 * GIB, "critical": 4 * GIB}
 AUTONOMOUS_SEARCHES = 20          # webcortex/autonomy.py:57 DEFAULTS["autonomous_daily"]["searches"]
+NOTHING = "nothing"               # uncertain_about when every factor of the main epoch is settled
 PROBES = ("running_tasks", "queued_tasks", "open_owner_questions", "autonomy_enabled", "autonomous_searches_left",
           "memory_level", "writes_allowed", "audio_active", "background_research_allowed", "local_model_unloaded",
           "uncertain_about", "last_decision", "journal_row_limit", "authorised_model_tools", "researching_now")
@@ -47,7 +48,10 @@ def truth(spec: dict, journal_limit: int) -> dict:
     """The ground truth of every probe, from the staged design alone."""
     from ...inference import tools
     granted = sorted(t.name for t in tools.TOOLS if t.permission in (tools.READ,))
-    uncertain = None
+    # When every factor of the main epoch is settled, the right answer is "nothing" (NOTHING), which a describer can
+    # give; before lane W this was None, which no answer could match (None means "cannot say"). The baseline answers
+    # None for this probe either way, so its numbers do not change.
+    uncertain = NOTHING
     if spec["unidentifiable"]:
         uncertain = "partner:p-amb" if spec["last_decision"] == "ask" else "mechanism"
     return {"running_tasks": spec["running_tasks"], "queued_tasks": spec["queued_tasks"],

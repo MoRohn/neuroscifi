@@ -20,6 +20,8 @@ parse(text) -> Intent(kind, arg). Kinds:
   help                           "help", "what can you do"
   history                        "what was I researching", "what did I ask earlier", "show my recent research": the
                                  conversation's and the principal's own research history, never a web search (R2-07)
+  self_status                    "what are you doing", "what's your status", "status report": a short reading of the
+                                 self-description record (self_description.short), never a web search (ADR-053)
   research                       "research X", "look up X", "investigate X", "find out X" (arg X), or another
                                  utterance of at least MIN_QUESTION_WORDS words that asks for something: it ends
                                  with "?" or starts with a question word or an information request (_ASKS)
@@ -105,6 +107,9 @@ _PATTERNS = [
                 r"move (?:the )?(?:microphone|mic) (?:here|to this device)|switch (?:the )?(?:microphone|mic) "
                 r"to this device)"),
     ("help", r"help|what can you do|what can i say|list (?:the )?commands"),
+    ("self_status", r"(?:please )?(?:what are you (?:doing|working on|busy with|up to)(?: (?:now|right now|at the "
+                    r"moment))?|(?:what is|what's|whats) your (?:status|state)|(?:give me |tell me )?(?:your |a )?"
+                    r"status(?: report| update)?)(?: please)?"),
     ("history", r"(?:please )?(?:what (?:was|were|am|are|have) (?:i|we) (?:been )?(?:researching|investigating|"
                 r"looking (?:up|into|at)|asking(?: you)?(?: about)?|working on|talking about)|what did (?:i|we) "
                 r"(?:research|investigate|ask(?: you)?(?: about)?|look up|look into|talk about)|what (?:was|is) (?:my|our) "
@@ -114,6 +119,11 @@ _PATTERNS = [
                 r"(?: please)?"),
 ]
 _COMPILED = [(kind, re.compile(f"^(?:{p})$")) for kind, p in _PATTERNS]
+# Every intent parse() can return (the voice commands the self-description lists as authorised), and the ones that
+# need the owner console for some or all of what they do (voice/bridge.py _owner_only).
+KINDS = tuple(dict.fromkeys([k for k, _ in _PATTERNS if not k.startswith("forget_")]
+                            + ["forget", "mode", "learned_since", "research", "chatter", "unclear"]))
+OWNER_ONLY = ("remember", "learned_since", "forget:research", "enable_autonomy", "disable_autonomy")
 _MODE = [
     ("text_only", re.compile(r"^(?:please )?(?:switch|change|go) to text(?: only)?(?: mode)?(?: please)?$|"
                              r"^text only(?: mode)?(?: please)?$")),

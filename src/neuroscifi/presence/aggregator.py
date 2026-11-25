@@ -99,6 +99,9 @@ def _running(task, last, contradictions, reasoning_on):
     if task["cancel_requested"]:
         return "waiting", "Stopping at the next safe point (cancel requested)", 1.0, []
     if status == "discovering":
+        if kind == "decision" and detail.get("needs_web") is True:
+            # orchestrator: the decision that the web is needed is followed by the query plan (intent.plan)
+            return "planning", "Planning the web searches", 1.0, []
         return "searching", "Searching for sources", 1.0, []
     if status == "reading":
         return "reading", "Reading sources", 1.0, []
@@ -166,6 +169,41 @@ def _findings(db, now, family):
         return 0
     return db.execute("SELECT count(*) FROM web_events WHERE kind='finding' AND created_at>=?",
                       (now - FINISHED_WINDOW,)).fetchone()[0]
+
+
+def _predictions_made(db, now):
+    """(count, newest time) of predictions recorded in the last moments (web_events 'prediction': a forecast with
+    its check date, predictions.record / evolution.predict), owner scope only."""
+    return db.execute("SELECT count(*), max(created_at) FROM web_events WHERE kind='prediction' AND created_at>=?",
+                      (now - FINISHED_WINDOW,)).fetchone()
+
+
+def _imagined_made(db, now):
+    """(count, newest time) of imagined records written in the last moments (instance/imagined.py: simulation,
+    speculation, inference; never evidence), owner scope only; (0, None) before schema 17."""
+    try:
+        return db.execute("SELECT count(*), max(created_at) FROM imagined WHERE created_at>=?",
+                          (now - FINISHED_WINDOW,)).fetchone()
+    except sqlite3.OperationalError:
+        return 0, None
+
+
+def _graph_jobs(db, now):
+    """Unexpired graph leases (graphs.lease): a graph is being learned, promoted or rolled back for that context."""
+    try:
+        return db.execute("SELECT context, holder, expires_at FROM graph_leases WHERE expires_at>? "
+                          "ORDER BY context LIMIT 4", (now,)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+
+
+_INFLIGHT_DETAIL = {"interpreting": "Interpreting your request", "executing": "Running an allow-listed tool ({purpose})"}
+
+
+def arbitrate(cands):
+    """Contention between candidates (and between broadcast events, broadcast.py): highest rank first, then the
+    most recent. The one ordering Presence and the selective broadcast share."""
+    return sorted(cands, key=lambda c: (-c["rank"], -(c["since"] or 0)))
 
 
 def _ledger(db_path, now, task_ids=None):
@@ -391,6 +429,22 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
     if _findings(db, now, family):
         cands.append(_candidate("learning", subsystem="web_cortex", priority="background", concept="discovery",
                                 since=now, detail="A monitor found a meaningful change"))
+    if owner:
+        # Real rows only (ADR-053): a prediction recorded, an imagined record written, a graph job under its lease.
+        made, at = _predictions_made(db, now)
+        if made:
+            cands.append(_candidate("predicting", subsystem="web_cortex", priority="background", since=at,
+                                    detail=f"Recorded {made} prediction{'s' if made != 1 else ''} to check later"))
+        made, at = _imagined_made(db, now)
+        if made:
+            cands.append(_candidate("simulating", subsystem="imagination", priority="background", since=at,
+                                    detail="Imagining a what-if; imagined, not evidence"))
+        for context, holder, expires in _graph_jobs(db, now):
+            job = str(holder or "").split(":", 1)[0]
+            job = job.removeprefix("graphs.") if job.startswith("graphs.") else "graph job"
+            # every graph lease is taken for graphs.lease's default 600 s, so its start is expires - 600
+            cands.append(_candidate("analyzing", subsystem="graphs", priority="foreground", since=expires - 600,
+                                    detail=f"Fitting and scoring a graph for context {_short(context, 40)} ({job})"))
 
     last_question = None
     if owner:
@@ -417,13 +471,19 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
         calls, tokens, newest_call = ledger
         signals["tokens_30s"] += int(tokens or 0)
     if owner:
-        for entry in inflight.snapshot():
-            signals["inflight_inference"] += 1
-            signals["tokens_30s"] += entry["tokens"]
-            cands.append(_candidate(entry["activity"] if entry["activity"] in ACTIVITIES else "generating",
-                                    subsystem=entry["subsystem"], priority="tool", since=entry["since"],
-                                    detail=f"Model call in progress ({entry['purpose']}; {entry['tokens']} tokens "
-                                           "streamed so far)", task_id=entry["task_id"]))
+        # this process's in-flight work, then what other processes published (the research worker; ADR-053)
+        for entry in inflight.snapshot() + inflight.remote(db_path, now):
+            act = entry["activity"] if entry["activity"] in ACTIVITIES else "generating"
+            if act in _INFLIGHT_DETAIL:
+                detail = _INFLIGHT_DETAIL[act].format(purpose=_short(entry["purpose"], 40))
+            else:
+                signals["inflight_inference"] += 1
+                signals["tokens_30s"] += entry["tokens"]
+                detail = (f"Model call in progress ({entry['purpose']}; {entry['tokens']} tokens streamed so far)"
+                          + (" in the research worker" if entry.get("process") else ""))
+            cands.append(_candidate(act, subsystem=entry["subsystem"], priority=entry.get("priority") or "tool",
+                                    since=entry["since"], detail=detail, task_id=entry["task_id"],
+                                    secondary=[s for s in entry.get("secondary") or () if s in SECONDARY]))
 
         for entry in _starting(db_path):     # a service the idle policy unloaded is loading again (RD-46)
             cands.append(_candidate("waiting", subsystem=_IDLE_SUBSYSTEM.get(entry["service"], "reasoning"),
@@ -432,6 +492,7 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
     reg = _regulation(db, db_path, now)
     if not reg["writes_allowed"]:
         conditions.add("resource_constrained")
+        sources["writes"] = "paused"       # the client names the cause: storage, not memory (ADR-053)
     if reg.get("quiet"):
         sources["background"] = "quiet"     # the owner holds background work: shown in plain words by the client
     level = _resource_level()
@@ -474,7 +535,7 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
                 if at is not None and 0 <= now - at <= INTERRUPT_WINDOW:
                     interactions.add("user_interruption")
 
-    cands.sort(key=lambda c: (-c["rank"], -(c["since"] or 0)))
+    cands = arbitrate(cands)
     if cands:
         primary = cands[0]
     else:
@@ -519,5 +580,5 @@ def unavailable(scope, reason) -> dict:
     return state
 
 
-__all__ = ["ACTIVITIES", "CONDITIONS", "INTERACTIONS", "RANK", "SCHEMA", "SECONDARY", "derive", "unavailable",
-           "version", "voice_snapshot"]
+__all__ = ["ACTIVITIES", "CONDITIONS", "INTERACTIONS", "RANK", "SCHEMA", "SECONDARY", "arbitrate", "derive",
+           "unavailable", "version", "voice_snapshot"]

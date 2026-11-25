@@ -57,8 +57,8 @@ NODE_SIGNED = ("This device is a research node, so your Spark accepts research c
                "ask, cancel or continue; here I can read, show and explain research.")
 SESSION_OWNED = "Another of your devices is driving this research right now. Ask it to hand it over."
 HELP = ("You can ask a question or say: research followed by a topic, show evidence, explain more simply, "
-        "remember conclusions, what have you learned since yesterday, what was I researching, continue previous "
-        "investigation, stop, "
+        "remember conclusions, what have you learned since yesterday, what was I researching, what are you doing, "
+        "continue previous investigation, stop, "
         "stop speaking but keep researching, switch to text only, or speak your answers.")
 
 
@@ -439,6 +439,20 @@ class Bridge:
         lines = ([f"This conversation: {last}"] if last else []) + \
             (["Your recent research, newest first:"] + [f"- {o[:300]} ({state(st)})" for _, o, st, _ in rows] if rows else [])
         return Reply("history", speech=speech, text="\n".join(lines), task_id=rows[0][0] if rows else None)
+
+    def _self_status(self, db, principal, ctx, _):
+        """"What are you doing": a short reading of the self-description record (ADR-053), from the stores, never a
+        web search and never a model. A Pocket device hears its family's scope only."""
+        from .. import self_description
+        from ..instance import store
+        scope = "owner" if principal.owner else "family"
+        if not principal.owner and not principal.family:
+            return _say("self_status", "I can't tell which device this is, so I can't say what I'm doing for it.")
+        record = self_description.build(db, store.database_path(db), self.clock(), scope=scope,
+                                        family=None if principal.owner else principal.family)
+        lines = self_description.short(record)
+        return Reply("self_status", speech=spoken(lines, limit=3, words=MAX_SPOKEN_WORDS), text="\n".join(lines),
+                     label="NeuroSciFi status from its own records (no model involved)")
 
     def _stop_speaking(self, db, principal, ctx, _):
         task = self._last_task(db, ctx, principal)

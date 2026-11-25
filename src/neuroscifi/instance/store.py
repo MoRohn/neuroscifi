@@ -122,6 +122,11 @@ class InstanceConfig:
     imagine_scenarios: bool = False
     imagine_max_seconds: float = 10.0
     imagine_max_bytes: int = 512 * 1024 * 1024
+    # Selective broadcast (broadcast.py, ADR-053): which findings reach the other subsystems (owner question,
+    # Presence, Pocket push). "off" (default) = as before; "log" = as before plus a logged salience decision per
+    # finding; "on" = only findings at or above broadcast_threshold (and within broadcast.MAX_PER_HOUR) go out.
+    broadcast: str = "off"
+    broadcast_threshold: float = 0.5
 
     @classmethod
     def from_json(cls, text):
@@ -162,6 +167,11 @@ class InstanceConfig:
             if name in values and not isinstance(values[name], bool):
                 values[name] = False
         for name in ("imagine_max_seconds", "imagine_max_bytes"):
+            if name in values and not _SETTABLE[name](values[name]):
+                del values[name]
+        # Selective broadcast: a damaged value reads as the default (off; threshold 0.5), the reading that changes
+        # nothing about what reaches the owner.
+        for name in ("broadcast", "broadcast_threshold"):
             if name in values and not _SETTABLE[name](values[name]):
                 del values[name]
         return cls(**values)
@@ -330,6 +340,9 @@ _SETTABLE = {
     "imagine_max_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                                       and 0.1 <= v <= 600),
     "imagine_max_bytes": lambda v: isinstance(v, int) and not isinstance(v, bool) and 1 << 20 <= v <= 64 << 30,
+    "broadcast": lambda v: v in ("off", "log", "on"),
+    "broadcast_threshold": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                                      and 0 <= v <= 1),
 }
 # The executive's rule versions (executive._policy; information.information_policy): added, never edited.
 RULE_VERSIONS = ("rules-v1", "information-v1")

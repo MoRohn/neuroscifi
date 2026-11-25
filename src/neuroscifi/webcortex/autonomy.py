@@ -898,10 +898,21 @@ def after_task(db, task_id, now) -> dict | None:
         parts.append(f"{len(settled)} prediction(s) settled ({outcome})")
     text = (f"Autonomous research «{knowledge.quote(task['objective'])[:120]}» found: {'; '.join(parts)}. "
             "See the console (Research) or `nsf web evidence` for the sources; answer to dismiss.")
+    from .. import broadcast
+    scope = f"web:autonomy:{task_id}"
+    signals = {"new_verified": len(findings["new_verified"]), "resolved_contradictions": len(resolved),
+               "settled_predictions": sum(1 for s in settled if s.get("outcome") == "confirmed"),
+               "prediction_errors": sum(1 for s in settled if s.get("outcome") == "error")}
     with store.write(db):
-        findings["pending_id"] = knowledge.open_question(db, f"web:autonomy:{task_id}", text, now)
+        # selective broadcast (ADR-053): mode off (the default) delivers exactly as before
+        offered = broadcast.offer(db, "autonomy.finding", now=now, signals=signals, scope=scope, task_id=task_id,
+                                  deliver=lambda: knowledge.open_question(db, scope, text, now))
+        findings["pending_id"] = offered["pending_id"]
         delivered = findings["pending_id"] is not None
-        state.log_event(db, task_id, "decision", {"autonomy": "notified" if delivered else "finding not delivered",
+        kept = offered["outcome"] == "local"
+        state.log_event(db, task_id, "decision", {"autonomy": "notified" if delivered else
+                                                  f"finding kept local ({offered['reason']})" if kept else
+                                                  "finding not delivered",
                                                   "pending_id": findings["pending_id"],
                                                   "findings": {k: len(v) if isinstance(v, list) else v
                                                                for k, v in findings.items()}}, now)

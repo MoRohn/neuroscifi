@@ -86,6 +86,19 @@ def imagined_days(text):
     return value
 
 
+def unit_interval(text):
+    """argparse type: a finite number from 0 to 1."""
+    import argparse
+    import math
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number from 0 to 1, got {text!r}") from None
+    if not math.isfinite(value) or not 0 <= value <= 1:
+        raise argparse.ArgumentTypeError(f"expected a number from 0 to 1, got {text}")
+    return value
+
+
 LIMIT = bounded_int(1, 100_000)
 
 
@@ -189,6 +202,10 @@ def _config(db, args, now):
         changes["imagine_max_seconds"] = args.imagine_max_seconds
     if args.imagine_max_mib is not None:
         changes["imagine_max_bytes"] = args.imagine_max_mib * 1024 * 1024
+    if args.broadcast is not None:
+        changes["broadcast"] = args.broadcast
+    if args.broadcast_threshold is not None:
+        changes["broadcast_threshold"] = args.broadcast_threshold
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
@@ -209,6 +226,13 @@ def _regulation(db, args, now):
         from .executive import precision
         out["precision"] = precision(db)
     return out
+
+
+def _self(db, args, now):
+    """`nsf self`: the self-description record (self_description.build), or with --short its plain sentences."""
+    from .. import self_description
+    record = self_description.build(db, store.resolve_db(args), now)
+    return {"short": self_description.short(record)} if args.short else record
 
 
 def register(sub):
@@ -286,7 +310,19 @@ def register(sub):
                    help="the longest an imagination question may run on its private copy (0.1 to 600; default 10)")
     p.add_argument("--imagine-max-mib", type=bounded_int(1, 64 * 1024),
                    help="the largest individual file imagination may copy, in MiB (default 512)")
+    p.add_argument("--broadcast", choices=("off", "log", "on"),
+                   help="selective broadcast of findings (ADR-053): off = every finding reaches you as before "
+                        "(default); log = as before, and each finding's salience is logged; on = only findings at or "
+                        "above --broadcast-threshold become questions, the others stay in their task's record")
+    p.add_argument("--broadcast-threshold", type=unit_interval,
+                   help="the salience (0 to 1) a finding needs to be broadcast while --broadcast is on (default 0.5)")
     p.set_defaults(handler=with_db(_config))
+
+    p = sub.add_parser("self", help="what this individual is doing, knows, is unsure of and can do next, each with "
+                                    "its source and age (self-description; read-only)")
+    store.add_db_argument(p)
+    p.add_argument("--short", action="store_true", help="a few plain sentences instead of the full record")
+    p.set_defaults(handler=with_db(_self))
 
     p = sub.add_parser("quiet", help="one switch for everything done unasked: on = nothing runs unless you ask "
                                      "(background research, monitors, refreshes); off = as your other settings say")

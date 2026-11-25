@@ -39,6 +39,10 @@
   <div class="viewhead"><h1 id="h-overview" tabindex="-1">Overview</h1><button type="button" id="refreshOverview" data-keep>Refresh</button></div>
   <p class="lede">Who this individual is, what it remembers and whether it may accept new evidence.</p>
   <div class="grid">
+    <article class="card" aria-labelledby="h-self"><h2 id="h-self">What it is doing now</h2><div id="selfdesc" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card" aria-labelledby="h-recent"><h2 id="h-recent">What we were just doing</h2><div id="recent" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card" aria-labelledby="h-res"><h2 id="h-res">Resources</h2><div id="resources" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
+    <article class="card" aria-labelledby="h-imag"><h2 id="h-imag">Imagined, not evidence</h2><div id="imagined" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
     <article class="card" aria-labelledby="h-birth"><h2 id="h-birth">Birth record</h2><div id="birth" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
     <article class="card" aria-labelledby="h-reg"><h2 id="h-reg">Regulation</h2><div id="regulation" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
     <article class="card" aria-labelledby="h-inv"><h2 id="h-inv">Memory inventory</h2><div id="inventory" class="slot" aria-busy="true"><p class="empty">Loading…</p></div></article>
@@ -164,6 +168,7 @@
           <label class="check"><input type="checkbox" id="swAutonomous" data-switch="autonomous"> Autonomous research (refreshes and curiosity within the daily cap)</label>
           <label class="check"><input type="checkbox" id="swPocket" data-switch="pocket_research"> Research from paired Pocket devices</label>
           <label class="check"><input type="checkbox" id="swBrowser" data-switch="browser_rendering"> Sandboxed JavaScript rendering</label>
+          <label class="check"><input type="checkbox" id="swPocketRecent" data-switch="pocket_recent"> Show my latest questions on paired Pocket devices (by reference; off by default)</label>
         </fieldset>
       </details>
       <p id="webSettingsStatus" class="msg" role="status"></p>

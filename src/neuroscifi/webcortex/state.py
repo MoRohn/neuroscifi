@@ -93,7 +93,7 @@ def _validate(name, value):
                 "search_browser_user_agent", "calibrated_forecasts", "curiosity_learning_progress",
                 "salience_record", "hypothesis_fields", "hypothesis_abandon", "premise_recheck", "idle_recheck",
                 "reflection", "reflection_model_summary", "answer_monitoring", "selective_answering",
-                "verification_escalation", "adaptive_depth"):
+                "verification_escalation", "adaptive_depth", "pocket_recent"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value

@@ -204,7 +204,8 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
 CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds",
                     "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet",
                     "internal_state_history", "predictive_regulation", "executive_rule", "decision_information",
-                    *store.IMAGINE_SWITCHES, "imagine_max_seconds", "imagine_max_bytes")
+                    *store.IMAGINE_SWITCHES, "imagine_max_seconds", "imagine_max_bytes",
+                    "broadcast", "broadcast_threshold")
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events

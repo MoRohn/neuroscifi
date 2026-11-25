@@ -174,6 +174,10 @@ class WebConfig:
     selective_answering: bool = False
     verification_escalation: bool = False
     adaptive_depth: bool = False
+    # ADR-053: paired Pocket devices also see the owner's own latest research questions by reference ("what we were
+    # just doing": the question as asked, its status and when; the report stays family-scoped and cannot be opened
+    # from a phone). Off by default: a pairing family may include devices that are not the owner's.
+    pocket_recent: bool = False
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

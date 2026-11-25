@@ -100,9 +100,27 @@ def _number(text, name, kind=float):
 # ---- route handlers: (ctx, params, query, body) -> JSON value -----------------------------------------
 
 def _inventory(c, p, q, b):
-    measure = _query(q, ("measure",)).get("measure") in ("1", "true")   # the overview asks; the header, reloaded
+    q = _query(q, ("measure", "self"))
+    measure = q.get("measure") in ("1", "true")   # the overview asks; the header, reloaded
     # after every teaching action, does not
-    return {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path, measure=measure)}
+    out = {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path, measure=measure)}
+    if q.get("self") in ("1", "true"):        # the overview's self-description panel (ADR-053); computed on request
+        from .. import self_description
+        record = self_description.build(c.db, c.path, c.now)
+        out["self"] = record
+        out["self_short"] = self_description.short(record)
+    return out
+
+
+def _imagined(c, p, q, b):
+    """Imagined records (instance/imagined.py), read-only and labelled "imagined, not evidence": simulations,
+    speculations and inferences the system produced itself, never evidence. ?kind= filters, ?limit= (1-100)."""
+    from ..instance import imagined
+    q = _query(q, ("kind", "limit"))
+    limit = _number(q.get("limit", "30"), "limit", int)
+    if not 1 <= limit <= 100:
+        raise ValidationError("limit must be between 1 and 100")
+    return imagined.listing(c.db, c.now, kind=q.get("kind") or None, limit=limit)
 
 
 def _epochs(c, p, q, b):
@@ -279,7 +297,7 @@ def _memory(c, p, q, b):
 # ---- Web Cortex (ARCHITECTURE.md §4.5): research tasks, knowledge, monitors, switches --------------------------
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-WEB_SWITCHES = ("enabled", "autonomous", "pocket_research", "browser_rendering")
+WEB_SWITCHES = ("enabled", "autonomous", "pocket_research", "browser_rendering", "pocket_recent")
 WORKER_POLL = 5.0      # seconds between idle polls of the opt-in embedded worker (as `nsf web work`)
 WORKER_RETRY = 5.0     # first back-off after an unexpected worker error; doubles per consecutive error
 WORKER_RETRY_MAX = 60.0
@@ -637,6 +655,7 @@ def _phones_status(c, p, q, b):
 SEGMENT = r"([^/]+)"
 ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern, handler in (
     ("GET", "inventory", _inventory),
+    ("GET", "imagined", _imagined),
     ("GET", "epochs", _epochs),
     ("POST", "epochs", _start_epoch),
     ("GET", f"epochs/{SEGMENT}/beliefs", _explain),

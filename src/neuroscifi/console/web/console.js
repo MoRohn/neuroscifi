@@ -327,7 +327,8 @@ function confirmAction(title, text, okLabel) {
 
 async function loadHeader(measure = false) {
   // measure: also time the largest epoch's belief computation (overview only; the header reloads after every action)
-  const inv = await api('GET', measure ? '/api/inventory?measure=1' : '/api/inventory');
+  // the overview also asks for the self-description record (ADR-053), which is computed on request
+  const inv = await api('GET', measure ? '/api/inventory?measure=1&self=1' : '/api/inventory');
   state.semantics = inv.birth.action_semantics;
   $('instanceId').textContent = inv.birth.instance_id.slice(0, 8);
   $('instanceId').title = inv.birth.instance_id;
@@ -344,9 +345,12 @@ async function loadHeader(measure = false) {
 }
 
 async function loadOverview() {
-  const slots = ['birth', 'regulation', 'inventory', 'development'].map($);
+  const slots = ['selfdesc', 'recent', 'birth', 'regulation', 'inventory', 'development'].map($);
+  loadResources();
+  loadImagined();
   const inv = await load('overview', slots, () => loadHeader(true));
   if (!inv) return;
+  renderSelf(inv.self, inv.self_short);
   const b = inv.birth;
   fill($('birth'), kv([
     ['Instance id', h('code', { text: b.instance_id })],
@@ -391,6 +395,110 @@ async function loadOverview() {
   fill($('development'), dev.length
     ? table('Development counters', ['Counter', { label: 'Value', num: true }], dev.map(([k, v]) => [k.replaceAll('_', ' '), v]))
     : empty('No development yet: record evidence or run a graph job.'));
+}
+
+// ---- self-description, resources, imagined records (ADR-053) ------------------------------------------------------
+
+const DECISION_WORDS = { act: 'act on what it has learned', observe: 'wait for readings', ask: 'ask you a question',
+  test_reference: 'ask for a known reference test', defer: 'wait' };
+const fieldValue = (rec, path) => {
+  let node = rec;
+  for (const key of path.split('.')) { if (!node || typeof node !== 'object' || !(key in node)) return null; node = node[key]; }
+  return node && typeof node === 'object' && 'source' in node ? node.value : node;
+};
+function plural(n, one, many = `${one}s`) { return `${n} ${n === 1 ? one : many}`; }
+
+// Every field of the record with its source and age, for the technical disclosure.
+function selfFields(rec, prefix = '', out = []) {
+  for (const [key, node] of Object.entries(rec ?? {})) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) continue;
+    const path = prefix ? `${prefix}.${key}` : key;
+    if ('source' in node && 'value' in node) out.push([path, node.source, node.age_seconds == null ? 'undated' : `${Math.round(node.age_seconds)} s`]);
+    else selfFields(node, path, out);
+  }
+  return out;
+}
+
+function renderSelf(rec, short) {
+  if (!rec) { fill($('selfdesc'), empty('Not available.')); fill($('recent'), empty('Not available.')); return; }
+  const tasks = fieldValue(rec, 'doing.tasks');
+  const questions = fieldValue(rec, 'doing.questions');
+  const mem = fieldValue(rec, 'knows.memory') ?? {};
+  const know = fieldValue(rec, 'knows.knowledge') ?? {};
+  const imagined = fieldValue(rec, 'provenance.counts')?.imagined ?? {};
+  const beliefs = fieldValue(rec, 'uncertain.beliefs');
+  const contra = fieldValue(rec, 'uncertain.contradictions');
+  const preds = fieldValue(rec, 'uncertain.predictions');
+  const next = fieldValue(rec, 'decisions.executive_now');
+  const writes = fieldValue(rec, 'can.limits.writes') ?? {};
+  const gate = fieldValue(rec, 'can.limits.background_research') ?? {};
+  const auto = fieldValue(rec, 'can.limits.autonomy');
+  const doing = [tasks ? (tasks.running || tasks.queued ? `${plural(tasks.running, 'research task')} running, ${tasks.queued} queued` : 'no research running') : null,
+    questions ? `${plural(questions.open, 'question')} waiting for you` : null,
+    fieldValue(rec, 'doing.quiet') ? 'quiet is on: nothing runs unless you ask' : null].filter(Boolean).join('; ');
+  const least = beliefs?.least_certain;
+  const unsure = [beliefs?.epoch ? (least === 'nothing' ? `every factor of epoch ${beliefs.epoch} is settled`
+    : `least certain: ${least === 'mechanism' ? 'the mechanism' : String(least).replace(':', ' ')} (epoch ${beliefs.epoch})`) : 'no epoch yet',
+    contra ? `${plural(contra.open_hypotheses, 'open contradiction')}` : null,
+    preds ? `${plural(preds.unsettled, 'prediction')} not yet settled` : null].filter(Boolean).join('; ');
+  const can = [next ? `next it would ${DECISION_WORDS[next.decision] ?? next.decision}` : 'no epoch to decide for',
+    writes.allowed === false ? `writes paused (${writes.reason ?? 'regulation'})` : 'writes allowed',
+    gate.allowed === false ? `background research waits (${gate.reason ?? ''})` : 'background research allowed',
+    auto ? `${auto.remaining?.autonomous?.searches ?? 0} autonomous searches left today` : null].filter(Boolean).join('; ');
+  const imaginedTotal = Object.values(imagined).reduce((a, b) => a + (Number(b) || 0), 0);
+  fill($('selfdesc'), (short ?? []).map((line) => h('p', { text: line })),
+    kv([
+      ['What am I doing?', doing || '—'],
+      ['What do I know?', `${plural(mem.evidence ?? 0, 'reading')} in the journal; ${plural(know.knowledge ?? 0, 'knowledge item')} (${know.accepted_knowledge ?? 0} accepted)`
+        + (imaginedTotal ? `; ${imaginedTotal} imagined records, never evidence` : '')],
+      ['What am I uncertain about?', unsure],
+      ['What can I do next?', can],
+      ['What supports that decision?', next ? next.reason : '—'],
+    ]),
+    h('p', { class: 'sub', text: `Built from the records at state version ${rec.state_version}; every value names its source. A functional description, not an inner experience.` }),
+    technical(table('Self-description fields', ['Field', 'Source', 'Age'], selfFields(rec))));
+  const recent = fieldValue(rec, 'recent') ?? [];
+  fill($('recent'), recent.length
+    ? h('ul', { class: 'plain' }, recent.map((x) => h('li', {}, `“${x.objective}” · ${x.device} · ${TASK_LABELS[x.status]?.toLowerCase() ?? x.status} · ${ago(x.at)} `,
+        h('button', { type: 'button', text: 'Open', 'aria-label': `Open: ${x.objective}`,
+          onclick: () => { location.hash = '#research'; openTask(x.task_id); } }))))
+    : empty('No questions yet from any of your devices.'));
+}
+
+async function loadResources() {
+  const r = await load('resources', [$('resources')], () => api('GET', '/api/resources'));
+  if (!r) return;
+  const level = { ok: 'Memory is fine', elevated: 'Memory is getting tight', critical: 'Memory is nearly full' }[r.level] ?? `Memory: ${r.level}`;
+  const bg = r.policy?.background_research ?? {};
+  const services = Object.entries(r.policy?.idle_unload?.services ?? {});
+  const mem = r.memory ?? {};
+  fill($('resources'), h('p', {}, badge(level, r.level === 'ok' ? 'neutral' : 'warn')),
+    kv([
+      ['Background research', bg.allowed ? 'allowed' : `waits: ${bg.reason ?? 'held'}`],
+      ['Voice', r.audio_active ? 'a voice session is using audio' : 'no voice audio now'],
+      ['Background model slots', r.policy?.background_model_slots ?? '—'],
+      ['Model services', services.length ? services.map(([name, svc]) => `${name}: ${svc?.state ?? 'running'}`).join('; ') : '—'],
+    ]),
+    technical(kv([
+      ['Available memory', mem.available_bytes != null ? `${fmtBytes(mem.available_bytes)} of ${fmtBytes(mem.total_bytes)}` : '—'],
+      ['Reasons', (r.reasons ?? []).join('; ') || 'none'],
+      ['GPU', r.gpu ? JSON.stringify(r.gpu) : 'not measured'],
+      ['Measured', fmtTime(r.measured_at)],
+    ])));
+}
+
+const IMAGINED_KIND = { simulation: 'what-if', speculation: 'possibility', inference: 'model conclusion' };
+async function loadImagined() {
+  const r = await load('imagined', [$('imagined')], () => api('GET', '/api/imagined?limit=20'));
+  if (!r) return;
+  const counts = Object.entries(r.counts ?? {}).map(([k, n]) => `${n} ${IMAGINED_KIND[k] ?? k}`).join(', ');
+  fill($('imagined'), h('p', { class: 'sub' }, badge('Imagined, not evidence', 'neutral'),
+      ' Content the system produced itself. It is never used as evidence or knowledge, and it expires. Read-only.'),
+    r.items?.length
+      ? table('Imagined records', ['Kind', 'Question', 'Made by', 'Made', 'Checked against what happened'],
+          r.items.map((x) => [IMAGINED_KIND[x.kind] ?? x.kind, x.question ?? '—', `${x.mechanism} ${x.mechanism_version}` + (x.model ? ` (${x.model})` : ''),
+            ago(x.created_at), x.observed ? 'yes' : 'not yet']))
+      : empty(`Nothing imagined is kept${counts ? ` (${counts})` : ''}.`));
 }
 
 // The graph-rule migration (ADR-047), present only for an individual made by older software that it reached.
@@ -2931,7 +3039,7 @@ function askCount() {
 }
 
 const SWITCH_LABELS = { enabled: 'Web access', autonomous: 'Autonomous research', pocket_research: 'Pocket research',
-                        browser_rendering: 'JavaScript rendering' };
+                        browser_rendering: 'JavaScript rendering', pocket_recent: 'Latest questions on Pocket' };
 
 function wireResearch() {
   $('refreshResearch').addEventListener('click', loadResearch);

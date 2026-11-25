@@ -27,10 +27,20 @@ export const ACTIVITY_TEXT = Object.freeze({
 const CONDITION_TEXT = { busy: 'busy', resource_constrained: 'writes paused to protect storage', network_degraded: 'some search providers are failing',
   disconnected: 'connection lost', recovering: 'recovering an interrupted task', awaiting_permission: 'questions are waiting for you', error: 'a task failed' };
 const ENGINE_TEXT = { asr: 'speech recognition', tts: 'speech output' };
+// resource_constrained has two real causes (aggregator sources): host memory pressure (sources.resources) and paused
+// writes (sources.writes). Each is named by its own words; neither known -> a neutral note.
+const MEMORY_TEXT = { elevated: 'memory is getting tight', critical: 'memory is nearly full; background research waits' };
+function resourceNotes(sources) {
+  const notes = [];
+  if (MEMORY_TEXT[sources?.resources]) notes.push(MEMORY_TEXT[sources.resources]);
+  if (sources?.writes === 'paused') notes.push(CONDITION_TEXT.resource_constrained);
+  return notes.length ? notes : ['resources are constrained'];
+}
 // network_degraded has two real causes (aggregator sources): failing search providers and unreachable speech engines.
 function conditionNotes(condition, sources) {
   const notes = [];
   for (const c of condition) {
+    if (c === 'resource_constrained') { notes.push(...resourceNotes(sources)); continue; }
     if (c !== 'network_degraded') { if (CONDITION_TEXT[c]) notes.push(CONDITION_TEXT[c]); continue; }
     const speech = sources?.voice === 'engines_unavailable';
     if (speech) {

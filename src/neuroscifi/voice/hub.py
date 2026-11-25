@@ -141,6 +141,7 @@ class VoiceHub:
         self._last_sweep = float("-inf")
         self._replies = threading.BoundedSemaphore(MAX_REPLY_WORKERS)
         self._followers = threading.BoundedSemaphore(MAX_FOLLOWERS)
+        self._following: dict[str, int] = {}  # task id -> followers of this hub watching it now (self.lock)
         self._writes: queue.Queue = queue.Queue(WRITE_QUEUE)
         self._writer = None
         self._closed = threading.Event()      # close(): this hub's own threads end, and it starts none again
@@ -281,9 +282,11 @@ class VoiceHub:
                 raise ValidationError("mode must be one of " + ", ".join(vconfig.MODES))
             context = tx.last_context(db, principal.name)
             sid = tx.start_session(db, principal.name, device, mode, self.clock())
+            # R8: the task a spoken question's answer was still awaited for when the last session's process ended
+            carried = ("last_task_id", "last_objective") + (("follow_task_id",) if cfg.get("resume_follow") else ())
+            context = {k: v for k, v in (context or {}).items() if k in carried and v is not None}
             if context:
-                tx.update_session(db, sid, self.clock(), context={k: v for k, v in context.items()
-                                                                  if k in ("last_task_id", "last_objective")})
+                tx.update_session(db, sid, self.clock(), context=context)
         s = Session(sid, principal, device, label, mode)
         self._expire_idle()
         try:
@@ -297,7 +300,23 @@ class VoiceHub:
         self._state(s, mode=mode, session_active=True, capture_device=None, mic_capturing=False, speaking=False,
                     user_speaking=False, interrupted_at=None)
         self._wake(s, mode)
+        self._resume_follow(s, context.get("follow_task_id"))
         return self.public(s)
+
+    def _resume_follow(self, s: Session, task_id):
+        """R8: follow again a research task whose spoken answer the principal's previous session was still waiting
+        for when its process ended (nothing in this hub follows it): its answer is delivered to this session."""
+        if not task_id or not s.principal.research:
+            return
+        if not self._watch(task_id, unless_followed=True):
+            return                   # this hub still follows it (a session that merely ended, not a restart)
+        if self._followers.acquire(blocking=False):
+            self._emit(s, "notice", text="Picking up the research you asked about before the restart.")
+            threading.Thread(target=self._follow, args=(s, task_id, True), daemon=True,
+                             name="nsf-voice-follow").start()
+        else:
+            with self.lock:
+                self._following.pop(task_id, None)
 
     def _wake(self, s: Session, mode):
         """Load again the speech services this mode needs if the idle policy unloaded them; the client is told
@@ -750,8 +769,10 @@ class VoiceHub:
                 pending = s.pending if s.pending and s.pending["expires_at"] > self.clock() else None
                 if pending is not None and vcommands.parse(text).kind in ("confirm", "deny"):
                     s.pending = None
+            from ..presence import activity     # Presence: the request is being interpreted (ADR-053)
             try:
-                with self.db() as db:
+                with self.db() as db, activity.track("interpreting", subsystem="voice", purpose="voice request",
+                                                     priority="communication"):
                     ctx = tx.session(db, s.id)["context"]
                     reply = self.bridge.handle(db, s.principal, ctx, text, pending)
             except Exception as exc:   # the owner hears that something failed, never silence
@@ -866,6 +887,12 @@ class VoiceHub:
                     self._emit(s, "notice", text="There is nothing interrupted to continue.")
         if reply.follow and s.principal.research:
             if self._followers.acquire(blocking=False):
+                with self.db() as db:      # R8: kept with the session, so a restarted process picks it up again
+                    try:
+                        tx.update_session(db, s.id, self.clock(), context={"follow_task_id": reply.follow})
+                    except (NotFound, InstanceError):
+                        pass
+                self._watch(reply.follow)
                 threading.Thread(target=self._follow, args=(s, reply.follow, True), daemon=True,
                                  name="nsf-voice-follow").start()
             else:
@@ -1045,8 +1072,23 @@ class VoiceHub:
         try:
             self._follow_task(s, task_id)
         finally:
+            with self.lock:          # counted by the caller before the thread started (_watch)
+                left = self._following.get(task_id, 1) - 1
+                if left > 0:
+                    self._following[task_id] = left
+                else:
+                    self._following.pop(task_id, None)
             if slot:
                 self._followers.release()
+
+    def _watch(self, task_id, *, unless_followed=False) -> bool:
+        """Count one more follower of `task_id` before its thread starts; with unless_followed, refuse (False) when
+        this hub already follows it. Under self.lock, so a session starting meanwhile sees it."""
+        with self.lock:
+            if unless_followed and self._following.get(task_id):
+                return False
+            self._following[task_id] = self._following.get(task_id, 0) + 1
+            return True
 
     def _follow_task(self, s: Session, task_id):
         from ..webcortex import orchestrator
@@ -1061,7 +1103,7 @@ class VoiceHub:
                 return
             if task["status"] in TERMINAL:
                 reply = vbridge.compose_answer(task)
-                reply.actions.append({"kind": "context", "last_task_id": task_id})
+                reply.actions.append({"kind": "context", "last_task_id": task_id, "follow_task_id": None})
                 self._emit(s, "task_done", task_id=task_id, status=task["status"])
                 self._deliver(s, reply)
                 return

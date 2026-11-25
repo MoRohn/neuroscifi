@@ -65,7 +65,8 @@ ROUTES = {"pair","save","forget","state","unpair","episode","episodes","forget_e
 # Web Cortex research (ADR-028): exist only with --instance-db and the individual's pocket_research switch on.
 RESEARCH = {"research_submit","research_list","research_get","research_cancel",
             "research_evidence","research_continue","research_session",   # 0.7.0: pocket/research_routes.py
-            "node_enrol"}                                                  # attested node enrolment (ADR-042 draft)
+            "node_enrol",                                                  # attested node enrolment (ADR-042 draft)
+            "self_status"}                                                 # family-scoped self-description (ADR-053)
 PUSH = "push"   # Web Push opt-in (ADR-040, pocket/push.py): exists only with research on and --push-key
 NONCE = re.compile(r"[A-Za-z0-9_-]{16,64}")   # X-NSF-Nonce: binds the Spark's signed reply to this request
 # An omitted mode lets the Spark assess one from the question, as the console does.
@@ -636,6 +637,12 @@ def research(server, token, route, data, raw=b"", headers=None):
                 if task.get("replayed"):      # found inside the individual's transaction (another process queued it)
                     return 200, {"id": task["id"], "replayed": True}
                 return 201, {"id": task["id"]}
+            if route == "self_status":   # what the individual is doing, in this family's scope (ADR-053)
+                if data:
+                    raise ValueError()
+                from .. import self_description
+                record = self_description.build(db, server.instance_db, time.time(), scope="family", family=digest)
+                return 200, {"record": record, "short": self_description.short(record)}
             if route == "research_list":
                 if data:
                     raise ValueError()
