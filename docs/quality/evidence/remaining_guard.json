@@ -10,15 +10,15 @@
     "review": 6
    },
    "stricter": {
-    "gap": 201,
+    "gap": 208,
     "review": 24
    }
   },
-  "compared": 1924,
+  "compared": 1937,
   "different": 0,
-  "identical": 1682,
+  "identical": 1688,
   "loosened": 17,
-  "stricter": 225
+  "stricter": 232
  },
  "gap_corpora": {
   "case": {
@@ -31,11 +31,11 @@
   },
   "cut": {
    "by_label": {
-    "accept": 23,
+    "accept": 25,
     "lost": 3,
-    "reject": 38
+    "reject": 41
    },
-   "sentences": 64,
+   "sentences": 69,
    "unmet": 0
   },
   "restatement": {
@@ -48,12 +48,12 @@
   },
   "restriction": {
    "by_label": {
-    "accept": 63,
+    "accept": 67,
     "lost": 7,
     "open": 1,
-    "reject": 67
+    "reject": 71
    },
-   "sentences": 138,
+   "sentences": 146,
    "unmet": 0
   },
   "role": {
@@ -84,6 +84,44 @@
  "loosened_classes": [
   "restatement"
  ],
+ "re_review_fix_round": {
+  "corpus_added": {
+   "attacks": 7,
+   "benign": 6,
+   "sentences": 13
+  },
+  "differential": {
+   "by_origin": {
+    "loosened": {
+     "gap": 11,
+     "review": 6
+    },
+    "stricter": {
+     "gap": 208,
+     "review": 24
+    }
+   },
+   "compared": 1937,
+   "different": 0,
+   "identical": 1688,
+   "loosened": 17,
+   "stricter": 232
+  },
+  "unmet_after_corpus_commit": {
+   "cut": 3,
+   "restriction": 4
+  },
+  "unmet_now": {
+   "case": 0,
+   "cut": 0,
+   "restatement": 0,
+   "restriction": 0,
+   "role": 0,
+   "unseen": 0,
+   "wording": 0
+  },
+  "what": "Fix-round 2, lane K2: the re-review's guard findings N3 ('not to' right after a quantified noun and 'not only/just/merely' before a participle restrict it, unless the word before 'not to' takes the infinitive itself: effort, care, attempt; chose, decided, told) and N4 (an organisation's noun excuses a group word as a source name's head only when 'of' follows it). Corpus first: 13 sentences labelled before any code change (7 attacks, 6 benign near-misses); two of them corrected in a later corpus commit to attribute to a survey (a source word) instead of a poll, which is not one."
+ },
  "reference": {
   "commit": "307b9070f973be63b1cdbd8da222da8114bd32d6",
   "inputs_before_this_lane": {
@@ -94,7 +132,7 @@
   },
   "inputs_by_origin": {
    "benchmark": 248,
-   "gap": 448,
+   "gap": 461,
    "harvested": 1137,
    "review": 91
   },
@@ -137,10 +175,10 @@
  },
  "sentences_refused_by_mark": {
   "CASE_CHANGED": 28,
-  "CUT_WORDS": 49,
+  "CUT_WORDS": 52,
   "JOINED_APART": 11,
   "PASSIVE_SWAP": 37,
-  "RESTRICTION_LOST": 82,
+  "RESTRICTION_LOST": 86,
   "ROLE_SWAP": 21,
   "UNSEEN_IN_CLAIM": 18
  },

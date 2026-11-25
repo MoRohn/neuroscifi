@@ -1901,5 +1901,142 @@
   },
   "offline_research_benchmark": "webcortex bench --repeat 1, 955893c against the fixed code: 0 differences outside resource fields (db_bytes_final 3,428,352 -> 3,416,064; per-task db growth and peak RSS) and the environment's git fields",
   "not_changed": "the one false pair of the fresh set (Castine Island nature reserve against the island's area) is still made: it is the answer model's confirmation, and none of these fixes touches it"
+ },
+ "re_review_fixes": {
+  "what": "Fix-round 2, lane K2: the re-review's knowledge findings. N1: a rate or an acceleration ('5 MB/s', '9.8 m/s²', '10 Gb/s') keeps its compound unit and compares only with the same unit, exactly (the review fixes had dropped it, so different rates corroborated each other and a stored '5 MB' was strengthened by '9 MB/s'). N2: a shared year or date no longer makes the other values comparable ('In 2024 ... 120 km' against '... 130 km/h' is 'incomparable', not 'same'). Tests that fail on 382d115: tests/webcortex/test_knowledge_review.py (fix round 2 sections).",
+  "measured_on": "one session: an own memory server (neuroscifi-memlite-k2, removed afterwards) and the answer model neuroscifi-vllm read-only; the code of 382d115 (the round's head before these fixes, from git archive) against the fixed code",
+  "meaning_path": {
+   "fresh_held_out": {
+    "before_382d115": {
+     "negatives": 28,
+     "negatives_paired": 1,
+     "pair_precision": 0.976,
+     "pairs_made": 41,
+     "positives": 50,
+     "positives_right": 40,
+     "recall": 0.8
+    },
+    "after": {
+     "negatives": 28,
+     "negatives_paired": 1,
+     "pair_precision": 0.976,
+     "pairs_made": 41,
+     "positives": 50,
+     "positives_right": 40,
+     "recall": 0.8
+    },
+    "identical": true
+   },
+   "development_paraphrase": {
+    "before_382d115": {
+     "development": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 37,
+      "positives": 43,
+      "positives_right": 37,
+      "recall": 0.86
+     },
+     "held_out": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 35,
+      "positives": 43,
+      "positives_right": 35,
+      "recall": 0.814
+     }
+    },
+    "after": {
+     "development": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 37,
+      "positives": 43,
+      "positives_right": 37,
+      "recall": 0.86
+     },
+     "held_out": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 35,
+      "positives": 43,
+      "positives_right": 35,
+      "recall": 0.814
+     }
+    },
+    "identical": true
+   }
+  },
+  "words_path": {
+   "fresh_held_out": {
+    "before_382d115": {
+     "negatives": 28,
+     "negatives_paired": 0,
+     "pair_precision": null,
+     "pairs_made": 0,
+     "positives": 50,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "after": {
+     "negatives": 28,
+     "negatives_paired": 0,
+     "pair_precision": null,
+     "pairs_made": 0,
+     "positives": 50,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "identical": true
+   },
+   "development_paraphrase": {
+    "before_382d115": {
+     "development": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": null,
+      "pairs_made": 0,
+      "positives": 43,
+      "positives_right": 0,
+      "recall": 0.0
+     },
+     "held_out": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": null,
+      "pairs_made": 0,
+      "positives": 43,
+      "positives_right": 0,
+      "recall": 0.0
+     }
+    },
+    "after": {
+     "development": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": null,
+      "pairs_made": 0,
+      "positives": 43,
+      "positives_right": 0,
+      "recall": 0.0
+     },
+     "held_out": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": null,
+      "pairs_made": 0,
+      "positives": 43,
+      "positives_right": 0,
+      "recall": 0.0
+     }
+    },
+    "identical": true
+   }
+  },
+  "not_changed": "the one false pair of the fresh set (the Castine Island nature reserve against the island's area) is still made by the answer model's confirmation; none of these fixes touches it"
  }
 }
