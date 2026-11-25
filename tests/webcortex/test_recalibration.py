@@ -480,6 +480,24 @@ def test_nsf_knowledge_calibration_shows_the_mapping_and_how_it_would_have_fared
     assert "calibrated_forecasts=false" in out["recalibration"]["off"]
 
 
+def test_a_change_of_habits_can_be_detected_but_is_not_acted_on_by_default():
+    """ADR-047: dropping the settlements before a detected change was selected on the development streams and did
+    not pass the held-out gate, so it stays off; off, the mapping is exactly the one of ADR-046."""
+    assert evolution.RECALIBRATION_CHANGE_THRESHOLD is None
+    rng = random.Random(7)
+    reversal = [(0.8, rng.random() < 0.95) for _ in range(60)] + [(0.8, rng.random() < 0.2) for _ in range(40)]
+    off = evolution.fit_recalibration(reversal)
+    assert off == evolution.fit_recalibration(reversal, change_threshold=None) and "change" not in off
+    on = evolution.fit_recalibration(reversal, change_step=10, change_threshold=4.0)
+    assert on["change"]["dropped"] == 60 and on["used"] == 40 and on["applied"]
+    assert evolution.recalibrate(0.8, on) < evolution.recalibrate(0.8, off)     # reads the new habits, not the old
+    steady = [(0.8, rng.random() < 0.8) for _ in range(100)]
+    assert "change" not in evolution.fit_recalibration(steady, change_step=10, change_threshold=20.0)
+    recorded = json.loads((EVIDENCE.parent / "remaining_forgetting.json").read_text(encoding="utf-8"))
+    gate = recorded["calibration after a change of habits"]["gate"]
+    assert gate["ships"] is False and recorded["calibration after a change of habits"]["shipped"] == sim.CHOSEN
+
+
 def test_the_simulation_is_deterministic_and_the_recorded_evidence_is_what_it_gives():
     assert sim.CHOSEN == {"minimum": evolution.RECALIBRATION_MINIMUM, "window": evolution.RECALIBRATION_WINDOW,
                           "prior_shift": evolution.RECALIBRATION_PRIOR_SHIFT,

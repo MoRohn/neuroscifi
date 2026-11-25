@@ -3,6 +3,7 @@
 
   python scripts/bench_calibration.py report --out calibration.json     # the shipped settings, both sets of streams
   python scripts/bench_calibration.py select --out selection.json       # every setting of the grid, development only
+  python scripts/bench_calibration.py change --out change.json          # a change of habits (ADR-047): select, gate
 
 Deterministic (seeded, standard library only), no model, no network, no individual: the simulation is
 src/neuroscifi/webcortex/bench/calibration.py and its docstring says what a stream is and how it is scored.
@@ -23,7 +24,7 @@ from neuroscifi.webcortex.bench import calibration                     # noqa: E
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("mode", choices=("report", "select"))
+    ap.add_argument("mode", choices=("report", "select", "change"))
     ap.add_argument("--out", help="write the JSON here (default: print it)")
     a = ap.parse_args()
     if a.mode == "report":
@@ -31,6 +32,11 @@ def main() -> int:
                  "used; settings chosen on the development streams only", "scores": {
                      "brier": "mean (forecast - outcome)^2", "distance": "mean (forecast - true probability)^2"},
                  "prefixes": "the first 25, 50 and 100 predictions of a stream, and all of it"} | calibration.report()
+    elif a.mode == "change":
+        rows = calibration.select_change()
+        value = {"benchmark": "calibration, a change of habits (ADR-047)", "grid": calibration.CHANGE_GRID,
+                 "rules": calibration.CHANGE_RULES, "shipped": calibration.CHOSEN, "selected": rows[0]["options"],
+                 "gate": calibration.change_gate(rows[0]["options"]), "selection": rows}
     else:
         rows = calibration.select()
         value = {"benchmark": "calibration, selection", "grid": {k: list(v) for k, v in calibration.GRID.items()},

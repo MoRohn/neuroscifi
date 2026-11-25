@@ -583,6 +583,10 @@ RECALIBRATION_WINDOW = 100        # only the most recent settlements count (a fo
 RECALIBRATION_PRIOR_SHIFT = 16.0  # prior precision of shift: about 64 settlements at even odds weigh as much
 RECALIBRATION_PRIOR_TILT = 16.0   # prior precision of tilt, in the same units
 RECALIBRATION_TILT = (-1.0, 1.0)  # slope 1 + tilt stays in [0, 2]: the mapping never reverses an order
+# A sudden change of a forecaster's habits (ADR-047): the window is tested for a split every STEP settlements; above
+# THRESHOLD (twice the log-likelihood gain of fitting the two parts apart) the older part is dropped. None: off.
+RECALIBRATION_CHANGE_STEP = 10
+RECALIBRATION_CHANGE_THRESHOLD = None
 IDENTITY = {"applied": False, "shift": 0.0, "tilt": 0.0, "centre": 0.0}
 
 
@@ -595,17 +599,9 @@ def _sigmoid(x: float) -> float:
     return 1.0 / (1.0 + math.exp(-x)) if x >= 0 else math.exp(x) / (1.0 + math.exp(x))
 
 
-def fit_recalibration(pairs, *, minimum=RECALIBRATION_MINIMUM, window=RECALIBRATION_WINDOW,
-                      prior_shift=RECALIBRATION_PRIOR_SHIFT, prior_tilt=RECALIBRATION_PRIOR_TILT) -> dict:
-    """The mapping for one kind of forecast from its settled (forecast, outcome) pairs, oldest first; outcome 1 =
-    confirmed, 0 = error. {n (pairs given), used (the last `window`), minimum, applied, shift, tilt, centre};
-    applied False (fewer than `minimum` pairs in the window) is the identity. Deterministic: Newton steps from the
-    identity on a concave objective, forecasts grouped by value. prior_tilt None fits the shift alone."""
-    pairs = [(float(p), 1.0 if y else 0.0) for p, y in pairs if state.finite(p) is not None]
-    used = pairs[-int(window):] if window else pairs
-    out = {"n": len(pairs), "used": len(used), "minimum": int(minimum)} | IDENTITY
-    if not used or len(used) < minimum:
-        return out
+def _solve(used, prior_shift, prior_tilt):
+    """(shift, tilt, centre) maximising the log-likelihood of `used` [(p, y)] under the Gaussian prior. Newton steps
+    from the identity on a concave objective, forecasts grouped by value; prior_tilt None fits the shift alone."""
     groups: dict = {}
     for p, y in used:
         g = groups.setdefault(round(_logit(p), 9), [0.0, 0.0])
@@ -637,6 +633,59 @@ def fit_recalibration(pairs, *, minimum=RECALIBRATION_MINIMUM, window=RECALIBRAT
         a, c = a + step_a, new_c
         if moved < 1e-10:
             break
+    return a, c, centre
+
+
+def _loglik(used, a, c, centre):
+    """Log-likelihood of the outcomes of `used` under the mapping (shift a, tilt c, centre)."""
+    total = 0.0
+    for p, y in used:
+        z = _logit(p)
+        q = min(1.0 - 1e-12, max(1e-12, _sigmoid(z + a + c * (z - centre))))
+        total += math.log(q) if y else math.log(1.0 - q)
+    return total
+
+
+def _change_point(used, step, prior_shift, prior_tilt):
+    """(cut, statistic): the split of `used` into an earlier and a later part, at a multiple of `step` with at least
+    `step` settlements on each side, that most improves the log-likelihood of fitting the two parts apart over
+    fitting them together (twice the gain); (None, 0.0) when no split improves it."""
+    whole = _loglik(used, *_solve(used, prior_shift, prior_tilt))
+    best, best_stat = None, 0.0
+    for cut in range(step, len(used) - step + 1, step):
+        before, after = used[:cut], used[cut:]
+        stat = 2.0 * (_loglik(before, *_solve(before, prior_shift, prior_tilt))
+                      + _loglik(after, *_solve(after, prior_shift, prior_tilt)) - whole)
+        if stat > best_stat + 1e-12:
+            best, best_stat = cut, stat
+    return best, best_stat
+
+
+def fit_recalibration(pairs, *, minimum=RECALIBRATION_MINIMUM, window=RECALIBRATION_WINDOW,
+                      prior_shift=RECALIBRATION_PRIOR_SHIFT, prior_tilt=RECALIBRATION_PRIOR_TILT,
+                      change_step=RECALIBRATION_CHANGE_STEP, change_threshold=RECALIBRATION_CHANGE_THRESHOLD) -> dict:
+    """The mapping for one kind of forecast from its settled (forecast, outcome) pairs, oldest first; outcome 1 =
+    confirmed, 0 = error. {n (pairs given), used (the last `window`, or fewer after a change), minimum, applied,
+    shift, tilt, centre}; applied False (fewer than `minimum` pairs used) is the identity. Deterministic.
+
+    A forecaster's habits can change at once (a source it trusted turns unreliable): then what the window learned
+    describes the old habits and reads the next forecasts worse than they are stated. With change_threshold set,
+    the window is split where fitting its two parts apart gains most (_change_point); when twice that gain exceeds
+    the threshold, only the settlements after the split are used, and below `minimum` of them the mapping is the
+    identity again until enough have settled. `change` then says where and how strongly (ADR-047)."""
+    pairs = [(float(p), 1.0 if y else 0.0) for p, y in pairs if state.finite(p) is not None]
+    used = pairs[-int(window):] if window else pairs
+    out = {"n": len(pairs), "used": len(used), "minimum": int(minimum)} | IDENTITY
+    if not used or len(used) < minimum:
+        return out
+    if change_threshold is not None and change_step and len(used) >= 2 * change_step:
+        cut, stat = _change_point(used, int(change_step), prior_shift, prior_tilt)
+        if cut is not None and stat > change_threshold:
+            used = used[cut:]
+            out |= {"used": len(used), "change": {"dropped": cut, "statistic": round(stat, 3)}}
+            if len(used) < minimum:
+                return out
+    a, c, centre = _solve(used, prior_shift, prior_tilt)
     return out | {"applied": True, "shift": round(a, 6), "tilt": round(c, 6), "centre": round(centre, 6)}
 
 

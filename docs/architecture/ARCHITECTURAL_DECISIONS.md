@@ -1671,4 +1671,38 @@ erasing what it names is correct; nothing else may go, and a restore must end th
    it allows exactly this update of an invalidated revision (the blob to empty, nothing else of its identity) and
    refuses every other as before, and a second trigger keeps an erased revision invalidated. A restore replays it.
    A revision that only scored the dataset as held-out data keeps its weights: it did not learn from it.
+4. **Calibration after a change of habits: tried, not shipped.** After a forecaster's rule reverses, the mapping of
+   ADR-046 reads the next 50 forecasts worse than stated (held out: 0.095 against 0.043). `fit_recalibration` can
+   now split its window where fitting the two parts apart gains most and drop the older part when twice that gain
+   exceeds a threshold (`change_step`, `change_threshold`). Both rules were written before they were run
+   (`bench.calibration.CHANGE_RULES`): selected on the development streams (step 10, threshold 4.0; the first grid
+   was best at its edge and was extended downwards on the development streams only), gated on the held-out ones.
+   It made both held-out reversals better (0.095 to 0.065, 0.045 to 0.043) and the mean distance lower, but one
+   held-out stream without a change got worse than the shipped mapping by 0.002021 in Brier, over the 0.002
+   allowed, and the burst streams by up to 0.006 (false alarms on correlated outcomes). So
+   `RECALIBRATION_CHANGE_THRESHOLD` stays None and the mapping is exactly ADR-046's. No other setting was tried on
+   the held-out streams. `python scripts/bench_calibration.py change` reproduces all of it.
+
+## Measured
+
+`docs/quality/evidence/remaining_forgetting.json`, the code of c565c20 against this change on the same scenarios:
+a camera forgotten while a partner of its name is held left `camera:<name>` 15 times and the name in 13 summaries'
+sensors, live and in a restored older archive; now 0 and 0 (the partner's 15 mentions stay). The reverse: 15, 10,
+and the question "What does <name> mean" once; now 0. Thirty predictions settled by one task the owner then forgot
+counted 30 times in the calibration and in the mapping; now 0, the outcomes kept. A revision trained on a forgotten
+dataset kept its 247-byte blob, 2,407 bytes of metrics, 73 effects and the dataset's digest; now 0 bytes, 46 bytes
+(the erasure note), 0 and no digest.
+
+## Consequences
+
+- Schema 15. An older binary refuses the file, as for every schema. The migration adds a table and replaces two
+  triggers; no row changes (tested on a version-14 file with graphs, datasets and evidence).
+- An erased revision cannot be exported, lesioned or rolled back to; `graphs.show` lists it without a matrix.
+- The calibration history snapshots in `web_metrics` recorded before a task was forgotten keep the numbers they
+  were computed with.
+- Still open: a bare mention of a name whose other kind is held (it may be that other one); tombstones and the
+  deletion log keep epoch names and event ids in clear; the promotion decisions of an erased revision keep their
+  scores; settlements are still treated as independent draws.
+- Tests: `tests/instance/test_forget_one_kind.py`, `tests/instance/test_forget_dataset_erasure.py`,
+  `tests/webcortex/test_recalibration.py` (the settlement of a forgotten task; the change detection, off).
 

@@ -1,0 +1,334 @@
+{
+ "what": "Lane F of the remaining-items round (ADR-047): forgetting one kind of a name, a forgotten task's settlements, a forgotten dataset's graphs; and calibration after a change of a forecaster's habits",
+ "how": "items 1-3: one script run against the source of c565c20 (before) and of lane-f (after), same scenarios as tests/instance/test_forget_one_kind.py, tests/webcortex/test_recalibration.py and tests/instance/test_forget_dataset_erasure.py; item 4: `python scripts/bench_calibration.py change` (deterministic, about 8 minutes)",
+ "before": {
+  "camera forgotten while a partner of the same name is held": {
+   "before_the_forget": {
+    "'camera:zelda' occurrences": 15,
+    "summaries with zelda in sensors": 13
+   },
+   "after_the_forget": {
+    "'camera:zelda' occurrences": 15,
+    "summaries with zelda in sensors": 13
+   },
+   "restored_older_archive": {
+    "'camera:zelda' occurrences": 15,
+    "summaries with zelda in sensors": 13
+   }
+  },
+  "partner forgotten while a camera of the same name is held": {
+   "before_the_forget": {
+    "'partner:zelda' occurrences": 15,
+    "summaries with zelda in partners": 10,
+    "'partner zelda' occurrences": 1,
+    "'What does zelda mean' occurrences": 1
+   },
+   "after_the_forget": {
+    "'partner:zelda' occurrences": 15,
+    "summaries with zelda in partners": 10,
+    "'partner zelda' occurrences": 1,
+    "'What does zelda mean' occurrences": 1
+   },
+   "restored_older_archive": {
+    "'partner:zelda' occurrences": 15,
+    "summaries with zelda in partners": 10,
+    "'partner zelda' occurrences": 1,
+    "'What does zelda mean' occurrences": 1
+   }
+  },
+  "30 predictions settled by one task, which the owner then forgets": {
+   "before": {
+    "calibration_n": 30,
+    "knowledge_mapping_n": 30
+   },
+   "after": {
+    "calibration_n": 30,
+    "knowledge_mapping_n": 30,
+    "predictions_keeping_outcome_error": 30
+   }
+  },
+  "forget_dataset of a revision's training data": {
+   "before": {
+    "revision_blob_bytes": 247,
+    "revision_metrics_bytes": 2407,
+    "effects_measured_on_the_revision": 73,
+    "training_dataset_digest_present": true
+   },
+   "after": {
+    "revision_blob_bytes": 247,
+    "revision_metrics_bytes": 2407,
+    "effects_measured_on_the_revision": 73,
+    "training_dataset_digest_present": true
+   }
+  }
+ },
+ "after": {
+  "camera forgotten while a partner of the same name is held": {
+   "before_the_forget": {
+    "'camera:zelda' occurrences": 15,
+    "summaries with zelda in sensors": 13
+   },
+   "after_the_forget": {
+    "'camera:zelda' occurrences": 0,
+    "summaries with zelda in sensors": 0
+   },
+   "restored_older_archive": {
+    "'camera:zelda' occurrences": 0,
+    "summaries with zelda in sensors": 0
+   }
+  },
+  "partner forgotten while a camera of the same name is held": {
+   "before_the_forget": {
+    "'partner:zelda' occurrences": 15,
+    "summaries with zelda in partners": 10,
+    "'partner zelda' occurrences": 1,
+    "'What does zelda mean' occurrences": 1
+   },
+   "after_the_forget": {
+    "'partner:zelda' occurrences": 0,
+    "summaries with zelda in partners": 0,
+    "'partner zelda' occurrences": 0,
+    "'What does zelda mean' occurrences": 0
+   },
+   "restored_older_archive": {
+    "'partner:zelda' occurrences": 0,
+    "summaries with zelda in partners": 0,
+    "'partner zelda' occurrences": 0,
+    "'What does zelda mean' occurrences": 0
+   }
+  },
+  "30 predictions settled by one task, which the owner then forgets": {
+   "before": {
+    "calibration_n": 30,
+    "knowledge_mapping_n": 30
+   },
+   "after": {
+    "calibration_n": 0,
+    "knowledge_mapping_n": 0,
+    "predictions_keeping_outcome_error": 30
+   }
+  },
+  "forget_dataset of a revision's training data": {
+   "before": {
+    "revision_blob_bytes": 247,
+    "revision_metrics_bytes": 2407,
+    "effects_measured_on_the_revision": 73,
+    "training_dataset_digest_present": true
+   },
+   "after": {
+    "revision_blob_bytes": 0,
+    "revision_metrics_bytes": 46,
+    "effects_measured_on_the_revision": 0,
+    "training_dataset_digest_present": false
+   }
+  }
+ },
+ "calibration after a change of habits": {
+  "grid": {
+   "change_step": [
+    5,
+    10,
+    20
+   ],
+   "change_threshold": [
+    2.0,
+    3.0,
+    4.0,
+    5.0,
+    6.0,
+    8.0,
+    10.0,
+    12.0,
+    16.0,
+    20.0
+   ]
+  },
+  "rules": {
+   "select": "development only: eligible when no stream is worse than the stated forecast by more than 0.002 in mean distance at any prefix (the rule of `select`) and no stream without a change is worse than the shipped mapping by more than 0.002 in Brier at any prefix; among the eligible, the lowest mean distance over the 50 predictions after each change; ties to the larger threshold",
+   "gate": "held-out: no stream without a change worse than the shipped mapping by more than 0.002 in Brier at any prefix, and every drifting stream better than the shipped mapping in the 50 predictions after its change; the burst streams are reported, not gated"
+  },
+  "shipped": {
+   "minimum": 20,
+   "window": 100,
+   "prior_shift": 16.0,
+   "prior_tilt": 16.0
+  },
+  "selected_on_development": {
+   "minimum": 20,
+   "window": 100,
+   "prior_shift": 16.0,
+   "prior_tilt": 16.0,
+   "change_step": 10,
+   "change_threshold": 4.0
+  },
+  "note": "the first grid (thresholds 6 to 30) was best at its edge (6.0); it was extended downwards on the development streams before the held-out gate was run once",
+  "gate": {
+   "passes": {
+    "no_stream_without_a_change_worse_by_more_than_0.002": false,
+    "every_drifting_stream_better_after_its_change": true
+   },
+   "ships": false,
+   "held_out_worst_brier_change_without_a_change": {
+    "change": 0.002021,
+    "stream": "knows nothing (always 0.3 true)",
+    "first": "all"
+   },
+   "held_out_after_a_change": {
+    "drift: often true, then rarely": {
+     "stated": 0.042534,
+     "mapped": 0.06497
+    },
+    "drift: right, then too high": {
+     "stated": 0.053975,
+     "mapped": 0.043214
+    }
+   },
+   "held_out_after_a_change_shipped": {
+    "drift: often true, then rarely": {
+     "stated": 0.042534,
+     "mapped": 0.094854
+    },
+    "drift: right, then too high": {
+     "stated": 0.053975,
+     "mapped": 0.045345
+    }
+   },
+   "held_out_mean": {
+    "stated": {
+     "brier": 0.227261,
+     "distance": 0.04355
+    },
+    "mapped": {
+     "brier": 0.199512,
+     "distance": 0.015942
+    }
+   },
+   "held_out_mean_shipped": {
+    "stated": {
+     "brier": 0.227261,
+     "distance": 0.04355
+    },
+    "mapped": {
+     "brier": 0.199904,
+     "distance": 0.016526
+    }
+   },
+   "bursts_worst_brier_change_without_a_change": {
+    "change": 0.005978,
+    "stream": "hypotheses that rarely come true, in bursts of 5",
+    "first": "all"
+   }
+  },
+  "decision": "not shipped: evolution.RECALIBRATION_CHANGE_THRESHOLD stays None (the mapping of ADR-046)",
+  "selection_top": [
+   {
+    "options": {
+     "minimum": 20,
+     "window": 100,
+     "prior_shift": 16.0,
+     "prior_tilt": 16.0,
+     "change_step": 10,
+     "change_threshold": 4.0
+    },
+    "after_a_change_mean_distance": 0.036918,
+    "eligible": true,
+    "worst_brier_change_without_a_change": {
+     "change": 0.001322,
+     "stream": "knows nothing (always 0.5 true)",
+     "first": "all"
+    },
+    "mean_distance": 0.025153
+   },
+   {
+    "options": {
+     "minimum": 20,
+     "window": 100,
+     "prior_shift": 16.0,
+     "prior_tilt": 16.0,
+     "change_step": 5,
+     "change_threshold": 5.0
+    },
+    "after_a_change_mean_distance": 0.037222,
+    "eligible": true,
+    "worst_brier_change_without_a_change": {
+     "change": 0.001147,
+     "stream": "knows nothing (always 0.5 true)",
+     "first": "all"
+    },
+    "mean_distance": 0.025095
+   },
+   {
+    "options": {
+     "minimum": 20,
+     "window": 100,
+     "prior_shift": 16.0,
+     "prior_tilt": 16.0,
+     "change_step": 10,
+     "change_threshold": 5.0
+    },
+    "after_a_change_mean_distance": 0.03825,
+    "eligible": true,
+    "worst_brier_change_without_a_change": {
+     "change": 0.000894,
+     "stream": "knows nothing (always 0.5 true)",
+     "first": "all"
+    },
+    "mean_distance": 0.025106
+   },
+   {
+    "options": {
+     "minimum": 20,
+     "window": 100,
+     "prior_shift": 16.0,
+     "prior_tilt": 16.0,
+     "change_step": 20,
+     "change_threshold": 2.0
+    },
+    "after_a_change_mean_distance": 0.038261,
+    "eligible": true,
+    "worst_brier_change_without_a_change": {
+     "change": 0.001436,
+     "stream": "knows nothing (always 0.5 true)",
+     "first": "all"
+    },
+    "mean_distance": 0.025364
+   },
+   {
+    "options": {
+     "minimum": 20,
+     "window": 100,
+     "prior_shift": 16.0,
+     "prior_tilt": 16.0,
+     "change_step": 5,
+     "change_threshold": 6.0
+    },
+    "after_a_change_mean_distance": 0.038807,
+    "eligible": true,
+    "worst_brier_change_without_a_change": {
+     "change": 0.001027,
+     "stream": "knows nothing (always 0.5 true)",
+     "first": "all"
+    },
+    "mean_distance": 0.025101
+   },
+   {
+    "options": {
+     "minimum": 20,
+     "window": 100,
+     "prior_shift": 16.0,
+     "prior_tilt": 16.0,
+     "change_step": 20,
+     "change_threshold": 3.0
+    },
+    "after_a_change_mean_distance": 0.038966,
+    "eligible": true,
+    "worst_brier_change_without_a_change": {
+     "change": 0.001337,
+     "stream": "knows nothing (always 0.5 true)",
+     "first": "all"
+    },
+    "mean_distance": 0.025268
+   }
+  ]
+ }
+}
