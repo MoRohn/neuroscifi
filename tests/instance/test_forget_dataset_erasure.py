@@ -339,3 +339,76 @@ def test_the_completion_waits_for_a_writable_open(tmp_path):
         assert blob(db, rev) == b""
     finally:
         db.close()
+
+
+# ---- re-review S5: a file of the first build of migration 15 ------------------------------------------------------
+
+_FIRST_BUILD_15 = """BEGIN; DROP TRIGGER graph_identity_immutable; DROP TRIGGER graph_revisions_never_deleted;
+CREATE TRIGGER graph_identity_immutable BEFORE UPDATE OF blob, sha256, rule_version, context, origin
+  ON graph_revisions WHEN NOT (OLD.status='invalidated' AND NEW.status='invalidated' AND NEW.blob=X''
+    AND NEW.sha256 IS OLD.sha256 AND NEW.rule_version IS OLD.rule_version AND NEW.context IS OLD.context
+    AND NEW.origin IS OLD.origin)
+  BEGIN SELECT RAISE(ABORT,'graph snapshot identity is immutable'); END; COMMIT;"""
+
+
+def _first_build_of_15(path):
+    """An individual as the first build of migration 15 left it: the identity trigger without the 'erased' digest,
+    no delete trigger, and a dataset forgotten by that build (weights erased, the weights' digest kept)."""
+    db = store.create(path, T0)
+    ids = datasets.simulate(db, "ctx", T0, seed=1)
+    rev = graphs.learn(db, "ctx", T0, train=ids["train"], validation=ids["validation"], holder="t")
+    db.close()
+    raw = sqlite3.connect(path, isolation_level=None)
+    raw.executescript(_FIRST_BUILD_15)
+    raw.execute("BEGIN")
+    raw.execute("UPDATE datasets SET blob=NULL, note=NULL, sha256='', deleted_at=? WHERE id=?", (T0 + 1, ids["train"]))
+    raw.execute("UPDATE graph_revisions SET status='invalidated' WHERE id=?", (rev,))
+    raw.execute("UPDATE graph_revisions SET blob=X'' WHERE id=?", (rev,))
+    raw.execute("COMMIT")
+    raw.close()
+    return ids, rev
+
+
+def _triggers(db):
+    return {name: " ".join(sql.split()) for name, sql in db.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name='graph_revisions'")}
+
+
+def test_a_file_of_the_first_build_of_migration_15_gets_todays_triggers_and_opens(tmp_path):
+    from neuroscifi.instance import schema
+    path = tmp_path / "first15.sqlite"
+    ids, rev = _first_build_of_15(path)
+    db = store.open_existing(path)            # raised IntegrityError at every open before
+    try:
+        fresh = store.create(tmp_path / "fresh.sqlite", T0)
+        try:
+            assert _triggers(db) == _triggers(fresh)
+        finally:
+            fresh.close()
+        assert db.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+        assert db.execute("SELECT sha256 FROM graph_revisions WHERE id=?", (rev,)).fetchone()[0] == "erased"
+        with pytest.raises(sqlite3.IntegrityError, match="never deleted"):
+            with store.write(db):
+                db.execute("DELETE FROM graph_revisions WHERE id=?", (rev,))
+    finally:
+        db.close()
+
+
+def test_an_optional_step_at_open_that_fails_its_checks_leaves_the_open_working(tmp_path, monkeypatch, caplog):
+    path = tmp_path / "i.sqlite"
+    db = store.create(path, T0)
+    ids, rev = learned(db)
+    governance.forget_dataset(db, ids["train"], T0 + 3)
+    db.execute("UPDATE datasets SET sha256='left' WHERE id=?", (ids["train"],))     # something left to finish
+    db.close()
+
+    def refused(*_args, **_kwargs):
+        raise sqlite3.IntegrityError("graph snapshot identity is immutable")
+    monkeypatch.setattr(governance, "_finish_dataset_forget", refused)
+    with caplog.at_level("WARNING"):
+        db = store.open_existing(path)
+    try:
+        assert db.execute("SELECT sha256 FROM datasets WHERE id=?", (ids["train"],)).fetchone()[0] == "left"
+        assert "skipped" in caplog.text
+    finally:
+        db.close()

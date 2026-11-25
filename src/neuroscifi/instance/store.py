@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, fields
 import glob
 import json
+import logging
 import math
 import os
 from pathlib import Path
@@ -23,6 +24,8 @@ import uuid
 from .. import __version__
 from .errors import InstanceError, NotFound, ValidationError, WritesPaused
 from .schema import SCHEMA_VERSION, migrate
+
+log = logging.getLogger(__name__)
 
 THERMAL_ZONES = "/sys/class/thermal/thermal_zone*/temp"  # millidegrees Celsius, one file per zone
 DEFAULT_DB_ENV = "NSF_DB"
@@ -201,7 +204,9 @@ OPTIONAL_BUSY_MS = 200   # how long an optional step at open (optional_write) wa
 def optional_write(db, body):
     """Run body(db) in a write transaction for a step an open does when it can and retries at the next open
     otherwise (the graph-rule migration, the completion of earlier forgets): the lock is waited for at most
-    OPTIONAL_BUSY_MS, and a busy, locked or read-only file gives None instead of an error."""
+    OPTIONAL_BUSY_MS, and a busy, locked or read-only file gives None instead of an error. A step that a check of
+    the file refuses (IntegrityError: a trigger or a constraint) is rolled back, logged and tried again at the next
+    open; it never makes the open fail."""
     db.execute(f"PRAGMA busy_timeout={OPTIONAL_BUSY_MS}")
     try:
         with write(db):
@@ -211,6 +216,9 @@ def optional_write(db, body):
         if "readonly" in text or "read-only" in text or "locked" in text or "busy" in text:
             return None
         raise
+    except sqlite3.IntegrityError as error:
+        log.warning("an optional step at open was skipped and is tried again at the next open: %s", error)
+        return None
     finally:
         db.execute("PRAGMA busy_timeout=10000")
 

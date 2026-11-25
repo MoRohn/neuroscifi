@@ -20,7 +20,10 @@ Every other change to a revision's identity is refused as before, a new trigger 
 invalidated, and another refuses deleting a revision (which also refuses INSERT OR REPLACE over one). Nothing is
 written to existing rows by the migration. The first writable open after it finishes, once, the forgets of datasets
 an earlier version made, which kept the weights learned from them (logged as dataset deletions with `by: upgrade`;
-valid checkpoints become stale, as after any forget): plan the checkpoint rebuild after the upgrade.
+valid checkpoints become stale, as after any forget): plan the checkpoint rebuild after the upgrade. A file that a
+development build of version 15 migrated (an identity trigger without the `erased` digest, no delete trigger) gets
+the three triggers of the release at its next writable open (`schema.ensure_triggers`, as `ensure_indexes` does for
+14); a step at open that a check of the file refuses is logged and tried again at the next open, never failing it.
 
 **Version 16 (which consolidated readings may be a later copy of a sample, ADR-044).** It adds a column `copied` to
 `evidence_consolidated`, a partial index of the flagged readings and three triggers, and flags each reading already

@@ -5,6 +5,23 @@ owning module writes its tables, other modules read them or call the owner's API
 Schema version is tracked in PRAGMA user_version. Migrations are append-only:
 never edit a released migration, add a new one.
 """
+import sqlite3
+
+# The graph-revision triggers of version 15 (forget_dataset's erasure, ADR-048), by name. Migration 15 creates them;
+# ensure_triggers recreates any that differs, for a file migrated by an earlier, unreleased build of version 15 (its
+# identity trigger refused the 'erased' digest and it had no delete trigger).
+_TRIGGERS_15 = {
+    "graph_identity_immutable": """CREATE TRIGGER graph_identity_immutable BEFORE UPDATE OF blob, sha256, rule_version,
+      context, origin ON graph_revisions WHEN NOT (OLD.status='invalidated' AND NEW.status='invalidated'
+        AND NEW.blob=X'' AND (NEW.sha256 IS OLD.sha256 OR NEW.sha256='erased') AND NEW.rule_version IS OLD.rule_version
+        AND NEW.context IS OLD.context AND NEW.origin IS OLD.origin)
+      BEGIN SELECT RAISE(ABORT,'graph snapshot identity is immutable'); END""",
+    "graph_erased_stays_invalidated": """CREATE TRIGGER graph_erased_stays_invalidated BEFORE UPDATE OF status
+      ON graph_revisions WHEN OLD.blob=X'' AND NEW.status!='invalidated'
+      BEGIN SELECT RAISE(ABORT,'an erased graph snapshot stays invalidated'); END""",
+    "graph_revisions_never_deleted": """CREATE TRIGGER graph_revisions_never_deleted BEFORE DELETE ON graph_revisions
+      BEGIN SELECT RAISE(ABORT,'graph revisions are never deleted'); END""",
+}
 
 MIGRATIONS = [
     # ---- version 1 ---------------------------------------------------------
@@ -506,22 +523,12 @@ MIGRATIONS = [
     -- refitted and checked against the file) and its metrics; it stays listed with its shape, lineage and decisions
     -- (their scores removed, graphs.erase_learned_from). The identity trigger allows exactly that one update of an
     -- invalidated revision and refuses every other, as before; an erased revision can never be made anything but
-    -- invalidated again.
+    -- invalidated again. No code deletes a revision (the audit of what was promoted stays). Refusing deletes also
+    -- closes INSERT OR REPLACE, whose implicit delete fires graph_revisions_never_deleted (connect() turns
+    -- recursive_triggers on): without it a REPLACE could rewrite a revision's weights, digest and status past the two
+    -- triggers before it. The three statements are _TRIGGERS_15 (ensure_triggers repairs a file of an earlier build).
     DROP TRIGGER graph_identity_immutable;
-    CREATE TRIGGER graph_identity_immutable BEFORE UPDATE OF blob, sha256, rule_version, context, origin
-      ON graph_revisions WHEN NOT (OLD.status='invalidated' AND NEW.status='invalidated' AND NEW.blob=X''
-        AND (NEW.sha256 IS OLD.sha256 OR NEW.sha256='erased') AND NEW.rule_version IS OLD.rule_version
-        AND NEW.context IS OLD.context AND NEW.origin IS OLD.origin)
-      BEGIN SELECT RAISE(ABORT,'graph snapshot identity is immutable'); END;
-    CREATE TRIGGER graph_erased_stays_invalidated BEFORE UPDATE OF status ON graph_revisions
-      WHEN OLD.blob=X'' AND NEW.status!='invalidated'
-      BEGIN SELECT RAISE(ABORT,'an erased graph snapshot stays invalidated'); END;
-    -- No code deletes a revision (the audit of what was promoted stays). Refusing deletes also closes INSERT OR
-    -- REPLACE, whose implicit delete fires this trigger (connect() turns recursive_triggers on): without it a REPLACE
-    -- could rewrite a revision's weights, digest and status past the two triggers above.
-    CREATE TRIGGER graph_revisions_never_deleted BEFORE DELETE ON graph_revisions
-      BEGIN SELECT RAISE(ABORT,'graph revisions are never deleted'); END;
-    """,
+    """ + ";\n".join(_TRIGGERS_15.values()) + ";\n",
     # ---- version 16 (which consolidated readings may be a later copy of a sample; beliefs._copied_samples) ----------
     """
     -- Beliefs count one copy of a sample (the earliest). Finding the samples with more than one reading was a grouped
@@ -593,6 +600,39 @@ _INDEXES_14 = {
 _SUPERSEDED_14 = ("evidence_consolidated_sample", "tombstones_seq")
 
 
+def ensure_triggers(db):
+    """Bring the graph triggers of a version-15 file to their current statements (_TRIGGERS_15); returns the names
+    recreated ([] for a file that has them, which is every file but one migrated by the first build of version 15:
+    one catalogue read and no write). A file this connection cannot write keeps its triggers until a writable open."""
+    present = {name: " ".join((sql or "").split()) for name, sql in db.execute(
+        f"SELECT name, sql FROM sqlite_master WHERE type='trigger' AND name IN ({','.join('?' * len(_TRIGGERS_15))})",
+        tuple(_TRIGGERS_15))}
+    stale = [name for name, sql in _TRIGGERS_15.items() if present.get(name) != " ".join(sql.split())]
+    if not stale:
+        return []
+    control = db.autocommit
+    db.autocommit = True
+    try:
+        try:
+            db.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            if "readonly" in str(error) or "read-only" in str(error):
+                return []
+            raise
+        try:
+            for name in stale:
+                db.execute(f"DROP TRIGGER IF EXISTS {name}")
+                db.execute(_TRIGGERS_15[name])
+            db.execute("COMMIT")
+        except BaseException:
+            if db.in_transaction:
+                db.execute("ROLLBACK")
+            raise
+    finally:
+        db.autocommit = control
+    return stale
+
+
 def ensure_indexes(db):
     """Bring the indexes of a version-14 file to their current set; returns the names created or dropped ([] for a
     file that has them, which is every file but one migrated by the first build of version 14: one catalogue read
@@ -640,6 +680,7 @@ def migrate(db):
     refuse_newer(current)
     if current == SCHEMA_VERSION:
         ensure_indexes(db)                   # nothing to do but for a file of the first version-14 build
+        ensure_triggers(db)                  # nothing to do but for a file of the first version-15 build
         return SCHEMA_VERSION                # an up-to-date file is opened without taking the write lock
     control = db.autocommit
     db.autocommit = True                     # so executescript does not commit the transaction holding the lock
@@ -652,6 +693,7 @@ def migrate(db):
                 if version == SCHEMA_VERSION:
                     db.execute("COMMIT")
                     ensure_indexes(db)       # in case the process that upgraded meanwhile was a first build of 14
+                    ensure_triggers(db)      # ... or of 15
                     return SCHEMA_VERSION
                 db.executescript(MIGRATIONS[version] + f";PRAGMA user_version={version + 1};")
                 db.execute("COMMIT")
