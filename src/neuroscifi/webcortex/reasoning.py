@@ -2916,7 +2916,9 @@ def _joined_apart(text: str, used) -> list[str]:
     anchor `b` (_anchors: a version, number or name) that no clause of the cited claims holds together, while a claim
     clause holding `b` holds another version or number of its own that the claim clause of `a` does not, and the
     sentence's clause does not hold it. So "Zephyr 4.2 supports Windows" for "Zephyr 4.1 supports Windows and Zephyr
-    4.2 supports Linux" (4.2 with Windows, which the claim says of 4.1). A sentence that joins two claims about
+    4.2 supports Linux" (4.2 with Windows, which the claim says of 4.1), whatever stands first ("Windows is supported
+    by Zephyr 4.2": a word of the sentence counts as `b` when a claim clause holds it as an anchor). A sentence that
+    joins two claims about
     different things ("NumPy 2.5.5 fixes the flaw that affects Windows builds" for "NumPy 2.5.5 fixes the flaw" and
     "The flaw affects Windows builds") is not judged: the clause of "Windows" holds no version of its own; nor is
     one whose other version is a bound ("NumPy 2.5.5 fixes CVE-2026-1234 in Windows builds" for "... affects Windows
@@ -2925,11 +2927,19 @@ def _joined_apart(text: str, used) -> list[str]:
         return _anchors(clause) | {_e_plain(w) for w in _E_WORD.findall(clause)}
     theirs = [(_anchors(c), words(c), _bounded_numbers(c))
               for x in used for c in _coarse_clauses(_V_PREFIX.sub("", x["text"]))]
+    named = set().union(*(t[0] for t in theirs)) if theirs else set()
     out = []
+    carried = (set(), set())
     for clause in _coarse_clauses(_V_PREFIX.sub("", text)):
-        mine, said = _anchors(clause), words(clause)
+        mine, said = _anchors(clause) | carried[0], words(clause) | carried[1]
+        carried = (set(), set())
+        if len(_E_WORD.findall(clause)) <= 3 and not any(ch.isdigit() for ch in clause):
+            carried = (mine, said)          # a heading ("Windows: supported by Zephyr 4.2") speaks of what follows
+            continue
+        # b: the clause's anchors, and any word of it that a claim clause holds as an anchor (the sentence's first
+        # word is no anchor of its own: "Windows is supported by Zephyr 4.2")
         for a in sorted(x for x in mine if any(ch.isdigit() for ch in x)):
-            for b in sorted(mine - {a}):
+            for b in sorted((mine | (said & named)) - {a}):
                 if any(a in w and b in w for _, w, _ in theirs):
                     continue                    # a claim clause holds both, whatever their place in it
                 for _, here, _ in (t for t in theirs if a in t[1]):

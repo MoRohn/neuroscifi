@@ -509,6 +509,13 @@ def test_a_restriction_after_the_600th_character_of_a_claim_is_read():
     (["Lumen 3 runs on ARM and Lumen 4 runs on RISC-V"], "Lumen 4 runs on ARM.", "4", "arm", "3"),
     (["The operator restored 12 regions in May and 3 regions in June"], "The operator restored 3 regions in May.",
      "3", "may", "12"),
+    # correctness review of the round: the name the claim ties to the other version first in the sentence
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"], "Windows is supported by Zephyr 4.2.", "4.2",
+     "windows", "4.1"),
+    (["Zephyr 4.1 supports Windows and Zephyr 4.2 supports Linux"], "Windows: supported by Zephyr 4.2.", "4.2",
+     "windows", "4.1"),
+    (["Zephyr 4.1 supports Windows", "Zephyr 4.2 supports Linux"], "Linux is supported by Zephyr 4.1.", "4.1",
+     "linux", "4.2"),
 ])
 def test_a_version_joined_with_what_its_claims_say_of_another_is_refused(claims, sentence, a, b, other):
     found = reasoning._joined_apart(sentence, claims_of(*claims))
