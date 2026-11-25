@@ -174,7 +174,8 @@ def expire(db, now):
         return 0
     db.execute("DELETE FROM imagined_forgotten WHERE forgotten_at<=?", (now - store.MAX_IMAGINED_LIFETIME,))
     ids, earliest = _remove(db, "expires_at<=?", (now,), "expired", now)
-    orphaned = db.execute(f"SELECT min(created_at) FROM imagined WHERE {_ORPHANS}").fetchone()[0]
+    orphaned = db.execute(f"SELECT min(created_at) FROM imagined WHERE {_ORPHANS}").fetchone()[0] \
+        if db.execute("SELECT 1 FROM imagined_refs LIMIT 1").fetchone() else None   # an empty store: one read
     if not ids and orphaned is None:
         return 0
     removed = len(ids) + purge_orphans(db, now)
