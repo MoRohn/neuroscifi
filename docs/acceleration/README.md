@@ -34,7 +34,7 @@ namespace, not under systemd), after a review found and the round fixed a path t
 **Phase 4, the same day.** The list phase 3 left was ruled on, built and reviewed twice, with four questions answered
 by the owner. The guard refuses more ways of changing a claim's meaning (still stricter only against the 0.7.0 guard:
 1,937 inputs, 0 unexplained differences). Contradictions are found across units and through aliases a source states
-(40 of 50 on a fresh held-out set instead of 19, false pairs 1 of 28 instead of 6), and values that cannot be
+(45 of 50 on a fresh held-out set instead of 19, false pairs 1 of 28 instead of 6), and values that cannot be
 compared never strengthen knowledge. Forgetting reaches what it used to leave behind (one kind of a name, a
 forgotten task's forecasts, a forgotten dataset's graph weights). Belief computation no longer passes over every
 reading (465 → 118 ms at a million), a restore no longer loads every tombstone (279 → 4.2 MiB), existing

@@ -305,8 +305,10 @@ not done. Phase 4's own record is §7.
    - No live research run with the answer model was made in phase 4, so how often its rules refuse in live use is
      not measured.
 2. **Comparing values in knowledge.**
-   - A number from 1,000 to 2,999 written with a comma ("2,900 residents") is read as a year. A fix changes stored
-     values everywhere, so it waits for the owner's ruling (it caused 4 misses on the fresh held-out set).
+   - Four bare digits are a year, whatever follows them ("2900 residents", "5000 residents"): the owner's ruling
+     of §7.2 covers a number written with its thousands separator or a magnitude word, which is now a quantity. A
+     monitor's baseline has no statement to read again, so a baseline value and a run's value that differ only in
+     the separator count as one value (a year 2900 turning into a quantity 2,900 would not be reported).
    - Numbers written as words ("Four percent") and "pounds" as a mass are not read.
    - One false pair remains on the fresh held-out set (a nature reserve's area paired with its island's area;
      reranker 0.997, confirmed by the answer model); it predates phase 4. Same-value pairs found by meaning stay
@@ -419,6 +421,18 @@ Asked at the start of the round (2026-11-24):
 - **Real systemd and polkitd: "Leave unverified."** §6 item 4.
 - **Voice stop: "Stop silences everything."** Today's behaviour is the owner's ruling; the item is closed.
 
+Asked at the end of the round (2026-11-25), about the one item the lanes had left for a ruling:
+
+- **A number written with a comma: "Fix in this round. A comma-grouped number is a quantity, never a year; stored
+  values are re-read from their statements (as done for units), with the held-out sets as the gate."** Built:
+  "2,900 residents", "2.9 thousand" and "2900.0" are the quantity `2,900`; four bare digits ("in 1999") stay a year.
+  Stored knowledge, stored claims and open hypotheses are read as their statement reads now, so nothing saved with
+  the year reading settles a forecast or strengthens knowledge by it; a monitor's baseline compares such a number by
+  its digits. Before, "2,900 residents" against "3,100 residents" differed as years, and "2,900 residents" agreed
+  with "in 2900". Gate, 9bc375a against the fix in one session: fresh held-out set 40 → 45 of 50 right, false pairs
+  1 of 28 before and after (the same pair); development set 72 of 86 and 0 of 46, identical; guard differential
+  1,937 inputs, 0 different (`remaining_knowledge.json`, `tests/webcortex/test_comma_numbers.py`).
+
 ### 7.3 Found by the reviews and the re-review, and fixed
 
 Each row has a test that fails on the code before the fix.
@@ -443,5 +457,4 @@ both lines and stops its services on failure, and the two service trees that fai
 ### 7.4 Left open on purpose
 
 The items of §6 that phase 4 did not close, each with its reason there. The owner left real systemd and polkitd
-unverified; the TensorRT-LLM window is the owner's to schedule; reading "2,900" as a number waits for the owner's
-ruling.
+unverified; the TensorRT-LLM window is the owner's to schedule.

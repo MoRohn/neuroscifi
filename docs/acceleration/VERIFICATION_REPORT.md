@@ -271,9 +271,10 @@ phase 4.
    idle timer and a real reload of the memory server are **unverified**.
 5. **Read-ahead is concurrent and on by default.** What a task sends is at most its budget plus a tenth of it;
    `nsf web config --set read_ahead=1` is the path of 0.7.0 with the stricter stops.
-6. **Comparing values.** A number from 1,000 to 2,999 written with a comma is read as a year (a fix changes stored
-   values: the owner's ruling); numbers as words and "pounds" are not read; one false pair remains on the fresh
-   held-out set, from before phase 4. Pairs found by meaning are asked, never merged.
+6. **Comparing values.** Four bare digits are read as a year ("5000 residents"); a number written with its
+   thousands separator is a quantity (the owner's ruling of 2026-11-25, stored values read again from their
+   statements); numbers as words and "pounds" are not read; one false pair remains on the fresh held-out set, from
+   before phase 4. Pairs found by meaning are asked, never merged.
 7. **Consolidated readings** grow up to a limit (a million by default), with warnings from 80 %. Tombstones and the
    deletion log hold epoch names and event ids in clear, and the labels of forgotten cameras and partners can be
    checked offline against guessed names, because their salt is in the same file.

@@ -569,7 +569,7 @@ phase 4 (its phase-3 numbers in §8.3 stand).
 
 | Fresh held-out set (78 probes) | Before phase 4 | After |
 |---|---|---|
-| Positives found | 19 of 50 | 40 of 50 |
+| Positives found | 19 of 50 | 45 of 50 (40 before a number written with a comma stopped reading as a year) |
 | Values in other units | 3 of 21 | 19 of 21 |
 | Stated aliases | 1 of 6 | 6 of 6 |
 | False pairs | 6 of 28 | 1 of 28 |

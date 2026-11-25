@@ -2038,5 +2038,264 @@
    }
   },
   "not_changed": "the one false pair of the fresh set (the Castine Island nature reserve against the island's area) is still made by the answer model's confirmation; none of these fixes touches it"
+ },
+ "comma_numbers": {
+  "what": "The owner's ruling of 2026-11-25: a number written with its thousands separator (or with a magnitude word, or a decimal point) is a quantity, never a year; four bare digits keep the year reading. The canonical value of such a number of four digits keeps its separator ('2,900'), which value_kind reads as a plain number; stored knowledge, stored claims and open hypotheses are read as their statement reads now (consolidate._read_values, state._as_read, evolution._relation), and a monitor's baseline compares such a number by its digits (scheduler._written). Tests: tests/webcortex/test_comma_numbers.py (14; 11 fail on 9bc375a, the 3 that pass there guard the year reading of four bare digits).",
+  "measured_on": "one session: an own memory server (neuroscifi-memlite-y on 18791/18792, removed afterwards) and the answer model neuroscifi-vllm read-only; the code of 9bc375a (git archive) against the fix",
+  "before_and_after_examples": {
+   "'2,900 residents live there.' against 'The town has 3,100 residents.'": {
+    "before": "different years: 2900 vs 3100",
+    "after": "different values: 2,900 vs 3,100"
+   },
+   "values('1,999 units')": {
+    "before": [
+     "1999"
+    ],
+    "after": [
+     "1,999"
+    ]
+   },
+   "value_kind of the value of '2,900'": {
+    "before": "year",
+    "after": "number"
+   },
+   "_compare(['3,100'], item stored as ['2900'] with statement 'The town of Orbix has 2,900 residents.')": {
+    "before": "incomparable when the new side is written '3,100'; 'different years' as the parser of 9bc375a wrote both",
+    "after": "conflict: different values: 3,100 vs 2,900"
+   }
+  },
+  "meaning_path": {
+   "fresh_held_out": {
+    "before_9bc375a": {
+     "negatives": 28,
+     "negatives_paired": 1,
+     "pair_precision": 0.976,
+     "pairs_made": 41,
+     "positives": 50,
+     "positives_right": 40,
+     "recall": 0.8
+    },
+    "after": {
+     "negatives": 28,
+     "negatives_paired": 1,
+     "pair_precision": 0.978,
+     "pairs_made": 46,
+     "positives": 50,
+     "positives_right": 45,
+     "recall": 0.9
+    },
+    "probes": 78,
+    "probes_changed": [
+     {
+      "statement": "Castine Island is home to roughly 2,900 residents.",
+      "gold": "same",
+      "before": "none",
+      "after": "same"
+     },
+     {
+      "statement": "Castine Island is home to roughly 4,300 residents.",
+      "gold": "conflict",
+      "before": "none",
+      "after": "conflict"
+     },
+     {
+      "statement": "Some 3,400 people live in Ashbury Cross.",
+      "gold": "same",
+      "before": "none",
+      "after": "same"
+     },
+     {
+      "statement": "Holmbridge Instruments has a workforce of 1,240.",
+      "gold": "same",
+      "before": "none",
+      "after": "same"
+     },
+     {
+      "statement": "Holmbridge Instruments has a workforce of 1,610.",
+      "gold": "conflict",
+      "before": "none",
+      "after": "conflict"
+     }
+    ],
+    "still_missed_or_wrong_after": [
+     {
+      "class": "restate",
+      "gold": "same",
+      "outcome": "none",
+      "statement": "Nobody reached the top of Mount Teradoc before 1923."
+     },
+     {
+      "class": "units",
+      "gold": "same",
+      "outcome": "none",
+      "statement": "Drellis-9 weighed 3,197 pounds at launch."
+     },
+     {
+      "class": "property",
+      "gold": "none",
+      "outcome": "conflict",
+      "statement": "The nature reserve on Castine Island covers 950 hectares."
+     },
+     {
+      "class": "alias",
+      "gold": "same",
+      "outcome": "none",
+      "statement": "The highest road in the Selmar range crosses at 2,410 metres."
+     },
+     {
+      "class": "alias",
+      "gold": "same",
+      "outcome": "none",
+      "statement": "The oldest instrument maker in Calloway has 1,240 employees."
+     },
+     {
+      "class": "units",
+      "gold": "same",
+      "outcome": "none",
+      "statement": "Seven percent of Brennic syndrome patients develop kidney stones."
+     }
+    ]
+   },
+   "development_paraphrase": {
+    "before_9bc375a": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": 1.0,
+     "pairs_made": 72,
+     "positives": 86,
+     "positives_right": 72,
+     "recall": 0.837
+    },
+    "after": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": 1.0,
+     "pairs_made": 72,
+     "positives": 86,
+     "positives_right": 72,
+     "recall": 0.837
+    },
+    "probes": 132,
+    "probes_changed": [],
+    "by_half_after": {
+     "development": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 37,
+      "positives": 43,
+      "positives_right": 37,
+      "recall": 0.86
+     },
+     "held_out": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": 1.0,
+      "pairs_made": 35,
+      "positives": 43,
+      "positives_right": 35,
+      "recall": 0.814
+     }
+    }
+   }
+  },
+  "words_path": {
+   "fresh_held_out": {
+    "before_9bc375a": {
+     "negatives": 28,
+     "negatives_paired": 0,
+     "pair_precision": null,
+     "pairs_made": 0,
+     "positives": 50,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "after": {
+     "negatives": 28,
+     "negatives_paired": 0,
+     "pair_precision": null,
+     "pairs_made": 0,
+     "positives": 50,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "probes": 78,
+    "probes_changed": []
+   },
+   "development_paraphrase": {
+    "before_9bc375a": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": null,
+     "pairs_made": 0,
+     "positives": 86,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "after": {
+     "negatives": 46,
+     "negatives_paired": 0,
+     "pair_precision": null,
+     "pairs_made": 0,
+     "positives": 86,
+     "positives_right": 0,
+     "recall": 0.0
+    },
+    "probes": 132,
+    "probes_changed": [],
+    "by_half_after": {
+     "development": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": null,
+      "pairs_made": 0,
+      "positives": 43,
+      "positives_right": 0,
+      "recall": 0.0
+     },
+     "held_out": {
+      "negatives": 23,
+      "negatives_paired": 0,
+      "pair_precision": null,
+      "pairs_made": 0,
+      "positives": 43,
+      "positives_right": 0,
+      "recall": 0.0
+     }
+    }
+   }
+  },
+  "offline_research_benchmark": {
+   "command": "nsf web bench --repeat 1 --out <scratch> on each tree (the evidence file was not written)",
+   "top_level_fields_that_differ": [
+    "environment",
+    "generated_at",
+    "resources",
+    "timing"
+   ],
+   "outcome_fields_that_differ": []
+  },
+  "guard_differential_against_307b907": {
+   "compared": 1937,
+   "identical": 1688,
+   "stricter": 232,
+   "loosened": 17,
+   "different": 0,
+   "by_origin": {
+    "stricter": {
+     "review": 24,
+     "gap": 208
+    },
+    "loosened": {
+     "review": 6,
+     "gap": 11
+    }
+   }
+  },
+  "left_as_it_is": [
+   "four bare digits are a year whatever follows them ('2900 residents', '5000 residents'): the ruling covers a number written with its separator",
+   "a monitor's baseline has no statement to read again: a baseline value and a run's value that differ only in the separator of a whole number count as one value",
+   "'3,197 pounds' (pounds as a mass) and 'Seven percent' (a number in words) are still not read; the two alias probes that state no alias are not found, by design"
+  ]
  }
 }
