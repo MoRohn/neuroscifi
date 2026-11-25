@@ -46,7 +46,7 @@ the default.
 | `hypothesis_fields` (web) | **on** (record) | new hypotheses record assumptions, counter-evidence, expected gain, cost and revisions | record only; retention and adversarial unchanged (ADR-055) |
 | `premise_recheck` (web) | **on** (marks) | "to re-check" marks on what rests on a changed premise; a mark changes no belief and closes when its subject is re-verified by any normal path | record only; at most 2 marks open over 60 simulated days (review CM3 test) |
 | self-description, Presence states | always (no switch) | `nsf self`, console `GET /api/self`, Pocket and voice `self_status`, MCP `self_status` (scope `agent`); Presence planning, predicting, simulating | read-only; self-description family §4.4 |
-| voice `resume_follow` | **on** | a spoken question's answer is followed across a restart and delivered once to the person's live session | R8 fix; deliver-once tested with two hubs in one process (review A9, A10) |
+| voice `resume_follow` | **on** | a spoken question's answer is followed across a restart and delivered at most once: to the person's live session, or, when they are live only on a process that does not follow the task, into the asking session's transcript | R8 fix; tested with two hubs in one process (review A9, A10; re-review R3) |
 | `curiosity_learning_progress` (web) | **off** | curiosity and derived hypotheses down-weight subjects whose looks realised nothing; the reduced gain is compared with admission's minimum | held-out 12 further seeds: timer path bits per budget 0.139 → 0.126 (§4.2); ADR-051 amendment |
 | `predictive_regulation` (instance) | **off** | the background gate also refuses NEW background research while the forecast says memory headroom or a regular voice session is near | simulated plant only: avoids 0.80 of memory breaches, costs background work given up 0.044 → 0.106 and false alarms 0.009 → 0.043 (§4.1); on held-out the forecast's trend adds lead time (5.7 → 9.9 ticks) but avoids no further breaches and accounts for all the added false alarms (without it 0.009) |
 | `executive_rule` (instance) | **`rules-v1`** (`information-v1` opt-in) | `information-v1` replaces rules 5–7 by the subject with the greatest expected gain × P(informative) | rule versions are adopted by the owner, never changed in place; held-out core 0.092 → 0.105 bits per budget (§4.2) |
@@ -251,7 +251,7 @@ run the offline corpus (`test_cognition_monitoring.py`: 3 of its 6, among them
 | Finding | Severity | Fix | Test |
 |---|---|---|---|
 | S1 MCP `self_status` built the owner record: every family's asked research, goals, paths | medium | new scope `agent`: the owner's own research only (`family IS NULL`), no file path; MCP `web_task` / `web_evidence` answer "No research task" for a family's task | `tests/test_self_description_robustness.py::test_mcp_self_status_carries_the_owners_own_research_only`, `::test_mcp_task_tools_read_only_the_owners_own_research` |
-| S2 forged NaN / Infinity / future samples in the shared history file broke the self-description and, with predictive regulation on, crash-looped the worker | medium | `shared.loads` refuses non-finite numbers; impossible or future samples ignored and counted (`history.unreadable`); the forecast fails open; the gate catches any forecast error | `tests/test_untrusted_history.py` (5 tests, 7 cases) |
+| S2 forged NaN / Infinity / future samples in the shared history file broke the self-description and, with predictive regulation on, crash-looped the worker | medium | `shared.loads` refuses non-finite numbers and, since the re-review (R1, §6.5), integers of more than 18 digits; impossible or future samples ignored and counted (`history.unreadable`); the forecast fails open; the gate catches any forecast error | `tests/test_untrusted_history.py` (5 tests, 7 cases) |
 | S3 forgetting research left its question in `voice_sessions.context` | medium | `governance._scrub_voice_context` in the forget core (live and on restore) | `tests/voice/test_forget_research_context.py` |
 | S4 forged files in the shared folder: a permanent hold, or a forged call outranking Presence | low | history and in-flight files read only from this account or the database's owner; pid and process start time must match; remote entries rank at most "tool". **Residual left open** (below) | `tests/presence/test_workspace_states.py::test_a_forged_or_foreign_activity_file_is_not_shown_and_ranks_at_most_as_a_tool`, `test_untrusted_history.py::test_a_history_file_another_account_created_is_not_read` |
 | S5 MCP `self_status` returned web-derived text outside the untrusted envelope | low | task objectives, goals, keys and autonomy text wrapped in `safety.untrusted` | `::test_mcp_self_status_wraps_text_that_can_come_from_the_web` |
@@ -323,6 +323,32 @@ and the test reads the file as of its staged clock. The self-description's `unce
 salience and lane B's curiosity rework touch different functions of `autonomy.py` and needed nothing. Migration 18
 (amended in place by lane B) and 19 (appended by lane A) coexist: tests find each by content.
 
+### 6.5 The re-review of the fix round (`3c2a3bc..1c6cf1e`) and its fixes
+
+An independent reviewer re-ran the three reviews' probes on the reconciled tree, looked for what the fixes had opened,
+and read this record against the evidence. No critical or high finding; two medium (R1 and the counterfactual
+headline). Older files (schema 16, 17 and the first build of 18) opened with this code reach schema 19 with the same
+catalogue as a new file. Fix lanes D (code) and E (benchmark and wording) fixed what follows; each lane reports that
+its new tests fail on `1c6cf1e`.
+
+| Finding | Severity | Fix | Test |
+|---|---|---|---|
+| R1 a JSON integer too large for a float passed `shared.loads` and raised in `nsf internal-state`, the owner's Presence, `resources.status` and the background gate, so the worker could not claim even the owner's task | medium | integers of more than 18 digits are refused when the shared folder's files are read; readers treat an overflow as not a number; the gate fails open when the audio check raises; the audio beacon is read only when the service account owns it | `tests/test_untrusted_history.py` (9 new tests) |
+| R2 files only the service account writes were group-writable in the two-account layout | low | in-flight files, the history and the audio beacon are created 0640; files both accounts write stay 0660 | `tests/test_deployment_accounts.py::test_files_only_the_service_account_writes_are_the_groups_to_read_not_to_write`; `scripts/two_account_check.py` |
+| R3 a spoken follow-up was lost when the person was live only on another process | low | after a 3 s grace the follower claims the answer once and writes it into the asking session's transcript | `tests/voice/test_follow_restart.py::test_an_answer_is_not_lost_when_the_person_is_live_on_a_process_that_does_not_follow_it` |
+| R4 the MCP agent scope listed a Pocket family's task ids with their monitoring decisions; MCP `web_knowledge` named a family's task | low | the agent scope lists the owner's own research only; the family's task id is blanked in an item. Knowledge itself stays shared by the whole individual (API_CONTRACTS) | `test_the_agent_scope_lists_monitoring_decisions_of_the_owners_own_research_only`, `test_mcp_web_knowledge_does_not_name_a_familys_task` |
+| R6 reports stored before the fix round still showed a confidence of 0.941 | info | shown as none with "not enough development data"; the stored reports are untouched | `test_a_stored_confidence_no_shipped_map_gives_is_not_shown` |
+| N1 the strategy gate accepted a withheld run that never evaluated strategy selection | low | the named ledger line must be a run of the strategy-selection mechanism without ablations that records it was not worse; today it fails closed | `test_the_gate_refuses_a_final_run_that_never_evaluated_strategy_selection` |
+| N2, N3 an install path and free text could enter the permanent improvement ledger | low | no path in the gate's messages; a revert takes a reason code; a promotion keeps numbers, booleans and run ids only | `test_an_installation_without_the_ledger_records_no_path`, `test_the_permanent_ledger_keeps_no_free_text`, `test_the_cli_takes_a_reason_code_only` |
+| N5 `imagine_max_seconds` cannot interrupt the sandbox's one-step copy | low | the copy is bounded by the size cap, checked before it starts; the time limit is checked as soon as it ends; the documents say so | `tests/instance/test_imagine.py::test_the_copy_is_refused_by_size_before_it_starts_and_by_time_as_soon_as_it_ends` |
+| N4, R5 a stale comment; three documents presented "what are you doing" as the status command without its condition | low | corrected: it is the status command only with `status_questions` on | none (wording) |
+| Benchmark 1: the counterfactual headline left the four declined front-door questions per seed out of its denominator | medium | a decline of an answerable question is not within tolerance: held-out 0.063 → 0.875, not 0.071 → 1.000 (§4) | `test_declining_an_answerable_question_cannot_score_one_on_the_headline` |
+| Benchmark 2: the held-out learned-graph figure sits at the edge of the tolerance | low-medium | the largest error and the share within a stricter 0.05 are always reported beside it (§4) | the same file's scoring tests |
+| Wording: ten sentences of this record claimed more than their evidence | | rewritten as the reviewer asked (§2, §4, §6) | |
+
+Not verified by the re-review or its fixes: a real second account writing into the shared folder, two real processes
+for the voice follow-up, systemd itself, and that either tolerance was chosen before the results were seen.
+
 ## 7. Validation
 
 <<WAVE1-VALIDATION>>
@@ -335,13 +361,13 @@ salience and lane B's curiosity rework touch different functions of `autonomy.py
 
 | Item | Source |
 |---|---|
-| **S4 residual:** an account with group write on the service-owned 0660 history file can still append finite, plausible, past-dated samples. They can only hold new background research, and only with `predictive_regulation` on (off by default). Signing the samples would be a new mechanism | fix lane A |
+| **S4 residual, narrowed by the re-review's R2 fix:** the files only the service account writes (in-flight model calls, the internal-state history, the audio beacon) are now created 0640, so the other account of a two-account install can read but not rewrite them. A file created 0660 before this change keeps that mode until it is replaced (the in-flight file and the beacon at every write; the history at its next trim, about every 6 hours), and the other account can still delete such a file (the folder is not sticky), which removes it but cannot change what it says. Checked with real uids in a user namespace, not with a real second account or systemd | fix lanes A and D |
 | **Two-process delivery is untested with real processes:** the voice follow-up's deliver-once is tested with two hubs in one process (the hub nonce); real processes rely on pid plus `/proc` start time, covered by the S4 tests of `process_started`, not by a two-process voice test | fix lane A |
 | **Calibration needs real data:** no fitted map has enough development data, so no answer confidence is shown; the claim probability rests on 8 and 10 benchmark claims, and a two-line rule on the verdict word scores better; three score terms are untested | fix lane C |
 | **No settled real predictions:** scenario records, calibration and strategy selection have nothing real to learn from yet | ADR-052, ADR-055 |
 | **Nothing was run on the open web, a live answer model or real hardware:** every benchmark is synthetic and offline; the anticipation plant's constants are declared; timings are from this host under test load | all lanes |
 | **The front-door gap:** the causal engine declines questions identifiable only by front-door adjustment (4 of the 32 answerable questions per seed); it does no front-door adjustment, so the pooled held-out figure is 0.875, not 1.000 | fix lane C, ADR-052 |
-| **The withheld family has not been run** for Wave 1; strategy selection's gate needs that run, and the withheld family has no strategy-selection world | §8; ADR-055 |
+| **Strategy selection cannot be promoted:** its gate needs a withheld run of the strategy-selection mechanism whose ledger line records that it was not worse; the withheld family has no strategy-selection world and the harness records no such verdict, so the gate fails closed ("no withheld run evaluated strategy selection") | §6.5 N1; ADR-055 |
 | Re-check marks of an item superseded outside consolidation close at the next consolidation or forget, not at once; a kept retrospection over a large epoch often exceeds 64 sources and is refused (never truncated) | fix lane B |
 | The sandbox's one-step copy was measured on tmpfs only; a disk-backed file is unverified | fix lane B |
 | The interval score is dominated by the stated width; changing it would change lane M's answer contract | fix lane C |

@@ -26,12 +26,18 @@
              mechanism against its reference seed by seed; the split's own seeds stay the official numbers.
   rescore    the baseline re-run under the scoring the Wave 1 review asked for, beside the recorded numbers.
 
-Both splits; the withheld family is never run here (no --final). Usage:
+  final      THE ONE LOOK at the withheld family (main session only, once, on the final tree; refused on a dirty
+             tree): the baseline re-run under today's scoring (every Wave 1 setting off; the recorded baseline's
+             withheld numbers predate the corrected scoring), then the Wave 1 mechanisms (WAVE1_FINAL). Each run
+             appends its line to docs/quality/evidence/genesis_final_uses.jsonl before it scores anything.
+
+Both splits; the withheld family is run only by `final`. Usage:
   scripts/bench_wave1.py run [--split development|held_out ...] [--out FILE]
   scripts/bench_wave1.py wide [--split ...] [--out FILE]
   scripts/bench_wave1.py rescore [--split ...] [--out FILE]
   scripts/bench_wave1.py offline [--regime all_off|defaults|wave0]    (the offline research benchmark, one run)
   scripts/bench_wave1.py acceptance --regime all_off --out FILE       (`nsf acceptance --all` under a regime)
+  scripts/bench_wave1.py final --note TEXT --out FILE                 (the withheld family; see above)
 """
 from __future__ import annotations
 
@@ -404,6 +410,57 @@ def rescore(splits) -> dict:
     return out
 
 
+# The mechanism each interface of the withheld family is answered by in Wave 1's one look, and whether a new individual
+# has it on. Where it ships off, the shipped system behaves as the baseline run beside it.
+WAVE1_FINAL = {"anticipation": ("instinct", "off (predictive_regulation)"),
+               "info_value": ("instinct", "off (executive_rule information-v1 is opt-in; curiosity_learning_progress)"),
+               "counterfactual": ("imagination", "on (what-if, forecast and retrospect commands)"),
+               "self_model": ("self_description", "on (display)")}
+
+
+def register_wave1():
+    """One name, `wave1`, for the four lanes' mechanisms, so a single run of the withheld family uses all of them
+    (cognition.run takes one mechanism name and falls back to the baseline where a family has none of that name)."""
+    from neuroscifi.acceptance import cognition
+    cognition.load_plugins()
+    for family, (name, ships) in WAVE1_FINAL.items():
+        mech = cognition._REGISTRY[(family, name)]
+        cognition.register(family, "wave1", mech.factory, components=mech.components,
+                           description=f"Wave 1: {family}/{name}; a new individual has it {ships}")
+
+
+def final(note) -> dict:
+    from neuroscifi.acceptance import cognition
+    register_wave1()
+    env = cognition.environment()
+    if env["git_dirty"] or not env["git_commit"]:
+        raise SystemExit("final: the tree must be clean and committed, so the ledger line names the code it measured")
+    if not note:
+        raise SystemExit("final: --note is required")
+    families = ("anticipation", "info_value", "counterfactual", "self_model")
+    out = {"benchmark": "cognition, the withheld family: Wave 1's one look", "environment": env,
+           "what": "Two runs of the withheld family, each recorded in the ledger before it scored anything. (1) "
+                   "'baseline': the baseline mechanisms with every Wave 1 setting off, re-run because the recorded "
+                   "baseline's withheld numbers (genesis_baseline.json) were scored before the Wave 1 reviews "
+                   "corrected the scoring; the behaviour is the unchanged system's. (2) 'wave1': each interface "
+                   "answered by its lane's mechanism (mechanisms). Where a mechanism ships off, the shipped "
+                   "system's number is the baseline's. Reported whatever it shows; nothing was tuned afterwards.",
+           "mechanisms": {f: {"mechanism": n, "a_new_individual_has_it": s} for f, (n, s) in WAVE1_FINAL.items()},
+           "runs": {}}
+    for label, mechanism, regime_name, text in (
+            ("baseline", "baseline", "all_off", "baseline re-scored under the corrected scoring; behaviour unchanged"),
+            ("wave1", "wave1", "defaults", "Wave 1 mechanisms, the one look")):
+        started = time.perf_counter()
+        with REGIMES[regime_name]():
+            run_ = cognition.run(["withheld"], final=True, mechanism=mechanism, note=f"{note}: {text}")
+        fam = run_["families"]["withheld"]
+        out["runs"][label] = {"regime": regime_name, "used": fam["mechanisms"], "cost": fam["cost"],
+                              "headline": {f: headline(f, fam["result"][f]) for f in families},
+                              "result": fam["result"], "run_seconds": round(time.perf_counter() - started, 2)}
+        out["final_runs"] = run_["final_runs"]
+    return out
+
+
 def _retention_failures(result):
     failed = []
     for name, scenario in (result.get("scenarios") or {}).items():
@@ -462,6 +519,9 @@ def main(argv=None) -> int:
         w = sub.add_parser(name)
         w.add_argument("--split", action="append", choices=("development", "held_out"))
         w.add_argument("--out")
+    f = sub.add_parser("final")
+    f.add_argument("--note", required=True)
+    f.add_argument("--out", required=True)
     args = p.parse_args(argv)
     if args.cmd == "acceptance":
         return acceptance(args.regime, args.out)
@@ -472,6 +532,8 @@ def main(argv=None) -> int:
         value = wide(splits)
     elif args.cmd == "rescore":
         value = rescore(splits)
+    elif args.cmd == "final":
+        value = final(args.note)
     else:
         value = offline(args.regime)
     text = json.dumps(value, indent=1, sort_keys=False, default=str) + "\n"
