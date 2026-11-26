@@ -367,10 +367,15 @@ def _refuse_declaration(*_args):
 
 
 def parse_xml(data: bytes, *, max_nodes: int, deadline: Deadline | None = None,
-              max_depth: int = XML_MAX_DEPTH) -> ElementTree.Element:
+              max_depth: int = XML_MAX_DEPTH, allow_doctype_reference: bool = False) -> ElementTree.Element:
     """ElementTree root of untrusted XML. DOCTYPE, entity and external-entity declarations are `Refused`; more than
     `max_nodes` elements or deeper nesting than `max_depth` are `Refused`; syntax errors are `Malformed`. Namespaced
-    names are '{uri}local' as with ElementTree. The deadline is checked between 1 MiB chunks."""
+    names are '{uri}local' as with ElementTree. The deadline is checked between 1 MiB chunks.
+
+    `allow_doctype_reference=True` (used for property lists, whose standard form names Apple's DTD) accepts a
+    DOCTYPE that only NAMES an external DTD and declares nothing itself (no internal subset). That DTD is never
+    loaded (external entity references stay refused, parameter entities are never parsed), so nothing in it can
+    take effect; any internal subset, entity or entity reference is still refused."""
     data = bytes(data)
     if not data.strip():
         raise Malformed("empty XML document")
@@ -394,7 +399,11 @@ def parse_xml(data: bytes, *, max_nodes: int, deadline: Deadline | None = None,
         state["depth"] -= 1
         builder.end(name(tag))
 
-    parser.StartDoctypeDeclHandler = _refuse_declaration
+    def doctype(_name, _system_id, _public_id, has_internal_subset):
+        if not allow_doctype_reference or has_internal_subset:
+            _refuse_declaration()
+
+    parser.StartDoctypeDeclHandler = doctype
     parser.EntityDeclHandler = _refuse_declaration
     parser.UnparsedEntityDeclHandler = _refuse_declaration
     parser.ExternalEntityRefHandler = _refuse_declaration
