@@ -7,9 +7,47 @@ owner, and the research directions worth the most next. Every number is copied f
 named beside it. Nothing here claims or implies consciousness, sentience, awareness, general intelligence or
 superintelligence; the mechanisms are functions with names that say what they do, and the measurements are task
 scores on synthetic worlds. Wave 3's defaults and numbers are final after its three fix lanes (`gen3-fix`,
-`gen3-fix2`, `gen3-fix3`; merged `0410a22`).
+`gen3-fix2`, `gen3-fix3`; merged `0410a22`). Wave 4 (`genesis-wave4`, after its fix lane `3032cf6`; record in
+[WAVE4.md](WAVE4.md)) is summarised first; its withheld look and final validation are pending.
 
-## Wave 3 in plain words (read this first)
+## Wave 4 in plain words (read this first)
+
+**What Wave 4 tried.** Wave 3 left one important problem open: NeuroSciFi cannot tell a story's independent reports
+from copies of it, or from its own earlier answer coming back to it from the web. Wave 4 went after the cause rather
+than the wording. It first built test worlds in which it is known which page copied which, containing every kind of
+failure found so far, before any fix was written. On them, as shipped, NeuroSciFi takes as knowledge 127 facts whose
+independent support is below its own bar (40 of them false) and leaves 142 of 612 well-supported true facts unheld
+(held-out worlds, `genesis_sources_baseline.json`).
+
+**What it found: no fix is good enough to turn on.**
+- A rule that groups pages by which other page they name looked promising, but the only thing it reads turned out to
+  be a habit of the program that wrote the test worlds (every outlet's name equals its web address), and one page
+  could still merge honest sources into one. It also leaves more true facts unconfirmed (142 → 207 of 612). **Not
+  supported; do not turn it on** (ADR-066).
+- A rule that remembers what NeuroSciFi itself answered, and when, does recognise its own answers coming back (30 of
+  31 such pages set aside; own answers taken as knowledge 4 → 1). Two reviews found it could let such an echo replace
+  a fact NeuroSciFi had verified, and let a family device or an agent block a fact for you; both are fixed. It stays
+  **off**: the counts are small, it sometimes sets aside honest pages (a value it first stated wrongly that later
+  became true), and parts of it are untested (pages without a date) (ADR-067).
+- Reserving part of the daily budget for subjects NeuroSciFi knows nothing about yet showed no gain and stays off
+  (ADR-064). Tracing why its runs were noisy found two places where the product picked among equal records by a random
+  id; now fixed. That weakens one figure of Wave 3's last test: the "run the idle worker first" gain on its second
+  unseen world (+0.042) is not clearly larger than its spread (0.039).
+
+**What Wave 4 changes for you:**
+- A damaged saved setting can no longer loosen a limit you set: a damaged network limit turns web access off, and a
+  damaged setting fixed when the individual was created pauses writes; each says the command that repairs it
+  (`nsf web config --set NAME=VALUE`, `nsf config --repair-fixed NAME=VALUE`).
+- Re-queuing a failed background task counts against your daily task limit; restoring a checkpoint holds the
+  database far more briefly; background runs are now repeatable.
+- Where an answer or a fact rests on a single web page, the console, `nsf web`, Pocket and the voice reply say "Only
+  one source says this." It is shown only; it changes nothing.
+
+**So the problem is still there at the shipped settings**, and the next step is worlds that contain what really tells
+a copy from an honest report (WAVE4.md, "What stays open"). Nothing new needs your decision to stay safe; every new
+rule is yours to turn on, and none is recommended.
+
+## Wave 3 in plain words
 
 **What Wave 3 found.** For the first time the knowledge loop was tried once on test worlds that nobody had seen
 while building. There, two things that had always held did not: some versions that only NeuroSciFi's own answers had
@@ -160,6 +198,10 @@ Nothing lost: the offline research benchmark's digest at the shipped defaults is
 | Wave 3: the idle investigation (coverage) | timer first: "no evidence"; allowance first: "revise" (beyond the sd in one world of five), and still below the blind round-robin in every world (gap 0.065–0.120) | `genesis_idle_coverage.json`, ADR-062, WAVE3.md §3.4 |
 | Wave 3: the two source rules | "unsafe" under their own pre-registered rule; they read only the phrasings of their worlds; staged honest credits cost 0.07–0.13 `correct` (0.04–0.08 after the fix lane's H1 fix, 30 % credits, new seeds); ship off | `genesis_wave3_s.json`, ADR-061, the Wave 3 reviews, WAVE3.md §3.1 |
 | Wave 3: supersession | gain below the spread in every world; 3 of 23 rule replacements false (pooled, not a claim); a false one wrong for 8 and at least 10 cycles (censored), re-measured; development evidence | `genesis_wave3_fix_s.json`, WAVE3.md §3.2 |
+| Wave 4: one source by derivation (`source_derivation`) | "trade" under its own rule on both splits; held-out, pooled: wrongly admitted 127 → 99, suppressed 142 → 207 of 612, `correct` −0.064 / −0.054 / −0.101 (after the fix lane); its only signal is the worlds' generator's naming convention; "not supported; do not turn on" | `genesis_wave4_s.json`, `genesis_wave4_fix.json`, ADR-066, WAVE4.md §1.1 |
+| Wave 4: own-text provenance (`own_text_provenance`) | "effective" under its own rule, but small: held-out own answers admitted 4 → 1, wrongly admitted 127 → 123, suppressed 142 → 145 of 612, honest pages set aside 14 of 2,670; `correct` inside the spread; off | `genesis_wave4_e.json`, `genesis_wave4_fix.json`, ADR-067, WAVE4.md §1.2 |
+| Wave 4: dividing the allowance (`allowance_division`) | no candidate's gain beyond the spread in any held-out world (−0.024 to +0.026); every candidate "unsafe" or "harm"; 0.09–0.26 below the blind round-robin | `genesis_wave4_a_held_out.json`, ADR-064, WAVE4.md §1.4 |
+| Wave 4: the caution | display only; only the one-source trigger lines up (development: 3 of 3 wrong answers carried it); held-out not exercised; the other two triggers mislead about three times in ten and are not shown by default | `genesis_wave4_d_caution.json`, ADR-065, WAVE4.md §1.5 |
 
 ## 3. What remains limited
 
@@ -184,7 +226,9 @@ Nothing lost: the offline research benchmark's digest at the shipped defaults is
   N1). The one-way rule that closes it on staged pages is built and off (`origin_grouping`, ADR-063): as first shipped
   it made copies naming several origins count as several sources (review3c F1); a page on a host named like an
   outlet can still join two honest outlets (F2), and "Originally published by X" at the start of a sentence is not
-  read (F3). No benchmark world holds a page naming several origins.
+  read (F3). No benchmark world holds a page naming several origins. Wave 4 built worlds whose truth is a
+  derivation graph and two rules that do not read wording (ADR-066, ADR-067); neither is supported well enough to turn
+  on, so the hole is open after Wave 4 too ([WAVE4.md](WAVE4.md)).
 - **Everything measured is synthetic**: fictional worlds through the real code, offline; the anticipation plant's
   constants are declared.
 - **Open findings** from Wave 2 (the review findings are all fixed, WAVE2.md §4): reflections are kept without a cap
@@ -215,6 +259,10 @@ Each with the command an owner would run (from [REGRESSION_VERIFICATION.md](REGR
 | **Automatic supersession of a stale item** (`supersession`, built in Wave 3, off: a newer version stated by at least two independent sources replaces the older one without asking) | `"ask"`: contradictions are asked, never decided (ADR-026, ADR-038) | it asks fewer questions and catches stale items sooner (lane S) | gain below the spread in every world; 3 of 23 rule replacements false on lane S's held-out; of the 5 false replacements in those runs (3 by the rule, 2 by the path that existed before), 4 still wrong when the run ended, the longest at least 10 cycles (`genesis_wave3_fix_s.json`); development evidence only; forget and revert, and family or agent tasks triggering it, fixed by the fix lane; two colluding pages can still replace a true item | its withheld look (supersession on the shipped defaults, both source rules off: not the configuration measured here; reported, cannot switch it on); a sound source-independence rule first (§6, rank 1) |
 | `origin_grouping` (built in Wave 3's second fix lane, off since the third: a page naming its origin attaches to one origin only) | `"transitive"`: the grouping of `3ce4ae3` (for a page's named origins, as before Wave 3); a page naming two honest outlets as its origins joins them (review3b N1, open) | closes N1 on staged pages; with the reviewer's edge choice, copies naming several origins count once on every staged case | as first shipped it counted such copies as 2–3 sources (review3c F1); F2 open for names other than the news wires'; no benchmark world holds a page naming several origins, so neither direction is measured (ADR-063) | worlds with multi-origin copies and pages naming two honest outlets, written by someone other than the rule's author and committed first (§6, rank 1) |
 | the two source rules (`attribution_independence`, `echo_recognition`) | off (fix lane) | none that survived review | read only their worlds' phrasings; merge honest outlets; discard honest pages (WAVE3.md §3.1) | a different kind of rule (§6, rank 1) |
+| `source_derivation` (Wave 4) | off | fewer badly supported rows (held-out 127 → 99) | its signal is the generator's convention; more true facts not held (142 → 207 of 612); one page can merge honest outlets; **not recommended** (ADR-066) | worlds that hold what separates a copy from an honest credit (§6, rank 1) |
+| `own_text_provenance` (Wave 4) | off | own answers admitted 4 → 1 (held-out); "effective" under its rule | a measured false rejection (honest pages 14 of 2,670); undated pages unmeasured; mentions still recorded in 3 of 18 forms (ADR-067) | its withheld look; undated pages in the worlds |
+| `allowance_division` (Wave 4) | `"race"` | none on held-out | "unsafe" / "harm"; no gain beyond the spread (ADR-064) | none planned: reaching runs out of candidates |
+| `caution_detail` (Wave 4, display) | off | says why pages count together and flags own answers | wrong about three times in ten on the worlds measured (ADR-065) | a measurement where the triggers line up |
 | `predictive_regulation` | off; `"shadow"` gathers evidence without acting (Wave 3) | simulated plant: 0.80 of memory breaches avoided held-out, 0.83 withheld | costs work given up (0.044 → 0.106) and false alarms (0.009 → 0.043); the plant's constants are declared; the shadow report counts what the forecast adds separately since the fix lane (staged held-out: 198 added false alarms against 78 added hits) | a week of shadow on the host: `nsf config --predictive-regulation-shadow`, then `nsf internal-state --shadow-report` |
 | `recheck_order` | `"staleness"` | none on held-out | every order "no evidence" (ADR-060) | none planned |
 | `idle_recheck` | off | Wave 1 information value 0.093 → 0.124 bits per budget (held-out, split) | Wave 2: knowledge correctness −0.019 / −0.004 (lane F), 0.726 against 0.718 (lane L, paired +0.008, below the spread); ~25 % more wall time | none planned (lane R: no order helps, ADR-060) |
@@ -234,6 +282,13 @@ Ranked by how directly a measurement here points at a limit, and how cheaply a f
 |---|---|---|---|
 Updated after Wave 3 ([WAVE3.md](WAVE3.md)). Done in Wave 3, so off this list: front-door adjustment (lane C), a
 withheld world for the knowledge loop (step 0), re-checking by observed change (lane R: no gain).
+**After Wave 4** ([WAVE4.md](WAVE4.md)): rank 1 was tried (worlds with a derivation graph, written first; a rule by
+derivation; a rule by what the individual itself emitted) and is not done: the derivation rule's signal was the
+generator's convention, and the own-text rule stays off. What it needs now are worlds that hold what really separates
+a copy from an honest report, drawn independently of any rule's author: copy lags, an honest outlet's own specifics,
+errors copies inherit, links, honest outlets crediting a wrong first reporter, names that differ from hosts, undated
+pages (review4 measurement, Q2). Rank 2 was tried (lane A, ADR-064): no division of the allowance gains; reaching runs
+out of admitted candidates, which a share cannot add.
 
 | Rank | Direction | Why (the measurement behind it) | How to test it fairly |
 |---|---|---|---|
