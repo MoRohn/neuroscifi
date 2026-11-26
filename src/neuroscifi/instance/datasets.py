@@ -10,6 +10,7 @@ import zipfile
 
 import numpy as np
 
+from .. import inputfiles
 from ..lab import graph_bench
 from . import store
 from .errors import Conflict, Gone, NotFound, ValidationError
@@ -23,6 +24,9 @@ WORLDS = ("a", "b")
 # SQLite refuses a blob longer than SQLITE_MAX_LENGTH (1e9 bytes in a default build) with a raw DataError. The npz
 # holds two float64 arrays (16 bytes per cell) plus its zip and npy headers (well under 4 kB).
 MAX_BLOB_BYTES, BLOB_FRAMING_BYTES = 1_000_000_000, 4096
+# The most elements one array of an accepted pair can have (as float64, both arrays fit in MAX_BLOB_BYTES): an .npz
+# whose headers declare more is refused before numpy allocates it (check_npz).
+MAX_ELEMENTS = min(MAX_ROWS * MAX_COLS, (MAX_BLOB_BYTES - BLOB_FRAMING_BYTES) // 16)
 
 
 def _check_context(context):
@@ -51,6 +55,14 @@ def _check_arrays(states, targets):
     if not (np.isfinite(states).all() and np.isfinite(targets).all()):
         raise ValidationError("Dataset arrays must be finite")
     return states, targets
+
+
+def check_npz(fp, size=None):
+    """Refuse (inputfiles.InputRefused, a ValueError) an .npz whose zip directory or array headers declare more than
+    a dataset can hold, before np.load allocates or decompresses anything: at most MAX_ELEMENTS elements per array of
+    at most 16 bytes each (inputfiles.check_npz). fp is back at its start."""
+    return inputfiles.check_npz(fp, inputfiles.size_of(fp) if size is None else size, max_elements=MAX_ELEMENTS,
+                                max_member_bytes=16 * MAX_ELEMENTS + BLOB_FRAMING_BYTES)
 
 
 def _encode(states, targets):
@@ -102,7 +114,9 @@ def decode(blob, digest, rows, cols, label):
     if hashlib.sha256(blob).hexdigest() != digest:
         raise Conflict(f"{label} failed its integrity check")
     try:
-        with np.load(io.BytesIO(blob), allow_pickle=False) as archive:
+        source = io.BytesIO(blob)
+        check_npz(source, len(blob))
+        with np.load(source, allow_pickle=False) as archive:
             if set(archive.files) != {"states", "targets"}:
                 raise ValidationError(f"{label} has unexpected arrays {sorted(archive.files)}")
             states, targets = archive["states"], archive["targets"]

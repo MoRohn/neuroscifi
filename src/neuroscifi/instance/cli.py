@@ -9,7 +9,7 @@ import sys
 import time
 
 from . import store
-from .errors import InstanceError
+from .errors import InstanceError, ValidationError
 
 SUBMODULES = ["neuroscifi.instance.cli_evidence", "neuroscifi.instance.cli_graphs", "neuroscifi.instance.cli_memory",
               "neuroscifi.instance.cli_imagined", "neuroscifi.instance.cli_imagine"]
@@ -163,7 +163,13 @@ def _init(args):
                                max_consolidated_rows=args.max_consolidated_rows,
                                max_evidence_rows=args.max_evidence_rows,
                                min_free_bytes=int(args.min_free_mib * 1024 * 1024))
-    founding = args.founding_graph.read_bytes() if args.founding_graph else None
+    founding = None
+    if args.founding_graph:
+        from .. import graph_store, inputfiles
+        try:
+            founding = inputfiles.read_bounded(args.founding_graph, graph_store.MAX_BYTES, "graph snapshot")
+        except inputfiles.InputRefused as error:
+            raise ValidationError(str(error)) from None
     db = store.create(store.resolve_db(args), time.time(), action_semantics=semantics,
                       config=cfg, founding_graph=founding, note=args.note)
     try:
