@@ -182,3 +182,34 @@ def test_an_agents_refused_call_does_not_name_the_damaged_setting_the_owner_stil
     finally:
         db.close()
 
+
+# ---- item 5 (security, second pass, 2d): a warning when an unsupported rule is turned on ----------------------------
+
+def test_turning_an_unsupported_rule_on_says_its_recorded_verdict_and_still_obeys(tmp_path, capsys):
+    """review4 s 2d: `nsf web config --set source_derivation=true` was accepted silently. It still is accepted (the
+    owner decides), and now says the recorded verdict; the same for own_text_provenance with its stated limits.
+    Turning either off, or setting anything else, says nothing."""
+    from neuroscifi.cli import main
+    from neuroscifi.instance import store
+    from neuroscifi.webcortex import state
+    path = tmp_path / "warn.sqlite"
+    store.create(path, T0, note="wave 4 second fix round").close()
+    expected = {"source_derivation": ("not supported by the evidence: see ADR-066",
+                                      "can keep true facts from being confirmed"),
+                "own_text_provenance": ("see ADR-067", "30 days", "can keep a true new value from being confirmed")}
+    for name, phrases in expected.items():
+        main(["web", "config", "--db", str(path), "--set", f"{name}=true"])
+        captured = capsys.readouterr()
+        out = json.loads(captured.out)
+        assert out["config"][name] is True and len(out["warnings"]) == 1
+        assert all(p in out["warnings"][0] for p in phrases), out["warnings"]
+        assert out["warnings"][0] in captured.err
+        main(["web", "config", "--db", str(path), "--set", f"{name}=false"])
+        assert "warnings" not in json.loads(capsys.readouterr().out)
+    main(["web", "config", "--db", str(path), "--set", "echo_recognition=true"])
+    assert "warnings" not in json.loads(capsys.readouterr().out)
+    db = store.open_existing(path)
+    try:
+        assert state.get_config(db).source_derivation is False and state.get_config(db).echo_recognition is True
+    finally:
+        db.close()

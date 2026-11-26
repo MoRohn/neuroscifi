@@ -250,6 +250,18 @@ def _json_arg(text, what):
 
 # ---- handlers --------------------------------------------------------------------------------------------------
 
+# What `nsf web config` says when a rule the evidence does not support is set on (Wave 4 second fix round, review4
+# security second pass 2d). The setting is still applied: the owner decides.
+UNSUPPORTED_ON = {
+    "source_derivation": "source_derivation is now on, but it is not supported by the evidence: see ADR-066; turning "
+                         "it on can keep true facts from being confirmed",
+    "own_text_provenance": "own_text_provenance is now on; see ADR-067 for its limits: it reads only your own answers "
+                           "and counts each for 30 days, misses many wordings (some denials included) and small "
+                           "edits, and a page that honestly reports a value one of your answers stated first is set "
+                           "aside too, so it can keep a true new value from being confirmed",
+}
+
+
 def _config(db, a, now):
     from . import state
     changes = {}
@@ -273,6 +285,11 @@ def _config(db, a, now):
         from . import autonomy
         autonomy.record_switch(db, bool(changes["autonomous"]), now, by="owner:cli")
     out = {"config": cfg.to_json(), "changed": sorted(changes)}
+    warnings = [UNSUPPORTED_ON[name] for name in sorted(UNSUPPORTED_ON) if changes.get(name) is True]
+    if warnings:
+        out["warnings"] = warnings
+        for warning in warnings:
+            print(f"nsf web config: warning: {warning}", file=sys.stderr)
     if getattr(a, "forget_own_text", False):     # ADR-067 (Wave 4 fix, review4 L3): remove every fingerprint
         from . import emitted
         from ..instance import checkpoints, store
