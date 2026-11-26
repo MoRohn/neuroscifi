@@ -23,8 +23,9 @@ what the owner researched (the world's cycle-0 subjects). Each cycle (one simula
 What is substituted: search and fetching (the world hands each task its pages; no SafeFetcher, no search engine, no
 answer synthesis, no model: the stored model answer is a fixed sentence), the host's resource gate (held open:
 resources.policy.background_gate), and the owner (accepts a seeded share of new items; answers nothing else).
-Not run: the worker's idle investigation (autonomy.idle), which in the product shares the daily allowance with the
-timer; "the loop" here is the timer's pass only (lane Y, M4).
+Not run by default: the worker's idle investigation (autonomy.idle), which in the product shares the daily allowance
+with the timer; "the loop" of every configuration but those of idle_configurations() is the timer's pass only (lane Y,
+M4). Wave 3 lane V (ADR-062) runs it in those (Run.idle_investigations: how the allowance is split is stated there).
 References (lane Y, H4): REFERENCES / references(), from the world generator alone, beside the measured runs.
 
 Measured per cycle against the world's truth (never against anything the individual produced):
@@ -121,6 +122,27 @@ def order_configurations() -> dict:
 
 EXTRA |= {k: v for k, v in order_configurations().items() if k not in ("reference:no-loop", "baseline")}
 
+# Wave 3 lane V (ADR-062): the worker's idle investigation (autonomy.idle) as the product runs it, inside the SAME daily
+# allowance as the timer (Run.idle_investigations). Not settings: what the harness's simulated worker does each cycle.
+#   IDLE        after the timer's pass and its tasks: the idle decisions take what the pass left of the allowance
+#   IDLE_FIRST  before the timer's pass: the idle decisions may take the whole allowance, the pass gets what is left
+IDLE = "+idle"
+IDLE_FIRST = "+idle-first"
+WORKER = frozenset({NO_LOOP, SHIPPED, IDLE, IDLE_FIRST})      # markers that are not settings
+
+
+def idle_configurations() -> dict:
+    """{name: mechanisms}: the no-loop reference, baseline (the timer's pass only), the idle investigation after and
+    before the pass, and the settings as a new individual has them without and with it ("the loop as shipped with
+    autonomy on" is `shipped+idle`: the owner's enable starts both the timer's autonomous part and the worker's idle
+    investigation)."""
+    return {"reference:no-loop": frozenset({NO_LOOP}), "baseline": frozenset(), "idle": frozenset({IDLE}),
+            "idle-first": frozenset({IDLE_FIRST}), "shipped": frozenset({SHIPPED}),
+            "shipped+idle": frozenset({SHIPPED, IDLE})}
+
+
+EXTRA |= {k: v for k, v in idle_configurations().items() if k not in ("reference:no-loop", "baseline")}
+
 
 def configurations() -> dict:
     """{name: set of lane K mechanisms on}: the no-loop reference, baseline, each alone, all, all without one."""
@@ -146,7 +168,7 @@ def budget_at(spec, cycle) -> int:
 def _settings(mechanisms, budget) -> dict:
     base = {} if SHIPPED in mechanisms else dict(WAVE1_OFF_WEB)
     cfg = base | {"enabled": True, "autonomous": NO_LOOP not in mechanisms, "daily_autonomous": _allowance(budget)}
-    for m in set(mechanisms) - {NO_LOOP, SHIPPED}:
+    for m in set(mechanisms) - WORKER:
         cfg |= ON[m]
     return cfg
 
@@ -231,7 +253,8 @@ class Run:
         self.pattern = re.compile(r"\b(" + "|".join(sorted(self.names, key=len, reverse=True)) + r")\b")
         self.cycle = 0
         self.now = T0
-        self.tasks = {"owner": 0, "refresh": 0, "recheck": 0, "curiosity": 0, "other": 0}
+        self.tasks = {"owner": 0, "refresh": 0, "recheck": 0, "curiosity": 0, "idle": 0, "other": 0}
+        self.idle = {}                    # Wave 3 lane V: autonomy.idle's actions ('queued', 'nothing', ...) and stops
         self.pages = 0
         self.rises = 0
         self.one_origin_looks = 0
@@ -299,7 +322,8 @@ class Run:
         kind = ("refresh" if origin.startswith("refresh:") and db.execute(
                     "SELECT 1 FROM web_events WHERE task_id=? AND kind='decision' AND "
                     "json_extract(detail,'$.autonomy.recheck') IS NOT NULL", (tid,)).fetchone() is None
-                else "recheck" if origin.startswith("refresh:") else "curiosity" if origin == "curiosity"
+                else "recheck" if origin.startswith("refresh:")
+                else ("idle" if self._idle_pick(tid) else "curiosity") if origin == "curiosity"
                 else "owner" if origin in ("console", "cli") else "other")
         self.tasks[kind] += 1
         name = self.subject_in(task["objective"])
@@ -327,8 +351,43 @@ class Run:
                                "look": look["kind"], "after": self._newest_version(name),
                                "outcome": {k: len(out.get(k) or []) for k in ("provisional", "strengthened",
                                                                              "unchanged", "superseded", "contested",
-                                                                             "held")}})
+                                                                             "held")}}
+                              | ({"candidate": self._idle_pick(tid)} if kind == "idle" else {}))
         return out
+
+    def _idle_pick(self, tid):
+        """The candidate kind autonomy.idle queued this task as (its decision event, admission path 'idle'), else
+        None: a curiosity task of the timer's pass (path 'tick')."""
+        row = self.db.execute("SELECT json_extract(detail,'$.autonomy.kind') FROM web_events WHERE task_id=? AND "
+                              "kind='decision' AND json_extract(detail,'$.autonomy.admission.path')='idle' LIMIT 1",
+                              (tid,)).fetchone()
+        return (row[0] or "unknown") if row else None
+
+    def idle_investigations(self):
+        """Wave 3 lane V (ADR-062): the worker's idle investigation as the product runs it. scheduler.work asks
+        autonomy.idle for one investigation whenever nothing is queued; here each decision is made as by its own
+        worker (idle_interval is per worker) at this cycle's instant (the harness compresses a simulated day to one
+        instant, as it does for the owner and the timer), and the task it queues is executed at once, as a worker
+        claims it. The one admission rule, the owner's quiet, the recorded enable, min_gain, the cooldown and the
+        lineage are autonomy.idle's own; nothing here chooses a subject.
+        The allowance: the day's autonomous tasks, WebConfig.daily_autonomous.tasks (the world's budget), counted as
+        the timer counts them (scheduler.autonomous_usage: curiosity and refresh tasks of the last 24 h, the idle
+        investigation's included). autonomy.idle itself does not read that count in the product (it is bounded by
+        the D4 budgets and the request/byte allowance, which these tasks do not reach), so the harness stops asking
+        when the count reaches the allowance: the timer and the idle investigation together never use more looks
+        than the budget the references are given."""
+        from ...webcortex import autonomy, scheduler, state
+        cap = int(state.get_config(self.db).daily_autonomous.get("tasks", 0))
+        for k in range(cap + 1):          # each queued decision adds one task to the count: at most `cap` rounds
+            if scheduler.autonomous_usage(self.db, self.now)["tasks"] >= cap:
+                self.idle["stopped_by_allowance"] = self.idle.get("stopped_by_allowance", 0) + 1
+                return
+            out = autonomy.idle(self.db, self.now, worker=f"cycles-idle-{self.cycle}-{k}")
+            self.idle[out["action"]] = self.idle.get(out["action"], 0) + 1
+            if out["action"] != "queued":
+                return
+            self.run_queued()
+        raise RuntimeError("an idle investigation was queued that the day's task count did not see")
 
     def _order_picks(self) -> dict:
         """Re-check picks recorded with a recheck_order (ADR-060): all, those taken by the rotation floor (overdue),
@@ -338,6 +397,21 @@ class Run:
                                "json_extract(detail,'$.autonomy.recheck.order') IS NOT NULL").fetchall()
         return {"recheck_order_picks": len(rows), "recheck_overdue_picks": sum(1 for o, _ in rows if o),
                 "recheck_seen_picks": sum(1 for _, n in rows if n)}
+
+    def _idle_activity(self) -> dict:
+        """What the idle investigation did (Wave 3 lane V): its decisions by action, its tasks by candidate kind, its
+        looks at subjects that held nothing (uncovered) and those after which the subject held an item."""
+        idle = [lk for lk in self.looks if lk["kind"] == "idle"]
+        kinds = {}
+        for lk in idle:
+            kinds[lk["candidate"]] = kinds.get(lk["candidate"], 0) + 1
+        return {"idle_tasks": self.tasks["idle"], "idle_decisions": sum(v for k, v in self.idle.items()
+                                                                        if k != "stopped_by_allowance"),
+                "idle_actions": dict(self.idle), "idle_by_candidate": kinds,
+                "idle_uncovered_looks": sum(1 for lk in idle if lk["before"] is None),
+                "idle_covered": sum(1 for lk in idle if lk["before"] is None and lk["after"] is not None),
+                "idle_covered_true": sum(1 for lk in idle if lk["before"] is None and lk["after"] == lk["truth"]),
+                "idle_stopped_by_allowance": self.idle.get("stopped_by_allowance", 0)}
 
     def _newest_version(self, name):
         """The newest held item's minor version (None: nothing held; -1: a version that is not 1.x), as score()."""
@@ -397,8 +471,12 @@ class Run:
         self.plant_self()
         for name in sorted(n for n, s in self.names.items() if s["born"] == self.cycle):
             self.owner_research(name, self.now)
+        if IDLE_FIRST in self.mechanisms:
+            self.idle_investigations()
         report = scheduler.tick(self.db, self.now, None, queue=True)
         self.run_queued()
+        if IDLE in self.mechanisms:
+            self.idle_investigations()
         self.score(report)
 
     def start(self):
@@ -408,6 +486,12 @@ class Run:
             autonomy.enable(self.db, T0 - 30 * DAY)
         cfg = state.get_config(self.db)
         self.config = {k: getattr(cfg, k) for k in READ_BACK}
+        # Wave 3 lane V: what the idle investigation runs under (the recorded enable and the autonomy policy)
+        pol = autonomy.policy(self.db)
+        self.config |= {"autonomy_enabled": autonomy.enabled(self.db),
+                        "idle_investigation": "after the pass" if IDLE in self.mechanisms else
+                        "before the pass" if IDLE_FIRST in self.mechanisms else "not run"} | {
+            f"autonomy.{k}": pol[k] for k in ("min_gain", "cooldown", "idle_interval")}
         if "strategy_selection" in self.mechanisms:
             strategies.record(self.db, capability=strategies.CAPABILITY, level=3,
                               change="learning-cycles experiment: in force without the real gate",
@@ -519,7 +603,9 @@ class Run:
                          "recheck_tasks": self.tasks["recheck"], "strategy_rank_calls": self.strategy["calls"],
                          "strategy_rank_changed": self.strategy["changed"],
                          # Wave 3 lane R: re-check picks made under another order, and why (their decision events)
-                         **self._order_picks()},
+                         **self._order_picks(),
+                         # Wave 3 lane V: the idle investigation's decisions, tasks, and the subjects it reached
+                         **self._idle_activity()},
             "launches": list(self.launches), "history": {n: list(h) for n, h in self.history.items()},
             "config": dict(self.config), "allowance": list(self.allowance), "looks": list(self.looks),
         }
@@ -584,7 +670,10 @@ SCALARS = ("mean.accuracy", "mean.coverage", "mean.correct", "final.correct", "c
            "changed_launch_cycles", "changed_held_cycles",
            # Wave 3 lane R (ADR-060): what a re-check order did, and what it changed against lane K's order
            "activity.recheck_order_picks", "activity.recheck_overdue_picks", "activity.recheck_seen_picks",
-           "order_changed_launch_cycles", "order_changed_held_cycles")
+           "order_changed_launch_cycles", "order_changed_held_cycles",
+           # Wave 3 lane V (ADR-062): what the idle investigation did
+           "activity.idle_tasks", "activity.idle_decisions", "activity.idle_uncovered_looks", "activity.idle_covered",
+           "activity.idle_covered_true", "activity.idle_stopped_by_allowance")
 
 
 def _get(d, dotted):
@@ -1091,5 +1180,69 @@ def order_verdicts(result) -> dict:
             verdict = "no evidence"
         out[config] = {"verdict": verdict, "checks": {"a_beats_spread": a, "b_ablation_removes": b,
                                                       "c_retention": retention, "d_safety": safety},
+                       "per_world": per_world}
+    return out
+
+
+# ---- Wave 3 lane V: the verdict on the idle investigation, written before the held-out run (ADR-062) -----------------
+#
+# The same PRIMARY and spread, for each configuration of idle_configurations() with the idle investigation against the
+# same configuration without it (IDLE_PAIRS: `idle` and `idle-first` against `baseline`, `shipped+idle` against
+# `shipped`), paired by world and seed, on each held-out world:
+#   (a) beats:      the paired gain > the sd of the configuration without it, in every world
+#   (c) retention:  subjects lost plus regressed not above the configuration without it, in every world and seed
+#   (d) safety:     own-output versions admitted, wrong-story versions admitted and one-origin confidence rises each
+#                   not above the configuration without it, in every world and seed (a gain that comes with more
+#                   wrongly admitted content is not a gain); the counts themselves are reported beside the gain
+# gain = (a), (c), (d); revise = not gain, (c), (d), and the gain positive in every world with at least 3 paired seeds
+# better, or (a) in some world; "not exercised" when the idle investigation queued no task in any run; else "no
+# evidence". Descriptive, not part of the rule: the paired change of coverage and of the decomposition's `uncovered`
+# part against the blind round-robin, and the idle investigation's activity.
+IDLE_PAIRS = {"idle": "baseline", "idle-first": "baseline", "shipped+idle": "shipped"}
+
+
+def idle_verdicts(result) -> dict:
+    """{configuration: {"verdict", "against", "checks", "per_world"}} under the rule above (a run_split result over
+    idle_configurations())."""
+    confs = result["configurations"]
+    out = {}
+    for config, against in IDLE_PAIRS.items():
+        if config not in confs or against not in confs:
+            continue
+        per_world, retention, safety, tasks = {}, True, True, []
+        for w, mine in confs[config]["worlds"].items():
+            rows, base = mine["per_seed"], confs[against]["worlds"][w]["per_seed"]
+            diffs = [r[PRIMARY] - b[PRIMARY] for r, b in zip(rows, base)]
+            spread = confs[against]["worlds"][w]["spread"][PRIMARY]["sd"] or 0.0
+            gain = sum(diffs) / len(diffs)
+            retention &= all(sum(r[k] or 0 for k in LOSSES) <= sum(b[k] or 0 for k in LOSSES)
+                             for r, b in zip(rows, base))
+            safety &= all((r[k] or 0) <= (b[k] or 0) for r, b in zip(rows, base) for k in SAFETY)
+            tasks += [r["activity.idle_tasks"] or 0 for r in rows]
+            uncovered = [mine["decomposition"]["round_robin"]["uncovered"],
+                         confs[against]["worlds"][w]["decomposition"]["round_robin"]["uncovered"]]
+            per_world[w] = {"gain": gain, "against_sd": spread, "beats": gain > spread, "paired": diffs,
+                            "better_seeds": sum(1 for d in diffs if d > 1e-12),
+                            "worse_seeds": sum(1 for d in diffs if d < -1e-12),
+                            "coverage_change": sum(r["mean.coverage"] - b["mean.coverage"]
+                                                   for r, b in zip(rows, base)) / len(rows),
+                            "uncovered_part_change": uncovered[0] - uncovered[1],
+                            "safety": {k: sum(r[k] or 0 for r in rows) for k in SAFETY},
+                            "against_safety": {k: sum(b[k] or 0 for b in base) for k in SAFETY},
+                            "retention_lost_or_regressed": sum(r[k] or 0 for r in rows for k in LOSSES),
+                            "idle_tasks": [r["activity.idle_tasks"] for r in rows]}
+        names = list(per_world)
+        a = all(per_world[w]["beats"] for w in names)
+        if a and retention and safety:
+            verdict = "gain"
+        elif retention and safety and (all(per_world[w]["gain"] > 0 and per_world[w]["better_seeds"] >= 3
+                                           for w in names) or any(per_world[w]["beats"] for w in names)):
+            verdict = "revise"
+        elif not any(tasks):
+            verdict = "not exercised"
+        else:
+            verdict = "no evidence"
+        out[config] = {"verdict": verdict, "against": against,
+                       "checks": {"a_beats_spread": a, "c_retention": retention, "d_safety": safety},
                        "per_world": per_world}
     return out
