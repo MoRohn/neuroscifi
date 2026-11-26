@@ -243,6 +243,12 @@ SITES = {
         (1, "owner", "`nsf acceptance`: the load generator of the loaded scenario"),
     ("neuroscifi.acceptance.scenarios:_loaded_loop", "loop"):
         (1, "owner", "`nsf acceptance`: waits, bounded, for that load generator"),
+    ("neuroscifi.acceptance.omni.isolate:run_isolated", "process"):
+        (1, "owner", "`scripts/bench_omni.py`: one hostile benchmark task in a child process, so a crash is a result"),
+    ("neuroscifi.acceptance.omni.subject:ProbeSubject.answer", "loop"):
+        (1, "owner", "the OMNIMIND benchmark's own probe subject (tests of the isolation: a deliberate hang)"),
+    ("neuroscifi.acceptance.omni:run_in_process", "timer"):
+        (2, "owner", "`scripts/bench_omni.py`: the time bound on one benchmark task run in this process"),
     ("neuroscifi.acceptance.cognition:environment", "process"):
         (2, "owner", "the cognitive benchmark's environment record (measurement only; MEASUREMENT_ONLY)"),
 }
