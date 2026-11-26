@@ -201,6 +201,12 @@ def idle_configurations() -> dict:
 
 EXTRA |= {k: v for k, v in idle_configurations().items() if k not in ("reference:no-loop", "baseline")}
 
+# Wave 4 lane S (ADR-066): the derivation rule on the shipped defaults (its pair: "shipped")
+WAVE4_S_DERIVATION = "+wave4-s-derivation"
+ON[WAVE4_S_DERIVATION] = {"source_derivation": True}
+EXTRA["wave4-s:derivation"] = frozenset({SHIPPED, WAVE4_S_DERIVATION})
+READ_BACK = READ_BACK + ("source_derivation",)
+
 
 def configurations() -> dict:
     """{name: set of lane K mechanisms on}: the no-loop reference, baseline, each alone, all, all without one."""
