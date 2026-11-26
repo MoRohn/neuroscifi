@@ -471,7 +471,10 @@ SCALARS = ("mean.accuracy", "mean.coverage", "mean.correct", "final.correct", "c
            "error_persistence_cycles", "error_persistence_max", "errors_open_at_end", "retention.share",
            "retention.lost", "retention.regressed", "calibration.brier", "calibration.constant_reference",
            "self_admitted", "wire_admitted", "one_origin_rises", "pages", "wall_seconds", "file_bytes_end",
-           "file_bytes_growth_per_cycle", "open_marks_max", "open_marks_end", "reflections", "abandoned")
+           "file_bytes_growth_per_cycle", "open_marks_max", "open_marks_end", "reflections", "abandoned",
+           # the counts behind the shares above
+           "changes", "caught", "error_episodes", "retention.base", "retention.forgotten_by_owner", "calibration.n",
+           "one_origin_looks")
 
 
 def _get(d, dotted):
