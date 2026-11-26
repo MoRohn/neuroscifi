@@ -82,7 +82,7 @@ _WKT = re.compile(rb"\s*(SRID=\d+;\s*)?(POINT|LINESTRING|POLYGON|MULTIPOINT|MULT
                   rb"GEOMETRYCOLLECTION|TRIANGLE|TIN|POLYHEDRALSURFACE)\s*(Z|M|ZM)?\s*(\(|EMPTY)", re.I)
 _OBJ_KEYS = {b"v", b"vt", b"vn", b"vp", b"f", b"l", b"p", b"o", b"g", b"s", b"mtllib", b"usemtl", b"#", b"cstype",
              b"deg", b"curv", b"surf", b"parm", b"end", b"mg", b"lod"}
-_XML_PROLOG = re.compile(rb"\A(\xef\xbb\xbf)?\s*(<\?.*?\?>\s*|<!--.*?-->\s*|<!DOCTYPE[^>]*>\s*)*<([A-Za-z_][\w.:-]*)",
+_XML_PROLOG = re.compile(rb"\A(\xef\xbb\xbf)?\s*(<\?.*?\?>\s*|<!--.*?-->\s*|<!DOCTYPE[^\[>]*(?:\[.*?\])?\s*>\s*)*<([A-Za-z_][\w.:-]*)",
                          re.S)
 
 
