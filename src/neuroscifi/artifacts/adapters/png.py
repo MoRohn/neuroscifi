@@ -19,7 +19,8 @@ import zlib
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, Reader, inflate, members, need, screen_words
+from ..safe import Deadline
+from ..safe_b2 import Reader, inflate, members, need, screen_words
 from .. import types as T
 from ..types import Decoded, Detected, Limits, Malformed
 from . import Adapter
@@ -242,7 +243,7 @@ class PNGAdapter(Adapter):
     families = ("image",)
 
     def decode(self, data: bytes, detected: Detected, limits: Limits) -> Decoded:
-        deadline = Deadline(limits)
+        deadline = Deadline(limits.max_seconds)
         if data[:8] != SIGNATURE:
             raise Malformed("the PNG signature is missing")
         notes: list[str] = []

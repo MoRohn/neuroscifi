@@ -14,7 +14,8 @@ import struct
 
 import numpy as np
 
-from ..safe_b2 import Deadline, HeaderOnly, Reader, members, need
+from ..safe import Deadline
+from ..safe_b2 import HeaderOnly, Reader, members, need
 from ..types import Decoded, Detected, Limits, Malformed, Raster
 from . import Adapter
 from .png import PNGAdapter, unpack_samples
@@ -83,7 +84,7 @@ def decode_dib(data: bytes, at: int, pixel_at: int | None, detected: Detected, l
                icon: bool = False, notes: list | None = None) -> Raster:
     """A device-independent bitmap whose header starts at `at`. `pixel_at` None: pixels follow the palette.
     `icon`: the height is doubled and an AND mask follows the colour bitmap."""
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     notes = [] if notes is None else notes
     r = Reader(data, "<", at, "the BMP header")
     hsize = r.u32()

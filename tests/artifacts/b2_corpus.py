@@ -58,7 +58,7 @@ def samples() -> dict[str, tuple[str, bytes]]:
     out["mp3"] = ("mp3", bytes(frame) * 3)
     out["flac"] = ("flac", _flac())
     head = b"OpusHead\x01\x01" + struct.pack("<HI", 0, 48000) + b"\x00\x00\x00"
-    out["ogg"] = ("ogg", _ogg_page(1, 0, 0, [head], 2) + _ogg_page(1, 1, 4800, [b"\x00" * 9], 4))
+    out["ogg"] = ("opus", _ogg_page(1, 0, 0, [head], 2) + _ogg_page(1, 1, 4800, [b"\x00" * 9], 4))
     adts = bytes((0xFF, 0xF1, 0x50, 0x80, 0x02, 0x1F, 0xFC)) + b"\x00" * 9
     out["aac"] = ("aac", adts * 4)
     m4a = _mp4(handler=b"soun", codec=b"mp4a").replace(b"isom\x00\x00\x02\x00isomavc1", b"M4A \x00\x00\x02\x00isomM4A ")

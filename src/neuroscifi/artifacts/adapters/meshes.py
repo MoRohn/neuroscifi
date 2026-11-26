@@ -20,7 +20,8 @@ from array import array
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, Reader, count, need, screen_words
+from ..safe import Deadline
+from ..safe_b2 import Reader, count, need, screen_words
 from ..types import Decoded, Detected, Limits, Malformed, Unsupported
 from . import Adapter
 
@@ -64,7 +65,7 @@ def merge_exact(tri_vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def decode_obj(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     verts = array("d")              # x, y, z of each vertex, flat
     tris = array("q")               # fan-triangulated corners, flat
     n_verts = 0
@@ -182,7 +183,7 @@ _VERTEX = re.compile(rb"vertex\s+(" + _FLOAT + rb")\s+(" + _FLOAT + rb")\s+(" + 
 
 
 def _stl_ascii(data, detected, limits):
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     n_vertex = data.count(b"vertex")
     count(n_vertex, limits, "STL vertices")
     need(len(data) * STL_OBJECT_FACTOR, limits, "the ASCII STL parsed into numbers")
@@ -323,7 +324,7 @@ def _ply_ascii(data, at, elements, limits, deadline):
 
 
 def decode_ply(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     fmt, elements, words, at = _ply_header(data, limits)
     if fmt == "ascii":
         body = _ply_ascii(data, at, elements, limits, deadline)
@@ -361,7 +362,7 @@ def decode_ply(data: bytes, detected: Detected, limits: Limits) -> Decoded:
 
 
 def decode_off(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     need(len(data) * OFF_OBJECT_FACTOR, limits, "the OFF text split into lines")
     lines = (ln.split(b"#", 1)[0].split() for ln in io.BytesIO(data))
     lines = (ln for ln in lines if ln)

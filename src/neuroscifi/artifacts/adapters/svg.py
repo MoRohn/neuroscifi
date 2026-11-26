@@ -21,7 +21,8 @@ import re
 
 import numpy as np
 
-from ..safe_b2 import Deadline, count, local, parse_xml, screen_words
+from ..safe import Deadline
+from ..safe_b2 import count, local, parse_xml, screen_words
 from ..types import Decoded, Drawing, Malformed, Refused, Shape
 from . import Adapter
 
@@ -232,7 +233,7 @@ def _external(href: str | None) -> bool:
 
 
 def decode_svg(data: bytes, detected, limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     root = parse_xml(data, limits, "the SVG document")
     if local(root.tag) != "svg":
         raise Malformed("the root element is not svg")

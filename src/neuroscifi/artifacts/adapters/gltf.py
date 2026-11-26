@@ -17,7 +17,8 @@ import json
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, Reader, count, need, screen_words
+from ..safe import Deadline
+from ..safe_b2 import Reader, count, need, screen_words
 from ..types import Decoded, Detected, Edge, GNode, Graph, Limits, Malformed
 from . import Adapter
 
@@ -212,7 +213,7 @@ def _triangles(mode: int, idx: np.ndarray) -> np.ndarray:
 
 
 def decode_gltf_doc(doc: dict, binary: bytes | None, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     notes: list[str] = []
     version = doc["asset"].get("version")
     if not isinstance(version, str) or not version.startswith("2"):

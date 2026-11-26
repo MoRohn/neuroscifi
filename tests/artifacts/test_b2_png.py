@@ -7,12 +7,11 @@ import zlib
 import numpy as np
 import pytest
 
-from b2_fixtures import chunk, png
+from b2_fixtures import chunk, png, b2_registered  # noqa: F401
 from neuroscifi.artifacts import adapters
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters import _b2
 
-_b2.register_all()
 
 
 def _image(h, w, ch, top, seed):

@@ -363,7 +363,7 @@ class FLACAdapter(Adapter):
 
 class OggAdapter(Adapter):
     name = "b2-ogg"
-    formats = ("ogg",)
+    formats = ("ogg", "opus", "vorbis", "ogv")
     families = ("audio",)
 
     def decode(self, data, detected, limits):

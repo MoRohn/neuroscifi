@@ -49,6 +49,15 @@ def register_all() -> list[str]:
     return done
 
 
+def unregister_all() -> None:
+    """Undo `register_all()` (tests use it so that B2 does not change other lanes' tests)."""
+    from .. import detect_b2
+    from . import unregister
+    for adapter in adapters():
+        unregister(adapter.name)
+    detect_b2.uninstall()
+
+
 def content_shape(rep) -> T.ContentShape:
     if isinstance(rep, T.Mesh):
         return T._shape(("solid",) if rep.closed() else ("surface",), n_items=len(rep.vertices), has_space=3,
@@ -70,4 +79,4 @@ def content_shape(rep) -> T.ContentShape:
     return rep.shape()
 
 
-__all__ = ["MODULES", "adapters", "content_shape", "register_all"]
+__all__ = ["MODULES", "adapters", "content_shape", "register_all", "unregister_all"]

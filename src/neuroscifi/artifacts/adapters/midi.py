@@ -16,7 +16,8 @@ from __future__ import annotations
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, Reader, count, members, need, screen_words
+from ..safe import Deadline
+from ..safe_b2 import Reader, count, members, need, screen_words
 from ..types import Column, Decoded, Malformed, Table
 from . import Adapter
 
@@ -101,7 +102,7 @@ def _track_events(body: bytes, limits, deadline, counter):
 
 
 def decode_midi_bytes(data: bytes, limits) -> tuple[Table, list[str], list[str]]:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     r = Reader(data, ">", 0, "the MIDI file")
     if r.take(4) != b"MThd":
         raise Malformed("the MIDI header chunk is missing")

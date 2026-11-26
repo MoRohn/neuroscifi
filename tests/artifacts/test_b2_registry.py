@@ -7,15 +7,16 @@ import zlib
 
 import pytest
 
+from b2_fixtures import b2_registered  # noqa: F401
+
 from b2_corpus import samples
 from neuroscifi.artifacts import adapters, detect
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters import _b2
 from neuroscifi.artifacts.safe_b2 import HeaderOnly
 
-_b2.register_all()
 SAMPLES = samples()
-HEADER_ONLY = {"jpeg", "webp", "heic", "psd", "mp3", "flac", "ogg", "aac", "m4a"}
+HEADER_ONLY = {"jpeg", "webp", "heic", "psd", "mp3", "flac", "opus", "aac", "m4a"}
 
 
 def test_register_all_is_idempotent_and_catalogued():

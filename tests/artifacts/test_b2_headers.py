@@ -7,12 +7,13 @@ import zlib
 import numpy as np
 import pytest
 
+from b2_fixtures import b2_registered  # noqa: F401
+
 from neuroscifi.artifacts import adapters
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters import _b2, video_containers
 from neuroscifi.artifacts.safe_b2 import HeaderOnly
 
-_b2.register_all()
 
 
 def _header_only(data, **kw):

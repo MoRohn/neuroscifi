@@ -13,7 +13,7 @@ GPX and KML are WGS 84 by their specifications ("OGC:CRS84"); WKT has none unles
 
 Bounds: coordinates counted against `max_elements`, features against `max_elements`, nesting of GeometryCollections
 to 8; the memory Python's JSON and XML parsers need (measured factors x the input size) is checked against
-`max_decoded_bytes` before parsing; XML through the safe parser; KMZ through the bounded zip reader. A GeoJSON
+`max_decoded_bytes` before parsing; XML through the safe parser; KMZ through lane K's `SafeZip`. A GeoJSON
 coordinate given as true/false is read as 1/0 (numpy's conversion), not refused.
 """
 from __future__ import annotations
@@ -25,7 +25,8 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from ..safe_b2 import Deadline, count, local, need, parse_xml, screen_words, zip_directory, zip_read
+from ..safe import Deadline, SafeZip
+from ..safe_b2 import count, local, need, parse_xml, screen_words
 from ..types import Decoded, Feature, Features, Malformed, Refused
 from . import Adapter
 
@@ -59,7 +60,7 @@ def _array(positions: list) -> np.ndarray:
 
 class _Budget:
     def __init__(self, limits):
-        self.limits, self.n, self.deadline = limits, 0, Deadline(limits)
+        self.limits, self.n, self.deadline = limits, 0, Deadline(limits.max_seconds)
 
     def add(self, n):
         self.n += n
@@ -343,14 +344,13 @@ def decode_kml(data: bytes, limits):
 
 
 def decode_kmz(data: bytes, limits):
-    deadline = Deadline(limits)
-    entries = zip_directory(data, limits)
-    kml = [m for m in entries if m.name.lower().endswith(".kml")]
+    archive = SafeZip(data, limits)
+    kml = [e for e in archive.entries if e.name.lower().endswith(".kml") and not e.is_dir]
     if not kml:
         raise Malformed("the KMZ archive holds no .kml document")
-    main = next((m for m in kml if m.name.lower() == "doc.kml"), kml[0])
-    features, crs, notes = decode_kml(zip_read(data, main, limits, deadline=deadline), limits)
-    others = [m.name for m in entries if m is not main]
+    main = next((e for e in kml if e.name.lower() == "doc.kml"), kml[0])
+    features, crs, notes = decode_kml(archive.read(main.name), limits)
+    others = [e.name for e in archive.entries if e is not main]
     if others:
         notes.append(f"{len(others)} other member(s) of the KMZ (images, further documents) not read")
     return features, crs, notes

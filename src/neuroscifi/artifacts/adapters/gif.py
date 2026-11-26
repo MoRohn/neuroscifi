@@ -15,7 +15,8 @@ from __future__ import annotations
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, Reader, members, need, screen_words
+from ..safe import Deadline
+from ..safe_b2 import Reader, members, need, screen_words
 from ..types import Decoded, Detected, Limits, Malformed, Raster
 from . import Adapter
 
@@ -87,7 +88,7 @@ def _deinterlace(idx: np.ndarray) -> np.ndarray:
 
 
 def decode_gif(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     r = Reader(data, "<", 0, "the GIF file")
     if r.take(6) not in (b"GIF87a", b"GIF89a"):
         raise Malformed("the GIF signature is missing")

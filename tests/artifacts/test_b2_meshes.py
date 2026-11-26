@@ -7,11 +7,12 @@ import struct
 import numpy as np
 import pytest
 
+from b2_fixtures import b2_registered  # noqa: F401
+
 from neuroscifi.artifacts import adapters, measure_mesh
 from neuroscifi.artifacts import types as T
-from neuroscifi.artifacts.adapters import _b2, gltf
+from neuroscifi.artifacts.adapters import _b2, gltf, meshes
 
-_b2.register_all()
 
 # unit cube, outward-facing quads (counter-clockwise seen from outside)
 CUBE_V = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)]
@@ -52,8 +53,9 @@ def test_obj_hostile_indices():
         adapters.decode(b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 4\n")
     with pytest.raises(T.Malformed):
         adapters.decode(b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 0 1 2\n")
-    with pytest.raises(T.Malformed):
-        adapters.decode(b"v 0 0 0\nv 1 0 nan\nv 0 1 0\nf 1 2 3\n")
+    det = T.Detected("mesh", "obj", "model/obj", "structure", None, ())
+    with pytest.raises(T.Malformed):                      # 'nan' is not OBJ grammar: detection says text
+        meshes.decode_obj(b"v 0 0 0\nv 1 0 nan\nv 0 1 0\nf 1 2 3\n", det, T.Limits())
     with pytest.raises(T.Refused):
         adapters.decode(b"v 0 0 0\n" * 50 + b"f 1 2 3\n", limits=T.Limits(max_elements=10))
 

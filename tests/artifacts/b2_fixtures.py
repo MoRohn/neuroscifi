@@ -6,6 +6,18 @@ from __future__ import annotations
 import struct
 import zlib
 
+import pytest
+
+
+@pytest.fixture(autouse=True, scope="module")
+def b2_registered():
+    """Register lane B2's adapters and detection for one test module, and remove them afterwards, so that other
+    lanes' tests in the same session see the registry as they expect."""
+    from neuroscifi.artifacts.adapters import _b2
+    _b2.register_all()
+    yield
+    _b2.unregister_all()
+
 # ---------------------------------------------------------------------------------------------------------------- PNG
 
 

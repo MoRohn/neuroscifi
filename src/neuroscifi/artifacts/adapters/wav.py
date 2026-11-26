@@ -18,7 +18,8 @@ import struct
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, HeaderOnly, Reader, members, need, screen_words
+from ..safe import Deadline
+from ..safe_b2 import HeaderOnly, Reader, members, need, screen_words
 from ..types import Decoded, Detected, Limits, Malformed
 from . import Adapter
 
@@ -115,7 +116,7 @@ def _facts(fmt, **kw) -> dict:
 
 
 def _decode_wav(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     if data[:4] == b"RIFX":
         endian = ">"
     elif data[:4] == b"RIFF":
@@ -243,7 +244,7 @@ AIFF_TEXT = {b"NAME": "title", b"AUTH": "author", b"(c) ": "copyright", b"ANNO":
 
 
 def _decode_aiff(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     if data[:4] != b"FORM" or data[8:12] not in (b"AIFF", b"AIFC"):
         raise Malformed("the IFF header is not AIFF or AIFC")
     aifc = data[8:12] == b"AIFC"

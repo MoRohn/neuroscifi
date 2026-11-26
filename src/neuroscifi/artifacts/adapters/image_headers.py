@@ -25,7 +25,8 @@ import struct
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, HeaderOnly, Reader, inflate, local, need, parse_xml, screen_words
+from ..safe import Deadline
+from ..safe_b2 import HeaderOnly, Reader, inflate, local, need, parse_xml, screen_words
 from ..types import Decoded, Detected, Limits, Malformed, Raster
 from . import Adapter
 from .png import unpack_samples
@@ -135,7 +136,7 @@ def _packbits(src: bytes, max_out: int) -> bytes:
 
 
 def decode_tiff(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     e, ifds = read_ifds(data)
     if not ifds:
         raise Malformed("the TIFF file has no image directory")
@@ -459,7 +460,7 @@ def _dicom_elements(data: bytes, pos: int, end: int, endian: str, explicit: bool
 
 
 def decode_dicom(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     if data[128:132] != b"DICM":
         raise Malformed("the DICOM prefix is missing")
     pos, syntax = 132, None

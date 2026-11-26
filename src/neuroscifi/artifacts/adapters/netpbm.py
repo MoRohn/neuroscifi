@@ -15,7 +15,8 @@ import struct
 
 import numpy as np
 
-from ..safe_b2 import Deadline, need
+from ..safe import Deadline
+from ..safe_b2 import need
 from ..types import Decoded, Detected, Limits, Malformed, Raster
 from . import Adapter
 
@@ -58,7 +59,7 @@ def _mode(depth: int, alpha: bool) -> str:
 
 
 def decode_netpbm(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     if len(data) < 3 or data[0:1] != b"P" or data[1:2] not in b"1234567":
         raise Malformed("the NetPBM magic is missing")
     kind = int(data[1:2])
@@ -174,7 +175,7 @@ def decode_farbfeld(data: bytes, detected: Detected, limits: Limits) -> Decoded:
 
 
 def decode_qoi(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     if data[:4] != b"qoif" or len(data) < 14 + 8:
         raise Malformed("the QOI header is missing")
     w, h, channels, colourspace = struct.unpack(">IIBB", data[4:14])

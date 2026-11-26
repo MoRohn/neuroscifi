@@ -9,7 +9,7 @@ it), in Fortran order when the header says so.
 A 1-D or 2-D array of numbers, booleans, strings or datetimes becomes a `Table` (columns `value`, or `c0`, `c1`,
 ...); anything else (0-D, 3-D and more, complex, more than MAX_COLUMNS columns) becomes an `Opaque` describing its
 shape, dtype and value range, with no element listed. `.npz`: a `Bundle` whose members are the arrays; member
-sizes, the deflate ratio, the CRC and the running total of decoded bytes are checked.
+sizes, the deflate ratio, the CRC and the running total of decoded bytes are checked (lane K's `SafeZip`).
 """
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ import re
 
 import numpy as np
 
-from ..safe_b2 import Deadline, need, zip_directory, zip_read
+from ..safe import SafeZip
+from ..safe_b2 import need
 from ..types import Bundle, Column, Decoded, Detected, Limits, Malformed, Member, Opaque, Refused, Table, Unsupported
 from . import Adapter
 
@@ -147,24 +148,22 @@ class NPZAdapter(Adapter):
     families = ("array",)
 
     def decode(self, data, detected, limits):
-        deadline = Deadline(limits)
-        used = 0
+        archive = SafeZip(data, limits)            # bounded: members, sizes, ratio, CRC, the shared budget
         out, notes = [], []
-        for m in zip_directory(data, limits):
-            deadline.check("reading .npz members")
-            if not m.name.endswith(".npy"):
-                out.append(Member(m.name, m.size, Detected("unknown", "unknown", "application/octet-stream", "none",
-                                                           "zip", ("not a .npy member",)), None,
+        for entry in archive.entries:
+            archive.deadline.check("reading .npz members")
+            if entry.is_dir or not entry.name.endswith(".npy"):
+                out.append(Member(entry.name, entry.size, Detected("unknown", "unknown", "application/octet-stream",
+                                                                   "none", "zip", ("not a .npy member",)), None,
                                   "not an array; not read"))
                 continue
-            raw = zip_read(data, m, limits, deadline=deadline, budget=limits.max_decoded_bytes - used)
-            used += len(raw)
-            arr = load_npy(raw, Limits(max_decoded_bytes=max(0, limits.max_decoded_bytes - used)))
-            used += arr.nbytes
+            raw = archive.read(entry.name)
+            arr = load_npy(raw, Limits(max_decoded_bytes=archive.budget.left()))
+            archive.budget.take(arr.nbytes)
             rep, member_notes = represent(arr, len(raw))
             det = Detected("array", "npy", "application/x-npy", "signature", "zip",
                            ("the member starts with the NumPy array magic",))
-            out.append(Member(m.name, m.size, det, rep, "; ".join(member_notes)))
+            out.append(Member(entry.name, entry.size, det, rep, "; ".join(member_notes)))
         if not out:
             notes.append("the archive holds no members")
         return Decoded(detected, Bundle(tuple(out)), tuple(notes), False)

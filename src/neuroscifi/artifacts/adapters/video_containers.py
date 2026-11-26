@@ -17,7 +17,8 @@ import struct
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, HeaderOnly, Reader, members, screen_words
+from ..safe import Deadline
+from ..safe_b2 import HeaderOnly, Reader, members, screen_words
 from ..types import Column, Decoded, Limits, Malformed, Node, Table, Tree
 from . import Adapter
 
@@ -183,7 +184,7 @@ def _iso_words(data, boxes) -> list[str]:
 
 def read_iso(data: bytes, limits: Limits) -> dict:
     """Facts of an ISO base media file: brands, duration, tracks, words, the box list."""
-    deadline = Deadline(limits)
+    deadline = Deadline(limits.max_seconds)
     state = {"n": 0, "cut": False}
     boxes = iso_boxes(data, 0, len(data), 0, state)
     deadline.check("reading ISO boxes")
@@ -534,7 +535,7 @@ def audio_only_iso(info: dict) -> bool:
 
 class ISOAdapter(Adapter):
     name = "b2-isobmff"
-    formats = ("mp4", "mov")
+    formats = ("mp4", "mov", "3gp")
     families = ("video",)
 
     def decode(self, data, detected, limits):

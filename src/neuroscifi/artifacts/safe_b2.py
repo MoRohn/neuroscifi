@@ -1,49 +1,31 @@
-"""Bounded helpers for lane B2's decoders (images, sound, containers, meshes, maps, arrays).
+"""Helpers of lane B2's decoders that lane K's `artifacts/safe.py` does not provide (the rest comes from there:
+`Deadline`, `SafeZip`, `parse_xml`, `decompress`).
 
-Every input is hostile until proven otherwise (COMMON "Untrusted bytes"):
-
-- `Deadline(limits)`: the cooperative wall-clock check of `Limits.max_seconds`.
-- `need(n, limits, what)`: an allocation of `n` bytes is checked against `Limits.max_decoded_bytes` BEFORE it is made.
-- `inflate(data, max_out, ...)`: zlib/deflate that refuses output past a declared size (and, when asked, past
-  `Limits.max_ratio` times its input).
+Kept here, and why:
+- `inflate(data, max_out, ...)`: zlib/deflate refused as soon as the output passes the size the format's own header
+  implies (PNG image data, TIFF strips, PNG text chunks). That is stricter than `safe.decompress`, whose cap is a
+  ratio with a 1 MiB floor; with `complete=True` a stream missing its end marker/Adler-32 is Malformed.
 - `Reader`: a bounded struct reader; reading past the end is `Malformed`, never an IndexError.
-- `parse_xml(data, limits)`: expat that refuses any DOCTYPE, entity declaration or external entity, and bounds the
-  number of elements (`max_elements`) and their nesting.
-- `zip_members(data, limits)`: a bounded reader of a zip file held in memory (stored and deflate members only;
-  member count, sizes, ratio and CRC checked; names are labels, never paths that are opened).
-- `HeaderOnly`: the `Unsupported` raised when a format was identified and its header read but its content cannot be
-  decoded here; it carries the facts that were established (`facts`) and an `Opaque` stating them.
+- `need` / `count` / `members`: one-shot checks of a declared size, element count or member count BEFORE the
+  allocation (`safe.Budget` is a running total; both are used).
+- `parse_xml(data, limits)`: `safe.parse_xml` preceded by a check of the memory ElementTree will need
+  (XML_OBJECT_FACTOR x the input, measured) against `max_decoded_bytes`.
+- `HeaderOnly`: the `Unsupported` raised when a format was identified and its header read but its content cannot
+  be decoded here; it carries the facts (`facts`), the plain-text metadata (`words`) and an `Opaque` stating them.
 - `screen_words(text)`: a note when an artifact's own words hold phrases addressed to an AI agent
   (`webcortex.safety.scan_injection`); the words stay untrusted either way.
 
-Standard library and numpy only. The main session reconciles duplicates with lane K's `safe.py` at merge.
+Standard library and numpy only.
 """
 from __future__ import annotations
 
 import struct
-import time
-import xml.parsers.expat as expat
 import zlib
-from dataclasses import dataclass
 from xml.etree import ElementTree
 
 from .types import Limits, Malformed, Opaque, Refused, Unsupported
 
-XML_MAX_DEPTH = 256
 XML_OBJECT_FACTOR = 11      # measured 9.1-9.9: ElementTree bytes per byte of element-dense XML (SVG, GPX)
-
-
-class Deadline:
-    """`check()` raises `Refused(reason="timeout")` once `limits.max_seconds` have passed since construction."""
-
-    def __init__(self, limits: Limits):
-        self.limits = limits
-        self.end = time.monotonic() + float(limits.max_seconds)
-
-    def check(self, where: str = "decoding") -> None:
-        if time.monotonic() > self.end:
-            raise Refused(f"{where} took longer than {self.limits.max_seconds:g} s", rule="max_seconds",
-                          reason="timeout")
 
 
 def need(n: int, limits: Limits, what: str) -> int:
@@ -77,7 +59,7 @@ def members(n: int, limits: Limits, what: str) -> int:
 
 
 def inflate(data: bytes, max_out: int, *, wbits: int = 15, what: str = "a compressed stream",
-            limits: Limits | None = None, ratio: bool = False, deadline: Deadline | None = None,
+            limits: Limits | None = None, ratio: bool = False, deadline=None,
             complete: bool = False) -> bytes:
     """Decompress `data`, refusing as soon as the output would exceed `max_out` bytes (the declared size, which has
     already been checked against the budget). With `ratio=True` the output is also refused past
@@ -166,135 +148,17 @@ class Reader:
         return self.unpack("Q")[0]
 
 
-class _XMLRefused(Exception):
-    pass
-
-
 def parse_xml(data: bytes, limits: Limits, what: str = "the XML document") -> ElementTree.Element:
-    """ElementTree root of an untrusted XML document. Refused: DOCTYPE, entity declarations, external entities,
-    more than `limits.max_elements` elements, nesting deeper than XML_MAX_DEPTH, a document whose parsed tree
-    would need more than `max_decoded_bytes` (XML_OBJECT_FACTOR x its size). Malformed: syntax errors.
-    Namespaced tags are '{uri}local'."""
-    data = bytes(data)
-    if not data.strip():
-        raise Malformed(f"{what} is empty")
+    """`safe.parse_xml` (DTDs and entities refused, elements, depth and text bounded), after refusing a document
+    whose parsed tree would need more than `max_decoded_bytes` (XML_OBJECT_FACTOR x its size)."""
+    from .safe import parse_xml as _parse_xml
     need(len(data) * XML_OBJECT_FACTOR, limits, f"{what} parsed into elements")
-    builder = ElementTree.TreeBuilder()
-    parser = expat.ParserCreate(namespace_separator="}")
-    state = {"n": 0, "depth": 0}
-
-    def refuse(*_args):
-        raise _XMLRefused("dtd")
-
-    def name(raw):
-        return "{" + raw if "}" in raw else raw
-
-    def start(tag, attrs):
-        state["n"] += 1
-        state["depth"] += 1
-        if state["n"] > limits.max_elements:
-            raise _XMLRefused("elements")
-        if state["depth"] > XML_MAX_DEPTH:
-            raise _XMLRefused("depth")
-        builder.start(name(tag), {name(k): v for k, v in attrs.items()})
-
-    def end(tag):
-        state["depth"] -= 1
-        builder.end(name(tag))
-
-    parser.StartDoctypeDeclHandler = refuse
-    parser.EntityDeclHandler = refuse
-    parser.UnparsedEntityDeclHandler = refuse
-    parser.ExternalEntityRefHandler = refuse
-    parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
-    parser.buffer_text = True
-    parser.StartElementHandler = start
-    parser.EndElementHandler = end
-    parser.CharacterDataHandler = builder.data
-    try:
-        parser.Parse(data, True)
-        return builder.close()
-    except _XMLRefused as error:
-        rule = str(error)
-        if rule == "dtd":
-            raise Refused(f"{what} has a DOCTYPE or entity declaration, which is never processed",
-                          rule="xml_dtd") from None
-        if rule == "depth":
-            raise Refused(f"{what} nests deeper than {XML_MAX_DEPTH} elements", rule="max_depth") from None
-        raise Refused(f"{what} has more than {limits.max_elements} elements", rule="max_elements",
-                      reason="too_large") from None
-    except expat.ExpatError as error:
-        raise Malformed(f"{what} is malformed XML ({expat.ErrorString(error.code)})") from None
+    return _parse_xml(data, limits)
 
 
 def local(tag: str) -> str:
     """The local part of an ElementTree tag ('{uri}svg' -> 'svg')."""
     return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
-
-
-@dataclass(frozen=True)
-class ZipMember:
-    name: str
-    size: int            # uncompressed, as declared
-    compressed: int
-    method: int
-    crc: int
-    offset: int          # of the local header
-
-
-def zip_directory(data: bytes, limits: Limits) -> list[ZipMember]:
-    """The central directory of an in-memory zip file. Zip64, encryption and multi-disk archives are Unsupported."""
-    tail = data[-(65535 + 22):]
-    at = tail.rfind(b"PK\x05\x06")
-    if at < 0:
-        raise Malformed("the zip file has no end-of-directory record")
-    r = Reader(tail, "<", at + 4, "the zip end record")
-    disk, cd_disk, n_here, n_total, cd_size, cd_offset, _ = r.unpack("HHHHIIH")
-    if disk or cd_disk or n_here != n_total:
-        raise Unsupported("multi-disk zip files are not read here", needs=("a multi-disk zip reader",))
-    if n_total == 0xFFFF or cd_offset == 0xFFFFFFFF:
-        raise Unsupported("zip64 archives are not read here", needs=("a zip64 reader",))
-    members(n_total, limits, "zip members")
-    r = Reader(data, "<", cd_offset, "the zip directory")
-    out = []
-    for _ in range(n_total):
-        if r.take(4) != b"PK\x01\x02":
-            raise Malformed("a zip directory entry has the wrong signature")
-        (_, _, flags, method, _, _, crc, csize, usize, nlen, xlen, clen, _, _, _, offset) = r.unpack(
-            "HHHHHHIIIHHHHHII")
-        name = r.take(nlen).decode("utf-8", "replace")
-        r.skip(xlen + clen)
-        if flags & 0x1:
-            raise Unsupported("an encrypted zip member is not read here", needs=("the password and a decrypter",))
-        out.append(ZipMember(name, usize, csize, method, crc, offset))
-    return out
-
-
-def zip_read(data: bytes, member: ZipMember, limits: Limits, *, deadline: Deadline | None = None,
-             budget: int | None = None) -> bytes:
-    """The bytes of one member: its declared size checked against `budget` (default `max_decoded_bytes`) before
-    anything is inflated, the deflate stream bounded by that size and by `max_ratio`, the CRC checked."""
-    need(member.size, limits if budget is None else Limits(max_decoded_bytes=budget), f"zip member {member.name!r}")
-    r = Reader(data, "<", member.offset, "a zip member header")
-    if r.take(4) != b"PK\x03\x04":
-        raise Malformed("a zip member header has the wrong signature")
-    r.skip(22)
-    nlen, xlen = r.unpack("HH")
-    r.skip(nlen + xlen)
-    raw = r.take(member.compressed)
-    if member.method == 0:
-        out = raw
-    elif member.method == 8:
-        out = inflate(raw, member.size, wbits=-15, what=f"zip member {member.name!r}", limits=limits, ratio=True,
-                      deadline=deadline)
-    else:
-        raise Unsupported(f"zip compression method {member.method} is not read here",
-                          needs=(f"a decoder for zip method {member.method}",))
-    if len(out) != member.size:
-        raise Malformed(f"zip member {member.name!r} holds {len(out)} bytes, not the declared {member.size}")
-    if zlib.crc32(out) != member.crc:
-        raise Malformed(f"zip member {member.name!r} fails its CRC check")
-    return out
 
 
 class HeaderOnly(Unsupported):
@@ -323,5 +187,5 @@ def screen_words(text: str) -> tuple[str, ...]:
     return ()
 
 
-__all__ = ["Deadline", "HeaderOnly", "Reader", "XML_MAX_DEPTH", "XML_OBJECT_FACTOR", "ZipMember", "count", "inflate", "local", "members",
-           "need", "parse_xml", "screen_words", "zip_directory", "zip_read"]
+__all__ = ["HeaderOnly", "Reader", "XML_OBJECT_FACTOR", "count", "inflate", "local", "members", "need",
+           "parse_xml", "screen_words"]
