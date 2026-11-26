@@ -324,7 +324,8 @@ class Run:
     def start(self):
         from ...webcortex import autonomy, state, strategies
         state.set_config(self.db, _settings(self.mechanisms, self.spec["budget"]), T0 - 30 * DAY)
-        autonomy.enable(self.db, T0 - 30 * DAY)
+        if NO_LOOP not in self.mechanisms:          # the owner's recorded enable (it also sets `autonomous` on)
+            autonomy.enable(self.db, T0 - 30 * DAY)
         if "strategy_selection" in self.mechanisms:
             strategies.record(self.db, capability=strategies.CAPABILITY, level=3,
                               change="learning-cycles experiment: in force without the real gate",

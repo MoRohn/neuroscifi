@@ -45,6 +45,12 @@ def test_a_three_cycle_run_is_deterministic_and_admits_nothing_self_generated():
         assert one["self_admitted"] == one["wire_admitted"] == one["one_origin_rises"] == 0
 
 
+def test_the_no_loop_reference_runs_no_autonomous_research():
+    out = cycles.run_world(DEV, 41, frozenset({cycles.NO_LOOP}), cycles=4)
+    assert out["tasks"]["owner"] > 0
+    assert out["tasks"]["refresh"] == out["tasks"]["recheck"] == out["tasks"]["curiosity"] == 0
+
+
 def test_nothing_learned_and_still_true_is_lost_over_the_cycles():
     """Directive §7 / brief 4a: over 8 cycles, through consolidation, the owner forgetting one honest outlet and the
     wire's site (cycle 6), re-check marks, the idle re-check and reflections, every subject held correctly at cycle 3
