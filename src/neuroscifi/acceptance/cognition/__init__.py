@@ -75,6 +75,9 @@ REPO = Path(__file__).resolve().parents[4]
 LEDGER_NAME = "docs/quality/evidence/genesis_final_uses.jsonl"
 LEDGER = REPO / LEDGER_NAME
 BASELINE = REPO / "docs" / "quality" / "evidence" / "genesis_baseline.json"
+# withheld.py's SHA-256 as frozen in its own commit (pinned in tests/acceptance/test_cognition_bench.py): a final run
+# compares the file's bytes with it before its ledger line (review3b L-6), as cycles.final does for its worlds.
+WITHHELD_SHA256 = "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
 LABEL = ("cognitive benchmark: synthetic, fictional worlds driven through the real modules; offline (loopback only); "
          "no answer model; simulated, not a measurement of the DGX Spark or of the open web")
 
@@ -305,15 +308,18 @@ def digest(path: Path) -> str:
 def environment() -> dict:
     commit = dirty = None
     try:
-        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
-                                timeout=5).stdout.strip() or None
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, timeout=5)
+        commit = (head.stdout.strip() or None) if head.returncode == 0 else None
         # the ledger of final runs is a record, not code: a run's own line (appended before it scores) must not make
         # the next run of the same look read as dirty (review1c)
-        status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
-                                timeout=5).stdout.splitlines() if commit else None
-        dirty = any(line[3:].strip('"') != LEDGER_NAME for line in status if line.strip()) if commit else None
+        if commit:
+            status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
+                                    timeout=5)
+            # review3 0-1: clean only when git itself said so (a status that fails or times out is not "clean")
+            dirty = True if status.returncode != 0 else any(line[3:].strip('"') != LEDGER_NAME
+                                                            for line in status.stdout.splitlines() if line.strip())
     except (OSError, subprocess.SubprocessError):
-        pass
+        dirty = True if commit else None
     import numpy
     import sqlite3
     return {"git_commit": commit, "git_dirty": dirty, "python": sys.version.split()[0], "numpy": numpy.__version__,
@@ -351,12 +357,8 @@ def run(families=DEFAULT_FAMILIES, *, split: str = "development", mechanism: str
            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "environment": env,
            "split": split, "mechanism": mechanism, "ablate": sorted(ablate), "seeds_override": seeds,
            "quick": quick, "families": {}}
-    if final:
-        entry = {"at": out["generated_at"], "commit": env["git_commit"], "dirty": env["git_dirty"],
-                 "mechanism": mechanism, "ablate": sorted(ablate), "families": families, "note": note}
-        out["final_runs"] = _record_final(LEDGER, entry)
-    from . import retention
-    baseline_values = retention.recorded(baseline_output, quick=quick)
+    # the mechanism and the ablation are resolved before a final run's ledger line (review3b M-2): an unknown
+    # component is refused without spending the look
     makers, fallbacks = {}, {}
     for family in [f for f in families if f != "withheld"] + (
             ["anticipation", "info_value", "counterfactual", "self_model"] if "withheld" in families else []):
@@ -364,6 +366,24 @@ def run(families=DEFAULT_FAMILIES, *, split: str = "development", mechanism: str
         makers[family] = _maker(mech, ablate if not fell_back else frozenset())
         fallbacks[family] = {"used": mech.name, "fell_back_to_baseline": fell_back,
                              "needs_model": mech.needs_model, "reference": mech.reference}
+    if final:
+        # review3 (Q7): a look is taken on a clean, committed tree only, as cycles.final and bench_wave1.final require
+        if env["git_dirty"] is not False or not env["git_commit"]:
+            raise Refused("a final run needs a clean, committed tree (and git must say so), so the ledger line names "
+                          "the code it measured")
+        if not note.strip():                                                        # review3b L-2
+            raise Refused("a final run needs a note (it is the ledger line's reason)")
+        if mechanism != "baseline" and all(f["fell_back_to_baseline"] for f in fallbacks.values()):
+            raise Refused(f"no selected family has a mechanism {mechanism!r} (each would fall back to the baseline): "
+                          "a misspelt name would spend the look on the baseline")             # review3b M-2
+        if digest(Path(withheld.__file__)) != WITHHELD_SHA256:                     # review3b L-6: bytes, hashed only
+            raise Refused(f"withheld.py's SHA-256 is not the pinned {WITHHELD_SHA256[:12]}...: it was changed and "
+                          "is not scored")
+        entry = {"at": out["generated_at"], "commit": env["git_commit"], "dirty": env["git_dirty"],
+                 "mechanism": mechanism, "ablate": sorted(ablate), "families": families, "note": note}
+        out["final_runs"] = _record_final(LEDGER, entry)
+    from . import retention
+    baseline_values = retention.recorded(baseline_output, quick=quick)
     for family in families:
         cost = {"wall_seconds": None, "model_calls": 0, "refused_connections": 0}
         if family == "withheld":

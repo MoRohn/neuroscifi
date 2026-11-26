@@ -235,8 +235,9 @@ def _owner_command(r, *argv):
     return code, out.getvalue(), err.getvalue()
 
 
-def session(r, web):
-    """One owner session through the product, with whatever fault is installed. Returns what each check saw."""
+def session(r, web, stage=None):
+    """One owner session through the product, with whatever fault is installed. Returns what each check saw.
+    `stage` (Wave 3): what makes a Wave 3 entry point reachable, run after the owner's question (WAVE3_ENTRIES)."""
     seen = {"surfaced": [], "shown": []}
     with r.db() as db:              # queued long enough ago that it may run first (claim_next's AUTONOMOUS_DEFER): its
         background = _queue(db, QUESTION, "curiosity", time.time() - scheduler.AUTONOMOUS_DEFER - 60)  # finding
@@ -254,6 +255,11 @@ def session(r, web):
     quotes = [a for a in (done.get("result") or {}).get("answer") or [] if a.get("type") == "quote"]
     seen["answered"] = status == 200 and seen["processed"].get(owner) == "completed" and bool(quotes)
     seen["background_status"] = bg["status"]
+    if stage is not None:
+        try:
+            stage(r, seen)
+        except Exception as exc:                   # noqa: BLE001 - recorded: the staged research failed
+            seen["stage_error"] = repr(exc)
     # the owner first, whatever is queued before
     with r.db() as db:
         now = time.time()
@@ -312,11 +318,11 @@ def session(r, web):
     return seen
 
 
-def check(r, web, monkeypatch, caplog, module, name, mode):
+def check(r, web, monkeypatch, caplog, module, name, mode, stage=None):
     caplog.set_level(logging.WARNING)
     before, errors = _beliefs(r), _errors(r)
     fault = Fault(monkeypatch, module, name, mode)
-    seen = session(r, web)
+    seen = session(r, web, stage)
     after = _beliefs(r)
     visible = {"log": [rec.getMessage() for rec in caplog.records if rec.levelno >= logging.WARNING],
                "error_events": _errors(r) - errors, "self_fields": seen.get("self_errors"),
@@ -340,6 +346,8 @@ def check(r, web, monkeypatch, caplog, module, name, mode):
         problems.append("quiet did not hold the background task / the owner's task was not claimed")
     if not (seen["stop"] and seen["cancel"]):
         problems.append(f"the owner's stop or cancel failed: stop={seen['stop']} cancel={seen['cancel']}")
+    if seen.get("stage_error"):
+        problems.append(f"the staged research failed: {seen['stage_error']}")
     if seen.get("tick_error"):
         problems.append(f"the timer's pass failed: {seen['tick_error']}")
     if fault.calls and not any(visible.values()):
@@ -375,4 +383,106 @@ def test_a_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record(
     logged = [rec.getMessage() for rec in caplog.records if MARKER in rec.getMessage()]
     assert not logged, logged
     stored = [t for t in _stored_text(rig) if MARKER in t]
+    assert not stored, stored
+
+
+# ---- Wave 3 (reconciliation): the settings Wave 3 added, each made to fail with the setting on ------------------------
+#
+# The same owner session and checks, on an individual with every Wave 1 setting on and every Wave 3 setting on:
+# recheck_order (ADR-060) another order than lane K's; attribution_independence and echo_recognition (ADR-061, on by
+# default); supersession "independent" (ADR-061; off by default); origin_grouping "one_way" (ADR-063; off by default;
+# a failing one-way grouping is logged and the default grouping decides); predictive_regulation "shadow" (ADR-058; the
+# third value of a Wave 1 setting, so the Wave 1 predictive gate's own case above keeps it True); the self-description's
+# readiness field (ADR-058, owner scope); the front door of `nsf imagine scm` (ADR-059, a flag of an owner's command,
+# on by default). Where the owner's question cannot reach an entry point, a stage makes it reachable through the
+# product's own code: a refresh whose sources disagree with a held item, read through consolidation (supersession), and
+# the owner's own front-door question (the front door).
+WAVE3_WEB_ON = {"recheck_order": "rate+seen+rotation", "attribution_independence": True, "echo_recognition": True,
+                "supersession": "independent", "origin_grouping": "one_way"}
+WAVE3_INSTANCE_ON = {"predictive_regulation": "shadow"}
+
+
+def _superseding_refresh(r, seen):
+    """A held version from two outlets, then a refresh where three independent outlets state a newer one and one
+    lagging page the held one: with supersession "independent" consolidation reaches the rule (lane S's staging)."""
+    import uat.test_uat_rollback as rollback
+    now = time.time()
+    templates = {"devdesk.example": "By now Quorin {v} is the latest Quorin release.",
+                 "factline.example": "Once again Quorin {v} is the latest Quorin release.",
+                 "dailytrack.example": "As of yesterday, Quorin {v} is the latest Quorin release."}
+    with r.db() as db:
+        rollback._s_look(db, now - 10 * 86_400.0, "Quorin", [
+            ("relnotes.example", "Quorin 1.4.0 is the latest Quorin release."),
+            ("pkgwatch.example", "As of today, Quorin 1.4.0 is the latest Quorin release.")])
+        out = rollback._s_look(db, now - 7 * 86_400.0, "Quorin", [
+            (h, t.format(v="1.5.0")) for h, t in templates.items()] + [
+            ("weekly-builds.example", "As of now, Quorin 1.4.0 is the latest Quorin release.")])
+    seen["shown"].append(json.dumps(out, default=str))
+
+
+FRONT_DOOR_QUESTION = {"graph": {"X": [], "M": ["X"], "Y": ["M"]}, "hidden_common_cause": ["X", "Y"],
+                       "observational_mean": {"X": 0.5, "M": 2.0, "Y": 5.0}, "do": {"X": 1.5}, "ask": "Y",
+                       "observational_covariance": {"X": {"X": 2, "M": 4, "Y": 13}, "M": {"X": 4, "M": 9, "Y": 29},
+                                                    "Y": {"X": 13, "M": 29, "Y": 95}}, "moments": "population"}
+
+
+def _front_door_question(r, seen):
+    """The owner's own `nsf imagine scm FILE` on a question only the front door answers (tests/test_causal_front_door.py
+    `worked`): a failure is returned to the owner, who asked."""
+    path = r.path.parent / "front-door-question.json"
+    path.write_text(json.dumps(FRONT_DOOR_QUESTION), encoding="utf-8")
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with redirect_stdout(out), redirect_stderr(err):
+            code = nsf.main(["imagine", "scm", str(path)])
+    except SystemExit as exc:
+        code = exc.code
+    except Exception as exc:                      # noqa: BLE001 - the owner's command failing is the visible outcome
+        code, err = 1, io.StringIO(repr(exc))
+    seen["shown"].append(out.getvalue())
+    if code:
+        seen["surfaced"].append(err.getvalue() or f"exit {code}")
+
+
+# (setting, module, attribute, stage)
+WAVE3_ENTRIES = (
+    ("recheck_order", "neuroscifi.webcortex.recheck", "_ordered", None),
+    ("attribution_independence", "neuroscifi.webcortex.claims", "attribution_keys", None),
+    ("echo_recognition", "neuroscifi.webcortex.consolidate", "_without_echoes", None),
+    ("supersession", "neuroscifi.webcortex.consolidate", "_rule_replacement", _superseding_refresh),
+    ("origin_grouping", "neuroscifi.webcortex.claims", "_one_way", None),
+    ("predictive_regulation_shadow", "neuroscifi.resources.shadow", "_verdict", None),
+    ("readiness", "neuroscifi.readiness", "report", None),
+    ("front_door", "neuroscifi.causal", "_frontdoor", _front_door_question),
+)
+WAVE3_IDS = [f"{m}:{n}" for m, _, n, _ in WAVE3_ENTRIES]
+
+
+@pytest.fixture
+def rig3(rig, monkeypatch):
+    from neuroscifi.resources import shadow
+    monkeypatch.setattr(shadow, "_failures", {})     # logged at the 1st, 10th, 100th failure of a kind per process
+    with rig.db() as db:
+        now = time.time()
+        state.set_config(db, WAVE3_WEB_ON, now)
+        store.set_config(db, WAVE3_INSTANCE_ON, now)
+    return rig
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("mechanism,module,name,stage", WAVE3_ENTRIES, ids=WAVE3_IDS)
+def test_a_failing_wave3_mechanism_leaves_the_owner_in_control(rig3, web, monkeypatch, caplog, mechanism, module, name,
+                                                               stage, mode):
+    problems, fault, visible = check(rig3, web, monkeypatch, caplog, module, name, mode, stage)
+    assert not problems, (problems, fault.calls, visible)
+
+
+@pytest.mark.parametrize("mechanism,module,name,stage", WAVE3_ENTRIES, ids=WAVE3_IDS)
+def test_a_wave3_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record(rig3, web, monkeypatch, caplog,
+                                                                                      mechanism, module, name, stage):
+    problems, fault, visible = check(rig3, web, monkeypatch, caplog, module, name, "marked", stage)
+    assert not problems, (problems, fault.calls, visible)
+    logged = [rec.getMessage() for rec in caplog.records if MARKER in rec.getMessage()]
+    assert not logged, logged
+    stored = [t for t in _stored_text(rig3) if MARKER in t]
     assert not stored, stored

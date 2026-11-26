@@ -27,7 +27,8 @@ $PY scripts/bench_cognition.py run --family anticipation --split held_out --mech
 $PY scripts/bench_cognition.py run --family anticipation --split held_out --mechanism NAME --ablate trend
 $PY scripts/bench_cognition.py compare docs/quality/evidence/genesis_baseline.json a.json
 $PY scripts/bench_cognition.py run --family withheld --final --mechanism NAME --note "lane I, final"
-$PY scripts/bench_cognition.py baseline --out docs/quality/evidence/genesis_baseline.json   # what was recorded
+$PY scripts/bench_cognition.py baseline --out /outside/genesis_baseline.json   # what was recorded (a withheld look:
+                                                  # since the third fix lane --out must be outside the checkout)
 ```
 
 `compare BEFORE AFTER` prints the headline metrics of each family side by side with which direction is better (a
@@ -178,7 +179,8 @@ Scores (after the Wave 1 review, B3, corrected at its re-review; `scoring.answer
   (exact arithmetic on the equations the question hands over), `belief_what_if` (the truth is the same posterior
   function recomputed on a copy: a plumbing check), `learned_graph` (forecasts and pushes on a graph the individual
   learned: **the substantive group**). The front-door questions are a fourth line, `front_door`: the declines are
-  counted (`front_door_declined`; the engine does no front-door adjustment) and an answer is scored for tolerance.
+  counted (`front_door_declined`; until Wave 3 the engine did no front-door adjustment; since ADR-059 it answers them,
+  0 → 1.000 held-out, `genesis_frontdoor.json`) and an answer is scored for tolerance.
   `summary` pools the groups and is marked so in every result (`summary_is`: "pooled ... reported, not a claim").
 - Kept for comparison with the recorded files under names that cannot be mistaken for the headline:
   `answered_share` (was `coverage`: any answer counts, however wrong), `mean_relative_error`, `interval_coverage`
@@ -243,7 +245,21 @@ Results are reported by origin (`by_origin`, `adversarial.ORIGIN`), never added 
 with every Wave 1 setting off as well) and `restored` (`system_made_content_never_enters_the_journal`: the original
 concern of the redefined case, staged where it applies — a quarantined what-if record's id offered as a reading's
 id, root and sample, and readings labelled inference, simulation or speculation, all refused with the belief, the
-journal and the state version unchanged; it guards lane P's Wave 0 mechanism, so it passes in every regime).
+journal and the state version unchanged; it guards lane P's Wave 0 mechanism, so it passes in every regime),
+`added_wave2` (10), and in Wave 3 `added_wave3_c` (5, lane C's front-door traps) and `added_wave3_s` (16, lane S's
+sources, own text and supersession). On the merged Wave 3 tree `f0a1f09`: 54 cases, 49 scored (5 directive items not
+staged), 49 of 49 pass on both splits (13 / 4 / 1 / 10 / 5 / 16 by origin; `genesis_wave3_combined_checks.json`).
+Lane C's 5 cases were declined by the moments rule before the criterion was reached, so they passed even with the
+criterion broken; since the fix lane (`8a8fce7`) they are staged with `moments: population`, a decline for unstated
+moments does not count, and a test shows them failing with the separation check removed (the expectation text is
+unchanged). Lane S's 16 pass with its two source rules switched on by the cases themselves (`LANE_S_ON`), as their
+expectations were written; at the shipped defaults those rules are off since the fix lane (ADR-061). The second fix
+lane added `added_wave3_fix2` (3: a page naming two outlets as its origins, a copy naming one origin, a page carrying
+two wire credits) and the third fix lane `added_wave3_fix3` (3: copies naming several origins count once); all six
+switch `origin_grouping` "one_way" on themselves (ADR-063, off by default). At the shipped default the defect the
+first three guard against (review3b N1) is open; the family lists it as a "not staged" line marked KNOWN OPEN
+(`known_open_wave3`), never as a pass. On `860db86`: 61 lines, 55 scored cases, 55 of 55 pass on both splits
+(13 / 4 / 1 / 10 / 5 / 16 / 3 / 3 by origin), 6 "not staged" lines.
 **Cannot show:** behaviour under real adversaries; it is a regression set, not a tuning set (no split).
 
 ## Baseline (unchanged system)
@@ -369,7 +385,8 @@ these numbers measures "intelligence". They are task scores on synthetic worlds 
   handed equations 1.0 / 1.0, belief what-ifs 1.0 / 1.0 (plumbing), learned graph forecasts and actions 0.889 /
   1.000 within 0.1 × sd (largest error 0.147 / 0.092; within 0.05: 0.815 / 0.778; the tolerance was set in the same
   commit as the results; baseline 0.259 / 0.222; "answer 0" 0.111 / 0.407 at 0.1 and 0.037 / 0.148 at 0.05; 12 seeds
-  0.954 against 0.204). The engine does no front-door adjustment: it declines those questions. Ablations, held-out,
+  0.954 against 0.204). The engine did no front-door adjustment then: it declined those questions (answered since
+  Wave 3, ADR-059). Ablations, held-out,
   over all answerable (without the front-door ones in brackets): without the causal engine 0.375 (0.429), without the
   what-if 0.781 (0.893), without forecasts 0.656 (0.750), without pushes 0.781 (0.893). The splits are unchanged.
 
@@ -451,3 +468,98 @@ share on the self-reporting arm 0.105 / 0.253 → 0.088 / 0.233. Lane L: baselin
 0.726, paired −0.003 (4 higher, 4 lower) → +0.008 (sd 0.015; 6 higher, 2 lower), the re-check's, below the
 baseline's per-world sd of 0.047 and 0.071. No verdict and no default changed. Lane F's learning-cycles worlds
 (`cycles_splits.py`) are written whole before a run (`generate`), so they never had this coupling.
+
+## Wave 3: withheld worlds for the learning cycles
+
+**Purpose.** The learning-cycles experiment (`scripts/bench_learning_cycles.py`; harness
+`src/neuroscifi/acceptance/cognition/cycles.py`) had a development and a held-out split, both from one kind of world,
+and no withheld world, so a change to the knowledge loop could never be judged on transfer (FINAL_EVALUATION §6,
+direction 5). `src/neuroscifi/acceptance/cognition/cycles_withheld.py` holds three such worlds, of kinds that neither
+split has, with four seeds each (7341-7344, disjoint from every split and benchmark seed). They were written and
+committed alone (`26409bc`), before their guard and before any Wave 3 mechanism. They contain what a supersession rule
+and a change-rate-aware refresh order need in order to be judged fairly, without being shaped around either. Their
+contents are not described here: no lane may read, import, generate or score them (the file's docstring says what is
+forbidden), and nothing may be tuned on them.
+
+**The guard.** Only `cycles.final()` loads the worlds; `scripts/bench_learning_cycles.py final --note TEXT --out FILE`
+is its command line. `run --split` does not accept them, and `cycles.run_split` / `run_references` refuse them. A final
+run refuses a missing note and a tree that is dirty or not committed (the ledger of final runs is excluded from the
+dirty check, as `cognition.environment()` does); since the fix lane a dirty check that fails or times out counts as
+dirty, and `final()` compares the worlds file's bytes with the SHA-256 pinned in `cycles.WITHHELD_SHA256` before it
+records or loads anything (the digest goes into the ledger line). It appends its line to
+`docs/quality/evidence/genesis_final_uses.jsonl` (commit, clean flag, mechanism, `"ablate": []`, the family
+`learning_cycles_withheld`, the configurations, the note) **before** it loads or scores anything, so a crash still
+counts as a look. The script also refuses another tree's source, an `--out` inside the checkout and (since the second
+fix lane) an `--out` whose directory is missing or not writable. The file's SHA-256
+is pinned in `cycles.py` (checked by `final()`) and by `tests/acceptance/test_learning_cycles_withheld.py`; the tests
+check each refusal without loading the worlds. A `--final` run of `scripts/bench_cognition.py` (the counterfactual
+withheld interface) likewise refuses a dirty or uncommitted tree and an `--out` inside the checkout (fix lane); since
+the second fix lane it also refuses, before its ledger line, an `--out` it cannot write, an empty note, a mechanism
+that no selected family has (every family would fall back to the baseline), an unknown ablation, and a `withheld.py`
+whose bytes do not hash to the SHA-256 pinned in `cognition.WITHHELD_SHA256`. Since the third fix lane
+`bench_cognition.py baseline`, which also takes a withheld look, refuses the same `--out` paths before it runs any
+family (review3c F4), and `cycles.final` refuses a note of only spaces as `cognition.run` does (F5).
+`baseline` is Step 0's behaviour made explicit since the fix lane (the Wave 1 web settings of `WAVE1_OFF_WEB` off,
+lane S's two rules off, supersession "ask", lane K's re-check order, no idle investigation; every other setting at
+its default, as at Step 0, among them `calibrated_forecasts`, `tick_admission` "unified" and `arbitration_record`,
+which are on); the Wave 3 look's configurations, their reference
+pairings and report fields are `cycles.LOOKS["wave3"]`, `LOOK_PAIRS`, `LOOK_FIELDS` and `COUNTERS` (what each
+admitted-content counter can see: `self_admitted` and `wire_admitted` see only 9.x and 7.x versions;
+`admitted.wrong`, `admitted.own_only` and `admitted.wire_only` need no version convention).
+Each result records every world's digest per seed (`world_digests`). Two looks met the same worlds when their digests
+are equal. The settings each individual held are read back in every run (`config_read_back`).
+
+**Who looks.** Wave 3 step 0 took the unchanged system's one look (below). After that, only the main session looks,
+once, at the end of Wave 3, with the mechanisms under test beside `baseline`. The evidence file of a look names the
+worlds and records their per-cycle allowance and series, so it is not development material either.
+
+### The unchanged system's one look (Wave 3 step 0)
+
+Run once, on commit `d0b6b02` (clean), ledger line 4 of `genesis_final_uses.jsonl`, written before scoring; evidence
+`docs/quality/evidence/genesis_cycles_withheld_baseline.json` (written outside the tree, then copied in; 25 s). There
+are 4 seeds; mean ± sd of `correct` (the primary: share of subjects whose newest held item states the current
+version, mean over all cycles). Worlds are numbered in file order. Nothing was tuned before or after.
+
+| | W1 | W2 | W3 |
+|---|---|---|---|
+| no loop (autonomous research off) | 0.423 ± 0.051 | 0.311 ± 0.061 | 0.311 ± 0.065 |
+| **baseline** (today's loop, every Wave 1 setting off) | **0.465 ± 0.064** | **0.286 ± 0.039** | **0.323 ± 0.035** |
+| shipped defaults | identical to baseline on every metric and seed | identical | identical |
+| baseline − no loop, paired (seeds better) | +0.042 (4 of 4) | −0.025 (1 of 4) | +0.012 (3 of 4) |
+| *reference:* perfect snapshot, never refreshed | 0.455 | 0.385 | 0.395 |
+| *reference:* blind round-robin, same allowance, majority read | 0.636 | 0.541 | 0.537 |
+| *reference:* blind round-robin, perfect reads | 0.693 | 0.656 | 0.649 |
+| *reference:* oracle, same allowance | 0.797 | 0.809 | 0.820 |
+| coverage by the owner's research | 0.883 | 0.872 | 0.815 |
+| Brier, baseline (constant reference) | 0.250 (0.248) | 0.323 (0.218) | 0.282 (0.239) |
+| baseline, over the 4 seeds: own-output versions admitted / wrong-story versions admitted / one-origin rises | 4 / 2 / 0 | 6 / 17 / 0 | 6 / 12 / 1 |
+| baseline, retention: lost / regressed (of the subject-runs in the base) | 0 / 1 (16) | 0 / 3 (9) | 0 / 3 (15) |
+
+Reading. On the held-out worlds the loop beat no loop on every seed; here it does so on every seed in one world of
+three. In the other two the paired difference is within the baseline's spread or negative. In every world the loop
+sits below the blind round-robin of the same allowance (by 0.17 to 0.26) and near or below the never-refreshed
+snapshot (coverage explains part of that, as on held-out). The adversarial counts are not zero here, while they
+were 0 in all 120 held-out runs: versions asserted only by the individual's own outputs and versions stated only by
+a wrong story were admitted as knowledge, one confidence rose after a look with one origin, and subjects held
+correctly at cycle 3 regressed. The shipped-on Wave 1 and Wave 2 records (`hypothesis_fields`, `premise_recheck`,
+`salience_record`, `arbitration_record`, `answer_monitoring`; read back in every run) changed no launch and no held
+item (0 changed cycles on every seed). The smallest gain the pre-registered rule can see with these seeds is the
+baseline's sd: 0.064, 0.039 and 0.035.
+
+### The looks at the end of Wave 3
+
+**The withheld looks, taken once at the end of Wave 3** (clean tree `0bdc41a`; the rule for them committed first;
+ledger lines 5 to 7; WAVE3.md, "The withheld looks"; evidence `genesis_wave3_look_*.json`). On three unseen worlds,
+four seeds each, as shipped the share of subjects held correctly is 0.465 / 0.286 / 0.323, exactly as at step 0
+(never refreshed 0.455 / 0.385 / 0.395; a blind round-robin with the same allowance 0.636 / 0.541 / 0.537), and the
+hole is open in the same counts: 16 versions only the individual itself had asserted and 31 only the wrong story
+stated became knowledge. **`echo_recognition` is supported on those worlds** by the rule written beforehand (the 16
+own-output versions → 0; wrongly admitted content 48 → 38, lower in every world; correctness +0.017 / +0.013 /
++0.007; no more subjects lost), though wrong-story versions rose 31 → 37; it stays off and is the owner's to turn
+on. **`attribution_independence` was not exercised** (every figure identical). **Supersession** gains +0.011 /
++0.042 / +0.007 (every seed) and made 3 false replacements of 54 by the rule; all 5 false replacements in its runs
+were still wrong when the runs ended (up to 17 cycles); it stays off. **The re-check's order gives no gain.** **The
+idle investigator run before the timer's pass** gives +0.013 / +0.042 / +0.052 (beyond the spread in two worlds)
+with fewer subjects lost; the look cannot promote it, and dividing the daily allowance between refreshing and
+reaching is the next thing to measure. **The front door stays on** (12 of 12 front-door questions exact; every
+other figure equal to the run without it).

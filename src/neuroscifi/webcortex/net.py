@@ -617,10 +617,15 @@ class _Speculation:
     def take(self, wanted: int) -> int:
         """Before a body read of up to `wanted` bytes: how many of them the task's byte budget has room for (0: none),
         now held for this fetch. Room is the task's: max_bytes less what it was charged, what its fetches ahead
-        received unused and what all its fetches ahead in flight hold. Without a budget: `wanted`."""
+        received unused and what all its fetches ahead in flight hold. Without a budget: `wanted`. Abandoned: 0, so the
+        read takes the one byte that tells whether the body goes on and cut() ends it (Wave 3 fix lane: granting
+        `wanted` here let an abandoned fetch read the rest of a body already in its buffer, past the byte budget,
+        when the abandon landed between two of its reads; the connection being shut did not stop that read)."""
         with self.lock:
-            if self.abandoned or self.budget is None:     # abandoned: its connection is shut, the read ends itself
+            if self.budget is None:
                 return wanted
+            if self.abandoned:
+                return 0
             with self.fetcher._lock:
                 held = self.fetcher._ahead.setdefault(id(self.usage), [0, 0])
                 room = self.budget.max_bytes - self.usage.bytes - self.usage.prefetch_unused_bytes - held[1]

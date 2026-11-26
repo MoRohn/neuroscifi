@@ -279,6 +279,253 @@ def _without_adversarial(cluster, adversarial_urls):
                    statement=statement), len(bad)
 
 
+# ---- ADR-061 (Wave 3 lane S): the individual's own text, republished, is not a source --------------------------------
+#
+# The individual's own outputs are its model-written answers stored with its tasks (result.reasoning: its text, and
+# the sentences of its answer). Its imagined store is NOT read: consolidation never reads that store (ADR-049's
+# quarantine, tests/webcortex/test_imagined_quarantine.py), not even to set something aside, so a value the individual
+# only imagined, and never answered with, is not recognised here (its records are shown only in the console's
+# labelled panel). A page read later that repeats them is an echo,
+# not evidence, when it (a) names a subject the output names and states a specific value of it (not a year, a date or
+# a number below 100) that the output stated BEFORE any source the individual had read stated it for that subject, or
+# (b) repeats the output's own wording (3-word shingle Jaccard >= claims.DUPLICATE_SHINGLE) where that wording was not
+# itself a source's (no claim read before it within claims.SUPPORT_TEXT_SHINGLE). A page published before the output
+# is never its echo (the output may rest on it); a structured record (an API document, a metadata claim) is never one.
+# Own outputs are found by the specific values the claim asserts (at most ECHO_MAX_VALUES per claim and ECHO_MAX_TOKENS
+# per consolidation, shared out claim by claim: every claim's first value before any claim's second (review3b N4: one
+# page's many values took the whole cap in claim order and the claims after it went unchecked without trace); one scan
+# over web_tasks.result, the newest ECHO_MAX_ROWS model-written answers holding any of them; when that scan fills its
+# ECHO_MAX_ROWS, each claim is looked up again among the answers that name its own subject, so other subjects' rows
+# cannot crowd its subject out), a claim whose values were not all looked up is not checked,
+# and a value counts as stated by a source only when a claim read before the output states it about the same subject
+# (subject names filtered in SQL, so the bound counts that subject's claims only; security review M2). Every check is
+# made once per consolidation BEFORE the write transaction (security review M4), within ECHO_SECONDS: a claim not
+# checked in time is treated as NOT an echo (the behaviour without the setting) and named in the summary
+# (`echo_skipped`). An answer sentence that cites claims had a source when it was written, and a sentence a forget
+# marked as sourced (governance: the claims it rested on were forgotten; the mark keeps no forgotten content) is not
+# an own output either (security review M3).
+# An echo is never evidence FOR a value: it leaves the supporting side of its cluster (and the supersession rule never
+# counts it). An echo that only disagrees with what the sources say stays where it is: the disagreement is still asked,
+# as before, and a disagreement never raises a confidence or writes knowledge. (Removing it there too was measured: it
+# changed what the owner is asked and what curiosity looks at next, on worlds where no echo was ever admitted.)
+# A sentence that credits what it states explicitly to a model speaker ("..., an assistant reported.", "\"...,\" a
+# chatbot told one reader.", "According to an AI model, ...") quotes model-written text, whoever's: by the standing
+# rule (model text never becomes fact) it is treated as an echo too. The speaker must be a model noun (assistant,
+# chatbot, language model, AI model); "the AI Act", "an AI Index report", "the AI Safety Institute" or "some AI
+# companies" are not (security review M5). This phrase rule is a stop-gap, not the closure of the hole (ADR-061).
+ECHO_MAX_ROWS = 200
+ECHO_MAX_VALUES = 8
+ECHO_MAX_TOKENS = 64
+ECHO_SECONDS = 2.0
+_DIGITS = re.compile(r"\d[\d.,]*\d")
+_MODEL_SPEAKER = r"(?:an?|the|some|one)\s+(?:AI\s+)?(?:assistant|chat\s?bot|language\s+model|AI\s+model)"
+_MODEL_CREDIT = re.compile(r"\baccording\s+to\s+" + _MODEL_SPEAKER + r"\b(?!\s+[A-Z])|\b" + _MODEL_SPEAKER +
+                           r"\s+(?:reported|said|says|told|answered|wrote|stated|claims|claimed|replied)\b",
+                           re.IGNORECASE)
+
+
+def _name_set(sentence) -> set:
+    named, opening = _names(sentence)
+    return named | ({opening.lower()} if opening else set())
+
+
+def _specific(value) -> bool:
+    from . import text as T
+    kind, _group, parsed = T.value_kind(value)
+    return kind not in ("date", "year") and not (kind == "number" and abs(parsed) < 100)
+
+
+def _checked_values(claim) -> list:
+    """The specific values of a claim the echo checks read (at most ECHO_MAX_VALUES)."""
+    return [v for v in dict.fromkeys(_claims.asserted_values(claim)) if _specific(v)][:ECHO_MAX_VALUES]
+
+
+def own_sentences(reasoning) -> list[str]:
+    """The sentences of a stored model-written answer that are the individual's own text: its free text (minus the
+    sentences a forget marked as sourced, reasoning["sourced"]) and the answer sentences that cite no claim. A cited
+    sentence rested on a source when it was written."""
+    from . import text as T
+    if not isinstance(reasoning, dict) or not str(reasoning.get("generated_by") or "").startswith("model:"):
+        return []
+    out = []
+    marked = set(reasoning.get("sourced") or ())
+    if isinstance(reasoning.get("text"), str):
+        out += [s for i, s in enumerate(T.sentences(reasoning["text"])) if i not in marked]
+    for a in reasoning.get("answer") or ():
+        if isinstance(a, dict) and isinstance(a.get("text"), str) and not (a.get("claims") or a.get("citations")) \
+                and not a.get("sourced"):
+            out += T.sentences(a["text"])
+    return [" ".join(s.split()) for s in out]
+
+
+_SKIPPED = object()
+
+
+def _interruptible(read, arg):
+    """read(arg), or _SKIPPED when the echo checks' deadline interrupted its query."""
+    import sqlite3
+    try:
+        return read(arg)
+    except sqlite3.OperationalError as exc:
+        if "interrupt" not in str(exc).lower():
+            raise
+        return _SKIPPED
+
+
+class _Echoes:
+    """The echo verdicts of one consolidation's claims (see the section comment), all made when it is built, before
+    the write transaction; of() only looks them up."""
+
+    def __init__(self, db, claims, *, seconds=None, clock=None):
+        import time
+        clock = clock or time.monotonic
+        seconds = ECHO_SECONDS if seconds is None else seconds
+        self.db, self.sourced, self.worded, self.seen, self.skipped = db, {}, {}, {}, []
+        claims = [c for c in claims if c is not None]
+        wanted = {}
+        for c in claims:
+            wanted.setdefault(c.id, list(dict.fromkeys(tok for v in _checked_values(c) for tok in _DIGITS.findall(v))))
+        tokens, depth = [], 0               # review3b N4: each claim its share of the cap, first values first
+        while len(tokens) < ECHO_MAX_TOKENS and any(depth < len(t) for t in wanted.values()):
+            for t in wanted.values():
+                if depth < len(t) and t[depth] not in tokens and len(tokens) < ECHO_MAX_TOKENS:
+                    tokens.append(t[depth])
+            depth += 1
+        indexed = set(tokens)
+        deadline = clock() + seconds
+        # every read below stops at the deadline (a query interrupted there leaves its claims unchecked: not echoes)
+        db.set_progress_handler(lambda: 1 if clock() > deadline else 0, 10_000)
+        try:
+            self.own = _interruptible(self._index, tokens)
+            full = self.own is not _SKIPPED and self._rows >= ECHO_MAX_ROWS
+            for c in claims:
+                if c.id in self.seen:
+                    continue
+                if _MODEL_CREDIT.search(c.text or "") and c.kind != "metadata" and not _claims.is_primary(c):
+                    self.seen[c.id] = "model"
+                    continue
+                if c.kind == "metadata" or _claims.is_primary(c) or not wanted[c.id]:
+                    self.seen[c.id] = None              # never an echo (_of): nothing to check, nothing skipped
+                    continue
+                if not set(wanted[c.id]) <= indexed or self.own is _SKIPPED or clock() > deadline:
+                    found = _SKIPPED
+                elif full and wanted[c.id]:     # the newest rows of all subjects filled the bound: its own subject's
+                    own = _interruptible(lambda x: self._index(x, _name_set(c.text)), wanted[c.id])
+                    found = _SKIPPED if own is _SKIPPED else _interruptible(lambda x: self._of(x, own), c)
+                else:
+                    found = _interruptible(self._of, c)
+                self.seen[c.id] = None if found is _SKIPPED else found
+                if found is _SKIPPED:
+                    self.skipped.append(c.id)
+        finally:
+            db.set_progress_handler(None, 0)
+        if self.skipped:            # review3b N4: once per consolidation, counts and claim ids only
+            import logging
+            logging.getLogger(__name__).warning("echo checks: %d claim(s) not checked (time budget, value cap or row "
+                                                "bound); they count as not echoes: %s", len(self.skipped),
+                                                ",".join(self.skipped[:20]))
+
+    def _index(self, tokens, names=None):
+        """[(at, sentence, values, names)] of the own-output sentences holding any token: one scan (of the answers
+        naming one of `names`, lower-cased, when given)."""
+        from . import text as T
+        if not tokens:
+            self._rows = 0
+            return []
+        names = sorted(n for n in names or () if n)
+        subject = (" AND (" + " OR ".join("instr(lower(result), ?) > 0" for _ in names) + ")") if names else ""
+        rows = self.db.execute(
+            "SELECT coalesce(finished_at, updated_at, created_at), result FROM web_tasks WHERE result LIKE "
+            "'%model:%' AND (" + " OR ".join("instr(result, ?) > 0" for _ in tokens) + ")" + subject +
+            " ORDER BY updated_at DESC LIMIT ?", (*tokens, *names, ECHO_MAX_ROWS)).fetchall()
+        self._rows = len(rows)
+        out = []
+        for at, raw in rows:
+            if state.finite(at) is None:
+                continue
+            for s in own_sentences((state.loads(raw, {}) or {}).get("reasoning")):
+                if any(tok in s for tok in tokens):
+                    out.append((at, s, set(T.values(s)), _name_set(s)))
+        return out
+
+    def _read_before(self, value, names, at):
+        """(text, names) of claims read at or before `at` stating `value` about one of `names` (at most
+        ECHO_MAX_ROWS of that subject's, oldest first)."""
+        names = sorted(n for n in names if n)
+        if not names:
+            return []
+        rows = self.db.execute(
+            "SELECT text FROM web_claims WHERE retrieved_at <= ? AND instr(claim_values, ?) > 0 AND (" +
+            " OR ".join("instr(lower(text), ?) > 0" for _ in names) + ") ORDER BY retrieved_at LIMIT ?",
+            (at, f'"{value}"', *names, ECHO_MAX_ROWS)).fetchall()
+        return [(t, _name_set(t)) for (t,) in rows]
+
+    def _self_originated(self, value, names, at):
+        key = (value, frozenset(names), at)
+        if key not in self.sourced:
+            self.sourced[key] = not any(names & n for _, n in self._read_before(value, names, at))
+        return self.sourced[key]
+
+    def _own_wording(self, sentence, values, names, at):
+        from . import text as T
+        key = (sentence, at)
+        if key not in self.worded:
+            mine = T.shingles(T.normalise(sentence), _claims.SHINGLE_K)
+            self.worded[key] = bool(values) and not any(
+                T.jaccard(mine, T.shingles(T.normalise(t), _claims.SHINGLE_K)) >= _claims.SUPPORT_TEXT_SHINGLE
+                for v in values for t, _ in self._read_before(v, names, at))
+        return self.worded[key]
+
+    def of(self, claim) -> str | None:
+        """'value', 'wording' or 'model' when `claim` echoes an own output (see the section comment), else None (a
+        claim not checked in time, or not among the claims the checks were made for, is not an echo)."""
+        return self.seen.get(claim.id)
+
+    def _of(self, claim, own=None) -> str | None:
+        from . import text as T
+        if claim.kind == "metadata" or _claims.is_primary(claim):
+            return None
+        read, published = state.finite(claim.retrieved_at), state.finite(claim.published_at)
+        if read is None:
+            return None
+        values = set(_checked_values(claim))
+        names = _name_set(claim.text)
+        tokens = list(dict.fromkeys(tok for v in values for tok in _DIGITS.findall(v)))
+        mine = None
+        for at, sentence, own_values, own_names in (self.own if own is None else own):
+            if not any(tok in sentence for tok in tokens):
+                continue
+            if at >= read or (published is not None and published < at) or not names & own_names:
+                continue
+            if any(self._self_originated(v, names & own_names, at) for v in values & own_values):
+                return "value"
+            mine = mine or T.shingles(T.normalise(claim.text), _claims.SHINGLE_K)
+            if T.jaccard(mine, T.shingles(T.normalise(sentence), _claims.SHINGLE_K)) >= \
+                    _claims.DUPLICATE_SHINGLE and self._own_wording(sentence, own_values, own_names, at):
+                return "wording"
+        return None
+
+
+def _without_echoes(echoes, cluster, *, now, freshness, ttl_overrides):
+    """(the cluster without the supporting claims that echo the individual's own outputs, re-scored as
+    _without_set_aside re-scores, until its supporting side holds none; [the echo claim ids removed]). Echoes that
+    only contradict the representative stay (see the section comment). Unchanged when no supporting claim echoes."""
+    from dataclasses import replace
+    gone = []
+    for _ in range(4):          # a removal can make another side the representative; four rounds bound it
+        head = _head(cluster)
+        found = [c.id for c in cluster.claims if _claims.bearing(head, c) == "support" and echoes.of(c)]
+        if not found:
+            break
+        gone += found
+        kept = [c for c in cluster.claims if c.id not in set(gone)]
+        if not kept:
+            return replace(cluster, claims=[]), gone
+        cluster = _claims.score(replace(cluster, claims=kept), now=now, freshness_class=freshness,
+                                ttl_overrides=ttl_overrides)
+    return cluster, gone
+
+
 def _eligibility(db, task_id, cluster, removed=0):
     """(eligible, reasons): relevance gate before verification and memory comparison (the evidence-quality bar is
     the ADR-035 verification state, _meets_bar)."""
@@ -1263,11 +1510,156 @@ def _sides(cluster) -> list[str]:
     return out
 
 
-def _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key):
+# ---- ADR-061 (Wave 3 lane S): supersession of a stale item, setting `supersession` ("ask" by default) ------------------
+#
+# Today (ADR-026, ADR-038) a refresh whose cluster is contested - a newer value beside a lagging source that still
+# states the held one - records a contradiction and asks the owner; the held item is never revised. With supersession
+# "independent" the side of the cluster that conflicts with the held item (the conflicting claims stating one value;
+# of several such sides, the one with most independent groups) replaces the item without asking when ALL hold:
+#   (i)   it is newer by its stated time (temporal.supersedes over the side's event or publication dates against the
+#         item's, as the uncontested path already decides), not by when the pages were read;
+#   (ii)  claims.independence_groups counts at least supersession_min_sources groups on that side (echoes of the
+#         individual's own text are gone before this, with echo_recognition on);
+#   (iii) no owner's answer stands against it: the item was not accepted or asserted by the owner, the owner never
+#         decided this disagreement (knowledge.contested_decision), never rejected these values for this key (a
+#         reverted replacement is such a rejection, so the rule never applies the same replacement again);
+#   (iv)  the value is not one this key held before and that was replaced (no flip-flop: a correction of a
+#         correction is asked);
+#   and the side alone passes the bar of a newly verified item (evolution.cluster_verdict 'supported', _meets_bar,
+#   a well-formed claim). The new version's confidence is the side's own posterior (claims.score), never higher
+#   because of the replacement. It is provisional and asked for acceptance as every new item is; its verification
+#   record says decided_by "rule" and keeps the columns the replacement changed in the replaced row, as they were
+#   (RESTORE_COLUMNS: scalars only, never its sources or supporting claims: security review M1), so `knowledge.revert`
+#   restores them exactly and every other column is the live row's own (a forget since then stays forgotten). The
+#   contradiction question is recorded, answered by the rule, under the new version's scope (so forgetting the new
+#   version forgets it too; the replaced item's open questions are closed, their ids kept so a revert reopens them).
+#   Anything else stays "ask".
+# Who may let the rule decide (security review M6): only the owner's own research (console, CLI) and refreshes
+# (the owner's, and the background refresh and re-check the owner enabled). A Pocket family task, an MCP agent task,
+# voice, a monitor or curiosity always asks, as before lane S. Two colluding pages stating a newer value can still
+# replace a true item in the owner's own research or a refresh: the measured false-replacement risk (ADR-061), not
+# solved by this.
+RULE = "supersession-v1"
+RESTORE_COLUMNS = ("status", "valid_until", "superseded_by", "updated_at")
+RULE_ORIGINS = ("console", "cli")
+RULE_ORIGIN_PREFIXES = ("refresh:", "refresh-owner:")
+
+
+def rule_may_decide(task) -> bool:
+    """True when the supersession rule may decide inside this task's consolidation (see the section comment)."""
+    origin = str((task or {}).get("origin") or "")
+    return origin in RULE_ORIGINS or origin.startswith(RULE_ORIGIN_PREFIXES)
+
+
+def _rule_side(cluster, item, echoes=None):
+    """The claims of the cluster that conflict with the item and state one value (see the section comment); an echo
+    of the individual's own output (echo_recognition) is never one of them."""
+    sides = {}
+    for c in cluster.claims:
+        if echoes is not None and echoes.of(c):
+            continue
+        relation, _ = _compare(list(c.values or []), -1 if c.polarity < 0 else 1, item)
+        if relation == "conflict":
+            sides.setdefault((tuple(sorted(c.values or [])), c.polarity < 0), []).append(c)
+    if not sides:
+        return []
+    return max(sides.values(), key=lambda side: (len(_claims.independence_groups(side)),
+                                                 max(_claims._effective(c) for c in side)))
+
+
+def _rule_replacement(db, cfg, cluster, item, now, *, freshness, window, focus, echoes=None):
+    """(the side as a scored cluster, its verdict, its independent groups) when the rule replaces `item`, else
+    None (see the section comment)."""
+    from dataclasses import replace
+    if cfg.supersession != "independent" or item.get("provenance") == "user_asserted" or \
+            item["status"] == "accepted":
+        return None
+    side = _rule_side(cluster, item, echoes)
+    if not side:
+        return None
+    groups = len(_claims.independence_groups(side))
+    if groups < cfg.supersession_min_sources:
+        return None
+    sub = _claims.score(replace(cluster, claims=side), now=now, freshness_class=freshness,
+                        ttl_overrides=cfg.freshness_ttl or None)
+    if not _supersedes(_as_temporal(sub, now, item["key"]), _item_temporal(item), now):
+        return None
+    values, polarity = _values(sub)
+    keys = list(dict.fromkeys([cluster.key, item["key"]]))
+    if _rejected_before(db, keys, values, polarity) is not None:
+        return None
+    if any(knowledge.contested_decision(db, k, _sides(cluster) + list(values) + list(item["claim_values"] or []))
+           for k in keys):
+        return None
+    if any(_compare(values, polarity, old)[0] == "same" for old in knowledge.rows(
+            db, "status='superseded' AND key=?", (item["key"],))):
+        return None
+    verdict = evolution.cluster_verdict(sub, now=now, freshness_class=freshness,
+                                        ttl_overrides=cfg.freshness_ttl or None, window=window)
+    if not _meets_bar(sub, cfg, verdict)[0] or _unaskable_cluster(sub, focus) is not None:
+        return None
+    return sub, verdict, groups
+
+
+def _replace_by_rule(db, task_id, cfg, found, item, freshness, now, summary, questions, ids_by_key):
+    """Write the rule's replacement of `item` (see the section comment). Caller owns the transaction."""
+    sub, verdict, groups = found
+    previous = dict(zip(RESTORE_COLUMNS, db.execute(
+        f"SELECT {', '.join(RESTORE_COLUMNS)} FROM web_knowledge WHERE id=?", (item["id"],)).fetchone()))
+    record = {"decided_by": "rule", "supersession": {"rule": RULE, "replaced": item["id"], "groups": groups,
+                                                     "min_sources": cfg.supersession_min_sources, "at": now,
+                                                     "previous": previous}}
+    differ = _compare(*_values(sub), item)[1] or "a newer value from independent sources"
+    kid, valid_from = _insert_knowledge(db, task_id, sub, freshness, now, key=item["key"],
+                                        version=next_version(db, item["key"]), questions=questions,
+                                        verdict=verdict | record)
+    db.execute("UPDATE web_knowledge SET status='superseded', valid_until=?, superseded_by=?, updated_at=? WHERE id=?",
+               (valid_from, kid, now, item["id"]))
+    closed = knowledge.close_questions(db, f"web:knowledge:{item['id']}",
+                                       f"replaced by knowledge #{kid} (supersession rule)", now)
+    if closed:          # security review L1: a revert reopens them
+        db.execute("UPDATE web_knowledge SET verification=json_set(verification, '$.supersession.closed_questions', "
+                   "json(?)) WHERE id=?", (state.dumps(closed), kid))
+    pid = db.execute("INSERT INTO pending(epoch,kind,scope,question,created_at,resolved_at,resolution) "
+                     "VALUES(NULL,'ask',?,?,?,?,?)",
+                     (f"web:knowledge:{kid}",       # the new version's scope: forgetting it forgets this record
+                      f"Sources now contradict known «{knowledge.quote(item['statement'])}»: "
+                      f"«{knowledge.quote(safe_text(_head(sub)))}» ({differ}). Keep it as knowledge?", now, now,
+                      f"answered by the supersession rule: replaced by knowledge #{kid} ({groups} independent "
+                      f"sources, newer); `nsf web revert {kid}` restores it")).lastrowid
+    if item["supporting"]:
+        state.add_link(db, task_id, _head(sub).id, item["supporting"][0], "supersedes",
+                       {"old": item["id"], "new": kid, "reason": differ, "by": "rule"}, now)
+    evolution.link(db, task_id, "knowledge", kid, "supersedes", "knowledge", item["id"],
+                   {"reason": differ, "valid_until": valid_from, "by": "rule"}, now)
+    _feedback(db, task_id, kid, item["key"], "reversed", state.finite(item["confidence"], 0.0),
+              state.finite(sub.confidence, 0.0), {"superseded": item["id"], "reason": differ, "by": "rule"}, now)
+    summary["superseded"].append({"old": item["id"], "new": kid, "reason": differ, "by": "rule"})
+    summary["provisional"].append(kid)
+    summary.setdefault("answered_by_rule", []).append(pid)
+    ids_by_key[sub.key] = kid
+
+
+def _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key, rule=None):
     """A contested cluster about live knowledge: compare values first. When the cluster's supporting side states
     the same values and polarity as the item, the item is strengthened by them (confidence never lowered) and
     only claims that really conflict with it are recorded as contradictions, each citing that claim. When the
-    supporting side conflicts with the item, the item is contradicted by it (citing the supporting head)."""
+    supporting side conflicts with the item, the item is contradicted by it (citing the supporting head).
+    `rule` ({cfg, freshness, window, focus}, only with supersession "independent"): first, the supersession rule."""
+    if rule is not None:
+        try:        # Wave 3 reconciliation (lane U's pattern): a failing rule is the task's "error" event and the
+            found = _rule_replacement(db, rule["cfg"], cluster, item, now, freshness=rule["freshness"],   # owner is
+                                      window=rule["window"], focus=rule["focus"], echoes=rule.get("echoes"))  # asked
+            if found is not None and not (isinstance(found, tuple) and len(found) == 3):
+                raise TypeError(f"the supersession rule returned {type(found).__name__}, not (side, verdict, groups)")
+        except Exception as exc:          # noqa: BLE001 - the task's "error" event (its type only)
+            state.log_event(db, task_id, "error", {"stage": "consolidating: the supersession rule",
+                                                   "error": type(exc).__name__}, now)
+            found = None
+        if found is not None:
+            _replace_by_rule(db, task_id, rule["cfg"], found, item, rule["freshness"], now, summary, questions,
+                             ids_by_key)
+            return
     values, polarity = _values(cluster)
     relation, differ = _compare(values, polarity, item)
     if relation == "incomparable":
@@ -1327,9 +1719,21 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
     if proposals:
         summary["pairing"] = dict(proposals["info"])
         summary["paired_by_meaning"] = []
+    # ADR-061, security review M4: the echo checks read before the file is locked, within their time budget
+    echoes, echo_failed = None, None
+    if cfg.echo_recognition:
+        try:        # as the reconciliation's guard below: a failing check is the task's "error" event, never its end
+            echoes = _Echoes(db, [c for cl in state.load_clusters(db, task_id) for c in cl.claims])
+        except Exception as exc:          # noqa: BLE001 - logged inside the transaction below (its type only)
+            echo_failed = type(exc).__name__
+    if echoes is not None and echoes.skipped:
+        summary["echo_skipped"] = list(echoes.skipped)
     with store.write(db):
         if holder is not None:
             state.require_lease(db, task_id, holder)
+        if echo_failed is not None:
+            state.log_event(db, task_id, "error", {"stage": "consolidating: echoes of the individual's own text",
+                                                   "error": echo_failed}, now)
         questions = _Questions(db, cfg, task_id)
         task = state.task(db, task_id)
         clusters = sorted(state.load_clusters(db, task_id), key=lambda c: (-state.finite(c.confidence, 0.0), c.key))
@@ -1348,6 +1752,24 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                     set_aside[c.source_url] for c in whole.claims)]))
                 continue
             cluster, removed = _without_adversarial(cluster, adversarial)
+            if echoes is not None and cluster.claims:       # ADR-061: the individual's own text is no source
+                try:        # Wave 3 reconciliation (lane U's pattern): a failing echo check is the task's "error"
+                    found = _without_echoes(echoes, cluster, now=now, freshness=freshness,    # event; the cluster
+                                            ttl_overrides=cfg.freshness_ttl or None)          # stays as with it off
+                    if not (isinstance(found, tuple) and len(found) == 2 and isinstance(found[1], list)
+                            and isinstance(getattr(found[0], "claims", None), list)):
+                        raise TypeError(f"the echo check returned {type(found).__name__}, not (cluster, ids)")
+                except Exception as exc:          # noqa: BLE001 - the task's "error" event (its type only)
+                    state.log_event(db, task_id, "error", {"stage": "consolidating: echoes of the individual's own "
+                                                                    "text", "error": type(exc).__name__}, now)
+                    found = (cluster, [])
+                whole, (cluster, echoed) = cluster, found
+                if echoed:
+                    summary.setdefault("echoes", []).extend(echoed)
+                if whole.claims and not cluster.claims:
+                    summary["held"].append(_held(whole, ["every claim repeats what only the individual's own output "
+                                                         "had stated (an echo of its own text, never evidence)"]))
+                    continue
             cleaned.append(cluster)
             if not cluster.claims:
                 summary["held"].append({"key": cluster.key, "statement": WITHHELD, "status": cluster.status,
@@ -1364,7 +1786,10 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                 reason = "; ".join(sorted({c.get("reason", "") for c in cluster.contradicting} - {""})) or \
                     "the sources disagree"
                 if item is not None:
-                    _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key)
+                    _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key,
+                                       rule={"cfg": cfg, "freshness": freshness, "window": window, "focus": focus,
+                                             "echoes": echoes}
+                                       if cfg.supersession == "independent" and rule_may_decide(task) else None)
                     continue
                 described = "; ".join(sorted({c.get("description") or c.get("reason") or ""
                                               for c in cluster.contradicting} - {""})) or "the sources disagree"

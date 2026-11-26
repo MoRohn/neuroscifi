@@ -164,6 +164,25 @@ def test_task_ids_are_strict_uuids(console):
 
 # ---- configuration and status --------------------------------------------------------------------------
 
+def test_the_web_status_lists_damaged_saved_settings(instance, web):
+    """review3b N8: the problem list reached only `nsf web config`; the console's web settings view shows it too."""
+    import json
+    from contextlib import closing
+    from neuroscifi.webcortex.config import META_KEY
+    with closing(store.connect(instance)) as db:
+        state.set_config(db, {"supersession": "independent", "supersession_min_sources": 5}, T0)
+        raw = json.loads(db.execute("SELECT value FROM meta WHERE key=?", (META_KEY,)).fetchone()[0])
+        with store.write(db):
+            db.execute("UPDATE meta SET value=? WHERE key=?", (json.dumps(raw | {"supersession_min_sources": 5.0}),
+                                                               META_KEY))
+    c = start_console(instance, web, worker=False)
+    try:
+        problems = c.ok("GET", "/api/web/status")["problems"]
+        assert len(problems) == 1 and "supersession_min_sources" in problems[0] and "'ask'" in problems[0]
+    finally:
+        stop_console(c)
+
+
 def test_disabled_by_default_and_owner_switches(console):
     c = console
     status = c.ok("GET", "/api/web/status")

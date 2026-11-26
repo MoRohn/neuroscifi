@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
 import json
+import logging
 
 from .. import __version__
 from .types import Budget, MODES
@@ -40,6 +41,28 @@ MODE_BUDGETS = {
     "gap_resolution":    Budget(max_queries=4, max_requests=30, max_pages=5, max_seconds=90, max_depth=0),
 }
 assert set(MODE_BUDGETS) == set(MODES)
+
+# Wave 3 settings whose stored value is checked when it is read (WebConfig.from_json; security review L8)
+CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognition", "supersession",
+                   "supersession_min_sources", "origin_grouping")
+
+
+# review3b N8: a damaged value of a setting that tunes an opt-in rule never loosens that rule: the rule itself reads as
+# off (its safe value) until the owner sets the setting again (a damaged supersession_min_sources read as 2 while the
+# owner had set 5 and supersession stayed "independent"). {damaged setting: (the rule, its safe value)}
+FAILS_CLOSED = {"supersession_min_sources": ("supersession", "ask")}
+_REPORTED: set = set()
+
+
+def damaged(name, value) -> bool:
+    """Whether a stored value of a CHECKED_ON_LOAD setting is one set_config would refuse."""
+    from .state import _validate         # lazy: state imports this module
+    from ..instance.errors import ValidationError
+    try:
+        _validate(name, value)
+    except ValidationError:
+        return True
+    return False
 
 
 @dataclass
@@ -157,6 +180,12 @@ class WebConfig:
     idle_recheck: bool = False
     recheck_per_tick: int = 1
     recheck_daily: int = 4
+    # ADR-060 (Wave 3 lane R): the order of that re-check's pool. "staleness" (the default) is the value above;
+    # otherwise a "+"-joined set of "rate" (the chance the item changed since it was verified, from its subject's own
+    # verified changes, with a prior), "seen" (certain for an item a newer version was seen for, or marked) and
+    # "rotation" (an item not looked at for one TTL goes first; alone, a blind rotation). It only orders what the
+    # same rule admits, within the same shares and allowance. Default unchanged: no held-out gain (ADR-060).
+    recheck_order: str = "staleness"
     # The bounded reflection routine (reflection.py) on the timer, every reflection_interval_days; `nsf knowledge
     # reflect` runs it when the owner asks. Off by default. reflection_model_summary lets a local model phrase the
     # report (display only, stored as an 'inference' in the imagined store); off by default.
@@ -194,12 +223,55 @@ class WebConfig:
     # on the winner's task naming the mechanism that lost and the rule that decided. A record only.
     salience_attention: bool = False
     arbitration_record: bool = True
+    # ADR-061 (Wave 3 lane S), what counts as an independent source, and what may replace an out-of-date item.
+    # attribution_independence: a sentence that names the outlet it repeats ("According to X, ...", "..., X says.",
+    # "... (X).", "... via X.") counts with that outlet as one source (claims.attribution_keys). echo_recognition: a
+    # page repeating a value, or the very wording, that only the individual's own outputs had stated (its model-written
+    # answers stored with its tasks; its imagined store is never read here) before any source it read did, or that
+    # credits what it states to an assistant, a chatbot or an AI model, is not evidence for that value; a disagreement
+    # it raises is still asked (consolidate._without_echoes).
+    # Both are OFF by default (ADR-061, Wave 3 fix lane): the lane's own pre-registered rule returned "unsafe" for
+    # them, attribution merges honest outlets that credit each other (a correctness cost beyond the spread on staged
+    # worlds), and echo recognition rests on a phrase list chosen after held-out runs. The owner may turn either on.
+    attribution_independence: bool = False
+    echo_recognition: bool = False
+    # supersession: "ask" (the standing rule of ADR-026/038: a refresh that contradicts a held item asks the owner and
+    # never revises it) or "independent": a newer value (by its stated time) stated by at least
+    # supersession_min_sources independent sources, never contradicted by an owner's answer and never the
+    # individual's own text, replaces the held item without asking; the replacement is listed for review and one
+    # command reverts it (`nsf web replacements`, `nsf web revert ID`). Off ("ask") by default:
+    # the owner has not decided to change the standing rule (ADR-061 has the gains and the false replacements).
+    supersession: str = "ask"
+    supersession_min_sources: int = 2
+    # ADR-063 (Wave 3, third fix lane): how a page that NAMES its origin (an attribution line, a wire credit, a
+    # canonical URL on another host) counts. "transitive" (the default): it joins every group that origin names or
+    # owns, exactly as before ADR-063 (the grouping of 3ce4ae3), so copies naming several origins stay one source, but a
+    # page naming two honest outlets as its origins joins them into one source (review3b N1: their fact is then not
+    # verified; open at this default). "one_way": each such page attaches to ONE origin (claims._one_way), which closes
+    # N1 and keeps copies naming several origins one source on the staged cases (review3c F1), but no benchmark world
+    # holds a page naming two origins, so neither direction is measured. Applies to claims read while it is set.
+    origin_grouping: str = "transitive"
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":
         raw = json.loads(text) if text else {}
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in raw.items() if k in known})
+        values = {k: v for k, v in raw.items() if k in known}
+        # Wave 3 fix lane (security review L8): a damaged stored value of a Wave 3 setting is never used as it stands
+        # (a non-string recheck_order made every timer pass raise; a non-int supersession_min_sources made
+        # consolidation raise with the rule on): its default applies, state.setting_problems() names it, and a
+        # warning is logged with the setting's name only.
+        for name in sorted(set(values) & set(CHECKED_ON_LOAD)):
+            if damaged(name, values[name]):
+                if name not in _REPORTED:           # review3b N8: once per process and setting, not on every read
+                    _REPORTED.add(name)
+                    logging.getLogger(__name__).warning("the saved Web Cortex setting %s is not a valid value; "
+                                                        "its default is used", name)
+                del values[name]
+                if name in FAILS_CLOSED and values.get(FAILS_CLOSED[name][0], FAILS_CLOSED[name][1]) != \
+                        FAILS_CLOSED[name][1]:
+                    values[FAILS_CLOSED[name][0]] = FAILS_CLOSED[name][1]
+        return cls(**values)
 
     def to_json(self) -> dict:
         return asdict(self)

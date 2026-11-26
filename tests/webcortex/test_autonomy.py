@@ -327,6 +327,22 @@ def test_idle_refuses_when_nothing_clears_the_minimum_gain(individual):
     assert autonomy.idle(db, T0 + 1)["action"] == "waiting"        # one decision per idle_interval
 
 
+def test_idle_shares_the_days_autonomous_task_count_with_the_timer(individual):
+    """Wave 3 lane V (ADR-062): the idle investigation counts the day's autonomous tasks (daily_autonomous.tasks) as
+    the timer does; before, it read only the requests and bytes of that allowance and could queue past the count."""
+    db, _ = individual
+    hypothesize(db, STATEMENT, 0.5)
+    state.set_config(db, {"daily_autonomous": {"tasks": 1, "requests": 400, "bytes": 80_000_000}}, T0)
+    autonomy.enable(db, T0)
+    other = curious(db, "Orchid database replicas")            # one autonomous task today: the count is spent
+    out = autonomy.idle(db, T0, worker="a")
+    assert out["action"] == "refused" and "daily autonomous cap reached: tasks 1 of 1" in out["reason"]
+    assert db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == 1
+    assert scheduler._over_cap(db, T0, state.get_config(db)) == "daily autonomous cap reached: tasks 1 of 1"
+    finish(db, other["id"], T0 + 60)
+    assert autonomy.idle(db, T0 + DAY + 1, worker="b")["action"] == "queued"       # the next 24 h have room
+
+
 # ---- the idle investigator end to end ----------------------------------------------------------------------------
 
 def test_worker_picks_up_an_idle_investigation_and_notifies_only_meaningful_findings(individual, site):

@@ -388,7 +388,7 @@ Settings (owner only; carried by a restore; a damaged value reads as the behavio
 |---|---|---|
 | internal-state history, information display, imagination what-if/forecast/retrospect | on | `nsf config --no-internal-state-history`, `--no-decision-information`, `--no-imagine-what-if` (and the others) |
 | salience record, answer monitoring record, hypothesis fields, premise re-check marks | on (records only) | `nsf web config --set salience_record=false` (likewise `answer_monitoring`, `hypothesis_fields`, `premise_recheck`) |
-| predictive regulation | off | `nsf config --predictive-regulation` |
+| predictive regulation | off | `nsf config --predictive-regulation`; in shadow (records, holds nothing): `--predictive-regulation-shadow` (below) |
 | executive rule | `rules-v1` | `nsf config --executive-rule information-v1` (and back with `rules-v1`) |
 | scenario records | off | `nsf config --imagine-scenarios` |
 | selective broadcast | `off` | `nsf config --broadcast log` (record only) or `on`; `--broadcast-threshold 0.5` |
@@ -409,6 +409,133 @@ and how it was admitted, the latest arbitrations between background mechanisms a
 | arbitration record: when the re-check or a due refresh takes the subject the timer's curiosity wanted in the same pass, the winner's task records which mechanism lost and why | on (a record only) | `nsf web config --set arbitration_record=false` |
 | salience attention: of the candidates admission already admitted, the more salient is taken first (needs the salience record) | off | `nsf web config --set salience_attention=true` |
 
+### Gathering evidence on your own host (ADR-058)
+
+Two things let you decide with real numbers instead of the benchmark's simulated ones. Neither changes what the
+individual does.
+
+**A week of predictive regulation "in shadow".** Predictive regulation (off by default) would hold new background
+research when it expects memory to run short. In shadow it holds nothing: the research runs exactly as with it off,
+and each time the background gate is asked, what the forecast *would* have said is written down. Every few minutes
+the research worker checks those notes against what memory really did.
+
+```sh
+nsf config --predictive-regulation-shadow --db DB    # start: nothing is held, verdicts are recorded
+nsf internal-state --shadow-report --db DB           # any time: what it would have done, checked against memory
+nsf config --no-predictive-regulation --db DB        # stop (the notes stay until you delete them)
+```
+
+Leave it on for at least a week of normal use with the research worker running and the internal-state history on
+(the default; the notes are checked against that 6-hour history, so a worker that is stopped for longer leaves some
+"unsettled"). Then read the report:
+
+- `statement`: how many days and memory shortages ("breach episodes") the numbers rest on. Below 7 days or 5
+  episodes it says **not enough data**: do not decide on it yet. That minimum only gates reading, not deciding.
+- `settled.added`: **read this first.** Only the notes made where the real gate let work start and memory was not
+  yet short: `hits` (it would have held and memory did fall under the critical line within 3 minutes),
+  `false_alarms` (it would have held and nothing happened), `misses` (it would have let work start and memory did fall
+  short). These are the holds that would have changed something.
+- `settled.hits`: would-hold notes with memory under the critical line at that moment or within 3 minutes (a note
+  made while memory is already short counts; `settled.holds_gate_refused` says how many holds the real gate was
+  already making).
+- `breaches.preceded_before_start`: how many shortages had a would-hold note strictly before their first sample
+  (`preceded` also counts a note at that sample). The warning time cannot exceed 3 minutes, so it is shown as a
+  distribution (`lead_seconds_distribution`), not only as a mean.
+- `guide`: the rule, written down before any host data, under which the evidence would support turning it on: enough
+  data, at least 4 in 5 shortages seen before they started, and no more added false alarms than added hits. It
+  decides nothing; the decision is yours.
+- Verdicts exist only while the worker asks the gate; shortages are counted from every sample. Keep the worker
+  running **with web research enabled**, or the shortages of that time count as unseen.
+- `work.starts_after_a_hold`: background tasks that started while it would have held, out of `background_starts`:
+  the research it would have postponed.
+- `verdicts.not_recorded_busy`: notes that could not be written because another program held the notes file at that
+  moment (the `statement` then says "N verdict(s) were not recorded because the record was busy"). The gate decided as
+  usual for them. Many of these mean the notes are incomplete; find which program keeps the file busy.
+
+If the hits and warning time are worth the postponed research and the false alarms, turn it on with
+`nsf config --predictive-regulation`; that is your decision. The notes are numbers only (no questions, no text):
+`<db>.resources/forecast-shadow.jsonl` and `forecast-shadow-days.json` (120 days kept). Like the internal-state
+history they are not in checkpoints and `forget` does not need to reach them; deleting the two files removes the
+evidence and nothing else.
+
+**How close each learner is to having enough real outcomes.** Calibration, scenario records, forecast recalibration
+and strategy selection only improve from outcomes the world settles. `nsf readiness --db DB` counts what you have:
+settled predictions by kind and month, answers that later got a verdict, hypotheses settled, re-checks that found a
+change, and for each learner its minimum (read from the code), what is missing and the earliest date it could be met
+at the pace so far ("unknown" while nothing settles). It only reads: nothing is fitted or stored, no model is called.
+`nsf self` shows the same per-learner summary under `uncertain.outcomes_readiness`.
+
+**Read the shadow report with care (Wave 3 review).** A would-hold note made while memory is *already* under the
+line counts as a hit, and the warning time cannot exceed 3 minutes, so `settled.hits` and the mean warning time look
+good by construction (in the review's staged runs 73 % of the hits were holds the real gate was already making).
+Since the fix lane the report counts separately what the forecast adds (`settled.added`). On the staged test traces
+the added false alarms outnumbered the added hits on held-out (198 against 78): do not turn predictive regulation on
+from `settled.hits` alone.
+
+### Which pages count as separate sources, and replacing out-of-date facts (ADR-061)
+
+**In plain words.** When several web pages say the same thing, NeuroSciFi counts how many *independent* sources they
+are. Pages on the same site, near-identical copies, and copies that carry a "first appeared on" line count as one.
+Wave 3 built two extra rules and found they are not good enough yet, so **both are off** (the fix lane's decision
+after the reviews; you can turn either on):
+
+- `attribution_independence`: a page that says "according to X" counts with X. It only understands a few wordings
+  (a copy that says "X notes" or "per a X report" still looks independent), and honest outlets that mention who
+  reported first are counted as one source, so it can cost correct knowledge. The fix lane removed the worst defect:
+  one page crediting two honest outlets no longer merges them.
+- `echo_recognition`: a page that repeats what NeuroSciFi itself answered, or says "an assistant reported", is not
+  taken as proof. It only catches repeats that name a model or copy a number NeuroSciFi said first. The fix lane made
+  it safe to turn on: it no longer throws away honest pages on a large individual, a forgotten source no longer
+  blocks a subject for ever, it no longer slows writes, and "the AI Act" is no longer read as AI text. While it is off
+  (the default), such a page counts like any other page, also when it says an assistant or an AI wrote it: that check
+  is part of this rule.
+- `origin_grouping` (ADR-063), **off** (`"transitive"`): a known weakness stays at the default. One page that says a
+  story "was first published by" one honest site and "originally appeared in" another makes those two sites count as
+  one source, so a fact both report is not confirmed. Setting it to `"one_way"` makes such a page count with only one
+  of the sites it names. It is off because, as first built, it made some copies of one story count as several sources
+  (the worse mistake), and no test world contains such pages, so neither choice is measured. It applies to pages read
+  after you change it:
+
+  ```sh
+  nsf web config --db DB --set 'origin_grouping="one_way"'      # opt in (your decision; not recommended on this evidence)
+  nsf web config --db DB --set 'origin_grouping="transitive"'   # back to the default
+  ```
+
+To check or change them (`DB` is the individual's file):
+
+```sh
+nsf web config --db DB                                         # shows both, off unless you turned them on
+nsf web config --db DB --set attribution_independence=false --set echo_recognition=false   # turn both off
+```
+
+Turning them on is not recommended on the present evidence. What they write: nothing of their own; they only change
+which pages count.
+
+If a saved value of one of these settings is damaged, `nsf web config` lists it under `problems` (the console's web
+settings summary shows the same as "Saved settings"), and the setting reads as its default until you set it again. A
+damaged `supersession_min_sources` also turns `supersession` itself to `"ask"` until you set the number again: a
+damaged bar never lets the rule replace facts more easily.
+
+**Replacing an out-of-date fact without asking you (`supersession`, off).** Today, when a refresh finds a newer
+version that disagrees with what NeuroSciFi holds, it asks you and changes nothing until you answer. With
+`supersession` set to `"independent"`, a newer version stated by at least `supersession_min_sources` (2) independent
+sources replaces the held fact without asking, and the replacement is listed for you to check:
+
+```sh
+nsf web config --db DB --set 'supersession="independent"'   # turn it on (your decision)
+nsf web replacements --db DB                                  # every replacement the rule made, newest first
+nsf web revert --db DB ID                                     # undo one: the replaced version comes back exactly
+nsf web config --db DB --set 'supersession="ask"'            # back to asking you (the default)
+```
+
+Measured in Wave 3 on simulated worlds, it asked fewer questions but did not make knowledge measurably more correct,
+and about one replacement in eight was wrong (two outlets repeating the same rumour); some wrong replacements stayed
+wrong for over a week of simulated days, until the test ended. Two outlets repeating the same rumour can still
+replace a correct fact in your own research or a refresh. Since the fix lane only your own research and refreshes
+can let it decide (a question asked from Pocket or by an agent is always asked of you), forgetting a source also
+removes it from the rule's record and an undo never brings back something you forgot, and an undo reopens the
+questions the replacement had closed. Keep it off unless you accept the rumour risk.
+
 ### Crashed worker
 
 Each lease records the worker's host digest, pid and process start time. On the same host a dead worker is detected at once: `cancel`, `resume` and `requeue` act immediately and the worker service picks the task up from its checkpoint without waiting for the 600 s lease to expire. Task JSON carries `worker_alive` (`true`, `false`, or `null` when no worker holds it or it runs on another host).
@@ -421,7 +548,7 @@ Each lease records the worker's host digest, pid and process start time. On the 
 | A knowledge item and every version of it | `nsfs forget knowledge ID` (or `nsfs web forget ID`) |
 | A source URL (as requested, original or final) or every source of a domain, also from the public cache | `nsfs forget source URL_OR_DOMAIN` |
 
-Forgetting a knowledge item also forgets its queued or running refresh tasks (their objective is the forgotten statement); the result lists them in `refresh_tasks_forgotten`. Every forget result whose checkpoints became stale carries `next_steps` naming `nsf checkpoint rebuild`.
+Forgetting a knowledge item also forgets its queued or running refresh tasks (their objective is the forgotten statement); the result lists them in `refresh_tasks_forgotten`. Forgetting a source or a research task also replaces the forgotten sentence by «#forgotten» in the questions that quoted it ("Sources now contradict known ...: «...»"); such a question keeps its state, and the result lists the questions changed in `questions_redacted`. Every forget result whose checkpoints became stale carries `next_steps` naming `nsf checkpoint rebuild`.
 
 Each web forget records a payload-free tombstone (`web_forgotten`, an instance-salted digest), marks every checkpoint stale and logs only a digest label for a URL or domain in `deletion_log`. `checkpoint restore` replays those tombstones on the restored copy, so a forgotten task, knowledge version or source never comes back. Then follow the erasure steps of section 6 (`checkpoint rebuild`). Forgetting a partner (`nsfs forget partner NAME`) also replaces the name in research objectives, reports, events, claims and knowledge.
 

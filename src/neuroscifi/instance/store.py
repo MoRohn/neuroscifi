@@ -104,12 +104,14 @@ class InstanceConfig:
     # predictive_regulation: policy.background_gate also refuses NEW background research while resources/forecast.py
     # forecasts memory
     # headroom under the critical line, or a regular voice session, within its horizon; it never touches owner work.
+    # "shadow" (ADR-058): the gate decides as with it off and the forecast's verdict is only recorded, to be settled
+    # against the host's memory (resources/shadow.py, `nsf internal-state --shadow-report`).
     # executive_rule: the executive's rule version (store.RULE_VERSIONS; the owner adopts one. A released version is
     # never edited; information-v1 was amended once before it was released: review1b N4).
     # decision_information: `nsf decide` shows each question's exact expected information gain and whether the
     # decision rests on a matched earlier setup (information.py); display only.
     internal_state_history: bool = True
-    predictive_regulation: bool = False
+    predictive_regulation: bool | str = False
     executive_rule: str = "rules-v1"
     decision_information: bool = True
     # Imagination (ADR-052): answers computed on a private in-memory copy of this file (instance/imagine.py), never
@@ -151,7 +153,8 @@ class InstanceConfig:
         # ADR-051: a damaged value reads as the behaviour before these settings existed (no history kept, no
         # predictive holds, the first rule version).
         for name in ("internal_state_history", "predictive_regulation", "decision_information"):
-            if name in values and not isinstance(values[name], bool):
+            if name in values and not isinstance(values[name], bool) and not (
+                    name == "predictive_regulation" and values[name] == "shadow"):      # ADR-058's third value
                 values[name] = False
         if "executive_rule" in values and not _SETTABLE["executive_rule"](values["executive_rule"]):
             del values["executive_rule"]
@@ -332,7 +335,7 @@ _SETTABLE = {
                                             and math.isfinite(v) and 60 <= v <= MAX_IMAGINED_LIFETIME),
     "quiet": lambda v: isinstance(v, bool),
     "internal_state_history": lambda v: isinstance(v, bool),
-    "predictive_regulation": lambda v: isinstance(v, bool),
+    "predictive_regulation": lambda v: isinstance(v, bool) or v == "shadow",
     "executive_rule": lambda v: isinstance(v, str) and v in RULE_VERSIONS,
     "decision_information": lambda v: isinstance(v, bool),
     "imagine_what_if": lambda v: isinstance(v, bool),
@@ -387,7 +390,8 @@ def setting_problems(db):
              "internal_state_history": "; no internal-state history is kept until it is set with `nsf config "
                                        "--internal-state-history`",
              "predictive_regulation": "; predictive regulation is treated as off until it is set with `nsf config "
-                                      "--predictive-regulation`",
+                                      "--predictive-regulation`, `--no-predictive-regulation` or "
+                                      "`--predictive-regulation-shadow`",
              "executive_rule": "; the executive uses rules-v1 until it is set with `nsf config --executive-rule`",
              "decision_information": "; decisions are shown without their information gains until it is set with "
                                      "`nsf config --decision-information`",

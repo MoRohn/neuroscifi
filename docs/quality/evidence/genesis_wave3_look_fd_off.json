@@ -1,0 +1,1439 @@
+{
+ "benchmark": "cognition",
+ "version": 1,
+ "label": "cognitive benchmark: synthetic, fictional worlds driven through the real modules; offline (loopback only); no answer model; simulated, not a measurement of the DGX Spark or of the open web",
+ "generated_at": "2026-11-26T14:04:09Z",
+ "environment": {
+  "git_commit": "0bdc41a83639c6816aabbf4d35f39470bba363c5",
+  "git_dirty": false,
+  "python": "3.12.16",
+  "numpy": "2.3.5",
+  "sqlite": "3.53.1",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39",
+  "withheld_sha256": "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
+ },
+ "split": "development",
+ "mechanism": "imagination",
+ "ablate": [
+  "front_door"
+ ],
+ "seeds_override": null,
+ "quick": false,
+ "families": {
+  "withheld": {
+   "mechanisms": {
+    "anticipation": {
+     "used": "baseline",
+     "fell_back_to_baseline": true,
+     "needs_model": false,
+     "reference": false
+    },
+    "info_value": {
+     "used": "baseline",
+     "fell_back_to_baseline": true,
+     "needs_model": false,
+     "reference": false
+    },
+    "counterfactual": {
+     "used": "imagination",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    },
+    "self_model": {
+     "used": "baseline",
+     "fell_back_to_baseline": true,
+     "needs_model": false,
+     "reference": false
+    }
+   },
+   "result": {
+    "anticipation": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "scope": {
+      "plant": "simulated: the constants (CONSTANTS: task memory, task length, breach lines) are declared by the benchmark, not measured on the host",
+      "wiring": "the regulator is called directly with the plant's history; the product's wiring (the gate resources.policy.background_gate, the history file <db>.resources/internal-state.jsonl and the worker's sampler internal_state.record) is not exercised by this family; tests/test_predictive_wiring.py drives it end to end on a staged individual",
+      "reading": "a gain here is a gain inside this plant; for lane I's forecaster on held-out it comes from reserving memory per background task (removing the trend leaves all of it there; on development the trend matters more: scripts/bench_wave1.py ablations, trend_share_of_avoided)"
+     },
+     "summary": {
+      "memory.reference_episodes": {
+       "mean": 2.0,
+       "sd": 0.0,
+       "min": 2.0,
+       "max": 2.0,
+       "n": 3
+      },
+      "memory.breach_ticks": {
+       "mean": 21.0,
+       "sd": 0.0,
+       "min": 21.0,
+       "max": 21.0,
+       "n": 3
+      },
+      "memory.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "memory.mean_lead_ticks": {
+       "mean": 5.666667,
+       "sd": 1.258306,
+       "min": 4.5,
+       "max": 7.0,
+       "n": 3
+      },
+      "latency.reference_episodes": {
+       "mean": 11.333333,
+       "sd": 1.154701,
+       "min": 10.0,
+       "max": 12.0,
+       "n": 3
+      },
+      "latency.breach_ticks": {
+       "mean": 82.333333,
+       "sd": 4.163332,
+       "min": 79.0,
+       "max": 87.0,
+       "n": 3
+      },
+      "latency.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "latency.mean_lead_ticks": {
+       "mean": 1.25,
+       "sd": 1.767767,
+       "min": 0.0,
+       "max": 2.5,
+       "n": 2
+      },
+      "audio.reference_episodes": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 3
+      },
+      "audio.breach_ticks": {
+       "mean": 14.0,
+       "sd": 3.605551,
+       "min": 10.0,
+       "max": 17.0,
+       "n": 3
+      },
+      "audio.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "audio.mean_lead_ticks": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "backlog.reference_episodes": {
+       "mean": 5.0,
+       "sd": 0.0,
+       "min": 5.0,
+       "max": 5.0,
+       "n": 3
+      },
+      "backlog.breach_ticks": {
+       "mean": 20.0,
+       "sd": 0.0,
+       "min": 20.0,
+       "max": 20.0,
+       "n": 3
+      },
+      "backlog.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "backlog.mean_lead_ticks": {
+       "mean": null,
+       "sd": null,
+       "min": null,
+       "max": null,
+       "n": 0
+      },
+      "hold_ticks": {
+       "mean": 63.0,
+       "sd": 2.645751,
+       "min": 61.0,
+       "max": 66.0,
+       "n": 3
+      },
+      "false_alarm_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "work_given_up_share": {
+       "mean": 0.049128,
+       "sd": 0.005714,
+       "min": 0.044374,
+       "max": 0.055468,
+       "n": 3
+      },
+      "breach_ticks_all_channels": {
+       "mean": 137.333333,
+       "sd": 6.658328,
+       "min": 130.0,
+       "max": 143.0,
+       "n": 3
+      }
+     },
+     "per_seed": [
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 6,
+        "breach_ticks": 21,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 7.0
+       },
+       "latency": {
+        "reference_episodes": 12,
+        "episodes": 16,
+        "breach_ticks": 79,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 2.5
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 4,
+        "breach_ticks": 10,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 4,
+        "mean_lead_ticks": 0.0
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 20,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 0,
+        "mean_lead_ticks": null
+       },
+       "hold_ticks": 66,
+       "false_alarm_ticks": 0,
+       "false_alarm_share": 0.0,
+       "work_given_up_share": 0.055468,
+       "breach_ticks_all_channels": 130
+      },
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 5,
+        "breach_ticks": 21,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 4.5
+       },
+       "latency": {
+        "reference_episodes": 12,
+        "episodes": 18,
+        "breach_ticks": 81,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 0,
+        "mean_lead_ticks": null
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 4,
+        "breach_ticks": 17,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 4,
+        "mean_lead_ticks": 0.0
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 20,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 0,
+        "mean_lead_ticks": null
+       },
+       "hold_ticks": 61,
+       "false_alarm_ticks": 0,
+       "false_alarm_share": 0.0,
+       "work_given_up_share": 0.044374,
+       "breach_ticks_all_channels": 139
+      },
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 5,
+        "breach_ticks": 21,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 5.5
+       },
+       "latency": {
+        "reference_episodes": 10,
+        "episodes": 14,
+        "breach_ticks": 87,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 1,
+        "mean_lead_ticks": 0.0
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 4,
+        "breach_ticks": 15,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 4,
+        "mean_lead_ticks": 0.0
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 20,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 0,
+        "mean_lead_ticks": null
+       },
+       "hold_ticks": 62,
+       "false_alarm_ticks": 0,
+       "false_alarm_share": 0.0,
+       "work_given_up_share": 0.047544,
+       "breach_ticks_all_channels": 143
+      }
+     ],
+     "traces": {
+      "accelerating leak (slope doubles twice)": {
+       "memory": {
+        "reference_episodes": 1.0,
+        "ticks": 12.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": 4.666667
+       },
+       "latency": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "audio": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "backlog": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "work_given_up_share": 0.012552,
+       "false_alarm_ticks_any_channel": 0.0,
+       "hold_ticks": 15.666667
+      },
+      "voice sessions right after each backlog burst": {
+       "memory": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "latency": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "audio": {
+        "reference_episodes": 4.0,
+        "ticks": 14.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": 0.0
+       },
+       "backlog": {
+        "reference_episodes": 5.0,
+        "ticks": 20.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "work_given_up_share": 0.09205,
+       "false_alarm_ticks_any_channel": 0.0,
+       "hold_ticks": 32.0
+      },
+      "latency drift during a leak, background demand that varies": {
+       "memory": {
+        "reference_episodes": 1.0,
+        "ticks": 9.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": 6.666667
+       },
+       "latency": {
+        "reference_episodes": 11.333333,
+        "ticks": 82.333333,
+        "avoided": 0.0,
+        "mean_lead_ticks": 1.25
+       },
+       "audio": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "backlog": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "work_given_up_share": 0.039216,
+       "false_alarm_ticks_any_channel": 0.0,
+       "hold_ticks": 15.333333
+      }
+     }
+    },
+    "info_value": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "core": {
+      "three noisy partners, one honest partner seen once": {
+       "realised_bits": {
+        "mean": 0.342249,
+        "sd": 0.562308,
+        "min": 0.017597,
+        "max": 0.991546,
+        "n": 3
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.042781,
+        "sd": 0.070288,
+        "min": 0.0022,
+        "max": 0.123943,
+        "n": 3
+       },
+       "known_gain_bits": {
+        "mean": 0.342552,
+        "sd": 0.458798,
+        "min": 0.072813,
+        "max": 0.872297,
+        "n": 3
+       },
+       "noise_share": {
+        "mean": 0.041667,
+        "sd": 0.072169,
+        "min": 0.0,
+        "max": 0.125,
+        "n": 3
+       },
+       "idle_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "choices": {
+        "9001": [
+         "partner:p-noise-3",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ],
+        "9002": [
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ],
+        "9003": [
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ]
+       }
+      }
+     },
+     "web": {
+      "three noisy subjects, one stale, one gap": {
+       "realised_bits": {
+        "mean": -0.559846,
+        "sd": 1.645089,
+        "min": -2.459432,
+        "max": 0.389947,
+        "n": 3
+       },
+       "realised_bits_per_budget": {
+        "mean": -0.079978,
+        "sd": 0.235013,
+        "min": -0.351347,
+        "max": 0.055707,
+        "n": 3
+       },
+       "known_gain_bits": {
+        "mean": 0.562151,
+        "sd": 0.0,
+        "min": 0.562151,
+        "max": 0.562151,
+        "n": 3
+       },
+       "noise_share": {
+        "mean": 0.857143,
+        "sd": 0.0,
+        "min": 0.857143,
+        "max": 0.857143,
+        "n": 3
+       },
+       "stale_share": {
+        "mean": 0.142857,
+        "sd": 0.0,
+        "min": 0.142857,
+        "max": 0.142857,
+        "n": 3
+       },
+       "idle_steps": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "choices": {
+        "9001": [
+         "garnet",
+         "garnet",
+         "haddock",
+         "haddock",
+         "isobar",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock"
+        ],
+        "9002": [
+         "garnet",
+         "garnet",
+         "haddock",
+         "haddock",
+         "isobar",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock"
+        ],
+        "9003": [
+         "garnet",
+         "garnet",
+         "haddock",
+         "haddock",
+         "isobar",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock"
+        ]
+       }
+      }
+     },
+     "core_mean": {
+      "realised_bits": 0.342249,
+      "realised_bits_per_budget": 0.042781,
+      "known_gain_bits": 0.342552,
+      "noise_share": 0.041667,
+      "idle_share": 0.0
+     },
+     "web_mean": {
+      "realised_bits": -0.559846,
+      "realised_bits_per_budget": -0.079978,
+      "known_gain_bits": 0.562151,
+      "noise_share": 0.857143,
+      "stale_share": 0.142857,
+      "idle_steps": 0.0
+     }
+    },
+    "counterfactual": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "tolerance": 0.1,
+     "strict_tolerance": 0.05,
+     "interval": "central 95 % normal interval",
+     "summary": {
+      "answered_within_tolerance": {
+       "mean": 0.826667,
+       "sd": 0.023094,
+       "min": 0.8,
+       "max": 0.84,
+       "n": 3
+      },
+      "answered_within_strict_tolerance": {
+       "mean": 0.76,
+       "sd": 0.069282,
+       "min": 0.68,
+       "max": 0.8,
+       "n": 3
+      },
+      "max_relative_error": {
+       "mean": 0.094449,
+       "sd": 0.042326,
+       "min": 0.050562,
+       "max": 0.135018,
+       "n": 3
+      },
+      "answered_within_tolerance_without_front_door": {
+       "mean": 0.984127,
+       "sd": 0.027493,
+       "min": 0.952381,
+       "max": 1.0,
+       "n": 3
+      },
+      "interval_score": {
+       "mean": 2.540074,
+       "sd": 0.142766,
+       "min": 2.376987,
+       "max": 2.642454,
+       "n": 3
+      },
+      "answered_share": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "mean_relative_error": {
+       "mean": 0.012441,
+       "sd": 0.003468,
+       "min": 0.009037,
+       "max": 0.015969,
+       "n": 3
+      },
+      "interval_coverage": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "declined_confounded_share": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      }
+     },
+     "summary_is": "pooled over every group, the front-door questions included: reported, not a claim (the groups measure different things and are never pooled in a claim; see summary_by_group)",
+     "summary_by_group": {
+      "handed_equations": {
+       "answered_within_tolerance": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "interval_score": {
+        "mean": 2.450993,
+        "sd": 0.321538,
+        "min": 2.0808,
+        "max": 2.660682,
+        "n": 3
+       },
+       "answered_share": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 8
+      },
+      "belief_what_if": {
+       "answered_within_tolerance": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "interval_score": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_share": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 3
+      },
+      "learned_graph": {
+       "answered_within_tolerance": {
+        "mean": 0.966667,
+        "sd": 0.057735,
+        "min": 0.9,
+        "max": 1.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.8,
+        "sd": 0.173205,
+        "min": 0.6,
+        "max": 0.9,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.094449,
+        "sd": 0.042326,
+        "min": 0.050562,
+        "max": 0.135018,
+        "n": 3
+       },
+       "interval_score": {
+        "mean": 3.37336,
+        "sd": 0.075054,
+        "min": 3.327033,
+        "max": 3.459955,
+        "n": 3
+       },
+       "answered_share": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": 0.026126,
+        "sd": 0.007282,
+        "min": 0.018978,
+        "max": 0.033535,
+        "n": 3
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 10
+      },
+      "front_door": {
+       "answered_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "interval_score": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "answered_share": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "mean_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "front_door_declined": {
+        "mean": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "questions_per_seed": 4
+      }
+     },
+     "per_seed": [
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.84,
+       "answered_within_strict_tolerance": 0.8,
+       "max_relative_error": 0.050562,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 2.376987,
+       "interval_score_answered": 21,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.009037,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.8,
+       "answered_within_strict_tolerance": 0.8,
+       "max_relative_error": 0.135018,
+       "answered_within_tolerance_without_front_door": 0.952381,
+       "interval_score": 2.60078,
+       "interval_score_answered": 21,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.012317,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.84,
+       "answered_within_strict_tolerance": 0.68,
+       "max_relative_error": 0.097767,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 2.642454,
+       "interval_score_answered": 21,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.015969,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      }
+     ],
+     "by_query_kind": {
+      "belief:what-if": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.0,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 0.0,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.0,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:action": {
+       "queries": 12,
+       "answerable": 12,
+       "answerable_with_front_door": 12,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.916667,
+       "answered_within_strict_tolerance": 0.75,
+       "max_relative_error": 0.135018,
+       "answered_within_tolerance_without_front_door": 0.916667,
+       "interval_score": 3.876557,
+       "interval_score_answered": 12,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.03193,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:horizon 1": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 0.666667,
+       "max_relative_error": 0.06598,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 1.905742,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.029411,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:horizon 4": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.026141,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 4.17005,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.015103,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:confounded": {
+       "queries": 12,
+       "answerable": 0,
+       "answerable_with_front_door": 12,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": null,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": null,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 12,
+       "front_door_declined": 12,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      "scm:counterfactual": {
+       "queries": 6,
+       "answerable": 6,
+       "answerable_with_front_door": 6,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.0,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 0.0,
+       "interval_score_answered": 6,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.0,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:interventional": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.0,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 3.267991,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.0,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:observational": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.0,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 3.267991,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.0,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      }
+     }
+    },
+    "self_model": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "probes": [
+      "running_tasks",
+      "queued_tasks",
+      "open_owner_questions",
+      "autonomy_enabled",
+      "autonomous_searches_left",
+      "memory_level",
+      "writes_allowed",
+      "audio_active",
+      "background_research_allowed",
+      "local_model_unloaded",
+      "uncertain_about",
+      "last_decision",
+      "journal_row_limit",
+      "authorised_model_tools",
+      "researching_now"
+     ],
+     "summary": {
+      "coverage": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 3
+      },
+      "accuracy": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 3
+      },
+      "accuracy_when_answered": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "surfaces_used": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 3
+      }
+     },
+     "summary_original_key": {
+      "accuracy": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 3
+      },
+      "correct": {
+       "mean": 12.0,
+       "sd": 0.0,
+       "min": 12.0,
+       "max": 12.0,
+       "n": 3
+      },
+      "probes": {
+       "mean": 15.0,
+       "sd": 0.0,
+       "min": 15.0,
+       "max": 15.0,
+       "n": 3
+      }
+     },
+     "summary_without_plumbing": {
+      "coverage": {
+       "mean": 0.923077,
+       "sd": 0.0,
+       "min": 0.923077,
+       "max": 0.923077,
+       "n": 3
+      },
+      "accuracy": {
+       "mean": 0.923077,
+       "sd": 0.0,
+       "min": 0.923077,
+       "max": 0.923077,
+       "n": 3
+      },
+      "correct": {
+       "mean": 12.0,
+       "sd": 0.0,
+       "min": 12.0,
+       "max": 12.0,
+       "n": 3
+      },
+      "probes": {
+       "mean": 13.0,
+       "sd": 0.0,
+       "min": 13.0,
+       "max": 13.0,
+       "n": 3
+      }
+     },
+     "plumbing_checks": [
+      "authorised_model_tools",
+      "last_decision"
+     ],
+     "disclosure": "lane W printed its describer's answers on the held-out states once during development; the answer key of uncertain_about changed in Wave 1 (summary_original_key is the key the baseline was recorded with)",
+     "per_probe": {
+      "running_tasks": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "queued_tasks": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "open_owner_questions": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "autonomy_enabled": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "autonomous_searches_left": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "memory_level": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "writes_allowed": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "audio_active": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "background_research_allowed": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "local_model_unloaded": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "uncertain_about": {
+       "answered": 0.0,
+       "correct": 0.0
+      },
+      "last_decision": {
+       "answered": 0.0,
+       "correct": 0.0,
+       "plumbing_check": true
+      },
+      "journal_row_limit": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "authorised_model_tools": {
+       "answered": 0.0,
+       "correct": 0.0,
+       "plumbing_check": true
+      },
+      "researching_now": {
+       "answered": 1.0,
+       "correct": 1.0
+      }
+     },
+     "staging_problems": []
+    }
+   },
+   "cost": {
+    "wall_seconds": 0.773,
+    "model_calls": 0,
+    "refused_connections": 0,
+    "peak_rss_bytes": 77180928,
+    "peak_rss_rise_bytes": 25620480
+   }
+  }
+ },
+ "final_runs": [
+  {
+   "ablate": [],
+   "at": "2026-11-25T12:23:34Z",
+   "commit": "19f80e283d543be8969de14ad852bba53aeda2e7",
+   "dirty": false,
+   "families": [
+    "withheld"
+   ],
+   "mechanism": "baseline",
+   "note": "baseline on the unchanged system"
+  },
+  {
+   "ablate": [],
+   "at": "2026-11-25T23:25:17Z",
+   "commit": "816fa124e22789743ca6f87002440a8b141cc86a",
+   "dirty": false,
+   "families": [
+    "withheld"
+   ],
+   "mechanism": "baseline",
+   "note": "Wave 1, final tree 816fa12: baseline re-scored under the corrected scoring; behaviour unchanged"
+  },
+  {
+   "ablate": [],
+   "at": "2026-11-25T23:25:18Z",
+   "commit": "816fa124e22789743ca6f87002440a8b141cc86a",
+   "dirty": false,
+   "families": [
+    "withheld"
+   ],
+   "mechanism": "wave1",
+   "note": "Wave 1, final tree 816fa12: Wave 1 mechanisms, the one look"
+  },
+  {
+   "ablate": [],
+   "at": "2026-11-26T07:05:06Z",
+   "commit": "d0b6b02a782597094323a0c2db1acf809d28aa55",
+   "configurations": [
+    "baseline",
+    "reference:no-loop",
+    "shipped"
+   ],
+   "dirty": false,
+   "families": [
+    "learning_cycles_withheld"
+   ],
+   "mechanism": "baseline",
+   "note": "Wave 3 step 0: the unchanged system's one look at the withheld learning-cycles worlds (no-loop reference, baseline with every Wave 1 setting off, shipped defaults; references from the generator alone)"
+  },
+  {
+   "ablate": [],
+   "at": "2026-11-26T14:01:29Z",
+   "commit": "0bdc41a83639c6816aabbf4d35f39470bba363c5",
+   "configurations": [
+    "baseline",
+    "idle-first",
+    "lane-s:attribution-only",
+    "lane-s:both",
+    "lane-s:echo-only",
+    "lane-s:fixes-off",
+    "lane-s:supersede-K2",
+    "recheck:rate+seen+rotation/all",
+    "recheck:rotation/all",
+    "reference:no-loop",
+    "shipped",
+    "shipped+idle"
+   ],
+   "dirty": false,
+   "families": [
+    "learning_cycles_withheld"
+   ],
+   "mechanism": "wave3",
+   "note": "Wave 3 final tree 0bdc41a",
+   "withheld_sha256": "0a4831aa07e30cd31a2f4e3270e59ef20338ed2ebb229b22c77f1448628ebc0d"
+  },
+  {
+   "ablate": [],
+   "at": "2026-11-26T14:04:08Z",
+   "commit": "0bdc41a83639c6816aabbf4d35f39470bba363c5",
+   "dirty": false,
+   "families": [
+    "withheld"
+   ],
+   "mechanism": "imagination",
+   "note": "Wave 3 final tree 0bdc41a: front door on"
+  },
+  {
+   "ablate": [
+    "front_door"
+   ],
+   "at": "2026-11-26T14:04:09Z",
+   "commit": "0bdc41a83639c6816aabbf4d35f39470bba363c5",
+   "dirty": false,
+   "families": [
+    "withheld"
+   ],
+   "mechanism": "imagination",
+   "note": "Wave 3 final tree 0bdc41a: front door off"
+  }
+ ]
+}

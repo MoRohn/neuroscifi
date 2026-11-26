@@ -925,9 +925,39 @@ def _drop_knowledge(db, ids, now):
         db.execute(f"DELETE FROM web_mentions WHERE knowledge_id IN ({marks})", part)
         db.execute(f"DELETE FROM web_events WHERE json_extract(detail,'$.knowledge_id') IN ({marks})", part)
     closed = _forget_pending(db, [f"web:knowledge:{k}" for k in ids], [], now)
+    _forget_replaced_statements(db, ids)
     _drop_in_process_copies()
     return {"knowledge_deleted": ids, "versions_restored": sorted(restored), "versions_relinked": sorted(relinked),
             "pending_closed": closed}
+
+
+def _forget_replaced_statements(db, ids):
+    """ADR-061 (security review M1): the supersession rule's question, recorded under the NEW version's scope, quotes
+    the statement it replaced. When that replaced version is forgotten, the question loses its text (the record
+    keeps only the replaced id, a number). Caller owns the txn."""
+    for part in _chunks(sorted(set(ids))):
+        for (kid,) in db.execute("SELECT id FROM web_knowledge WHERE json_extract(verification, "
+                                 f"'$.supersession.replaced') IN ({_in(part)})", part).fetchall():
+            db.execute("UPDATE pending SET question=? WHERE scope=? AND resolution LIKE 'answered by the supersession "
+                       "rule%'", (_WEB_QUESTION, f"web:knowledge:{kid}"))
+
+
+def _scrub_rule_records(db):
+    """ADR-061 (security review M1): a supersession record written before the fix lane kept the replaced row's
+    sources and supporting claims; every web forget (live or replayed) cuts such a record down to the columns the
+    replacement changed (consolidate.RESTORE_COLUMNS), so a forgotten source is neither kept there nor written back by
+    a revert. Caller owns the txn. Returns the records changed."""
+    from ..webcortex.consolidate import RESTORE_COLUMNS
+    changed = 0
+    for kid, raw in db.execute("SELECT id, verification FROM web_knowledge WHERE json_extract(verification, "
+                               "'$.supersession.previous') IS NOT NULL").fetchall():
+        value = json.loads(raw)
+        previous = value["supersession"]["previous"]
+        if isinstance(previous, dict) and set(previous) - set(RESTORE_COLUMNS):
+            value["supersession"]["previous"] = {k: v for k, v in previous.items() if k in RESTORE_COLUMNS}
+            db.execute("UPDATE web_knowledge SET verification=? WHERE id=?", (_dump(value), kid))
+            changed += 1
+    return changed
 
 
 def _web_cascade(db, removed_claims, now):
@@ -984,6 +1014,7 @@ def _premise_cascade(db, effects, now):
 def _web_finish(db, kind, target, effects, now):
     """Stale checkpoints, state version and deletion_log. Caller owns the txn. `target` is persisted: it must
     not carry forgotten payload (a URL or domain goes in as its digest label)."""
+    _scrub_rule_records(db)
     _premise_cascade(db, effects, now)
     _imagined_cascade(db, effects, now)
     effects["checkpoints_stale"] = _stale_all(db)
@@ -1008,11 +1039,166 @@ def _unreferenced(db, urls, shas):
     return sorted(set(urls) - still), sorted(set(shas) - kept_shas)
 
 
-def _forget_research_core(db, task_id, now):
-    """Remove one task and what rested only on it. Caller owns the txn. Returns (effects, cache) or None."""
+def _claim_texts(db, claim_ids):
+    """The texts of the claims (read before they are deleted: _forget_quoted)."""
+    texts = set()
+    for part in _chunks(sorted(claim_ids)):
+        texts.update(t for (t,) in db.execute(f"SELECT text FROM web_claims WHERE id IN ({_in(part)})", part) if t)
+    return texts
+
+
+def _forget_quoted(db, texts):
+    """review3b N6: a contradiction question (the ask path under the held item's scope, and the supersession rule's
+    answered one) quotes the sentence of the claim that contradicted, «...». When that claim is forgotten its quote is
+    replaced by «#forgotten» (the question keeps its state: the contradiction may still stand on other sources), so
+    the forgotten sentence stays nowhere. A quote of the same sentence from a source that is kept is replaced too
+    (the safe side); the held item's own statement ("known «...»") is the item's and stays while the item does.
+    Caller owns the txn; a restore replays it with the forget. Returns the questions changed."""
+    from ..webcortex import consolidate, knowledge
+    quotes = set()
+    for t in texts:
+        for variant in (t, consolidate.safe_text(t)):
+            if variant and variant != consolidate.WITHHELD:
+                quotes.add(f"«{knowledge.quote(variant)}»")
+    changed = []
+    if not quotes:
+        return changed
+    for pid, question in db.execute("SELECT id, question FROM pending WHERE substr(scope,1,4)='web:' AND "
+                                    "instr(question,'«')>0").fetchall():
+        known = re.match(r"(.*?known «[^»]*»)(.*)", question, re.DOTALL)
+        head, rest = (known.group(1), known.group(2)) if known else ("", question)
+        redacted = rest
+        for q in quotes:
+            redacted = redacted.replace(q, "«" + _WEB_QUESTION + "»")
+        if redacted != rest:
+            db.execute("UPDATE pending SET question=? WHERE id=?", (head + redacted, pid))
+            changed.append(pid)
+    return changed
+
+
+def _sourcing_plan(db, claim_ids):
+    """{digit token: (earliest time a claim stating it was read, the subject names of those claims)} of the specific
+    values of the claims (security review M3's mark). A claim that names no subject marks nothing (review3b N9: the
+    mark needs a shared subject name, as echo recognition's own source check does)."""
+    from ..webcortex import consolidate
+    plan = {}
+    for part in _chunks(sorted(claim_ids)):
+        for values, at, text in db.execute(
+                f"SELECT claim_values, retrieved_at, text FROM web_claims WHERE id IN ({_in(part)})", part).fetchall():
+            try:
+                listed = json.loads(values or "[]")
+            except ValueError:
+                continue
+            names = consolidate._name_set(text or "")
+            if not names or not isinstance(at, (int, float)):
+                continue
+            for v in listed if isinstance(listed, list) else ():
+                if isinstance(v, str) and consolidate._specific(v):
+                    for token in consolidate._DIGITS.findall(v):
+                        first, known = plan.get(token, (at, set()))
+                        plan[token] = (min(first, at), known | names)
+    return plan
+
+
+def _task_versions(db):
+    """{rowid: (status, updated_at)} of every task, read from the covering index web_tasks_status (no result is
+    read): a task whose result was written since an earlier reading shows here as changed."""
+    return {rowid: (status, at) for rowid, status, at in db.execute("SELECT rowid, status, updated_at FROM web_tasks")}
+
+
+def _answer_rows(db, tokens, rowids=None):
+    """rowids of tasks with a model-written result one of whose digit runs is a token: ONE pass over the results
+    (or over `rowids`), whatever the number of tokens (review3b N2: one LIKE scan per 100 tokens before)."""
+    from ..webcortex import consolidate
+    found = set()
+    if rowids is None:
+        rows = db.execute("SELECT rowid, result FROM web_tasks WHERE result LIKE '%model:%'")
+    else:
+        rows = (r for part in _chunks(sorted(rowids)) for r in db.execute(
+            f"SELECT rowid, result FROM web_tasks WHERE rowid IN ({_in(part)}) AND result LIKE '%model:%'", part))
+    for rowid, raw in rows:
+        if isinstance(raw, str) and not tokens.isdisjoint(consolidate._DIGITS.findall(raw)):
+            found.add(rowid)
+    return found
+
+
+def prepare_sourced_marks(db, claim_ids):
+    """The read-only half of _mark_sourced_answers, run BEFORE the forget's write transaction (review3b N2: the scan
+    of every task result held the write lock, 6.9 s for one page at 10,000 tasks, so other writers met their busy
+    timeout): the tokens, the candidate answers and every task's version at the time of the scan."""
+    plan = _sourcing_plan(db, claim_ids)
+    if not plan:
+        return {"tokens": frozenset(), "rows": frozenset(), "seen": {}}
+    seen = _task_versions(db)
+    return {"tokens": frozenset(plan), "rows": frozenset(_answer_rows(db, set(plan))), "seen": seen}
+
+
+def _mark_sourced_answers(db, claim_ids, prepared=None):
+    """ADR-061 (security review M3): before claims are forgotten, every stored model-written answer sentence that
+    states a specific value of one of them (a digit run equal to the value's), names a subject the claim named, and
+    was written at or after that claim was read is marked as having had a source (reasoning["sourced"]: indexes of
+    its text's sentences; answer[i]["sourced"]: true). The mark names no forgotten content. Without it, echo
+    recognition would take the answer for the individual's own unsourced text once its source is gone, and later
+    honest pages stating the value would be discarded as its echoes for ever.
+    Caller owns the txn (the live forget and every checkpoint replay). With `prepared` (prepare_sourced_marks, made
+    before the transaction for these claims) only its candidate answers and the tasks changed since it was made are
+    read here; without it (or when the claims now state a token it did not plan for) one pass over every result.
+    Returns the answers marked."""
+    from ..webcortex import consolidate, text as T
+    plan = _sourcing_plan(db, claim_ids)
+    if not plan:
+        return 0
+    tokens = set(plan)
+    if prepared is not None and tokens <= prepared["tokens"]:
+        now_seen = _task_versions(db)
+        changed = {r for r, v in now_seen.items() if prepared["seen"].get(r) != v}
+        rowids = (set(prepared["rows"]) & set(now_seen)) | _answer_rows(db, tokens, changed)
+    else:
+        rowids = _answer_rows(db, tokens)
+    marked = set()
+
+    def hit(sentence, stated):
+        runs = set(consolidate._DIGITS.findall(sentence))
+        return any(t in runs for t in stated) and bool(consolidate._name_set(sentence) &
+                                                        set().union(*(plan[t][1] for t in stated if t in runs)))
+    for part in _chunks(sorted(rowids)):
+        for rowid, at, raw in db.execute(f"SELECT rowid, coalesce(finished_at, updated_at, created_at), result FROM "
+                                         f"web_tasks WHERE rowid IN ({_in(part)})", part).fetchall():
+            try:
+                result = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            reasoning = result.get("reasoning") if isinstance(result, dict) else None
+            if not isinstance(reasoning, dict) or not str(reasoning.get("generated_by") or "").startswith("model:"):
+                continue
+            stated = [t for t in tokens if plan[t][0] <= (at or 0)]
+            if not stated:
+                continue
+            changed = False
+            if isinstance(reasoning.get("text"), str):
+                hits = {i for i, s in enumerate(T.sentences(reasoning["text"])) if hit(s, stated)}
+                if hits - set(reasoning.get("sourced") or ()):
+                    reasoning["sourced"] = sorted(hits | set(reasoning.get("sourced") or ()))
+                    changed = True
+            for a in reasoning.get("answer") or ():
+                if isinstance(a, dict) and isinstance(a.get("text"), str) and not a.get("sourced") and \
+                        hit(a["text"], stated):
+                    a["sourced"] = True
+                    changed = True
+            if changed:
+                db.execute("UPDATE web_tasks SET result=? WHERE rowid=?", (_dump(result), rowid))
+                marked.add(rowid)
+    return len(marked)
+
+
+def _forget_research_core(db, task_id, now, marks=None):
+    """Remove one task and what rested only on it. Caller owns the txn. Returns (effects, cache) or None. `marks`:
+    prepare_sourced_marks for its claims, made before the transaction (review3b N2)."""
     if db.execute("SELECT 1 FROM web_tasks WHERE id=?", (task_id,)).fetchone() is None:
         return None
     claim_ids = _ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,))
+    _mark_sourced_answers(db, claim_ids, marks)
+    quoted = _claim_texts(db, claim_ids)
     sources = db.execute("SELECT url,final_url,canonical_url,content_sha256 FROM web_sources WHERE task_id=?",
                          (task_id,)).fetchall()
     deleted = {table: db.execute(f"DELETE FROM {table} WHERE task_id=?", (task_id,)).rowcount
@@ -1032,6 +1218,7 @@ def _forget_research_core(db, task_id, now):
     _web_tombstones(db, "task", [task_id], now)
     effects = _web_cascade(db, claim_ids, now)
     effects["pending_closed"] = sorted(set(effects["pending_closed"]) | set(_forget_task_questions(db, task_id, now)))
+    effects["questions_redacted"] = _forget_quoted(db, quoted)
     effects["deleted"] = deleted
     urls, shas = _unreferenced(db, {u for r in sources for u in r[:3] if u}, {r[3] for r in sources if r[3]})
     return effects, {"urls": urls, "sha256": shas}
@@ -1094,8 +1281,9 @@ def forget_research(db, task_id, now):
     to drop from the public cache (returned, never persisted)."""
     if not isinstance(task_id, str) or not task_id:
         raise ValidationError("task id must be a non-empty string")
+    marks = prepare_sourced_marks(db, _ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,)))
     with store.write(db):
-        out = _forget_research_core(db, task_id, now)
+        out = _forget_research_core(db, task_id, now, marks)
         if out is None:
             return {"status": "absent", "effects": {}}
         effects, cache = out
@@ -1144,7 +1332,7 @@ def _refresh_tasks(db, chain):
     return found
 
 
-def _forget_knowledge_core(db, knowledge_id, now):
+def _forget_knowledge_core(db, knowledge_id, now, marks=None):
     """Caller owns the txn. Returns effects or None when absent. Unfinished refresh tasks of the chain (their
     objective is the forgotten statement) are forgotten with it (a worker running one stops at its next fenced
     write); effects["refresh_tasks_forgotten"] lists them and effects["cache"] their unshared public-cache keys."""
@@ -1153,7 +1341,7 @@ def _forget_knowledge_core(db, knowledge_id, now):
         return None
     refreshes, cache = [], {"urls": [], "sha256": []}
     for task_id in _refresh_tasks(db, chain):
-        out = _forget_research_core(db, task_id, now)
+        out = _forget_research_core(db, task_id, now, marks)
         if out is not None:
             refreshes.append(task_id)
             cache = {k: sorted(set(cache[k]) | set(out[1].get(k) or [])) for k in cache}
@@ -1171,8 +1359,11 @@ def forget_knowledge(db, knowledge_id, now):
     queued or running refresh tasks of that chain (C-08: the statement is their objective)."""
     if isinstance(knowledge_id, bool) or not isinstance(knowledge_id, int):
         raise ValidationError("knowledge id must be an integer")
+    marks = prepare_sourced_marks(db, [c for task_id in _refresh_tasks(db, _knowledge_chain(db, knowledge_id))
+                                       for c in _ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?",
+                                                     (task_id,))])
     with store.write(db):
-        effects = _forget_knowledge_core(db, knowledge_id, now)
+        effects = _forget_knowledge_core(db, knowledge_id, now, marks)
         if effects is None:
             return {"status": "absent", "effects": {}}
         cache = effects.pop("cache", None)
@@ -1256,9 +1447,8 @@ def _scrub_web_mentions(db, needles):
     return changed
 
 
-def _forget_source_core(db, target, now):
-    """Forget one source URL or every source of a domain. Caller owns the txn. Returns (effects, cache, label) or
-    None when nothing matched."""
+def _source_selection(db, target):
+    """What forgetting one source URL or every source of a domain reaches (read only)."""
     canonical, domain, given = _source_target(target)
     if domain is None:
         rows = db.execute("SELECT id,url,final_url,canonical_url,content_sha256 FROM web_sources WHERE "
@@ -1292,13 +1482,22 @@ def _forget_source_core(db, target, now):
                                 params).fetchall()
         urls = sorted({u for r in rows for u in r[1:4] if u} | {u for r in claim_rows for u in r[1:] if u})
         needles = [domain]
-    claim_ids = sorted({r[0] for r in claim_rows})
+    return canonical, domain, rows, source_ids, claim_where, params, urls, needles, sorted({r[0] for r in claim_rows})
+
+
+def _forget_source_core(db, target, now, marks=None):
+    """Forget one source URL or every source of a domain. Caller owns the txn. Returns (effects, cache, label) or
+    None when nothing matched. `marks`: prepare_sourced_marks for its claims, made before the transaction (N2)."""
+    canonical, domain, rows, source_ids, claim_where, params, urls, needles, claim_ids = _source_selection(db, target)
     if not rows and not claim_ids:
         return None
+    _mark_sourced_answers(db, claim_ids, marks)
+    quoted = _claim_texts(db, claim_ids)
     db.execute(f"DELETE FROM web_claims WHERE {claim_where}", params)
     for part in _chunks(source_ids):
         db.execute(f"DELETE FROM web_sources WHERE id IN ({_in(part)})", part)
     effects = _web_cascade(db, claim_ids, now)
+    effects["questions_redacted"] = _forget_quoted(db, quoted)
     dropped = 0
     for kid, sources in db.execute("SELECT id,sources FROM web_knowledge").fetchall():
         listed = json.loads(sources or "[]")
@@ -1328,8 +1527,9 @@ def forget_source(db, url_or_domain, now):
     the public-cache keys ({"urls": [...], "domain": d|None, "sha256": [...]}) the caller drops from the public
     cache; it is returned, never persisted."""
     _source_target(url_or_domain)
+    marks = prepare_sourced_marks(db, _source_selection(db, url_or_domain)[-1])     # read only, before the lock
     with store.write(db):
-        out = _forget_source_core(db, url_or_domain, now)
+        out = _forget_source_core(db, url_or_domain, now, marks)
         if out is None:
             return {"status": "absent", "effects": {}}
         effects, cache, label = out
@@ -1374,6 +1574,7 @@ def replay_web_forgets(db, forgotten, now):
         if wanted("source_domain", domain) and _forget_source_core(db, domain, now) is not None:
             out["sources"] += 1
     if any(out.values()):
+        _scrub_rule_records(db)
         _premise_cascade(db, {}, now)       # lane K: premises and re-check marks of what the replay removed
     return out
 
@@ -1430,14 +1631,20 @@ def _voice_research_tasks(db, session_id):
     return found
 
 
-def forget_voice_session(db, session_id, now):
+def voice_marks(db, session_id):
+    """prepare_sourced_marks for the research tasks a voice session created (read only; before the transaction)."""
+    return prepare_sourced_marks(db, [c for task_id in _voice_research_tasks(db, session_id) for c in _ids(
+        db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,))])
+
+
+def forget_voice_session(db, session_id, now, marks=None):
     """Delete one voice session with its transcript and retained audio, and the research tasks it created from
     what was said (their objective is the spoken sentence; forgotten like forget_research, a running one stops at
     its next fenced write: UAT T5-C02), record its tombstone, stale the checkpoints and log the digest label.
     Caller owns the txn (voice/transcripts.forget_session). Returns the effects."""
     research = _voice_research_tasks(db, session_id)
     segments, audio = _delete_voice_session(db, session_id)
-    forgotten = [task_id for task_id in research if _forget_research_core(db, task_id, now) is not None]
+    forgotten = [task_id for task_id in research if _forget_research_core(db, task_id, now, marks) is not None]
     digest = voice_digest(store.birth(db)["instance_id"], session_id)
     db.execute("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", (VOICE_KIND, digest, now))
     return _web_finish(db, "voice_session", "voice_session:#" + digest,

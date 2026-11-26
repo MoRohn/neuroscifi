@@ -811,3 +811,87 @@ def refresh(db, knowledge_id, now, *, origin="cli") -> dict:
         origin = f"{OWNER_REFRESH}{item['id']}"
     return orchestrator.submit(db, item["statement"], now, mode="fact_verification", origin=origin,
                                parent=item["task_id"])
+
+
+# ---- ADR-061 (Wave 3 lane S): replacements the supersession rule made, listed and reverted ----------------------------
+
+def _rule_record(item) -> dict | None:
+    record = item.get("verification") if isinstance(item.get("verification"), dict) else {}
+    return record.get("supersession") if record.get("decided_by") == "rule" else None
+
+
+def replacements(db, *, limit=100) -> list[dict]:
+    """Every replacement the supersession rule made (consolidate, setting `supersession`), newest first: the new
+    version and the one it replaced, each with its statement, status and sources, and whether the owner reverted it.
+    Read-only."""
+    out = []
+    for item in rows(db, "json_extract(verification,'$.decided_by')='rule'")[::-1][:int(limit)]:
+        record = _rule_record(item) or {}
+        try:
+            old = row(db, int(record.get("replaced")))
+        except (NotFound, TypeError, ValueError):
+            old = None
+        out.append({"id": item["id"], "key": item["key"], "statement": item["statement"], "status": item["status"],
+                    "sources": [s.get("url") for s in item["sources"]], "decided_by": "rule",
+                    "independent_sources": record.get("groups"), "at": record.get("at"),
+                    "reverted": item["status"] == "rejected",
+                    "replaced": None if old is None else {"id": old["id"], "statement": old["statement"],
+                                                          "status": old["status"],
+                                                          "sources": [s.get("url") for s in old["sources"]]}})
+    return out
+
+
+def revert(db, knowledge_id, now) -> dict:
+    """Undo one replacement of the supersession rule: the replaced version gets back the columns the replacement
+    changed (consolidate.RESTORE_COLUMNS, kept in the rule's record; every other column is its live value, so what a
+    forget removed since stays removed), the questions the rule closed are reopened, the rule's "supersedes" links are
+    marked reverted, and the rule's version becomes 'rejected' (the owner's
+    rejection: consolidation never proposes those values for this key again, so the rule cannot make the same
+    replacement again). Both stay in history; forget removes them as any version. Conflict when the item is not a
+    replacement the rule made, is already reverted, or was itself replaced since."""
+    from .consolidate import RESTORE_COLUMNS
+    with store.write(db):
+        item = row(db, knowledge_id)
+        record = _rule_record(item)
+        if record is None:
+            raise Conflict(f"Knowledge item {knowledge_id} was not made by the supersession rule")
+        if item["status"] == "rejected":
+            raise Conflict(f"Knowledge item {knowledge_id} is already reverted")
+        if item["status"] not in REVIEWABLE:
+            raise Conflict(f"Knowledge item {knowledge_id} is {item['status']}; revert the current version instead")
+        old = row(db, int(record["replaced"]))
+        if old["superseded_by"] != item["id"]:
+            raise Conflict(f"Knowledge item {old['id']} is no longer replaced by #{item['id']}")
+        previous = record.get("previous") or {}
+        # only the columns the replacement changed (an older record may hold more: never written back, so nothing
+        # forgotten since, such as a source or a supporting claim, returns: security review M1)
+        columns = [c for c in RESTORE_COLUMNS if c in previous]
+        db.execute(f"UPDATE web_knowledge SET {', '.join(f'{c}=?' for c in columns)} WHERE id=?",
+                   (*[previous[c] for c in columns], old["id"]))
+        db.execute("UPDATE web_knowledge SET status='rejected', note=?, updated_at=? WHERE id=?",
+                   (f"replacement of #{old['id']} reverted by the owner", now, item["id"]))
+        closed = _close_questions(db, f"web:knowledge:{item['id']}", "reverted by the owner", now)
+        # security review L1: the replaced item's questions the rule closed are open again (unless a forget rewrote
+        # them since), and the rule's "supersedes" links are marked reverted (kept: the lineage shows what happened)
+        reopened = []
+        for pid in record.get("closed_questions") or ():
+            if db.execute("UPDATE pending SET resolved_at=NULL, resolution=NULL WHERE id=? AND scope=? AND "
+                          "resolution=?", (pid, f"web:knowledge:{old['id']}", f"replaced by knowledge #{item['id']} "
+                                           "(supersession rule)")).rowcount:
+                reopened.append(pid)
+        db.execute("UPDATE web_claim_links SET detail=json_set(detail, '$.reverted', json('true')) WHERE "
+                   "kind='supersedes' AND json_extract(detail, '$.by')='rule' AND ((src_kind='knowledge' AND src=?) "
+                   "OR json_extract(detail, '$.new')=?)", (str(item["id"]), item["id"]))
+        for pid, resolution in db.execute("SELECT id, resolution FROM pending WHERE scope=? AND resolved_at IS NOT "
+                                          "NULL AND resolution LIKE 'answered by the supersession rule%'",
+                                          (f"web:knowledge:{item['id']}",)).fetchall():
+            db.execute("UPDATE pending SET resolution=? WHERE id=?", (f"{resolution}\nreverted by the owner", pid))
+        db.execute("INSERT INTO web_feedback(task_id,knowledge_id,key,effect,before_confidence,after_confidence,"
+                   "info_gain,detail,created_at) VALUES(NULL,?,?,'reversed',?,?,0,?,?)",
+                   (old["id"], old["key"], state.finite(item["confidence"], 0.0),
+                    state.finite(previous.get("confidence"), 0.0),
+                    state.dumps({"reverted": item["id"], "restored": old["id"], "by": "owner"}), now))
+        store.bump(db, "teacher_interventions")
+        version = store.bump_state_version(db)
+    return {"id": item["id"], "status": "rejected", "restored": old["id"], "pending_closed": closed,
+            "pending_reopened": reopened, "state_version": version}

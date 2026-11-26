@@ -531,3 +531,32 @@ def test_read_ahead_threads_do_not_outlive_an_abandon(web, tmp_path):
     while time.monotonic() < deadline and any(t.name == "nsf-read-ahead" for t in threading.enumerate()):
         time.sleep(0.05)
     assert not any(t.name == "nsf-read-ahead" for t in threading.enumerate())
+
+
+def test_a_fetch_ahead_abandoned_between_two_of_its_reads_reads_one_byte_more_not_the_rest_of_the_body(web, tmp_path,
+                                                                                                     monkeypatch):
+    """Wave 3 fix lane (the reconciliation lane's race): the reader's abandon lands between two body reads of the
+    fetch's own thread, made deterministic here by abandoning from inside its first take(). The rest of the page is
+    already in the response's buffer, so shutting the connection does not stop a read: before the fix the next take()
+    granted a whole chunk and the fetch read and counted all of it, past the task's byte budget."""
+    from neuroscifi.webcortex import net
+    body = "<p>" + "x" * 4000 + "</p>"
+    web.add("a.example", "/robots.txt", "User-agent: *\nAllow: /\n", content_type="text/plain")
+    web.add("a.example", "/p", body)
+    fetcher, usage, budget = fetcher_for(web, tmp_path), Usage(), Budget(max_bytes=300)
+    real, takes = net._Speculation.take, []
+
+    def take(self, wanted):
+        page = sum(1 for e in self.events if e[0] == "request") >= 2     # the page's body (robots.txt read before)
+        if page and len(takes) == 1:
+            self.abandon()              # the reader's abandon, after the body's first read and before the next
+        granted = real(self, wanted)
+        if page:
+            takes.append(granted)
+        return granted
+    monkeypatch.setattr(net._Speculation, "take", take)
+    assert fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
+    wait_finished(fetcher)
+    assert len(takes) >= 2 and takes[1] == 0                       # nothing granted once abandoned
+    assert usage.prefetch_unused_bytes <= budget.max_bytes + 1     # the one byte that tells the body goes on
+    assert usage.bytes == 0 and usage.requests == 0

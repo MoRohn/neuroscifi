@@ -3015,3 +3015,1069 @@ first figures are kept in the evidence file under `before_review`.
   `a7981e0` (links), `5463dfc` → `f97411e` (family and script), `7218e0f` → `828ca8e` (this ADR, evidence).
 - Not verified: anything on the open web, a live model, a real worker process running the loop for days, or the
   real host's background gate during the loop.
+
+# ADR-058 (draft) Host evidence without behaviour change: predictive regulation in shadow, and the readiness of real outcomes. R
+
+## Context
+
+Wave 3 lane H (FINAL_EVALUATION §6, directions 2 and 3). ADR-051's forecast avoided most memory breaches on a
+SIMULATED plant with declared constants and ships off; turning it on is the owner's decision, with no host evidence.
+Calibration (ADR-054), scenario records (ADR-052), forecast recalibration (ADR-048) and strategy selection (ADR-055)
+all wait for settled real outcomes ("no fitted map has 30 items in 3 blocks"), and nothing told the owner how far
+each is. Both additions here record or read; neither changes what the individual does.
+
+## Decision
+
+1. **`predictive_regulation = "shadow"`** (a third value of the existing setting; default stays `false`;
+   `nsf config --predictive-regulation-shadow`). `policy.background_gate` makes its decision exactly as with the
+   setting off and only then, when called on a decision path (`record=True`; `internal_state.snapshot` and
+   `resources.status` pass `False`), calls `resources/shadow.observe`, whose result is not read and which never
+   raises. It computes the forecast as the gate would with the setting on (the same history read and `forecast.assess`
+   call), at most once per history sample per process (the history file's state is the key: on an unchanged history
+   the added cost is one stat call), and appends one line to `<db>.resources/forecast-shadow.jsonl`: the time, the
+   sample's time, would hold / would allow / no forecast, the reason word (`memory`, `voice`), the horizon, the
+   margin, and what the real gate did (`allowed`, `audio`, `memory`); a failure is a `{"failed": kind}` line and a
+   WARNING naming the kind only. Numbers and fixed words only; 0640 in a shared folder; a link, FIFO or another
+   account's file is refused; a file over 1 MiB takes no line; the gate never waits for the lock.
+2. **Settlement inside the existing sampler.** `internal_state.record` (the worker's heartbeat, every 30 s) calls
+   `shadow.settle_quietly`, which at most every 300 s settles each verdict whose horizon has passed against the
+   history samples: a breach is a sample under the critical line (`monitor.thresholds`); a would-hold with a breach
+   in `[t, t + horizon]` is a hit, without one a false alarm; a would-allow with one is a miss; a breach episode was
+   preceded when a would-hold at `t` had `t <= start <= t + horizon`, by `start - earliest t`; background starts after
+   a would-hold the real gate allowed are the work holding would have deferred (a proxy: net increases of running
+   tasks between samples). Counts go to a daily roll-up, `forecast-shadow-days.json` (120 days); the verdict file
+   keeps only what is unsettled. A pass that did not finish is not counted twice (`settled_until`; one verdict per
+   sample, the first). No new background activity: `background.py` is unchanged.
+3. **`nsf internal-state --shadow-report`**: the roll-up plus the verdicts due but not yet rolled up (settled in
+   memory; nothing written), with the days and breach episodes the numbers rest on, and "Not enough data" below
+   7 days or 5 episodes (`shadow.MIN_DAYS`, `MIN_EPISODES`).
+4. **`nsf readiness`** (`neuroscifi/readiness.py`), read-only (`mode=ro`, `query_only`): settled predictions by
+   kind (`evolution._KIND_SQL`) and month, open, and settled-but-forgotten; answers (completed or partial tasks)
+   with a later verdict (a prediction on knowledge the task produced, settled confirmed or error: no record pairs an
+   answer with a verdict on the answer itself); hypotheses by status; re-checks that found a change, none,
+   undecided, closed by another path, dropped, open; scenario records settled (through `scenarios.errors`, the
+   mechanism's own report: this module never touches the imagined store). Each learner with its minimum read
+   from its module at run time (`evolution.RECALIBRATION_MINIMUM` per kind, `monitoring.MIN_ITEMS` and
+   `MIN_BLOCKS` with the shipped maps' items and blocks), what is missing, the rate over the last 90 days (or since
+   the first) and the earliest date at that rate ("unknown" at rate zero, "met"); scenario records, hypothesis
+   settlement and strategy selection have no count minimum in the code and say so. The self-description's owner
+   scope (not agent, not family) carries the per-learner summary as `uncertain.outcomes_readiness`.
+
+## Evidence (`docs/quality/evidence/genesis_h.json`; simulated plant for the check, real code throughout)
+
+- **Shadow == off.** The anticipation family's development and held-out traces (8 + 8 traces x 3 seeds = 48 runs of
+  240 ticks; never the withheld family) through the product's wiring (`acceptance/cognition/shadow_check.py`: the
+  sampler, the history file, the real gate): the gate's decisions with shadow equal those with the setting off on
+  every tick of every run, and so does the plant's trace; 0 decisions changed, while the forecast would have held on
+  279 (development) and 508 (held-out) ticks. The offline research benchmark with every individual reading
+  `"shadow"` gives `68731d72…`, Wave 0's digest, but that benchmark never calls the background gate (0 calls,
+  counted), so it shows only that the setting's value changes nothing else; the staged traces are the proof.
+- **Settlement against known truth (staged).** On every run the report's episodes, preceded episodes and mean lead
+  equal `scoring.breach_report`'s on the same trace, and its hits, false alarms, misses and quiet allows equal a
+  per-verdict count written for this check (`shadow_check.reference`, the same `[t, t + horizon]` rule; since the fix
+  lane its false alarms are also compared with breach_report's own `false_alarm_ticks` over the counted ticks):
+  (a) incremental (the sampler settling every 300 s of the staged clock, the critical line, 180 s horizon) and (b)
+  lazy with the family's breach line (2 GiB) and horizon (20 ticks); 48 of 48 runs without a mismatch for each.
+  Pooled, not a claim, (a): development 219 hits, 60 false alarms, 21 misses, 38 of 38 episodes preceded; held-out
+  306, 198, 19, 37 of 37. These say the arithmetic and the wiring are right; they say nothing of the host.
+- **Cost** (aarch64 host, commit `87a3a7a`). The gate on an unchanged history (the worker's usual case: many calls
+  per 30 s sample): 3.7–3.9 µs off, 8.7–9.0 µs in shadow (means of 500 calls, 16 staged individuals). On a call right
+  after a new sample (the forecast computed, a line appended; at most once per sample per process): mean 1,041 →
+  1,751 µs (development) and 795 → 1,320 µs (held-out), p95 up to 3.3 ms; the "off" figure includes re-reading the
+  setting because the staged file changes every tick. `nsf readiness` at 10,000 knowledge items, 500,000 events,
+  20,000 predictions, 10,000 tasks, 1,000 scenario records: median 36 ms (5 runs, commit `a8de711`).
+- **Fault injection** (`tests/uat/test_uat_shadow_faults.py`): a forecast that raises, times out or returns garbage,
+  a failing history read, a FIFO in place of the record, a roll-up that cannot be written: the gate's decisions equal
+  those with the setting off on every tick, a WARNING names the kind (never the message), the report counts the
+  failed verdicts.
+
+## Consequences
+
+- Defaults unchanged: `predictive_regulation` stays `false`; the readiness report is a command. A week of shadow on
+  the host is the owner's to run (`docs/operations/RUNBOOK.md`, "Gathering evidence on your own host").
+- The shadow files are operational telemetry like the internal-state history (ADR-051): numbers only, not in
+  checkpoints, not something `forget` must reach; deleting them loses only the evidence. Nothing reads them but the
+  report: no learner, no gate, no evidence or knowledge.
+- Found on the way: `webcortex.strategies.outcomes` made two unindexed look-ups per task (5.8 s at 10,000 knowledge
+  items and 20,000 predictions). The fix lane rewrote it over one pass per table, without an index: same counts
+  (tested), 0.035 s against 42–55 s on a staged individual of that size on a loaded host.
+- No schema change, no new dependency, no new background activity.
+
+## Fix lane after the Wave 3 reviews (review3 H-1, H-2, H-4; security L4, L5)
+
+- **What the forecast adds.** In the review's 16 staged runs 128 of 175 hits (73 %) were holds the real gate was already
+  making, and a "preceded" episode could have its only hold at its first breach sample. The report now carries
+  `settled.added` (hits, false alarms, misses, quiet allows only where the real gate allowed and memory was not under
+  the line at the verdict's own sample), `settled.holds_gate_refused`, `breaches.preceded_before_start` (a hold
+  strictly before the first breach sample) and the lead as a distribution (0 s, up to 60, 120, 180 s, beyond; it
+  cannot exceed the 180 s horizon). Its statement says that the 7-day / 5-episode minimum gates reading, not deciding,
+  and that verdicts exist only while the worker asks the gate, while breach episodes are counted from every sample
+  (also when web research is disabled or writes are paused).
+- **The 48-run validation re-run with this counting** (`genesis_wave3_fix_shadow.json`, commit `8f72f27`, clean): the
+  gate decided as off on every tick (0 decisions changed); product and family 48 of 48 runs without a mismatch,
+  breach_report's false alarms included. Product definition, pooled (not a claim): development 219 hits of which 62
+  added, 60 added false alarms, 157 holds where the gate already refused, 21 added misses; 38 episodes, 38 preceded,
+  35 before their start; lead 0 s: 3, 1–60 s: 3, 61–120 s: 1, 121–180 s: 31. Held-out 306 hits of which 78 added,
+  198 added false alarms, 228 holds already refused, 19 added misses; 37 episodes, 37 preceded, 34 before their
+  start; lead 0 s: 3, 1–60 s: 3, 121–180 s: 31. Which quantities equal the family's own scoring: episodes, preceded,
+  lead and (now) false alarms equal `scoring.breach_report`; hits, misses and quiet come from the reference counter.
+- **What a host week would have to show** (committed here before any host data exists, `shadow.GUIDE`, shown by the
+  report as `guide`; it decides nothing): enough data (7 days and 5 breach episodes), at least 4 in 5 episodes
+  preceded before their start, and no more added false alarms than added hits. On the staged held-out traces the
+  last condition fails (198 added false alarms against 78 added hits); on development it holds (60 against 62).
+- **Files and locks (security L4, L5).** The sampler's settlement and the internal-state history take their locks
+  without waiting: a lock another process holds skips that pass (logged by kind). Nothing is appended to a verdict
+  file another account owns; the roll-up drops days later than tomorrow and lead values beyond the maximum horizon.
+- **Verdicts dropped while the record is busy (second fix lane, review3b N7).** While another process holds the shadow
+  lock, the gate's verdict is not recorded (the gate never waits). Such drops were neither counted nor logged, so a
+  member of the folder's group could choose which verdicts reach the evidence. Now each drop is counted, the next
+  verdict recorded carries the count (`busy_before`), the roll-up keeps it per day, and `nsf internal-state
+  --shadow-report` shows `verdicts.not_recorded_busy` and says "N verdict(s) were not recorded because the record was
+  busy"; the warning is logged at the 1st, 10th, 100th, ... drop with the count only. The gate's decision is unchanged.
+
+# ADR-059 (draft) Front-door adjustment in the linear causal engine: a decline becomes a labelled answer only where the criterion holds. R
+
+## Context
+
+ADR-052's engine (`neuroscifi/causal.py`, `nsf imagine scm`) answers a graph question (a graph, the observational
+means and covariance, the nodes a hidden common cause touches) by back-door adjustment, and declines it when a
+hidden common cause touches the cause. The counterfactual family's "confounded" questions (hidden U -> X0 and U -> Y
+around the chain X0 -> X1 -> ... -> Y) are identified by the front-door criterion through X1, so 4 of the 32
+answerable questions per held-out seed were declined: the pooled held-out figure was 0.875 (FINAL_EVALUATION §6,
+direction 6). What the engine is handed for them: the observed graph `{X0: [], X1: [X0], ...}`,
+`hidden_common_cause: [X0, Y]`, `observational_mean` and `observational_covariance` over the observed nodes (exact,
+from the equations), `do: {X0: x}` and `ask: Y`. The truth is E[Y | do(X0 = x)] from the structural equations.
+
+## Decision
+
+1. **Where it is tried.** Only where the back-door decline is "a hidden common cause acts on the cause". Every other
+   path of the engine is unchanged.
+2. **The criterion (Pearl 1995), checked, never assumed.** The mediators M are the cause's children that are
+   ancestors of the outcome, so M intercepts every directed path from X to Y unless X -> Y is an edge (declined:
+   "bypasses every mediator"). With one hidden node acting on every node named in `hidden_common_cause` (several
+   named causes read as one shared cause, which can only add paths, so only add declines), the two other conditions
+   are d-separations in the moral ancestral graph: X and M separated once the edges out of X are removed (no
+   unblocked back-door path from X to M), and M and Y separated given X once the edges out of M are removed (X blocks
+   every back-door path from M to Y). Declined, each with its reason: a mediator without data (unobserved), no
+   directed path, a cycle, cause = outcome, more than 64 nodes, a singular covariance of M and X. No general
+   do-calculus, no conditional front door, no instrumental variables.
+3. **The estimate.** Linear: E[Y | do(X = x)] = E[Y] + b(Y ~ M | X) . b(M ~ X) (x - E[X]), from the given moments
+   (`means`, or `observational_mean` as the family names them; both and different is an error). Its uncertainty
+   depends on where the moments come from (Decision 6).
+4. **Every answer says which criterion identified it**: `identified_by` is `declared_model`, `back_door` or
+   `front_door` (with `mediators`), None on a decline. An answer is labelled "imagined, not evidence", kind
+   `simulation`, as before; nothing is stored. Engine version 2.
+5. **Setting.** `causal.answer(query, front_door=True)`; `nsf imagine scm FILE --no-front-door` restores the old
+   decline (with a reason that says it is switched off). Not a stored setting: `nsf imagine scm` reads no individual
+   (ADR-052's other imagine commands are per-individual switches; this one has no individual to hold it). The
+   benchmark's imagination answerer gains the ablation component `front_door`.
+6. **Where the moments come from (the review follow-up).** What the product path receives: the engine is reached only
+   by `nsf imagine scm FILE` (a JSON question the owner writes) and the library; `instance/imagine.py` does not call
+   it. ADR-052's format for a graph question names a graph, the means and covariance and the hidden common cause;
+   nothing in it said whether those moments are a declared population's or estimates from data, and no field carried
+   a sample size, so the engine could not know (the counterfactual family's are exact: computed from its equations).
+   A graph question may now say: `"moments": "population"` (exact) or `"samples": n` (estimated from n independent
+   draws, covariance with the n - 1 divisor). Then:
+   - **population**: a point value, exact for those moments (as before).
+   - **samples n**: the answer carries the standard error of the estimate (delta method under the engine's
+     linear-Gaussian assumption: Var(mean) = S/n, Cov(S_ij, S_kl) = (S_ik S_jl + S_il S_jk)/(n - 1), gradient by
+     central differences; validated by coverage below and against repeated sampling in the tests) and states its
+     95 % interval. It is declined "not enough data to answer" when the interval's half-width exceeds
+     `USEFUL` = 0.1 x the outcome's sd (the benchmark's tolerance, so a given answer's interval stays within it),
+     when n <= variables + 1, or with more than 16 variables. `USEFUL` was chosen on the development worlds and
+     committed (`021a3d7`) before any held-out run of the intervals; the held-out point errors from 500 draws had
+     been seen before (first evidence run), the intervals had not.
+   - **not stated, front door**: declined ("does not say whether the means and covariance are the population's ...").
+     By the standard that a confident wrong answer is worse than a decline: in the first evidence run, estimates
+     taken as exact gave 20 false answers in 200 held-out worlds at 500 draws, and the engine cannot tell estimates
+     from population values; stating the origin is one field. The family's answerer states `population` for graph
+     questions, as its interface computes them exactly (`acceptance/cognition/imagination.py`).
+   - **not stated, back door**: answered as before (value and sd unchanged; it is the engine's existing behaviour),
+     with `moments: {origin: unstated}` and an uncertainty sentence saying the moments were taken as exact. The
+     measurements below show the same limit as the front door's; whether to decline these too changes existing
+     answers and is left to the main session.
+
+**Default: on.** The rule written before the mechanism (`frontdoor_splits.py`, committed alone first) held on every
+point: 0 false answers and every answer world exact on the property worlds with exact moments, both splits; on the
+held-out counterfactual split every front-door question within tolerance and every other leaf identical with the
+front door on and off; adversarial not regressing; retention unchanged. With estimated moments (the follow-up): a
+front-door answer is given only with its sample size, its interval covers the truth at 0.93 to 0.95 on held-out
+worlds (near the stated 0.95), too little data is declined, and an unstated origin is declined; no trap world was
+answered with moments declared population or with a stated sample size (the regimes in which an answer is possible).
+The rule's exact-moment worlds are scored with `moments: population` declared, a field added after the rule was
+written (the pre-registered rule is met only with it).
+
+## Evidence (`docs/quality/evidence/genesis_frontdoor.json`, `scripts/genesis_frontdoor.py`, measured at `14d8d55`)
+
+Counterfactual family, each split's three seeds (development 31-33, held-out 1031-1033), answered within 0.1 x scale:
+
+| | front-door group (4 per seed) | pooled, not a claim | handed equations | belief what-if | learned graph |
+|---|---|---|---|---|---|
+| held-out, today's answerer (baseline) | 0 | 0.063 | 0 | 0 | 0.222 |
+| held-out, `zero` reference | 0 (declines) | 0.219 | 0.083 | 0.667 | 0.407 |
+| held-out, front door off (= start commit) | 0 (4 declined per seed) | 0.875 | 1.000 | 1.000 | 1.000 |
+| held-out, front door on | **1.000** (12 of 12; 1.000 at 0.05) | 1.000 | 1.000 | 1.000 | 1.000 |
+| development, front door off | 0 | 0.844 | 1.000 | 1.000 | 0.889 |
+| development, front door on | 1.000 (12 of 12) | 0.969 | 1.000 | 1.000 | 0.889 |
+
+- Largest relative error on the front-door questions: below 1e-12 (the moments are exact). Interval score: 0 to
+  that precision, because a point answer's interval has width 0 and its score is 40 x the error; it says nothing
+  about calibration. The family has no spread here (deterministic per seed; held-out sd 0).
+- Leaf identity: the ablation (front door off) against the start commit's engine (`git show 9ac8943:...causal.py`
+  through today's answerer): 0 of 419 (development) and 0 of 438 (held-out) leaves differ (the start commit's
+  causal.py through today's answerer; a reviewer's whole-tree check of 9ac8943 against the integrated tree, front
+  door off, held-out seed 1031: 0 of 32 answers differ). Front door on against off,
+  outside the front-door group, the `scm:confounded` kind and the pooled figures: 0 of 257 and 0 of 276 differ.
+- Property worlds (12 kinds, 5 where the criterion holds, 7 traps; development 20 seeds, held-out 40):
+
+  Exact moments (`moments: population`): development 100 of 100 answer worlds within 1e-9, 0 of 140 trap worlds
+  answered, **0 false answers**; held-out 200 of 200 within 1e-9, 0 of 280 traps answered, **0 false answers**. The
+  traps are real: a front-door formula through M would have missed by more than 0.1 x sd(Y) on 20 to 33 of the 40
+  held-out worlds of each trap kind with data for M (median error 0.10 to 0.32 x sd(Y), up to 2.6).
+
+  Estimated moments, **held-out** answer worlds (200 front door, 160 back door; development in the evidence file).
+  "Coverage" is the share of given answers whose stated 95 % interval holds the truth; in this regime a FALSE ANSWER
+  is the truth outside the stated interval (a calibrated 95 % interval has about 5 % of them by construction), and
+  "> 0.1 sd" counts given answers farther than 0.1 x sd(Y) from the truth. No trap world was answered in any regime.
+
+  | criterion, draws n | with `samples: n`: answered / declined "not enough data" | coverage (false answers) | > 0.1 sd | coverage with the bound lifted (every world) | not stated | estimates declared `population` (> 0.1 sd) |
+  |---|---|---|---|---|---|---|
+  | front door, 100 | 11 / 189 | 1.000 (0) | 0 | 0.930 | 0 of 200 answered | 84 of 200 |
+  | front door, 500 | 104 / 96 | 0.933 (7) | 1 (0.103) | 0.935 | 0 answered | 20 of 200 |
+  | front door, 5,000 | 199 / 1 | 0.945 (11) | 0 | 0.945 | 0 answered | 0 |
+  | front door, 50,000 | 200 / 0 | 0.940 (12) | 0 | 0.940 | 0 answered | 0 |
+  | back door, 100 | 8 / 152 | 0.750 (2) | 1 (0.102) | 0.956 | 160 answered, **49 > 0.1 sd** | 49 of 160 |
+  | back door, 500 | 106 / 54 | 0.934 (7) | 2 (up to 0.157) | 0.938 | 160 answered, **16 > 0.1 sd** | 16 of 160 |
+  | back door, 5,000 | 160 / 0 | 0.944 (9) | 0 | 0.944 | 160 answered, 0 | 0 |
+  | back door, 50,000 | 160 / 0 | 0.950 (8) | 0 | 0.950 | 160 answered, 0 | 0 |
+
+  Development, with the bound lifted, coverage 0.94 to 0.98 (front door) and 0.95 to 1.00 (back door). The
+  back-door "not stated" column is a **pre-existing limit** of ADR-052's engine: a point answer from estimated
+  moments taken as exact misses by more than 0.1 x sd(Y) in 49 of 160 held-out worlds at 100 draws and 16 of 160 at
+  500 (33 and 5 of 80 on development). Its value is unchanged here; the caveat is added.
+- Random graphs (`tests/test_causal_front_door.py`): 6,000 random DAGs of 3 to 7 observed nodes with a hidden cause
+  on X, Y and at random others, some nodes without data: 2,234 answered, 0 false answers (exact moments); the same
+  graphs produce false answers when the separation checks or the direct-edge check are removed (the test's power).
+- Adversarial: 33 of 33 with the front door on and off (28 before, plus 5 lane C cases whose expectations were
+  committed before the cases and the cases before the mechanism; on the start commit's engine they passed 25 of 25
+  worlds by the back-door decline). After the follow-up, the 5 lane C cases staged questions without a moments
+  origin, so they were declined by the moments rule, not the criterion, and passed with the criterion broken; fixed in
+  the fix lane (`8a8fce7`: staged with `moments: population`, a decline for unstated moments does not count, and a
+  test removes the separation check and sees them fail). The sampled-trap test likewise now states its sample size. Retention (full, against the recorded baseline): every scenario passes, every
+  metric retained.
+- Cost: a front-door answer about 0.1 ms (median; largest 0.23 ms); the family's wall time 0.42 s against 0.43 s off
+  (held-out). No model call, no network, no storage.
+
+## What this does not show
+
+The front-door group is exact arithmetic on a declared graph and given population moments, like the handed-equations
+group: it says nothing about real-world causal questions, about a graph declared wrongly (a hidden cause not named is
+an unchecked assumption, stated in every answer), or about data that are not independent draws of a multivariate
+normal (the interval's assumption). The interval is slightly narrow on the front door at small n (held-out 0.930 at
+100 draws, 0.935 at 500, bound lifted). With the usefulness bound, the back door's given answers at small n cover less
+than the interval states (held-out 0.750 on 8 answers at n = 100; 0.916 on 166 answers in a reviewer's re-run on
+fresh worlds): the bound keeps the answers whose estimated spread came out small.
+
+**The withheld look (fix lane, review3 Q7).** `scripts/bench_wave1.py final` is not this look (its "baseline" is not
+the ablation). The look is two runs on a clean, committed tree, outputs outside the tree:
+`scripts/bench_cognition.py run --family withheld --mechanism imagination --final --note "..." --out /outside/fd-on.json`
+and the same with `--ablate front_door --out /outside/fd-off.json` (a `--final` run now refuses a dirty or
+uncommitted tree and an `--out` inside the checkout), then `scripts/compare_front_door_look.py fd-on.json fd-off.json`:
+it reads back the ablation and that the counterfactual part ran `imagination` without falling back (else VOID, exit 2),
+reports condition (a) (`summary_by_group.front_door.max_relative_error.max` ≤ 0.1 or none answered, and per seed
+`front_door`, `front_door_declined`, `front_door_within_tolerance`) and checks condition (b): every leaf of
+`families.withheld.result` equal in the two runs except, in `counterfactual`, `summary_by_group.front_door`,
+`by_query_kind["scm:confounded"]` and the fields `answered_within_tolerance`, `answered_within_strict_tolerance`,
+`max_relative_error`, `front_door_declined`, `front_door_within_tolerance`, `declined_confounded_share` under
+`summary` and each `per_seed[i]`; exit 0 when both hold, 1 otherwise. On the held-out pair (`--family counterfactual
+--split held_out`, no `--final`): 47 leaves differ, 0 outside the exemptions, 12 of 12 front-door questions answered. The withheld counterfactual family has front-door questions; it has not been
+run (the main session's single look).
+
+**Disclosure.** Early in the lane, a broad `grep -rn` over `src` for "causal" matched
+`src/neuroscifi/acceptance/cognition/withheld.py` and printed two of its lines: a docstring line (line 6: "noise than signal,
+causal structures with longer paths and actions on hidden routes, and staged states of other") and line 54, the start of the withheld
+counterfactual `scm` spec: `"scm": ({"structure": "chain", "nodes": 5, "queries": 8}, {"structure": "confounded",
+"nodes": 5,` (cut off there). Nothing was tuned on it: the mechanism is a general criterion check with no parameter
+for the number of nodes, the worlds, `USEFUL` and the verdict rule were written from the development and held-out
+splits and the brief, and every later search excluded `*withheld*`.
+
+## Rejected
+
+- A stored per-individual setting: `nsf imagine scm` reads no individual.
+- Answering a front-door question with unstated moments under a caveat: the engine cannot tell estimates from
+  population values, and estimates taken as exact were confidently wrong (above); a decline costs one field.
+- Declining back-door questions with unstated moments: it changes existing answers; left to the main session.
+- A bootstrap for the interval: the delta method is closed-form, cheap and validated by coverage.
+- Searching every subset of observed nodes for a front-door set, conditional front doors, general do-calculus:
+  larger than the smallest sound extension; a decline there is "not identified by this engine".
+
+## Consequences
+
+- Changed: `causal.py` (version 2, `answer(front_door=)`, `identified_by`), `cli_imagine.py` (`--front-door`),
+  `acceptance/cognition/imagination.py` (component `front_door`), `acceptance/cognition/adversarial.py` (5 cases,
+  origin `added_wave3_c`). New: `acceptance/cognition/frontdoor_splits.py`, `acceptance/cognition/backdoor_splits.py`
+  (committed alone before the intervals), `scripts/genesis_frontdoor.py`, `tests/test_causal_front_door.py`. The
+  question format gains `moments` and `samples`; answers to graph questions gain `moments` (origin, samples). No
+  schema change, no migration, no background activity, no dependency.
+- The counterfactual family's recorded imagination figures move only in the front-door group and the pooled figures
+  (held-out 0.875 -> 1.000, development 0.844 -> 0.969); earlier evidence files are not rewritten.
+
+# ADR-060 The order of the timer's knowledge re-check: what the loop's shortfall is made of, and an order by observed change that ships off
+
+Status: Wave 3 lane R, branch `gen3-r` from `a0717c1`. Measured on `320ae8e`. Evidence
+`docs/quality/evidence/genesis_recheck_order.json`. Simulated worlds through the real modules, offline, no model.
+
+## Context
+
+Wave 2 measured that the timer's loop recovers about half of what a blind same-budget round-robin recovers over
+never refreshing (RECURSIVE_KNOWLEDGE_ASSESSMENT §3), and that the idle re-check, which takes the oldest items, caught
+a change in 7 of 72 looks against 19 of 79 for the due order. Step 0 of Wave 3 confirmed the loop falling behind the
+blind schedule on the withheld worlds. FINAL_EVALUATION §6 direction 4: re-check what is likely to have changed, not
+what is oldest. The question: with the same budget, can the order in which the timer refreshes and re-checks be made
+at least as good as a blind schedule, and better where change rates differ?
+
+## Diagnosis (development only; `cycles.decompose`)
+
+The harness now records every autonomous look (what the newest held item was, what the look's pages said by
+majority, what it changed). `cycles.decompose` splits the gap between a reference and a run, in the units of the
+primary metric (`correct`, mean over cycles), into the subject-cycles where the reference holds the true version
+and the run does not: (a) **uncovered**, the run holds nothing (the owner's research gave the subject no knowledge);
+**wrong source**, the newest item is a wire-story or own-output version; (d) **found, not revised**, a look since the
+item went stale read the true version and the item stayed stale (on development 50 of 70 such looks were
+contested; the rest were held, mostly one-origin looks: review3 LOW 3); **looked,
+unreadable**, looks since then whose pages did not show the true version; (c) **not looked**, no look since it went
+stale; minus where the run is ahead. The parts sum to the gap (tested). (b), looks spent on subjects that had not
+changed, is counted per look.
+
+Development, today's loop (`baseline`) against the blind round-robin (majority read), mean of 3 seeds:
+
+| World | Gap | (a) uncovered | (d) found, not revised | unreadable | (c) not looked | loop ahead | Looks used / allowance | (b) looks on unchanged subjects: loop / blind |
+|---|---|---|---|---|---|---|---|---|
+| dev-steady (lane F) | 0.194 | 0.114 | 0.035 | 0.006 | 0.050 | −0.011 | 21.0 / 24 | 71 % / 69 % |
+| dev-churn (lane F) | 0.132 | 0.074 | 0.032 | 0.008 | 0.033 | −0.015 | 27.7 / 36 | 46 % / 56 % |
+| dev-rate-mixed | 0.166 | 0.119 | 0.031 | 0.003 | 0.030 | −0.017 | 25.7 / 28 | 66 % / 67 % |
+| dev-rate-uniform | 0.185 | 0.097 | 0.061 | 0.012 | 0.045 | −0.030 | 25.7 / 28 | 42 % / 48 % |
+| dev-rate-shift | 0.158 | 0.133 | 0.010 | 0.019 | 0.029 | −0.033 | 23.7 / 29 | 49 % / 62 % |
+
+Pooled over the five worlds (pooled, not a claim): uncovered 64 % of the gap, found-not-revised 20 %, not looked 22 %,
+unreadable 6 %, the loop ahead −13 %; wrong source 0. These are disjoint parts that sum to 100 %: a summary quoting
+only 64 / 20 / 22 must add "unreadable 6 %, minus 13 % where the loop is ahead" (review3 LOW 5). Against the oracle the "not looked" part is larger (0.116 and
+0.151 of gaps 0.321 and 0.338 in lane F's worlds), because the oracle looks only at subjects that changed.
+
+What it decides. (a) dominates and is out of any order's reach: its subjects (an owner look that found one origin
+only, the wrong story alone, or a contested page set) are not knowledge, and the timer admits only knowledge items
+(`autonomy.admission`, "propose it instead"); the owner or the worker's idle investigation (not run here) could
+reach them. (d) is lane S's. The loop's own looks are not more wasteful than the blind schedule's ((b): 42–71 % on
+unchanged subjects against 48–69 %); what an order can reach is (c), 0.03–0.05 against the blind schedule, partly
+the 2–8 looks of the allowance the loop leaves unused per run. The rule cannot see a gain below the baseline's sd
+(0.03–0.10 on these seeds), so the expected effect of any order is at or below what the rule can see: build little.
+
+## Decision
+
+- **WebConfig.recheck_order**, default `"staleness"`: lane K's value (importance × staleness × futility),
+  unchanged. Otherwise a `+`-joined set of: `rate` (the chance the item changed since it was last verified,
+  1 − exp(−rate × TTLs elapsed), with the rate from its subject's own verified changes, the rows of its key a newer
+  version superseded, per TTL of exposure, and a prior of one change per TTL weighing as one TTL); `seen` (that chance
+  is 1 for an item marked to re-check, marked stale, or one a newer version was seen for); `rotation` (an item not
+  looked at for one TTL or more, by a refresh, a re-check, a curiosity task of its subject or a verification, goes
+  first, the longest-waiting first; alone, a blind rotation by last look).
+- It only re-orders the re-check's pool (`recheck.rank`'s `value`): the same items (those whose default value is
+  above 0), the same `info_gain`, `p_current` and signals, the same admission (`autonomy.admission(path="recheck")`),
+  the same per-pass and daily shares (`recheck_per_tick`, `recheck_daily`) and the daily autonomous allowance. It
+  reads only knowledge rows, refresh tasks and autonomous decision events; never an imagined record, never a model.
+  No new background activity, no schema change. It needs `idle_recheck` on to act.
+- Each pick's decision event records the order and its inputs (`autonomy.recheck.order`: rule, chance, changes seen,
+  rate, TTLs since verified and waited, overdue, newer seen); the self-description's "to re-check" names the order
+  when it is not the default.
+- **Default: unchanged (`staleness`; `idle_recheck` stays off).** No order showed a held-out gain (below).
+
+## Measured (held-out, once, on `320ae8e`)
+
+Worlds: `cycles_rate_splits.py` (committed alone first, `3f75ed8`; seeds 2701–2704: subjects with learnable rate
+classes, one rate for all, classes redrawn at one cycle with a per-cycle allowance) and lane F's held-out (disclosed:
+looked at by three lanes and two reviews before). `/all`: `recheck_per_tick` and `recheck_daily` 100 (the owner's
+bounds), so the re-check may take the whole daily allowance, which still caps every pass. Mean `correct` over 4
+seeds; paired gain against `baseline` (seeds better of 4); the rule's smallest visible gain is the baseline's sd.
+
+| | ho-rate-mixed | ho-rate-uniform | ho-rate-shift | ho-sparse (lane F) | ho-busy (lane F) |
+|---|---|---|---|---|---|
+| baseline sd (the smallest visible gain) | 0.089 | 0.071 | 0.080 | 0.105 | 0.057 |
+| reference: snapshot / blind round-robin / oracle | 0.651 / 0.724 / 0.873 | 0.573 / 0.724 / 0.949 | 0.712 / 0.797 / 0.940 | 0.670 / 0.786 / 0.957 | 0.574 / 0.708 / 0.928 |
+| no loop | 0.539 | 0.503 | 0.614 | 0.574 | 0.497 |
+| **baseline** (today's loop) | **0.587** | **0.617** | **0.646** | **0.631** | **0.571** |
+| lane K's order (`recheck:staleness`) | −0.023 (0) | +0.007 (2) | −0.002 (1) | −0.019 (1) | −0.004 (1) |
+| blind rotation, whole allowance (`recheck:rotation/all`) | −0.006 (0) | −0.007 (1) | +0.001 (2) | −0.007 (1) | +0.022 (3) |
+| **the combination** (`recheck:rate+seen+rotation/all`) | −0.003 (1) | −0.004 (1) | +0.004 (2) | −0.011 (1) | +0.005 (3) |
+| without rate (`seen+rotation/all`) | −0.003 (1) | −0.002 (2) | +0.000 (2) | −0.011 (1) | +0.001 (3) |
+| without seen (`rate+rotation/all`) | −0.007 (0) | +0.009 (2) | +0.007 (3) | −0.011 (1) | +0.014 (3) |
+| without rotation (`rate+seen/all`) | −0.013 (2) | −0.002 (2) | −0.002 (2) | −0.023 (1) | −0.001 (2) |
+| without the whole allowance (`rate+seen+rotation`) | −0.008 (1) | −0.009 (2) | +0.001 (2) | −0.002 (1) | +0.004 (2) |
+| the combination against the blind rotation (same share) | +0.003 | +0.003 | +0.004 | −0.004 | −0.016 |
+
+- **Verdict (the rule committed before the run, `cycles.order_verdicts`): "no evidence" for every one of the 14
+  order configurations in both held-out families**: no paired gain beats the baseline's sd in any world (the largest
+  is +0.022, against 0.057); retention (c) and safety (d) hold everywhere. None is "not exercised": every order
+  changed what was investigated in nearly every cycle (the combination, against lane K's order at the same share:
+  62 of 64, 46 of 56 and 61 of 64 seed-cycles in lane R's worlds).
+- The paired noise is small (sd of the combination's paired differences 0.008–0.021), so the result is not only the
+  rule's blindness: every measured paired gain lies between −0.031 and +0.022 (−0.031: `recheck:staleness/all` on
+  ho-sparse, worse in 4 of 4 seeds; review3 LOW 4).
+- **At least as good as a blind schedule:** inside the product, the combination is within ±0.004 of the blind
+  rotation on lane R's worlds and 0.004 and 0.016 below it on lane F's. **Better where change rates differ: no**
+  (+0.003 against the blind rotation in the learnable world, 1 seed better, 1 worse). Why: with more items than one
+  TTL's allowance, the rotation floor decides most picks (30.8 of 32 per run in ho-rate-mixed), and the rate is
+  learned from verified changes, which are rare when 6.0 of the 13.8 looks per run at a changed subject find the change
+  and do not revise (baseline, ho-rate-mixed); the
+  combination without the rate gives identical results in two of the five held-out worlds.
+- **A fair rotation as the default** (brief item 5) is not supported either: `recheck:rotation/all` gains −0.006,
+  −0.007, +0.001, −0.007 and +0.022 over today's loop.
+- What the order did (held-out, per run, the combination): every autonomous look a re-check pick (32, 42 and 33 in
+  lane R's worlds; 28 and 42 in lane F's), of which overdue under the floor 30.8, 20.2, 28.0, 27.0, 21.2, and with a
+  newer version seen 16.2, 21.5, 14.5, 11.8, 21.8; coverage identical to the baseline in every world (no order can
+  reach the uncovered subjects).
+- Safety and retention, every run of every configuration (192 + 128 held-out, 144 + 96 development): 0 own-output
+  versions admitted, 0 wrong-story versions admitted, 0 one-origin confidence rises, 0 subjects lost or regressed.
+  These worlds do not reproduce the withheld worlds' holes (Step 0), so they do not show the order safe where those
+  holes exist; lane S closes them.
+- Cost (held-out, per run, baseline → the combination): pages 222 → 226, 175 → 200, 210 → 217, 208 → 208,
+  191 → 209 (the whole allowance used); wall time +20 to +33 % (0.40–0.47 s → 0.53–0.58 s).
+- Cognitive benchmark with every individual reading `idle_recheck` on, the whole allowance and the combination
+  (scripts/bench_wave1.py's regime), development and held-out: retention all retained; adversarial 28 of 28 scored
+  cases pass (5 directive items not staged), as at the defaults and with lane K's order. Offline research digest at
+  the shipped defaults: `68731d72…` (the Wave 0 equivalence test, aarch64).
+- **On the merged tree, and after the fix lane.** Measured on `320ae8e`, before lane S's rules (ADR-061). On the merged
+  tree `f0a1f09`, where those rules were on, echo recognition changed some runs (the reconciliation: 3 `correct`
+  values of 23,520, e.g. dev-churn 41 `recheck:rotation` 0.522118 -> 0.544659; no verdict changed). After the fix
+  lane (both rules off, `baseline` explicit) the re-run (`genesis_wave3_fix_orders.json`, four splits, `ad6fc8a` and
+  later) returns those values to this ADR's evidence (0.522118, 0.566029, 0.505633); every verdict "no evidence", as
+  here.
+
+## Alternatives rejected
+
+- Covering the never-covered subjects from the timer (the largest part): it would widen what the timer admits (non-
+  knowledge subjects), which the admission rule forbids ("propose it instead"); the owner or the idle investigator
+  decides those.
+- Counting contested sightings of a newer version as changes in the rate: they are not verified values; `seen` uses
+  them only to order, never as a change of what is known.
+- Re-ordering the due refreshes (`predictions.check_due`): the due set is gated by the 7-day TTL, so a fast-changing
+  subject cannot be reached before it; the re-check's pool holds every live item.
+- Raising the re-check's share by itself: the shares are the owner's settings; `/all` is measured as an owner choice.
+
+## Consequences
+
+- Defaults unchanged: `recheck_order` "staleness", `idle_recheck` off. Nothing here argues for turning either on.
+- Changed code: `webcortex/recheck.py` (`order_parts`, `_histories`, `_ordered`, `_assess`; `rank` and `submit`),
+  `autonomy.admission` (carries a pick's `order` on the re-check path), `WebConfig.recheck_order` and its validation,
+  `self_description._to_recheck`. Harness: `cycles.py` (looks, `decompose`, `rate:` splits, `order_configurations`,
+  `order_verdicts`), `scripts/bench_learning_cycles.py` (`--orders`).
+- Tests: `tests/webcortex/test_recheck_order.py`, `tests/acceptance/test_learning_cycles_orders.py`, the rollback and
+  Wave 0 equivalence lists (`tests/uat/`).
+- Withheld look (main session only): `scripts/bench_learning_cycles.py final --note ... --out <outside> --mechanism
+  recheck_order --config reference:no-loop --config baseline --config recheck:rate+seen+rotation/all --config
+  recheck:rotation/all`. Not needed to keep the default.
+- Not verified: the open web, real change rates, a live model, the worker's idle investigation (which shares the
+  allowance), an owner who answers, timer passes more often than once a simulated day.
+
+# ADR-061 (draft) What counts as an independent source; the individual's own text is no source; supersession of a stale item, built off and measured. R
+
+**The hole Step 0's withheld look found is NOT closed.** After the Wave 3 reviews, both rules this ADR built ship
+OFF (`attribution_independence` false, `echo_recognition` false; decisions D1 and D2 of the fix lane) and
+`supersession` stays `"ask"` (D3). At the shipped defaults the individual treats sources as it did at Step 0: a
+reworded copy that credits its origin can count as a second source, and a page repeating the individual's own answer
+can read as corroboration. The settings, their code and their tests stay, made sound by the fix lane, for the owner
+to turn on; this ADR does not recommend it. Under this lane's own pre-registered rule (`cycles_s.verdict`, (s1) and
+(s3)) the fixes do NOT qualify for ON: own versions are still admitted in 2 of 4 held-out seeds of two worlds and in 2
+of 3 development seeds of sd-wrong-newer, and on development sd-wrong-newer loses 0.114 against a spread of 0.066; the
+verdict is "unsafe" for `fixes` (both rules on), and for `shipped` too (now both off: the holes are open), on
+development and held-out. Every lane S held-out figure below is
+development evidence: the echo rule changed twice after held-out runs and lane S's held-out was seen three times; the
+withheld look is the test. Fix-lane evidence: `genesis_wave3_fix_s.json`, `genesis_wave3_fix_s_variants.json`
+(section "Fix lane" at the end).
+
+Status: draft, Wave 3 lane S (branch `gen3-s`); amended by the fix lane (`gen3-fix`). Amends ADR-035's independence
+rule (attribution) and ADR-038's consolidation (echoes), both opt-in; adds a rule beside ADR-026/038's standing rule
+without changing it: **contradictions are asked, never decided, by default**. Evidence:
+`docs/quality/evidence/genesis_wave3_s.json` (commit `77df3f4`, clean tree, aarch64), `scripts/bench_wave3_s.py`,
+`src/neuroscifi/acceptance/cognition/cycles_s.py`.
+
+## Context
+
+Step 0 of Wave 3 looked once at withheld learning-cycle worlds and found, in small integer counts per world, two
+safety properties that had held in all 120 held-out runs broken: versions only the individual itself had asserted,
+and versions only a wrong syndicated story stated, became knowledge; a confidence rose from one source; items held
+correctly became wrong later. Lane S reproduced each class on worlds it wrote (`cycles_splits_s.py`, committed alone
+before any mechanism, development seeds 241-243, held-out 341-344) without reading the withheld worlds:
+
+| hole | where it was | reproduced by |
+|---|---|---|
+| a copy that rewords the story and credits its origin inside the sentence ("According to Syndiwire, ...", "..., Syndiwire says.", "... (Syndiwire).", "... via Syndiwire.", "..., as the Syndiwire desk reports.", a mirror republished later) is a second independent source | `claims.independence_groups` joins only same host, near-identical sentences (3-word shingle >= 0.8), attribution LINES and canonical URLs (`origin_keys`) | case `reworded_syndicated_copies_count_once`: 5 groups before, 1 after; census of every held-out look: 407 of 449 wire looks split into several "independent" groups before, 50 after (the 50: the `unattributed` rewording; 19 of 27 other credit phrasings are not read either, review S-3) |
+| one outlet and its reworded copies admitted as corroborated knowledge, and a second row admitted on one origin | same | 262 of 371 one-origin looks split before, 0 after; case `one_origin_never_raises_confidence` (1 new row before, 0 after) |
+| a page repeating a version only the individual's own answer stated is corroboration | consolidation never asked where a value first came from | case `echoed_own_value_is_not_corroboration` (1 row before, 0 after) |
+
+## Decision
+
+1. **Attribution (`attribution_independence`, OFF since the fix lane).** `claims.attribution_keys` reads the outlet a sentence credits
+   and `stamp_origins(attribution=True)` records it in `flags["credited"]` (since the fix lane; it was an origin key,
+   which let one sentence crediting two honest outlets join them, security H1): a group made only of crediting claims
+   counts with ONE outlet it credits, and a group holding a claim that credits no one never moves on a credit, so a
+   credit never joins two of them. With `origin_grouping` "one_way" (ADR-063; off by default) the outlet is chosen
+   from the group's own content, not by the order of the claims, and a page that credits no one but carries two
+   outlets' keys ("(Reuters) (Bloomberg)") does not absorb two honest outlets that credit them; at the default
+   ("transitive", the grouping of `3ce4ae3`) both stay open with this rule on (review3b N3, N10: the merge of crediting
+   groups depends on their order, and such a page joins the two outlets). A credit to the sentence's own subject ("..., the Velmora team says")
+   and indefinite speakers ("Someone says") give no key.
+2. **Echoes (`echo_recognition`, OFF since the fix lane).** In consolidation (`_Echoes`, `_without_echoes`), a claim is an echo when it
+   states, for a subject the individual's stored model-written answer names, a specific value that answer stated
+   before any source the individual had read stated it; or repeats that answer's own wording; or credits what it
+   states to an assistant, a chatbot or an AI model (model text never becomes fact). An echo is never evidence FOR a
+   value: it leaves the supporting side of its cluster and the supersession rule never counts it. An echo that only
+   disagrees with the sources stays: that disagreement is still asked, as before. The imagined store is **not** read
+   (ADR-049's quarantine forbids consolidation to read it at all), so a value the individual only imagined and never
+   answered with is not recognised unless the page credits a model.
+3. **Supersession (`supersession`, default `"ask"`; `"independent"` with `supersession_min_sources` K).** In a
+   contested refresh of a held item, the side that conflicts with it replaces it without asking when (i) it is newer
+   by its stated time (`temporal.supersedes`), (ii) it has at least K independent groups, (iii) no owner's answer
+   stands against it (the item accepted or asserted by the owner, the disagreement decided, these values rejected for
+   this key - a reverted replacement is such a rejection), (iv) the value is not one this key held and lost before
+   (no flip-flop), and the side alone passes the bar of a new verified item. The new version is provisional and
+   asked for acceptance like any new item; its verification record says `decided_by: "rule"` and keeps the replaced
+   row's columns; the contradiction question is recorded, answered by the rule, under the new version's scope.
+   `nsf web replacements` lists every replacement with both versions and their sources; `nsf web revert ID` restores
+   the replaced row exactly and rejects the rule's version, so the rule never makes the same replacement again.
+   Forget removes the rule's versions and records; a restore replays the forget. K = 2, chosen on development before
+   any held-out run (K = 3 made 0.33 replacements per development run: not exercised).
+
+## Measured (held-out, 4 seeds per world, means per run; references from the world generator alone)
+
+Both rules on, against Wave 2's baseline (every Wave 1 setting off, old independence rule), lane S held-out
+(`s-mixed` / `s-wrong-newer` / `s-echo`):
+
+| | baseline | both rules on (not shipped) |
+|---|---|---|
+| own versions admitted (supported only by echoes) | 1.25 / 0.50 / 3.75 | 0.25 / 0 / 0.25 |
+| syndicated-only versions admitted | 1.50 / 2.25 / 1.00 | 0 / 0 / 0 |
+| confidence rose from one origin | 0 / 0.25 / 0 | 0 / 0 / 0 |
+| rows admitted on one true origin (true / wrong value) | 4.25/2.75, 1.50/2.75, 4.00/4.75 | 0/0.25, 0/0, 0/0.25 |
+| wrong rows admitted (the rest: rumours, independent errors) | 2.75 / 4.25 / 4.75 | 0.25 / 1.25 / 0.25 |
+| held correctly, wrong at the end (retention regressed) | 0.50 / 0.75 / 0.50 | 0 / 0.50 / 0 |
+| `correct` mean over cycles (± sd over seeds) | 0.577±0.084 / 0.394±0.067 / 0.573±0.079 | 0.546±0.046 / 0.375±0.051 / 0.520±0.078 |
+
+The cost: `correct` falls by 0.031, 0.019 and 0.053 (paired per seed: -0.019 -0.053 +0.033 -0.084; -0.011 -0.028 0
+-0.037; -0.097 -0.075 -0.011 -0.029), each within the baseline's sd but negative in all three worlds. Most of it is
+true values the old rule admitted on one outlet counted twice (4.25, 1.50 and 4.00 rows per run), which the stricter
+rule no longer admits: correct by luck, not by evidence. False rejections of honest corroboration: the attribution
+rule merged no honest outlet the old rule kept apart (census: 237 of 9,026 honest outlets merged with another origin
+before and after, all by the old near-duplicate rule); echo recognition removed honest pages 0 / 0.5 / 1.0 times per
+run (prescient answers later stated honestly) against 1.5 / 2.0 / 12.5 echoes removed, and claims from rumour or wire
+pages removed as echoes (`echo_false_other`) 0 in every configuration, world and seed of the fix lane's
+re-measurement (`genesis_wave3_fix_s.json`, both families, both splits). References: snapshot 0.601 /
+0.692 / 0.586, blind round robin 0.758 / 0.769 / 0.760, oracle 0.980 / 0.994 / 0.974, no loop 0.526 / 0.406 / 0.494.
+In these worlds the individual's own values live only in the imagined store, which echo recognition may not read.
+The fall in own versions comes from the rule that a sentence crediting an assistant, chatbot or AI model is model
+text; that rule was added after the second held-out run, and its phrasings are the generator's (review S-2). The
+worlds' copies use exactly the credit forms the parser reads, so "-> 0" shows that the parser works on those forms,
+not that it closes the hole (review S-3). On lane S's worlds the change is not only removals: in 25 / 6 / 21
+subject-cycles (held-out, 4 seeds) the fixes hold an out-of-date version where the baseline held the true one,
+because the newer version was refused on one origin (review S-6; item list in `genesis_wave3_fix_s.json`,
+`item_changes_vs_baseline`). What is not closed, measured on the fix lane's variant worlds: see "Fix lane".
+
+**Why OFF (the fix lane, after the reviews).** Lane S shipped both ON on the addendum's condition (every existing
+result unchanged, or the change exactly the removal of wrongly admitted content). The reviews showed that condition
+was not met: the change is not only removals (S-6: true -> wrong items above); the lane's own rule returned "unsafe"
+(S-1); the attribution result is a tautology of the worlds' phrasings (S-3) and the echo result rests on a phrase list
+chosen after held-out runs (S-2, S-8); a staged world of honest outlets crediting each other shows attribution merging
+them and `correct` falling beyond the spread (S-4); and the security review found one high and four medium defects in
+them (H1, M2-M5, fixed since). On lane F's worlds both act only where the earlier rules already acted (attribution
+keys coincide with attribution lines; 0-2 echoes removed per run, none admitted before): unchanged, not tested
+(review S-7). The withheld look reports each separately for the owner's decision and cannot switch either on.
+
+Supersession K = 2 against the fixes (both rules on; same world, same seed). The first two rows are the fix lane's
+re-measurement on the combined tree (`genesis_wave3_fix_s.json`, `ad6fc8a`), which replaces lane S's figures; the
+rows marked "lane S" are lane S's evidence (`genesis_wave3_s.json`, before the fix lane's changes to echo
+recognition), kept for the counts the re-measurement table does not repeat:
+
+| | s-mixed | s-wrong-newer | s-echo | ho-sparse (lane F) | ho-busy (lane F) |
+|---|---|---|---|---|---|
+| gain in `correct` (reference sd), re-measured | +0.001 (0.046) | −0.002 (0.051) | +0.016 (0.078) | +0.016 (0.105) | +0.005 (0.057) |
+| rule replacements per run: true / false, re-measured | 2.50 / 0.25 | 1.25 / 0.50 | 1.25 / 0 | 2.00 / 0 | 0.75 / 0 |
+| lane S: gain in `correct` (reference sd) | +0.008 (0.046) | +0.007 (0.051) | +0.020 (0.078) | +0.016 (0.105) | +0.008 (0.057) |
+| lane S: rule replacements per run: true / false / other | 3.00 / 0.25 / 0 | 2.25 / 0.50 / 0.25 | 2.00 / 0 / 0 | 2.00 / 0 / 0 | 1.25 / 0 / 0 |
+| false per seed (both) | 0,0,0,1 | 2,0,0,0 | 0,0,0,0 | 0,0,0,0 | 0,0,0,0 |
+| longest a false replacement stayed wrong (per-seed maximum; censored: still wrong at run end), re-measured | 8 cycles | at least 10 (censored) | - | - | - |
+| lane S: stale items kept and asked (missed) | 7.75 -> 3.75 | 7.75 -> 6.00 | 4.75 -> 2.25 | 5.00 -> 2.75 | 5.50 -> 4.25 |
+| lane S: owner questions opened / answered by the rule | 45.75 -> 42.00 / 3.25 | 46.50 -> 44.75 / 3.00 | 37.75 -> 37.25 / 2.00 | 38.75 -> 38.25 / 2.00 | 50.75 -> 50.75 / 1.25 |
+| retention regressed (both) | 0 -> 0 | 0.50 -> 0.75 | 0 -> 0 | 0 -> 0 | 0 -> 0 |
+
+Verdict under the pre-registered rule: **no gain beyond the spread** in any world (the smallest gain the rule can see
+is 0.046-0.105), and retention worse in one world. False replacements, re-measured (`genesis_wave3_fix_s.json`): 3 of
+23 rule replacements on lane S's held-out worlds (13 %, about one in eight, pooled, not a claim; per world 1 of 11, 2
+of 7, 0 of 5), 0 of 11 on lane F's (lane S's own figures were 3 of 33 and 0 of 13); they come
+from rumours: two independent outlets wrongly stating a next version, which no independence rule can tell from an
+honest update. Ablations (lane S held-out, lane S's figures): independence off (pages counted as sources) admits
+syndicated versions (3.00 / 1.00 / 0.75 per run) and makes 2.50 / 1.25 / 0.75 false replacements; echo recognition off
+admits own versions (1.50 / 0.75 / 4.00); recency off changes nothing in four of five worlds (the no-flip-flop
+condition and the lagging pages' own dates already refuse those cases) and +0.004 in `s-echo`. K = 3: 0.75 / 0.50 /
+0.75 rule replacements per run, gains 0.001 / -0.001 / 0.002. Re-measured by the fix lane (`genesis_wave3_fix_s.json`,
+per run): independence off admits syndicated versions 1.50 / 0.75 / 0.50 and makes 1.25 / 1.50 / 0.50 false
+replacements (1.25 / 1.00 / 0.50 by the rule); echo recognition off admits own versions 1.25 / 0.50 / 3.75; recency
+off changes nothing in any of the five worlds; K = 3: 0 / 0.25 / 0.25 rule replacements, gains 0.000 / +0.001 /
++0.001. Cost: no measurable wall time (about 0.5 s per world run either way).
+
+## Alternatives rejected
+
+- Reading the imagined store to recognise echoes of what the individual only imagined: consolidation may not read
+  that store at all (ADR-049), and using imagined content to reject evidence would let it shape belief.
+- Removing echoes from both sides of a cluster: it changed what the owner is asked and what curiosity looks at next on
+  lane F's worlds where no echo was ever admitted (4 held-out runs, both directions).
+- Supersession on by default: no gain beyond the spread and about one false replacement in eight (3 of 23,
+  re-measured) on worlds with rumours; the owner has not changed the standing rule.
+
+## Consequences
+
+- Defaults: `attribution_independence` off, `echo_recognition` off (fix lane, D1 and D2), `supersession` "ask"
+  (unchanged standing rule; D3), `supersession_min_sources` 2. The owner decides; this ADR recommends none of them.
+- Changed code: `claims.attribution_keys`, `stamp_origins(attribution=)`; `orchestrator` passes the setting;
+  `consolidate._Echoes`, `_without_echoes`, `_rule_side`, `_rule_replacement`, `_replace_by_rule`,
+  `_contested_against(rule=)`; `knowledge.replacements`, `knowledge.revert`; `nsf web replacements`, `nsf web revert`;
+  `WebConfig` and its validation (four fields, appended). No schema change, no new background activity.
+- For the main session's one withheld look: `scripts/bench_learning_cycles.py final --look wave3 --note ... --out
+  /outside/the/tree.json` runs, on the same worlds and seeds, `reference:no-loop`, `baseline` (Step 0's behaviour made
+  explicit), `shipped` (both rules off), `lane-s:fixes-off`, `lane-s:echo-only`, `lane-s:attribution-only`,
+  `lane-s:both`, `lane-s:supersede-K2` (on `shipped`), `recheck:rate+seen+rotation/all`, `recheck:rotation/all`,
+  `shipped+idle`, `idle-first` (`cycles.LOOKS["wave3"]`; reference pairings `cycles.LOOK_PAIRS`; per world and seed
+  `mean.correct`, `mean.coverage`, `self_admitted`, `wire_admitted`, `one_origin_rises`, `retention.lost`,
+  `retention.regressed`, `admitted.wrong` / `own_only` / `wire_only`, replacements true / false with each false one's
+  persistence and censoring; `COUNTERS` says what each counter can see: `self_admitted` and `wire_admitted` count only
+  9.x and 7.x versions and cannot see a plausible syndicated error or an echo of a 1.x value).
+  `lane-s:supersede-K2` there is supersession on the shipped defaults, with both source rules OFF: not the
+  configuration this ADR's supersession figures measured (those had both rules on). The second measurement review
+  (review3b) rehearsed that configuration through the look's harness on lane S's development worlds: 31 replacements
+  (true or false), 7 of them false, all by the rule and every one still wrong when its run ended (censored); paired gain
+  against `shipped` +0.005 / −0.021 (sd-mixed / sd-wrong-newer); `shipped` made no false replacement. These are the
+  reviewer's figures (`review3b/bench/c/s-dev-rehearsal.json`, a scratch file outside the repository), development
+  only.
+- Not verified: anything on the open web (real syndication, real attribution wording, real echoes of a real answer
+  model), a live model's answers as own outputs, the console and Pocket showing rule-decided replacements (not built:
+  the setting is off; the list and the revert are CLI only).
+
+## Fix lane (after the Wave 3 reviews): decisions, security fixes, re-measurement
+
+Decisions D1-D4 (taken by the main session, implemented here): both rules OFF; supersession stays "ask"; the hole is
+not closed. Evidence measured by `scripts/bench_wave3_s.py` on the combined tree (commit `ad6fc8a`, clean, aarch64:
+`genesis_wave3_fix_s.json`; variants at `8f72f27`, source of the measured code committed, an unrelated file
+uncommitted: `genesis_wave3_fix_s_variants.json`). Development and held-out only; nothing withheld.
+
+Order of the commits (review3b L-1): the variant worlds (`cycles_splits_s_variants.py`) were committed alone in
+`1aaa75b`, after the fix lane's first mechanism commits (H1's first version `8bd1673`, M2-M5 `98109d7`) and before the
+harness that scores them (`e4bbe32`). H1's refinement (`df238c8`: crediting claims keep the ties they had without
+credits) came after the variant worlds, about two minutes after them (04:37:01 and 04:38:54 by the commit times) and
+seconds before that harness (04:39:01). The S-4 figures "after the H1 fix" are therefore for an H1 committed after the
+variant worlds existed; the commit order alone cannot show whether it was tuned on them.
+
+**Security fixes, so the opt-in settings are sound** (each with a test that fails without it,
+`tests/acceptance/test_wave3_fix.py`): H1 a credit never joins two groups (2 honest outlets + one sentence crediting
+both: admitted; 4 honest + one sentence crediting all four: 4 groups); M2 the source check filters the subject in
+SQL (250 other subjects stating the value no longer make a sourced answer look self-originated); M3 before claims are
+forgotten, the answer sentences that stated their values are marked sourced (indexes only), so a forgotten source no
+longer blocks a subject for ever (live forget, `forget_research`, and the checkpoint replay; since the second fix lane
+the scan of the answers runs before the forget's write transaction, which then reads only the candidate answers and
+the tasks changed since: 0.15 s and 0.25 s held for a 1-page and a 6-page domain at 10,000 answers of 20 kB, against
+6.9 s and 39.6 s, review3b N2; and a sentence is marked only when it names a subject the forgotten claim named, N9); M4 the echo checks run
+once per consolidation before the write transaction, bounded (8 values per claim, 64 per consolidation, one scan,
+2 s), a claim not checked in time is not an echo and is named in `echo_skipped` (0.94 s at 10,000 tasks of 20 kB,
+against 9.8 s inside the lock for one claim; since the second fix lane, review3b N4: the 64 are shared out claim by
+claim, every claim whose values were not all looked up is named in `echo_skipped`, the skip is logged once per
+consolidation with counts and claim ids only, and when the scan fills its 200 rows each claim is looked up again
+among the answers naming its own subject; one page can still use up the 2 s budget on a large individual, now
+visibly); M5 the model-credit phrase needs a model noun ("the AI Act", "an AI
+Index report", "the AI Safety Institute" no longer match; this phrase rule is a stop-gap, not the closure of the
+hole); M1 the rule's record keeps only the replaced row's changed scalar columns, a revert writes back nothing
+forgotten since, and forgetting the replaced version removes the quoted statement; M6 only the owner's own research
+(console, CLI) and refreshes let the rule decide; a Pocket family task, an MCP agent task, voice, a monitor or
+curiosity always asks (two colluding pages can still replace a true item in the owner's research or a refresh: the
+measured false-replacement risk, not solved); L1 a revert reopens the questions the rule closed and marks its links;
+L2/L3 documented (the attribution rule is wording-deep; its cost is quadratic in one claim's credits, at most 80
+words); L8 a damaged stored value reads as its default and is reported (since the second fix lane, review3b N8: a
+damaged `supersession_min_sources` turns supersession itself to "ask" until it is set again, never a looser bar; the
+warning is logged once per process; the console's web status lists the problems too; a change of another setting
+keeps the damaged value and the owner's rule as they were saved). Forgetting a source also replaces its sentence by
+«#forgotten» in the contradiction questions that quoted it, the ask path's and the rule's answered one (review3b N6,
+older than Wave 3; a restore replays it).
+
+**Per fix, lane S's worlds (re-measured; equal to lane S's evidence where both exist).** `correct` paired gain against
+baseline (baseline sd) / own versions admitted / syndicated-only admitted per run, held-out s-mixed, s-wrong-newer,
+s-echo:
+
+| | gain | own admitted | syndicated admitted | retention lost+regressed | verdict, lane's rule / roadmap's |
+|---|---|---|---|---|---|
+| baseline | - | 1.25 / 0.50 / 3.75 | 1.50 / 2.25 / 1.00 | 0.50 / 0.75 / 0.50 | - |
+| `fix:attribution` | -0.039 (0.084) / -0.019 (0.067) / -0.072 (0.079) | 1.25 / 0.50 / 3.25 | 0 / 0 / 0 | 0.25 / 0.50 / 0.75 | unsafe / off |
+| `fix:echo` | +0.006 / 0.000 / +0.021 | 0.25 / 0 / 0.50 | 1.50 / 2.25 / 1.00 | 0.25 / 0.75 / 0 | unsafe / off |
+| `fixes` (both) | -0.031 / -0.019 / -0.053 | 0.25 / 0 / 0.25 | 0 / 0 / 0 | 0 / 0.50 / 0 | unsafe / off |
+
+Development: `fix:attribution` -0.040 (0.136) and -0.114 (0.066); `fix:echo` +0.004 and 0.000; every verdict
+"unsafe" (lane's rule) and "off" (roadmap's). Lane F's worlds: every paired difference 0 for each fix, both splits
+(items changed: none). The correctness cost is attribution's; echo recognition's own-version fall rests on the
+model-credit phrase (below).
+
+**Item by item (review S-6), held-out, subject-cycles summed over 4 seeds, baseline -> configuration:**
+`fix:attribution` s-mixed true->none 65, true->wrong 25, wrong->none 39, wrong->true 41, wrong->wrong 31;
+s-wrong-newer 28 / 6 / 45 / 11 / 21; s-echo 79 / 24 / 70 / 22 / 13. `fix:echo` s-mixed wrong->true 8, wrong->wrong 8;
+s-wrong-newer wrong->wrong 9; s-echo true->wrong 2, wrong->true 29, wrong->wrong 43. `fixes`: true->wrong 25 / 6 / 21
+(as the review found). Every true->wrong case the review inspected was a stale 1.x version kept where the baseline held the true newer
+one, the newer refused on one origin (the fix lane did not inspect further cases).
+
+**What is not closed (the variant worlds, held-out sv-mixed / sv-wrong-newer / sv-echo, 4 seeds, per run):**
+
+| variant (what the pages do) | baseline | the fix that should catch it | caught |
+|---|---|---|---|
+| orig (lane S's shapes, new seeds) | own 0.25 / 0.25 / 3.75; syndicated 1.50 / 2.50 / 0.75 | echo: own 0 / 0.25 / 1.50; attribution: syndicated 0 / 0 / 0 | |
+| echo-nocredit (echoes credit no model) | own 0.50 / 0.50 / 3.00 | echo: 0.50 / 0.50 / 2.75 | 0 / 0 / 8 % |
+| echo-num (number restated in another format) | own 0 / 0 / 0.25 | echo: 0 / 0 / 0 | (the baseline itself barely admits them) |
+| echo-para (paraphrased echoes) | own 0 / 0 / 0 | echo: 0 / 0 / 0 | not a hole of either rule: the extractor does not read them |
+| attr-offparser (copies credit their origin in other phrasings: other verbs, passive, "per a ... report", h/t, link-only, a bare URL, lowercase, German, French, Spanish, possessive) | syndicated 2.00 / 2.00 / 0.50 | attribution: 2.00 / 2.00 / 0.50 | 0 (census: wire looks split 428 -> 415 of 477, the possessive now read) |
+
+Echoes that credit no model are admitted at 92-100 % of the baseline's rate under echo recognition; off-parser copies
+at 100 %. The phrase lists were not lengthened (a longer list is the same weakness).
+
+**What attribution costs where honest outlets credit each other (review S-4), held-out, after the H1 fix:**
+
+| honest outlet pages crediting another outlet of the same look | `fix:attribution` gain (baseline sd) | honest outlets merged per run, baseline -> fix |
+|---|---|---|
+| none (orig) | -0.068 (0.031) / -0.021 (0.074) / -0.056 (0.035) | 5.75 -> 6.25 / 3.00 -> 3.00 / 7.50 -> 7.50 |
+| 10 % | -0.070 (0.029) / -0.021 (0.074) / -0.066 (0.035) | 5.75 -> 27.75 / 3.00 -> 19.50 / 9.00 -> 28.75 |
+| 30 % | -0.081 (0.022) / -0.041 (0.067) / -0.081 (0.047) | 8.25 -> 62.50 / 4.75 -> 33.75 / 11.00 -> 54.00 |
+| 50 % | -0.106 (0.039) / -0.063 (0.056) / -0.132 (0.038) | 14.25 -> 71.00 / 7.50 -> 42.25 / 18.75 -> 78.25 |
+| 30 %, before the H1 fix (f0a1f09's claims.py, same worlds) | -0.125 / -0.069 / -0.102 | 8.25 -> 72.75 / 4.75 -> 39.25 / 11.00 -> 62.50 |
+
+Beside its benefit (syndicated-only versions 1.50 / 2.50 / 0.75 -> 0 in lane S's phrasings), attribution costs
+`correct` beyond the spread in two of three held-out worlds already on these seeds without any credit between honest
+outlets, and more with them; the H1 fix reduces that cost (30 %: -0.125 -> -0.081 in sv-mixed) without removing it.
+Primary-source credits ("according to GitHub", "PyPI says", in 30 % of honest pages): about orig's cost in two worlds
+and more in the third (-0.066 / -0.021 / -0.066 against orig's -0.068 / -0.021 / -0.056,
+`genesis_wave3_fix_s_variants.json`) and no more honest outlets merged in this staging (486 of 9,027 before and after), because
+two outlets rarely credited the same primary source in one look here; on the real web every outlet citing one release
+page would share one credited key (not measured).
+
+**A rule that needs no phrase list** (the next step, not built): decide dependence by publication order and content,
+not wording: a page whose value for a subject first appeared (in the individual's own reading log) on another page
+read earlier, with the same value and a later publication time, is checked against that earlier page by text overlap
+beyond the sentence (shared non-template words, shared numbers other than the value), and counts with it; an echo is a
+page published after the individual's own answer that states a value no source read before the answer stated. Both
+need the pages' text and times, which consolidation has; neither needs a list of phrasings. It must be chosen on
+development and tested on worlds no lane has seen.
+
+**Supersession (review S-5), per-seed maxima, `supersede:K2` against `fixes`:** s-mixed 0, 0, 0, 8 cycles (seed 344,
+not censored); s-wrong-newer 10, 0, 10, 0 (seed 341: 3 false replacements, all still wrong at the run's end, censored;
+seed 343: 1 censored); s-echo none. Development sd-wrong-newer 0, 0, 11 (3 censored). The path that existed before
+Wave 3 also makes false replacements with supersession "ask": baseline and `fixes` on s-wrong-newer 9, 9, 10, 0 and
+9, 0, 10, 0 cycles (each still wrong at the run's end); baseline also on s-mixed 0, 2, 0, 0 (seed 342, censored). Rule replacements held-out: true 2.50 / 1.25 / 1.25, false
+0.25 / 0.50 / 0 per run. In owner words: some wrong replacements stayed wrong for over a week of simulated days, until
+the test ended.
+
+# ADR-062 Coverage: the worker's idle investigation measured inside the timer's allowance, and the day's task count it now honours
+
+Status: Wave 3 lane V, branch `gen3-v` from `f56f9cb`. Held-out measured on `0ee88fe`; development re-run on `41198b3`.
+Evidence `docs/quality/evidence/genesis_idle_coverage.json`. Simulated worlds through the real modules, offline, no
+model. No schema change, no new setting, no new background activity.
+
+## Context
+
+Lane R (ADR-060) split the loop's shortfall against a blind same-budget round-robin: 64 % of it (pooled, development)
+is subjects the loop never covers. The owner's one look gave them no knowledge item, and the timer admits only
+knowledge items. Lanes F and R measured the timer's pass only. The worker's idle investigation (`autonomy.idle`) was
+never run in the cycles harness (Wave 2 review M4). In the product it shares the daily allowance with the timer and
+can investigate gaps. The questions were: does the product's whole loop reach the never-covered subjects? If a
+coverage gap remains, what is the smallest mechanism, and does reaching more subjects add wrong content?
+
+## Measurement (step 1)
+
+`cycles.idle_configurations()`. The worker's idle investigation runs as the product runs it. Each decision is
+`autonomy.idle` as by its own worker at the cycle's instant (the harness compresses a day to one instant, as it does
+for the owner and the timer), and the queued task is executed at once. Admission, quiet, the recorded enable,
+`min_gain`, the cooldown and lineage are its own.
+
+There is one allowance, `daily_autonomous.tasks` (the world's budget), counted as the timer counts it (curiosity and
+refresh tasks of the rolling 24 h). The references get the same budget.
+- `idle` and `shipped+idle`: the timer's pass first, then idle decisions until the count is reached.
+- `idle-first`: idle decisions first, then the pass with what is left.
+
+The product runs both all day (the timer every 15 min, idle every 300 s per worker when nothing is queued), so the
+idle investigation's share of the allowance lies between these two (the outcome of an intermediate split was not
+measured). **"The loop as shipped with autonomy on" is `shipped+idle`**: the owner's enable
+starts the timer's autonomous part and the worker's idle investigation. On these worlds `shipped` equals `baseline`
+in every metric, and `shipped+idle` equals `idle`.
+
+Held-out: mean `correct` over 4 seeds. Each change is the paired gain against the same configuration without idle
+(seeds better / worse). The rule's smallest visible gain is the sd of the configuration without idle.
+
+| | ho-rate-mixed | ho-rate-uniform | ho-rate-shift | ho-sparse (F, disclosed) | ho-busy (F, disclosed) |
+|---|---|---|---|---|---|
+| baseline sd (smallest visible gain) | 0.089 | 0.071 | 0.080 | 0.105 | 0.057 |
+| snapshot / blind round-robin / oracle | 0.651 / 0.724 / 0.873 | 0.573 / 0.724 / 0.949 | 0.712 / 0.797 / 0.940 | 0.670 / 0.786 / 0.957 | 0.574 / 0.708 / 0.928 |
+| no loop / baseline (timer only) | 0.539 / 0.587 | 0.503 / 0.617 | 0.614 / 0.646 | 0.574 / 0.631 | 0.497 / 0.571 |
+| `idle` = `shipped+idle` (timer first) | +0.000 (0/0) | +0.046 (4/0) | +0.049 (4/0) | +0.017 (1/0) | +0.015 (2/1) |
+| `idle-first` | +0.057 (3/1) | +0.012 (3/1) | +0.086 (4/0) | +0.035 (3/1) | +0.018 (3/1) |
+| paired sd: `idle` / `idle-first` | 0.000 / 0.069 | 0.036 / 0.048 | 0.012 / 0.032 | 0.034 / 0.055 | 0.023 / 0.017 |
+| coverage: baseline / `idle` / `idle-first` | 0.822 / 0.822 / 0.940 | 0.867 / 0.930 / 0.958 | 0.857 / 0.928 / 0.978 | 0.861 / 0.881 / 0.968 | 0.831 / 0.869 / 0.925 |
+| uncovered part of the gap to round-robin: baseline / `idle` / `idle-first` | 0.112 / 0.112 / 0.032 | 0.087 / 0.041 / 0.025 | 0.109 / 0.049 / 0.018 | 0.104 / 0.085 / 0.029 | 0.111 / 0.084 / 0.054 |
+| not-looked part: baseline / `idle` / `idle-first` | 0.018 / 0.018 / 0.062 | 0.033 / 0.035 / 0.087 | 0.024 / 0.026 / 0.071 | 0.038 / 0.040 / 0.096 | 0.040 / 0.042 / 0.083 |
+| whole gap to round-robin: baseline / `idle` / `idle-first` | 0.137 / 0.137 / 0.081 | 0.108 / 0.062 / 0.096 | 0.151 / 0.102 / 0.065 | 0.155 / 0.138 / 0.120 | 0.138 / 0.123 / 0.120 |
+| idle tasks per run: `idle` / `idle-first` | 0.25 / 32.0 | 5.75 / 38.5 | 2.5 / 32.75 | 0.5 / 28.0 | 5.0 / 37.75 |
+| idle looks at subjects that held nothing (after them, held the true version) | 0.0 (0.0) / 10.75 (4.5) | 4.75 (2.0) / 12.0 (4.25) | 2.5 (1.75) / 8.25 (4.0) | 0.5 (0.5) / 8.75 (4.0) | 4.0 (1.0) / 16.25 (5.5) |
+| looks used of the allowance: baseline / with idle | 31.75 / 32.0 of 32 | 33.0 / 38.75 of 42 | 30.25 / 32.75 of 33 | 27.5 / 28.0 of 28 | 33.5 / 38.25 of 42 |
+| pages per run: baseline / `idle` / `idle-first` | 222 / 223 / 235 | 175 / 191 / 210 | 210 / 220 / 228 | 208 / 210 / 218 | 191 / 206 / 208 |
+
+- **Does the idle path reach the never-covered subjects?** Yes, when it gets a share of the allowance. Taking the
+  allowance first, it removes 51–83 % of the uncovered part (held-out). The timer's own due refreshes fall to 0–1
+  per run, and the idle path re-takes many of those items as its own "prediction" candidates (7–17 of 22–31 idle
+  tasks per development run; review3 MEDIUM 2). The not-looked part rises by +0.043 to +0.058 (a net figure). Taking what the timer leaves, it gets 0.25–5.75 looks per run. The timer's
+  pass used the whole day in most cycles: the idle decisions were stopped by the allowance in 12–16 of 14–16 (mean over seeds)
+  cycles. On ho-rate-mixed it changed nothing.
+- **Verdict** (the rule committed at `0ee88fe` before the run, `cycles.idle_verdicts`):
+  - `idle` and `shipped+idle`: **no evidence** in both held-out families. No gain is beyond the sd; it is +0.000 in
+    one world.
+  - `idle-first`: **revise** in both families. The gain is positive in every world with 3 or 4 of 4 seeds better,
+    but it is beyond the sd in one world only (ho-rate-shift, +0.086 against 0.080).
+  - Retention (c) and safety (d) hold everywhere.
+  - Development: `idle` no evidence (lane F's worlds) and revise (lane R's); `idle-first` revise in both.
+- **Even with idle first, the loop stays below the blind round-robin** in every world (gap 0.065–0.120).
+- **Safety, all 210 runs** (36 + 54 development, 48 + 72 held-out): 0 own-output versions admitted, 0 wrong-story
+  versions admitted, 0 one-origin confidence rises, 0 subjects lost or regressed. Reaching more subjects met more
+  pages here (+1 to +35 pages per run) and admitted nothing wrong. These worlds do not reproduce the withheld worlds'
+  holes (Step 0), so this does not show it safe where those holes exist.
+- **Cost:** wall time +0 to +13 % with `idle` and +39 to +72 % with `idle-first` (0.39–0.47 s to 0.61–0.69 s per
+  run). No extra looks beyond the allowance in any run: tested; enforced by the harness's own stop, and the product
+  now enforces the same count (since the fix lane inside submit's write transaction, security L6; since the second fix
+  lane also inside the knowledge re-check's own transaction, which inserted past the cap when the idle investigation
+  took the last place in between: 3 tasks of a cap of 2, review3b N5).
+- **On the merged tree, and after the fix lane.** Measured on `0ee88fe`, before lane S's rules (ADR-061). On the
+  merged tree `f0a1f09` echo recognition changed some of these runs (2 of 30 development and 3 of 30 held-out runs
+  checked by the review, by up to ±0.021 per seed, both up and down, no wrong content either way). After the fix lane
+  the one command re-run on every split (`genesis_wave3_fix_idle.json`, commit `fe851dc` recorded per split) gives
+  this ADR's values back (dev-churn 41 `idle` 0.558673, `idle-first` 0.59315; ho-rate-mixed 2701 0.505633, `idle-first`
+  0.6215; 2704 `idle-first` 0.695562), the same gains and the same verdicts; 0 wrong content admitted in 210 runs.
+
+## Is a mechanism called for (step 2)? No
+
+The brief's mechanism adds candidates for subjects the owner asked about that hold no knowledge item. Development
+diagnosis: every subject-cycle in which a subject held nothing, sorted by what `autonomy.candidates()` offered for
+it.
+
+| development | subject-cycles holding nothing | admitted candidate | refused (cooldown) | no candidate |
+|---|---|---|---|---|
+| lane F, `idle` | 191 | 157 (82 %) | 10 | 24 (13 %) |
+| lane F, `idle-first` | 100 | 66 (66 %) | 23 | 11 (11 %) |
+| lane R, `idle` | 336 | 216 (64 %) | 8 | 112 (33 %) |
+| lane R, `idle-first` | 184 | 109 (59 %) | 40 | 35 (19 %) |
+
+- **Most uncovered subjects already have an admitted candidate.** Lane D's hypothesis with an open prediction
+  (`hypothesis_prediction`), a contested subject (`hypothesis`) or a single-source `gap` turns the owner's look
+  without knowledge into one. These candidates go unlooked because the allowance is spent, not because they are
+  missing.
+- **What has no candidate is one-origin owner looks** whose hypothesis no longer has an open prediction and whose
+  7-day gap window has passed, plus a few wire-only looks.
+- **More candidates cannot add looks without more budget.** Under either split the allowance binds: with the timer
+  first, idle has 0.25–5.75 looks per run against tens of admitted, unreached subject-cycles. They could only
+  re-order what the same allowance reaches.
+- **Nothing was built.** The measurement does not call for it.
+
+What decides coverage here is the split of one allowance between re-checking what is known (the due refreshes) and
+reaching what is not (idle). Today that split is a race between the timer and the worker. `idle-first` is one
+extreme of it, and it earned "revise", not a gain. A share for coverage would have to be chosen on development and
+tested on worlds no lane has seen, since these held-out worlds have now been used for this question.
+
+## Decision
+
+- **Harness (measurement only):** `cycles.idle_configurations`, `Run.idle_investigations` (registered as a
+  benchmark runner in `background.py`), the idle activity counts, `cycles.idle_verdicts`, and
+  `scripts/bench_learning_cycles.py run --idle`, `verdict --idle` and `idle --out <file>` (every public split, the
+  references, the verdicts and the safety sums in one command).
+- **Product fix (on).** At `0ee88fe`, `autonomy.idle` read the D4 budgets, the concurrency cap and the request and
+  byte part of `daily_autonomous`. It never read the day's task count, which the timer honours and which
+  RESEARCH_POLICY §2 says applies in addition. With the harness's own stop removed, it queued more looks per cycle
+  than the allowance. It now refuses at that count (`autonomy._tasks_spent`, the timer's own count), with a decision
+  event as for a spent D4 budget. This is a tightening of an owner budget, not a mechanism: no setting, nothing
+  admitted that was refused before. The harness stops before that point, so the measurement is unchanged by it.
+  Test: `tests/webcortex/test_autonomy.py::test_idle_shares_the_days_autonomous_task_count_with_the_timer` (fails
+  without it).
+- **Defaults unchanged.** No new setting. Autonomy stays opt-in.
+
+## Alternatives rejected
+
+- **Owner-asked subjects without knowledge as new candidates** (the brief's step 2): most already have one (above),
+  and the allowance, not the pool, binds.
+- **A share of the allowance reserved for the idle investigation:** not tested on unseen worlds. Choosing it now
+  would be choosing on held-out worlds that have been looked at.
+- **Letting the timer admit non-knowledge subjects:** the admission rule forbids it ("propose it instead"; ADR-060).
+- **Measuring idle without the task count** (as the product did before the fix): more looks than the references
+  get, so not a fair comparison.
+
+## Consequences
+
+- Changed code: `webcortex/autonomy.py` (`_tasks_spent`, one condition in `idle`), `background.py` (one runner),
+  `acceptance/cognition/cycles.py`, `scripts/bench_learning_cycles.py`, and `docs/autonomy/RESEARCH_POLICY.md` §2.
+- Tests: `tests/acceptance/test_learning_cycles_idle.py` (5) and one in `tests/webcortex/test_autonomy.py`.
+- Re-run for the reconciliation with lane S's rule on: `scripts/bench_learning_cycles.py idle --out <file>`.
+- Withheld look (main session only): `scripts/bench_learning_cycles.py final --note ... --out <outside>
+  --mechanism idle_investigation --config reference:no-loop --config baseline --config shipped+idle --config
+  idle-first`. `shipped+idle` is the product as shipped with autonomy on. It is worth taking after lane S's rule is
+  in, because reaching more subjects means meeting more of the sources that admitted wrong content there.
+- Not verified:
+  - The open web, real change rates and a live model.
+  - The real interleaving of the timer and the worker (bracketed by `idle` and `idle-first`).
+  - The D4 budgets, which the harness never charges.
+  - Timer passes more often than once a simulated day.
+  - An owner who answers.
+  - The withheld worlds.
+
+# ADR-063 How a page that names its origin counts: the shipped grouping is unchanged; the one-way rule is built and OFF
+
+Status: built, **OFF** (`origin_grouping`, default `"transitive"`). Wave 3, third fix lane (`gen3-fix3`), after the
+final verification (review3c F1–F5). Supersedes this ADR's earlier text (second fix lane, `gen3-fix2`), which had made
+the one-way rule the shipped behaviour. No schema change; one new web setting.
+
+**The defect this ADR is about is OPEN at the shipped defaults** (review3b N1, older than Wave 3, since `10339b8`): one
+page that names two honest outlets as its origins ("This story was first published by Devdesk. It originally appeared
+in Factline.") joins them into one independent source, so the version they both state is not verified.
+
+## Context
+
+`claims.origin_keys` reads the origin a republished page names: a canonical URL on another host (`site:`), an
+attribution line ("first appeared on", "originally published by", ...) or a wire credit ("(Reuters)", "By Reuters")
+(`name:`). Since `10339b8` (ADR-035) every claim of the page carries those keys, and `claims.independence_groups`
+joins two claims whenever one's keys meet the other's keys or its own site or site label, transitively. That is what
+makes copies of one story count once. It is also what lets one page join two honest outlets (N1). With
+`attribution_independence` on (off by default), a page crediting no one but carrying two wire credits ("(Reuters)
+(Bloomberg)") joined two honest outlets that credited those wires (N3), and the grouping of crediting claims depended
+on the order of the claims (N10).
+
+The second fix lane changed the shipped grouping to a one-way rule (each page attaches to ONE origin; `fe82ac1`) to
+close N1, N3 and N10. The final verification (review3c) found that this made copies of one story count as SEVERAL
+sources where they had counted as one (F1): copies that name the origin and each other; copies of an origin that was
+not read, each adding a different second origin that sorts first; an honest "first appeared in the Regional Times.
+(AP)" beside a plain copy of the same story. And no benchmark world holds a page naming two origins (review3c item
+1(e): 0 such pages in lane F's and lane S's development and held-out worlds; 2 of 61 offline-corpus pages carry one
+origin key each), so neither direction of the change was measured. Counting copies as independent is the more
+dangerous error for this system (it is how a wrong, copied story becomes knowledge); failing to verify a true fact is
+the safer one. The main session decided not to change the shipped grouping in Wave 3.
+
+## Decision
+
+- `WebConfig.origin_grouping` (web, owner-set like every web setting, validated, checked when read: a damaged value
+  reads as `"transitive"` and is listed by `setting_problems`):
+  - `"transitive"` (the default): `independence_groups` is the code of `3ce4ae3`, unchanged (its `independence_groups`
+    and `_groups_with_credits`): same groups for every input and in every order of the input as at `3ce4ae3`. N1 is
+    open; with `attribution_independence` on, the credit grouping is the fix lane's (security H1 closed) and N3 and
+    N10 are open as they were at `3ce4ae3`.
+  - `"one_way"`: the second fix lane's rule with the reviewer's edge choice (`claims._one_way_groups`, `_one_way`).
+    Same host, near-identical sentences and copies of one document stay a transitive join. A page naming an origin,
+    and with `attribution_independence` a group made only of crediting claims, takes ONE edge, chosen from content
+    only: to a group read on a named site or under a named site label that names nothing itself (an original); else
+    to any group read there; else to the named key no group read owns that the most groups name (copies of one unread
+    origin meet there, whatever else each names); ties by key, then by the owner's sorted hosts. A wire's name (the
+    names of `_WIRES`) is owned only by that wire's own site (`_WIRE_SITES`: reuters.com, apnews.com, ap.org, afp.com,
+    dpa.com, pa.media, upi.com, ansa.it, efe.com, kyodonews.net, xinhuanet.com, news.cn, bloomberg.com, and their
+    subdomains), never by another host whose site label is that name (review3c F2's narrower fix).
+- How the setting reaches the grouping: `claims.stamp_origins(..., grouping=cfg.origin_grouping)` (the orchestrator's
+  two calls, the learning-cycles harness) marks each claim it stamps `flags["origin_grouping"] = "one_way"`, or removes
+  the mark; `independence_groups` uses the one-way rule only when EVERY claim it is given carries the mark, so the
+  rule follows the claims into scoring, the report, consolidation and stored clusters. A grouping that includes one
+  claim read with the setting off uses the default; a claim never marked is left exactly as it was (at the default no
+  stored claim changes). A one-way grouping that fails is logged (its type only) and the default decides.
+- Not done (decided against): the reviewer's "roots-only" ownership (only a page that names nothing owns its keys). It
+  closes F2 for every name but splits reworded copy-of-copy chains (review3c: B3 3 groups instead of 1).
+
+## The proof that the default is the grouping of 3ce4ae3
+
+- `tests/webcortex/test_origin_grouping.py`: 32 scenarios, every page order of each (496 orders): every one of
+  review3c's probes (`p20_n1_purpose`: B1–B4, C1–C9c and N1's bridge; `p22_credits`; `p25_label_owner`: F2's pages,
+  datelines and credits; `p10b`/`p10_h1_variants`: N3, N10) and the second fix lane's three adversarial pages. The
+  groups `3ce4ae3`'s code gives were computed once with review3c's `oldgroups.py` (the two functions of `3ce4ae3`,
+  exec'd over the claims module) and are embedded as literals; the default must give exactly those in every order
+  (N10's grouping depended on the order at `3ce4ae3` and is given per order). Comparing the full output lists of the
+  two codes on the same 496 inputs: 0 differ.
+- `scripts/compare_origin_grouping.py` (reads `3ce4ae3`'s functions from git and compares output lists, group and id
+  order included):
+  - worlds: every look of lane F (`cycles_splits`), lane S (`cycles_splits_s`), lane S's variant worlds (every
+    variant), lane R (`cycles_rate_splits`), development and held-out (never the withheld worlds), all claims of a look
+    and each value's side, reading order and reversed, `attribution_independence` off and on: **614,988 inputs, 0
+    differ**;
+  - offline research benchmark: every call the product makes to `independence_groups` during one run at the shipped
+    defaults and one with every setting off, also answered by `3ce4ae3`'s code: **8,437 calls, 0 differ**; the digest
+    of those runs `68731d7235cb…` (portable `d87dbb4fb77f…`) in both regimes.
+- At the shipped defaults on this lane's code (`860db86`): the offline research digest `68731d7235cb…` (portable
+  `d87dbb4fb77f…`), as at `3ce4ae3`; `nsf acceptance --all` 7 of 7; the sentence guard's differential 1,937
+  compared, 1,688 identical, 232 stricter, 17 loosened, 0 different; `scripts/reproduce.py` 8 of 8 verified; the
+  cognitive benchmark's retention family all retained and all scenarios pass on both splits, and its adversarial
+  family 55 of 55 scored cases pass on both splits (61 lines: 55 cases and 6 "not staged" lines, one of them the
+  KNOWN OPEN item below; by origin 13 / 4 / 1 / 10 / 5 / 16 / 3 / 3).
+
+## What "one_way" does on review3c's scenarios
+
+Groups per scenario (the number of independent sources; every order gives one grouping for both rules except where
+said):
+
+| scenario | default = `3ce4ae3` | one-way as shipped at `2c48865` | `"one_way"` now |
+|---|---|---|---|
+| N1 bridge: two honest outlets and a page naming both | 1 (honest outlets joined) | 2 | 2 |
+| the second fix lane's bridge page (adversarial case) | 1 | 2 | 2 |
+| C2: a copy naming its origin and a second, read, honest outlet | 1 (honest outlets joined) | 2 | 2 |
+| C4: two copies naming the origin and each other | 1 | **2** | 1 |
+| C4b: four copies, two mutual pairs | 1 | **3** | 1 |
+| C7: "first appeared in the Regional Times. (AP)" beside a plain copy (origin not read) | 1 | **2** | 1 |
+| C7b: copies naming {Kappa Wire, Zeta Wire}, {Zeta Wire}, {Zeta Wire} | 1 | **2** | 1 |
+| C9: copies of an unread wire, each adding a distinct second origin sorting first | 1 | **3** | 1 |
+| p22: the credit form of C9 (attribution on) | 1 | **3** | 1 |
+| F2, datelines: "(Reuters)" and "(Bloomberg)" outlets, a page on reuters.<tld> carrying "(Bloomberg)" | 1 (honest outlets joined) | 1 (joined) | 2 |
+| F2, credits (attribution on): the same with "According to ..." | 2 | 1 (joined) | 2 |
+| N3: a page carrying "(Reuters) (Bloomberg)" beside outlets crediting each (attribution on) | 1 (joined) | 2 | 2 |
+| the same page repeating the first outlet's sentence word for word ("According to Reuters, ... (Reuters) (Bloomberg)") | 2 | **1** (joined) | **1** (joined) |
+| N10: X credits Reuters, Y Bloomberg, Z both (attribution on) | 1 group in 4 of 6 orders, 2 in the other 2 (3 groupings) | 2 in every order | 2 in every order |
+| B1–B4, C1, C3, C3b, C5, C6, C8, C9b, C9c, p22 wire page and copies | equal in all three | | |
+
+With the setting on, every F1 scenario is one source again and N1's bridge stays closed; adversarial cases (origin
+`added_wave3_fix3`, expectations committed first, `a9b41d5`) stage C9, C7 and C4 through the real look: one group and
+no knowledge row each with the setting on; with `2c48865`'s edge choice patched in they fail (3, 2 and 2 groups, a
+row each). The second fix lane's three cases (`added_wave3_fix2`) now switch the setting on themselves and their
+expectations say so. Its third case was re-staged (recorded first, `147cfe9`): its second honest outlet's sentence
+("is the newest") fell into another statement cluster than the first's, so the knowledge row it saw came from the
+third page counted as a second source beside the first outlet; with the new edge choice that page counts with the
+outlet crediting the wire it names (no row), which is F1's correction, not the suppression the case guards against.
+At the default, the defect is listed as KNOWN OPEN in the family's "not staged" list (`known_open_wave3`), never
+counted as a pass: the family scores every staged case as a pass or failure of a safety property.
+
+## What stays open
+
+- **N1 at the shipped defaults** (above), and with `attribution_independence` on, N3 and N10 as at `3ce4ae3`.
+- With the setting on (as at `2c48865`): a page that repeats one honest outlet's sentence word for word (so it joins
+  that outlet as a near-duplicate, a transitive join) and adds another outlet's credit or name takes the joined
+  group's one edge to that other outlet, so the two honest outlets are one group (the table's last N3 row; `3ce4ae3`
+  kept them apart there). The one-edge invariant holds per group, and a near-duplicate copy adds its names to the
+  group it copies.
+- **F2** with the setting on, for names other than the wire names: a page on a host whose site label is the name an
+  honest copy credits (not a wire's), naming another outlet, still joins two honest outlets (the one-way rule lets a
+  group that itself names an origin own its site label). At the default F2's dateline form joins them too, as at
+  `3ce4ae3`.
+- **F3**: the attribution pattern is case-sensitive, so "Originally published by X" or "Republished from X" at the
+  start of a sentence gives no origin and such copies look independent. Not changed: it would change the shipped
+  grouping.
+- **No benchmark world exercises a page naming several origins**, so neither rule is measured on anything but staged
+  pages, and the real-web prevalence of either shape is unknown. A real fix needs worlds, written by someone other
+  than the rule's author and committed first, in which some wire copies carry a second origin line ("(AP)" plus
+  "first appeared in X"), copies name each other, honest outlets are named together on one page, and a host is
+  labelled like a wire or an outlet; scored for false admissions (copies counted apart) and false rejections (honest
+  outlets joined) alike.
+- Wording is not provenance (ADR-061): copies that reword a story and name no origin look independent under either
+  rule.
+
+## Consequences
+
+- At the shipped defaults nothing moved against `3ce4ae3`: the measurements above. The second fix lane's change of the
+  shipped grouping is undone; its other fixes (N2–N9) are untouched.
+- An owner who sets `origin_grouping` to `"one_way"` (`nsf web config --db DB --set 'origin_grouping="one_way"'`)
+  trades a known suppression (N1) for an unmeasured risk: the edge choice is checked only on staged pages. It applies
+  to claims read while it is set; setting it back to `"transitive"` returns the default grouping on the next task (the
+  rollback test). Claims read while it was set keep their mark, so a grouping made only of them (an older stored
+  cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
+  it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).

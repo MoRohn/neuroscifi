@@ -305,6 +305,25 @@ def test_idle_recheck(individual):
     assert_rolls_back(reference, on_, again)
 
 
+def test_recheck_order(individual):
+    """Wave 3 lane R (ADR-060): another order of the re-check's pool, and back to lane K's order."""
+    from neuroscifi.webcortex import recheck
+    db, _ = individual
+    old = _old_item(db)
+    from neuroscifi.acceptance.cognition import adversarial
+    newer = adversarial._k_item(db, T0 - 2 * DAY, hosts=("k3.example", "k4.example"))
+    with store.write(db):       # the newer item was looked at yesterday: the rotation puts the older one first
+        db.execute("INSERT INTO web_tasks(id, objective, mode, status, origin, created_at, updated_at) VALUES("
+                   "'rollback-look', 'Orbix', 'fact_verification', 'completed', ?, ?, ?)",
+                   (f"refresh:{(newer['provisional'] or newer['strengthened'] or [old])[0]}", T0 - DAY, T0 - DAY))
+    on, off = web_switch(db, "recheck_order", on="rotation", off="staleness")
+
+    def probe():
+        return [(c["knowledge_id"], c["value"]) for c in recheck.rank(db, T0)]
+    reference, on_, again = cycle(on, off, probe)
+    assert_rolls_back(reference, on_, again)
+
+
 def recheck_run(db, now):
     from neuroscifi.webcortex import recheck
     return recheck.run(db, now)
@@ -624,6 +643,181 @@ def test_voice_resume_follow(hub):
     assert_rolls_back(*cycle(on, off, probe))
 
 
+# ---- Wave 3 lane S (ADR-061): what counts as a source, and supersession ------------------------------------------
+
+def _s_look(db, at, name, pages, answer=None):
+    """One research task about `name` read from pages [(host, text)] published an hour before `at` (the cognitive
+    benchmark's lane S staging, acceptance/cognition/adversarial.py)."""
+    from neuroscifi.acceptance.cognition import cycles
+    from neuroscifi.webcortex import orchestrator
+    from neuroscifi.webcortex.types import Document
+    task = orchestrator.submit(db, f"What is the latest {name} release?", at, mode="fact_verification",
+                               origin="console")
+    docs = [Document(url=f"http://{h}/{name.lower()}", final_url=f"http://{h}/{name.lower()}",
+                     canonical_url=f"http://{h}/{name.lower()}", domain=h, title=name, text=t, retrieved_at=at,
+                     retrieval_mode="live", published_at=at - 3600) for h, t in pages]
+    with cycles._environment([None]):
+        return cycles.investigate(db, task, docs, at, answer=answer)
+
+
+def _s_rows(db, value):
+    return db.execute("SELECT count(*) FROM web_knowledge WHERE claim_values LIKE ?", (f'%"v{value}"%',)).fetchone()[0]
+
+
+def test_attribution_independence(individual):
+    """Off: a wire story and a copy that credits the wire inside its reworded sentence are two sources and their
+    version becomes knowledge; on: one source, held; off again: two, on the next task."""
+    db, _ = individual
+    n = iter(range(1, 100))
+
+    def probe():
+        k = next(n)
+        value = f"7.{k}.0"
+        _s_look(db, T0 + k * DAY, f"Orvalis{k}", [
+            ("syndiwire.example", f"Orvalis{k} {value} is the latest Orvalis{k} release, the Syndiwire desk reports."),
+            ("mirror-one.example", f"According to Syndiwire, Orvalis{k} {value} is the latest Orvalis{k} release.")])
+        return _s_rows(db, value)
+    on, off = web_switch(db, "attribution_independence")
+    reference, on_, again = cycle(on, off, probe)
+    assert (reference, on_) == (1, 0)
+    assert_rolls_back(reference, on_, again)
+
+
+def test_echo_recognition(individual):
+    """Off: two outside pages repeating a version only the individual's own stored answer had stated make it
+    knowledge; on: they are its echo, held; off again: knowledge again, on the next task."""
+    db, _ = individual
+    n = iter(range(1, 100))
+
+    def probe():
+        k = next(n)
+        name, value = f"Tavrel{k}", f"9.{k}.0"
+        _s_look(db, T0 + k * DAY, name, [], answer=f"{name} {value} is the latest {name} release.")
+        _s_look(db, T0 + k * DAY + 7200, name, [
+            ("askboard.example", f"Someone on the forum says {name} {value} is now the latest {name} release."),
+            ("answer-roundup.example", f"Answers roundup: {name} {value} is the latest {name} release.")])
+        return _s_rows(db, value)
+    on, off = web_switch(db, "echo_recognition")
+    reference, on_, again = cycle(on, off, probe)
+    assert (reference, on_) == (1, 0)
+    assert_rolls_back(reference, on_, again)
+
+
+def test_supersession_and_its_records(individual, tmp_path):
+    """Off ("ask"): a newer version from three independent outlets beside a lagging one is asked, the item stays;
+    on ("independent"): it replaces the item, marked as decided by the rule; off again: asked, on the next refresh.
+    The rule's versions stay readable with the setting off, in a restored checkpoint, are removed by forgetting
+    the outlets they rest on, and are not brought back by a restore."""
+    db, path = individual
+    n = iter(range(1, 100))
+    templates = {"relnotes.example": "{N} {v} is the latest {N} release.",
+                 "pkgwatch.example": "As of today, {N} {v} is the latest {N} release.",
+                 "devdesk.example": "By now {N} {v} is the latest {N} release.",
+                 "factline.example": "Once again {N} {v} is the latest {N} release.",
+                 "dailytrack.example": "As of yesterday, {N} {v} is the latest {N} release."}
+
+    def probe():
+        k = next(n)
+        name, at = f"Quorin{k}", T0 + k * 10 * DAY
+        _s_look(db, at, name, [(h, templates[h].format(N=name, v="1.4.0")) for h in ("relnotes.example",
+                                                                                    "pkgwatch.example")])
+        out = _s_look(db, at + 3 * DAY, name, [(h, templates[h].format(N=name, v="1.5.0")) for h in (
+            "devdesk.example", "factline.example", "dailytrack.example")] + [
+            ("weekly-builds.example", f"As of now, {name} 1.4.0 is the latest {name} release.")])
+        return [s.get("by") for s in out["superseded"]]
+    on = lambda: state.set_config(db, {"supersession": "independent"}, T0)    # noqa: E731
+    off = lambda: state.set_config(db, {"supersession": "ask"}, T0)             # noqa: E731
+    reference, on_, again = cycle(on, off, probe)
+    assert reference == [] and on_ == ["rule"]
+    assert_rolls_back(reference, on_, again)
+
+    def count(d):
+        return d.execute("SELECT count(*) FROM web_knowledge WHERE json_extract(verification,'$.decided_by')='rule'"
+                         ).fetchone()[0]
+
+    def forget(d):
+        from neuroscifi.instance import governance
+        for host in ("devdesk.example", "factline.example", "dailytrack.example"):
+            governance.forget_source(d, host, time.time())
+    readable_forgettable_restorable(db, path, tmp_path, count, forget)
+
+
+def test_origin_grouping(individual):
+    """ADR-063 (Wave 3, third fix lane). Off ("transitive", the grouping of 3ce4ae3): a page naming two honest outlets
+    as its origins joins them, so their version is not knowledge (review3b N1, open at the default); "one_way": it
+    attaches to one of them and the version becomes knowledge; off again: not knowledge, on the next task."""
+    db, _ = individual
+    n = iter(range(1, 100))
+
+    def probe():
+        k = next(n)
+        name, value = f"Brevan{k}", f"6.{k}.0"
+        _s_look(db, T0 + k * DAY, name, [
+            ("devdesk.example", f"By now {name} {value} is the latest {name} release."),
+            ("factline.example", f"Once again {name} {value} is the latest {name} release."),
+            ("hostile.example", f"As of yesterday, {name} {value} is the latest {name} release. This story was first "
+                                "published by Devdesk. It originally appeared in Factline.")])
+        return _s_rows(db, value)
+    on, off = web_switch(db, "origin_grouping", on="one_way", off="transitive")
+    reference, on_, again = cycle(on, off, probe)
+    assert (reference, on_) == (0, 1)
+    assert_rolls_back(reference, on_, again)
+
+
+# ---- Wave 3 reconciliation: the third value of predictive_regulation (ADR-058) and the front door (ADR-059) --------
+
+def test_predictive_regulation_shadow(individual):
+    """Off: the gate decides and nothing is recorded; "shadow": the gate decides exactly as off and the forecast's
+    verdict for the newest sample is recorded; off again: the same decision, nothing more recorded. The verdicts
+    recorded while on stay in their file (telemetry like the internal-state history: ADR-051, ADR-058)."""
+    from neuroscifi.resources import shadow
+    db, path = individual
+    start = time.time() - 600
+    memory = _falling_history(path, start)
+    on, off = instance_switch(db, "predictive_regulation", "shadow")
+    verdicts = internal_state.folder(str(path)) / shadow.FILE
+    k = iter(range(1, 100))
+
+    def lines():
+        return len(verdicts.read_text(encoding="utf-8").splitlines()) if verdicts.exists() else 0
+
+    def probe():
+        before = lines()
+        with memory(21):
+            internal_state.record(str(path), now=start + 60 * next(k))       # a new sample: one verdict per sample
+            why = policy.background_gate(str(path))["why"]
+        return why, lines() > before
+    reference, on_, again = cycle(on, off, probe)
+    assert reference == (None, False) and on_ == (None, True)
+    assert_rolls_back(reference, on_, again)
+    assert verdicts.exists()        # what it wrote while on is not removed by turning it off (delete it to discard)
+
+
+def test_front_door(tmp_path):
+    """`nsf imagine scm FILE`: --no-front-door declines a question only the front door identifies, as before ADR-059;
+    the default (--front-door) answers it; --no-front-door again declines it exactly as the first time. The command
+    opens no individual and stores nothing."""
+    from contextlib import redirect_stdout
+    import io
+    from neuroscifi import cli as nsf
+    from test_causal_front_door import worked
+    question = tmp_path / "front-door.json"
+    question.write_text(json.dumps(worked()), encoding="utf-8")
+    flag = ["--no-front-door"]
+
+    def probe():
+        out = io.StringIO()
+        with redirect_stdout(out):
+            assert nsf.main(["imagine", "scm", str(question), *flag]) in (0, None)
+        answer = json.loads(out.getvalue())
+        return answer["value"], answer["identified_by"], answer["why"]
+    on = lambda: flag.__setitem__(slice(None), ["--front-door"])       # noqa: E731
+    off = lambda: flag.__setitem__(slice(None), ["--no-front-door"])   # noqa: E731
+    reference, on_, again = cycle(on, off, probe)
+    assert reference[0] is None and on_[1] == "front_door"
+    assert_rolls_back(reference, on_, again)
+
+
 # Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
 # Wave 1/2 switch of the config classes is here; Wave 2 lane X)
 SWITCHES = {
@@ -642,4 +836,8 @@ SWITCHES = {
     "selective_answering": test_research_run_switches, "status_questions": test_voice_status_questions,
     "resume_follow": test_voice_resume_follow, "salience_attention": test_salience_attention_and_its_records,
     "arbitration_record": test_arbitration_record_and_its_records,
+    "recheck_order": test_recheck_order,
+    "attribution_independence": test_attribution_independence, "echo_recognition": test_echo_recognition,
+    "supersession": test_supersession_and_its_records, "origin_grouping": test_origin_grouping,
+    "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
 }

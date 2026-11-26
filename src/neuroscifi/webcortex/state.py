@@ -71,6 +71,28 @@ def get_config(db) -> wconfig.WebConfig:
     return wconfig.WebConfig.from_json(row[0] if row else None)
 
 
+def setting_problems(db) -> list[str]:
+    """The checked Wave 3 settings (config.CHECKED_ON_LOAD) whose saved value set_config would refuse, as sentences:
+    each is read as its default until it is set again (`nsf web config --set NAME=VALUE`)."""
+    row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
+    try:
+        raw = json.loads(row[0]) if row and row[0] else {}
+    except ValueError:
+        return ["the saved Web Cortex settings cannot be read as JSON"]
+    out = []
+    for name in wconfig.CHECKED_ON_LOAD:
+        if not (isinstance(raw, dict) and name in raw and wconfig.damaged(name, raw[name])):
+            continue
+        line = (f"the saved {name} ({raw[name]!r}) is not a valid value; its default "
+                f"({getattr(wconfig.WebConfig(), name)!r}) applies until it is set with `nsf web config --set "
+                f"{name}=...`")
+        rule, safe = wconfig.FAILS_CLOSED.get(name, (None, None))
+        if rule is not None and raw.get(rule, safe) != safe:        # review3b N8: never a looser rule
+            line += f"; meanwhile {rule} reads as {safe!r} (the rule is off until then)"
+        out.append(line)
+    return out
+
+
 def _is_int(v):
     return isinstance(v, int) and not isinstance(v, bool)
 
@@ -94,7 +116,7 @@ def _validate(name, value):
                 "salience_record", "hypothesis_fields", "hypothesis_abandon", "premise_recheck", "idle_recheck",
                 "reflection", "reflection_model_summary", "answer_monitoring", "selective_answering",
                 "verification_escalation", "adaptive_depth", "pocket_recent", "salience_attention",
-                "arbitration_record"):
+                "arbitration_record", "attribution_independence", "echo_recognition"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
@@ -107,10 +129,31 @@ def _validate(name, value):
         if value not in ("gate", "off"):
             raise ValidationError("strategy_selection must be 'gate' (follows the improvement ledger) or 'off'")
         return value
+    if name == "supersession":
+        if value not in ("ask", "independent"):
+            raise ValidationError("supersession must be 'ask' (contradictions are asked, never decided) or "
+                                  "'independent' (a newer value from enough independent sources replaces the item)")
+        return value
+    if name == "origin_grouping":
+        if value not in ("transitive", "one_way"):
+            raise ValidationError("origin_grouping must be 'transitive' (a page naming its origin joins it and what it "
+                                  "names, as before ADR-063) or 'one_way' (it attaches to one origin)")
+        return value
+    if name == "supersession_min_sources":
+        if not _is_int(value) or not 2 <= value <= 10:
+            raise ValidationError("supersession_min_sources must be an integer between 2 and 10")
+        return value
     if name in ("recheck_per_tick", "recheck_daily"):
         if not _is_int(value) or not 0 <= value <= 100:
             raise ValidationError(f"{name} must be an integer between 0 and 100")
         return value
+    if name == "recheck_order":         # ADR-060: stored in its canonical order
+        from .recheck import DEFAULT_ORDER, order_parts
+        try:
+            parts = order_parts(value)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from None
+        return "+".join(parts) if parts else DEFAULT_ORDER
     if name == "reflection_interval_days":
         if not _is_num(value) or not 1 <= value <= 365:
             raise ValidationError("reflection_interval_days must be a number of days between 1 and 365")
@@ -233,6 +276,13 @@ def set_config(db, changes: dict, now) -> wconfig.WebConfig:
     validated = {name: _validate(name, value) for name, value in changes.items()}
     with store.write(db):
         current = get_config(db).to_json()
+        # review3b N8: a checked setting keeps its saved value, damaged or not, until it is itself set; otherwise any
+        # change would write the default of a damaged value (dropping the owner's notice) and persist the safe value
+        # a rule reads as while its bar is damaged (supersession "ask")
+        row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
+        stored = loads(row[0], {}) if row and row[0] else {}
+        if isinstance(stored, dict):
+            current.update({name: stored[name] for name in wconfig.CHECKED_ON_LOAD if name in stored})
         current.update(validated)
         db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                    (wconfig.META_KEY, dumps(current)))

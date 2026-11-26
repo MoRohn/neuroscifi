@@ -1,7 +1,7 @@
 import {checkFeatures,deviceReceipt,forecast,texture,outcomes,liveRows,vaultKey,newSalt,seal,openBox} from "./field-model.mjs";
 const $=id=>document.getElementById(id), msg=t=>$("fieldmsg").textContent=t;
 let linkedEvidence=[],managedPair=false,pendingId=null, context={}, rows=[], prediction=null, measured=null, vault=null, epoch=0, busy=false, imageGeneration=0;
-let recording=false, sharingEpisodes=new Set(), actedAt=-1e9;
+let recording=false, sharingEpisodes=new Set(), actedAt=-1e9, historySignature=null;
 const OUTCOME={continued:"Continued",switched:"Switched tasks",paused:"Paused"};
 // After an outcome is recorded, controls drawn where the finger was ignore taps for a moment (P-01).
 const settled=()=>performance.now()-actedAt>700;
@@ -26,8 +26,27 @@ function paint(){
  }
  $("feedback").hidden=!prediction; $("keepweek").disabled=!vault;
  $("predict").disabled=!Object.keys(context).length || !!prediction;
+ // Drawn again only when the episodes changed (paint also runs every minute), keeping focus on the same button.
+ const kept=[...rows].reverse().filter(r=>r.outcome), signature=JSON.stringify(kept.map(r=>[r.id,r.outcome,r.learn,r.keep,r.features]));
+ if(signature!==historySignature){historySignature=signature;keepFocus($("historyLocal"),()=>drawHistory(kept));}
+ $("vaultstatus").textContent=vault?"Vault unlocked":"Session memory only";
+ document.dispatchEvent?.(new Event("pocketvault"));
+}
+// Rebuild `box` with `draw` without losing the keyboard: a control focused inside it is focused again on its
+// equivalent (same tag and label) afterwards, else the box itself; never the start of the page (Wave 3 lane P).
+export function keepFocus(box,draw){
+ const a=document.activeElement, inside=!!a&&a!==box&&!!box.contains?.(a);
+ const key=e=>e.tagName+"|"+(e.getAttribute("aria-label")||e.textContent);
+ const was=inside?key(a):null;
+ draw();
+ if(!inside||box.contains(document.activeElement))return;
+ const same=[...box.querySelectorAll(a.tagName)].find(e=>key(e)===was);
+ if(!same&&!box.hasAttribute("tabindex"))box.setAttribute("tabindex","-1");
+ (same||box).focus({preventScroll:true});
+}
+function drawHistory(kept){
  $("historyLocal").replaceChildren();
- for(const r of [...rows].reverse().filter(r=>r.outcome)){
+ for(const r of kept){
    const li=document.createElement("li"), block=document.createElement("div");
    block.textContent=(r.features.goal?.[0]||"Episode")+" → "+r.outcome;
    const detail=document.createElement("small");detail.textContent=describe(r.features)+(r.learn?" · Learning enabled":" · Memory only")+(r.keep==="week"?" · 7 days locally":" · 24 hours");block.append(detail);
@@ -48,8 +67,6 @@ function paint(){
    };
    li.append(block,forget,send);$("historyLocal").append(li);
  }
- $("vaultstatus").textContent=vault?"Vault unlocked":"Session memory only";
- document.dispatchEvent?.(new Event("pocketvault"));
 }
 function include(patch){if(prediction){msg("Finish or reset the current prediction first.");return false;}release();Object.assign(context,checkFeatures(patch));paint();return true;}
 // Keep the field session's height while its outcome buttons collapse, so nothing moves under the pointer (P-01).

@@ -1,6 +1,6 @@
 # Recursive knowledge engine assessment (deliverable F)
 
-Status: 2026-11-25, Wave 2 lane F, branch `gen2-f` from `main` at `3559069`; integrated on `genesis-wave2`
+Status: 2026-11-25, Wave 2 lane F (a dated Wave 3 section, §10, added 2026-11-26), branch `gen2-f` from `main` at `3559069`; integrated on `genesis-wave2`
 (`4d8a60c`); revised by Wave 2 lane Y (branch `gen2-y`) after the benchmark-integrity review: references for the
 decay (§3), what each mechanism did (§4), the smallest gain the rule can see (§4), the loop's scope (§2, §8), the
 commits on the integrated tree (§2) and the cognitive benchmark on that tree (§6). Directive §7 ("recursive knowledge
@@ -357,3 +357,40 @@ PYTHONPATH=src python scripts/bench_learning_cycles.py run --split development -
 Deterministic per seed apart from wall time and file size; a full run also writes the references (`references`,
 from the world generator alone) and, per configuration, the activity counts. `tests/acceptance/test_learning_cycles_bench.py`
 (10 tests, ~5 s) runs in the normal suite; the full run is opt-in.
+
+## 10. Wave 3 (2026-11-26): the withheld baseline, the decomposition, the fixes
+
+Record: [WAVE3.md](WAVE3.md); the fix lane's re-measurement in ADR-061 (section "Fix lane").
+
+**The withheld baseline (step 0).** Three learning-cycle worlds of kinds neither split has, four seeds each, were
+committed alone and looked at once with the unchanged system (`d0b6b02`, ledger line 4;
+`docs/quality/COGNITIVE_BENCHMARK.md`, step 0). The loop beats no loop on every seed in one world of three (+0.042,
+4 of 4), not in the others (−0.025, 1 of 4; +0.012, 3 of 4), and sits 0.17 to 0.26 below the blind round-robin of the
+same allowance. Unlike §6's 120 held-out runs, where each was 0, versions only the individual's own outputs stated
+were admitted (4 / 6 / 6 over 4 seeds), versions only a wrong story stated were admitted (2 / 17 / 12), one confidence
+rose after a look with one origin, and subjects held correctly were later regressed (1 / 3 / 3). §6's "nothing
+self-generated admitted" holds on the split worlds only.
+
+**The decomposition** (lane R, ADR-060, development, `genesis_recheck_order.json`). The loop's gap to the blind
+round-robin, pooled over five worlds (pooled, not a claim): subjects never covered by the owner's research 64 %, a look
+that read the true version without revising the item 20 % (50 of 70 such looks contested, the rest held, mostly
+one-origin looks; the Wave 3 measurement review), subjects not looked at 22 %, unreadable 6 %, minus 13 % where the
+loop is ahead; wrong sources 0. An order of the re-check can reach only the "not looked" part (0.03–0.05); every one of
+14 orders got "no evidence" on held-out. Lane V (ADR-062) measured the worker's idle investigation inside the same
+allowance: it reaches the uncovered subjects only when it gets a share of the allowance (allowance first: 51–83 % of
+the uncovered part removed), and even then the loop stays below the blind round-robin in every world. **Coverage is
+limited by the allowance, not by candidates.**
+
+**The fixes.**
+- The idle investigation now honours the day's task count (`autonomy._tasks_spent`), a budget correction.
+- Lane S's two source rules (`attribution_independence`, `echo_recognition`) removed the step-0 categories on lane
+  S's own worlds, but only for the phrasings those worlds were written with; they returned "unsafe" under their own
+  pre-registered rule, merged honest outlets that credit each other, and discarded honest pages; their held-out
+  figures are development evidence (WAVE3.md §3.1). They ship off (fix lane). **At the shipped defaults the loop
+  admits own-text echoes (crediting a model or not) and reworded syndicated copies exactly as at step 0.** A rule that
+  decides dependence by publication order and derivation, or by the owner's confirmation, is not built.
+- Supersession (off): gains below the spread; 3 of 23 rule replacements false on lane S's held-out (pooled, not a
+  claim; re-measured, `genesis_wave3_fix_s.json`); a false one stayed wrong 8 and at least 10 cycles, still wrong when the run ended (censored; WAVE3.md §3.2).
+
+**Unverified**, as in §8: the open web, a live model, an owner who answers, real change rates. The withheld looks of
+Wave 3's mechanisms are recorded in WAVE3.md, "The withheld looks".

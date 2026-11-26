@@ -207,7 +207,7 @@ def snapshot(db, db_path, now=None, *, gateway=False, history_limit=0, staleness
     fields["memory"] = _field({"available_bytes": (s["memory"] or {}).get("available_bytes"),
                                "total_bytes": (s["memory"] or {}).get("total_bytes"), "level": s["level"],
                                "reasons": s["reasons"]}, "resources.monitor.sample (/proc/meminfo, PSI)", s["at"], now)
-    gate = policy.background_gate(db_path, sample=s)
+    gate = policy.background_gate(db_path, sample=s, record=False)      # a display: no shadow verdict (ADR-058)
     fields["audio_active"] = _field(gate["audio"], "resources.policy.audio_active (voice hub, audio beacon)", now, now)
     fields["background_gate"] = _field({"allowed": gate["allowed"], "reason": gate["reason"], "why": gate["why"]},
                                        "resources.policy.background_gate", now, now)
@@ -296,7 +296,11 @@ def append(db_path, item: dict) -> None:
     path = where / HISTORY_FILE
     lock = shared.open_file(where / LOCK_FILE, os.O_RDWR)
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:        # security review L4: the heartbeat thread never waits on a lock another account can hold
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise BlockingIOError("the internal-state history is locked by another process; this sample is "
+                                  "skipped") from None
         fd = shared.open_file(path, os.O_WRONLY | os.O_APPEND, group_write=False)   # the worker's alone (R2)
         with os.fdopen(fd, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(item, sort_keys=True) + "\n")
@@ -321,6 +325,8 @@ def record(db_path, now=None) -> dict | None:
             return None
         item = sample(db, db_path, now)
     append(db_path, item)
+    from .resources import shadow       # predictive regulation in shadow (ADR-058): settled inside the sampler
+    shadow.settle_quietly(db_path, now)
     return item
 
 
@@ -386,11 +392,15 @@ def history(db_path, limit=HISTORY_KEPT, now=None) -> list[dict]:
 
 
 def cli(args):
-    """`nsf internal-state [--gateway] [--history N]`: the record, computed now (JSON)."""
+    """`nsf internal-state [--gateway] [--history N] [--shadow-report]`: the record, computed now, or the shadow
+    report (resources/shadow.py) (JSON)."""
     from .instance import store
     path = store.resolve_db(args)
     db = store.open_existing(path, graph_migration=False)
     try:
+        if getattr(args, "shadow_report", False):
+            from .resources import shadow
+            return shadow.report(path, time.time(), setting=store.config(db).predictive_regulation)
         return snapshot(db, path, time.time(), gateway=args.gateway, history_limit=args.history)
     finally:
         db.close()

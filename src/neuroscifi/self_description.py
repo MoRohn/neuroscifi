@@ -14,7 +14,9 @@ Sections and the five questions they answer (record["answers"] lists the field p
   knows      What do I know?             memory inventory, web knowledge counts
   uncertain  What am I uncertain about?  least certain factor of the current epoch's beliefs, open contradictions,
                                          lowest-confidence knowledge in use, unsettled predictions, the monitoring
-                                         record of the latest answers (ADR-054), open "to re-check" marks (ADR-055)
+                                         record of the latest answers (ADR-054), open "to re-check" marks (ADR-055),
+                                         how far each learner of real outcomes is from its minimum (owner scope only;
+                                         readiness.report, ADR-058)
   can        What can I do next?         capabilities available now (models, speech, search, devices, imagination
                                          settings, ADR-052), limits and budgets left, authorised tools (model tools,
                                          MCP tools, voice commands)
@@ -591,8 +593,21 @@ def _to_recheck(db, now) -> dict:
         counts.setdefault(kind, {})[reason] = n
         newest = at if newest is None else max(newest, at)
     total = sum(n for by in counts.values() for n in by.values())
-    return _f({"open": total, "by_kind": counts}, "web_rechecks (webcortex/premises.py, ADR-055; `nsf knowledge "
-              "rechecks`)", newest, now)
+    value = {"open": total, "by_kind": counts}
+    from .webcortex import recheck, state as wstate
+    order = getattr(wstate.get_config(db), "recheck_order", recheck.DEFAULT_ORDER)
+    if order != recheck.DEFAULT_ORDER:  # ADR-060: the order the re-check takes its picks in (each pick's decision
+        value["order"] = order          # event records why it was taken)
+    return _f(value, "web_rechecks (webcortex/premises.py, ADR-055; `nsf knowledge rechecks`)", newest, now)
+
+
+def _readiness(db, now) -> dict:
+    """ADR-058: each learner of real outcomes against its own minimum (readiness.report; counts only)."""
+    from . import readiness
+    learners = readiness.report(db, now).get("learners") or {}
+    keep = ("minimum", "have", "missing", "earliest")
+    return _f({name: {k: v for k, v in item.items() if k in keep} for name, item in learners.items()},
+              "readiness.report (`nsf readiness`)", now, now)
 
 
 def _improvement_ledger(db, now) -> dict:
@@ -749,6 +764,8 @@ def _build(db, path, now, scope, family) -> dict:
                           "answers": g("web_tasks.result monitoring record",
                                        lambda: _answer_monitoring(db, now, own_only=agent)),
                           "to_recheck": g("web_rechecks", lambda: _to_recheck(db, now))}
+            if scope == "owner":           # ADR-058: the owner's scope only (counts; never the agent's or a family's)
+                uncertain["outcomes_readiness"] = g("readiness.report", lambda: _readiness(db, now))
         record["uncertain"] = uncertain
         record["can"] = {"capabilities": {
             "models": g("inference config rows", lambda: _models(db, path, resources or {}, now)),

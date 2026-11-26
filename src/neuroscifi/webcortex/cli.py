@@ -273,6 +273,9 @@ def _config(db, a, now):
         from . import autonomy
         autonomy.record_switch(db, bool(changes["autonomous"]), now, by="owner:cli")
     out = {"config": cfg.to_json(), "changed": sorted(changes)}
+    problems = state.setting_problems(db)
+    if problems:                            # a damaged saved value, read as its default (security review L8)
+        out["problems"] = problems
     if changes.get("pocket_research"):     # R6 setup (e): the switch alone shows nothing on Pocket
         steps = []
         if not cfg.enabled:
@@ -1037,6 +1040,18 @@ def _forget(db, a, now):
     return knowledge.forget(db, a.id, now)
 
 
+def _replacements(db, a, now):
+    from . import knowledge
+    return {"replacements": knowledge.replacements(db, limit=a.limit),
+            "note": "replacements the supersession rule made without asking you, newest first; "
+                    "`nsf web revert ID` brings back the replaced version exactly"}
+
+
+def _revert(db, a, now):
+    from . import knowledge
+    return knowledge.revert(db, a.id, now)
+
+
 # ---- registration ----------------------------------------------------------------------------------------------
 
 def _switch(p, name, dest, help_on, help_off):
@@ -1166,6 +1181,10 @@ def register(sub):
         p.add_argument("id", type=int)
         p.add_argument("--note")
     cmd("forget", _forget, "forget a knowledge item and every version of it").add_argument("id", type=int)
+    p = cmd("replacements", _replacements, "replacements the supersession rule made without asking (newest first)")
+    p.add_argument("--limit", type=_positive_int, default=50)
+    cmd("revert", _revert, "undo one replacement the supersession rule made: the previous version comes back "
+        "exactly").add_argument("id", type=int)
 
     p = wsub.add_parser("monitor", help="continuous investigation of a topic")
     msub = p.add_subparsers(dest="monitor_action", required=True)
