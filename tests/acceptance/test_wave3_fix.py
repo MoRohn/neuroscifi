@@ -339,3 +339,114 @@ def test_a_revert_reopens_the_questions_the_rule_closed_and_marks_its_links():
         assert after == before and result["pending_reopened"] == before
         links = [json.loads(d) for (d,) in db.execute("SELECT detail FROM web_claim_links WHERE kind='supersedes'")]
         assert links and all(d.get("reverted") is True for d in links if d.get("by") == "rule")
+
+
+# ---- L6: the day's autonomous task count is enforced where a task is created ------------------------------------------
+
+def _autonomous_individual(tmp_path, cap):
+    from neuroscifi.webcortex import state
+    path = tmp_path / "l6.sqlite"
+    db = store.create(path, T0, note="fix lane L6")
+    state.set_config(db, {"enabled": True, "daily_autonomous": {"tasks": cap, "requests": 400,
+                                                                "bytes": 80_000_000}}, T0)
+    return db, path
+
+
+def test_two_deciders_that_both_saw_room_cannot_both_take_the_last_place(tmp_path):
+    from neuroscifi.webcortex import autonomy, scheduler
+    db, _ = _autonomous_individual(tmp_path, 2)
+    with closing(db):
+        for i in range(3):          # the owner's own research is neither counted nor blocked
+            orchestrator.submit(db, f"Owner question {i}: what is the latest {N} release?", T0, mode="fact_verification",
+                                origin="console")
+        orchestrator.submit(db, "What is the current Zorbix version?", T0, mode="fact_verification", origin="curiosity")
+        assert autonomy._tasks_spent(db, T0 + 1) is None and autonomy._tasks_spent(db, T0 + 1) is None
+        orchestrator.submit(db, "What is the current QuorvexA version?", T0 + 2, mode="fact_verification",
+                            origin="curiosity")
+        with pytest.raises(autonomy.BudgetRefused):
+            orchestrator.submit(db, "What is the current QuorvexB version?", T0 + 2, mode="fact_verification",
+                                origin="curiosity")
+        assert scheduler.autonomous_usage(db, T0 + 3)["tasks"] == 2
+
+
+def test_concurrent_autonomous_submissions_never_pass_the_cap(tmp_path):
+    import threading
+    from neuroscifi.webcortex import scheduler
+    db, path = _autonomous_individual(tmp_path, 3)
+    db.close()
+    errors, barrier = [], threading.Barrier(8)
+
+    def decider(k):
+        with closing(store.connect(path)) as mine:
+            barrier.wait()
+            try:
+                orchestrator.submit(mine, f"What is the current Racer{k} version?", T0 + 5, mode="fact_verification",
+                                    origin="curiosity")
+            except Exception as exc:        # noqa: BLE001 - the refusal is the point
+                errors.append(type(exc).__name__)
+    threads = [threading.Thread(target=decider, args=(k,)) for k in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    with closing(store.connect(path)) as db:
+        assert scheduler.autonomous_usage(db, T0 + 6)["tasks"] == 3
+    assert errors.count("BudgetRefused") == 5, errors
+
+
+# ---- L7: `nsf imagine scm` input robustness ---------------------------------------------------------------------------
+
+def _front_door(**extra):
+    return {"graph": {"X": [], "M": ["X"], "Y": ["M"]}, "hidden_common_cause": ["X", "Y"], "do": {"X": 1.0},
+            "ask": "Y", "means": {"X": 0, "M": 0, "Y": 0}, "moments": "population",
+            "observational_covariance": {"X": {"X": 1, "M": 0.5, "Y": 0.6}, "M": {"X": 0.5, "M": 1, "Y": 0.7},
+                                         "Y": {"X": 0.6, "M": 0.7, "Y": 1}}} | extra
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", float("nan"), float("inf")])
+def test_a_do_value_that_is_not_finite_is_a_one_line_error(value):
+    from neuroscifi import causal
+    with pytest.raises(ValueError, match="finite"):
+        causal.answer(_front_door(do={"X": value}))
+
+
+def test_duplicate_parent_entries_do_not_make_the_front_door_quadratic():
+    from neuroscifi import causal
+    plain = causal.answer(_front_door())
+    started = time.perf_counter()
+    padded = causal.answer(_front_door(graph={"X": [], "M": ["X"] * 30_000, "Y": ["M"] * 30_000}))
+    assert time.perf_counter() - started < 2.0                  # 13.6 s before the fix
+    assert padded["value"] == pytest.approx(plain["value"]) and padded["identified_by"] == plain["identified_by"]
+
+
+def test_the_owners_command_prints_one_line_for_a_value_that_is_not_finite(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+    import neuroscifi
+    path = tmp_path / "q.json"
+    path.write_text(json.dumps(_front_door(do={"X": "nan"})))
+    src = Path(neuroscifi.__file__).resolve().parents[1]
+    out = subprocess.run([sys.executable, "-m", "neuroscifi.cli", "imagine", "scm", str(path)], capture_output=True,
+                         text=True, timeout=60, env={"PYTHONPATH": str(src), "PATH": "/usr/bin:/bin",
+                                                     "HOME": str(tmp_path)})
+    assert out.returncode != 0 and "Traceback" not in out.stderr and "finite" in out.stderr + out.stdout
+
+
+# ---- L8: a damaged stored Wave 3 web setting falls back to its default and is reported --------------------------------
+
+@pytest.mark.parametrize("name, bad", [("recheck_order", 7), ("supersession_min_sources", "two"),
+                                       ("supersession", "auto"), ("attribution_independence", "yes"),
+                                       ("echo_recognition", 1)])
+def test_a_damaged_saved_wave3_setting_reads_as_its_default(tmp_path, name, bad):
+    from neuroscifi.webcortex import scheduler, state
+    from neuroscifi.webcortex.config import META_KEY, WebConfig
+    db = store.create(tmp_path / "l8.sqlite", T0, note="fix lane L8")
+    with closing(db):
+        state.set_config(db, {"enabled": True, "autonomous": True, "supersession": "independent"}, T0)
+        raw = json.loads(db.execute("SELECT value FROM meta WHERE key=?", (META_KEY,)).fetchone()[0])
+        with store.write(db):
+            db.execute("UPDATE meta SET value=? WHERE key=?", (json.dumps(raw | {name: bad}), META_KEY))
+        assert getattr(state.get_config(db), name) == getattr(WebConfig(), name)
+        assert [p for p in state.setting_problems(db) if name in p]
+        scheduler.tick(db, T0 + 10, None, queue=True)           # the timer's pass does not raise

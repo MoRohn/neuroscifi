@@ -27,6 +27,8 @@ Answers are true of the declared model only (provenance.SIMULATION).
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from . import provenance
@@ -244,7 +246,8 @@ def _frontdoor(query):
     graph = query["graph"]
     (cause, value), = query["do"].items()
     ask = query["ask"]
-    parents = {v: list(ps) for v, ps in graph.items()}
+    # security review L7: duplicate parent entries made the moral graph quadratic in the file's length
+    parents = {v: list(dict.fromkeys(ps)) for v, ps in graph.items()}
     for v in {p for ps in graph.values() for p in ps}:
         parents.setdefault(v, [])
     if len(parents) > MAX_NODES:
@@ -413,6 +416,15 @@ def answer(query, *, front_door: bool = FRONT_DOOR):
     ValueError for a malformed question; a question that is not identified is answered with value None and why."""
     if not isinstance(query, dict) or "ask" not in query:
         raise ValueError("a question names the node it asks about ('ask')")
+    for field in ("do", "had", "given", "observed"):        # security review L7: a value of nan or inf
+        values = query.get(field)
+        for node, v in (values.items() if isinstance(values, dict) else ()):
+            try:
+                finite = math.isfinite(float(v))
+            except (TypeError, ValueError, OverflowError):
+                finite = True                               # not a number at all: the rung's own check says so
+            if not finite:
+                raise ValueError(f"the value of {node} in '{field}' must be a finite number")
     base = {"label": provenance.NOT_EVIDENCE, "kind": provenance.SIMULATION, "mechanism": "causal.linear_gaussian",
             "mechanism_version": VERSION, "ask": query["ask"]}
     try:

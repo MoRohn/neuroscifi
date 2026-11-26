@@ -79,6 +79,7 @@ POINT_KEYS = ("samples", "breach_samples", "starts")
 EPISODE_KEYS = ("episodes", "preceded")
 LEAD_KEYS = ("lead_seconds_sum", "lead_seconds_min", "lead_seconds_max")
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+DAY_SECONDS = 86_400.0
 
 _seen: dict = {}              # db_path -> the history file's state when its verdict was taken (this process)
 _settled_at: dict = {}        # db_path -> when this process's sampler last settled
@@ -171,6 +172,8 @@ def _observe(db_path, now, gate_why):
             return None                               # being settled now: the next gate call records it
         fd = shared.open_file(where / FILE, os.O_WRONLY | os.O_APPEND, group_write=False)
         try:
+            if os.fstat(fd).st_uid not in shared.writers(db_path):    # security review L5: as every read checks
+                raise shared.NotOwned("the shadow record belongs to another account; nothing is appended to it")
             if os.fstat(fd).st_size >= MAX_BYTES:
                 raise OSError("the shadow record is full; the sampler has not settled it")
             os.write(fd, (json.dumps(item, sort_keys=True) + "\n").encode("ascii"))
@@ -281,9 +284,12 @@ def _empty_day() -> dict:
                                                                         "lead_seconds_max": None}
 
 
-def _read_days(where, db_path) -> tuple[dict, str | None]:
+def _read_days(where, db_path, now) -> tuple[dict, str | None]:
     """The roll-up ({"settled_until", "samples_until", "days"}), checked; a missing file is an empty one. A problem
-    (another account's file, one that cannot be read) is returned with an empty roll-up."""
+    (another account's file, one that cannot be read) is returned with an empty roll-up. A day later than tomorrow
+    (by `now`) and a lead time beyond MAX_HORIZON are not taken (security review L5: forged future days would push
+    the real ones out of the KEPT_DAYS kept, and a lead of 1e300 would be the report's mean)."""
+    latest = _day(now + DAY_SECONDS)
     empty = {"settled_until": None, "samples_until": None, "days": {}}
     try:
         raw = shared.read_json(where / DAYS_FILE, limit=1 << 20, owners=shared.writers(db_path))
@@ -298,7 +304,7 @@ def _read_days(where, db_path) -> tuple[dict, str | None]:
     out = {"settled_until": _number(raw.get("settled_until")), "samples_until": _number(raw.get("samples_until")),
            "days": {}}
     for day, counts in raw["days"].items():
-        if not isinstance(day, str) or not DAY.fullmatch(day) or not isinstance(counts, dict):
+        if not isinstance(day, str) or not DAY.fullmatch(day) or day > latest or not isinstance(counts, dict):
             continue
         row = _empty_day()
         for k in VERDICT_KEYS + POINT_KEYS + EPISODE_KEYS:
@@ -306,7 +312,8 @@ def _read_days(where, db_path) -> tuple[dict, str | None]:
             row[k] = v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
         for k in LEAD_KEYS:
             v = _number(counts.get(k))
-            if v is not None and v >= 0:
+            bound = MAX_HORIZON * row["preceded"] if k == "lead_seconds_sum" else MAX_HORIZON
+            if v is not None and 0 <= v <= bound:
                 row[k] = float(v)
         out["days"][day] = row
     return out, None
@@ -445,8 +452,12 @@ def settle_due(db_path, now=None) -> dict | None:
         _settled_at.clear()
     _settled_at[key] = now
     from .. import internal_state
-    with _locked(where, wait=True):
-        rollup, problem = _read_days(where, db_path)
+    # security review L4: never wait (this runs on the worker's heartbeat thread, and any account of the folder's
+    # group can hold the lock): a held lock skips this pass, logged by settle_quietly; the next pass settles it
+    with _locked(where, wait=False) as got:
+        if not got:
+            raise BlockingIOError("the shadow files are locked by another process; this settlement is skipped")
+        rollup, problem = _read_days(where, db_path, now)
         if problem is not None:
             raise OSError(problem)
         verdicts, _, problem = _read_verdicts(where, db_path, now)
@@ -504,7 +515,7 @@ def report(db_path, now=None, *, setting=None, window=None, floor_bytes=None) ->
     now = time.time() if now is None else now
     where = _folder(db_path)
     problems = []
-    rollup, problem = _read_days(where, db_path) if where else ({"settled_until": None, "samples_until": None,
+    rollup, problem = _read_days(where, db_path, now) if where else ({"settled_until": None, "samples_until": None,
                                                                  "days": {}}, None)
     problems += [problem] if problem else []
     verdicts, ignored, problem = _read_verdicts(where, db_path, now) if where else ([], 0, None)

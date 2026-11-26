@@ -405,6 +405,8 @@ def submit(db, objective, now, *, mode=None, budget=None, origin="cli", family=N
         else:
             existing = None if prepared["proposed"] else duplicate(db, prepared)
         if replayed is None and existing is None:
+            if not prepared["proposed"] and is_autonomous(prepared["origin"]):
+                _within_task_count(db, now)
             task_id = insert(db, prepared, now)
             store.bump_state_version(db)
     if replayed is not None:
@@ -535,6 +537,19 @@ def _may_authorize(db, origin) -> bool:
         row = db.execute("SELECT authorized_by FROM web_monitors WHERE id=?", (mid,)).fetchone()
         return row is not None and row[0] == "owner"
     return True
+
+
+def _within_task_count(db, now):
+    """The day's autonomous task count (WebConfig.daily_autonomous.tasks; scheduler.autonomous_usage), checked inside
+    submit's write transaction, where no other submission can come between the count and the insert: the timer and
+    the worker's idle investigation together never queue more than the owner's cap (security review L6: each
+    checked the count first and submitted after, so two deciders could both take the last place).
+    autonomy.BudgetRefused when it is reached. Caller owns the transaction."""
+    from . import autonomy, scheduler
+    cap = int(state.get_config(db).daily_autonomous.get("tasks", 0))
+    used = scheduler.autonomous_usage(db, now)["tasks"]
+    if used >= cap:
+        raise autonomy.BudgetRefused(f"daily autonomous cap reached: tasks {used} of {cap}")
 
 
 def _clamp_autonomous(db, cfg, chosen, now, *, mcp=False):

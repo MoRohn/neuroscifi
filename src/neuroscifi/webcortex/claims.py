@@ -1303,6 +1303,12 @@ def stamp_origins(claims, documents, *, attribution: bool = False) -> dict[str, 
 # in a sentence about Velmora) is the subject speaking, not an outlet repeated: it gives no key, so two outlets quoting
 # a project's announcement stay two sources, as before. Indefinite or plural speakers ("Someone says", "Experts said")
 # name no outlet.
+# Limits (security review L2, L3; review3 S-3): the protection is wording-deep. Credits in other phrasings ("Syndiwire
+# notes", "as reported in Syndiwire", "reports Syndiwire", "(h/t Syndiwire)", a link-only or lowercase credit, another
+# language: 19 of 27 phrasings tried) give no key, and a made-up outlet per copy gives a key no other page shares, so
+# such copies look independent again exactly as before this rule. Cost: quadratic in the credits of one text (each
+# credited name is searched in the rest of the sentence); a claim is at most MAX_WORDS words, so one claim takes
+# well under a millisecond (a 100 kB text with 6,666 credits took 3.1 s in the review: never a claim).
 _CREDITED = r"(?P<name>[A-Z][\w&'’-]*(?:[ \t]+[A-Z][\w&'’-]*){0,3})"
 _CREDIT_VERB = r"(?:reports?|reported|says|said|states|stated|writes|wrote|announced|announces|confirms|confirmed)"
 _CREDITS = (

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
 import json
+import logging
 
 from .. import __version__
 from .types import Budget, MODES
@@ -40,6 +41,21 @@ MODE_BUDGETS = {
     "gap_resolution":    Budget(max_queries=4, max_requests=30, max_pages=5, max_seconds=90, max_depth=0),
 }
 assert set(MODE_BUDGETS) == set(MODES)
+
+# Wave 3 settings whose stored value is checked when it is read (WebConfig.from_json; security review L8)
+CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognition", "supersession",
+                   "supersession_min_sources")
+
+
+def damaged(name, value) -> bool:
+    """Whether a stored value of a CHECKED_ON_LOAD setting is one set_config would refuse."""
+    from .state import _validate         # lazy: state imports this module
+    from ..instance.errors import ValidationError
+    try:
+        _validate(name, value)
+    except ValidationError:
+        return True
+    return False
 
 
 @dataclass
@@ -225,7 +241,17 @@ class WebConfig:
     def from_json(cls, text: str | None) -> "WebConfig":
         raw = json.loads(text) if text else {}
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in raw.items() if k in known})
+        values = {k: v for k, v in raw.items() if k in known}
+        # Wave 3 fix lane (security review L8): a damaged stored value of a Wave 3 setting is never used as it stands
+        # (a non-string recheck_order made every timer pass raise; a non-int supersession_min_sources made
+        # consolidation raise with the rule on): its default applies, state.setting_problems() names it, and a
+        # warning is logged with the setting's name only.
+        for name in sorted(set(values) & set(CHECKED_ON_LOAD)):
+            if damaged(name, values[name]):
+                logging.getLogger(__name__).warning("the saved Web Cortex setting %s is not a valid value; its "
+                                                    "default is used", name)
+                del values[name]
+        return cls(**values)
 
     def to_json(self) -> dict:
         return asdict(self)

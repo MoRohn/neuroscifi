@@ -71,6 +71,20 @@ def get_config(db) -> wconfig.WebConfig:
     return wconfig.WebConfig.from_json(row[0] if row else None)
 
 
+def setting_problems(db) -> list[str]:
+    """The checked Wave 3 settings (config.CHECKED_ON_LOAD) whose saved value set_config would refuse, as sentences:
+    each is read as its default until it is set again (`nsf web config --set NAME=VALUE`)."""
+    row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
+    try:
+        raw = json.loads(row[0]) if row and row[0] else {}
+    except ValueError:
+        return ["the saved Web Cortex settings cannot be read as JSON"]
+    return [f"the saved {name} ({raw[name]!r}) is not a valid value; its default "
+            f"({getattr(wconfig.WebConfig(), name)!r}) applies until it is set with `nsf web config --set {name}=...`"
+            for name in wconfig.CHECKED_ON_LOAD if isinstance(raw, dict) and name in raw
+            and wconfig.damaged(name, raw[name])]
+
+
 def _is_int(v):
     return isinstance(v, int) and not isinstance(v, bool)
 

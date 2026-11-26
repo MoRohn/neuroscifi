@@ -250,3 +250,67 @@ def test_quiet_and_enabled_settings_are_unaffected(tmp_path):
         assert state.get_config(db) == before
     finally:
         db.close()
+
+
+# ---- Wave 3 fix lane: the security review's L4 and L5 ----------------------------------------------------------------
+
+def _held(path):
+    """Another process's hold of a lock file: opened read-only (flock needs only that) and locked exclusively."""
+    fd = os.open(path, os.O_RDONLY)
+    import fcntl
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
+
+
+def test_a_held_shadow_lock_skips_the_settlement_without_waiting(tmp_path, caplog):
+    from neuroscifi import internal_state
+    r = run(tmp_path, "shadow")
+    folder = tmp_path / "individual.sqlite.resources"
+    fd = _held(folder / shadow.LOCK_FILE)
+    try:
+        shadow._settled_at.clear()
+        started = time.perf_counter()
+        with pytest.raises(BlockingIOError):
+            shadow.settle_due(r["path"], r["clock"])
+        shadow._settled_at.clear()
+        shadow.settle_quietly(r["path"], r["clock"])                   # the sampler's call: logged, never raised
+        assert time.perf_counter() - started < 1.0
+        assert any("settling the verdicts: BlockingIOError" in m for m in caplog.messages)
+        hist = _held(folder / internal_state.LOCK_FILE)
+        try:
+            started = time.perf_counter()
+            with pytest.raises(BlockingIOError):
+                internal_state.append(r["path"], {"v": 1, "at": r["clock"] + 1})
+            assert time.perf_counter() - started < 1.0
+        finally:
+            os.close(hist)
+    finally:
+        os.close(fd)
+    shadow._settled_at.clear()
+    shadow.settle_due(r["path"], r["clock"] + 1)          # released: the next pass settles (it does not raise)
+
+
+def test_a_record_file_of_another_account_is_not_appended_to(tmp_path, monkeypatch):
+    r = run(tmp_path, "shadow")
+    folder = tmp_path / "individual.sqlite.resources"
+    before = (folder / shadow.FILE).read_bytes()
+    monkeypatch.setattr(shared, "writers", lambda db_path: {os.getuid() + 12345})
+    shadow._seen.clear()
+    assert shadow.observe(r["path"], r["clock"] + 30, None) is None
+    assert (folder / shadow.FILE).read_bytes() == before
+    assert any("NotOwned" in k for k in shadow._failures)
+
+
+def test_forged_future_days_and_absurd_lead_times_are_not_taken(tmp_path):
+    r = run(tmp_path, "shadow")
+    folder = tmp_path / "individual.sqlite.resources"
+    real = shadow.report(r["path"], r["clock"])
+    forged = {f"9999-12-{d:02d}": {"episodes": 9, "preceded": 9, "lead_seconds_sum": 1e300,
+                                   "lead_seconds_max": 1e300} for d in range(1, 29)}
+    forged |= {"2027-01-14": {"episodes": 1, "preceded": 1, "lead_seconds_sum": 1e300, "lead_seconds_min": 5e9}}
+    (folder / shadow.DAYS_FILE).write_text(json.dumps({"days": forged}))
+    out = shadow.report(r["path"], r["clock"])
+    assert not [d for d in out["days"] if d.startswith("9999")]
+    assert out["breaches"]["episodes"] <= real["breaches"]["episodes"] + 1
+    lead = out["breaches"].get("lead_seconds") or {}
+    assert all(v is None or v <= shadow.MAX_HORIZON for v in lead.values() if not isinstance(v, (list, dict)))
