@@ -8,6 +8,10 @@ improve knowledge over repeated cycles, and what does each of lane K's mechanism
   python scripts/bench_learning_cycles.py run --split development --cycles 3 --config baseline   # a quick look
   python scripts/bench_learning_cycles.py final --note TEXT --out /outside/the/tree.json          # THE look (below)
 
+Wave 3 lane R (ADR-060), the re-check orders on lane R's worlds (cycles_rate_splits.py) and on lane F's:
+  python scripts/bench_learning_cycles.py run --split rate:held_out --orders --out rate_held.json
+  python scripts/bench_learning_cycles.py verdict --orders rate_held.json
+
 Offline and deterministic per seed (apart from wall seconds); no model is called and no connection is made. The worlds
 are frozen in src/neuroscifi/acceptance/cognition/cycles_splits.py (committed before this harness); what is measured,
 and the verdict rule, are in src/neuroscifi/acceptance/cognition/cycles.py. The cognitive benchmark's withheld family
@@ -56,13 +60,17 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--split", choices=("development", "held_out"), required=True)
+    r.add_argument("--split", choices=cycles.SPLITS, required=True,
+                   help="rate:<split>: Wave 3 lane R's worlds (cycles_rate_splits.py)")
+    r.add_argument("--orders", action="store_true",
+                   help="lane R's configurations (cycles.order_configurations) instead of lane K's")
     r.add_argument("--config", action="append", help="repeatable; default every configuration")
     r.add_argument("--cycles", type=int, help="shorten every world to this many cycles")
     r.add_argument("--out")
     v = sub.add_parser("verdict")
     v.add_argument("result")
     v.add_argument("--out")
+    v.add_argument("--orders", action="store_true", help="lane R's rule (cycles.order_verdicts)")
     f = sub.add_parser("final")
     f.add_argument("--note", required=True)
     f.add_argument("--out", required=True, help="a path OUTSIDE this checkout; copy it in afterwards")
@@ -70,10 +78,12 @@ def main(argv=None) -> int:
     f.add_argument("--mechanism", default="baseline", help="the name the ledger line records")
     a = ap.parse_args(argv)
     if a.command == "verdict":
-        _write(cycles.verdicts(json.loads(Path(a.result).read_text(encoding="utf-8"))), a.out)
+        rule = cycles.order_verdicts if a.orders else cycles.verdicts
+        _write(rule(json.loads(Path(a.result).read_text(encoding="utf-8"))), a.out)
         return 0
     known = cycles.configurations() | cycles.EXTRA
-    configs = cycles.configurations() if a.command == "run" else {k: known[k] for k in cycles.FINAL_CONFIGS}
+    configs = ((cycles.order_configurations() if a.orders else cycles.configurations()) if a.command == "run" else
+               {k: known[k] for k in cycles.FINAL_CONFIGS})
     if a.config:
         unknown = sorted(set(a.config) - set(known))
         if unknown:

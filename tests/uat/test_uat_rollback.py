@@ -305,6 +305,25 @@ def test_idle_recheck(individual):
     assert_rolls_back(reference, on_, again)
 
 
+def test_recheck_order(individual):
+    """Wave 3 lane R (ADR-060): another order of the re-check's pool, and back to lane K's order."""
+    from neuroscifi.webcortex import recheck
+    db, _ = individual
+    old = _old_item(db)
+    from neuroscifi.acceptance.cognition import adversarial
+    newer = adversarial._k_item(db, T0 - 2 * DAY, hosts=("k3.example", "k4.example"))
+    with store.write(db):       # the newer item was looked at yesterday: the rotation puts the older one first
+        db.execute("INSERT INTO web_tasks(id, objective, mode, status, origin, created_at, updated_at) VALUES("
+                   "'rollback-look', 'Orbix', 'fact_verification', 'completed', ?, ?, ?)",
+                   (f"refresh:{(newer['provisional'] or newer['strengthened'] or [old])[0]}", T0 - DAY, T0 - DAY))
+    on, off = web_switch(db, "recheck_order", on="rotation", off="staleness")
+
+    def probe():
+        return [(c["knowledge_id"], c["value"]) for c in recheck.rank(db, T0)]
+    reference, on_, again = cycle(on, off, probe)
+    assert_rolls_back(reference, on_, again)
+
+
 def recheck_run(db, now):
     from neuroscifi.webcortex import recheck
     return recheck.run(db, now)
@@ -642,4 +661,5 @@ SWITCHES = {
     "selective_answering": test_research_run_switches, "status_questions": test_voice_status_questions,
     "resume_follow": test_voice_resume_follow, "salience_attention": test_salience_attention_and_its_records,
     "arbitration_record": test_arbitration_record_and_its_records,
+    "recheck_order": test_recheck_order,
 }

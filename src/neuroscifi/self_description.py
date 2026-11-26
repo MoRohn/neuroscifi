@@ -591,8 +591,12 @@ def _to_recheck(db, now) -> dict:
         counts.setdefault(kind, {})[reason] = n
         newest = at if newest is None else max(newest, at)
     total = sum(n for by in counts.values() for n in by.values())
-    return _f({"open": total, "by_kind": counts}, "web_rechecks (webcortex/premises.py, ADR-055; `nsf knowledge "
-              "rechecks`)", newest, now)
+    value = {"open": total, "by_kind": counts}
+    from .webcortex import recheck, state as wstate
+    order = getattr(wstate.get_config(db), "recheck_order", recheck.DEFAULT_ORDER)
+    if order != recheck.DEFAULT_ORDER:  # ADR-060: the order the re-check takes its picks in (each pick's decision
+        value["order"] = order          # event records why it was taken)
+    return _f(value, "web_rechecks (webcortex/premises.py, ADR-055; `nsf knowledge rechecks`)", newest, now)
 
 
 def _improvement_ledger(db, now) -> dict:

@@ -754,7 +754,9 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
         out["refused"] = [r for r in ranked["refused"] if r["key"] in order]
         picked = sorted((c for c in ranked["chosen"] if c["key"] in order), key=lambda c: order[c["key"]][0])
         out["chosen"] = [c | {k: order[c["key"]][1][k] for k in ("knowledge_id", "value", "p_current", "dependents",
-                                                                 "mark_id")} for c in picked][:limit]
+                                                                 "mark_id")}
+                         | ({"order": order[c["key"]][1]["order"]} if "order" in order[c["key"]][1] else {})
+                         for c in picked][:limit]      # ADR-060: the re-check order's inputs, when not the default
         return out
     pool = None
     if path == "tick":       # the tick's own pool, as before: knowledge items among curiosity.rank's top ten
