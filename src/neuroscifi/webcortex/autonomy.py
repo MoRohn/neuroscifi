@@ -457,8 +457,9 @@ def _lineage(db):
     decision event; a refresh task investigates its knowledge item; an autonomous task without either counts as one
     step from its own objective). The originating owner subject of a depth-1 subject is the depth-0 subject that
     the autonomous task investigated (its objective and key). Unknown keys are depth 0."""
-    tasks = {tid: (str(origin), objective) for tid, origin, objective in
-             db.execute("SELECT id, origin, objective FROM web_tasks")}
+    tasks, made = {}, {}
+    for tid, origin, objective, rowid in db.execute("SELECT id, origin, objective, rowid FROM web_tasks"):
+        tasks[tid], made[tid] = (str(origin), objective), rowid
     investigated = {}
     for tid, key in db.execute("SELECT task_id, json_extract(detail,'$.autonomy.key') FROM web_events WHERE "
                                "kind='decision' AND task_id IS NOT NULL AND json_extract(detail,'$.autonomy.key') "
@@ -494,7 +495,11 @@ def _lineage(db):
         if key not in sources:
             memo[key] = (0, frozenset())
             return memo[key]
-        found = [task_depth(t) for t in sources[key]]
+        # Wave 4 lane A: the subject's records are visited in a stable order, the owner's first, then tasks in the
+        # order they were created (rowid). The walk marks a subject in progress (memo above), so what a subject
+        # visited later finds can depend on that order; a set of task ids iterates in an order that differs from run
+        # to run (task ids are random uuid4), which made the same history give different lineages.
+        found = [task_depth(t) for t in sorted(sources[key], key=lambda t: (t is not None, made.get(t, -1), str(t)))]
         best = min(d for d, _ in found)
         memo[key] = (best, frozenset().union(*(r for d, r in found if d == best)))
         return memo[key]

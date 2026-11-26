@@ -4212,9 +4212,9 @@ every public learning-cycles corpus (lanes F, R, S, S-variant, A), development a
 495 runs, 55,584 leaves compared, 671 differ: 436 are database file sizes, and the other 235 are in 8 `idle-first`
 runs, which are **not repeatable on the unchanged tree** (six repeats of each on each tree: every outcome the new tree
 gave the old tree also gave; e.g. lane S variant sv-echo seed 4501: `mean.correct` 0.613 / 0.632 / 0.644 on repeats
-of the same code). The unrepeatable runs are a harness property older than this ADR (likely cause: uuid4 task ids
-as tie-breakers among tasks made at one compressed instant; **not traced**); it plausibly explains WAVE3.md's
-untraced seed 2704 move. Some division runs vary between repeats too (two development runs of the same code: 12 of
+of the same code). The unrepeatable runs come from two product choices older than this ADR that followed the random task
+ids; traced and fixed in the follow-up below. (They do not explain WAVE3.md's seed 2704 move: that run did not vary
+in 10 repeats of Wave 3's final code; the move was measured with echo recognition on; still untraced.) Some division runs vary between repeats too (two development runs of the same code: 12 of
 660 compared values differ, all in rd-covered). A second held-out run of the same code, made only as a repeatability
 check after the first was recorded (not committed; disclosed): 7 of 1,232 compared values differ, every verdict is
 the same, and the mean gains over the non-covered worlds are equal to 4 decimals except `reserve-0.5/idle-first`
@@ -4247,3 +4247,41 @@ setting off is checked by `tests/uat/test_uat_wave0_equivalence.py` (passes; `68
 - Not verified: the open web, real change rates, a live model, the real interleaving of the timer and the worker
   across a day (the harness compresses a day to one instant), the D4 budgets, the withheld worlds, an owner who
   answers.
+
+## Follow-up: repeatability (the idle investigation's runs were not repeatable; traced and fixed)
+
+Evidence: `docs/quality/evidence/genesis_wave4_a_repeatability.json` (49 kB).
+
+**Cause, in the product** (an arbitrary pick among equal records that followed the task ids, which are uuid4):
+1. `webcortex/autonomy.py` `_lineage`, `depth()` (line 497 at `8f68beb`: `found = [task_depth(t) for t in
+   sources[key]]`): a depth-first walk that marks a subject in progress iterated a SET of task ids, so a lineage
+   computed while another subject was in progress (depth, originating owner subjects, hence relevance and refusal)
+   depended on the ids' order. Fix: the owner's records first, then tasks in creation order (rowid).
+2. `webcortex/curiosity.py` lines 216 (`search_terms`) and 348 (`rank`, contested subjects that are no knowledge):
+   `SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC LIMIT 1`. Claims stored at the same instant tie
+   on `created_at`, and the scan follows the index `web_claims_key(key, task_id)`, i.e. the random ids, so another
+   sentence became the candidate's statement, hence its objective. Fix: `ORDER BY created_at DESC, rowid DESC` (the
+   claim stored last).
+Found by running one varying run with deterministic ids (identical), then two id schemes and diffing every table
+after every task. Only runs with the idle investigation were affected (it admits derived subjects and contested
+subjects without knowledge).
+
+**At the shipped defaults** nothing measured moved: the offline research digest `68731d72…` / portable `d87dbb4f…`
+in both regimes (defaults, every setting off); `nsf acceptance --all` 7 of 7; the timer-only configurations
+(`reference:no-loop`, `baseline`, `shipped`, `lane-s:fixes-off`, `lane-s:supersede-K2`,
+`recheck:rate+seen+rotation/all`) on every public cycles corpus, old against fixed: 594 runs, 66,912 leaves, only
+database file sizes differ. Test: `tests/acceptance/test_learning_cycles_division.py::
+test_the_same_history_gives_the_same_run_whatever_the_task_ids` (rd-covered seeds 6402, 6403; eight id sets gave
+2 outcomes each on the old code, 1 after).
+
+**How large the variation was** (10 repeats of `baseline`, `shipped+idle`, `idle-first` per world and seed, Wave 3's
+final product code; 18 public worlds: lanes A, F, R, development and held-out): `baseline` and `shipped+idle` never
+varied. `idle-first` varied in 4 of 18 worlds (6 of 63 world-seeds): largest repeat sd of one seed 0.029 (range
+0.056, rh-mixed); largest range of a world's mean paired difference idle-first − baseline 0.015 (rh-mixed, +0.037 to
++0.051); 0.007 in rd-covered; under 0.001 elsewhere. Lane V's five held-out worlds did not vary at all: ADR-062's
+held-out `idle-first` gains (+0.057 / +0.012 / +0.086 / +0.035 / +0.018) are reproduced exactly, before and after the
+fix. After the fix: 0 variation in every world, seed and configuration.
+
+**This ADR's figures after the fix** (re-run once more, disclosed; not replacing the record above): development still
+"nothing chosen" (every candidate "unsafe"); held-out every candidate "unsafe" (`reserve-0.25` was "harm", now also
+fails safety), mean gains over the non-covered worlds +0.008 / +0.014 / +0.014 / +0.010, none beyond the spread.

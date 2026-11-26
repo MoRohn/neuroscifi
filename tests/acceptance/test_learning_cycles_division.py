@@ -40,6 +40,34 @@ def test_the_division_reads_back_as_named_and_stays_inside_the_allowance():
     assert [(c, k, n) for c, k, n in on["launches"]] != [(c, k, n) for c, k, n in off["launches"]]
 
 
+def _looks_with_ids(seed, scheme):
+    """A development run (rd-covered, the idle investigation first) with task ids drawn from `scheme` (an integer:
+    another set of ids, in another sort order, for each value)."""
+    import hashlib
+    import itertools
+    import uuid
+    from unittest import mock
+    counter = itertools.count(1)
+
+    def make():
+        return uuid.UUID(bytes=hashlib.sha256(f"{scheme}:{next(counter)}".encode()).digest()[:16], version=4)
+    world = [w for w in reach.CYCLES["development"]["worlds"] if w["name"] == "rd-covered"][0]
+    with mock.patch("uuid.uuid4", make):
+        row = cycles.run_world(world, seed, frozenset({cycles.IDLE_FIRST}), generate=reach.generate)
+    return [(lk["cycle"], lk["kind"], lk["subject"], lk["after"]) for lk in row["looks"]], row["mean"]["correct"]
+
+
+@pytest.mark.parametrize("seed", (6402, 6403))
+def test_the_same_history_gives_the_same_run_whatever_the_task_ids(seed):
+    """Task ids are random (uuid4). Before Wave 4 lane A's fix two choices followed their order, so repeats of the
+    same world and seed differed: autonomy._lineage walked a set of task ids (a different lineage, so the idle
+    investigation took another candidate; seed 6402), and curiosity.rank took, among claims stored at the same
+    instant, the first in the (key, task_id) index (another sentence, so another objective; seed 6403). Eight sets of
+    ids must give one run."""
+    first = _looks_with_ids(seed, 0)
+    assert all(_looks_with_ids(seed, k) == first for k in range(1, 8))
+
+
 def _result(rows):
     """A run_split-shaped result: {config: {world: (kind, [primary per seed], safety extra per seed)}}."""
     confs = {}
