@@ -636,7 +636,7 @@ _HTML_EVIDENCE = re.compile(r"<(?:head|body|div|p|br|span|table|tr|td|script|sty
                             r"img|section|article|nav|header|footer)[\s/>]", re.I)
 
 
-def _xml_like(text: str) -> tuple[str, list[str]] | None:
+def _xml_like(text: str, complete: bool = True) -> tuple[str, list[str]] | None:
     stripped = text.lstrip()
     if not stripped.startswith("<"):
         return None
@@ -665,7 +665,11 @@ def _xml_like(text: str) -> tuple[str, list[str]] | None:
     if fmt:
         return fmt, reasons
     if not declared and not re.search(r"</\s*" + re.escape(root) + r"\s*>|/>", rest[:HEAD_MAX]):
-        return None   # a lone '<word' with no closing tag is not enough
+        # a lone '<word' with no closing tag is not enough. A prefix cut from a longer document cannot hold the root's
+        # end tag: there, an element nested in the root and closed is the evidence.
+        if complete or not re.search(r"<([A-Za-z_][\w.:-]*)[^<>]*>[^<]*</\1\s*>", rest[tag.end():HEAD_MAX]):
+            return None
+        reasons.append("a prefix of a longer document: the root is not closed in it, a nested element is")
     return "xml", reasons
 
 
@@ -759,7 +763,7 @@ def _structure(h: bytes, complete: bool) -> tuple[str, list[str]] | None:
                 return "geojson", reasons + ["a GeoJSON 'type' member"]
             return "json", reasons
     if stripped.startswith("<"):
-        xml = _xml_like(text)
+        xml = _xml_like(text, complete)
         if xml is not None:
             return xml[0], head + xml[1]
     if stripped.startswith("#!"):

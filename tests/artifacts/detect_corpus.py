@@ -189,6 +189,7 @@ STL_TEXT = b"solid t\n  facet normal 0 0 1\n    outer loop\n      vertex 0 0 0\n
 PLY = b"ply\nformat ascii 1.0\nelement vertex 0\nend_header\n"
 REQUIREMENTS = (b"numpy==2.3.5\nzstandard>=0.25 ; python_version > '3.10'\n# pinned\n-r base.txt\n"
                 b"requests[socks]~=2.31\nwheelpkg @ https://example.org/w.whl\n")
+BIG_XML = b"<r>" + b"".join(b'<i n="%d">v%d</i>' % (i, i) for i in range(20_000)) + b"</r>"
 TEXT = "Plain words, with no structure at all.\nA second line; nothing more.\n".encode()
 
 
@@ -358,5 +359,8 @@ def conflicts():
         ("package-json-elsewhere", b'{"name": "x"}', {"name": "notpackage.json"}, "json", st),
         ("bare-tags-named-xml", b"<a>" * 1000 + b"</a>" * 1000, {"name": "deep.xml"}, "xml", st),
         ("bare-tags", b"<b>bold</b>", {}, "xml", st),
+        ("xml-prefix-no-declaration", BIG_XML[:65536], {"name": "big.xml", "size": len(BIG_XML)}, "xml", st),
+        ("xml-prefix-unnamed", BIG_XML[:65536], {"size": len(BIG_XML)}, "xml", st),
+        ("lone-tag-prefix", b"<note> " + b"words " * 20000, {"size": 200000}, "text", st),
         ("bare-html-tags", b"<div><p>Hi</p></div>", {}, "html", st),
     ]
