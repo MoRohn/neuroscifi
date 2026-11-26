@@ -443,6 +443,8 @@ def _replay(copy, forgets, now):
     invalidated = []
     copy.execute("PRAGMA secure_delete=ON")
     migrate(copy)  # an older archive gains forgotten_roots before the scrub below
+    # Wave 4 lane D (review3c F6): the answer marks' scan of every task result, made before the write transaction
+    web_marks = governance.prepare_replay_marks(copy, {(k, d) for k, d, _ in web}) if web else None
     copy.execute("BEGIN IMMEDIATE")
     if forgets and forgets.get("settings"):
         # First of all, so that nothing done to the copy from here on runs under a setting the owner has changed.
@@ -572,7 +574,7 @@ def _replay(copy, forgets, now):
                 copy.execute("UPDATE checkpoints SET status='stale' WHERE status='valid'")
     if web:
         copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", web)
-        web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)
+        web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now, web_marks)
         voice = governance.replay_voice_forgets(copy, {(k, d) for k, d, _ in web}, now)
     # a signed request accepted after the archive was written stays a replay in the copy (security review A-5)
     copy.executemany("INSERT OR IGNORE INTO node_nonces(device,nonce,seen_at) VALUES(?,?,?)", nonces)
