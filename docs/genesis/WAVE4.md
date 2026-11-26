@@ -35,18 +35,22 @@ COGNITIVE_BENCHMARK.md).
   unsourced answers set aside. Two reviews found that it **let such echoes replace a verified value** (an echo that
   disagreed with a held item was kept whole and counted for its value) and **let any scope poison a subject** (a
   family device's or an agent's answer that only mentioned or denied a version stopped the owner ever learning it).
-  Both are fixed: an echo is no evidence for or against, and the disagreement is asked; only the owner's asserting
-  sentences are recorded, for 30 days. It **stays off**, with limits that remain: plain-sentence mentions still record
-  (3 of 18 staged forms), its value normaliser undoes exactly the reformats the worlds' generator writes, and every
-  world page is dated, so the false rejection of undated honest pages is not measured at all.
+  The first is fixed: an echo is no evidence for or against, and the disagreement is asked. The second is partly
+  fixed: only the owner's answers are recorded, only asserting sentences, for 30 days; but the security review's second
+  pass found the assertion reader still records 9 of another 18 owner phrasings, denials in other words among them
+  (the fix lane's own probe: 3 of 18), and that the 30-day expiry opened a new defect: an expired first emission of a
+  value hides a fresh one, so the rule stops recognising that value's echoes (it fails open). It **stays off**, with
+  limits that remain: its value normaliser undoes exactly the reformats the worlds' generator writes, and every world
+  page is dated, so the false rejection of undated honest pages is not measured at all; its "effective" verdict holds
+  at zero margin in one held-out world.
 - **Dividing the day's allowance** between refreshing and reaching (`allowance_division`, lane A, ADR-064) shows no
   gain beyond the spread in any held-out world and is "unsafe" or "harm" under the rule written before the run; it
   stays off. Tracing why its runs were noisy found **two tie-breaks in the product that followed random task ids**,
   now fixed. That weakens one of Wave 3's three `idle-first` figures on the withheld worlds: **W2's +0.042 exceeds its
   spread (0.039) by only 0.003, less than the 0.015 a world's mean moved between repeats of that code, so "beyond the
-  spread in W2" is not established**; W3 (+0.052 against 0.035, margin 0.017) likely stands (not verifiable without
-  the withheld worlds); W1 (+0.013) was within its spread either way. Wave 3's "beyond the spread in two worlds"
-  becomes "in one, W3, likely".
+  spread in W2" is not established**; W3 (+0.052 against 0.035, margin 0.017, only 0.002 more than that swing) is
+  not shown to fail and not established (not verifiable without the withheld worlds); W1 (+0.013) was within its
+  spread either way. Wave 3's "beyond the spread in two worlds" becomes "in one at most, W3, unverified".
 
 **What ships and changes behaviour at the shipped defaults:**
 - **Damaged saved settings fail closed and say how to repair them.** Every saved web, instance and voice setting is
@@ -231,13 +235,26 @@ held-out after the fix are pages that had escaped through the defect the reviews
 wrong and unsourced that later became true and was then reported; on held-out it cost 2 eligible looks (suppressed
 142 → 144, lane E's diagnosis per look); after the fix suppressed is 145 (not diagnosed per look again). Verdict under `sources.own_verdict` (committed before held-out): **"effective"** on both splits, before
 and after the fix. Wave 3's `echo_recognition` under the same rule: also "effective", with 13 honest pages set aside
-on held-out.
+on held-out. **What "effective" means after the fix** (review4 measurement, second pass): S1 allows each world 2 more
+suppressed looks, and src-ho-mixed is now 56 → 58, exactly at the limit (it was +1): one more false rejection there
+would make it a "trade". The verdict does not count questions: the new disagreement path asks 1 question on
+development and 2 on held-out, and every one is raised by honest pages (the false rejections Quororra and Wexeth), with
+a wording ("repeats a value that only this system's own earlier answer had stated") that is false for them; no real
+echo page reached that path in the worlds, so the fixed behaviour is shown only by staged cases. And the worlds do not
+exercise the fix lane's restrictions: every answer there is an owner's plain assertion made 1 to 11 days before its
+echoes. Since the fix, Wave 3's `echo_recognition` also sends a disagreeing echo to that path (held-out
+`suppressed_contested` 71 → 73); ADR-061 does not say so.
 
 **What it cannot see:** echoes of an answer that had a source; an echo of a value only imagined (Wave 3 lane S's
 worlds plant own values there, so they barely exercise it: own-only versions 5 / 2 / 13 → 5 / 2 / 11 on its held-out);
 backdated pages; another system's output; anything emitted while off; answers of a family device, an agent or an
-autonomous task (since the fix lane); plain-sentence mentions are still read as assertions (3 of 18 staged forms:
-"users ask about X 9.4.0", "is rumoured", "is expected next month"); an adversary's small edit (a lower-case name,
+autonomous task (since the fix lane); mentions and some denials are still read as assertions (the fix lane's probe:
+3 of 18 staged forms; the security review's second pass: 9 of another 18 owner phrasings, among them "is rumoured for
+next month", "Some blogs claim X 9.4.0 is out, but no release exists", "Nobody has seen X 9.4.0", "is fake news"; an
+owner answer "X 9.4.0 is rumoured for next month" followed by the release 20 or 29 days later left 9.4.0 unheld, with
+no question when nothing was held); an emission whose first unsourced record is older than 30 days hides a fresh one
+of the same pair (the rule judges only the earliest of the 3 kept), so that value's echoes are no longer recognised
+(new with the expiry; it fails open); an adversary's small edit (a lower-case name,
 "Velmora-9.4.0", a soft hyphen, full-width dots: it catches accidental echoes only); `nsf ask` replies and free voice
 conversation. Two conventions of the generator: the echo shape's reformatted numbers are exactly the forms the
 normaliser undoes (lane E read the development generator before writing it), and every world page is dated while the
@@ -307,9 +324,15 @@ varied in 4 of 18 worlds, a world's mean paired gain by up to 0.015 (rh-mixed, +
 0.007 in rd-covered; lane V's held-out figures (ADR-062) reproduce exactly. After it, 0 variation. Re-run after the
 fix: every candidate "unsafe", nothing chosen. **For Wave 3's withheld look** (single runs on worlds that cannot be
 re-run here): `idle-first` W2 +0.042 against its spread 0.039, a margin of 0.003, below the largest swing measured:
-"beyond the spread in W2" is not established; W3 +0.052 against 0.035 (margin 0.017) likely stands, unverified on
-those worlds; `shipped+idle` did not vary anywhere. The correction is written into WAVE3.md, FINAL_EVALUATION.md and
-COGNITIVE_BENCHMARK.md. It does not explain Wave 3's untraced seed-2704 move.
+"beyond the spread in W2" is not established; W3 +0.052 against 0.035 (margin 0.017) is 0.002 above the largest
+swing, which comes from only the 4 public worlds that varied at all (a single seed swung by 0.056): not shown to fail,
+not established, unverified on those worlds (review4 measurement, second pass; WAVE3.md says "likely stands" and
+FINAL_EVALUATION.md's merged correction "holds", both stronger than this); `shipped+idle` did not vary anywhere. The
+correction is written into WAVE3.md, FINAL_EVALUATION.md and COGNITIVE_BENCHMARK.md. It does not explain Wave 3's
+untraced seed-2704 move. Not compared field by field after the fix: the views and the family that read
+`curiosity.rank` and `search_terms` at the defaults (the console overview's curiosity list, `nsf web curiosity`, the
+cognitive benchmark's `infovalue` family; covered only by `nsf acceptance --all`'s pass); where claims tie on their
+time, they now show the claim stored last.
 
 ### 1.5 Lane D: settings, budgets, the restore, evidence size, the caution (ADR-065)
 
@@ -399,12 +422,12 @@ its fix is the fix lane's report (it restored the touched source files and ran t
 |---|---|---|---|
 | H1: derivation rule: a page whose host label equals a word the honest pages capitalise (the subject's name, a month), or a hub they link, merges every honest outlet; the page may state nothing or be flagged by the injection screen | high | fixed in part (`7765425`): a flagged or claimless page is never named or linked; the subject's name and calendar words are no site label. **Open:** a claim-bearing page every honest outlet links or names still merges them ("do not rescue"). Reworded: ADR-066 "not supported; do not turn on" | `tests/acceptance/test_wave4_fix.py::test_no_page_merges_honest_outlets_through_the_subjects_name_a_month_or_saying_nothing` (4 cases); control `::test_a_credit_to_another_read_outlet_still_joins_after_the_fix` |
 | H2: own-text rule: an echo disagreeing with a HELD value was kept whole, counted for its value and superseded the verified one; turning the rule on removed `echo_recognition`'s protection there | high | fixed (`ce63748`): every echo either check marks leaves the cluster; the held item is neither superseded nor weakened; the disagreement is asked. ADR-067's earlier sentence called false; the expectation renamed `disagreeing_echo_is_asked_never_evidence` | `tests/acceptance/test_own_text_provenance.py::test_disagreeing_echo_is_asked_never_evidence` (3 cases); Wave 3's `tests/acceptance/test_wave3_s.py::test_an_echo_that_only_disagrees_is_still_asked_never_decided` updated (`3032cf6`) |
-| H3: any origin (a Pocket family, an MCP agent) recorded emissions, denials counted, nothing expired: a family's question could stop the owner ever learning a version | high | fixed (`eae9f7d`): owner origins only; asserting parts only (no question, negation, hedge, condition); 30 days. **Open:** 3 of 18 staged mention forms still record; the "record only sourced" fallback would make the rule never fire (the main session's decision) | `test_wave4_fix.py::test_only_the_owners_answers_are_recorded`, `::test_a_denial_a_question_a_condition_or_a_hedge_records_no_value`, `::test_the_owner_denying_a_value_does_not_stop_it_being_learned_later`, `::test_an_emission_counts_for_thirty_days` |
+| H3: any origin (a Pocket family, an MCP agent) recorded emissions, denials counted, nothing expired: a family's question could stop the owner ever learning a version | high | fixed (`eae9f7d`): owner origins only; asserting parts only (no question, negation, hedge, condition); 30 days. **Open:** 3 of 18 staged mention forms still record (second pass: 9 of another 18 phrasings, denials in other words among them: "partly fixed"); the "record only sourced" fallback would make the rule never fire (the main session's decision) | `test_wave4_fix.py::test_only_the_owners_answers_are_recorded`, `::test_a_denial_a_question_a_condition_or_a_hedge_records_no_value`, `::test_the_owner_denying_a_value_does_not_stop_it_being_learned_later`, `::test_an_emission_counts_for_thirty_days` |
 | H4: both rules on: a stale held value could no longer be challenged, no question asked | high | fixed (`ce63748`, with H2; H3 removes the denial that caused it): with both on the disagreement is asked | as H2 (the `source_derivation` case) |
 | M1: settings fixed at `nsf init` failed OPEN when damaged (thermal limit off, loosest lifetime, cap and reserve), logged as "cautious": a regression from `main`, on the default path | medium | fixed (`e36d4ee`, `3b42189`): writes pause with a sentence naming `nsf config --repair-fixed NAME=VALUE`; checkpoint refused while `min_free_bytes` is damaged; the log never says "cautious" for them (a damaged `max_evidence_rows` of `5000.0` now pauses writes, stricter than `main`) | `tests/acceptance/test_wave4_d.py::test_a_damaged_setting_fixed_at_creation_pauses_writes_until_the_owner_repairs_it`, `::test_the_owner_repairs_a_damaged_fixed_setting_with_the_named_command` |
 | L1: the refusal for a damaged network limit said "enable with `--enable`", which has no effect | low | fixed (`3d99b91`), on both paths (`require_enabled`, the timer's pass, the read-only SearXNG start) | `test_wave4_fix.py::test_the_refusal_for_a_damaged_limit_names_the_repair_not_enable`, `::test_web_access_switched_off_by_the_owner_says_enable` |
 | L2: the open-questions view had one own-answer budget and one unindexed scan per question | low | fixed (`29c69a1`): one query, one budget, at most 50 statements | `test_wave4_fix.py::test_the_open_questions_view_reads_its_records_once_with_one_own_answer_budget` |
-| L3: fingerprints never expire; off left them active; small edits escape | low | fixed in part (`eae9f7d`): 30 days; off means off (not read; claim marks dropped on load); `nsf web config --forget-own-text`; reworded "accidental echoes only". **Open:** NFKC / format-character normalisation; a full store records nothing more | `test_wave4_fix.py::test_turned_off_the_fingerprints_are_not_read_and_the_owner_can_remove_them`, `::test_stored_derivation_and_echo_marks_are_dropped_when_their_settings_are_off` |
+| L3: fingerprints never expire; off left them active; small edits escape | low | fixed in part (`eae9f7d`): 30 days; off means off (not read; claim marks dropped on load); `nsf web config --forget-own-text`; reworded "accidental echoes only". **Open:** NFKC / format-character normalisation; a full store records nothing more; second pass: the expiry hides fresh emissions (new, medium) and `--forget-own-text` is undone by an older checkpoint's restore (new, low) | `test_wave4_fix.py::test_turned_off_the_fingerprints_are_not_read_and_the_owner_can_remove_them`, `::test_stored_derivation_and_echo_marks_are_dropped_when_their_settings_are_off` |
 | N1: the "salt" is the instance id, which is not secret | note | reworded (`emitted.py`, ADR-067) | — |
 
 **Measurement review** (review4 m, `d4931c0`):
@@ -422,15 +445,52 @@ its fix is the fix lane's report (it restored the touched source files and ran t
 | L4: no `dirty` field; `derivation_joins` had no caller; lane E's section lacked denominators; "unseen share" unlabelled | low | fixed (`8beec6e`, `9954c59`) | `test_wave4_fix.py::test_the_bench_records_whether_the_tree_was_dirty` |
 | notes: the integration's "+4–8 kB" file size is run-to-run variation; held-out baselines were published before the rules | — | recorded (§3) | — |
 
-**Second passes.** Both reviewers are reading the fix lane's work (`findings-security-2.md`, `findings-measure-2.md`):
-**second pass pending** when this record was written; their verdicts are to be folded in here.
+**Second passes** (the same two reviewers, read-only, on `3032cf6`; every first-pass probe re-run, new probes in
+`review4/s/r2/` and `review4/m/r2/`; targeted tests 130 and 150 passed; no withheld file opened, no `final`).
+
+Security, per finding: H1 **fixed for the probed paths, reworded accurately**, open by design (a claim-bearing page
+linked or named by every honest outlet; reachable by anyone through a free subdomain such as `attacker.github.io`,
+whose site label "github" honest outlets write mid-sentence); H2 **fixed**; H3 **partly fixed** (a family's denial
+records nothing now, but 9 of 18 owner phrasings still record, denials in other words among them); H4 **fixed**; M1
+**fixed** (only owner paths write the row; the refusal names the setting and the command; reads and forgets still
+work); L1 **fixed**; L2 **fixed** (`for_pending` 45 ms at 50 questions and 77 ms at 500, against 953 ms at 50
+before); L3 **partly fixed** (expiry, off means off and the removal command fixed; the escapes as the reworded ADR
+says); N1 **reworded accurately**. New: the expiry hides fresh emissions behind an expired first one (**medium**,
+fails open; the rule ships off); `nsf web config --forget-own-text` leaves no trace a restore replays, so restoring an
+older checkpoint brings the fingerprints back (**low**). Notes: `nsf config --repair-fixed` accepts any in-range value
+and the creation value is recorded nowhere (so the only number offered is the loosest default; not an escalation, it
+needs write access to the file); `caution_detail` is not carried across a restore; an agent's refused call names the
+damaged setting (the pattern predates Wave 4); ADR-066's title still says "a TRADE, and OFF" and setting
+`source_derivation` true gives no warning. **Verdict: may merge after two wording corrections in ADR-067** (the
+measured miss of the assertion reader; the restore caveat of `--forget-own-text`), **no code change needed**; the
+expiry defect and the mention forms block any recommendation to turn the own-text rule on and any "effective" claim
+at the withheld look.
+
+Measurement, per finding: H1 **fixed**; M1 **fixed** (the counters report 18 / 8 and 30 / 16); M2, M3 **reworded
+accurately**; M4 **fixed, residual stated** (the caution still shows on the project's own site); L1, L2 **reworded
+accurately**; L3 **fixed and reworded** (the power check now 0 / 619 / 640 of 1,768: ADR-066 still says 656); L4
+**fixed**. The fix evidence reproduces exactly (150 leaves, 10 verdicts); `shipped` is identical to `d4931c0`'s field
+by field; the honest pages set aside going 9 → 14 are the two looks the first pass found kept whole (Quororra,
+Wexeth), both now asked; both verdict functions are byte-identical since their commits. What the record did not say,
+now in §1.2 and §1.4: "effective" holds at zero margin in src-ho-mixed; the disagreement path is exercised only by
+honest pages, with a wording false for them; the worlds do not exercise the H3 restrictions; `echo_recognition`'s
+behaviour changed (71 → 73 contested); the curiosity tie-break's views and the `infovalue` family were not compared
+field by field; FINAL_EVALUATION.md's "holds for W3" overstates (WAVE3.md's "likely" is at the edge). Wording left in
+ADR-066 and ADR-067 at pre-fix values without a label ("9, on 4 looks", "2 suppressed looks", "0.64 % → 0.34 %",
+ADR-066's per-shape table, "tested with a stand-in only", "on the next task"); `wave4:both` has no record in any ADR.
+**Verdict: every finding fixed or reworded accurately in its main point; Wave 4 may merge**; the wording defects do
+not block the merge but block publishing the withheld look's interpretation until corrected. Its conditions for the
+look are summarised under "The rule for the withheld look".
 
 **What the reviews changed in this wave's conclusions.** The derivation rule's measured recall and its share of
 copies among flagged pairs are an upper bound set by the generator, and its suppression is partly the metric's; it is
 recorded as not supported. The own-text rule's "effective" says nothing about the case it exists for when the
 individual already holds a value: there its echoes used to win; fixed, and its false rejection was undercounted (9 →
 14 of 2,670). The pair's counts were blind. The caution's measurement supports one trigger of three. The one defect on
-the default path (fixed settings failing open) was introduced by Wave 4 itself and is fixed.
+the default path (fixed settings failing open) was introduced by Wave 4 itself and is fixed. The second passes added:
+the own-text fix for who may record is partial (mention forms) and its expiry opened a defect of its own; its
+"effective" holds at zero margin and its new question path was reached only by honest pages; Wave 3's `idle-first` W3
+figure is not established either, only not shown to fail. Neither second pass found a defect on the default path.
 
 ## The rule for the withheld look
 
@@ -439,6 +499,17 @@ configurations the source-independence look (`scripts/bench_sources.py final`) r
 `own_text_provenance`, `echo_recognition`, `source_derivation`, `wave4:both` if chosen) and the learning-cycles look
 (`LOOKS["wave4-a"]`: references only), the output fields read, the read-back conditions, and that no look can switch
 any setting on.*
+
+*For the main session, not the rule: the second measurement pass proposes conditions. Run on a clean tree at or after
+the documentation pass; `shipped` is the control and must reproduce step 0's withheld baseline (ledger line 8) field
+by field apart from timings and file sizes, else the look is void. `own_text_provenance` (with `echo_recognition`
+beside it) may be looked at under `own_verdict`, read knowing S1 holds at zero margin on held-out, reporting the
+echo-disagreement questions and `discarded_honest_pages` beside the verdict; it cannot establish mention-form rates,
+undated pages, adversarial echoes, non-owner answers or the 30-day lifetime. `source_derivation`: the record already
+says "do not turn on"; look only to test the record (M2), else leave it out. `wave4:both`: not without a verdict rule
+committed before the look. Lane A: `LOOKS["wave4-a"]` (references only) is now repeatable and is the only way to
+replace the single W2 figure. The security second pass adds that no "effective" claim for the own-text rule at the
+look is supported while the expiry defect and the mention forms stand.*
 
 ## Validation
 
@@ -464,13 +535,20 @@ defaults and all off; the default-path comparison 2,052,099, 0 different; the ca
   wrong first reporter, names that differ from hosts, undated pages. Links and the publication-order condition are
   not exercised; a claim-bearing page linked by every honest outlet still merges them; a second bar for round-ups
   (only read roots) is not computed.
-- **The own-text rule**: plain-sentence mentions (3 of 18 forms) still record; the normaliser undoes exactly the
+- **The own-text rule**: the 30-day expiry hides a fresh emission behind an expired first one (security second pass,
+  medium, fails open); `--forget-own-text` is undone by restoring an older checkpoint (low); mentions and some
+  denials still record (3 of 18 staged forms in the fix lane's probe, 9 of 18 in the second pass's); ADR-067's
+  sentences on denials, on backing out, and its pre-fix false-rejection figures need correcting; the normaliser undoes exactly the
   generator's reformats; undated honest pages unmeasured; adversarial escapes (NFKC, format characters); a full store
   records nothing more; echoes of sourced answers; the false rejection of a value stated wrong first; backdated
   pages; `nsf ask` and voice conversation not recorded; its emission scan is linear in claims (at a few million it
   would hit its 1 s budget and the rule would silently do nothing; extrapolated by the security review, not measured);
   the real rate of unsourced answers is unknown.
-- **`wave4:both`**: no verdict rule written for the pair; not claimed.
+- **`wave4:both`**: no verdict rule written for the pair; not claimed; no ADR records it.
+- **The derivation rule's record**: ADR-066's title still reads "a TRADE, and OFF", and setting it true gives no
+  warning (security second pass, low).
+- **Settings**: `nsf config --repair-fixed` accepts any in-range value, and the value chosen at creation is recorded
+  nowhere, so the refusal can offer only the loosest default; `caution_detail` is not carried across a restore.
 - **The caution**: "Only one source" is also shown on the project's own site (F07, F20), which the product treats as
   sufficient; the copy trigger and own-answer flag stay hidden; nothing measured on the open web or with a live model;
   the open-questions view's time at 50 questions with real answers is not measured.
@@ -491,7 +569,7 @@ NAME=VALUE`):
 | Decision | Today | Evidence for | Evidence against |
 |---|---|---|---|
 | `source_derivation` | off | fewer badly supported rows (127 → 99, held-out) | the signal is the generator's convention; more true values not held (142 → 207 of 612); `correct` −0.054 to −0.101; one page can merge honest outlets: **do not turn on** |
-| `own_text_provenance` | off | own answers admitted 4 → 1, 30 of 31 echoes of unsourced answers set aside; "effective" under its rule on both splits | a measured false rejection (14 of 2,670 honest pages set aside; suppressed 142 → 145 of 612); undated pages unmeasured; mention forms; owner's answers only |
+| `own_text_provenance` | off | own answers admitted 4 → 1, 30 of 31 echoes of unsourced answers set aside; "effective" under its rule on both splits (at zero margin in one world) | a measured false rejection (14 of 2,670 honest pages set aside; suppressed 142 → 145 of 612); the expiry defect (fails open); mentions and denials still recorded in 9 of 18 phrasings; undated pages unmeasured; owner's answers only. The security second pass: no recommendation to turn it on while these stand |
 | `echo_recognition` (Wave 3) | off | "effective" under lane E's rule; supported on Wave 3's withheld look | phrase-based; 13 honest pages set aside on held-out; WAVE3.md |
 | `allowance_division` | `"race"` | per look reaching makes more subjects correct | no gain beyond the spread; "unsafe" / "harm" |
 | `caution_detail` | off | shows why pages were counted together and the own-answer flag | wrong about three times in ten on the worlds measured |
