@@ -137,12 +137,15 @@ def test_tar_plain(b1reg):
     check_tar(out.representation)
 
 
-@pytest.mark.parametrize("fmt,pack", [("tar.gz", gzip.compress),
-                                      ("tar.zst", lambda b: zstandard.ZstdCompressor().compress(b))])
+@pytest.mark.parametrize("fmt,pack", [("gzip", gzip.compress),
+                                      ("zstd", lambda b: zstandard.ZstdCompressor().compress(b))])
 def test_tar_compressed(b1reg, fmt, pack):
+    """K's compressed-stream adapter inflates; the inner bytes are a tar, read by B1's tar adapter."""
     out = b1reg.decode(pack(tar_bytes(TAR_ENTRIES)), name="a.bin")
-    assert out.detected.format == fmt and out.detected.container in ("gzip", "zstd")
-    check_tar(out.representation)
+    assert out.detected.format == fmt
+    inner = out.representation.members[0]
+    assert inner.detected.format == "tar"
+    check_tar(inner.inner)
 
 
 def test_tar_gz_bomb_refused(b1reg):

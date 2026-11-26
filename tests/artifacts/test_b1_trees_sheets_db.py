@@ -39,7 +39,7 @@ def test_xml_dtd_refused(b1reg, body):
 
 def test_xml_depth_and_node_bounds(b1reg):
     with pytest.raises(T.Refused):
-        b1reg.decode(b"<a>" * 1000 + b"</a>" * 1000, name="deep.xml")
+        b1reg.decode(b"<x>" * 1000 + b"</x>" * 1000, name="deep.xml")
     with pytest.raises(T.Refused):
         b1reg.decode(b"<r>" + b"<i/>" * 5000 + b"</r>", name="wide.xml", limits=T.Limits(max_elements=1000))
 

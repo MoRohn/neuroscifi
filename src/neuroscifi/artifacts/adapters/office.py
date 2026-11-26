@@ -1,7 +1,8 @@
 """Office packages and e-books to `Document` (lane B1): DOCX, ODT, PPTX, ODP, EPUB.
 
-All are ZIP packages read with `safe_b1.ZipReader` (member count checked first, sizes bounded, CRC checked) and
-XML parts read with `safe_b1.parse_xml` (DTDs and entities refused, nodes and depth bounded). Nothing is executed:
+All are ZIP packages read with lane K's `safe.SafeZip` (member count checked first, sizes bounded, CRC checked) and
+XML parts read with `safe.parse_xml` (DTDs and entities refused, nodes and depth bounded; the element bound also
+follows from the bytes left, see `safe_b1.element_limits`). Nothing is executed:
 macros (`vbaProject.bin`, ODF `Basic/`) are never read, only reported. Embedded media are listed as figure blocks
 naming their member (`ref = {"alt", "caption", "member", "address"}`); their bytes are not decoded here.
 
@@ -26,8 +27,8 @@ from __future__ import annotations
 import posixpath
 import re
 
-from ..safe_b1 import (Budget, Deadline, ZipReader, charge_xml, decode_text, local, parse_xml, xml_node_budget,
-                       zip_member)
+from ..safe import Deadline, SafeZip, parse_xml
+from ..safe_b1 import DecodeBudget, charge_xml, decode_text, element_limits, local
 from ..types import Block, Malformed, Refused
 from . import Adapter
 from .documents import _figure, _finish, html_blocks
@@ -54,23 +55,34 @@ class Package:
 
     def __init__(self, data: bytes, limits):
         self.limits = limits
-        self.deadline = Deadline.of(limits)
-        self.budget = Budget(limits)
-        self.zip = ZipReader(data, max_members=limits.max_members, partial_ok=False)
+        self.deadline = Deadline(limits.max_seconds)
+        self.budget = DecodeBudget(limits)
+        self.zip = SafeZip(data, limits, deadline=self.deadline)
         self.notes: list[str] = []
         self.partial = False
-        names = set(self.zip.names())
+        self.sizes = {e.name: e.size for e in self.zip.entries}
+        names = set(self.sizes)
         if any(n.lower().endswith("vbaproject.bin") for n in names) or any(n.startswith("Basic/") for n in names):
             self.notes.append("the package holds macros: they are never read or run")
 
+    def has(self, name: str | None) -> bool:
+        return name is not None and name in self.sizes
+
     def raw(self, name: str, required: bool = True) -> bytes | None:
-        return zip_member(self.zip, name, self.budget, self.limits, self.deadline, required=required)
+        """One member's bytes through `SafeZip.read` (ratio, declared size, CRC), charged to the shared budget."""
+        if not self.has(name):
+            if required:
+                raise Malformed(f"the package has no member {name}")
+            return None
+        data = self.zip.read(name, max_bytes=self.budget.bytes_left)
+        self.budget.take_bytes(len(data))
+        return data
 
     def xml(self, name: str, required: bool = True):
         data = self.raw(name, required)
         if data is None:
             return None
-        root = parse_xml(data, max_nodes=xml_node_budget(self.budget), deadline=self.deadline)
+        root = parse_xml(data, element_limits(self.limits, self.budget), deadline=self.deadline)
         charge_xml(self.budget, root)
         return root
 
@@ -266,7 +278,7 @@ def read_docx(data, detected, limits):
         elif el.tag == W + "sectPr":
             continue
     title = _core_title(pkg) or state["title"]
-    names = set(pkg.zip.names())
+    names = set(pkg.sizes)
     unread = [n for n in ("word/footnotes.xml", "word/endnotes.xml", "word/comments.xml") if n in names]
     if any(n.startswith("word/header") or n.startswith("word/footer") for n in names):
         unread.append("headers/footers")
@@ -310,13 +322,13 @@ def odf_text(el, skip_notes: bool = True) -> str:
     return "".join(out)
 
 
-def odf_table_rows(table, budget: Budget, notes: list[str]) -> list[list]:
+def odf_table_rows(table, budget: DecodeBudget, notes: list[str]) -> list[list]:
     """Rows of strings of a `table:table`, repeated rows and columns expanded at most MAX_REPEAT times; trailing
     empty rows and columns (the usual way ODF fills a sheet) dropped. Typed values: see `sheets.py`."""
     return odf_table_cells(table, budget, notes, typed=False)
 
 
-def odf_table_cells(table, budget: Budget, notes: list[str], *, typed: bool) -> list[list]:
+def odf_table_cells(table, budget: DecodeBudget, notes: list[str], *, typed: bool) -> list[list]:
     from .tables import TimeValue
     rows: list[list] = []
     capped = False
@@ -560,7 +572,7 @@ def read_pptx(data, detected, limits):
             pkg.notes.append(f"stopped after {limits.max_members} slides")
             pkg.partial = True
             break
-        if part is None or pkg.zip.find(part) is None:
+        if not pkg.has(part):
             pkg.notes.append(f"slide {n} is listed but its part is missing")
             continue
         root = pkg.xml(part)
@@ -573,7 +585,7 @@ def read_pptx(data, detected, limits):
         _section(pkg, blocks, n, title)
         _pptx_shapes(pkg, tree, rels, blocks)
         for target, _ in rels.values():
-            if target and "notesSlide" in target and pkg.zip.find(target) is not None:
+            if target and "notesSlide" in target and pkg.has(target):
                 notes_root = pkg.xml(target)
                 for shape in notes_root.iter(P + "sp"):
                     ph = shape.find(f"{P}nvSpPr/{P}nvPr/{P}ph")
@@ -645,7 +657,7 @@ def read_epub(data, detected, limits):
         for block in item_blocks:
             if block.kind == "figure" and isinstance(block.ref, dict) and block.ref.get("address"):
                 inside = resolve_member(item_folder, block.ref["address"])
-                if inside is not None and pkg.zip.find(inside) is not None:
+                if pkg.has(inside):
                     ref = dict(block.ref, member=inside, address=None)
                     block = Block("figure", block.level, block.text, ref)
             pkg.emit(blocks, block)

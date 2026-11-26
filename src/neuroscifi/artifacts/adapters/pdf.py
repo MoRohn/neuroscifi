@@ -26,7 +26,8 @@ import sys
 import time
 from contextlib import contextmanager
 
-from ..safe_b1 import Budget, Deadline
+from ..safe import Deadline
+from ..safe_b1 import DecodeBudget
 from ..types import Block, Malformed, Refused, TEXT_MAX_CHARS, Unsupported
 from . import Adapter
 from .documents import _finish
@@ -43,7 +44,7 @@ class _Timeout(BaseException):
 
 @contextmanager
 def _deadline_guard(deadline: Deadline):
-    end = deadline.end
+    end = time.monotonic() + deadline.remaining()
 
     def tracer(frame, event, arg):
         if event == "call" and time.monotonic() > end:
@@ -117,7 +118,7 @@ def read_pdf(data: bytes, detected, limits):
                             "installed", needs=("pypdf",))
         error.facts = facts
         raise error
-    deadline, budget = Deadline.of(limits), Budget(limits)
+    deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     blocks: list[Block] = []
     notes = ["PDF: text layer only; no layout, no columns, no tables, no figures, no equations, no scanned pages"]
     partial = False

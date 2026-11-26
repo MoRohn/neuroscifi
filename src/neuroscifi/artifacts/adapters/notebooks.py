@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import re
 
-from ..safe_b1 import Budget, Deadline, decode_text
+from ..safe import Deadline
+from ..safe_b1 import DecodeBudget, decode_text
 from ..types import Block, Malformed
 from . import Adapter
 from .documents import _figure, _finish, markdown_blocks
@@ -28,7 +29,7 @@ def _src(value) -> str:
 
 
 def read_notebook(data, detected, limits):
-    deadline, budget = Deadline.of(limits), Budget(limits)
+    deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     text, notes = decode_text(data)
     nb = load_json(text)
     if not isinstance(nb, dict):

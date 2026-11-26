@@ -1,4 +1,5 @@
-"""ZIP and TAR (plain or inside gzip, bzip2, xz, zstd) to `Bundle` (lane B1); 7z and RAR identified only.
+"""ZIP and TAR to `Bundle` (lane B1); 7z and RAR identified only. A TAR inside gzip, bzip2, xz or zstd reaches the
+TAR adapter through lane K's compressed-stream adapter, which inflates the stream and decodes the inner bytes.
 
 Nothing is ever extracted to disk and no member name is ever joined to a filesystem path. Each member is listed
 with its name (as stored, data only), its size, and a `Detected`; regular members are read into memory and decoded
@@ -22,14 +23,13 @@ from __future__ import annotations
 import io
 import posixpath
 import tarfile
-import time
 from dataclasses import replace
 
-from ..safe_b1 import Budget, Deadline, ZipReader, decompress, unsafe_member_name
+from ..safe import Deadline
+from ..safe_b1 import DecodeBudget, ZipReader, unsafe_member_name
 from ..types import ArtifactError, Decoded, Detected, Malformed, Member, Refused, Unsupported, Bundle
 from . import Adapter, nested
 
-COMPRESSED_TAR = {"tar.gz": "gzip", "tgz": "gzip", "tar.bz2": "bzip2", "tar.xz": "xz", "tar.zst": "zstd"}
 NOTE_MAX = 300
 
 
@@ -56,8 +56,8 @@ class _Walk:
     def __init__(self, limits, container: str):
         self.limits = limits
         self.container = container
-        self.deadline = Deadline.of(limits)
-        self.budget = Budget(limits)
+        self.deadline = Deadline(limits.max_seconds)
+        self.budget = DecodeBudget(limits)
         self.members: list[Member] = []
         self.notes: list[str] = []
         self.partial = False
@@ -79,15 +79,14 @@ class _Walk:
             self.members.append(Member(name, len(data), _listed(name, self.container, "nested deeper than allowed"),
                                        None, "not decoded: containers nest deeper than max_depth"))
             return
-        remaining = max(0.0, self.deadline.end - time.monotonic())
-        inner_limits = replace(nested(self.limits, self.budget.bytes), max_seconds=remaining)
+        inner_limits = nested(self.limits, self.budget.bytes, self.deadline.elapsed())
         try:
             result = decode(data, name=posixpath.basename(name.rstrip("/")) or None, limits=inner_limits)
         except ArtifactError as error:
             self.counts["failed" if not isinstance(error, Refused) else "refused"] += 1
             self.members.append(Member(name, len(data), _listed(name, self.container, "decoding the member failed"),
                                        None, _cut(f"{error.reason}: {error}")))
-            if error.reason == "timeout" and self.deadline.expired():
+            if error.reason == "timeout" and self.deadline.remaining() < 0:
                 raise
             return
         self.budget.take_bytes(min(len(data), self.budget.bytes_left))
@@ -152,8 +151,7 @@ def read_zip(data: bytes, detected: Detected, limits) -> Decoded:
             walk.notes.append("stopped: the decoded-bytes limit was reached")
             break
         try:
-            body = reader.read(entry, out_limit=walk.budget.bytes_left, max_ratio=limits.max_ratio,
-                               deadline=walk.deadline)
+            body = reader.read(entry, limits=limits, out_limit=walk.budget.bytes_left, deadline=walk.deadline)
         except Refused as error:
             if error.reason == "timeout":
                 raise
@@ -170,14 +168,6 @@ def read_zip(data: bytes, detected: Detected, limits) -> Decoded:
 
 def read_tar(data: bytes, detected: Detected, limits) -> Decoded:
     walk = _Walk(limits, "tar")
-    method = COMPRESSED_TAR.get(detected.format)
-    if method is None and detected.container in ("gzip", "bzip2", "xz", "zstd"):
-        method = detected.container
-    if method:
-        data = decompress(data, method, out_limit=min(walk.budget.bytes_left, limits.max_bytes),
-                          max_ratio=limits.max_ratio, deadline=walk.deadline)
-        walk.budget.take_bytes(len(data))
-        walk.notes.append(f"the {method} stream was decompressed in memory ({len(data)} bytes)")
     try:
         tf = tarfile.open(fileobj=io.BytesIO(data), mode="r:")
     except tarfile.TarError:
@@ -265,7 +255,7 @@ class ZipAdapter(Adapter):
 
 class TarAdapter(Adapter):
     name = "b1-tar"
-    formats = ("tar",) + tuple(COMPRESSED_TAR)
+    formats = ("tar",)
     families = ("archive",)
 
     def decode(self, data, detected, limits):
@@ -286,4 +276,4 @@ class UnreadArchiveAdapter(Adapter):
 
 ADAPTERS = (ZipAdapter, TarAdapter, UnreadArchiveAdapter)
 
-__all__ = ["ADAPTERS", "COMPRESSED_TAR", "TarAdapter", "UnreadArchiveAdapter", "ZipAdapter", "read_tar", "read_zip"]
+__all__ = ["ADAPTERS", "TarAdapter", "UnreadArchiveAdapter", "ZipAdapter", "read_tar", "read_zip"]

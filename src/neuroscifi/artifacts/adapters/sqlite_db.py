@@ -22,7 +22,8 @@ import sqlite3
 import struct
 import time
 
-from ..safe_b1 import Budget, Deadline, injection_notes
+from ..safe import Deadline
+from ..safe_b1 import DecodeBudget, injection_notes
 from ..types import Bundle, Decoded, Detected, Malformed, Member, Refused
 from . import Adapter
 from .tables import table_from_rows
@@ -83,7 +84,7 @@ def open_locked(data: bytes, deadline: Deadline) -> sqlite3.Connection:
         for pragma in ("PRAGMA trusted_schema=OFF", "PRAGMA query_only=ON", "PRAGMA cell_size_check=ON",
                        "PRAGMA mmap_size=0"):
             conn.execute(pragma)
-        end = deadline.end
+        end = time.monotonic() + deadline.remaining()
         conn.set_progress_handler(lambda: 1 if time.monotonic() > end else 0, 1000)
         conn.set_authorizer(_authorizer)
         return conn
@@ -94,7 +95,7 @@ def open_locked(data: bytes, deadline: Deadline) -> sqlite3.Connection:
 
 def read_sqlite(data: bytes, detected: Detected, limits) -> Decoded:
     facts = header_facts(data)
-    deadline, budget = Deadline.of(limits), Budget(limits)
+    deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     notes = ["header: " + ", ".join(f"{k}={v}" for k, v in facts.items() if v not in (None, False))]
     if facts["wal_mode"]:
         notes.append("WAL-mode file: changes still in its -wal file (not given) are not here")
@@ -110,7 +111,7 @@ def read_sqlite(data: bytes, detected: Detected, limits) -> Decoded:
         try:
             schema = conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master").fetchall()
         except sqlite3.OperationalError as error:
-            if deadline.expired():
+            if deadline.remaining() < 0:
                 raise Refused("reading the schema took longer than allowed", rule="max_seconds",
                               reason="timeout") from None
             raise Malformed(f"the schema cannot be read ({type(error).__name__})") from None
@@ -126,7 +127,7 @@ def read_sqlite(data: bytes, detected: Detected, limits) -> Decoded:
                 continue
             if kind != "table" or name.startswith("sqlite_"):
                 continue
-            if deadline.expired():
+            if deadline.remaining() < 0:
                 partial = True
                 notes.append("stopped: the time limit was reached before every table was read")
                 break
@@ -167,7 +168,7 @@ def _table_member(conn, name, det, budget, deadline) -> Member:
                 cells.append(v)
             rows.append(cells)
     except sqlite3.OperationalError as error:
-        if deadline.expired():
+        if deadline.remaining() < 0:
             return Member(name, 0, det, None, "stopped: the time limit was reached while reading this table")
         return Member(name, 0, det, None, f"not read ({type(error).__name__}: denied or damaged)")
     except sqlite3.DatabaseError as error:

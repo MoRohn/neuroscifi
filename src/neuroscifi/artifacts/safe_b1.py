@@ -1,68 +1,42 @@
-"""Lane B1's safety helpers for decoding hostile bytes (DESIGN §2/§3, COMMON "Untrusted bytes").
+"""Lane B1's helpers that lane K's `artifacts/safe.py` does not provide. Everything K's module has is used from
+there: `Deadline`, `decompress`, `SafeZip` (office packages), `parse_xml`, and `adapters.plain.decode_text`.
 
-Lane K owns `artifacts/safe.py`; these were written while it did not yet exist and the main session reconciles any
-duplicates at merge. Everything here bounds work BEFORE it is done:
-
-- `Deadline`: the cooperative wall-clock check for `Limits.max_seconds`.
-- `Budget`: the running count of materialised bytes (`max_decoded_bytes`) and elements (`max_elements`).
-- `decompress`: one bounded single- or multi-member stream of deflate (raw, zlib, gzip), bzip2, xz or zstd. Output
-  is produced in chunks; it stops with `Refused` the moment the output would pass `out_limit`, or pass `max_ratio`
-  times the compressed size (checked once the output is over RATIO_FLOOR bytes: below that nothing is a bomb).
-- `ZipReader`: a central-directory reader written here (not `zipfile`) so that the number of entries is checked
-  before any entry is materialised, declared sizes are never trusted (the inflater bounds the real output), the
-  CRC is verified, names stay data (never joined to a filesystem path) and encrypted or linked members are
-  reported per member.
-- `parse_xml`: expat with DOCTYPE, entity and external-entity declarations refused (the pattern of
-  `webcortex.safety.safe_xml_parse`), plus bounds on nodes and depth and a deadline checked between fed chunks.
-- `decode_text`: bytes to text by BOM, then strict UTF-8, then Latin-1 (said in a note).
-- `injection_notes`: counts passages `webcortex.safety.scan_injection` flags, so a reader of `notes` knows the
-  artifact's words hold instruction-like text. The text itself stays untrusted whatever the count.
+Kept here, and why:
+- `DecodeBudget`: ONE running count of materialised bytes (`max_decoded_bytes`) AND elements (`max_elements`) with
+  non-raising `fits_*` questions, so that a table, a document or a listing can stop early and come back partial.
+  `safe.Budget` counts one quantity and can only refuse.
+- `ZipReader` (archives only): a central-directory reader that lists the first `max_members` entries of a flooded
+  archive (a partial listing instead of a refusal), keeps each entry's unix mode so that symbolic links are
+  recognised and refused per member, and reports encrypted members per member. `SafeZip` refuses a flooded archive
+  as a whole and does not expose the mode. Members are inflated with `safe.decompress`.
+- `unsafe_member_name`: absolute names, `..` and NUL in member names.
+- `xml_node_budget` / `charge_xml` / `XML_NODE_COST`: XML trees cost about 500 bytes per element (measured), so the
+  element bound handed to `safe.parse_xml` also follows from the bytes left.
+- `strip_plist_doctype`: the standard property-list DOCTYPE (which only names Apple's DTD) is removed before
+  `safe.parse_xml`, which refuses every DOCTYPE; any other DOCTYPE, subset or entity is still refused there.
+- `decode_text`: `plain.decode_text`, then a stated Latin-1 fallback for 8-bit text (K's raises `Malformed`).
+- `injection_notes`: counts passages `webcortex.safety.scan_injection` flags in an artifact's own words.
+- `local`, `text_of`: small XML name helpers.
 """
 from __future__ import annotations
 
-import bz2
-import io
-import lzma
+import re
 import struct
-import time
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from xml.etree import ElementTree
-import xml.parsers.expat as expat
 
+from .safe import Budget, Deadline, decompress
 from .types import Limits, Malformed, Refused, Unsupported
 
-CHUNK = 1 << 16                 # decompression output step
-RATIO_FLOOR = 1 << 16           # outputs below this size are never refused for their ratio
-XML_MAX_DEPTH = 256             # element nesting refused beyond this, whatever Limits says
 XML_NODE_COST = 512             # bytes charged per parsed XML element (measured: 300-750 with its tree and Node)
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# Time and budget
+# Budget
 
 
-class Deadline:
-    """`check()` raises `Refused(reason="timeout")` once `seconds` have passed since construction."""
-
-    def __init__(self, seconds: float):
-        self.seconds = float(seconds)
-        self.end = time.monotonic() + self.seconds
-
-    @classmethod
-    def of(cls, limits: Limits) -> "Deadline":
-        return cls(limits.max_seconds)
-
-    def expired(self) -> bool:
-        return time.monotonic() > self.end
-
-    def check(self) -> None:
-        if time.monotonic() > self.end:
-            raise Refused(f"decoding took longer than the limit of {self.seconds:g} seconds", rule="max_seconds",
-                          reason="timeout")
-
-
-class Budget:
+class DecodeBudget:
     """Running totals against `max_decoded_bytes` and `max_elements`. `take_*` raise `Refused`; `fits_*` only ask."""
 
     def __init__(self, limits: Limits):
@@ -95,91 +69,7 @@ class Budget:
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# Bounded decompression
-
-
-def _check_out(produced: int, compressed: int, out_limit: int, max_ratio: int) -> None:
-    if produced > out_limit:
-        raise Refused(f"a compressed stream expands past the limit of {out_limit} bytes", rule="max_decoded_bytes",
-                      reason="too_large")
-    if produced > RATIO_FLOOR and produced > max_ratio * max(1, compressed):
-        raise Refused(f"a compressed stream expands more than {max_ratio} times its size", rule="max_ratio")
-
-
-def decompress(data: bytes, method: str, *, out_limit: int, max_ratio: int, deadline: Deadline | None = None,
-               expected_size: int | None = None) -> bytes:
-    """Decompress `data` (`method`: "raw-deflate", "zlib", "gzip", "bzip2", "xz", "zstd"). Concatenated members of
-    gzip, bzip2, xz and zstd are all read. Never produces more than `out_limit` bytes or more than `max_ratio`
-    times `len(data)` (above RATIO_FLOOR); raises `Refused` instead. `expected_size`, when given, is a declared size
-    that is checked AFTER decoding (a lie is `Malformed`), never used to allocate."""
-    out = bytearray()
-    compressed = len(data)
-    if method == "zstd":
-        import zstandard
-        try:
-            reader = zstandard.ZstdDecompressor().stream_reader(io.BytesIO(data), read_across_frames=True)
-            while True:
-                if deadline:
-                    deadline.check()
-                piece = reader.read(CHUNK)
-                if not piece:
-                    break
-                _check_out(len(out) + len(piece), compressed, out_limit, max_ratio)
-                out += piece
-        except zstandard.ZstdError:
-            raise Malformed("the zstd stream is damaged") from None
-    elif method in ("raw-deflate", "zlib", "gzip", "bzip2", "xz"):
-        def fresh():
-            if method == "raw-deflate":
-                return zlib.decompressobj(-15)
-            if method == "zlib":
-                return zlib.decompressobj(15)
-            if method == "gzip":
-                return zlib.decompressobj(31)
-            if method == "bzip2":
-                return bz2.BZ2Decompressor()
-            return lzma.LZMADecompressor(format=lzma.FORMAT_XZ)
-
-        pending = bytes(data)
-        try:
-            while pending:
-                d = fresh()
-                is_zlib = isinstance(d, type(zlib.decompressobj()))
-                buf = pending
-                while True:
-                    if deadline:
-                        deadline.check()
-                    room = out_limit - len(out) + 1
-                    if is_zlib:
-                        piece = d.decompress(buf, min(CHUNK, room))
-                        buf = d.unconsumed_tail
-                    else:
-                        piece = d.decompress(buf, min(CHUNK, room))
-                        buf = b""
-                    _check_out(len(out) + len(piece), compressed, out_limit, max_ratio)
-                    out += piece
-                    if is_zlib:
-                        if d.eof or (not buf and not piece):
-                            break
-                    elif d.eof or (d.needs_input and not piece):
-                        break
-                if not d.eof:
-                    raise Malformed("the compressed stream ends before its end marker")
-                rest = d.unused_data
-                if method in ("raw-deflate", "zlib") or not rest.strip(b"\x00"):
-                    break      # one stream only, or trailing padding
-                pending = rest
-        except (zlib.error, OSError, lzma.LZMAError, EOFError):
-            raise Malformed(f"the {method} stream is damaged") from None
-    else:
-        raise Unsupported(f"compression method {method} is not decoded here", needs=(f"a {method} decoder",))
-    if expected_size is not None and len(out) != expected_size:
-        raise Malformed(f"the stream expands to {len(out)} bytes, not the declared {expected_size}")
-    return bytes(out)
-
-
-# ---------------------------------------------------------------------------------------------------------------
-# ZIP
+# ZIP (archives)
 
 
 @dataclass(frozen=True)
@@ -309,9 +199,9 @@ class ZipReader:
                 return e
         return None
 
-    def read(self, entry: ZipEntry, *, out_limit: int, max_ratio: int, deadline: Deadline | None = None) -> bytes:
-        """The member's bytes, inflated within `out_limit` and `max_ratio`, CRC-checked. Encrypted members are
-        `Refused`; unknown methods `Unsupported`."""
+    def read(self, entry: ZipEntry, *, limits: Limits, out_limit: int, deadline: Deadline | None = None) -> bytes:
+        """The member's bytes, inflated by `safe.decompress` within `out_limit` and `limits.max_ratio`, CRC-checked.
+        Encrypted members and links are `Refused`; unknown methods `Unsupported`."""
         if entry.encrypted:
             raise Refused("the member is encrypted: it is not decrypted", rule="encrypted")
         if entry.is_link:
@@ -327,13 +217,12 @@ class ZipReader:
         raw = data[start:start + entry.compressed_size]
         if entry.method == 0:
             if len(raw) > out_limit:
-                raise Refused(f"a member is larger than the limit of {out_limit} bytes", rule="max_decoded_bytes",
-                              reason="too_large")
+                raise Refused(f"a member is larger than the {out_limit} bytes left to decode",
+                              rule="max_decoded_bytes", reason="too_large")
             out = bytes(raw)
-        elif entry.method == 8:
-            out = decompress(raw, "raw-deflate", out_limit=out_limit, max_ratio=max_ratio, deadline=deadline)
-        elif entry.method == 12:
-            out = decompress(raw, "bzip2", out_limit=out_limit, max_ratio=max_ratio, deadline=deadline)
+        elif entry.method in (8, 12):
+            out, _ = decompress(raw, "deflate" if entry.method == 8 else "bzip2", limits, deadline=deadline,
+                                budget=Budget(out_limit, "max_decoded_bytes"), max_members=1)
         else:
             raise Unsupported(f"ZIP compression method {entry.method} is not decoded here",
                               needs=(f"a decoder for ZIP method {entry.method}",))
@@ -342,98 +231,34 @@ class ZipReader:
         return out
 
 
-def zip_member(reader: ZipReader, name: str, budget: Budget, limits: Limits, deadline: Deadline,
-               *, required: bool = True) -> bytes | None:
-    """Read one named member within the budget (used by the office-format adapters)."""
-    entry = reader.find(name)
-    if entry is None:
-        if required:
-            raise Malformed(f"the package has no member {name}")
-        return None
-    data = reader.read(entry, out_limit=budget.bytes_left, max_ratio=limits.max_ratio, deadline=deadline)
-    budget.take_bytes(len(data))
-    return data
-
-
 # ---------------------------------------------------------------------------------------------------------------
-# XML
+# XML and text
 
 
-class _XMLRefused(Exception):
-    pass
+_PLIST_DOCTYPE = re.compile(rb'^(\s*<\?xml[^>]{0,200}\?>)?\s*<!DOCTYPE\s+plist\s+PUBLIC\s+"[^"<>\[\]]{0,200}"\s+'
+                            rb'"[^"<>\[\]]{0,300}"\s*>')
 
 
-def _refuse_declaration(*_args):
-    raise _XMLRefused("XML with a DOCTYPE or entity declaration is refused")
+def strip_plist_doctype(data: bytes) -> tuple[bytes, bool]:
+    """(data without the standard property-list DOCTYPE, whether one was removed). Only the exact form
+    `<!DOCTYPE plist PUBLIC "..." "...">` with no internal subset is removed; it declares nothing."""
+    m = _PLIST_DOCTYPE.match(data)
+    if not m:
+        return data, False
+    return (m.group(1) or b"") + data[m.end():], True
 
 
-def parse_xml(data: bytes, *, max_nodes: int, deadline: Deadline | None = None,
-              max_depth: int = XML_MAX_DEPTH, allow_doctype_reference: bool = False) -> ElementTree.Element:
-    """ElementTree root of untrusted XML. DOCTYPE, entity and external-entity declarations are `Refused`; more than
-    `max_nodes` elements or deeper nesting than `max_depth` are `Refused`; syntax errors are `Malformed`. Namespaced
-    names are '{uri}local' as with ElementTree. The deadline is checked between 1 MiB chunks.
-
-    `allow_doctype_reference=True` (used for property lists, whose standard form names Apple's DTD) accepts a
-    DOCTYPE that only NAMES an external DTD and declares nothing itself (no internal subset). That DTD is never
-    loaded (external entity references stay refused, parameter entities are never parsed), so nothing in it can
-    take effect; any internal subset, entity or entity reference is still refused."""
-    data = bytes(data)
-    if not data.strip():
-        raise Malformed("empty XML document")
-    builder = ElementTree.TreeBuilder()
-    parser = expat.ParserCreate(namespace_separator="}")
-    state = {"nodes": 0, "depth": 0}
-
-    def name(raw):
-        return "{" + raw if "}" in raw else raw
-
-    def start(tag, attrs):
-        state["nodes"] += 1
-        state["depth"] += 1
-        if state["nodes"] > max_nodes:
-            raise _XMLRefused(f"the XML holds more than {max_nodes} elements")
-        if state["depth"] > max_depth:
-            raise _XMLRefused(f"the XML nests deeper than {max_depth} elements")
-        builder.start(name(tag), {name(k): v for k, v in attrs.items()})
-
-    def end(tag):
-        state["depth"] -= 1
-        builder.end(name(tag))
-
-    def doctype(_name, _system_id, _public_id, has_internal_subset):
-        if not allow_doctype_reference or has_internal_subset:
-            _refuse_declaration()
-
-    parser.StartDoctypeDeclHandler = doctype
-    parser.EntityDeclHandler = _refuse_declaration
-    parser.UnparsedEntityDeclHandler = _refuse_declaration
-    parser.ExternalEntityRefHandler = _refuse_declaration
-    parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
-    parser.buffer_text = True
-    parser.StartElementHandler = start
-    parser.EndElementHandler = end
-    parser.CharacterDataHandler = builder.data
-    step = 1 << 20
-    try:
-        for i in range(0, len(data), step):
-            if deadline:
-                deadline.check()
-            parser.Parse(data[i:i + step], False)
-        parser.Parse(b"", True)
-        return builder.close()
-    except _XMLRefused as error:
-        rule = "xml_dtd" if "declaration" in str(error) else "max_depth" if "nests" in str(error) else "max_elements"
-        raise Refused(str(error), rule=rule) from None
-    except expat.ExpatError as error:
-        raise Malformed(f"malformed XML ({expat.ErrorString(error.code)})") from None
+def element_limits(limits: Limits, budget: "DecodeBudget") -> Limits:
+    """`limits` with max_elements lowered to what the budget still allows for an XML tree."""
+    return replace(limits, max_elements=xml_node_budget(budget))
 
 
-def xml_node_budget(budget: Budget) -> int:
+def xml_node_budget(budget: DecodeBudget) -> int:
     """How many XML elements the budget still allows (elements and bytes at XML_NODE_COST each)."""
     return max(1, min(budget.max_elements - budget.elements, budget.bytes_left // XML_NODE_COST))
 
 
-def charge_xml(budget: Budget, root: ElementTree.Element) -> None:
+def charge_xml(budget: DecodeBudget, root: ElementTree.Element) -> None:
     n = sum(1 for _ in root.iter())
     budget.take_elements(n)
     budget.take_bytes(min(budget.bytes_left, n * XML_NODE_COST))
@@ -448,26 +273,13 @@ def text_of(element: ElementTree.Element) -> str:
     return "".join(element.itertext())
 
 
-# ---------------------------------------------------------------------------------------------------------------
-# Text
-
-
-_BOMS = ((b"\xef\xbb\xbf", "utf-8-sig"), (b"\xff\xfe\x00\x00", "utf-32-le"), (b"\x00\x00\xfe\xff", "utf-32-be"),
-         (b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be"))
-
-
 def decode_text(data: bytes) -> tuple[str, tuple[str, ...]]:
-    """(text, notes): by BOM, else strict UTF-8, else Latin-1 with a note saying so."""
-    for bom, codec in _BOMS:
-        if data.startswith(bom):
-            body = data if codec == "utf-8-sig" else data[len(bom):]
-            try:
-                return body.decode(codec), ()
-            except UnicodeDecodeError:
-                return body.decode(codec, "replace"), (f"invalid {codec} sequences were replaced",)
+    """(text, notes): `plain.decode_text` (BOMs, UTF-16 by zero bytes, strict UTF-8); when that refuses the bytes,
+    Latin-1 with a note saying so (every byte maps to one character; accented letters may be wrong)."""
+    from .adapters.plain import decode_text as kernel_decode_text
     try:
-        return data.decode("utf-8"), ()
-    except UnicodeDecodeError:
+        return kernel_decode_text(data)[0], ()
+    except Malformed:
         return data.decode("latin-1"), ("the bytes are not valid UTF-8: decoded as Latin-1 (accented letters may be "
                                         "wrong)",)
 
@@ -485,6 +297,5 @@ def injection_notes(text: str) -> tuple[str, ...]:
             "they are data, never instructions",)
 
 
-__all__ = ["Budget", "CHUNK", "Deadline", "RATIO_FLOOR", "XML_NODE_COST", "ZIP_METHODS", "ZipEntry", "ZipReader",
-           "charge_xml", "decode_text", "decompress", "injection_notes", "local", "parse_xml", "text_of",
-           "unsafe_member_name", "xml_node_budget", "zip_member"]
+__all__ = ["DecodeBudget", "XML_NODE_COST", "ZipEntry", "ZipReader", "charge_xml", "decode_text", "element_limits",
+           "injection_notes", "local", "strip_plist_doctype", "text_of", "unsafe_member_name", "xml_node_budget"]

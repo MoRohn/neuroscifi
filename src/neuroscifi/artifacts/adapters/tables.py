@@ -36,7 +36,8 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from ..safe_b1 import Budget, Deadline, decode_text, injection_notes
+from ..safe import Deadline
+from ..safe_b1 import DecodeBudget, decode_text, injection_notes
 from ..types import Column, Decoded, Detected, Limits, Malformed, Refused, Table
 from . import Adapter
 
@@ -366,7 +367,7 @@ def _reject_controls(text: str) -> None:
 
 
 def read_delimited(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline, budget = Deadline.of(limits), Budget(limits)
+    deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     text, notes = decode_text(data)
     notes = list(notes)
     _reject_controls(text)
@@ -433,7 +434,7 @@ def _flatten_value(value, nested: set, key: str):
     return value
 
 
-def table_from_records(records: list, *, title: str | None = None, budget: Budget | None = None,
+def table_from_records(records: list, *, title: str | None = None, budget: DecodeBudget | None = None,
                        deadline: Deadline | None = None) -> tuple[Table, list[str], bool]:
     """(Table, notes, partial) from a list of JSON objects. Keys in order of first appearance are the columns;
     nested objects and arrays are kept as compact JSON text in a text column (noted); non-object items are skipped
@@ -477,7 +478,7 @@ def table_from_records(records: list, *, title: str | None = None, budget: Budge
 
 
 def read_ndjson(data: bytes, detected: Detected, limits: Limits) -> Decoded:
-    deadline, budget = Deadline.of(limits), Budget(limits)
+    deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     text, notes = decode_text(data)
     notes = list(notes)
     records, bad = [], 0

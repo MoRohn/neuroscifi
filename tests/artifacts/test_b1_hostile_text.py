@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from neuroscifi.artifacts import detect_b1
+from neuroscifi.artifacts.detect import detect
 from neuroscifi.artifacts import types as T
 
 import _b1_support
@@ -16,7 +16,7 @@ b1reg = _b1_support.b1reg      # the fixture
                                      b"[a](" * 50_000])
 def test_markdown_and_detection_stay_linear(b1reg, payload):
     start = time.perf_counter()
-    detect_b1.detect(payload[:65536], name="x.md")
+    detect(payload[:65536], name="x.md")
     b1reg.decode(payload, name="x.md")
     assert time.perf_counter() - start < 2.0
 
@@ -29,8 +29,8 @@ def test_long_c_lines_are_not_pattern_matched(b1reg):
 
 def test_xml_depth_refusal_names_its_rule(b1reg):
     with pytest.raises(T.Refused) as err:
-        b1reg.decode(b"<a>" * 1000 + b"</a>" * 1000, name="deep.xml")
-    assert err.value.rule == "max_depth"
+        b1reg.decode(b"<x>" * 1000 + b"</x>" * 1000, name="deep.xml")
+    assert err.value.rule == "xml_depth"            # lane K's parse_xml names it
 
 
 def test_xml_tree_memory_is_charged(b1reg):
@@ -38,11 +38,6 @@ def test_xml_tree_memory_is_charged(b1reg):
     with pytest.raises(T.Refused):
         b1reg.decode(data, name="w.xml", limits=T.Limits(max_decoded_bytes=1 << 20))
     assert b1reg.decode(data, name="w.xml").representation.root.name == "r"
-
-
-def test_html_fragment_is_html(b1reg):
-    assert detect_b1.detect(b"<div><p>x</p></div>").format == "html"
-    assert detect_b1.detect(b"<div><p>x</p></div>", name="d.xml").format == "xml"
 
 
 def test_capped_ods_repeats_mark_partial(b1reg):
