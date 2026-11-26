@@ -125,9 +125,9 @@ def read_pdf(data: bytes, detected, limits):
     title = None
     level = logging.getLogger("pypdf").level
     logging.getLogger("pypdf").setLevel(logging.ERROR)     # pypdf's warnings could quote the file's content
+    from pypdf import PdfReader                             # imported before the guard: imports are not traced
     try:
         with _deadline_guard(deadline):
-            from pypdf import PdfReader
             try:
                 reader = PdfReader(io.BytesIO(data), strict=False)
                 if reader.is_encrypted:
