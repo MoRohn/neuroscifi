@@ -29,6 +29,10 @@ EXTENSIONS: dict[str, str] = {".png": "png", ".gz": "gzip", ".zst": "zstd", ".bz
                               ".pkl": "pickle", ".pickle": "pickle", ".json": "json", ".txt": "text"}
 DECLARED: dict[str, str] = {media: fmt for fmt, (_, media) in FORMATS.items()}
 
+# Further detectors added by adapter lanes (B1/B2): `fn(head, size) -> (format, basis, reasons, container) | None`,
+# tried in order before the signature table; the first answer wins. A detector that raises is skipped.
+DETECTORS: list = []
+
 # (offset, magic, format, what was seen)
 SIGNATURES: list[tuple[int, bytes, str, str]] = [
     (0, b"\x89PNG\r\n\x1a\n", "png", "the first 8 bytes are the PNG signature"),
@@ -91,8 +95,17 @@ def detect(head: bytes, *, name: str | None = None, declared: str | None = None,
     except Exception:
         return Detected("unknown", "unknown", "application/octet-stream", "none", None, ("input is not bytes",))
     hints = _hints(name, declared)
-    found = _by_signature(head, size)
-    basis = "signature"
+    found, basis = None, "signature"
+    for detector in DETECTORS:
+        try:
+            hit = detector(head, size)
+        except Exception:
+            hit = None
+        if hit:
+            found, basis = (hit[0], list(hit[2]), hit[3]), hit[1]
+            break
+    if found is None:
+        found = _by_signature(head, size)
     if found is None:
         structure = _by_structure(head)
         found = (structure[0], structure[1], None) if structure else None
@@ -110,4 +123,4 @@ def detect(head: bytes, *, name: str | None = None, declared: str | None = None,
                     ("no signature or structure was recognised",))
 
 
-__all__ = ["DECLARED", "EXTENSIONS", "FORMATS", "HEAD_MAX", "SIGNATURES", "detect"]
+__all__ = ["DECLARED", "DETECTORS", "EXTENSIONS", "FORMATS", "HEAD_MAX", "SIGNATURES", "detect"]
