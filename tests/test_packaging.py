@@ -78,3 +78,14 @@ def test_nsf_version(capsys):
         main(["--version"])
     assert e.value.code == 0
     assert capsys.readouterr().out.strip() == f"nsf {neuroscifi.__version__}"
+
+
+def test_explorable_runtime_is_package_data():
+    """The explorable runtime and its stylesheet (OMNIMIND lane G2) ship with the package: the generator inlines
+    them from the installed package, and a host page will serve them as first-party files."""
+    from importlib import resources
+
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["setuptools"]["package-data"]
+    for name in ("explorable.mjs", "explorable.css"):
+        assert any(fnmatch.fnmatch("web/" + name, pat) for pat in data["neuroscifi.artifacts"]), name
+        assert (resources.files("neuroscifi.artifacts") / "web" / name).is_file(), name
