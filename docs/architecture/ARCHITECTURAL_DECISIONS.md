@@ -4081,3 +4081,176 @@ counted as a pass: the family scores every staged case as a pass or failure of a
   rollback test). Claims read while it was set keep their mark, so a grouping made only of them (an older stored
   cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
   it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).
+
+# ADR-067 The individual's own text recognised by what it emitted: own-text provenance, built and OFF
+
+Status: built, **OFF** (`own_text_provenance`, default `false`). Wave 4 lane E (`gen4-e`). No schema change (19); one
+new web setting. Measured on the source-independence family (Wave 4 step 0) and on Wave 3's learning-cycle worlds.
+Evidence: `docs/quality/evidence/genesis_wave4_e.json` (summaries). Expectations committed first
+(`tests/acceptance/test_own_text_provenance.py`, `6518067`), the verdict rule before the first held-out run
+(`sources.own_verdict`, `34494cc`).
+
+## Context
+
+Wave 3's `echo_recognition` (ADR-061, off) reads phrasing: a page crediting "an assistant", or repeating a stored
+answer's value or wording. Its fall in own versions rested on a phrase list chosen after held-out runs (review S-2);
+it sampled 200 rows with no subject filter (M2), let a forgotten source block a subject (M3), held the write lock
+(M4), read "the AI Act" as model text (M5); its fixes left one page able to use up its time budget (N4) and a forget
+that scanned answers inside its transaction (N2, N9). Step 0's census: its model-credit pattern matches 0 of 28 pages
+crediting a named model. Lane E replaces wording with a record of what the individual itself said and when.
+
+## Decision
+
+**What is recorded, at emission.** When a model-written answer is stored with its task (the orchestrator's final
+write; the console, Pocket, voice and MCP all show that record; the benchmark harnesses store theirs through the same
+hook), every sentence of it (its free text and its answer sentences; a template answer quotes sources and is not
+read) is read for pairs (subject name, value): the subject names as consolidation's subject check reads them
+(`consolidate._name_set`), every value normalised with the existing normalisers (`text.value_kind`; a release number by
+its numeric parts with trailing zero parts dropped, as PEP 440 compares release segments: "2.4" = "v2.4.0"; a date by
+its day; money, percentages and quantities by group and base-unit value; a year or a whole number below 100 is not
+read). For each pair (at most 16 per answer) it records the time and whether a claim the individual had read at or
+before then states that value about that subject: sourced, not sourced, or not known (the check's row bound or time
+budget reached; counted as sourced). The check is one bounded pass made before the write transaction (this task's
+claims first, then the earlier claims naming a subject still unsourced, narrowed by a substring every stored form of
+the value holds). Stored as salted digests (the instance id is the salt) in rows of `web_strategies` (primary-key
+reads and writes only; no reader of that table lists its names; Pocket, the MCP surface and the self-description never
+read it): `emitted:<digest of name and value>` holds the earliest 3 emissions `[time, flag, number of distinct sources
+found, task digest]`; `emitted-task:<digest of task id>` lists the fingerprints that answer holds. Never the text,
+never a source's name or URL, never anything of the imagined store. At most 200,000 fingerprint rows (about 139 bytes
+each: some 28 MB); a full store records nothing more and says so in the log (counts only).
+
+**The rule** (consolidation, setting on; `emitted.Echoes`, built before the write transaction): a page's claim (not a
+structured or primary record) is an echo when, for one of its subject names and one of its values, the earliest
+recorded emission of that pair was not sourced, was made before the claim was read, and the page states no
+publication date before it. An echo is never evidence for its value: it leaves the supporting side of its cluster
+(`consolidate._without_echoes`, Wave 3's removal), and the supersession rule never counts it. A value emitted with
+source support is not an echo: its sources carry it. An echo that disagrees with a HELD value stays in its cluster
+(`consolidate._against_held`): the disagreement is asked exactly as without the setting, and nothing is admitted from
+it. The checks are point lookups by digest (at most 512 per consolidation, 32 per claim, shared out claim by claim); a
+claim past the cap is not an echo and is named in `echo_skipped` and the log (claim ids only).
+
+**Forget and restore.** Forgetting a task (research, the refresh tasks of a forgotten item, the research a forgotten
+voice session created, and every checkpoint replay of these: `governance._forget_research_core`) removes its
+emissions; forgetting a knowledge item removes the fingerprints of its subject names and values (also on replay). A
+forgotten source changes nothing: an emission it supported stays sourced (M3), and nothing of the source was kept.
+Everything inside the forget's transaction is a primary-key lookup.
+
+**The hook for lane S** (ADR-066): `emitted.Echoes(db, claims).of(claim)` is `"emitted"` for a claim that is an echo
+of the individual's own unsourced output (it counts for nothing), else `None`; `emitted.Either(a, b)` reads two checks
+as one. Built before the write transaction.
+
+## What it cannot see
+
+- A value the individual never emitted but only imagined (consolidation never reads the imagined store, ADR-049).
+- An echo of a value the individual emitted WITH a source at the time (by design: the source carries it). In the
+  worlds this is an answer that was right when given and is echoed after the value changed: development 11 of 29 echo
+  pages read (0 discarded), held-out 10 of 41 (0 discarded); it is the whole of the remaining own answers admitted
+  (development 2 of 2, held-out 1 of 1).
+- A true value the individual happened to state first, without a source, and outlets then reported independently
+  (the false rejection, below): such pages are discarded too, unless they state a publication date before the answer.
+- A page that states a publication date before the answer (the date is the page's own claim; a backdated echo counts).
+- Another system's output; anything emitted while the setting was off; a subject name the reader does not find (a
+  lower-case package name); a year or a whole number below 100; an emission past the caps.
+- Model text that is not a stored research answer: `nsf ask`'s ungrounded reply and free voice conversation are not
+  recorded (no forgettable record holds them).
+- In the product the guard makes every model sentence cite claims that hold its numbers, so most real emissions are
+  sourced: the rule acts mainly where an answer states a value no read claim stated. The worlds plant such answers;
+  their real rate is not measured.
+
+## Measurement
+
+Source-independence family, `scripts/bench_sources.py`, against `shipped`, Wave 3's `echo_recognition` and the
+references; summed over worlds and seeds (pooled, not a claim; per world and seed in the evidence).
+
+| | development (2 worlds × 3 seeds, 360 looks) | held-out (3 worlds × 4 seeds, 864 looks) |
+|---|---|---|
+| own answers admitted: shipped / echo_recognition / own_text_provenance | 4 / 0 / 2 | 4 / 1 / 1 |
+| wrongly admitted (below the bar) | 64 / 58 / 60 | 127 / 123 / 123 |
+| suppressed of eligible | 39 / 39 / 39 of 233 | 142 / 145 / 144 of 612 |
+| echo pages discarded (of those read: unsourced / sourced answers) | — / 14 of 18, 4 of 11 / 18 of 18, 0 of 11 | — / 28 of 31, 1 of 10 / 30 of 31, 0 of 10 |
+| honest pages discarded (of honest pages read) | 0 / 7 / 7 of 1,091 | 0 / 13 / 9 of 2,670 |
+| grouping precision / recall | unchanged (the rule groups nothing) | unchanged |
+| references: oracle / todays_rule / every_page, own admitted | 0 / 9 / 11 | 0 / 13 / 14 |
+
+Per shape, both directions (held-out; shipped / echo_recognition / own_text_provenance): echo looks (21): own admitted
+4 / 1 / 1, honest pages discarded 0 / 0 / 1; independent (183 looks): suppressed 16 / 17 / 17, honest discarded
+0 / 3 / 3; primary_cited (103): suppressed 4 / 5 / 5, honest discarded 0 / 2 / 2; extra_origin (58): wrongly admitted
+26 / 25 / 25, honest discarded 0 / 3 / 3; verified_credit (55): suppressed 4 / 5 / 4, honest discarded 0 / 3 / 0;
+correction (32): honest discarded 0 / 2 / 0; every other shape unchanged in both directions. Development: echo (15
+looks) own admitted 4 / 0 / 2, honest discarded 0 / 2 / 2; syndicated_credit and syndicated_nocredit honest discarded
+0 / 2 / 2 and 0 / 3 / 3 (derived copies of one story, wrongly admitted 31→30, 13→12); nothing else moved.
+
+`correct` (mean over seeds ± sd): development mixed 0.704 ± 0.064 → 0.704, copies 0.579 ± 0.050 → 0.568 (−0.011);
+held-out mixed 0.601 ± 0.064 → 0.598, copies 0.627 ± 0.064 → 0.629, origins 0.656 ± 0.073 → 0.656; every change inside
+the spread; oracle 0.762 / 0.633 and 0.713 / 0.718 / 0.709.
+
+**The false rejection, measured.** Every honest page the rule discarded on held-out (9, on 4 looks) and on development
+(7) repeats a value the individual had emitted without a source while it was WRONG, which later became true (the
+project released the version the answer had named) and was then reported by outlets. On held-out it cost 2 eligible
+looks (suppressed 142 → 144). What protects a true value here: a page dated before the answer, the project's release
+page (a primary record is never an echo), and an answer that was sourced. Nothing else: the rule cannot tell such
+outlets from echoes, and a value stated wrongly first can be learned afterwards only from those.
+
+**Dev → held-out drop.** Unsourced echo pages discarded 100 % → 97 % (one paraphrase on held-out was not discarded);
+the share of own answers removed 50 % → 75 %; honest pages discarded per honest page read 0.64 % → 0.34 %; suppressed +0 → +2.
+
+**The verdict** (`sources.own_verdict`, committed before the first held-out run): A1 own answers lower and no world
+higher; A2 no world admits more below the bar; S1 suppression no more than half a seed per world above shipped; C1 no
+world's `correct` lower by more than its sd; G grouping untouched. Development: **effective** (all hold). Held-out:
+**effective** (all hold; suppressed +1, +1, 0 against a tolerance of 2 per world). Under the same rule Wave 3's
+`echo_recognition` is also "effective" on both splits, with more honest pages discarded on held-out (13 against 9)
+and the phrase list (M5's narrowed pattern) still in it.
+
+**Wave 3's learning-cycle worlds** (`scripts/bench_wave3_s.py`, configuration `fix:own` against `baseline`; sums over
+seeds). In lane S's worlds the individual's own values are planted only in its imagined store (review S-2), which this
+rule may not read, and each look's stored answer is the statement of a source it read (sourced): the rule sees an own
+value only where such an answer stated it without a source, so these worlds barely exercise it. Own-only versions
+admitted: lane S development 2 / 3 → 1 / 3 (Wave 3's `fix:echo` 0 / 2); lane S held-out (seen three times in Wave 3:
+development evidence) 5 / 2 / 13 → 5 / 2 / 11 (`fix:echo` 1 / 0 / 2); the variant worlds' echo world on held-out:
+no-credit 12 → 11 (`fix:echo` 11), reformatted numbers 1 → 0 (0), paraphrased 0 → 0. Lane F's worlds: identical in every
+field (not exercised: no own value there). Retention: no subject lost in any world; regressed subjects equal or fewer
+(s-echo 2 → 1). `correct` moved inside the spread everywhere (largest: s-echo +0.010 per seed). With the setting off
+every configuration both trees have is identical on all ten family-split pairs (per seed, wall seconds and file size
+left out).
+
+**Default path.** With the setting off nothing is recorded or read: on development and held-out every configuration
+the base tree (`42fd136`) has, the references and the world digests are identical field by field, per seed and per
+look; the offline research digest at the defaults and with every setting off is `68731d7235cb…` (portable
+`d87dbb4fb77f…`); the adversarial family passes 55 of 55 with the setting off and with it forced on in every case
+(no case changed).
+
+**Cost** (10,000 tasks, 200,000 claims, 160,000 fingerprint rows, aarch64): the emission's read, before the write
+transaction, 0.39 s median for 16 pairs (one pass; 0.80 s with half the pairs unsettled before the one-pass fix);
+its write inside the transaction 0.09 ms; the consolidation's check of 64 claims, before the transaction, 0.9 ms;
+removing a task's emissions inside a forget, 0.07 ms. Nothing scans inside a write transaction.
+
+## Why OFF
+
+The pre-registered verdict is "effective" on both splits, but the gain is small and the counts are few (4 own answers
+admitted at shipped on each split; 1 to 2 remain), and it costs a measured false rejection (true values stated wrongly
+first by the individual, then released and reported: 2 suppressed looks on held-out). Changing what counts as a source
+is the owner's decision (Wave 3's lesson): the setting ships off; `nsf web config --db DB --set own_text_provenance=true`
+turns it on for answers stored from then on.
+
+## Alternatives rejected
+
+- A phrase list or any wording convention (Wave 3's rule; S-2, M5): what the individual said is known; how a page
+  credits it is not.
+- Storing the answer's text or shingles of it: the brief forbids it, and paraphrased echoes defeat wording anyway.
+- Counting echoes of a SOURCED emission as one source with its sources: on these worlds they are the remaining own
+  answers admitted, but the same rule would merge honest outlets reporting any value the individual had answered from
+  one source after it answered (a grouping change; lane S's). Not built.
+- Retiring a fingerprint once the value is confirmed independently: an echo is no evidence whether or not its value is
+  true; the confirming sources count on their own.
+- A new table (schema 20): the primary key of `web_strategies` gives the indexed lookups without a migration.
+- Group ids of the supporting sources: SQLite reuses row ids after a forget and a source's name would be kept; a count
+  and a flag are enough for the rule.
+
+## Consequences
+
+- At the shipped defaults nothing changed (above). With the setting on, answers stored from then on are fingerprinted;
+  those stored before are not.
+- Backing out: set it false; what was recorded stays unread, and is removed by the forgets above. Reverting the lane's
+  merge removes the code; the rows are inert names in `web_strategies`.
+- Open: the echo of a sourced answer; the false rejection of a value first stated wrongly; backdated pages; ungrounded
+  model replies outside research tasks; the real rate of unsourced answers in the product.

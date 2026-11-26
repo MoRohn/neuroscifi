@@ -744,3 +744,18 @@ support was below the bar (26 of them false now), 2 of them own answers, and doe
 had enough support (66 of those looks opened a contradiction question); it joins about a fifth of truly same-source
 page pairs. Its `correct` is 0.08 and 0.17 below the oracle's. Wrongly admitted content is of the held-out order (127
 over three worlds there); suppression is higher (29 % and 45 % of eligible looks, against 23 % on held-out).
+
+### Wave 4 lane E: own-text provenance (ADR-067)
+
+Added to the harness before the rule's first run: the configuration `own_text_provenance` (and `fix:own` in
+`cycles_s.py`), the counters `discarded_echo_pages` and `discarded_honest_pages` (read pages whose claims a rule set
+aside as echoes of the individual's own output, by what the derivation graph says they are), and the verdict rule
+`sources.own_verdict`, committed before the first held-out run (`34494cc`): A1 own answers admitted lower in total and
+in no world higher; A2 no world admits more below the bar; S1 no world's `suppressed` above `shipped`'s by more than
+half its number of seeds; C1 no world's `mean_correct` lower by more than `shipped`'s sd; G grouping untouched.
+Results (development, then held-out; pooled over worlds and seeds, not a claim): own answers admitted 4 → 2 and 4 → 1;
+honest pages discarded 7 of 1,091 and 9 of 2,670 read (each one repeats a value the individual had emitted, wrong and
+unsourced, that later became true); suppressed 39 → 39 and 142 → 144; verdict "effective" on both. Evidence
+`docs/quality/evidence/genesis_wave4_e.json` (234 kB, summaries). **For the single withheld look**: configurations
+`shipped` and `own_text_provenance` (and `echo_recognition` beside them for comparison); reported per world from
+`own_verdict`'s fields and the two new counters.
