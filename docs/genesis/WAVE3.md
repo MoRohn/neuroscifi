@@ -279,7 +279,10 @@ after, lane P's report). `tests/e2e/test_focus_kept.py`: 3 tests, which fail on 
 Lanes R and V measured without lane S's rules, and lane S without lane V's budget fix and lane R's order. The
 reconciliation re-ran each lane's command on the merged tree `f0a1f09`, where lane S's rules were still on, and wrote
 the results to new files; the lanes' own files are unchanged. **These figures are before the fix lane**: the fix
-lane re-measured after the default change (ADR-061 "Fix lane", ADR-060, ADR-062; `genesis_wave3_fix_*.json`).
+lane re-measured after the default change (ADR-061 "Fix lane", ADR-060, ADR-062; `genesis_wave3_fix_*.json`): with
+both rules off and `baseline` explicit, every `correct` value the merge had moved in lanes R and V returns to the lane's
+own evidence, no verdict changes, lane F's `correct` is identical in every configuration, world and seed, and lane S's
+per-fix numbers equal lane S's evidence.
 
 | Lane, command | Values compared | Values that differ | `correct` values that differ | Verdicts changed | File |
 |---|---|---|---|---|---|

@@ -3439,6 +3439,12 @@ seeds; paired gain against `baseline` (seeds better of 4); the rule's smallest v
   (scripts/bench_wave1.py's regime), development and held-out: retention all retained; adversarial 28 of 28 scored
   cases pass (5 directive items not staged), as at the defaults and with lane K's order. Offline research digest at
   the shipped defaults: `68731d72…` (the Wave 0 equivalence test, aarch64).
+- **On the merged tree, and after the fix lane.** Measured on `320ae8e`, before lane S's rules (ADR-061). On the merged
+  tree `f0a1f09`, where those rules were on, echo recognition changed some runs (the reconciliation: 3 `correct`
+  values of 23,520, e.g. dev-churn 41 `recheck:rotation` 0.522118 -> 0.544659; no verdict changed). After the fix
+  lane (both rules off, `baseline` explicit) the re-run (`genesis_wave3_fix_orders.json`, four splits, `ad6fc8a` and
+  later) returns those values to this ADR's evidence (0.522118, 0.566029, 0.505633); every verdict "no evidence", as
+  here.
 
 ## Alternatives rejected
 
@@ -3791,7 +3797,14 @@ Held-out: mean `correct` over 4 seeds. Each change is the paired gain against th
   pages here (+1 to +35 pages per run) and admitted nothing wrong. These worlds do not reproduce the withheld worlds'
   holes (Step 0), so this does not show it safe where those holes exist.
 - **Cost:** wall time +0 to +13 % with `idle` and +39 to +72 % with `idle-first` (0.39–0.47 s to 0.61–0.69 s per
-  run). No extra looks beyond the allowance in any run: tested.
+  run). No extra looks beyond the allowance in any run: tested; enforced by the harness's own stop, and the product
+  now enforces the same count (since the fix lane inside submit's write transaction, security L6).
+- **On the merged tree, and after the fix lane.** Measured on `0ee88fe`, before lane S's rules (ADR-061). On the
+  merged tree `f0a1f09` echo recognition changed some of these runs (2 of 30 development and 3 of 30 held-out runs
+  checked by the review, by up to ±0.021 per seed, both up and down, no wrong content either way). After the fix lane
+  the one command re-run on every split (`genesis_wave3_fix_idle.json`, commit `fe851dc` recorded per split) gives
+  this ADR's values back (dev-churn 41 `idle` 0.558673, `idle-first` 0.59315; ho-rate-mixed 2701 0.505633, `idle-first`
+  0.6215; 2704 `idle-first` 0.695562), the same gains and the same verdicts; 0 wrong content admitted in 210 runs.
 
 ## Is a mechanism called for (step 2)? No
 

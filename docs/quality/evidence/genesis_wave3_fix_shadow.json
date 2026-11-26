@@ -1,0 +1,4530 @@
+{
+ "lane": "Wave 3 fix lane (gen3-fix)",
+ "after_the_fix_lane": true,
+ "withheld": "not read, not imported by name, not run; no --final, no final subcommand",
+ "host": "aarch64, shared; runs made while the read-ahead stress (16 busy loops) ran: wall times are not costs",
+ "label": "simulated plant (anticipation.py constants); the product's wiring on a staged individual; offline",
+ "command": "scripts/bench_shadow.py check",
+ "environment": {
+  "git_commit": "8f72f27255af5e81f9242cad651c4b3be71bad27",
+  "git_dirty": false,
+  "python": "3.12.16",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64"
+ },
+ "splits": {
+  "development": {
+   "seeds": [
+    11,
+    12,
+    13
+   ],
+   "traces": [
+    "steady (nothing should be done)",
+    "slow memory leak, then release",
+    "fast memory leak",
+    "sudden spike (cannot be foreseen)",
+    "regime shift to a tighter level",
+    "periodic voice sessions",
+    "latency drift",
+    "periodic owner backlog bursts"
+   ],
+   "runs": 24,
+   "verdict": {
+    "same_every_tick": true,
+    "product_runs_without_mismatch": 24,
+    "family_runs_without_mismatch": 24,
+    "runs": 24
+   },
+   "did": {
+    "forecast_hold_ticks": 279,
+    "gate_refusal_ticks": 277,
+    "decisions_changed_by_shadow": 0
+   },
+   "pooled_not_a_claim": {
+    "product": {
+     "hits": 219,
+     "false_alarms": 60,
+     "false_alarm_ticks": 60,
+     "misses": 21,
+     "quiet": 5244,
+     "episodes": 38,
+     "preceded": 38,
+     "pending": 144
+    },
+    "family": {
+     "hits": 223,
+     "false_alarms": 56,
+     "false_alarm_ticks": 56,
+     "misses": 104,
+     "quiet": 4825,
+     "episodes": 30,
+     "preceded": 30,
+     "pending": 480
+    }
+   },
+   "gate_seconds_per_tick": {
+    "off": {
+     "mean_us": 892.2,
+     "p95_us": 1377.4
+    },
+    "shadow": {
+     "mean_us": 1424.9,
+     "p95_us": 2232.5
+    },
+    "note": "each tick brings a new history sample, so in shadow every call computes the forecast and appends a line: the worst case; the worker calls the gate many times per 30 s sample"
+   },
+   "rows": [
+    {
+     "trace": "steady (nothing should be done)",
+     "seed": 11,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 17.1,
+       "p95_us": 18.0
+      },
+      "off": {
+       "mean_us": 7.2,
+       "p95_us": 7.1
+      }
+     }
+    },
+    {
+     "trace": "slow memory leak, then release",
+     "seed": 11,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 51,
+     "gate_refusals": 36,
+     "product": {
+      "report": {
+       "hits": 48,
+       "false_alarms": 3,
+       "false_alarm_ticks": 3,
+       "misses": 0,
+       "quiet": 180,
+       "episodes": 7,
+       "preceded": 7,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 51,
+       "false_alarm_ticks_all": 3,
+       "false_alarm_ticks": 3,
+       "hits": 48,
+       "false_alarms": 3,
+       "misses": 0,
+       "quiet": 180,
+       "episodes": 7,
+       "preceded": 7,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 15,
+       "background_starts": 14,
+       "starts_after_a_hold": 12,
+       "share_of_starts": 0.8571
+      },
+      "problems": [],
+      "added": {
+       "hits": 12,
+       "false_alarms": 3,
+       "misses": 0,
+       "quiet": 180,
+       "false_alarm_share": 0.2
+      },
+      "holds_gate_refused": 36,
+      "preceded_before_start": 7,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 7,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 51,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 1,
+       "quiet": 165,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 594.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 51,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 51,
+       "false_alarms": 0,
+       "misses": 1,
+       "quiet": 165,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 594.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.7,
+       "p95_us": 8.9
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "fast memory leak",
+     "seed": 11,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 15,
+     "gate_refusals": 8,
+     "product": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 1,
+       "quiet": 215,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 170.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 1,
+       "quiet": 215,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 170.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 7,
+       "background_starts": 6,
+       "starts_after_a_hold": 4,
+       "share_of_starts": 0.6667
+      },
+      "problems": [],
+      "added": {
+       "hits": 7,
+       "false_alarms": 0,
+       "misses": 1,
+       "quiet": 215,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 8,
+      "preceded_before_start": 3,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 3,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 12,
+       "quiet": 190,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 330.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 12,
+       "quiet": 190,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 330.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.7,
+       "p95_us": 8.9
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "sudden spike (cannot be foreseen)",
+     "seed": 11,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 10,
+     "gate_refusals": 8,
+     "product": {
+      "report": {
+       "hits": 10,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 6,
+       "quiet": 215,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 10,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 10,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 215,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 2,
+       "background_starts": 6,
+       "starts_after_a_hold": 4,
+       "share_of_starts": 0.6667
+      },
+      "problems": [],
+      "added": {
+       "hits": 2,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 215,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 8,
+      "preceded_before_start": 2,
+      "lead_seconds_distribution": {
+       "0": 1,
+       "1-60": 1,
+       "61-120": 0,
+       "121-180": 1,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 10,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 20,
+       "quiet": 187,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 110.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 10,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 10,
+       "false_alarms": 0,
+       "misses": 20,
+       "quiet": 187,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 110.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.7,
+       "p95_us": 8.8
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "regime shift to a tighter level",
+     "seed": 11,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 1,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 1,
+       "false_alarm_ticks": 1,
+       "misses": 0,
+       "quiet": 230,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 1,
+       "false_alarm_ticks_all": 1,
+       "false_alarm_ticks": 1,
+       "hits": 0,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 230,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 1,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 230,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 1,
+       "false_alarm_ticks": 1,
+       "misses": 0,
+       "quiet": 216,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 1,
+       "false_alarm_ticks_all": 1,
+       "false_alarm_ticks": 1,
+       "hits": 0,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 216,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.7,
+       "p95_us": 8.7
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "periodic voice sessions",
+     "seed": 11,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 17,
+     "gate_refusals": 40,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 17,
+       "false_alarm_ticks": 17,
+       "misses": 0,
+       "quiet": 214,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 17,
+       "false_alarm_ticks_all": 17,
+       "false_alarm_ticks": 17,
+       "hits": 0,
+       "false_alarms": 17,
+       "misses": 0,
+       "quiet": 214,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 17,
+       "background_starts": 10,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 17,
+       "misses": 0,
+       "quiet": 174,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 17,
+       "false_alarm_ticks": 17,
+       "misses": 0,
+       "quiet": 200,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 17,
+       "false_alarm_ticks_all": 17,
+       "false_alarm_ticks": 17,
+       "hits": 0,
+       "false_alarms": 17,
+       "misses": 0,
+       "quiet": 200,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.8,
+       "p95_us": 8.9
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "latency drift",
+     "seed": 11,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.8,
+       "p95_us": 9.0
+      },
+      "off": {
+       "mean_us": 3.8,
+       "p95_us": 3.9
+      }
+     }
+    },
+    {
+     "trace": "periodic owner backlog bursts",
+     "seed": 11,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.6,
+       "p95_us": 8.8
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.7
+      }
+     }
+    },
+    {
+     "trace": "steady (nothing should be done)",
+     "seed": 12,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "slow memory leak, then release",
+     "seed": 12,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 49,
+     "gate_refusals": 36,
+     "product": {
+      "report": {
+       "hits": 48,
+       "false_alarms": 1,
+       "false_alarm_ticks": 1,
+       "misses": 0,
+       "quiet": 182,
+       "episodes": 7,
+       "preceded": 7,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 49,
+       "false_alarm_ticks_all": 1,
+       "false_alarm_ticks": 1,
+       "hits": 48,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 182,
+       "episodes": 7,
+       "preceded": 7,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 13,
+       "background_starts": 14,
+       "starts_after_a_hold": 12,
+       "share_of_starts": 0.8571
+      },
+      "problems": [],
+      "added": {
+       "hits": 12,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 182,
+       "false_alarm_share": 0.0769
+      },
+      "holds_gate_refused": 36,
+      "preceded_before_start": 7,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 7,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 49,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 3,
+       "quiet": 165,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 582.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 49,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 49,
+       "false_alarms": 0,
+       "misses": 3,
+       "quiet": 165,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 582.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "fast memory leak",
+     "seed": 12,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 15,
+     "gate_refusals": 8,
+     "product": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 216,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 216,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 7,
+       "background_starts": 4,
+       "starts_after_a_hold": 2,
+       "share_of_starts": 0.5
+      },
+      "problems": [],
+      "added": {
+       "hits": 7,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 216,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 8,
+      "preceded_before_start": 2,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 2,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 12,
+       "quiet": 190,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 315.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 12,
+       "quiet": 190,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 315.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "sudden spike (cannot be foreseen)",
+     "seed": 12,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 10,
+     "gate_refusals": 8,
+     "product": {
+      "report": {
+       "hits": 10,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 6,
+       "quiet": 215,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 10,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 10,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 215,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 2,
+       "background_starts": 6,
+       "starts_after_a_hold": 4,
+       "share_of_starts": 0.6667
+      },
+      "problems": [],
+      "added": {
+       "hits": 2,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 215,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 8,
+      "preceded_before_start": 2,
+      "lead_seconds_distribution": {
+       "0": 1,
+       "1-60": 1,
+       "61-120": 0,
+       "121-180": 1,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 10,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 20,
+       "quiet": 187,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 110.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 10,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 10,
+       "false_alarms": 0,
+       "misses": 20,
+       "quiet": 187,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 110.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "regime shift to a tighter level",
+     "seed": 12,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "periodic voice sessions",
+     "seed": 12,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 21,
+     "gate_refusals": 40,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 21,
+       "false_alarm_ticks": 21,
+       "misses": 0,
+       "quiet": 210,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 21,
+       "false_alarm_ticks_all": 21,
+       "false_alarm_ticks": 21,
+       "hits": 0,
+       "false_alarms": 21,
+       "misses": 0,
+       "quiet": 210,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 21,
+       "background_starts": 10,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 21,
+       "misses": 0,
+       "quiet": 170,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 21,
+       "false_alarm_ticks": 21,
+       "misses": 0,
+       "quiet": 196,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 21,
+       "false_alarm_ticks_all": 21,
+       "false_alarm_ticks": 21,
+       "hits": 0,
+       "false_alarms": 21,
+       "misses": 0,
+       "quiet": 196,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "latency drift",
+     "seed": 12,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "periodic owner backlog bursts",
+     "seed": 12,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "steady (nothing should be done)",
+     "seed": 13,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "slow memory leak, then release",
+     "seed": 13,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 48,
+     "gate_refusals": 37,
+     "product": {
+      "report": {
+       "hits": 48,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 2,
+       "quiet": 181,
+       "episodes": 8,
+       "preceded": 8,
+       "mean_lead_seconds": 172.5,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 48,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 48,
+       "false_alarms": 0,
+       "misses": 2,
+       "quiet": 181,
+       "episodes": 8,
+       "preceded": 8,
+       "mean_lead_seconds": 172.5,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 11,
+       "background_starts": 14,
+       "starts_after_a_hold": 12,
+       "share_of_starts": 0.8571
+      },
+      "problems": [],
+      "added": {
+       "hits": 11,
+       "false_alarms": 0,
+       "misses": 2,
+       "quiet": 181,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 37,
+      "preceded_before_start": 8,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 1,
+       "121-180": 7,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 48,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 4,
+       "quiet": 165,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 576.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 48,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 48,
+       "false_alarms": 0,
+       "misses": 4,
+       "quiet": 165,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 576.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "fast memory leak",
+     "seed": 13,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 15,
+     "gate_refusals": 8,
+     "product": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 216,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 216,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 7,
+       "background_starts": 4,
+       "starts_after_a_hold": 2,
+       "share_of_starts": 0.5
+      },
+      "problems": [],
+      "added": {
+       "hits": 7,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 216,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 8,
+      "preceded_before_start": 2,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 2,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 12,
+       "quiet": 190,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 315.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 12,
+       "quiet": 190,
+       "episodes": 2,
+       "preceded": 2,
+       "mean_lead_seconds": 315.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "sudden spike (cannot be foreseen)",
+     "seed": 13,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 10,
+     "gate_refusals": 8,
+     "product": {
+      "report": {
+       "hits": 10,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 6,
+       "quiet": 215,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 10,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 10,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 215,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 2,
+       "background_starts": 6,
+       "starts_after_a_hold": 4,
+       "share_of_starts": 0.6667
+      },
+      "problems": [],
+      "added": {
+       "hits": 2,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 215,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 8,
+      "preceded_before_start": 2,
+      "lead_seconds_distribution": {
+       "0": 1,
+       "1-60": 1,
+       "61-120": 0,
+       "121-180": 1,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 10,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 20,
+       "quiet": 187,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 110.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 10,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 10,
+       "false_alarms": 0,
+       "misses": 20,
+       "quiet": 187,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 110.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "regime shift to a tighter level",
+     "seed": 13,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "periodic voice sessions",
+     "seed": 13,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 17,
+     "gate_refusals": 40,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 17,
+       "false_alarm_ticks": 17,
+       "misses": 0,
+       "quiet": 214,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 17,
+       "false_alarm_ticks_all": 17,
+       "false_alarm_ticks": 17,
+       "hits": 0,
+       "false_alarms": 17,
+       "misses": 0,
+       "quiet": 214,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 17,
+       "background_starts": 10,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 17,
+       "misses": 0,
+       "quiet": 174,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 17,
+       "false_alarm_ticks": 17,
+       "misses": 0,
+       "quiet": 200,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 17,
+       "false_alarm_ticks_all": 17,
+       "false_alarm_ticks": 17,
+       "hits": 0,
+       "false_alarms": 17,
+       "misses": 0,
+       "quiet": 200,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "latency drift",
+     "seed": 13,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "periodic owner backlog bursts",
+     "seed": 13,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    }
+   ]
+  },
+  "held_out": {
+   "seeds": [
+    1011,
+    1012,
+    1013
+   ],
+   "traces": [
+    "steady at a higher level",
+    "medium leak with a later release",
+    "two leaks of different speed",
+    "spike on top of an elevated level",
+    "regime shift with a noisier tail",
+    "voice sessions with a shorter period and jitter",
+    "latency step then drift",
+    "backlog bursts with voice sessions"
+   ],
+   "runs": 24,
+   "verdict": {
+    "same_every_tick": true,
+    "product_runs_without_mismatch": 24,
+    "family_runs_without_mismatch": 24,
+    "runs": 24
+   },
+   "did": {
+    "forecast_hold_ticks": 508,
+    "gate_refusal_ticks": 456,
+    "decisions_changed_by_shadow": 0
+   },
+   "pooled_not_a_claim": {
+    "product": {
+     "hits": 306,
+     "false_alarms": 198,
+     "false_alarm_ticks": 198,
+     "misses": 19,
+     "quiet": 5021,
+     "episodes": 37,
+     "preceded": 37,
+     "pending": 144
+    },
+    "family": {
+     "hits": 304,
+     "false_alarms": 172,
+     "false_alarm_ticks": 172,
+     "misses": 129,
+     "quiet": 4603,
+     "episodes": 34,
+     "preceded": 34,
+     "pending": 480
+    }
+   },
+   "gate_seconds_per_tick": {
+    "off": {
+     "mean_us": 932.4,
+     "p95_us": 1365.7
+    },
+    "shadow": {
+     "mean_us": 1563.4,
+     "p95_us": 2877.6
+    },
+    "note": "each tick brings a new history sample, so in shadow every call computes the forecast and appends a line: the worst case; the worker calls the gate many times per 30 s sample"
+   },
+   "rows": [
+    {
+     "trace": "steady at a higher level",
+     "seed": 1011,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 9.9,
+       "p95_us": 8.8
+      },
+      "off": {
+       "mean_us": 3.9,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "medium leak with a later release",
+     "seed": 1011,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 51,
+     "gate_refusals": 42,
+     "product": {
+      "report": {
+       "hits": 51,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 180,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 51,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 51,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 180,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 9,
+       "background_starts": 10,
+       "starts_after_a_hold": 6,
+       "share_of_starts": 0.6
+      },
+      "problems": [],
+      "added": {
+       "hits": 9,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 180,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 42,
+      "preceded_before_start": 4,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 4,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 51,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 9,
+       "quiet": 157,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 517.5,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 51,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 51,
+       "false_alarms": 0,
+       "misses": 9,
+       "quiet": 157,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 517.5,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.9,
+       "p95_us": 9.0
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.7
+      }
+     }
+    },
+    {
+     "trace": "two leaks of different speed",
+     "seed": 1011,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 37,
+     "gate_refusals": 21,
+     "product": {
+      "report": {
+       "hits": 36,
+       "false_alarms": 1,
+       "false_alarm_ticks": 1,
+       "misses": 0,
+       "quiet": 194,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 37,
+       "false_alarm_ticks_all": 1,
+       "false_alarm_ticks": 1,
+       "hits": 36,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 194,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 16,
+       "background_starts": 10,
+       "starts_after_a_hold": 6,
+       "share_of_starts": 0.6
+      },
+      "problems": [],
+      "added": {
+       "hits": 15,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 194,
+       "false_alarm_share": 0.0625
+      },
+      "holds_gate_refused": 21,
+      "preceded_before_start": 5,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 5,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 37,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 15,
+       "quiet": 165,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 400.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 37,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 37,
+       "false_alarms": 0,
+       "misses": 15,
+       "quiet": 165,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 400.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 17.3,
+       "p95_us": 18.1
+      },
+      "off": {
+       "mean_us": 6.9,
+       "p95_us": 7.1
+      }
+     }
+    },
+    {
+     "trace": "spike on top of an elevated level",
+     "seed": 1011,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 15,
+     "gate_refusals": 13,
+     "product": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 6,
+       "quiet": 210,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 210,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 2,
+       "background_starts": 8,
+       "starts_after_a_hold": 4,
+       "share_of_starts": 0.5
+      },
+      "problems": [],
+      "added": {
+       "hits": 2,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 210,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 13,
+      "preceded_before_start": 2,
+      "lead_seconds_distribution": {
+       "0": 1,
+       "1-60": 1,
+       "61-120": 0,
+       "121-180": 1,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 18,
+       "quiet": 184,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 170.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 18,
+       "quiet": 184,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 170.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.7,
+       "p95_us": 8.8
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "regime shift with a noisier tail",
+     "seed": 1011,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 4,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 4,
+       "false_alarm_ticks": 4,
+       "misses": 0,
+       "quiet": 227,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 4,
+       "false_alarm_ticks_all": 4,
+       "false_alarm_ticks": 4,
+       "hits": 0,
+       "false_alarms": 4,
+       "misses": 0,
+       "quiet": 227,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 4,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 4,
+       "misses": 0,
+       "quiet": 227,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 4,
+       "false_alarm_ticks": 4,
+       "misses": 0,
+       "quiet": 213,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 4,
+       "false_alarm_ticks_all": 4,
+       "false_alarm_ticks": 4,
+       "hits": 0,
+       "false_alarms": 4,
+       "misses": 0,
+       "quiet": 213,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.9,
+       "p95_us": 8.9
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.7
+      }
+     }
+    },
+    {
+     "trace": "voice sessions with a shorter period and jitter",
+     "seed": 1011,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 57,
+     "gate_refusals": 49,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 57,
+       "false_alarm_ticks": 57,
+       "misses": 0,
+       "quiet": 174,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 57,
+       "false_alarm_ticks_all": 57,
+       "false_alarm_ticks": 57,
+       "hits": 0,
+       "false_alarms": 57,
+       "misses": 0,
+       "quiet": 174,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 57,
+       "background_starts": 14,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 57,
+       "misses": 0,
+       "quiet": 130,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 45,
+       "false_alarm_ticks": 45,
+       "misses": 0,
+       "quiet": 172,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 57,
+       "false_alarm_ticks_all": 57,
+       "false_alarm_ticks": 45,
+       "hits": 0,
+       "false_alarms": 45,
+       "misses": 0,
+       "quiet": 172,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.7,
+       "p95_us": 8.8
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "latency step then drift",
+     "seed": 1011,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.7,
+       "p95_us": 8.8
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "backlog bursts with voice sessions",
+     "seed": 1011,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 9,
+     "gate_refusals": 27,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 9,
+       "false_alarm_ticks": 9,
+       "misses": 0,
+       "quiet": 222,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 9,
+       "false_alarm_ticks_all": 9,
+       "false_alarm_ticks": 9,
+       "hits": 0,
+       "false_alarms": 9,
+       "misses": 0,
+       "quiet": 222,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 9,
+       "background_starts": 8,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 9,
+       "misses": 0,
+       "quiet": 195,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 9,
+       "false_alarm_ticks": 9,
+       "misses": 0,
+       "quiet": 208,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 9,
+       "false_alarm_ticks_all": 9,
+       "false_alarm_ticks": 9,
+       "hits": 0,
+       "false_alarms": 9,
+       "misses": 0,
+       "quiet": 208,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     },
+     "cost_unchanged_history": {
+      "shadow": {
+       "mean_us": 8.8,
+       "p95_us": 8.9
+      },
+      "off": {
+       "mean_us": 3.7,
+       "p95_us": 3.8
+      }
+     }
+    },
+    {
+     "trace": "steady at a higher level",
+     "seed": 1012,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "medium leak with a later release",
+     "seed": 1012,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 52,
+     "gate_refusals": 42,
+     "product": {
+      "report": {
+       "hits": 51,
+       "false_alarms": 1,
+       "false_alarm_ticks": 1,
+       "misses": 0,
+       "quiet": 179,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 52,
+       "false_alarm_ticks_all": 1,
+       "false_alarm_ticks": 1,
+       "hits": 51,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 179,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 10,
+       "background_starts": 10,
+       "starts_after_a_hold": 6,
+       "share_of_starts": 0.6
+      },
+      "problems": [],
+      "added": {
+       "hits": 9,
+       "false_alarms": 1,
+       "misses": 0,
+       "quiet": 179,
+       "false_alarm_share": 0.1
+      },
+      "holds_gate_refused": 42,
+      "preceded_before_start": 4,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 4,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 52,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 8,
+       "quiet": 157,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 532.5,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 52,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 52,
+       "false_alarms": 0,
+       "misses": 8,
+       "quiet": 157,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 532.5,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "two leaks of different speed",
+     "seed": 1012,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 36,
+     "gate_refusals": 21,
+     "product": {
+      "report": {
+       "hits": 36,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 1,
+       "quiet": 194,
+       "episodes": 6,
+       "preceded": 6,
+       "mean_lead_seconds": 175.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 36,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 36,
+       "false_alarms": 0,
+       "misses": 1,
+       "quiet": 194,
+       "episodes": 6,
+       "preceded": 6,
+       "mean_lead_seconds": 175.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 15,
+       "background_starts": 10,
+       "starts_after_a_hold": 8,
+       "share_of_starts": 0.8
+      },
+      "problems": [],
+      "added": {
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 1,
+       "quiet": 194,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 21,
+      "preceded_before_start": 6,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 6,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 36,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 17,
+       "quiet": 164,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 405.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 36,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 36,
+       "false_alarms": 0,
+       "misses": 17,
+       "quiet": 164,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 405.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "spike on top of an elevated level",
+     "seed": 1012,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 15,
+     "gate_refusals": 13,
+     "product": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 6,
+       "quiet": 210,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 210,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 2,
+       "background_starts": 8,
+       "starts_after_a_hold": 4,
+       "share_of_starts": 0.5
+      },
+      "problems": [],
+      "added": {
+       "hits": 2,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 210,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 13,
+      "preceded_before_start": 2,
+      "lead_seconds_distribution": {
+       "0": 1,
+       "1-60": 1,
+       "61-120": 0,
+       "121-180": 1,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 17,
+       "quiet": 185,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 222.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 17,
+       "quiet": 185,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 222.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "regime shift with a noisier tail",
+     "seed": 1012,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 4,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 4,
+       "false_alarm_ticks": 4,
+       "misses": 0,
+       "quiet": 227,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 4,
+       "false_alarm_ticks_all": 4,
+       "false_alarm_ticks": 4,
+       "hits": 0,
+       "false_alarms": 4,
+       "misses": 0,
+       "quiet": 227,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 4,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 4,
+       "misses": 0,
+       "quiet": 227,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 4,
+       "false_alarm_ticks": 4,
+       "misses": 0,
+       "quiet": 213,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 4,
+       "false_alarm_ticks_all": 4,
+       "false_alarm_ticks": 4,
+       "hits": 0,
+       "false_alarms": 4,
+       "misses": 0,
+       "quiet": 213,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "voice sessions with a shorter period and jitter",
+     "seed": 1012,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 43,
+     "gate_refusals": 49,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 43,
+       "false_alarm_ticks": 43,
+       "misses": 0,
+       "quiet": 188,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 43,
+       "false_alarm_ticks_all": 43,
+       "false_alarm_ticks": 43,
+       "hits": 0,
+       "false_alarms": 43,
+       "misses": 0,
+       "quiet": 188,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 43,
+       "background_starts": 14,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 43,
+       "misses": 0,
+       "quiet": 144,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 37,
+       "false_alarm_ticks": 37,
+       "misses": 0,
+       "quiet": 180,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 43,
+       "false_alarm_ticks_all": 43,
+       "false_alarm_ticks": 37,
+       "hits": 0,
+       "false_alarms": 37,
+       "misses": 0,
+       "quiet": 180,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "latency step then drift",
+     "seed": 1012,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "backlog bursts with voice sessions",
+     "seed": 1012,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 9,
+     "gate_refusals": 27,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 7,
+       "false_alarm_ticks": 7,
+       "misses": 0,
+       "quiet": 224,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 9,
+       "false_alarm_ticks_all": 9,
+       "false_alarm_ticks": 7,
+       "hits": 0,
+       "false_alarms": 7,
+       "misses": 0,
+       "quiet": 224,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 7,
+       "background_starts": 8,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 7,
+       "misses": 0,
+       "quiet": 197,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 7,
+       "false_alarm_ticks": 7,
+       "misses": 0,
+       "quiet": 210,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 9,
+       "false_alarm_ticks_all": 9,
+       "false_alarm_ticks": 7,
+       "hits": 0,
+       "false_alarms": 7,
+       "misses": 0,
+       "quiet": 210,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "steady at a higher level",
+     "seed": 1013,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "medium leak with a later release",
+     "seed": 1013,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 51,
+     "gate_refusals": 42,
+     "product": {
+      "report": {
+       "hits": 51,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 180,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 51,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 51,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 180,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 9,
+       "background_starts": 10,
+       "starts_after_a_hold": 6,
+       "share_of_starts": 0.6
+      },
+      "problems": [],
+      "added": {
+       "hits": 9,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 180,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 42,
+      "preceded_before_start": 4,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 4,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 51,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 9,
+       "quiet": 157,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 517.5,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 51,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 51,
+       "false_alarms": 0,
+       "misses": 9,
+       "quiet": 157,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 517.5,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "two leaks of different speed",
+     "seed": 1013,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 36,
+     "gate_refusals": 21,
+     "product": {
+      "report": {
+       "hits": 36,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 195,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 36,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 36,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 195,
+       "episodes": 5,
+       "preceded": 5,
+       "mean_lead_seconds": 180.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 15,
+       "background_starts": 10,
+       "starts_after_a_hold": 6,
+       "share_of_starts": 0.6
+      },
+      "problems": [],
+      "added": {
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 195,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 21,
+      "preceded_before_start": 5,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 5,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 36,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 16,
+       "quiet": 165,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 390.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 36,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 36,
+       "false_alarms": 0,
+       "misses": 16,
+       "quiet": 165,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 390.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "spike on top of an elevated level",
+     "seed": 1013,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 15,
+     "gate_refusals": 13,
+     "product": {
+      "report": {
+       "hits": 15,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 6,
+       "quiet": 210,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 15,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 210,
+       "episodes": 3,
+       "preceded": 3,
+       "mean_lead_seconds": 80.0,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 2,
+       "background_starts": 8,
+       "starts_after_a_hold": 4,
+       "share_of_starts": 0.5
+      },
+      "problems": [],
+      "added": {
+       "hits": 2,
+       "false_alarms": 0,
+       "misses": 6,
+       "quiet": 210,
+       "false_alarm_share": 0.0
+      },
+      "holds_gate_refused": 13,
+      "preceded_before_start": 2,
+      "lead_seconds_distribution": {
+       "0": 1,
+       "1-60": 1,
+       "61-120": 0,
+       "121-180": 1,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 11,
+       "false_alarms": 4,
+       "false_alarm_ticks": 4,
+       "misses": 20,
+       "quiet": 182,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 120.0,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 15,
+       "false_alarm_ticks_all": 4,
+       "false_alarm_ticks": 4,
+       "hits": 11,
+       "false_alarms": 4,
+       "misses": 20,
+       "quiet": 182,
+       "episodes": 4,
+       "preceded": 4,
+       "mean_lead_seconds": 120.0,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "regime shift with a noisier tail",
+     "seed": 1013,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 5,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 5,
+       "false_alarm_ticks": 5,
+       "misses": 0,
+       "quiet": 226,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 5,
+       "false_alarm_ticks_all": 5,
+       "false_alarm_ticks": 5,
+       "hits": 0,
+       "false_alarms": 5,
+       "misses": 0,
+       "quiet": 226,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 5,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 5,
+       "misses": 0,
+       "quiet": 226,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 5,
+       "false_alarm_ticks": 5,
+       "misses": 0,
+       "quiet": 212,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 5,
+       "false_alarm_ticks_all": 5,
+       "false_alarm_ticks": 5,
+       "hits": 0,
+       "false_alarms": 5,
+       "misses": 0,
+       "quiet": 212,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "voice sessions with a shorter period and jitter",
+     "seed": 1013,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 61,
+     "gate_refusals": 49,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 61,
+       "false_alarm_ticks": 61,
+       "misses": 0,
+       "quiet": 170,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 61,
+       "false_alarm_ticks_all": 61,
+       "false_alarm_ticks": 61,
+       "hits": 0,
+       "false_alarms": 61,
+       "misses": 0,
+       "quiet": 170,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 61,
+       "background_starts": 14,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 61,
+       "misses": 0,
+       "quiet": 127,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 51,
+       "false_alarm_ticks": 51,
+       "misses": 0,
+       "quiet": 166,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 61,
+       "false_alarm_ticks_all": 61,
+       "false_alarm_ticks": 51,
+       "hits": 0,
+       "false_alarms": 51,
+       "misses": 0,
+       "quiet": 166,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "latency step then drift",
+     "seed": 1013,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 0,
+     "gate_refusals": 0,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 0,
+       "background_starts": 2,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 231,
+       "false_alarm_share": null
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 0,
+       "false_alarm_ticks": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 0,
+       "false_alarm_ticks_all": 0,
+       "false_alarm_ticks": 0,
+       "hits": 0,
+       "false_alarms": 0,
+       "misses": 0,
+       "quiet": 217,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    },
+    {
+     "trace": "backlog bursts with voice sessions",
+     "seed": 1013,
+     "ticks": 240,
+     "gate_same_ticks": 240,
+     "trace_same": true,
+     "lazy_gate_same_ticks": 240,
+     "forecast_holds": 8,
+     "gate_refusals": 27,
+     "product": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 6,
+       "false_alarm_ticks": 6,
+       "misses": 0,
+       "quiet": 225,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "reference": {
+       "hold_ticks_all": 8,
+       "false_alarm_ticks_all": 8,
+       "false_alarm_ticks": 6,
+       "hits": 0,
+       "false_alarms": 6,
+       "misses": 0,
+       "quiet": 225,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 6
+      },
+      "mismatches": {},
+      "work": {
+       "holds_the_gate_allowed": 6,
+       "background_starts": 8,
+       "starts_after_a_hold": 0,
+       "share_of_starts": 0.0
+      },
+      "problems": [],
+      "added": {
+       "hits": 0,
+       "false_alarms": 6,
+       "misses": 0,
+       "quiet": 198,
+       "false_alarm_share": 1.0
+      },
+      "holds_gate_refused": 0,
+      "preceded_before_start": 0,
+      "lead_seconds_distribution": {
+       "0": 0,
+       "1-60": 0,
+       "61-120": 0,
+       "121-180": 0,
+       "over 180": 0
+      },
+      "guide": null
+     },
+     "family": {
+      "report": {
+       "hits": 0,
+       "false_alarms": 6,
+       "false_alarm_ticks": 6,
+       "misses": 0,
+       "quiet": 211,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "reference": {
+       "hold_ticks_all": 8,
+       "false_alarm_ticks_all": 8,
+       "false_alarm_ticks": 6,
+       "hits": 0,
+       "false_alarms": 6,
+       "misses": 0,
+       "quiet": 211,
+       "episodes": 0,
+       "preceded": 0,
+       "mean_lead_seconds": null,
+       "pending": 20
+      },
+      "mismatches": {}
+     }
+    }
+   ]
+  }
+ },
+ "wall_seconds": 93.2
+}
