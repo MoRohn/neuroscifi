@@ -1,21 +1,21 @@
-"""Shared test support for lane B1's adapters: a fresh registry holding only B1's adapters, with B1's detection
-refinement in front of K's `detect` (until K's full table is merged), and small byte builders."""
+"""Shared test support for lane B1's adapters: the registry with K's built-ins and B1's adapters, K's `detect`,
+and a ZIP writer that assembles archives by hand."""
 import io
 import struct
 import zlib
 
 import pytest
 
-from neuroscifi.artifacts import adapters, detect as detect_mod, detect_b1
+from neuroscifi.artifacts import adapters
 from neuroscifi.artifacts.adapters import _b1
 
 
 @pytest.fixture
 def b1reg(monkeypatch):
-    monkeypatch.setattr(adapters, "_ADAPTERS", [])
+    """The registry as merged: K's built-ins first, then B1's adapters (the most recently registered wins)."""
+    monkeypatch.setattr(adapters, "_ADAPTERS", list(adapters._ADAPTERS))
     monkeypatch.setattr(adapters, "_GAP_HOOKS", [])
     monkeypatch.setattr(adapters, "_DISCOVERED", [])
-    monkeypatch.setattr(detect_mod, "detect", detect_b1.detect)
     _b1.register_all()
     return adapters
 

@@ -202,14 +202,13 @@ def read_xlsx(data, detected, limits):
             break
         name = sheet.get("name") or f"Sheet{i + 1}"
         target = rels.get(sheet.get(R + "id"), (None, None))[0]
-        if target is None or pkg.zip.find(target) is None:
+        if not pkg.has(target):
             pkg.notes.append(f"sheet {i + 1} is listed but its part is missing")
             continue
-        entry = pkg.zip.find(target)
         root = pkg.xml(target)
         notes: list[str] = []
         rows = _sheet(pkg, root, shared, kinds, date1904, notes)
-        members.append(_member(name, entry.size, rows, notes, "xlsx"))
+        members.append(_member(name, pkg.sizes[target], rows, notes, "xlsx"))
     bundle = Bundle(tuple(members))
     notes = pkg.notes + ["formulas are never evaluated; charts, pivot tables, comments and formatting are not read"]
     if date1904:

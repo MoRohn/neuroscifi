@@ -21,7 +21,8 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 
-from ..safe_b1 import Budget, Deadline, decode_text, injection_notes
+from ..safe import Deadline
+from ..safe_b1 import DecodeBudget, decode_text, injection_notes
 from ..types import Block, Decoded, Document, Limits, Malformed, Refused
 from . import Adapter
 from .tables import table_from_rows
@@ -72,7 +73,7 @@ def _cells(line: str) -> list[str]:
     return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line)]
 
 
-def markdown_blocks(text: str, *, budget: Budget | None = None, deadline: Deadline | None = None
+def markdown_blocks(text: str, *, budget: DecodeBudget | None = None, deadline: Deadline | None = None
                     ) -> tuple[list[Block], str | None, list[str], bool]:
     """(blocks, title, notes, partial) for Markdown text by the module's rules."""
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -220,7 +221,7 @@ def markdown_blocks(text: str, *, budget: Budget | None = None, deadline: Deadli
 
 def read_markdown(data, detected, limits):
     text, notes = decode_text(data)
-    blocks, title, more, partial = markdown_blocks(text, budget=Budget(limits), deadline=Deadline.of(limits))
+    blocks, title, more, partial = markdown_blocks(text, budget=DecodeBudget(limits), deadline=Deadline(limits.max_seconds))
     return _finish(detected, blocks, title, list(notes) + more + ["inline emphasis markers are kept as written"],
                    partial)
 
@@ -237,7 +238,7 @@ _HIDDEN_STYLE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden", re.I)
 
 
 class _HtmlReader(HTMLParser):
-    def __init__(self, budget: Budget):
+    def __init__(self, budget: DecodeBudget):
         super().__init__(convert_charrefs=True)
         self.budget = budget
         self.blocks: list[Block] = []
@@ -492,7 +493,7 @@ class _HtmlReader(HTMLParser):
 
 def read_html(data, detected, limits):
     text, notes = decode_text(data)
-    reader, deadline = _HtmlReader(Budget(limits)), Deadline.of(limits)
+    reader, deadline = _HtmlReader(DecodeBudget(limits)), Deadline(limits.max_seconds)
     for i in range(0, len(text), FEED_CHUNK):
         deadline.check()
         reader.feed(text[i:i + FEED_CHUNK])
@@ -517,8 +518,8 @@ def read_html(data, detected, limits):
 
 def html_blocks(text: str, limits: Limits) -> tuple[list[Block], str | None, list[str]]:
     """Blocks of an HTML or XHTML text (used by the EPUB reader)."""
-    reader = _HtmlReader(Budget(limits))
-    deadline = Deadline.of(limits)
+    reader = _HtmlReader(DecodeBudget(limits))
+    deadline = Deadline(limits.max_seconds)
     for i in range(0, len(text), FEED_CHUNK):
         deadline.check()
         reader.feed(text[i:i + FEED_CHUNK])
@@ -543,7 +544,7 @@ _RTF_SKIP = {"fonttbl", "colortbl", "stylesheet", "pict", "object", "header", "f
 
 
 def read_rtf(data, detected, limits):
-    deadline, budget = Deadline.of(limits), Budget(limits)
+    deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     text = data.decode("latin-1")
     if not text.startswith("{\\rtf"):
         raise Malformed("the text does not start with '{\\rtf'")

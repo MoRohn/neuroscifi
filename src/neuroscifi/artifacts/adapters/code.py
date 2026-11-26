@@ -31,7 +31,8 @@ import re
 import tomllib
 from collections.abc import Mapping
 
-from ..safe_b1 import Budget, Deadline, decode_text, injection_notes
+from ..safe import Deadline
+from ..safe_b1 import DecodeBudget, decode_text, injection_notes
 from ..types import Block, Decoded, Document, Edge, GNode, Graph, Malformed, Refused
 from . import Adapter
 
@@ -77,7 +78,7 @@ def _dotted(expr) -> str | None:
 class _Builder:
     """Accumulates nodes and edges of one graph within the element budget."""
 
-    def __init__(self, budget: Budget):
+    def __init__(self, budget: DecodeBudget):
         self.budget = budget
         self.nodes: dict[str, GNode] = {}
         self.edges: dict[tuple, Edge] = {}
@@ -212,7 +213,7 @@ def _lookup(dotted: str, modules: dict[str, _Module]) -> str | None:
 def python_package_graph(files: Mapping[str, bytes], limits) -> tuple[Graph, list[str]]:
     """One `Graph` for Python files given as {path: bytes}; calls resolved across them. Files that do not parse are
     named in the notes and left out."""
-    deadline, budget = Deadline.of(limits), Budget(limits)
+    deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     total = sum(len(v) for v in files.values())
     if total * AST_COST > limits.max_decoded_bytes:
         raise Refused(f"{total} bytes of Python source would need more memory than allowed to parse",
@@ -347,7 +348,7 @@ LANGUAGE_OF = {"javascript": "javascript", "js": "javascript", "typescript": "ja
 def read_surface(data, detected, limits):
     lang = LANGUAGE_OF.get(detected.format, "c")
     rules = SURFACE[lang]
-    deadline, budget = Deadline.of(limits), Budget(limits)
+    deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     text, tnotes = decode_text(data)
     lines = text.splitlines()
     b = _Builder(budget)
@@ -424,7 +425,7 @@ def _dep(b: _Builder, root: str, spec: str, kind: str, group: str | None = None)
 
 
 def read_manifest(data, detected, limits):
-    budget = Budget(limits)
+    budget = DecodeBudget(limits)
     b = _Builder(budget)
     text, tnotes = decode_text(data)
     notes = list(tnotes)

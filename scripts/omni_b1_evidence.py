@@ -3,7 +3,8 @@ partial, refused (by rule) and failed, and peak memory (tracemalloc) and wall ti
 the worst hostile input. Writes docs/quality/evidence/omnimind_b1.json (a summary, not a history).
 
 Usage: PYTHONPATH=src python scripts/omni_b1_evidence.py [--out PATH]
-The registry holds only B1's adapters, with B1's detection refinement in front of K's `detect` (as in the tests).
+The registry is the merged one (lane K's built-ins, then B1's adapters) with K's `detect`; each row names the adapter
+that `resolve` actually picked (the manifest example is read by the TOML adapter until detect names manifests).
 Each input is decoded twice: once for time (no tracing), once under tracemalloc for the peak of Python and numpy
 allocations (C-level buffers of sqlite3 and zlib are not traced: the numbers are lower bounds for those)."""
 from __future__ import annotations
@@ -23,7 +24,7 @@ import tracemalloc
 import zlib
 from pathlib import Path
 
-from neuroscifi.artifacts import adapters, detect as detect_mod, detect_b1
+from neuroscifi.artifacts import adapters, detect as detect_mod
 from neuroscifi.artifacts.adapters import _b1
 from neuroscifi.artifacts.types import ArtifactError, Limits, Opaque
 
@@ -32,9 +33,7 @@ from _b1_support import make_zip  # noqa: E402  (the tests' hand-assembled ZIP w
 
 
 def setup() -> None:
-    adapters._ADAPTERS[:] = []
-    detect_mod.detect = detect_b1.detect
-    _b1.register_all()
+    _b1.register_all()           # after lane K's built-ins: the most recently registered adapter wins
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -123,9 +122,9 @@ def corpus():
     add("b1-pdf", "pdf 50 pages", "honest", "big.pdf", _pdf(pages))
     add("b1-pdf", "pdf 2000 pages, 1 s deadline", "hostile", "many.pdf", _pdf([f"p{i}" for i in range(2000)]),)
 
-    xml = b"<r>" + b"".join(b'<i n="%d">v%d</i>' % (i, i) for i in range(200_000)) + b"</r>"
+    xml = b'<?xml version="1.0"?><r>' + b"".join(b'<i n="%d">v%d</i>' % (i, i) for i in range(200_000)) + b"</r>"
     add("b1-xml", "xml 200k elements", "honest", "big.xml", xml)
-    add("b1-xml", "xml 100k deep", "hostile", "deep.xml", b"<a>" * 100_000 + b"</a>" * 100_000)
+    add("b1-xml", "xml 100k deep", "hostile", "deep.xml", b'<?xml version="1.0"?>' + b"<x>" * 100_000 + b"</x>" * 100_000)
     add("b1-xml", "xml external entity", "hostile", "xxe.xml",
         b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><r>&x;</r>')
     add("b1-toml", "toml 20k keys", "honest", "big.toml", "".join(f"k{i} = {i}\n" for i in range(20_000)).encode())
@@ -247,7 +246,9 @@ def outcome(data, name, limits):
 
 
 def measure(item, limits):
-    adapter, label, kind, name, data = item
+    _, label, kind, name, data = item
+    picked = adapters.resolve(detect_mod.detect(data[:64 << 10], name=name, size=len(data)))
+    adapter = picked.name if picked is not None else "(none)"
     t0 = time.perf_counter()
     first = outcome(data, name, limits)
     seconds = time.perf_counter() - t0
