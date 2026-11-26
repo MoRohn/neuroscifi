@@ -443,6 +443,8 @@ def test_the_commands_speak_plain_words_and_json(individual, tmp_path, capsys):
     assert main(["artifact", "list", "--db", str(path), "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
     artifact_id = listed["items"][0]["id"]
+    assert main(["artifact", "list", "--db", str(path), "--origin", "made"]) == 0
+    assert capsys.readouterr().out.strip() == "No artifacts are kept."
     assert main(["artifact", "facts", "--db", str(path), artifact_id]) == 0
     assert "words: 3" in capsys.readouterr().out
     target = tmp_path / "exported.txt"

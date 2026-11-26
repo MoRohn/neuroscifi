@@ -710,15 +710,16 @@ def get(db, artifact_id, *, viewer="owner") -> ArtifactRecord:
     return _record(row)
 
 
-def listing(db, *, viewer="owner", origin=None, limit=100) -> dict:
-    """The artifacts held, newest first; each says what it is: given by the owner, or made by the system and not
-    evidence."""
+def listing(db, *, viewer="owner", of_origin=None, limit=100) -> dict:
+    """The artifacts held, newest first (only those of one origin with `of_origin`); each says what it is: given by the
+    owner, or made by the system and not evidence. (Not `origin=`: that keyword names a background origin to the
+    launch-site scan of tests/webcortex/test_background.py.)"""
     _viewer(viewer)
-    if origin is not None and origin not in ORIGINS:
+    if of_origin is not None and of_origin not in ORIGINS:
         raise Malformed(f"origin must be one of {', '.join(ORIGINS)}")
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10_000:
         raise Malformed("limit is a whole number from 1 to 10000")
-    where, params = ("WHERE origin=?", (origin,)) if origin else ("", ())
+    where, params = ("WHERE origin=?", (of_origin,)) if of_origin else ("", ())
     rows = db.execute(f"SELECT {','.join(_COLUMNS)} FROM artifacts {where} ORDER BY seq DESC LIMIT ?",
                       (*params, limit)).fetchall()
     counts = dict(db.execute("SELECT origin, count(*) FROM artifacts GROUP BY origin").fetchall())

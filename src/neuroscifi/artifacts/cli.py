@@ -128,7 +128,7 @@ def _forget(db, args, now):
 def _list(db, args, now):
     from . import store
     store.reconcile(db, now)
-    return store.listing(db, origin=args.origin, limit=args.limit)
+    return store.listing(db, of_origin=args.origin, limit=args.limit)
 
 
 def _command(what, handler):
