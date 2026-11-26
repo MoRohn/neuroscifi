@@ -3015,3 +3015,112 @@ first figures are kept in the evidence file under `before_review`.
   `a7981e0` (links), `5463dfc` → `f97411e` (family and script), `7218e0f` → `828ca8e` (this ADR, evidence).
 - Not verified: anything on the open web, a live model, a real worker process running the loop for days, or the
   real host's background gate during the loop.
+
+# ADR-059 (draft) Front-door adjustment in the linear causal engine: a decline becomes a labelled answer only where the criterion holds. R
+
+## Context
+
+ADR-052's engine (`neuroscifi/causal.py`, `nsf imagine scm`) answers a graph question (a graph, the observational
+means and covariance, the nodes a hidden common cause touches) by back-door adjustment, and declines it when a
+hidden common cause touches the cause. The counterfactual family's "confounded" questions (hidden U -> X0 and U -> Y
+around the chain X0 -> X1 -> ... -> Y) are identified by the front-door criterion through X1, so 4 of the 32
+answerable questions per held-out seed were declined: the pooled held-out figure was 0.875 (FINAL_EVALUATION §6,
+direction 6). What the engine is handed for them: the observed graph `{X0: [], X1: [X0], ...}`,
+`hidden_common_cause: [X0, Y]`, `observational_mean` and `observational_covariance` over the observed nodes (exact,
+from the equations), `do: {X0: x}` and `ask: Y`. The truth is E[Y | do(X0 = x)] from the structural equations.
+
+## Decision
+
+1. **Where it is tried.** Only where the back-door decline is "a hidden common cause acts on the cause". Every other
+   path of the engine is unchanged.
+2. **The criterion (Pearl 1995), checked, never assumed.** The mediators M are the cause's children that are
+   ancestors of the outcome, so M intercepts every directed path from X to Y unless X -> Y is an edge (declined:
+   "bypasses every mediator"). With one hidden node acting on every node named in `hidden_common_cause` (several
+   named causes read as one shared cause, which can only add paths, so only add declines), the two other conditions
+   are d-separations in the moral ancestral graph: X and M separated once the edges out of X are removed (no
+   unblocked back-door path from X to M), and M and Y separated given X once the edges out of M are removed (X blocks
+   every back-door path from M to Y). Declined, each with its reason: a mediator without data (unobserved), no
+   directed path, a cycle, cause = outcome, more than 64 nodes, a singular covariance of M and X. No general
+   do-calculus, no conditional front door, no instrumental variables.
+3. **The estimate.** Linear: E[Y | do(X = x)] = E[Y] + b(Y ~ M | X) . b(M ~ X) (x - E[X]), from the given moments
+   (`means`, or `observational_mean` as the family names them; both and different is an error). A point value, as
+   for back-door answers; its uncertainty sentence says that moments estimated from data carry an error the value
+   does not show (measured below).
+4. **Every answer says which criterion identified it**: `identified_by` is `declared_model`, `back_door` or
+   `front_door` (with `mediators`), None on a decline. An answer is labelled "imagined, not evidence", kind
+   `simulation`, as before; nothing is stored. Engine version 2.
+5. **Setting.** `causal.answer(query, front_door=True)`; `nsf imagine scm FILE --no-front-door` restores the old
+   decline (with a reason that says it is switched off). Not a stored setting: `nsf imagine scm` reads no individual
+   (ADR-052's other imagine commands are per-individual switches; this one has no individual to hold it). The
+   benchmark's imagination answerer gains the ablation component `front_door`.
+
+**Default: on.** The rule written before the mechanism (`frontdoor_splits.py`, committed alone first) held on every
+point: 0 false answers and every answer world exact on the property worlds with exact moments, both splits; on the
+held-out counterfactual split every front-door question within tolerance and every other leaf identical with the
+front door on and off; adversarial not regressing; retention unchanged.
+
+## Evidence (`docs/quality/evidence/genesis_frontdoor.json`, `scripts/genesis_frontdoor.py`, measured at `80be57a`)
+
+Counterfactual family, each split's three seeds (development 31-33, held-out 1031-1033), answered within 0.1 x scale:
+
+| | front-door group (4 per seed) | pooled, not a claim | handed equations | belief what-if | learned graph |
+|---|---|---|---|---|---|
+| held-out, today's answerer (baseline) | 0 | 0.063 | 0 | 0 | 0.222 |
+| held-out, `zero` reference | 0 (declines) | 0.219 | 0.083 | 0.667 | 0.407 |
+| held-out, front door off (= start commit) | 0 (4 declined per seed) | 0.875 | 1.000 | 1.000 | 1.000 |
+| held-out, front door on | **1.000** (12 of 12; 1.000 at 0.05) | 1.000 | 1.000 | 1.000 | 1.000 |
+| development, front door off | 0 | 0.844 | 1.000 | 1.000 | 0.889 |
+| development, front door on | 1.000 (12 of 12) | 0.969 | 1.000 | 1.000 | 0.889 |
+
+- Largest relative error on the front-door questions: below 1e-12 (the moments are exact). Interval score: 0 to
+  that precision, because a point answer's interval has width 0 and its score is 40 x the error; it says nothing
+  about calibration. The family has no spread here (deterministic per seed; held-out sd 0).
+- Leaf identity: the ablation (front door off) against the start commit's engine (`git show 9ac8943:...causal.py`
+  through today's answerer): 0 of 419 (development) and 0 of 438 (held-out) leaves differ. Front door on against off,
+  outside the front-door group, the `scm:confounded` kind and the pooled figures: 0 of 257 and 0 of 276 differ.
+- Property worlds (12 kinds, 5 where the criterion holds, 7 traps; development 20 seeds, held-out 40):
+
+  | moments | answer worlds within 0.1 x sd(Y) (0.05) | trap worlds answered | false answers |
+  |---|---|---|---|
+  | exact, development | 100 of 100 (100), all within 1e-9 | 0 of 140 | **0** |
+  | exact, held-out | 200 of 200 (200), all within 1e-9 | 0 of 280 | **0** |
+  | 500 draws, development / held-out | 97 of 100 (66) / 180 of 200 (128) | 0 / 0 | **3 / 20** |
+  | 5,000 draws | 100 of 100 (100) / 200 of 200 (193) | 0 / 0 | 0 / 0 |
+  | 50,000 draws | 100 of 100 (100) / 200 of 200 (200) | 0 / 0 | 0 / 0 |
+
+  The traps are real: a front-door formula through M would have missed by more than 0.1 x sd(Y) on 20 to 33 of the
+  40 held-out worlds of each trap kind with data for M (median error 0.10 to 0.32 x sd(Y), up to 2.6). The false
+  answers at 500 draws are the cost of a point value from estimated moments (the engine takes them as exact): they
+  are counted, and the answer's uncertainty sentence says so.
+- Random graphs (`tests/test_causal_front_door.py`): 6,000 random DAGs of 3 to 7 observed nodes with a hidden cause
+  on X, Y and at random others, some nodes without data: 2,234 answered, 0 false answers (exact moments); the same
+  graphs produce false answers when the separation checks or the direct-edge check are removed (the test's power).
+- Adversarial: 33 of 33 with the front door on and off (28 before, plus 5 lane C cases whose expectations were
+  committed before the cases and the cases before the mechanism; on the start commit's engine they passed 25 of 25
+  worlds by the back-door decline). Retention (full, against the recorded baseline): every scenario passes, every
+  metric retained.
+- Cost: a front-door answer about 0.1 ms (median; largest 0.23 ms); the family's wall time 0.42 s against 0.43 s off
+  (held-out). No model call, no network, no storage.
+
+## What this does not show
+
+The front-door group is exact arithmetic on a declared graph and given population moments, like the handed-equations
+group: it says nothing about real-world causal questions, about a graph declared wrongly (a hidden cause not named is
+an unchecked assumption, stated in every answer), or about moments estimated from small samples (above). The
+withheld counterfactual family has front-door questions; it has not been run (the main session's single look).
+
+## Rejected
+
+- A stored per-individual setting: `nsf imagine scm` reads no individual.
+- A sampling spread from a stated sample size: back-door answers have none either; left open (above).
+- Searching every subset of observed nodes for a front-door set, conditional front doors, general do-calculus:
+  larger than the smallest sound extension; a decline there is "not identified by this engine".
+
+## Consequences
+
+- Changed: `causal.py` (version 2, `answer(front_door=)`, `identified_by`), `cli_imagine.py` (`--front-door`),
+  `acceptance/cognition/imagination.py` (component `front_door`), `acceptance/cognition/adversarial.py` (5 cases,
+  origin `added_wave3_c`). New: `acceptance/cognition/frontdoor_splits.py`, `scripts/genesis_frontdoor.py`,
+  `tests/test_causal_front_door.py`. No schema change, no migration, no background activity, no dependency.
+- The counterfactual family's recorded imagination figures move only in the front-door group and the pooled figures
+  (held-out 0.875 -> 1.000, development 0.844 -> 0.969); earlier evidence files are not rewritten.
