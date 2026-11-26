@@ -121,7 +121,7 @@ def _validate(name, value):
                 "salience_record", "hypothesis_fields", "hypothesis_abandon", "premise_recheck", "idle_recheck",
                 "reflection", "reflection_model_summary", "answer_monitoring", "selective_answering",
                 "verification_escalation", "adaptive_depth", "pocket_recent", "salience_attention",
-                "arbitration_record", "attribution_independence", "echo_recognition"):
+                "arbitration_record", "attribution_independence", "echo_recognition", "source_derivation"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value

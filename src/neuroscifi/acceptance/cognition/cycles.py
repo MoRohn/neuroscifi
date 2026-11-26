@@ -201,6 +201,12 @@ def idle_configurations() -> dict:
 
 EXTRA |= {k: v for k, v in idle_configurations().items() if k not in ("reference:no-loop", "baseline")}
 
+# Wave 4 lane S (ADR-066): the derivation rule on the shipped defaults (its pair: "shipped")
+WAVE4_S_DERIVATION = "+wave4-s-derivation"
+ON[WAVE4_S_DERIVATION] = {"source_derivation": True}
+EXTRA["wave4-s:derivation"] = frozenset({SHIPPED, WAVE4_S_DERIVATION})
+READ_BACK = READ_BACK + ("source_derivation",)
+
 
 def configurations() -> dict:
     """{name: set of lane K mechanisms on}: the no-loop reference, baseline, each alone, all, all without one."""
@@ -255,7 +261,8 @@ def investigate(db, task, docs, now, *, answer=None) -> dict:
     for d in docs:
         found += claims.extract_claims(d, task["objective"])
     cfg = state.get_config(db)
-    origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping)
+    origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping,
+                                   derivation=cfg.source_derivation)
     clusters = [claims.score(c, now=now, freshness_class=freshness, origins=origins)
                 for c in claims.cluster(found)] if found else []
     with store.write(db):

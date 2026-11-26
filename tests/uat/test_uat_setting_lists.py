@@ -72,8 +72,12 @@ def test_every_wave3_setting_is_rolled_back_and_made_to_fail():
     assert switches - {m for m, *_ in faults.WAVE3_ENTRIES} == set(), "add it to WAVE3_ENTRIES"
 
 
-# Wave 4 (append-only): the fields each Wave 4 lane added, rolled back and made to fail as Wave 3's are
-WAVE4_FIELDS = {"own_text_provenance"}
+# Wave 4 (append-only, one name per line): the fields each Wave 4 lane added, rolled back, made to fail and switched off
+# by the equivalence test as Wave 3's are, each off at the shipped defaults
+WAVE4_FIELDS = {
+    "source_derivation",            # lane S (ADR-066)
+    "own_text_provenance",          # lane E (ADR-067)
+}
 
 
 def test_every_wave4_setting_is_rolled_back_and_made_to_fail():
@@ -81,8 +85,10 @@ def test_every_wave4_setting_is_rolled_back_and_made_to_fail():
     assert WAVE4_FIELDS <= {f.name for f in dataclasses.fields(WebConfig)}
     switches = WAVE4_FIELDS - BOUNDS
     assert switches - set(rollback.SWITCHES) == set(), "add a rollback test and a SWITCHES entry"
-    assert switches - {m for m, *_ in faults.WAVE3_ENTRIES} == set(), "add it to WAVE3_ENTRIES"
-    assert all(getattr(WebConfig(), name) is False for name in WAVE4_FIELDS)
+    made_to_fail = {m for m, *_ in faults.WAVE3_ENTRIES} | {m for m, *_ in faults.WAVE4_S_ENTRIES}
+    assert switches - made_to_fail == set(), "add it to WAVE3_ENTRIES or WAVE4_S_ENTRIES"
+    assert switches - set(equivalence.OFF_WEB) == set(), "add it to OFF_WEB"
+    assert all(getattr(WebConfig(), name) == equivalence.OFF_WEB[name] for name in switches)
 
 
 def test_the_wave0_settings_are_the_ones_wave0_had():

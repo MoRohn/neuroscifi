@@ -275,6 +275,15 @@ class WebConfig:
     # raises is still asked). OFF by default: with it off nothing is recorded and consolidation is as before; turning
     # it on is the owner's decision (ADR-067 has the measurements, both directions).
     own_text_provenance: bool = False
+    # ADR-066 (Wave 4 lane S): what counts as one source by evidence of derivation, not by the wording of a credit. On,
+    # a page that names another page read in the same task (capitalised words equal to that page's site label,
+    # whatever surrounds them) or links to it counts with that page (one edge per group, never between two groups that
+    # each hold a page naming no other page, only between groups stating the same values, never to a page published
+    # later), on top of today's grouping, which it never splits; a page lane E's echo check marks counts for nothing.
+    # OFF by default: an outlet that checked a value and still names another outlet looks exactly like a copy, so the
+    # rule trades true facts not verified for copies not counted twice (ADR-066 has both, per shape). Applies to claims
+    # read while it is set.
+    source_derivation: bool = False
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

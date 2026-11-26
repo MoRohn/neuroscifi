@@ -489,3 +489,38 @@ def test_a_wave3_failure_message_naming_a_subject_reaches_no_log_and_no_stored_r
     assert not logged, logged
     stored = [t for t in _stored_text(rig3) if MARKER in t]
     assert not stored, stored
+
+
+# ---- Wave 4 lane S (ADR-066): source_derivation, made to fail with every Wave 3 setting on and the rule on -----------
+# A failing derivation grouping is logged (its type only) and the grouping without it decides (claims.
+# independence_groups); a failing echo hook is lane E's and is tested with a stand-in in
+# tests/webcortex/test_source_derivation.py.
+WAVE4_S_ENTRIES = (("source_derivation", "neuroscifi.webcortex.claims", "_derivation_edges", None),)
+WAVE4_S_IDS = [f"{m}:{n}" for m, _, n, _ in WAVE4_S_ENTRIES]
+
+
+@pytest.fixture
+def rig4s(rig3):
+    with rig3.db() as db:
+        state.set_config(db, {"source_derivation": True}, time.time())
+    return rig3
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("mechanism,module,name,stage", WAVE4_S_ENTRIES, ids=WAVE4_S_IDS)
+def test_a_failing_derivation_grouping_leaves_the_owner_in_control(rig4s, web, monkeypatch, caplog, mechanism, module,
+                                                                   name, stage, mode):
+    problems, fault, visible = check(rig4s, web, monkeypatch, caplog, module, name, mode, stage)
+    assert not problems, (problems, fault.calls, visible)
+
+
+@pytest.mark.parametrize("mechanism,module,name,stage", WAVE4_S_ENTRIES, ids=WAVE4_S_IDS)
+def test_a_derivation_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record(rig4s, web, monkeypatch,
+                                                                                          caplog, mechanism, module,
+                                                                                          name, stage):
+    problems, fault, visible = check(rig4s, web, monkeypatch, caplog, module, name, "marked", stage)
+    assert not problems, (problems, fault.calls, visible)
+    logged = [rec.getMessage() for rec in caplog.records if MARKER in rec.getMessage()]
+    assert not logged, logged
+    stored = [t for t in _stored_text(rig4s) if MARKER in t]
+    assert not stored, stored

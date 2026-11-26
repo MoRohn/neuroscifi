@@ -839,6 +839,26 @@ def test_front_door(tmp_path):
     assert_rolls_back(reference, on_, again)
 
 
+def test_source_derivation(individual):
+    """ADR-066 (Wave 4 lane S). Off: an outlet and two reworded copies naming it in wordings no credit pattern reads are
+    three sources and their version becomes knowledge; on: one source, held; off again: three, on the next task."""
+    db, _ = individual
+    n = iter(range(1, 100))
+
+    def probe():
+        k = next(n)
+        name, value = f"Tarvel{k}", f"4.{k}.0"
+        _s_look(db, T0 + k * DAY, name, [
+            ("techledger.example", f"At the moment, {name} {value} is the latest {name} release."),
+            ("feedmill.example", f"Today, {name} {value} is the latest {name} release, Tech Ledger observed."),
+            ("newsgrab.example", f"As Tech Ledger pointed out, {name} {value} is the latest {name} release.")])
+        return _s_rows(db, value)
+    on, off = web_switch(db, "source_derivation")
+    reference, on_, again = cycle(on, off, probe)
+    assert (reference, on_) == (1, 0)
+    assert_rolls_back(reference, on_, again)
+
+
 # Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
 # Wave 1/2 switch of the config classes is here; Wave 2 lane X)
 SWITCHES = {
@@ -862,4 +882,5 @@ SWITCHES = {
     "supersession": test_supersession_and_its_records, "origin_grouping": test_origin_grouping,
     "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
     "own_text_provenance": test_own_text_provenance,
+    "source_derivation": test_source_derivation,
 }

@@ -4142,6 +4142,195 @@ without it. About twenty items per split: a description of these items, not a cl
   (`tests/acceptance/test_wave4_d.py`).
 - Not measured: the open web, where reworded copies are the case the caution is for; whether owners read it.
 
+# ADR-066 One source by evidence of derivation, not by the wording of a credit: built, measured, a TRADE, and OFF
+
+Status: built, **OFF** (`WebConfig.source_derivation`, default `false`). Wave 4, lane S (branch `gen4-s`). No schema
+change. Evidence: `docs/quality/evidence/genesis_wave4_s.json` (summary per world, seed and shape) and
+`genesis_wave4_s_assess_development.json`; scripts named below. Every figure is from simulated worlds of fictional
+software releases read through the real modules, offline, with no model; nothing here was measured on the open web.
+
+**Verdict under the rule committed before the held-out run (`sources.verdict_derivation`, `8e46b98`): "trade" on
+development and on held-out.** The rule admits fewer values whose independent support is below the bar (held-out 127
+→ 97, of them false now 40 → 30) and pays for it with more true values not held (142 → 207 of 612) and a lower
+`correct` in every world (−0.066 / −0.054 / −0.101, beyond the spread in two of three). It ships off; this ADR does not
+recommend turning it on.
+
+## Context
+
+Wave 3 showed that reading the wording of a credit does not decide where a value came from (ADR-061, ADR-063): the
+parsers read the phrasings their own worlds were written with. Wave 4 step 0 wrote worlds whose ground truth is a
+derivation graph (`sources_splits_dev.py`, `sources_splits_heldout.py`, COGNITIVE_BENCHMARK.md "Wave 4: the
+source-independence family"); at the shipped defaults the system admits 127 rows below the bar on held-out and joins
+20 % of truly same-source page pairs. This lane looked for evidence of derivation that does not depend on wording.
+
+## Which evidence separates copies from independent reports on these worlds (development, then held-out)
+
+`scripts/assess_derivation_evidence.py`, pairs of read pages stating one value that today's grouping does not join,
+scored against the graph (development committed before the rule; held-out after the verdict rule):
+
+| evidence | same-source pairs flagged (dev / held-out) | independent pairs flagged (dev / held-out) | kept? |
+|---|---|---|---|
+| the same stated publication time | 604 of 627 / 1,432 of 1,523 | 294 / 715 | no: copies and honest outlets carry the same times here |
+| order-preserving content-token overlap | AUC 0.33 / 0.33 | | no: below chance (copies are reworded, honest outlets converge on one sentence) |
+| a shared rare word pair | 151 / 345 | 59 / 161 (38 / 98 in plain honest corroboration) | no |
+| a page names another READ page's outlet (capitalised words equal to its site label) or links to it | 101 / 255 | 22 / 74, every one an honest outlet that checked the value and still credits another (`verified_credit`) | yes: the rule's only evidence |
+| the same, only when the named page is not stated as published after the naming page | 101 / 255 | 22 / 74 | kept as a condition; not exercised (no world dates a copy before its origin) |
+| a shared capitalised name no read page owns | 59 / 120 | 1 / 1 | no, although it measured well: these pages name nothing but their sources and the subject (and the subject's name was taken from the world), so here a shared name is a shared source; on real pages honest outlets share the names of what they write about |
+| links among the pages read | | | kept; not exercised (no world page carries a link) |
+| the subject's own release page and outlets restating it | | | not seen: those outlets name the subject itself ("the X project said"), which every page names |
+| host and ownership relations in the records | | | nothing beyond today's same-host and site-label keys; a host's history of copying would follow these worlds' fixed cast (every host plays one role), which the anti-overfitting rule forbids relying on |
+
+So the one kind of evidence that separates anything here is a page naming another page that was read with it, and it
+cannot tell a copy that credits its origin from an outlet that checked the value and credits who reported first: in
+these worlds the two are the same text on different hosts.
+
+## Decision
+
+- `WebConfig.source_derivation` (web, owner-set, validated, checked when read: a damaged value reads as off and is
+  listed by `setting_problems`). Off: `stamp_origins` and `independence_groups` behave exactly as at `42fd136`.
+- On: `claims.stamp_origins(..., derivation=True)` stores on each claim `flags["derivation"] = {"cites": [...]}`, the
+  normalised names (`"name:<site label>"`) of the OTHER pages of the task that its page names in capitalised words
+  (not a sentence's first word alone; at least 4 characters) or links to, skipping a page stated as published after
+  it; never a host, URL or text of another page (at most 16 per page; the first 5,000 words read).
+  `independence_groups`, when every claim carries the mark, takes today's grouping (whatever the other settings are)
+  and only joins: a group moves when every page in it names another page; it takes ONE edge, chosen from content
+  (every order of the claims gives one grouping), to a group that names nothing and states exactly the same values,
+  else to the name where the groups naming it meet; an edge never ends at a group that itself names another. So two
+  groups that each hold a page naming nothing are never joined, a round-up is not a bridge, no page carries an honest
+  copy into a third group, and copies today's grouping joins are never separated. No list of phrases, hosts or names.
+- The bar under uncertainty: a join on this evidence is an uncertain "same source" (a copy or a credit), and the bar
+  counts only groups whose independence is supported, i.e. it counts the joined group once. The bar is never lowered.
+  (The alternative "require one more page when independence is uncertain" was not built: in these worlds a story has
+  2-4 copies, so it would admit most copied stories again.)
+- `claims.derivation_joins(claims)` (display only, for lane D's caution): groups today's grouping counts, groups the
+  rule counts, and each page joined on this evidence with `"same_source": "uncertain"`. Nothing decides on it.
+- Lane E's hook: `stamp_origins(..., echo=callable)`; a page the callable marks counts for nothing under the rule (in
+  no group; still shown). A failing callable is logged (its type only) and the page counts as without it. Lane E
+  wires its own check; here it is tested with a stand-in.
+- A failing derivation grouping is logged (its type only) and the grouping without it decides.
+
+## The proof that the default is today's grouping
+
+`scripts/compare_source_derivation.py` loads `42fd136`'s whole `claims.py` beside this tree's and runs both on every
+input: extraction, `stamp_origins` (the stamped claims' JSON, flags included), `independence_groups` (output lists,
+all claims of an input, each value's side, reversed) and `cluster`/`score` (the scored clusters' JSON), with
+`attribution_independence` off and on and `origin_grouping` transitive and one_way, `source_derivation` off. Corpora:
+the source-independence worlds (development and held-out, never the withheld), lanes F, S (and every variant) and R,
+development and held-out; the reviewers' literal scenarios (`tests/webcortex/test_origin_grouping.py`, every order up
+to 120); and the offline research benchmark at the defaults and all off, with every call of `stamp_origins`,
+`independence_groups` and `evaluate` answered by both. On the final code (`a517b4d`): **2,052,099 comparisons, 0
+different** (13,888 of them the reviewers' scenarios); the offline research digest `68731d7235cb…` (portable
+`d87dbb4fb77f…`) at the defaults and with every setting off, unchanged.
+
+## Measured (held-out, 3 worlds × 4 seeds, 12 cycles, 864 looks; development in brackets, 2 worlds × 3 seeds)
+
+Each cell: wrongly admitted (false now) / own answers admitted / suppressed of eligible / grouping precision, recall.
+
+| shape | shipped | `source_derivation` | oracle |
+|---|---|---|---|
+| syndicated_credit | 61 (23) / 0 / 23 of 30 / 0.92, 0.06 | **39 (15)** / 0 / 22 of 30 / 0.98, 0.35 | 0 / 0 / 0 |
+| extra_origin | 26 (6) / 0 / 6 of 12 / 0.92, 0.12 | **18 (4)** / 0 / 7 of 12 / 0.97, 0.41 | 0 / 0 / 0 |
+| syndicated_nocredit | 36 (8) / 0 / 5 of 13 | 36 (8) / 0 / 6 of 13 (unseen: no credit) | 0 / 0 / 0 |
+| echo | 4 (3) / 4 / 1 of 3 | 4 (3) / 4 / 1 of 3 (lane E's) | 0 / 0 / 0 |
+| verified_credit | 0 / 0 / 4 of 55 | 0 / 0 / **42 of 55** | 0 / 0 / 0 |
+| roundup | 0 / 0 / 5 of 53 / 0.00, 0.00 | 0 / 0 / **22 of 53** / 0.89, 0.51 | 0 / 0 / 0 |
+| wire_like_host | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 38 of 61 / 1.00, 0.94 | 0 / 0 / 0 |
+| two_origins | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 8 of 43 / 0.86, 0.59 | 0 / 0 / 0 |
+| independent | 0 / 0 / 16 of 183 | 0 / 0 / 18 of 183 | 0 / 0 / 0 |
+| correction, stale, mirror_dates, primary_cited | 0 / 0 / 20, 6, 12, 4 | 0 / 0 / 21, 6, 12, 4 | 0 / 0 / 0, 4, 0, 0 |
+| **all** | **127 (40) / 4 / 142 of 612 / 0.81, 0.20** [64 (21) / 4 / 39 of 233 / 0.87, 0.20] | **97 (30) / 4 / 207 of 612 / 0.78, 0.35** [54 (17) / 4 / 65 of 233 / 0.84, 0.36] | 0 / 0 / 4 of 612 |
+
+References (held-out, all shapes): todays_rule 232 (121) / 13 / 82; every_page 287 (152) / 14 / 70; same_value 0 / 0 /
+525. `correct`, mean over cycles, mean ± sd over 4 seeds, and the paired difference (seeds better / worse):
+
+| world | shipped | `source_derivation` | oracle |
+|---|---|---|---|
+| src-ho-mixed | 0.601 ± 0.064 | −0.066 (0 / 4), beyond the spread | 0.713 |
+| src-ho-copies | 0.627 ± 0.064 | −0.054 (1 / 3) | 0.718 |
+| src-ho-origins | 0.656 ± 0.073 | −0.101 (0 / 4), beyond the spread | 0.709 |
+| [src-dev-mixed, src-dev-copies] | [0.704 ± 0.064, 0.579 ± 0.050] | [−0.083 (0 / 3), −0.093 (0 / 3)] | [0.762, 0.633] |
+
+Development → held-out, as rates (per look; suppressed per eligible look), rule minus shipped: wrongly admitted −0.028 →
+−0.035, of them false −0.011 → −0.012, suppressed +0.112 → +0.106; precision −0.03 → −0.03, recall +0.16 → +0.15. The
+trade does not shrink or grow on held-out (both written by step 0's author with the same generator: weakly independent).
+
+**What it cannot see, per failure shape (held-out wrongly admitted rows still admitted):** syndicated_credit 39 of 61
+(64 %), extra_origin 18 of 26 (69 %), syndicated_nocredit 36 of 36 (100 %: a copy that credits nobody names nothing),
+echo 4 of 4 (100 %: lane E's). Why, from the name reader's census over every (copy, origin) pair of both splits
+(evidence `name_census`; seen / origin not read / origin read but its name not found): syndicated_credit 32 % / 53 % /
+16 %, extra_origin 35 % / 50 % / 14 %, wire_like_host 29 % / 51 % / 20 %, two_origins 86 % / 0 / 14 %, roundup 62 % /
+38 % / 0, syndicated_nocredit 4 % / 60 % / 36 %, primary_cited 0 / 48 % / 52 %. An origin not read leaves no read page
+to attach a copy to; a read origin's name is missed when it is a sentence's first word alone ("Reuters wrote that
+..."), when it differs from the host's label ("The Associated Press", "(AP)" against `apnews`), when the copy names
+nothing (verbatim and reworded copies, mirrors) or when the origin is the project's own release page.
+
+**Ablations** (held-out): without the name evidence the rule changes nothing (identical to shipped); without links,
+without the publication-order condition: identical to the full rule (not exercised by these worlds); without the
+same-values condition: same counts, different groupings; letting a group move when any (not every) page in it names
+another: suppressed 207 → 222.
+
+**Other worlds, the rule on.** Lane F held-out (2 worlds × 4 seeds, `wave4-s:derivation` against `shipped`): every
+paired difference 0 and 0 held cycles changed; the census shows 2,236 pages there naming a read page, all already
+joined by today's grouping (their attribution lines): redundant, not tested. Wave 3 lane S's worlds (`cycles_s`,
+against its `baseline`): syndicated-only versions admitted fall to 0 in every world (6/3 → 0 development, 6/9/4 → 0
+held-out) and copies left apart 43-60 → 1-3, with `correct` −0.040 / −0.114 (development; sd-wrong-newer beyond its
+spread 0.066) and −0.039 / −0.019 / −0.073 (held-out); honest outlets merged not higher (12 → 12, 2 → 0; 32 → 28, 6 → 4,
+21 → 17). These worlds credit outlets in the five phrasings of Wave 3, all of which name the outlet mid-sentence, so
+they test the reader, not its wording limits. The cognitive benchmark with the rule on wherever a case does not set it
+(`scripts/families_with_source_derivation.py`): retention all scenarios pass and all retained, adversarial 60 of 60
+(the 55 earlier cases and this lane's 5), development and held-out, as at the shipped defaults.
+
+**Cost** (`scripts/cost_source_derivation.py`, an individual of 10,001 tasks, 20 looks of 8 pages each way): the
+name reading in `stamp_origins` +0.19 ms per look (outside any write transaction); the grouping 0.36 ms per look, in
+memory over one task's claims (it is called inside consolidation's write transaction and reads no row);
+`consolidate.run` median 3.0 → 3.9 ms. Its cost depends on one task's pages, not on the size of the individual.
+
+## Security (tests: `tests/webcortex/test_source_derivation.py`, adversarial origin `added_wave4_s`)
+
+- One hostile page (or several) naming and linking honest outlets cannot join two groups that each hold a page
+  naming nothing, in any order of the pages (H1, N1/N3 in this rule's terms).
+- One hostile page joins two honest pages only when both name the hostile page's own site label (then they count
+  with the outlet they both name, as they would with that outlet's own page); a page on a host labelled like a
+  credited outlet cannot carry an honest copy into a third group (review3c F2): property test over 300 random stagings,
+  with power (it fails when edges may end at a group that names another).
+- Copies cannot look more independent than today: the rule's groups are unions of today's groups (every development
+  look, and the property test).
+- Order independence: every development look in 6 random orders, and every order of the hostile stagings.
+- Bounded reading: a 1.2 MB page of capitalised words read in 0.06 s (the test's bound is 5 s); names after 5,000
+  words are not read; at most 16 names kept per page; no regex with backtracking on page text (two linear patterns).
+- Nothing new scans a table inside a write transaction; forget of the naming page removes its names with its claims,
+  forget of the named page leaves no host or URL of it in any claim, and a checkpoint restored after the forget
+  replays it (test). Family and agent tasks: the rule acts in every task's grouping as the setting says, like every
+  other grouping rule; it decides nothing beyond the count, so a family or agent task can trigger nothing an owner's
+  would not.
+- Fault injection (`tests/uat/test_uat_fault_injection.py`, `_derivation_edges` raising, timing out, returning
+  garbage, a message naming a subject): the owner keeps control, the failure is visible, the message reaches no log
+  or record. Rollback (`tests/uat/test_uat_rollback.py::test_source_derivation`) and the setting lists cover it.
+
+## What the withheld look should run
+
+The source-independence look (`scripts/bench_sources.py final`) with `--config shipped --config source_derivation`
+(the references come with it); the verdict function `sources.verdict_derivation` on its output. The learning-cycles
+look may add `wave4-s:derivation` (pair: `shipped`). Neither can switch the setting on.
+
+## What stays open
+
+- The evidence that would separate a copy from a credit (an outlet's own added specifics, its access to the source)
+  is not in these worlds; a rule that tells them apart needs worlds where honest crediting outlets differ from copies
+  in something other than their host, written by someone other than its author.
+- Copies that credit nobody, copies of an origin not read, credits whose name differs from the origin's host label,
+  and the project's own release page: unseen (above).
+- Links are not exercised by any world; neither is the publication-order condition.
+- N1 (ADR-063) at the defaults is unchanged: this rule starts from today's grouping.
+- Lane E's hook is tested with a stand-in only; the echo check itself is lane E's (ADR-067).
+
+## Consequences
+
+At the shipped defaults nothing changes. An owner who turns it on (`nsf web config --db DB --set
+source_derivation=true`) gets fewer copied stories counted twice and more true facts left unconfirmed, measured
+above; it applies to claims read while it is set, and setting it off returns today's grouping on the next task (the
+rollback test).
+
 # ADR-067 The individual's own text recognised by what it emitted: own-text provenance, built and OFF
 
 Status: built, **OFF** (`own_text_provenance`, default `false`). Wave 4 lane E (`gen4-e`). No schema change (19); one

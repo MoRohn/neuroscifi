@@ -75,12 +75,20 @@ MECHANISM = "sources-bench"
 CONFIGS = {"shipped": {},
            "attribution_independence": {"attribution_independence": True},
            "echo_recognition": {"echo_recognition": True},
-           "origin_grouping:one_way": {"origin_grouping": "one_way"}}
+           "origin_grouping:one_way": {"origin_grouping": "one_way"},
+           # Wave 4 lane S (ADR-066): the derivation rule, and its ablations (claims.DERIVATION_ABLATE, set by run_world
+           # for the run only; "_ablate" is not a setting)
+           "source_derivation": {"source_derivation": True},
+           "source_derivation:no-names": {"source_derivation": True, "_ablate": ["names"]},
+           "source_derivation:no-links": {"source_derivation": True, "_ablate": ["links"]},
+           "source_derivation:no-time": {"source_derivation": True, "_ablate": ["time"]},
+           "source_derivation:no-values": {"source_derivation": True, "_ablate": ["values"]},
+           "source_derivation:no-whole-group": {"source_derivation": True, "_ablate": ["whole_group"]}}
 CONFIGS["own_text_provenance"] = {"own_text_provenance": True}                      # Wave 4 lane E (ADR-067)
 FINAL_CONFIGS = ("shipped",)
 READ_BACK = ("enabled", "autonomous", "attribution_independence", "echo_recognition", "origin_grouping",
              "supersession", "supersession_min_sources", "auto_provisional_min_sources",
-             "auto_provisional_min_confidence")
+             "auto_provisional_min_confidence", "source_derivation")
 READ_BACK += ("own_text_provenance",)
 REFERENCES = ("oracle", "every_page", "same_value", "todays_rule")
 COUNTS = ("looks", "pages", "pages_with_claims", "admitted", "admitted_false", "wrongly_admitted",
@@ -164,7 +172,8 @@ def investigate(db, task, docs, now, *, answer=None) -> tuple[dict, list, dict]:
     for d in docs:
         found += claims.extract_claims(d, task["objective"])
     cfg = state.get_config(db)
-    origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping)
+    origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping,
+                                   derivation=cfg.source_derivation)
     clusters = [claims.score(c, now=now, freshness_class=freshness, origins=origins)
                 for c in claims.cluster(found)] if found else []
     with store.write(db):
@@ -243,9 +252,12 @@ class Run:
 
     def start(self):
         from ...webcortex import state
-        state.set_config(self.db, {"enabled": True} | CONFIGS[self.config_name], T0 - 30 * DAY)
+        settings = {k: v for k, v in CONFIGS[self.config_name].items() if not k.startswith("_")}
+        state.set_config(self.db, {"enabled": True} | settings, T0 - 30 * DAY)
         cfg = state.get_config(self.db)
         self.config = {k: getattr(cfg, k) for k in READ_BACK}
+        from ...webcortex import claims
+        self.config["_ablate"] = sorted(claims.DERIVATION_ABLATE)      # read back: what run_world set for the run
 
     def look(self, name, c, now, answer):
         from ...webcortex import claims, orchestrator, state
@@ -344,10 +356,13 @@ def _total(by_shape) -> dict:
 
 def run_world(world, config) -> dict:
     """One run of one generated world with one configuration (CONFIGS)."""
+    from unittest import mock
+    from ...webcortex import claims
     started = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="nsf-genesis-src-") as directory:
         db = store.create(Path(directory) / "s.sqlite", T0 - 31 * DAY, note="wave 4 step 0: source independence")
-        with closing(db), cycles._environment([_Quiet()]):
+        with closing(db), cycles._environment([_Quiet()]), mock.patch.object(
+                claims, "DERIVATION_ABLATE", frozenset(CONFIGS[config].get("_ablate") or ())):
             run = Run(world, config, db)
             run.start()
             for c in range(world["spec"]["cycles"] + 1):
@@ -568,6 +583,73 @@ def own_verdict(result, config="own_text_provenance", base="shipped") -> dict:
         verdict = "no effect"
     return {"config": config, "reference": base, "verdict": verdict,
             "checks": {"A1": a1, "A2": a2, "S1": s1, "C1": c1, "G": g}, "per_world": per}
+
+
+# ---- Wave 4 lane S (ADR-066): the verdict rule for source_derivation, written and committed BEFORE any held-out run ----
+#
+# Input: an output of `scripts/bench_sources.py run --split held_out` holding `shipped` and `source_derivation` (and its
+# ablations). All counts are summed over the four seeds of a world (`configurations[c].worlds[w].totals_sum`); `correct`
+# is `per_seed[i].mean_correct`, paired with `shipped` on the same world and seed.
+#   (A) admissions: wrongly_admitted_false summed over the worlds is LOWER than shipped's and in no world higher, and
+#       own_admitted is in no world higher;
+#   (B) suppression: suppressed summed over the worlds is NOT higher than shipped's;
+#   (C) correctness: in no world is the mean over seeds of the paired difference of mean_correct below minus shipped's
+#       sd of mean_correct over the seeds of that world;
+#   (D) grouping: pooled precision not below shipped's minus 0.02, and pooled recall above shipped's.
+# Verdict: "supported" when A, B, C and D hold; "trade" when A holds and B or C fails (fewer false values admitted,
+# paid for with true values not held or a lower `correct`: reported as a trade, never as a gain); "no gain" when A
+# fails and B and C hold; "harmful" when A fails and B or C fails. Whatever it says, the setting ships OFF (a change of
+# what counts as a source is the owner's to turn on). Reported beside it, per shape: the change of wrongly_admitted,
+# wrongly_admitted_false, own_admitted and suppressed, and precision and recall; the same on development, as rates per
+# look, for the development -> held-out drop. An ablation (a configuration "source_derivation:no-<x>") is "not
+# exercised by these worlds" when every count of its totals_sum equals the full rule's in every world.
+DERIVATION_VERDICT_FIELDS = ("wrongly_admitted", "wrongly_admitted_false", "own_admitted", "suppressed", "eligible",
+                             "tp", "fp", "fn", "looks")
+
+
+def verdict_derivation(out, rule="source_derivation", base="shipped") -> dict:
+    """The pre-registered verdict for `rule` against `base` on one bench output (see the comment above)."""
+    worlds = sorted(out["configurations"][base]["worlds"])
+    get = (lambda c, w: out["configurations"][c]["worlds"][w])
+
+    def total(c, k, w=None):
+        return sum(get(c, x)["totals_sum"][k] for x in (worlds if w is None else [w]))
+
+    def pooled(c):
+        tp, fp, fn = total(c, "tp"), total(c, "fp"), total(c, "fn")
+        return (tp / (tp + fp) if tp + fp else None), (tp / (tp + fn) if tp + fn else None)
+    paired = {}
+    for w in worlds:
+        diffs = [a["mean_correct"] - b["mean_correct"]
+                 for a, b in zip(get(rule, w)["per_seed"], get(base, w)["per_seed"])]
+        paired[w] = {"mean": sum(diffs) / len(diffs), "sd_base": get(base, w)["mean_correct"]["sd"],
+                     "better": sum(d > 1e-12 for d in diffs), "worse": sum(d < -1e-12 for d in diffs)}
+    a = (total(rule, "wrongly_admitted_false") < total(base, "wrongly_admitted_false")
+         and all(total(rule, "wrongly_admitted_false", w) <= total(base, "wrongly_admitted_false", w) for w in worlds)
+         and all(total(rule, "own_admitted", w) <= total(base, "own_admitted", w) for w in worlds))
+    b = total(rule, "suppressed") <= total(base, "suppressed")
+    c = all(p["mean"] >= -p["sd_base"] for p in paired.values())
+    (pr, rr), (pb, rb) = pooled(rule), pooled(base)
+    d = pr is not None and pb is not None and pr >= pb - 0.02 and rr is not None and rb is not None and rr > rb
+    verdict = ("supported" if a and b and c and d else "trade" if a else "no gain" if b and c else "harmful")
+    shapes = sorted({s for w in worlds for s in get(base, w)["by_shape_sum"]})
+    by_shape = {}
+    for s in shapes:
+        row = {}
+        for k in DERIVATION_VERDICT_FIELDS:
+            r = sum(get(rule, w)["by_shape_sum"].get(s, {}).get(k, 0) for w in worlds)
+            q = sum(get(base, w)["by_shape_sum"].get(s, {}).get(k, 0) for w in worlds)
+            row[k] = {base: q, rule: r}
+        by_shape[s] = row
+    ablations = {}
+    for name in out["configurations"]:
+        if name.startswith(rule + ":"):
+            same = all(get(name, w)["totals_sum"][k] == get(rule, w)["totals_sum"][k] for w in worlds for k in COUNTS)
+            ablations[name] = "not exercised by these worlds" if same else "changes the result"
+    return {"verdict": verdict, "A_admissions": a, "B_suppression": b, "C_correct": c, "D_grouping": d,
+            "totals": {k: {base: total(base, k), rule: total(rule, k)} for k in DERIVATION_VERDICT_FIELDS},
+            "precision_recall": {base: [pb, rb], rule: [pr, rr]}, "paired_correct": paired, "by_shape": by_shape,
+            "ablations": ablations}
 
 
 # ---- the withheld worlds: one look each, recorded before it scores --------------------------------------------------------
