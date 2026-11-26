@@ -141,6 +141,12 @@ RUNNERS = {
     "neuroscifi.acceptance.cognition.adversarial:owner_first_under_contention": "benchmark: owner work first",
     "neuroscifi.acceptance.cognition.knowledge:_World.investigate": "benchmark (lane K): one re-check outcome fed "
                                                                     "through consolidation on a staged individual",
+    "neuroscifi.acceptance.cognition.adversarial:forecast_hold_yields_to_the_owner": "benchmark (Wave 2, lane U): "
+                                                                                     "a forecast hold against the "
+                                                                                     "owner's task",
+    "neuroscifi.acceptance.cognition.adversarial:task_survives_its_worker_disconnecting": "benchmark (Wave 2, lane "
+                                                                                          "U): a worker lost "
+                                                                                          "mid-task",
 }
 
 # Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored
