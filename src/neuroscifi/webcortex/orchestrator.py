@@ -3067,6 +3067,11 @@ def requeue(db, task_id, now, *, origin=None, family=None) -> dict:
         task = state.task(db, task_id, family=family)
         crashed = task["status"] not in TERMINAL_STATES and task["status"] != "queued" and \
             task["lease_holder"] is not None and worker_alive(task) is False
+        if task["status"] == "failed" and is_autonomous(task["origin"]) and \
+                max(task["created_at"] or 0, task["started_at"] or 0) <= now - 86400.0:
+            # Wave 4 lane D (review3b L6/N5 (f)): an autonomous task outside the day's window counts again once
+            # queued (scheduler._window), so the day's task count is checked here, in the transaction that queues it
+            _within_task_count(db, now)
         if task["status"] == "failed" or crashed:
             state.update_task(db, task_id, now, status="queued", stage=None, finished_at=None, error=None,
                               lease_holder=None, lease_expires_at=None, cancel_requested=0)
@@ -3091,6 +3096,8 @@ def requeue(db, task_id, now, *, origin=None, family=None) -> dict:
     with store.write(db):
         existing = _open_child(db, task_id)
         if existing is None:
+            if is_autonomous(prepared["origin"]):   # Wave 4 lane D: as submit; the owner's origins are never counted
+                _within_task_count(db, now)
             child = insert(db, prepared, now)
             background.asked_by_owner(db, child, origin or task["origin"], now)
             store.bump_state_version(db)
