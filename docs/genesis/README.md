@@ -6,12 +6,15 @@ Status: 2026-11-25. Phase I (discovery and research) is done and Wave 0 is integ
 benchmark on the reconciled tree are in [WAVE1.md](WAVE1.md). As shipped it changes no research outcome: what is on
 records or displays, everything that changes behaviour is off. A re-review of the fixes, two more fix lanes and a
 second check followed; the final validation (`816fa12`) and the one look at the withheld family are recorded there
-(§7, §8). **Wave 2 is integrated on `genesis-wave2` (`828ca8e`)**; its record is [WAVE2.md](WAVE2.md). Its three main
-results are negative or neutral: the integrated loop equals the baseline on held-out; no knowledge-evolution mechanism
-shows a held-out gain over repeated cycles (the existing loop beats no loop; knowledge decays in every configuration,
-partly by the test world's design); fault injection found real failures, now guarded. Two independent reviews
-corrected the evidence and found two product defects in Wave 2's additions (the false arbitration record, a voice
-delivery after a forget), which follow-up lanes are fixing (WAVE2.md §4). No default changed. All ten deliverables (A–J) are written; the final account for the owner is
+(§7, §8). **Wave 2 is integrated on `genesis-wave2` (`828ca8e`), with its fix lanes and reconciliation**; its
+record is [WAVE2.md](WAVE2.md). Its three main results are negative or neutral: the integrated loop shows no gain
+beyond the baseline's spread on held-out; no knowledge-evolution mechanism shows a held-out gain over repeated cycles
+(the existing loop beats no loop; knowledge decays in every configuration, partly by the test world's design); fault
+injection found real failures, now guarded. Two independent reviews corrected the evidence and found two product
+defects in Wave 2's additions (the false arbitration record, a voice delivery after a forget); both are fixed, and a
+third check of the fixes found six low issues, also fixed (WAVE2.md §4). No default changed; one older behaviour
+changed (a timer pass with a task limit now counts a queued refresh, WAVE2.md). Wave 2 took no look at the withheld
+family. All ten deliverables (A–J) are written; the final account for the owner is
 [FINAL_EVALUATION.md](FINAL_EVALUATION.md).
 
 Project Cognitive Genesis is the owner's programme to add measurable cognitive mechanisms to NeuroSciFi on top of the

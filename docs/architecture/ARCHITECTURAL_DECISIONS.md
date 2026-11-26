@@ -2961,7 +2961,7 @@ first figures are kept in the evidence file under `before_review`.
   trap): held-out 0.415 baseline, 0.408 integrated, 0.415 salience attention alone; development 0.420, 0.410, 0.401.
 - **Anticipation / prospective validity** (the scenario records' three-way Brier once settled; reference: three
   equal futures, 2/3): **not better than three equal futures**: held-out 0.681 (scenarios alone; per seed
-  0.555-0.801) and 0.689 (integrated); development 0.640 and 0.630. Scenario records stay off.
+  0.555-0.801) and 0.689 (integrated; per seed 0.574-0.824); development 0.640 and 0.630. Scenario records stay off.
 - **Arbitration and conflicts**: 0 timer passes with two tasks on one subject and 0 investigations of a subject
   already covered in the same step, in every configuration; 0 arbitrations recorded (the first measurement's 11 and
   14 per world were all spurious, H1). 0 belief writes in every run.

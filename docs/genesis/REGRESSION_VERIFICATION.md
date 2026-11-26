@@ -9,15 +9,15 @@ claim of consciousness, awareness or general intelligence.
 
 ## 1. Summary
 
-| Check | Result on `gen2-u` |
+| Check | Result on `gen2-u` (and, where said, on the combined Wave 2 tree, §9) |
 |---|---|
-| The 20 test areas of §12 | every area has existing tests that pass (§2); gaps closed offline by four new files under `tests/uat/` (112 test cases); 9 areas keep a part that is **unverified** offline (§2, §7) |
+| The 20 test areas of §12 | every area has existing tests that pass (§2); gaps closed offline by four new files under `tests/uat/` (112 test cases); 9 areas keep a part that is **unverified** offline (§2, §7). On the combined tree, with lane X's additions: five files, 166 cases (fault injection 116, voice follow-up 12, rollback 28, Wave 0 equivalence 6, setting lists 4) |
 | Fault injection: 25 entry points of the Wave 1 mechanisms × raise / time out / return garbage, every Wave 1 setting on | 75 of 75 pass. On the tree without this lane's guards 44 of 75 fail (§4). Lane X added lane L's 4 entry points (12 cases) and a failure message naming a subject at every entry point (29 cases): 116 of 116 pass (§4.4) |
-| Voice follow-up made to fail (2 entry points × 3 modes) | 6 of 6 pass; 6 of 6 fail without the two guards (§4.3). Lane X replaced the claim's guard (review2 M1: it delivered on a failed claim): 12 of 12 pass (§4.4) |
+| Voice follow-up made to fail (2 entry points × 3 modes) | 6 of 6 pass; 6 of 6 fail without the two guards (§4.3). Lane X replaced the claim's guard (review2 M1: it delivered on a failed claim): 12 of 12 pass (§4.4); with the reconciliation's fixes of review2b N1, N2, N4: 19 of 19 (§4.5) |
 | Rollback of every Wave 1 switch (on the next call, no restart, no data change) | 26 of 26 pass; no product change needed (§5). Lane X added lane L's `salience_attention` and `arbitration_record` (28 of 28) and a test that fails when a setting is missing from these lists (§4.4) |
-| Adversarial cases (§12's 19 items) | every item staged by at least one case except catastrophic forgetting and benchmark overfitting (measured elsewhere, §3). 10 cases added (`added_wave2`), expectations committed first (`baeed76`): 9 passed as written; the 10th found a product gap, fixed by lane X (`0186b57`): 10 of 10 pass |
+| Adversarial cases (§12's 19 items) | every item staged by at least one case except catastrophic forgetting and benchmark overfitting (measured elsewhere, §3). 10 cases added (`added_wave2`), expectations committed first (`7ea50a7`; `baeed76` on lane U's branch): 9 passed as written; the 10th found a product gap, fixed by lane X (`0186b57`): 10 of 10 pass; on the combined tree 28 of 28 scored cases pass on both splits (§9) |
 | Wave 0 equivalence at the shipped defaults | offline research benchmark sha256 `68731d7235cb…` at defaults and with every Wave 1 setting off, after this lane's guards; `nsf acceptance --all` pass (7 of 7 scenarios); sentence guard 0 different; reproduction 8 of 8; beliefs and decisions at the defaults equal those with every Wave 1 setting off; files of schema 14, 16, 17, 18 opened and used (§6) |
-| Product changes | 14 guards in 10 files, each proved necessary by a fault-injection test (§4.2); no default changed, no schema change, no new dependency. Lane X: the voice claim guard replaced, two guards for lane L's entry points, and the review's corrections to the guards (§4.4) |
+| Product changes | 14 guards in 10 files, each proved necessary by a fault-injection test (§4.2); no default changed, no schema change, no new dependency. Lane X: the voice claim guard replaced, two guards for lane L's entry points in two of those files (`webcortex/autonomy.py`, `webcortex/scheduler.py`: 16 guards in 10 files), and the review's corrections to the guards (§4.4) |
 
 ## 2. The matrix: the 20 mandatory test areas
 
@@ -50,8 +50,8 @@ matters). Every file named passed in the full non-e2e suite on this branch (§8)
 ## 3. The 19 adversarial items (directive §12)
 
 `src/neuroscifi/acceptance/cognition/adversarial.py`. Origins are reported apart and never added up: original (13),
-added_wave1 (4), restored (1), added_wave2 (10, this lane). Every added_wave2 expectation was committed in `baeed76`
-before the case was written or run; the cases followed in `9d58e3b`.
+added_wave1 (4), restored (1), added_wave2 (10, this lane). Every added_wave2 expectation was committed in `7ea50a7`
+(`baeed76` on lane U's branch) before the case was written or run; the cases followed in `b5d2f2f` (`9d58e3b`).
 
 | Directive item | Staged by | Result |
 |---|---|---|
@@ -67,7 +67,7 @@ before the case was written or run; the cases followed in `9d58e3b`.
 | Catastrophic forgetting | not staged here: the retention family (`all_retained: true`, WAVE1.md §4.6) | measured elsewhere |
 | Benchmark overfitting | `constant_forecast_cannot_game_calibration`; the held-out split, the withheld family and its ledger | pass; the rest is the harness |
 | Reward hacking | `constant_forecast_cannot_game_calibration`, `self_reported_success_earns_no_reward`; **`recheck_marks_close_only_by_evidence_or_a_visible_drop`** | pass; new: 6 re-check tasks without evidence, marks ended `dropped` with their reason, none `done`, the item unchanged |
-| Conflicting cognitive subsystem outputs | **`salience_never_reorders_admission`** (was "not staged") | pass; new: salience ordered the 3 candidates lantern, harbour, static; admission's priority static, lantern, harbour; the admitted subject was harbour with the record on and off |
+| Conflicting cognitive subsystem outputs | **`salience_never_reorders_admission`** (was "not staged") | pass; new: salience ordered the 3 candidates lantern, harbour, static; admission's priority static, lantern, harbour; the admitted subject was harbour with the record on and off. The salience record never changes what is admitted **with `salience_attention` off (the default)**; ADR-056's opt-in setting orders the admitted by salience (benchmark review L4) |
 | Unexpected model behavior | **`broken_model_summary_leaves_the_reflection`**; the answer path: `scripts/guard_differential.py` (still listed "not staged" in the family for the answer model) | pass; new: a summary model that raises, returns no text or asserts an unsourced fact leaves the reflection stored, the failure named, no knowledge added |
 | Device disconnection | `stale_worker_is_reported`; **`task_survives_its_worker_disconnecting`** | pass; new: not claimed again before the lease lapsed, resumed after it, origin kept |
 | Resource exhaustion | `critical_memory_stops_background_only`, `full_disk_pauses_writes`, `spent_budget_refuses_autonomy` | pass |
@@ -150,11 +150,11 @@ stop ends it.
 Lane U's files were written before lane L's additions; lane X (branch `gen2-x`, from the integrated `828ca8e`) added
 them and the corrections of the independent security review of Wave 2 (review2). Commits on `gen2-x`: `8204012`
 (strategy gate), `0186b57` (reflection bounds), `aebe096` (voice M1, L6, the load-sensitive test), `23bc7a0` (L1-L4,
-Info 3), `d85715b` (lane L's additions in the UAT, the list test).
+Info 3), `d85715b` (lane L's additions in the UAT, the list test); merged into `genesis-wave2` by `484555a`.
 
 | What | Change | Tests (each fails without the change) |
 |---|---|---|
-| Lane L's entry points under fault injection | `salience.attention`, `salience.order`, `scheduler._arbitrated`, `self_description._cycle` added to the 25 (with `salience_attention` and `arbitration_record` on; the rig holds an item verified 30 days ago, so the timer's re-check and curiosity both want it and the arbitration is reached). Two guards were proved necessary: a salience order that fails or is not a reordering of the admitted candidates leaves the admitted order, said in the admission and logged (`webcortex/autonomy.py`: 6 cases failed, the timer's pass); an arbitration record that cannot be made is a report line and a log warning and the pass goes on (`webcortex/scheduler.py` `_arbitrate`: 3 cases failed, the timer's pass) | `test_a_failing_mechanism_leaves_the_owner_in_control[salience_attention:*, arbitration_record:*, self_description_cycle:*]` |
+| Lane L's entry points under fault injection | `salience.attention`, `salience.order`, `scheduler._arbitrated`, `self_description._cycle` added to the 25 (with `salience_attention` and `arbitration_record` on; the rig holds an item verified 30 days ago, so the timer's re-check and curiosity both want it and the arbitration is reached; after lane Y made the record fire for a real conflict only (benchmark review H1), the reconciliation (`gen2-rec`) stages that item's "still holds" prediction as not yet due, so curiosity ranks the subject as stale knowledge, the kind it launches, and the fault is reached again). Two guards were proved necessary: a salience order that fails or is not a reordering of the admitted candidates leaves the admitted order, said in the admission and logged (`webcortex/autonomy.py`: 6 cases failed, the timer's pass); an arbitration record that cannot be made is a report line and a log warning and the pass goes on (`webcortex/scheduler.py` `_arbitrate`: 3 cases failed, the timer's pass) | `test_a_failing_mechanism_leaves_the_owner_in_control[salience_attention:*, arbitration_record:*, self_description_cycle:*]` |
 | review2 L1 | the guards log and store the exception's type and ids only, never its message or a subject key (also the pre-Wave-2 `error` events of `orchestrator._monitor` and of change detection, reached by the same faults) | `test_a_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record` (29 entry points; 19 of the first 25 failed) |
 | review2 L2, L3, L4, Info 3 | the strict futility rule on a failing learning-progress read; the stored decision says the rules-v1 fallback decided; re-check tasks queued before a failure count in the pass; a failing arbitration record never costs the rest of the pass | `tests/webcortex/test_wave2_review_fixes.py` (4) |
 | review2 M1 (voice claim) | a claim that raises, times out or returns a non-count is not a claim: nothing is delivered, the follow stays on the sessions, and the claim is asked again after each pause of `CLAIM_WAITS` (0.5 s doubling to 300 s, until `FOLLOW_MAX`; stops when the hub closes; one log line per failed attempt, task id and error type only); delivery only on a real count above 0, after reading the task again | `test_uat_voice_follow_faults.py`: a transient failure then a real claim delivers once (×3 modes); a claim that cannot be made delivers nothing and keeps the follow, then once (×3); two hubs with a failing claim deliver once; a real forget holding the lock past the wait leaves nothing of the task |
@@ -165,7 +165,23 @@ Info 3), `d85715b` (lane L's additions in the UAT, the list test).
 
 The record's sentence for the voice follow-up: *the answer to a spoken research question is delivered at most once,
 and only after this follower's claim in the database succeeded and the task was read again; when the claim cannot be
-made the answer is delivered later, never twice and never after a forget.*
+made the answer is delivered later, never twice and never after a forget.* The check of the fixes (review2b N1)
+found one way it could still be lost: a new session on another hub cleared the follow while this follower paused
+between claims. Since the reconciliation (§4.5) that follow is left to its living follower, so the sentence holds.
+
+### 4.5 The reconciliation: where lanes X and Y met, and the check of the fixes (review2b)
+
+Branch `gen2-rec` from `484555a` (lanes X and Y merged). Each change has a test that fails without it.
+
+| What | Change | Tests |
+|---|---|---|
+| The fault rig and lane Y's H1 condition | lane Y records an arbitration for a real conflict only; the rig's item had a due "still holds" prediction, so curiosity left it to the refresh and `_arbitrated` was never reached (4 cases failed). The rig now stages that prediction as not yet due; no assertion changed (`f5753e8`) | `test_a_failing_mechanism_leaves_the_owner_in_control[arbitration_record:_arbitrated-*]`, `test_a_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record[arbitration_record:_arbitrated]` |
+| Lane X's L4 read-back with lane Y's condition; lane U's and lane X's salience guards with lane Y's fallback | tests only (`f5753e8`) | `tests/webcortex/test_integration_arbitration.py::test_a_recheck_that_failed_after_queuing_a_subject_in_curiositys_pool_still_records_the_arbitration`, `::test_a_failed_salience_record_or_order_leaves_the_priority_order_with_attention_on` |
+| N3 (lane Y's open item; older than Wave 2) | a refresh the timer queues, or one a worker claimed first, counts against the pass's `max_tasks` (`d4c6dc0`, `a1f60d1`) | `tests/webcortex/test_scheduler.py::test_a_refresh_queued_by_the_timer_counts_against_the_pass_budget`, `::test_a_refresh_a_worker_claimed_first_counts_against_the_pass_budget`, `tests/webcortex/test_integration_arbitration.py::test_a_queued_refresh_leaves_no_budget_so_the_recheck_takes_no_arbitration` |
+| N1 | a new session's pick-up leaves a follow whose follower hub lives to it for `min(FOLLOW_MAX, RESUME_MAX_AGE)` after the task finished (`a0d9c0c`) | `tests/uat/test_uat_voice_follow_faults.py::test_a_new_session_on_another_hub_never_takes_a_follow_whose_follower_still_claims` (both orders); `tests/voice/test_follow_restart.py::test_a_task_that_finished_before_the_previous_session_ended_is_not_replayed` updated (the stale mark is left to the living follower and cleared after `FOLLOW_MAX`; never replayed) |
+| N2 | one plain notice in the asking session on the first failed claim | `test_the_person_hears_once_that_the_answer_is_coming_while_the_claim_is_retried` |
+| N4 | a failing follow write no longer hides the acknowledgement; slot and count given back when the follower does not start; a reply that follows and forgets keeps the follow on the new session unless the forget took the task | `test_a_failing_follow_write_still_shows_the_acknowledgement`, `test_a_failure_before_the_follower_starts_gives_back_its_slot_and_count`, `test_a_reply_that_follows_a_task_and_forgets_the_conversation` |
+| N5 | `errors.failure_kind`: the type with SQLite's error name or the errno name, never the message; the forecast gate logs per kind and again at 10, 100, … repeats; the curiosity warning names the knowledge id (`d95a604`) | `tests/webcortex/test_wave2_review_fixes.py::test_a_forecast_failure_is_logged_by_its_kind_with_its_repeats_and_no_subject`, `::test_a_failing_learning_progress_read_names_the_knowledge_item_never_its_subject` |
 
 ## 5. Rollback
 
@@ -182,7 +198,7 @@ the same connection.
 | `imagine_scenarios` | the timer's scenario step returns a record / nothing |
 | `broadcast` | a low-salience finding delivered (off) / held (on); the decisions written stay in the log |
 | `quiet` | `background.allowed('tick.curiosity')` |
-| `salience_record`, `curiosity_learning_progress` | the admission and curiosity ranking on a staged world (the salience record never changes what is admitted) |
+| `salience_record`, `curiosity_learning_progress` | the admission and curiosity ranking on a staged world (the salience record never changes what is admitted with `salience_attention` off, the default; ADR-056's opt-in setting orders the admitted by salience) |
 | `premise_recheck` | premise rows of a new consolidation; those written while on: readable, in a restored checkpoint, removed by the owner's forget, not brought back by restoring the same checkpoint |
 | `hypothesis_fields` | detail rows of a new hypothesis; those written while on are kept |
 | `idle_recheck`, `hypothesis_abandon`, `reflection`, `reflection_model_summary` | a re-check submitted; the abandon rule; a scheduled reflection (its lines: readable, restored, removed by forget, not restored after it); a model summary |
@@ -226,8 +242,30 @@ Schema 18 and 19 cannot be rolled back (forward-only; WAVE1.md §10).
 | Check | Result |
 |---|---|
 | `ruff check .` | all checks passed |
-| Full non-e2e suite (`pytest -q --ignore=tests/e2e`), at `80718b2` | 5,736 passed, 22 skipped, 35 subtests (Wave 1 final: 5,624 passed; the difference is this lane's 112 new cases) |
+| Full non-e2e suite (`pytest -q --ignore=tests/e2e`), at `fb6667b` (`80718b2` on lane U's branch) | 5,736 passed, 22 skipped, 35 subtests (Wave 1 final: 5,624 passed; the difference is this lane's 112 new cases) |
 | `node` on each `tests/js/*.mjs` | 7 of 7 ok |
 | `scripts/reproduce.py` | 8 of 8 verified |
 | `scripts/two_account_check.py` | 55 of 55 |
+| Withheld family | not read, not run; no `--final` |
+
+## 9. Validation on the combined Wave 2 tree (the reconciliation, `gen2-rec`)
+
+Code at `d95a604` (lanes U, F, L, X, Y merged, and the reconciliation's fixes); the document changes were not yet
+committed when these ran. Offline, this host (aarch64, Python 3.12).
+
+| Check | Result |
+|---|---|
+| `ruff check .` | all checks passed |
+| Full non-e2e suite (`pytest -q --ignore=tests/e2e`) | 5,861 passed, 22 skipped, 35 subtests, 0 failed (1,087 s). An earlier run at `d4c6dc0`: 5,850 passed, 0 failed |
+| `tests/uat/` | 166 cases: fault injection 116 (29 entry points × 3 modes, and 29 with a failure message naming a subject), voice follow-up 19, rollback 28, Wave 0 equivalence 6, setting lists 4: all pass |
+| Adversarial family (`scripts/bench_cognition.py run --family adversarial`), development and held-out | 28 of 28 each: original 13 of 13, added_wave1 4 of 4, restored 1 of 1, added_wave2 10 of 10 |
+| Retention family, development and held-out | all scenarios pass, all retained |
+| Offline research benchmark (`scripts/bench_wave1.py offline --regime defaults`, `--regime all_off`) | sha256 `68731d7235cbae9fca289124ea59bed99c1aa5b578ecaf8784d2e3df54cdf9d5` both: Wave 0's digest |
+| `nsf acceptance --all` | pass: birth, device_ownership, first_physical_test, graph_development, grounding, growth_retention, lifelong_correction |
+| `scripts/guard_differential.py compare` | 1,937 compared: 1,688 identical, 232 stricter, 17 loosened, 0 different |
+| `scripts/reproduce.py` | 8 of 8 verified |
+| `scripts/two_account_check.py` | 55 of 55 |
+| `node` on each `tests/js/*.mjs` | 7 of 7 exit 0 |
+| Documentation tests (`-k "doc or readme or links"`) | 50 passed |
+| e2e: `tests/e2e/test_voice_e2e.py`, `test_voice_check_e2e.py`, `test_presence.py` | 27 passed, 1 skipped (335 s; `node_modules` linked from the main checkout and removed afterwards) |
 | Withheld family | not read, not run; no `--final` |

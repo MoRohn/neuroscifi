@@ -21,8 +21,12 @@ covered by the owner's research in any configuration, so no budget-bound loop ca
 reference, from the same worlds: a blind round-robin of the same budget that reads each look's majority value holds
 0.79 and 0.71 on average (0.67 and 0.54 at cycle 14); an oracle that refreshes exactly the changed subjects holds 0.96
 and 0.93; a perfect snapshot never refreshed 0.67 and 0.57. The loop's gain over no loop (+0.057, +0.073) is about
-half of what the blind schedule gains over the snapshot (+0.115, +0.134). **The rest is the product's, not the
-world's:** contested refreshes that never revise, and the due order (§5). **None of lane K's six mechanisms shows a
+half (0.49 and 0.55) of what the blind schedule gains over the snapshot (+0.115, +0.134). Those references hold every
+subject from its birth, while the owner's research covers 86 % and 83 % of subjects in every configuration, so part of
+the blind schedule's gain is out of any product loop's reach; allowing for coverage, the check of the fixes
+(review2b N6) reads the loop's share as about 0.57 and 0.66 (the reviewer's computation, not in the evidence file).
+**The rest of the shortfall is the uncovered subjects and the product's:** contested refreshes that never revise,
+and the due order (§5). **None of lane K's six mechanisms shows a
 held-out gain beyond the baseline's spread** (the pre-registered rule, §4; with 4 seeds a gain below 0.105 and 0.057
 cannot pass it, and "no evidence" does not exclude a gain of that size). Five of them are **not exercised by this
 world**: each acted (detail rows, premise rows and marks, abandonments, 14 reflections, 14 strategy rankings per run)
@@ -192,8 +196,12 @@ and starts from what the owner's research would give it at birth; scored like `c
 
 Reading (the review's): even a blind schedule with perfect reads decays, so the decay is partly the world's design.
 The loop gains +0.057 and +0.073 over no loop; the blind round-robin gains +0.115 and +0.134 over the snapshot; so
-the loop recovers about half (0.49 and 0.55) of what a blind schedule of the same budget recovers. The rest is the
-product's: contested refreshes that never revise without the owner's answer, and the due order (§5). The product's
+the loop recovers about half (0.49 and 0.55) of what a blind schedule of the same budget recovers. Coverage (the
+check of the fixes, review2b N6): the references hold every subject, while the owner's research covers 0.861 and
+0.831 of them, so part of the blind schedule's gain is out of any product loop's reach; scaled by coverage the loop's
+share is about 0.57 and 0.66 (the reviewer's computation). The rest of the shortfall is the 14 % and 17 % of subjects
+never covered and the product's: contested refreshes that never revise without the owner's answer, and the due order
+(§5). The product's
 no-loop level is below the snapshot because 14 % and 17 % of subjects are never covered and the owner's research is
 read through the real extraction, not perfectly. The reviewer's own probe gave 0.724 for the majority-reading
 round-robin in ho-busy, taking the first value of a tie; here a tie (one honest outlet against one lagging one, the
