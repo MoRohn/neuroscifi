@@ -12,12 +12,12 @@ claim of consciousness, awareness or general intelligence.
 | Check | Result on `gen2-u` |
 |---|---|
 | The 20 test areas of §12 | every area has existing tests that pass (§2); gaps closed offline by four new files under `tests/uat/` (112 test cases); 9 areas keep a part that is **unverified** offline (§2, §7) |
-| Fault injection: 25 entry points of the Wave 1 mechanisms × raise / time out / return garbage, every Wave 1 setting on | 75 of 75 pass. On the tree without this lane's guards 44 of 75 fail (§4) |
-| Voice follow-up made to fail (2 entry points × 3 modes) | 6 of 6 pass; 6 of 6 fail without the two guards (§4.3) |
-| Rollback of every Wave 1 switch (on the next call, no restart, no data change) | 26 of 26 pass; no product change needed (§5) |
+| Fault injection: 25 entry points of the Wave 1 mechanisms × raise / time out / return garbage, every Wave 1 setting on | 75 of 75 pass. On the tree without this lane's guards 44 of 75 fail (§4). Lane X added lane L's 4 entry points (12 cases) and a failure message naming a subject at every entry point (29 cases): 116 of 116 pass (§4.4) |
+| Voice follow-up made to fail (2 entry points × 3 modes) | 6 of 6 pass; 6 of 6 fail without the two guards (§4.3). Lane X replaced the claim's guard (review2 M1: it delivered on a failed claim): 12 of 12 pass (§4.4) |
+| Rollback of every Wave 1 switch (on the next call, no restart, no data change) | 26 of 26 pass; no product change needed (§5). Lane X added lane L's `salience_attention` and `arbitration_record` (28 of 28) and a test that fails when a setting is missing from these lists (§4.4) |
 | Adversarial cases (§12's 19 items) | every item staged by at least one case except catastrophic forgetting and benchmark overfitting (measured elsewhere, §3). 10 cases added (`added_wave2`), expectations committed first (`baeed76`): 9 passed as written; the 10th found a product gap, fixed by lane X (`0186b57`): 10 of 10 pass |
 | Wave 0 equivalence at the shipped defaults | offline research benchmark sha256 `68731d7235cb…` at defaults and with every Wave 1 setting off, after this lane's guards; `nsf acceptance --all` pass (7 of 7 scenarios); sentence guard 0 different; reproduction 8 of 8; beliefs and decisions at the defaults equal those with every Wave 1 setting off; files of schema 14, 16, 17, 18 opened and used (§6) |
-| Product changes | 14 guards in 10 files, each proved necessary by a fault-injection test (§4.2); no default changed, no schema change, no new dependency |
+| Product changes | 14 guards in 10 files, each proved necessary by a fault-injection test (§4.2); no default changed, no schema change, no new dependency. Lane X: the voice claim guard replaced, two guards for lane L's entry points, and the review's corrections to the guards (§4.4) |
 
 ## 2. The matrix: the 20 mandatory test areas
 
@@ -110,7 +110,7 @@ All 75 pass on `gen2-u`. On the tree with the guards removed (the tests unchange
 | `internal_state.history` (the gate) | silent ×3 (the gate's fail-open swallowed it) | logged once per distinct failure; a history that is not a list is a failure (`resources/policy.py`) |
 | `resources.forecast.assess` | raise, timeout pass (self-description field); garbage silent | the same guard: a verdict that is not a record is a failure |
 | `webcortex.salience.score` | raise, timeout: GET /api/web/autonomy 500 and the timer's pass failed; garbage pass (shown) | an error in the candidate's salience record, logged (`webcortex/autonomy.py`) |
-| `instance.information.information_policy` | ×3: GET /api/epochs/e/decision 500 | decided by rules-v1, said in the decision (`rule_error`), logged (`instance/executive.py`) |
+| `instance.information.information_policy` | ×3: GET /api/epochs/e/decision 500 | decided by rules-v1, said in the decision (`rule_error`) and, since lane X (review2 L3), in the stored decision's reason; logged (`instance/executive.py`) |
 | `information.assessed_gains`, `information.processing` | 5 of 6: the decision endpoint 500 (`processing` garbage passed: shown) | the display fails alone (`information_error`), logged (`instance/executive.py`) |
 | `imagine.what_if`, `question_values`, `retrospect`, `forecast.forecast` | pass ×12 (the error or the garbage goes to the owner's own command) | — |
 | `webcortex.scenarios.tick` | raise, timeout: the timer's pass failed; garbage pass (in the report) | `_wave1_step`: a report line and a log warning, the pass goes on (`webcortex/scheduler.py`) |
@@ -120,14 +120,18 @@ All 75 pass on `gen2-u`. On the tree with the guards removed (the tests unchange
 | `monitoring.depth` | pass ×3 (`_monitor` guards it) | — |
 | `monitoring.escalation` | ×3: the owner's task ended `partial` | the same guard |
 | `evolution.refresh_counter_evidence`, `premises.after_consolidation` | ×6: the owner's task ended `partial` (consolidation lost) | lane K's records in a savepoint; their failure rolls back alone, an `error` event, the knowledge consolidated (`webcortex/consolidate.py`) |
-| `recheck.run`, `reflection.scheduled` | ×6: the timer's pass failed | `_wave1_step` (`webcortex/scheduler.py`) |
+| `recheck.run`, `reflection.scheduled` | ×6: the timer's pass failed | `_wave1_step` (`webcortex/scheduler.py`); since lane X (review2 L4) re-check tasks queued before the failure still count in the pass's budget and for arbitration |
 | `strategies.active` | raise, timeout: the timer's pass failed; garbage pass (shown) | the gate fails closed (the admitted order), said in the admission and logged (`webcortex/autonomy.py`) |
-| `curiosity.progress` | ×3: GET /api/web/status and /api/web/autonomy 500, the timer's pass failed | the futility rule alone (as with the setting off), an error in the candidate's record, logged (`webcortex/curiosity.py`, `webcortex/autonomy.py`; each call site checked separately: removing the autonomy one alone fails 3 cases) |
+| `curiosity.progress` | ×3: GET /api/web/status and /api/web/autonomy 500, the timer's pass failed | an error in the candidate's record, logged (`webcortex/curiosity.py`, `webcortex/autonomy.py`; each call site checked separately: removing the autonomy one alone fails 3 cases). As first written the curiosity guard fell back to the gentler futility rule of learning progress (confirming refreshes count as progress), not to the rule of the setting off (review2 L2); lane X made it the rule of the setting off |
 
-What "garbage" does not prove: a garbage value that is shown as it came is counted as visible, not rejected. One is
-worth naming: `strategies.active` returning a truthy non-boolean would make admission rank by Thompson sampling
-although no promotion passed the gate; the guard catches errors, not that. The gate's own function returns a
-`bool` today.
+What "garbage" does not prove: a garbage value that is shown as it came is counted as visible, not rejected. One was
+worth naming: `strategies.active` returning a truthy non-boolean made admission rank by Thompson sampling although no
+promotion passed the gate. Lane X fixed it (`8204012`): only `True` opens the gate; any other value is a gate that
+cannot be read (the admitted order, the error in the admission, a log warning).
+
+Every guard here logged the exception's message, and three stored it in a task's `error` event (review2 L1: a
+message may name a subject, and the process log is out of forget's reach). Since lane X they log and store the
+exception's type and ids only (§4.4).
 
 ### 4.3 The voice follow-up
 
@@ -135,10 +139,33 @@ although no promotion passed the gate; the guard catches errors, not that. The g
 and the pick-up at a new session (`VoiceHub._resume_follow`), each made to raise, time out or return garbage, with
 `resume_follow` on (the default). Without the guards 6 of 6 failed: a failing claim killed the follower thread and the
 spoken answer never reached the person; a failing pick-up made `VoiceHub.start` raise, so no voice session could start.
-Guards (`voice/hub.py`): a claim that fails or returns something other than a count delivers from this follower (as
+Guards (`voice/hub.py`): a claim that fails or returns something other than a count delivered from this follower (as
 before R8; a second process could then deliver it twice) and is logged; a failing pick-up is logged and the session
-starts. Then the research task is queued, the answer is delivered, the session answers "status report", the owner's
+starts. The claim's guard was replaced by lane X (review2 M1, §4.4): with a forget holding the write lock past the
+database wait, it delivered the forgotten task's answer after the forget. Then the research task is queued, the answer is delivered, the session answers "status report", the owner's
 stop ends it.
+
+### 4.4 Lane X: lane L's additions covered, and the review's corrections
+
+Lane U's files were written before lane L's additions; lane X (branch `gen2-x`, from the integrated `828ca8e`) added
+them and the corrections of the independent security review of Wave 2 (review2). Commits on `gen2-x`: `8204012`
+(strategy gate), `0186b57` (reflection bounds), `aebe096` (voice M1, L6, the load-sensitive test), `23bc7a0` (L1-L4,
+Info 3), `d85715b` (lane L's additions in the UAT, the list test).
+
+| What | Change | Tests (each fails without the change) |
+|---|---|---|
+| Lane L's entry points under fault injection | `salience.attention`, `salience.order`, `scheduler._arbitrated`, `self_description._cycle` added to the 25 (with `salience_attention` and `arbitration_record` on; the rig holds an item verified 30 days ago, so the timer's re-check and curiosity both want it and the arbitration is reached). Two guards were proved necessary: a salience order that fails or is not a reordering of the admitted candidates leaves the admitted order, said in the admission and logged (`webcortex/autonomy.py`: 6 cases failed, the timer's pass); an arbitration record that cannot be made is a report line and a log warning and the pass goes on (`webcortex/scheduler.py` `_arbitrate`: 3 cases failed, the timer's pass) | `test_a_failing_mechanism_leaves_the_owner_in_control[salience_attention:*, arbitration_record:*, self_description_cycle:*]` |
+| review2 L1 | the guards log and store the exception's type and ids only, never its message or a subject key (also the pre-Wave-2 `error` events of `orchestrator._monitor` and of change detection, reached by the same faults) | `test_a_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record` (29 entry points; 19 of the first 25 failed) |
+| review2 L2, L3, L4, Info 3 | the strict futility rule on a failing learning-progress read; the stored decision says the rules-v1 fallback decided; re-check tasks queued before a failure count in the pass; a failing arbitration record never costs the rest of the pass | `tests/webcortex/test_wave2_review_fixes.py` (4) |
+| review2 M1 (voice claim) | a claim that raises, times out or returns a non-count is not a claim: nothing is delivered, the follow stays on the sessions, and the claim is asked again after each pause of `CLAIM_WAITS` (0.5 s doubling to 300 s, until `FOLLOW_MAX`; stops when the hub closes; one log line per failed attempt, task id and error type only); delivery only on a real count above 0, after reading the task again | `test_uat_voice_follow_faults.py`: a transient failure then a real claim delivers once (×3 modes); a claim that cannot be made delivers nothing and keeps the follow, then once (×3); two hubs with a failing claim deliver once; a real forget holding the lock past the wait leaves nothing of the task |
+| review2 L6 | a pick-up failing part-way gives back the follow count and the follower slot | `test_a_pick_up_failing_part_way_gives_back_its_count_and_slot` |
+| The voice test sensitive to load (lane L's full-suite failure) | the acknowledgement was shown before the follow was written to the session; it is written first now (the follower still starts after the reply) | `tests/voice/test_follow_restart.py::test_the_follow_is_kept_before_the_acknowledgement_is_shown` (the write made 0.3 s slow) |
+| Rollback, Wave 0 equivalence | `salience_attention` and `arbitration_record` rolled back (their records readable, restored, forgotten with the task); both off in "every setting off"; at the shipped defaults (`arbitration_record` on) beliefs, decisions and the offline digest `68731d72…` equal Wave 0's | `test_salience_attention_and_its_records`, `test_arbitration_record_and_its_records`, `test_the_offline_research_benchmark_equals_wave0_at_the_shipped_defaults_and_with_every_setting_off` |
+| The lists of "every setting" | a setting of the config classes that Wave 0 did not have must be in the equivalence test's off lists and in the rollback test's `SWITCHES` (or named as a bound); the other copies of the list must agree on "off" | `tests/uat/test_uat_setting_lists.py` (fails with the lists as lane U left them) |
+
+The record's sentence for the voice follow-up: *the answer to a spoken research question is delivered at most once,
+and only after this follower's claim in the database succeeded and the task was read again; when the claim cannot be
+made the answer is delivered later, never twice and never after a forget.*
 
 ## 5. Rollback
 
