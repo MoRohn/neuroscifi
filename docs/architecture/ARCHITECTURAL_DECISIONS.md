@@ -4422,3 +4422,63 @@ traversal, untrusted executable content, prompt injection in documents, and exce
   valid text.
 - Project manifests (`pyproject`, `requirements`, `package-json`, for lane B1) are named only when the exact file name
   AND the bytes agree (TOML that parses, requirement-specifier lines, a JSON object). The name alone never decides.
+
+# ADR-075 The OMNIMIND benchmark: an examination written before the mechanisms (lane Z's section)
+
+Status: built and recorded (lane Z, from `omnimind` = main `8f68beb`). No schema change, no setting, no product code
+touched; the benchmark lives in `src/neuroscifi/acceptance/omni/` and `scripts/bench_omni.py`. Lane ZW/ZF appends
+its own section for the withheld split. Full description: `docs/quality/OMNIMIND_BENCHMARK.md`.
+
+## Context
+
+OMNIMIND adds file intake, detection, decoders, a form planner, generators and validators (DESIGN.md). The Phase I
+audits found that today's system takes in documents only by URL and makes nothing but sentences. The directive
+(§11, §14) asks for reproducible baseline and post-implementation measurements, independent validators and withheld
+sets, and forbids self-grading. The benchmark must exist and be frozen before the mechanisms, so that no lane can
+shape the examination to its answers.
+
+## Decision
+
+- **Truth by construction.** Every file is assembled by the benchmark's own encoders (`enc.py`) from values the
+  family's generator chose; the truths are those values. Compression and containers (deflate stored/fixed/dynamic,
+  zlib, gzip, zip, zstd frames) are written out by hand so that bytes, and the frozen hashes, do not depend on the
+  host's zlib; one dynamic-Huffman block shape gives ~1000:1 bombs that are small on disk.
+- **Questions are measurements, scoring is comparison.** A fixed vocabulary (`subject.MEASURES`) that a thin driver
+  reads off a representation; exact comparison within a stated tolerance. No model, no judgment.
+- **Three outcomes plus failure, fabrication separate.** Right, abstained, wrong (fabrication, never averaged away),
+  and failed (crash, hang, memory, escape, unreadable, unsafe, nondeterministic). Every summary states its
+  abstention floor (what "cannot" to everything scores).
+- **Made artifacts are read, not echoed.** The benchmark's readers recover values from geometry and tick labels,
+  pitches, vertices, pixels and cells (DESIGN §6's reading contract); `<metadata>` is never read. Carried
+  information is the share of source values recovered within tolerance.
+- **Hostile inputs run one process per task** with an address-space cap, traced peak memory, a kill timer and a
+  check of the filesystem afterwards, so a crash or a hang is a result.
+- **Independence.** Generators and readers import no product code (a test checks the import graph); only
+  `subject.py`, the thin driver, imports product modules, lazily. Generators are checked by a test-only oracle built
+  on the standard library and parsers written in the tests; readers by hand-made right and deliberately wrong
+  references; the made judge by a reference maker and eight deliberate flaws; the driver by a stand-in package
+  written from DESIGN §2.
+- **Splits.** Development and held-out are separately written case tables with disjoint seed ranges, frozen by
+  `cases.py`'s SHA-256 and per-family task digests pinned in the tests. The withheld split (seeds 9100-9599) is
+  another lane's, never opened by anyone else, looked at once per mechanism after a committed pass rule.
+
+## Alternatives rejected
+
+- A model (or the generator) judging its own output: forbidden (directive §11, COMMON "No self-grading").
+- Validators that read data echoed into the artifact (attributes on marks, `<metadata>`): recovery would be an echo.
+- `zlib.compress`/`zipfile` for the encoders: the bytes would change with the host's zlib and the freeze would fail
+  on another machine; hostile shapes (overlapping entries, lying sizes, traversal names) need a hand-written writer.
+- Running hostile tasks in the harness's own process: one crash or hang would end the run instead of being scored.
+- One split, or two splits drawn from one table: a mechanism fitted to the development files would not show a gap.
+
+## Consequences
+
+- The baseline (`docs/quality/evidence/omnimind_baseline.json`, at `23b5e50`): today's system is right on 55 of 524
+  development and 55 of 528 held-out tasks, 52 of which per split are the abstention floor; it makes nothing,
+  identifies nothing, crashes on an `.npy` header declaring terabytes and answers about a PDF that is also a ZIP.
+- Points DESIGN.md leaves open are stated as the benchmark's reading, to be ruled on by the main session: the
+  diagram and timeline reading, the `warn`/`danger` class for permitted hue, the sonification domain in the request,
+  how an array, a JSON tree, an XLSX and a JSON record list may be represented, and the request-to-spec mapping
+  (`subject._spec`, `FORM_NAMES`), which is the one place a generator lane adjusts the driver.
+- A numpy upgrade that changed `default_rng` streams would fail the freeze test; that is to be reported, not
+  re-pinned silently.
