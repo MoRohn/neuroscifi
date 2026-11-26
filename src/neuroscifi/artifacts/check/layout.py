@@ -456,6 +456,8 @@ def check_layout(root: Elem) -> tuple[list[Finding], list[Finding]]:
 
 
 def _plot_box(axes):
+    """The plot area: along each axis its domain line, or (categories, lanes) half a band beyond the first and last
+    ticks; a category y axis (lanes) reaches down to the x axis's line when there is one."""
     def extent(axis, which):
         if axis.domain:
             return axis.domain
@@ -469,6 +471,8 @@ def _plot_box(axes):
     ex, ey = extent(axes["x"], "x"), extent(axes["y"], "y")
     if not ex or not ey:
         return None
+    if not axes["y"].domain and axes["x"].cross is not None:
+        ey = (ey[0], max(ey[1], axes["x"].cross))
     return ex[0], ey[0], ex[1], ey[1]
 
 

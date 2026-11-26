@@ -305,7 +305,8 @@ class Axis:
     residual: float = 0.0           # largest misfit of a tick, as a share of the tick span
     span: float = 0.0               # tick span in value units (decades for log)
     categories: dict[str, float] = field(default_factory=dict)
-    domain: tuple[float, float] | None = None   # pixel extent of the domain line
+    domain: tuple[float, float] | None = None   # pixel extent of the domain line, along the axis
+    cross: float | None = None                  # the domain line's position across the axis (y of an x axis)
 
     def value(self, pixel: float) -> float:
         v = self.a + self.b * pixel
@@ -360,6 +361,8 @@ def read_axis(group: Elem, which: str, *, band: bool = False) -> Axis:
         g = mark_geometry(line)
         coords = [p[0] if which == "x" else p[1] for p in g[1]]
         axis.domain = (min(coords), max(coords))
+        across = [p[1] if which == "x" else p[0] for p in g[1]]
+        axis.cross = sum(across) / len(across)
     pix = [t.x if which == "x" else t.y for t in ticks]
     labels = [t.full for t in ticks]
     if not band and len(ticks) >= 2 and all(_DECIMAL.match(s) for s in labels):
