@@ -161,11 +161,15 @@ def digest() -> dict:
         out = real(*args, **kwargs)
         seen["recorded"] += out is not None
         return out
-    shadow.observe = counted
+    from neuroscifi.resources import policy
+    # the gate reads the setting from the file itself (policy.predictive_mode), not through InstanceConfig.from_json,
+    # which the regime patches: switch it there too, as instinct.switched_on does for "on"
+    real_mode = policy.predictive_mode
+    shadow.observe, policy.predictive_mode = counted, (lambda db_path: "shadow" if db_path else False)
     try:
         value = bench_wave1.offline("shadow")
     finally:
-        shadow.observe = real
+        shadow.observe, policy.predictive_mode = real, real_mode
     return {"regime": "every individual reads predictive_regulation = 'shadow' (the rest as shipped)",
             "environment": environment(), "sha256": value["sha256"], "equals_wave0": value["sha256"] ==
             UNCHANGED_DIGEST, "shadow_gate_calls": seen["calls"], "shadow_verdicts_recorded": seen["recorded"],
