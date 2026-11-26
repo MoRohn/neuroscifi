@@ -51,11 +51,58 @@ def check_svg(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
     return Verdict.of(technical, style)
 
 
+HTML_FORMS = ("table_html", "document_html")
+MD_FORMS = ("document_md",)
+DATA_FORMS = ("data_csv", "data_json")
+
+
+def _foreign(form, mine) -> bool:
+    """A spec of a form this lane does not make: leave the verdict to that form's own validator."""
+    return form is not None and form not in mine
+
+
+def check_html(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
+    from .documents import check_html as run
+    form, sdata, options = spec_parts(spec, source)
+    if _foreign(form, HTML_FORMS):
+        return Verdict((), (), False)
+    technical, style = run(data, form, sdata if form == "table_html" or isinstance(source, dict) else None, options)
+    return Verdict.of(technical, style)
+
+
+def check_markdown(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
+    from .documents import check_markdown as run
+    form, _sdata, _options = spec_parts(spec, source)
+    if _foreign(form, MD_FORMS):
+        return Verdict((), (), False)
+    technical, style = run(data)
+    return Verdict.of(technical, style)
+
+
+def check_csv(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
+    from .datafiles import check_csv as run
+    form, sdata, _options = spec_parts(spec, source if isinstance(source, dict) else None)
+    if _foreign(form, DATA_FORMS):
+        return Verdict((), (), False)
+    return Verdict.of(run(data, source if source is not None and not isinstance(source, dict) else sdata))
+
+
+def check_json(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
+    from .datafiles import check_json as run
+    form, sdata, _options = spec_parts(spec, source if isinstance(source, dict) else None)
+    if _foreign(form, DATA_FORMS):
+        return Verdict((), (), False)
+    return Verdict.of(run(data, source if source is not None and not isinstance(source, dict) else sdata))
+
+
 _REGISTERED: list[tuple[str, str]] = []
+VALIDATORS = (("image/svg+xml", check_svg, "g1.svg"), ("text/html", check_html, "g1.html"),
+              ("text/markdown", check_markdown, "g1.markdown"), ("text/csv", check_csv, "g1.csv"),
+              ("application/json", check_json, "g1.json"))
 
 
 def register_all() -> None:
-    for media_type, fn, name in (("image/svg+xml", check_svg, "g1.svg"),):
+    for media_type, fn, name in VALIDATORS:
         if (media_type, name) in _REGISTERED:
             continue
         register(media_type, fn, name=name)
@@ -64,4 +111,5 @@ def register_all() -> None:
 
 register_all()
 
-__all__ = ["SVG_FORMS", "check_svg", "register_all", "spec_parts"]
+__all__ = ["DATA_FORMS", "HTML_FORMS", "MD_FORMS", "SVG_FORMS", "VALIDATORS", "check_csv", "check_html",
+           "check_json", "check_markdown", "check_svg", "register_all", "spec_parts"]
