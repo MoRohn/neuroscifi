@@ -101,5 +101,8 @@ def register(sub):
     store.add_db_argument(p)
     p.add_argument("--gateway", action="store_true", help="also ask the model endpoint for its health")
     p.add_argument("--history", type=int, default=0, metavar="N", help="include the N most recent history samples")
+    p.add_argument("--shadow-report", action="store_true",
+                   help="instead of the record: what predictive regulation in shadow would have done, checked "
+                        "against what memory really did (`nsf config --predictive-regulation-shadow`; ADR-058)")
     from ..instance.cli import run
     p.set_defaults(handler=run(internal_state.cli))
