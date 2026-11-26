@@ -10,7 +10,7 @@ from .. import spec as _spec
 from ..spec import Spec
 from ..types import Limits
 from . import Generator, Made, register
-from . import sound
+from . import solids, sound
 
 GENERATOR_VERSION = 1
 
@@ -42,6 +42,8 @@ def _add(form: str, schemas: dict, generator: Generator, repair=None) -> None:
 
 for _form in ("sound_tone", "sound_sequence", "sound_sonify"):
     _add(_form, sound.SCHEMAS[_form], _Form("g2.sound", "audio/wav", sound.render), sound.repair)
+for _form in ("solid_box", "solid_extrude", "solid_revolve", "surface_grid", "solid_points"):
+    _add(_form, solids.SCHEMAS[_form], _Form("g2.solids", solids.media_type, solids.render))
 
 
 def repair(value: dict, problem) -> dict | None:

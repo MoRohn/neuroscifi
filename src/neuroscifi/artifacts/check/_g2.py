@@ -3,11 +3,14 @@ Nothing here imports from `make`: every validator re-reads the bytes with its ow
 from __future__ import annotations
 
 from . import register
+from .meshes import check_mesh
 from .wav import check_wav
 
 VALIDATORS = (
     ("audio/wav", check_wav, "g2.wav"),
     ("audio/x-wav", check_wav, "g2.wav"),
+    ("model/stl", check_mesh, "g2.mesh"),
+    ("model/obj", check_mesh, "g2.mesh"),
 )
 
 for _media, _validator, _name in VALIDATORS:
