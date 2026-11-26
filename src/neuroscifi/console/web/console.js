@@ -392,6 +392,8 @@ async function loadOverview() {
     r.reason ? ` · ${r.reason}` : ''),
     r.writes_allowed ? null : h('p', { class: 'sub', text: 'New evidence, research and other writes are refused until this clears. Free disk space, forget evidence or raise the limit.' }),
     (r.warnings ?? []).map((w) => h('p', { class: 'sub', role: 'status' }, badge('Attention', 'warn'), ` ${w}`)),
+    // Wave 4 lane D: a damaged saved setting reads as its cautious value until it is set again (as `nsf config` says)
+    (inv.setting_problems ?? []).map((w) => h('p', { class: 'sub', role: 'status' }, badge('Saved setting', 'warn'), ` ${w}`)),
     kv([
     // The owner's one switch for everything done unasked (ADR-050; `nsf quiet on|off`).
     ['Background work', r.config.quiet ? 'Quiet: nothing runs unless you ask (turn it off with nsf quiet off)'
@@ -894,6 +896,8 @@ async function loadQuestions() {
       h('h2', { id: `q-title-${q.id}`, class: 'qhead', tabindex: '-1' },
         badge(q.resolved_at ? 'Resolved' : 'Open', q.resolved_at ? 'neutral' : 'info'), ` #${q.id} · ${q.kind.replace('_', ' ')} · ${web.label ?? q.scope}`),
       parts.body,
+      cautionLine(q.caution, `caution-q-${q.id}`),
+      (q.caution_sides ?? []).map((s, i) => cautionLine({ text: `${s.value}: ${s.caution.text}` }, `caution-q-${q.id}-${i}`)),
       kv([['Epoch', q.epoch ?? '—'], q.context ? ['Context', q.context] : null, ['Asked', fmtTime(q.created_at)],
         q.resolved_at ? ['Answered', `${fmtTime(q.resolved_at)}: ${q.resolution}`] : null]),
       web.label || parts.detail.length ? technical(kv([web.label ? ['Scope', h('code', { text: q.scope })] : null, ...parts.detail])) : null,
@@ -1857,7 +1861,13 @@ function seeAlso(numbers) {
       onclick: (ev) => { ev.preventDefault(); const el = $(`src-${n}`); if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); } } })]));
 }
 
-function answerItem(a, r) {
+// ADR-065 (Wave 4 lane D): where a statement rests on sources the system cannot show to be independent, say so in
+// plain words (display only: the backend computes it for this view from what the records hold; nothing decides on it).
+function cautionLine(c, id) {
+  return c?.text ? h('p', { class: 'sub caution', id, 'data-caution': '' }, badge('Caution', 'warn'), ` ${c.text}`) : null;
+}
+
+function answerItem(a, r, i = 0, t = null) {
   const finding = a.status === 'summary' ? null : (r.findings ?? []).find((f) => f.statement === a.text);
   const copies = copiesText(a) ?? copiesText(finding);
   const meta = [a.status && a.status !== 'summary' ? badge(statusText(a.status), a.status === 'corroborated' ? 'ok' : a.status === 'contested' ? 'warn' : 'neutral') : null,
@@ -1866,7 +1876,8 @@ function answerItem(a, r) {
     copies ? h('span', { class: 'sub copies', text: copies }) : null, seeAlso(a.related ?? finding?.related)];
   const text = a.status === 'summary' ? freshLead(a.text, r) : a.text;
   const body = a.type === 'quote' ? h('blockquote', { class: 'quote', text }) : h('p', { class: 'template', text });
-  return h('li', {}, body, h('p', { class: 'answermeta' }, citeLinks(a.citations), ' ', meta));
+  return h('li', {}, body, h('p', { class: 'answermeta' }, citeLinks(a.citations), ' ', meta),
+    cautionLine(t?.caution?.answer?.[i], `caution-answer-${i}`));
 }
 
 // "Newest cited source: 3 days ago." was true when the report was written; say the date and the age now.
@@ -1957,9 +1968,9 @@ function plainLimitation(text, r) {
 function reportBody(r, t) {
   const modelAnswer = r.reasoning && r.reasoning.generated_by !== 'template' && r.reasoning.answer?.length;
   const out = [...reasoningBlock(r), h('h4', { text: modelAnswer ? 'Extractive summary (quoted evidence)' : 'Answer' }),
-    h('ol', { class: 'answers' }, (r.answer ?? []).map((a) => answerItem(a, r)))];
+    h('ol', { class: 'answers' }, (r.answer ?? []).map((a, i) => answerItem(a, r, i, t)))];
   const claims = (r.sources ?? []).length > 0;
-  if (r.verdict && claims) out.push(...verdictBlock(r));
+  if (r.verdict && claims) out.push(...verdictBlock(r), cautionLine(t?.caution?.verdict, 'caution-verdict'));
   if (r.comparison?.rows?.length) {
     const [a, b] = r.comparison.items;
     const cell = (x) => (x ? h('span', {}, x.text, ' ', citeLinks(x.citations)) : '—');
@@ -2212,6 +2223,7 @@ function knowledgeCard(k) {
     h('h2', { id: `k-title-${k.id}`, class: 'kstatement', tabindex: '-1', text: k.statement }),
     h('p', { class: 'badges' }, badge(cap(k.status), KNOWLEDGE_TONE[k.status] ?? 'neutral'), k.stale && k.status !== 'stale' ? badge('Stale', 'warn') : null,
       k.contested ? badge('Contested', 'warn') : null, badge(`confidence ${pct(k.confidence)}`, 'neutral'), ` #${k.id} · version ${k.version}`),
+    cautionLine(k.caution, `caution-k-${k.id}`),
     // T1-18: dates are labelled by provenance; the owner's own assertion was never verified against sources
     kv([['Freshness class', k.freshness_class], ...(k.provenance === 'user_asserted'
       ? [['Asserted by you', `on ${fmtTime(k.first_verified_at)} (${ago(k.first_verified_at)})`]]

@@ -1963,9 +1963,12 @@ class _Run:
         except Exception:      # an untrusted page that does not extract adds nothing here; evaluate() decides
             found = []
         everything = [c for page in self.depth_seen for c in page[0]] + list(found)
+        from . import emitted
         origins = claims.stamp_origins(everything, self.documents,
                                        attribution=self.cfg.attribution_independence,
-                                       grouping=self.cfg.origin_grouping)
+                                       grouping=self.cfg.origin_grouping,
+                                       derivation=self.cfg.source_derivation,
+                                       echo=emitted.derivation_hook(self.db, everything, self.cfg))
         freshness = (self.checkpoint.get("assessment") or {}).get("freshness_class") or "stable"
         scored = [claims.score(c, now=self.clock(), freshness_class=freshness, ttl_overrides=self.ttl_overrides(),
                                origins=origins) for c in claims.cluster(everything)]
@@ -2075,9 +2078,12 @@ class _Run:
                 continue
             per_doc.append((doc, len(extracted)))
             found += extracted
-        # copies of one story are one source (ADR-035), also when a sentence credits it (ADR-061)
+        # copies of one story are one source (ADR-035), also when a sentence credits it (ADR-061); with
+        # source_derivation and own_text_provenance both on, an echo of the individual's own answer counts for nothing
+        from . import emitted
         origins = claims.stamp_origins(found, self.documents, attribution=self.cfg.attribution_independence,
-                                       grouping=self.cfg.origin_grouping)
+                                       grouping=self.cfg.origin_grouping, derivation=self.cfg.source_derivation,
+                                       echo=emitted.derivation_hook(self.db, found, self.cfg))
         now = self.clock()
         scored = [claims.score(c, now=now, freshness_class=freshness, ttl_overrides=self.ttl_overrides(),
                                origins=origins) for c in claims.cluster(found)]
@@ -2664,8 +2670,10 @@ def _execute(db, task_id, services, *, resume):
                                                                       run.cfg.selective_answering):
         _monitor(run, report)
     run.usage.seconds = round(run.elapsed(), 3)
+    emission = _emission(db, task_id, report, status, now)     # ADR-067: read before the file is locked
     try:
         with store.write(db):
+            _record_emission(db, task_id, emission, now)
             state.update_task(db, task_id, now, holder=run.holder, status=status, stage=None, result=report,
                               error=error, usage=run.usage.to_json(), finished_at=now, lease_holder=None,
                               lease_expires_at=None,
@@ -2684,6 +2692,45 @@ def _execute(db, task_id, services, *, resume):
     _prune_cache(db, task_id, services, now)
     _after_run(db, task_id, now)
     return get(db, task_id)
+
+
+def _emission(db, task_id, report, status, now):
+    """ADR-067 (own_text_provenance, off by default): what the stored model-written answer emits (emitted.prepare,
+    read only, before the write transaction); None when off or nothing to record. A failure costs nothing but the
+    record: {"failed": its type}, logged as the task's error event inside the transaction (_record_emission)."""
+    if report is None or status not in ("completed", "partial"):
+        return None
+    try:
+        from . import emitted
+        out = emitted.prepare(db, task_id, report, now)
+    except Exception as exc:          # noqa: BLE001 - the answer must survive any defect of the record
+        return {"failed": type(exc).__name__}
+    if out is not None and not (isinstance(out, dict) and isinstance(out.get("rows"), list)):
+        return {"failed": "TypeError"}     # whatever came back is not a record: nothing is written
+    return out
+
+
+def _record_emission(db, task_id, emission, now):
+    """Inside the task's final write transaction: emitted.record (primary-key writes only), never failing the task."""
+    if not emission:
+        return
+    failed = emission.get("failed")
+    if failed is None:
+        try:
+            from . import emitted
+            db.execute("SAVEPOINT emitted_record")
+            try:
+                emitted.record(db, emission)
+            except Exception:
+                db.execute("ROLLBACK TO emitted_record")
+                raise
+            finally:
+                db.execute("RELEASE emitted_record")
+        except Exception as exc:      # noqa: BLE001 - the answer must survive any defect of the record
+            failed = type(exc).__name__
+    if failed is not None:
+        state.log_event(db, task_id, "error", {"stage": "recording the individual's own claims", "error": failed},
+                        now)
 
 
 def _reason(db, run, report):
@@ -3067,6 +3114,11 @@ def requeue(db, task_id, now, *, origin=None, family=None) -> dict:
         task = state.task(db, task_id, family=family)
         crashed = task["status"] not in TERMINAL_STATES and task["status"] != "queued" and \
             task["lease_holder"] is not None and worker_alive(task) is False
+        if task["status"] == "failed" and is_autonomous(task["origin"]) and \
+                max(task["created_at"] or 0, task["started_at"] or 0) <= now - 86400.0:
+            # Wave 4 lane D (review3b L6/N5 (f)): an autonomous task outside the day's window counts again once
+            # queued (scheduler._window), so the day's task count is checked here, in the transaction that queues it
+            _within_task_count(db, now)
         if task["status"] == "failed" or crashed:
             state.update_task(db, task_id, now, status="queued", stage=None, finished_at=None, error=None,
                               lease_holder=None, lease_expires_at=None, cancel_requested=0)
@@ -3091,6 +3143,8 @@ def requeue(db, task_id, now, *, origin=None, family=None) -> dict:
     with store.write(db):
         existing = _open_child(db, task_id)
         if existing is None:
+            if is_autonomous(prepared["origin"]):   # Wave 4 lane D: as submit; the owner's origins are never counted
+                _within_task_count(db, now)
             child = insert(db, prepared, now)
             background.asked_by_owner(db, child, origin or task["origin"], now)
             store.bump_state_version(db)

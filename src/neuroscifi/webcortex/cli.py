@@ -250,6 +250,18 @@ def _json_arg(text, what):
 
 # ---- handlers --------------------------------------------------------------------------------------------------
 
+# What `nsf web config` says when a rule the evidence does not support is set on (Wave 4 second fix round, review4
+# security second pass 2d). The setting is still applied: the owner decides.
+UNSUPPORTED_ON = {
+    "source_derivation": "source_derivation is now on, but it is not supported by the evidence: see ADR-066; turning "
+                         "it on can keep true facts from being confirmed",
+    "own_text_provenance": "own_text_provenance is now on; see ADR-067 for its limits: it reads only your own answers "
+                           "and counts each for 30 days, misses many wordings (some denials included) and small "
+                           "edits, and a page that honestly reports a value one of your answers stated first is set "
+                           "aside too, so it can keep a true new value from being confirmed",
+}
+
+
 def _config(db, a, now):
     from . import state
     changes = {}
@@ -273,6 +285,23 @@ def _config(db, a, now):
         from . import autonomy
         autonomy.record_switch(db, bool(changes["autonomous"]), now, by="owner:cli")
     out = {"config": cfg.to_json(), "changed": sorted(changes)}
+    warnings = [UNSUPPORTED_ON[name] for name in sorted(UNSUPPORTED_ON) if changes.get(name) is True]
+    if warnings:
+        out["warnings"] = warnings
+        for warning in warnings:
+            print(f"nsf web config: warning: {warning}", file=sys.stderr)
+    if getattr(a, "forget_own_text", False):     # ADR-067 (Wave 4 fix, review4 L3): remove every fingerprint
+        from . import emitted
+        from ..instance import checkpoints, store
+        with store.write(db):                    # recorded and replayed on restore (Wave 4 second fix round)
+            effects = emitted.remove_all(db, now)
+        out["own_text_removed"] = effects["own_text_removed"]
+        if effects["checkpoints_stale"]:         # as a forget: the archives that may hold them are rewritten
+            done = checkpoints.after_forget(db, now)
+            out |= done
+            if done["checkpoints_stale"]:
+                from ..instance.governance import REBUILD_HINT
+                out["next_steps"] = [REBUILD_HINT.format(n=len(done["checkpoints_stale"]))]
     problems = state.setting_problems(db)
     if problems:                            # a damaged saved value, read as its default (security review L8)
         out["problems"] = problems
@@ -411,7 +440,7 @@ def _reads_only(path) -> bool:
         return False
 
 
-def _shared_config(path):
+def _shared_config(path, *, closed=None):
     """The Web Cortex configuration read from a database this account does not own (resources.shared
     .read_database: read only, no link or FIFO, nothing of its schema trusted). The text is the other account's:
     bounded, and nested too deeply is malformed, never a crash."""
@@ -435,12 +464,24 @@ def _shared_config(path):
         raise InstanceError(f"the Web Cortex configuration is malformed: {error}"[:300]) from None
     if not isinstance(raw, dict):
         raise InstanceError("the Web Cortex configuration is not an object")
+    # WebConfig.from_json reads a damaged value as its cautious one (Wave 4 lane D); this account says what is wrong
+    # instead, as before: the two values it acts on are checked as saved
+    if not isinstance(raw.get("enabled", False), bool) or not isinstance(raw.get("searxng_url", ""), str):
+        raise InstanceError("the Web Cortex configuration is malformed: enabled or searxng_url has the wrong type")
+    if wconfig.damaged("searxng_url", raw.get("searxng_url", "")):
+        try:
+            from .state import _validate
+            _validate("searxng_url", raw["searxng_url"])
+        except ValidationError as error:
+            raise ValidationError(f"searxng_url is not usable: {error}"[:300]) from None
     try:
         cfg = wconfig.WebConfig.from_json(json.dumps(raw))
     except (TypeError, ValueError) as error:
         raise InstanceError(f"the Web Cortex configuration is malformed: {error}"[:300]) from None
     if not isinstance(cfg.enabled, bool) or not isinstance(cfg.searxng_url, str):
         raise InstanceError("the Web Cortex configuration is malformed: enabled or searxng_url has the wrong type")
+    if closed is not None:           # review4 L1: the damaged settings that keep web access off, by name
+        closed.extend(wconfig.closed_by(raw))
     return cfg
 
 
@@ -495,7 +536,8 @@ def _searxng_shared(a):
         raise Conflict("`nsf web searxng health` reads and records provider health in the instance database, which "
                        "this account may only read: run it as the account that owns "
                        f"{path} (deploy/install.sh: neuroscifi)")
-    cfg = _shared_config(path)
+    closed = []
+    cfg = _shared_config(path, closed=closed)
     try:
         container = _searxng_container(cfg)
     except ValueError as error:          # a port that is not one
@@ -510,7 +552,7 @@ def _searxng_shared(a):
     out = {"database": "read only (this account may not write it; nothing was written)"}
     if a.action == "start":
         if not cfg.enabled:
-            raise Conflict(state.DISABLED_MESSAGE)
+            raise Conflict(state.disabled_message(closed))
         out.update(container.start())
         if not cfg.searxng_url:
             out["configured"] = None
@@ -734,7 +776,17 @@ def _ask(db, a, now):
                       authorization=orchestrator.AUTHORIZED_DISCLOSURE if a.allow_private_terms else None)
     if a.queue:
         return task | {"note": "queued for the worker (nsf web work)"}
-    return _run_task(db, a, task["id"])
+    return _with_caution(db, _run_task(db, a, task["id"]))
+
+
+def _with_caution(db, task):
+    """ADR-065 (Wave 4 lane D): a finished task's report with the owner's caution where a statement rests on sources
+    that cannot be shown independent (display only; computed for this output)."""
+    from . import caution
+    from .types import TERMINAL_STATES
+    if isinstance(task, dict) and isinstance(task.get("result"), dict) and task.get("status") in TERMINAL_STATES:
+        return task | {"caution": caution.for_report(db, task["id"], task["result"])}
+    return task
 
 
 def _tasks(db, a, now):
@@ -744,7 +796,7 @@ def _tasks(db, a, now):
 
 def _show(db, a, now):
     from . import orchestrator
-    return orchestrator.get(db, a.task)
+    return _with_caution(db, orchestrator.get(db, a.task))
 
 
 def _evidence(db, a, now):
@@ -854,14 +906,19 @@ def _cache(db, a, now):
 
 
 def _knowledge(db, a, now):
-    from . import knowledge, state
+    from . import caution, knowledge, state
     if a.topic:
-        return knowledge.query(db, a.topic, now, limit=a.limit)
-    statuses = [a.status] if a.status else list(state.LIVE_KNOWLEDGE)
-    cfg = state.get_config(db)
-    items = knowledge.rows(db, f"status IN ({','.join('?' * len(statuses))})", tuple(statuses))
-    return {"as_of": now, "statuses": statuses, "count": len(items),
-            "items": [knowledge.describe(db, item, now, cfg) for item in items[-a.limit:]]}
+        out = knowledge.query(db, a.topic, now, limit=a.limit)
+    else:
+        statuses = [a.status] if a.status else list(state.LIVE_KNOWLEDGE)
+        cfg = state.get_config(db)
+        items = knowledge.rows(db, f"status IN ({','.join('?' * len(statuses))})", tuple(statuses))
+        out = {"as_of": now, "statuses": statuses, "count": len(items),
+               "items": [knowledge.describe(db, item, now, cfg) for item in items[-a.limit:]]}
+    for item, shown in zip(out["items"], caution.for_knowledge(db, out["items"])):   # ADR-065: display only
+        if shown:
+            item["caution"] = shown
+    return out
 
 
 def _memory(db, a, now):
@@ -1091,6 +1148,9 @@ def register(sub):
                    help="pages a research task may fetch at once while reading, one per site (default 4; 1 = one at "
                         "a time for every task)")
     p.add_argument("--set", action="append", metavar="KEY=JSON", help="set one field, e.g. --set 'engines=[\"bing\"]'")
+    p.add_argument("--forget-own-text", action="store_true",
+                   help="remove every record of what this individual's own answers stated (own_text_provenance's "
+                        "fingerprints, ADR-067); with the setting off they are already not read")
 
     cmd("status", _status, "configuration, provider health, daemon, cache, tasks and executing node")
     p = cmd("health", _health, "check the open-webSearch daemon; --probe also asks each structured provider once")

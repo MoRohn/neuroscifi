@@ -839,6 +839,30 @@ What the look says, by the rule written before it:
   fewer subjects lost or regressed (7 → 3) and no more wrongly admitted content (48 → 43). On held-out the same
   configuration was "revise" (beyond the spread in one world of five). How the daily allowance is divided between
   refreshing what is known and reaching what is not is the next thing to measure properly, on worlds written for it.
+  *Correction, 2026-11-26 (Wave 4 lane A, ADR-064 "Follow-up: repeatability").* Runs that use the idle investigation
+  were not repeatable at the code of this look: two choices among equal records followed the random task ids
+  (`autonomy._lineage` walked a set of task ids; `curiosity.search_terms` and `curiosity.rank` broke ties among claims
+  stored at one instant by task id). Measured afterwards on 18 public worlds, 10 repeats each, of this code:
+  `baseline` and `shipped+idle` never varied; `idle-first` varied in 4 of 18 worlds, and a world's mean paired gain
+  moved by up to 0.015 between repeats (0.007 and under 0.001 in the other three). The look's figures are single runs
+  on worlds that cannot be re-run here, so each carries that uncertainty: `idle-first` W1 +0.013 is within its spread
+  (0.064) either way; **W2 +0.042 exceeds its spread (0.039) by only 0.003, less than the largest repeat-to-repeat
+  swing measured, so "beyond the spread in W2" is not established by this single run**; W3 +0.052 exceeds its spread
+  (0.035) by 0.017, more than every swing measured, so it likely stands (not verified on those worlds). `shipped+idle`
+  (+0.006 / +0.035 / +0.024) did not vary in any measured world. The held-out figures of §3.4 (ADR-062) reproduce
+  exactly in 10 of 10 repeats. Since Wave 4 lane A both choices use a stable order (creation order) and repeated runs
+  are identical. The seed 2704 move of §3.8 is not explained by this (that run did not vary in 10 repeats); it stays
+  untraced.
+  *Correction, 2026-11-26 (Wave 4 record lane, after Wave 4's withheld look; the correction above is kept as it was).*
+  Wave 4 took one more look at these worlds (ledger line 10, on `e812a8e`) with `baseline`, `idle-first`, `shipped`
+  and `shipped+idle` on the fixed, repeatable code. The references' means (0.465 / 0.286 / 0.323) and all six gains
+  above equal this look's figures to three decimals (`idle-first` +0.013 / +0.042 / +0.052, `shipped+idle` +0.006 /
+  +0.035 / +0.024), so on these worlds the ties that followed random ids did not move the result and these figures
+  stand. `idle-first` is **reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four
+  seeds; a small margin in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.3755
+  against 0.636 / 0.541 / 0.537). `shipped+idle` is within the spread in all three. Lane A's "not established" for W2
+  and the later "not shown to fail, not established" for W3 are superseded by this look; "likely stands" for W3 is
+  borne out by it. [WAVE4.md](WAVE4.md), "The withheld looks"; `genesis_wave4_look_analysis.json`.
 - **Every configuration stays far below a blind round-robin with the same allowance** (0.636 / 0.541 / 0.537): the
   best here reaches 0.482, 0.328 and 0.375.
 
@@ -869,3 +893,13 @@ failed in none of the three runs.
 
 Not run here: anything on the open web, a live answer model, real hardware, a real second account, two real
 processes for the voice follow-up, systemd, or a week of the shadow record on the host (the owner's to run).
+
+**Note added 2026-11-26 (Wave 4 lane D), from CI after the merge.** The Wave 3 pull request (#7, head `c967604`,
+merged as `8f68beb`) passed all six of its checks on the first run: three jobs (lint, tests, JS checks and the
+numerical reproduction; the browser suite with axe-core; the simulated first-release milestones) in each of its two
+workflow runs (`pull_request` 45835871829 and `push` 45835782417, attempt 1, every job "success"; read with read-only
+`gh`). The pull-request run's artifact `offline-deterministic` (x86_64) has the portable digest `d87dbb4fb77f…`, the
+same as the development host's at the shipped defaults; the full digests (CI `426abca5d803…`, the host
+`68731d7235cb…`) differ in exactly one leaf, the browser's file path (`probes.content.js_shell.render.availability`:
+`chromium at /usr/bin/chromium` here, Playwright's own Chromium under `/home/runner/.cache` on CI), by
+`scripts/diff_deterministic.py` against a run of `scripts/bench_wave1.py offline --regime defaults` on `8f68beb`.

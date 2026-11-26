@@ -84,10 +84,14 @@ CONFIGS = {
     "supersede:K2-no-recency": RULE | {"supersession_min_sources": 2},
     "supersede:K2-no-independence": RULE | {"supersession_min_sources": 2},
     "supersede:K2-no-echo": RULE | {"supersession_min_sources": 2, "echo_recognition": False},
+    # Wave 4 lane S (ADR-066): the derivation rule on this harness's baseline (its pair: "baseline")
+    "wave4-s:derivation": {"source_derivation": True},
 }
+CONFIGS["fix:own"] = {"own_text_provenance": True}          # Wave 4 lane E (ADR-067): own-text provenance alone
 ABLATE = {"supersede:K2-no-recency": "recency", "supersede:K2-no-independence": "independence"}
 READ_BACK = cycles.READ_BACK + ("attribution_independence", "echo_recognition", "supersession",
                                 "supersession_min_sources")
+READ_BACK += ("own_text_provenance",)
 HONEST = ("honest", "lag", "rumour")
 DEPENDENT = ("echo", "wire", "wire_copy")
 COUNTS = ("own_admitted", "syndicated_admitted", "dependent_admitted", "wrong_admitted", "rows_written",
@@ -141,14 +145,15 @@ class Run(cycles.Run):
         return {"echo": "self", "wire": "wire", "wire_copy": "wire"}.get(page["kind"], "other:" + page["host"])
 
     def _independence(self, name, look, docs, objective):
-        from ...webcortex import claims, state
+        from ...webcortex import claims, emitted, state
         if (name, self.cycle) in self.seen_looks or not docs:
             return
         self.seen_looks.add((name, self.cycle))
         by_url = {f"http://{p['host']}{p['path']}": p for p in look["pages"]}
         found = [c for d in docs for c in claims.extract_claims(d, objective)]
         cfg = state.get_config(self.db)
-        claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping)
+        claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping,
+                             derivation=cfg.source_derivation, echo=emitted.derivation_hook(self.db, found, cfg))
         origin = {c.id: self._origin_of(look, by_url[c.source_url]) for c in found if c.source_url in by_url}
         groups = [{origin[i] for i in g if i in origin} for g in claims.independence_groups(found)]
         honest = {o for g in groups for o in g if o.startswith("outlet:")}

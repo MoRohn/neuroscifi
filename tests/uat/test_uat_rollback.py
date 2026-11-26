@@ -703,6 +703,27 @@ def test_echo_recognition(individual):
     assert_rolls_back(reference, on_, again)
 
 
+def test_own_text_provenance(individual):
+    """Wave 4 lane E (ADR-067). Off: two outside pages repeating a version only the individual's own stored answer had
+    stated make it knowledge; on: the answer's fingerprint marks them as its echoes, held; off again: knowledge again,
+    on the next task (what was recorded while on is not read with the setting off)."""
+    db, _ = individual
+    n = iter(range(1, 100))
+
+    def probe():
+        k = next(n)
+        name, value = f"Morvel{k}", f"8.{k}.0"
+        _s_look(db, T0 + k * DAY, name, [], answer=f"{name} {value} is the latest {name} release.")
+        _s_look(db, T0 + k * DAY + 7200, name, [
+            ("devdesk.example", f"By now {name} {value} is the latest {name} release."),
+            ("factline.example", f"Once again {name} {value} is the latest {name} release.")])
+        return _s_rows(db, value)
+    on, off = web_switch(db, "own_text_provenance")
+    reference, on_, again = cycle(on, off, probe)
+    assert (reference, on_) == (1, 0)
+    assert_rolls_back(reference, on_, again)
+
+
 def test_supersession_and_its_records(individual, tmp_path):
     """Off ("ask"): a newer version from three independent outlets beside a lagging one is asked, the item stays;
     on ("independent"): it replaces the item, marked as decided by the rule; off again: asked, on the next refresh.
@@ -818,6 +839,87 @@ def test_front_door(tmp_path):
     assert_rolls_back(reference, on_, again)
 
 
+def test_source_derivation(individual):
+    """ADR-066 (Wave 4 lane S). Off: an outlet and two reworded copies naming it in wordings no credit pattern reads are
+    three sources and their version becomes knowledge; on: one source, held; off again: three, on the next task."""
+    db, _ = individual
+    n = iter(range(1, 100))
+
+    def probe():
+        k = next(n)
+        name, value = f"Tarvel{k}", f"4.{k}.0"
+        _s_look(db, T0 + k * DAY, name, [
+            ("techledger.example", f"At the moment, {name} {value} is the latest {name} release."),
+            ("feedmill.example", f"Today, {name} {value} is the latest {name} release, Tech Ledger observed."),
+            ("newsgrab.example", f"As Tech Ledger pointed out, {name} {value} is the latest {name} release.")])
+        return _s_rows(db, value)
+    on, off = web_switch(db, "source_derivation")
+    reference, on_, again = cycle(on, off, probe)
+    assert (reference, on_) == (1, 0)
+    assert_rolls_back(reference, on_, again)
+
+
+# ---- Wave 4 lane A: the division of the day's allowance (ADR-064) ---------------------------------------------------
+
+def test_allowance_division(individual, tmp_path):
+    """Off ("race"): with two of four autonomous places used and the owner's hypothesis open (a subject that holds no
+    knowledge item), the timer's pass may take the rest; "reserve" at 0.5: the rest is held for reaching it; off
+    again: the pass may take it, on the next call. The idle investigation made while on records its path in its
+    decision event, which stays readable with the setting off and goes with its task when the owner forgets it."""
+    from neuroscifi.instance import governance
+    from neuroscifi.webcortex import claims, evolution, orchestrator, scheduler, text
+    db, path = individual
+    statement = "The Zephyr compiler version 4.2.0 was released on 17 November 2026"
+    state.set_config(db, {"autonomous": True, "daily_autonomous": {"tasks": 4, "requests": 400, "bytes": 80_000_000}},
+                     T0)
+    autonomy.enable(db, T0)
+    with store.write(db):
+        hid, _ = evolution.open_hypothesis(
+            db, key=claims.claim_key(statement), statement=statement, origin="owner",
+            verification={"policy": "ADR-035", "state": "not_evaluated", "basis": "owner_hypothesis",
+                          "confidence": 0.5}, claims=[], values=text.values(statement),
+            polarity=claims.polarity(statement), now=T0, with_prediction=False)
+        evolution.predict(db, hid, T0, deadline=T0 + 20 * DAY, probability=0.5)
+    for objective in ("Orchid database replicas", "Maple cache eviction"):
+        orchestrator.submit(db, objective, T0, mode="fact_verification", origin="curiosity")
+    on, off = web_switch(db, "allowance_division", on="reserve", off="race")
+    state.set_config(db, {"reach_share": 0.5}, T0)
+
+    def probe():
+        cfg = state.get_config(db)
+        return scheduler._over_cap(db, T0, cfg, held=scheduler._division(db, T0, cfg, {"skipped": []}))
+    reference, on_, again = cycle(on, off, probe)
+    assert reference is None and autonomy.HELD_FOR_REACHING in on_
+    assert_rolls_back(reference, on_, again)
+    on()
+    queued = autonomy.idle(db, T0, worker="rollback")
+    off()
+    assert queued["candidate"]["division"]["path"] == "reach"
+
+    def count(d):
+        return d.execute("SELECT count(*) FROM web_events WHERE json_extract(detail,'$.autonomy.division.path') IS "
+                         "NOT NULL").fetchone()[0]
+    readable_forgettable_restorable(db, path, tmp_path, count,
+                                    lambda d: governance.forget_research(d, queued["task_id"], time.time()))
+
+
+# ---- Wave 4 fix: the caution's unmeasured triggers (ADR-065, display only) ---------------------------------------------
+
+def test_caution_detail(individual):
+    """Off (default): three pages counted as two sources carry no caution (only "one source" is shown); on: they do;
+    off again: none, at the next view."""
+    from neuroscifi.webcortex import caution
+    db, _ = individual
+    copies = {"pages": 3, "groups": 2, "joined": ["near_duplicate"], "own_answer": True}
+
+    def probe():
+        return caution.sentence(copies, caution._detail(db))
+    on, off = web_switch(db, "caution_detail")
+    reference, on_, again = cycle(on, off, probe)
+    assert reference is None and "count as 2 sources" in on_ and "said earlier" in on_
+    assert_rolls_back(reference, on_, again)
+
+
 # Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
 # Wave 1/2 switch of the config classes is here; Wave 2 lane X)
 SWITCHES = {
@@ -840,4 +942,8 @@ SWITCHES = {
     "attribution_independence": test_attribution_independence, "echo_recognition": test_echo_recognition,
     "supersession": test_supersession_and_its_records, "origin_grouping": test_origin_grouping,
     "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
+    "own_text_provenance": test_own_text_provenance,
+    "source_derivation": test_source_derivation,
+    "allowance_division": test_allowance_division,
+    "caution_detail": test_caution_detail,
 }

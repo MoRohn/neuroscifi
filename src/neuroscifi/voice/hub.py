@@ -1228,6 +1228,19 @@ class VoiceHub:
                      and x.principal.node_device == s.principal.node_device and x.principal.family == s.principal.family]
         return max(open_, key=lambda x: x.seen) if open_ else None
 
+    def _caution(self, task, principal):
+        """ADR-065 (Wave 4 lane D): the caution of a finished task's report, display only; the flag about the
+        individual's own earlier answers only for the owner. None when it cannot be read (the answer goes anyway)."""
+        if not isinstance(task.get("result"), dict):
+            return None
+        from ..webcortex import caution
+        try:
+            with self.db() as db:
+                return caution.for_report(db, task["id"], task["result"], own_check=principal.owner)
+        except Exception as exc:      # noqa: BLE001 - a display fact; its type is logged, the answer is delivered
+            log.warning("voice: the caution of task %s could not be read (%s)", task.get("id"), type(exc).__name__)
+            return None
+
     def _follow_task(self, s: Session, task_id, kept=False):
         from ..webcortex import orchestrator
         started = time.monotonic()
@@ -1271,7 +1284,7 @@ class VoiceHub:
                     except InstanceError:
                         return
                 target = live or s           # no open session: the answer still goes into the asking transcript
-                reply = vbridge.compose_answer(task)
+                reply = vbridge.compose_answer(task, self._caution(task, s.principal))
                 reply.actions.append({"kind": "context", "last_task_id": task_id, "follow_task_id": None})
                 self._emit(target, "task_done", task_id=task_id, status=task["status"])
                 self._deliver(target, reply)

@@ -561,5 +561,281 @@ on. **`attribution_independence` was not exercised** (every figure identical). *
 were still wrong when the runs ended (up to 17 cycles); it stays off. **The re-check's order gives no gain.** **The
 idle investigator run before the timer's pass** gives +0.013 / +0.042 / +0.052 (beyond the spread in two worlds)
 with fewer subjects lost; the look cannot promote it, and dividing the daily allowance between refreshing and
-reaching is the next thing to measure. **The front door stays on** (12 of 12 front-door questions exact; every
+reaching is the next thing to measure. *Correction, 2026-11-26 (Wave 4 lane A, ADR-064 "Follow-up: repeatability").*
+The idle-first figures are single runs of code whose idle runs were not repeatable (a pick among equal records
+followed random task ids; fixed in Wave 4). On public worlds a world's mean gain moved by up to 0.015 between repeats,
+so "beyond the spread" is not established for W2 (margin 0.003) and for W3 (margin 0.017) is not shown to fail but is
+not verified on those worlds (review4 measurement, second pass); the held-out figures of ADR-062 are exactly
+repeatable. *Correction, 2026-11-26 (Wave 4 record lane, after Wave 4's withheld look; the correction above is
+kept).* Wave 4 re-ran `baseline`, `idle-first`, `shipped` and `shipped+idle` on these worlds with the tie-breaks fixed
+(ledger line 10; "The looks at the end of Wave 4", below): the references' means and all six gains equal the figures
+above to three decimals. `idle-first` is reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in
+W3 on four seeds; a small margin in W2; it cannot be promoted and remains below the blind schedule. **The front door stays on** (12 of 12 front-door questions exact; every
 other figure equal to the run without it).
+
+## Wave 4: the source-independence family
+
+**Purpose.** At the shipped defaults the individual cannot tell independent sources from copies beyond near-identical
+text and single named origins (WAVE3.md). The learning-cycles worlds measure that only through version-number
+counters and contain few of the shapes in which it fails. This family measures it directly: worlds whose ground truth
+is a DERIVATION GRAPH (for every page, whether it reports first-hand, derives from which other page(s), or repeats the
+individual's own earlier answer), written before any source rule, on which every later source rule is judged
+(`scripts/bench_sources.py`; harness `src/neuroscifi/acceptance/cognition/sources.py`).
+
+**The worlds.** `sources_splits_dev.py` (development, seeds 8301-8303, two worlds) and `sources_splits_heldout.py`
+(held-out, seeds 8401-8404, three worlds), each committed alone (`cda7271`, `6480b12`) before the withheld worlds,
+the harness and any rule; seeds disjoint from every seed in the repository outside the withheld files. Fictional
+projects whose latest release changes (and is sometimes pulled), outlets, wires, aggregators, round-up sites, forums
+and the projects' own release pages, all under `.example`. Each look the world schedules (births, then a blind
+rotation of revisits: the same looks in the same order in every configuration) stages one of thirteen shapes:
+honest independent corroboration (the commonest, so a rule is judged on not breaking it), outlets restating the
+project's release page, honest outlets that checked the value and still credit another outlet, reworded syndicated
+copies crediting their origin, copies crediting nobody, a page naming two origins, copies naming their origin and an
+irrelevant contributor, hosts named like wire services (independent outlets and copiers), round-ups citing several
+outlets, mirrors with later dates (some with a canonical link), corrections and corrections of corrections, stale
+pages (dated when the old value was true, or re-dated), and echoes of the individual's own earlier answer (verbatim,
+paraphrased, number reformatted, crediting a model or not; its value right or wrong). Wrong stories are neighbouring
+values or far ones; no value carries a mark of where it came from. The credit and echo wording comes from documented
+sources, listed in the development file's docstring (Wikipedia's MOS:SAID verbs, the AP and Reuters datelines,
+ProPublica's and The Conversation's republication lines, the AP and Reuters credit lines, the Curator's Code, the NYT
+and Reuters correction forms, the APA model citation), not from any parser's pattern list, and no page was run
+through the product before the worlds were committed. The proportions are stated in the files with their reasons;
+the real web's shares are not measured anywhere in this project. What the worlds cannot show: the open web, real
+syndication rates, a real answer model.
+
+**The withheld worlds** (`sources_withheld.py`, seeds 8501-8504, committed alone `5ce7868`): worlds no rule is written
+or tuned on, with different proportions and with shapes and surface forms the development and held-out worlds do not
+have. Their contents are not described here; no lane reads, prints, imports or runs them.
+
+**Metrics** (fixed before any rule; per world, seed and shape; `sources.py` docstring): `wrongly_admitted` (knowledge
+rows written whose value's independent first-hand support in the look is below the bar: fewer than 2 roots and not
+the project's own release page), `own_admitted` (rows whose value only echoes of the individual's own answer state),
+`suppressed` of `eligible` (looks whose true value meets the bar after which the subject's newest held item does not
+state it; `suppressed_contested`: the look opened a contradiction question), `dependent_rises` (a held item's
+confidence rose in a look that stated its value with no root not already behind it), grouping precision and recall
+of "same source" over pairs of read pages that yielded a claim (the pipeline's `claims.independence_groups` over each
+cluster against "their roots intersect"), `correct` over time (share of subjects whose newest held item states the
+value true now; `mean_correct` over cycles 1..N), and cost (wall seconds, seconds inside `consolidate.run`, pages,
+rows, file bytes). Values are compared as numbers ("2.4" = "v2.4.0"); no metric reads a version-number convention.
+Each configuration reads its settings back (`config_read_back`, `config_same_every_seed`) and records what it did
+(`looks_changed_vs_shipped`: looks whose grouping, admitted values or questions differ from `shipped`'s).
+
+**References** (same looks, from the graph alone): `oracle` (the true roots), `every_page`, `same_value` (every page
+stating one value is one source) and `todays_rule` (the product's grouping at the defaults, and no other product
+code); each admits the value whose count reaches the bar and is above every other, and is scored by the same metrics.
+They bound what a rule can gain in each direction; they model no other rule of the product, so their `correct` is not
+the product's ceiling.
+
+**The guard.** Only `sources.final()` loads the withheld worlds; `scripts/bench_sources.py final --note TEXT --out
+FILE [--config NAME]` is its command. Refused before the ledger line: another tree's source, an `--out` inside the
+checkout, in a missing or unwritable directory or that is a directory, a blank note, an unknown configuration, a tree
+that is dirty, uncommitted or whose state git cannot give, and a withheld file or development file (whose generator
+the withheld worlds use) whose bytes do not hash to the SHA-256 pinned in `sources.WITHHELD_SHA256` /
+`sources.DEV_SHA256` (also pinned by `tests/acceptance/test_sources_bench.py`, which tests each refusal without
+loading the worlds). The line goes to `docs/quality/evidence/genesis_final_uses.jsonl` (family `sources_withheld`)
+before anything is loaded or scored. `run --split` accepts only `development` and `held_out`.
+
+**The look rule (written before the held-out runs and the look).** Wave 4 step 0 takes one look, on its final clean
+tree: `final` with the default configuration (`shipped`) and the four references, nothing else (the opt-in rules get
+their look with Wave 4's mechanisms at the end). It decides nothing: no setting changes with it. Reported from the
+output, per world and summed over the four seeds: `totals_sum` and `by_shape_sum` (`wrongly_admitted`,
+`wrongly_admitted_false`, `own_admitted`, `eligible`, `suppressed`, `suppressed_contested`, `dependent_rises`,
+`precision`, `recall`), `mean_correct` (mean and sd over seeds), `config_read_back` and `config_same_every_seed` (a
+read-back other than the shipped defaults with `enabled` true voids the look), `world_digests`, and the same fields
+for each reference. The evidence file is a summary per world, seed and shape. It names shapes the other splits do
+not have, so only the main session reads it.
+
+### The unchanged system and the three opt-in rules, development and held-out (Wave 4 step 0)
+
+Measured on `cd99288` (clean), `scripts/bench_sources.py run --split development` and `--split held_out`; evidence
+`docs/quality/evidence/genesis_sources_baseline.json` (463 kB: both splits per world, seed and shape, the
+references, and the form census below). About 0.4 s per run (0.1 s of it inside `consolidate.run`); every
+configuration read its settings back as named in every world (`config_same_every_seed` true).
+
+Held-out, summed over 3 worlds × 4 seeds (12 cycles, 72 looks per run). Each cell: wrongly admitted / own answers
+admitted / suppressed of eligible / grouping precision, recall ("–": no pair of that kind). The references' cells
+omit precision and recall (the oracle's are 1, 1 by definition).
+
+| shape (looks) | shipped | `attribution_independence` | `echo_recognition` | `origin_grouping` one_way | oracle | todays_rule | every_page |
+|---|---|---|---|---|---|---|---|
+| independent (183) | 0 / 0 / 16 of 183 / 0.00, – | 0 / 0 / 16 of 183 / 0.00, – | 0 / 0 / 17 of 183 / 0.00, – | 0 / 0 / 16 of 183 / 0.00, – | 0 / 0 / 0 of 183 | 0 / 0 / 12 of 183 | 0 / 0 / 0 of 183 |
+| syndicated_credit (109) | 61 / 0 / 23 of 30 / 0.92, 0.06 | 56 / 0 / 23 of 30 / 0.98, 0.24 | 61 / 0 / 23 of 30 / 0.92, 0.06 | 61 / 0 / 23 of 30 / 0.92, 0.06 | 0 / 0 / 0 of 30 | 101 / 0 / 28 of 30 | 104 / 0 / 29 of 30 |
+| primary_cited (103) | 0 / 0 / 4 of 103 / –, 0.00 | 0 / 0 / 3 of 103 / –, 0.00 | 0 / 0 / 5 of 103 / –, 0.00 | 0 / 0 / 4 of 103 / –, 0.00 | 0 / 0 / 0 of 103 | 0 / 0 / 0 of 103 | 0 / 0 / 0 of 103 |
+| syndicated_nocredit (72) | 36 / 0 / 5 of 13 / 0.96, 0.17 | 36 / 0 / 5 of 13 / 0.96, 0.17 | 36 / 0 / 5 of 13 / 0.96, 0.17 | 36 / 0 / 5 of 13 / 0.96, 0.17 | 0 / 0 / 0 of 13 | 66 / 0 / 13 of 13 | 69 / 0 / 12 of 13 |
+| wire_like_host (61) | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 0 of 61 | 0 / 0 / 3 of 61 | 0 / 0 / 0 of 61 |
+| extra_origin (58) | 26 / 0 / 6 of 12 / 0.92, 0.12 | 22 / 0 / 6 of 12 / 0.96, 0.25 | 25 / 0 / 6 of 12 / 0.92, 0.12 | 26 / 0 / 6 of 12 / 0.92, 0.12 | 0 / 0 / 0 of 12 | 52 / 0 / 10 of 12 | 54 / 0 / 10 of 12 |
+| mirror_dates (58) | 0 / 0 / 12 of 18 / 0.98, 1.00 | 0 / 0 / 12 of 18 / 0.98, 1.00 | 0 / 0 / 12 of 18 / 0.98, 1.00 | 0 / 0 / 12 of 18 / 0.98, 1.00 | 0 / 0 / 0 of 18 | 0 / 0 / 2 of 18 | 46 / 0 / 14 of 18 |
+| verified_credit (55) | 0 / 0 / 4 of 55 / 0.00, – | 0 / 0 / 13 of 55 / 0.00, – | 0 / 0 / 5 of 55 / 0.00, – | 0 / 0 / 4 of 55 / 0.00, – | 0 / 0 / 0 of 55 | 0 / 0 / 1 of 55 | 0 / 0 / 0 of 55 |
+| roundup (53) | 0 / 0 / 5 of 53 / 0.00, 0.00 | 0 / 0 / 8 of 53 / 0.62, 0.10 | 0 / 0 / 5 of 53 / 0.00, 0.00 | 0 / 0 / 5 of 53 / 0.00, 0.00 | 0 / 0 / 0 of 53 | 0 / 0 / 0 of 53 | 0 / 0 / 0 of 53 |
+| two_origins (43) | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 0 of 43 | 0 / 0 / 6 of 43 | 0 / 0 / 0 of 43 |
+| correction (32) | 0 / 0 / 20 of 32 / 0.00, – | 0 / 0 / 20 of 32 / 0.00, – | 0 / 0 / 20 of 32 / 0.00, – | 0 / 0 / 20 of 32 / 0.00, – | 0 / 0 / 0 of 32 | 0 / 0 / 0 of 32 | 0 / 0 / 0 of 32 |
+| echo (21) | 4 / 4 / 1 of 3 / 0.75, 0.12 | 4 / 4 / 1 of 3 / 0.75, 0.12 | 1 / 1 / 1 of 3 / 0.75, 0.12 | 4 / 4 / 1 of 3 / 0.75, 0.12 | 0 / 0 / 0 of 3 | 13 / 13 / 2 of 3 | 14 / 14 / 1 of 3 |
+| stale (16) | 0 / 0 / 6 of 6 / 0.00, – | 0 / 0 / 6 of 6 / 0.00, – | 0 / 0 / 6 of 6 / 0.00, – | 0 / 0 / 6 of 6 / 0.00, – | 0 / 0 / 4 of 6 | 0 / 0 / 5 of 6 | 0 / 0 / 4 of 6 |
+| **all** | **127 / 4 / 142 of 612 / 0.81, 0.20** | 118 / 4 / 153 of 612 / 0.81, 0.27 | 123 / 1 / 145 of 612 / 0.81, 0.20 | 127 / 4 / 142 of 612 / 0.81, 0.20 | 0 / 0 / 4 of 612 | 232 / 13 / 82 of 612 | 287 / 14 / 70 of 612 |
+
+`correct` (mean over cycles 1..12, mean ± sd over 4 seeds; for a rule: the paired difference with `shipped`, seeds
+better / worse, and the looks it changed against `shipped`):
+
+| world | shipped | `attribution_independence` | `echo_recognition` | one_way | oracle | todays_rule | every_page | same_value |
+|---|---|---|---|---|---|---|---|---|
+| src-ho-mixed | 0.601 ± 0.064 | −0.008 (0 / 3); 26 looks | −0.004 (0 / 3); 4 | 0 (0 / 0); 0 | 0.713 | 0.683 | 0.714 | 0.093 |
+| src-ho-copies | 0.627 ± 0.064 | −0.009 (0 / 2); 35 | +0.002 (1 / 1); 7 | 0 (0 / 0); 0 | 0.718 | 0.615 | 0.618 | 0.118 |
+| src-ho-origins | 0.656 ± 0.073 | −0.027 (0 / 3); 30 | 0 (0 / 0); 1 | 0 (0 / 0); 0 | 0.709 | 0.720 | 0.731 | 0.113 |
+
+Development (2 worlds × 3 seeds, all shapes summed): shipped 64 / 4 / 39 of 233 / 0.87, 0.20;
+`attribution_independence` 56 / 3 / 49 of 233 / 0.86, 0.27; `echo_recognition` 58 / 0 / 39 of 233 / 0.87, 0.20;
+one_way identical to shipped (0 looks changed); oracle 0 / 0 / 2 of 233; todays_rule 114 / 9 / 25 of 233; every_page
+137 / 11 / 22 of 233. `correct` src-dev-mixed 0.704 ± 0.064, src-dev-copies 0.579 ± 0.050; attribution −0.023 and
+−0.058 (every changed seed worse), echo 0 and −0.011. Wrongly admitted values that are also false: shipped 21 (dev) and
+40 (held-out); `dependent_rises` 1 on each split in every configuration (the metric is barely exercised: held items'
+confidence rarely rises in these worlds). Full per-shape tables are in the evidence file.
+
+Reading (held-out; pooled over worlds, not a claim):
+- **Where the shipped system fails.** Every wrongly admitted row comes from four shapes: syndicated copies crediting
+  their origin (61), copies crediting nobody (36), copies naming an irrelevant contributor (26) and echoes (4). The
+  shipped grouping joins only 6 % of truly same-source page pairs among credited copies, 17 % among uncredited ones,
+  12 % with an extra contributor, none among outlets restating the release page or among round-ups and the outlets
+  they cite (it does join mirrors and wire datelines). It also joins honest outlets that wrote the same short sentence
+  (precision 0.00 within `independent`: 53 false same-source pairs, 16 of 183 true values not held).
+- **Suppression that is not grouping.** `wire_like_host` (33 of 61), `correction` (20 of 32), `stale` and
+  `mirror_dates` lose true values with almost no false merge (precision 0.98-1.00): the cause is elsewhere (a
+  correction note names the wrong value, so the look is contested; dateline forms; earlier held values). A source rule
+  cannot remove these, and a reader of `suppressed` must not credit or blame one for them.
+- **What each opt-in rule cannot see.** `attribution_independence` raises recall among credited copies only from 0.06
+  to 0.24 (76 % of same-source pairs still unseen; wrongly admitted 61 → 56) and among copies with an extra
+  contributor 0.12 → 0.25, sees nothing of uncredited copies, release-page citation or echoes, and merges honest
+  outlets that credit another (suppressed in `verified_credit` 4 → 13, in `roundup` 5 → 8); `correct` falls in 8 of 12
+  seeds. `echo_recognition` removes 3 of the 4 own answers admitted (dev 4 → 0) and nothing else; none of the
+  model-crediting echo forms used here (APA "(OpenAI, 2023)", "according to ChatGPT", "ChatGPT said") matches its
+  model-credit pattern (0 of 28 pages), so what it catches it catches by value and wording. `origin_grouping`
+  "one_way" changed no look in any world or seed: not exercised by these worlds (the multi-origin pages here carry at
+  most one origin the reader recognises; the "contributed to this report" lines are not read).
+- **References.** The oracle admits no wrongly supported value and misses 4 of 612 eligible true values (ties with a
+  stale value). `todays_rule` (today's grouping under the reference admission) admits 232 wrongly supported values:
+  the product admits fewer (127) because its other rules (contradiction questions, recency, relevance) refuse many,
+  not because of its grouping. `correct` of the shipped system is 0.06-0.11 below the oracle's in every held-out
+  world.
+
+**The form census** (development and held-out pages, computed from the rules' code after the worlds were committed;
+`form_census` in the evidence file). Of the derived pages: the shipped origin reader (`claims.origin_keys`) gives a
+key to the ProPublica line "This story was originally published by X." (29 of 29), to the AP and Reuters datelines
+(97 of 135: not the fictional wire's), to canonical-linked mirrors and to the two-origin form that opens with that
+line (on its first name only); to none of the MOS:SAID verb forms, "Read the full article on X", "X contributed to
+this report", "HT: X", "via X", round-ups or reworded copies. The attribution reader (`claims.attribution_keys`) reads
+"according to X", "X wrote / stated / confirmed that", "(via X)", "..., X said." and round-ups' "According to X and
+Y", not "claimed", "commented", "noted", "observed", "explained", "pointed out", "remarked", "Read the full article
+on", "contributed", "HT", "said" lists or datelines, and no credit to the project itself ("According to the X
+release notes", "the X project said": 80 of 80 such pages of the development worlds give no key, so release-page citation is unseen); it reads the model credits "According to ChatGPT" and "ChatGPT
+said" as an outlet named ChatGPT. Every page of every form yielded a claim through the real extractor.
+
+### The unchanged system's one look (Wave 4 step 0)
+
+Taken once, on the clean tree `d10927f`, after the look rule above (`cd99288`), by `scripts/bench_sources.py final`
+with `shipped` and the four references; ledger line 8 of `genesis_final_uses.jsonl` (family `sources_withheld`),
+written before anything was loaded; 4.7 s. Evidence `docs/quality/evidence/genesis_sources_withheld_baseline.json`
+(234 kB; per world, seed and shape; for the main session only, as it names the withheld shapes). The read-back is the
+shipped defaults with `enabled` true in both worlds and every seed (`config_same_every_seed` true): the look is not
+void. Nothing was tuned before or after; the look decides nothing.
+
+Summed over 4 seeds per world (72 looks per run); shipped / oracle / todays_rule / every_page / same_value:
+
+| | wh-a | wh-b |
+|---|---|---|
+| wrongly admitted (of them false now) | 54 (12) / 0 / 90 (41) / 105 (51) / 0 | 56 (14) / 0 / 119 (66) / 140 (78) / 0 |
+| own answers admitted | 0 / 0 / 1 / 4 / 0 | 2 / 0 / 5 / 6 / 0 |
+| suppressed of eligible (shipped: of them contested) | 56 of 192 (25) / 5 / 30 / 19 / 175 | 73 of 164 (41) / 1 / 53 / 32 / 154 |
+| grouping precision, recall (shipped) | 0.75, 0.19 | 0.84, 0.25 |
+| `correct`: shipped mean ± sd / references | 0.535 ± 0.042 / 0.610 / 0.605 / 0.640 / 0.052 | 0.489 ± 0.062 / 0.657 / 0.519 / 0.600 / 0.052 |
+| confidence raised by dependent pages (shipped) | 0 | 0 |
+
+Reading: on worlds no rule was written for, the shipped system admits 110 knowledge rows whose independent first-hand
+support was below the bar (26 of them false now), 2 of them own answers, and does not hold 129 of 356 true values that
+had enough support (66 of those looks opened a contradiction question); it joins about a fifth of truly same-source
+page pairs. Its `correct` is 0.08 and 0.17 below the oracle's. Wrongly admitted content is of the held-out order (127
+over three worlds there); suppression is higher (29 % and 45 % of eligible looks, against 23 % on held-out).
+
+### Wave 4 lane S: `source_derivation` (ADR-066), development and held-out
+
+Configurations added (`sources.CONFIGS`): `source_derivation` and its ablations `source_derivation:no-names`, `:no-links`,
+`:no-time`, `:no-values`, `:no-whole-group` (set for the run only through `claims.DERIVATION_ABLATE`; read back as
+`_ablate`). The verdict rule, `sources.verdict_derivation`, was committed (`8e46b98`) before the one held-out run: (A)
+fewer false values admitted, in no world more, own answers in no world more; (B) suppressed not higher; (C) in no world
+`correct` below minus the spread; (D) precision within 0.02, recall higher. Verdict on both splits: **trade** (A holds;
+B, C and D fail). Held-out, all shapes (shipped → rule): wrongly admitted 127 (40 false) → 97 (30), own answers 4 → 4,
+suppressed 142 → 207 of 612, precision 0.81 → 0.78, recall 0.20 → 0.35; `correct` −0.066 / −0.054 / −0.101 (seeds worse
+4 / 3 / 4 of 4). Development: 64 (21) → 54 (17), 39 → 65 of 233, −0.083 / −0.093. The rule ships off. Per shape, the
+evidence assessment, ablations, cost, the other worlds and the census of what it cannot see: ADR-066 and
+`docs/quality/evidence/genesis_wave4_s.json`. **The record after the reviews (review4 H1, M2, M3): not supported; do
+not turn on.** Its only signal, a capitalised name equal to a host's site label, is a convention of these worlds'
+generator (31 of 34 cast names, 10 of 10 outlets); 16 of its 17 extra round-up suppressions are looks with one
+first-hand page read, where the metric credits roots never read; a single page can still merge honest outlets by
+being linked (or named) by all of them. After the fix lane's hardening (held-out, `genesis_wave4_fix.json`): 127 (40)
+→ 99 (31), 142 → 207 of 612, precision 0.81 → 0.78, recall 0.20 → 0.35, `correct` −0.064 / −0.054 / −0.101; verdict
+"trade" as before.
+
+### Wave 4 lane E: own-text provenance (ADR-067)
+
+Added to the harness before the rule's first run: the configuration `own_text_provenance` (and `fix:own` in
+`cycles_s.py`), the counters `discarded_echo_pages` and `discarded_honest_pages` (read pages whose claims a rule set
+aside as echoes of the individual's own output, by what the derivation graph says they are), and the verdict rule
+`sources.own_verdict`, committed before the first held-out run (`34494cc`): A1 own answers admitted lower in total and
+in no world higher; A2 no world admits more below the bar; S1 no world's `suppressed` above `shipped`'s by more than
+half its number of seeds; C1 no world's `mean_correct` lower by more than `shipped`'s sd; G grouping untouched.
+Results (development, 360 looks, then held-out, 864 looks; pooled over worlds and seeds, not a claim; shipped →
+the rule): own answers admitted 4 → 2 and 4 → 1 (of the looks of the echo shape: 15 and 21); wrongly admitted 64 → 60
+and 127 → 123; suppressed 39 → 39 of 233 eligible and 142 → 144 of 612; echo pages discarded 18 of 29 and 30 of 41
+echo pages read; honest pages discarded 7 of 1,091 and 9 of 2,670 honest pages read (each one repeats a value the
+individual had emitted, wrong and unsourced, that later became true); verdict "effective" on both. After the fix lane
+(`genesis_wave4_fix.json`, review4 measurement H1): suppressed 145 of 612 on held-out, honest pages discarded 8 of
+1,091 and 14 of 2,670 (the pages that had escaped through the defect are now counted), the rest unchanged, verdict
+"effective" on both. With both rules on (`wave4:both`) the counters before the fix missed the pages lane E's hook
+marked at extraction (review4 M1): the real totals are echo 18 / 30 and honest 8 / 16 (development / held-out), which
+the fixed harness reports. Evidence
+`docs/quality/evidence/genesis_wave4_e.json` (234 kB, summaries). **For the single withheld look**: configurations
+`shipped` and `own_text_provenance` (and `echo_recognition` beside them for comparison); reported per world from
+`own_verdict`'s fields and the two new counters.
+
+### The looks at the end of Wave 4
+
+Taken once each by the main session on 2026-11-26, on the clean tree `e812a8e`, by the rule in
+[WAVE4.md](../genesis/WAVE4.md) ("The rule for the withheld look", committed in `81474e5` and corrected before any
+look in `e812a8e`). The ledger `genesis_final_uses.jsonl` now has **ten lines**: line 9 is the source-independence
+look (family `sources_withheld`; `shipped`, `own_text_provenance`, `echo_recognition` and the four references), line
+10 the learning-cycle look (family `learning_cycles_withheld`; `baseline`, `idle-first`, `shipped`, `shipped+idle`),
+both `"dirty": false`. Evidence: `docs/quality/evidence/genesis_wave4_look_sources.json` (377 kB) and
+`genesis_wave4_look_cycles.json` (428 kB) name the withheld worlds and **join the files no lane opens**, with
+`genesis_cycles_withheld_baseline.json`, `genesis_sources_withheld_baseline.json` and `genesis_wave3_look_cycles.json`;
+`genesis_wave4_look_analysis.json` (5 kB) is the main session's reading of both by the rule, and every figure below
+is from it.
+
+**Look 1, sources** (two worlds, wh-a and wh-b, seeds 8501–8504; 576 looks, 1,831 pages, 356 eligible). Control:
+`shipped` reproduces step 0's look (above) in every compared key: the world digests, and per world the 18 keys of
+`totals_sum` and the 5 of `mean_correct`: 0 differences, so the look is valid. Summed over worlds and seeds:
+
+| | `shipped` | `own_text_provenance` | `echo_recognition` |
+|---|---|---|---|
+| own answers admitted | 2 | 1 | 0 |
+| wrongly admitted | 110 (26 false) | 108 | 107 |
+| suppressed of 356 eligible | 129 | 128 | 128 |
+| honest pages discarded (wh-a / wh-b) | 0 | 14 (4 / 10) | 14 (4 / 10) |
+| echo pages discarded (wh-a / wh-b) | 0 | 12 (4 / 8) | 15 (4 / 11) |
+| grouping (`tp`, `fp`, `fn`) | 281, 68, 984 | unchanged | unchanged |
+| `mean_correct` wh-a / wh-b | 0.535 / 0.489 | 0.535 / 0.493 | 0.535 / 0.493 |
+| `sources.own_verdict` | — | "effective" (A1, A2, S1, C1, G hold) | "effective" (all hold) |
+
+Reading: "effective" rests on a base of two events (2 own answers admitted as shipped, both in wh-b); the new rule
+stopped one, the older rule both, each at the cost of 14 honest pages discarded; the hole is untouched by either (110
+→ 108 / 107; 129 → 128). The new rule is not shown to be better than the older one. The harness does not record the
+owner's question load, and none of the limits the rule lists (mentions and denials, undated pages, an adversary's
+edits, a family device's or an agent's answers, the 30-day lifetime) is exercised. Both stay off.
+
+**Look 2, learning cycles** (Wave 3's three withheld worlds, W1–W3 in file order, four seeds, the tie-breaks fixed).
+The references' means (`baseline` = `shipped`: 0.465 / 0.286 / 0.323) equal Wave 3's to three decimals; the blind
+round-robin from the worlds alone is 0.636 / 0.541 / 0.537, as in Wave 3. Mean paired gains of `mean.correct`, against
+the sd of the reference over this look's four seeds (0.064 / 0.039 / 0.035): `idle-first` − `baseline` +0.013 /
++0.042 / +0.052 (within; beyond by 0.003; beyond by 0.017; one seed negative in W1 and one in W2); `shipped+idle` −
+`shipped` +0.006 / +0.035 / +0.024 (within in all three). All six equal Wave 3's figures to three decimals: on these
+worlds the ties that followed random task ids did not move the result, and Wave 3's figures stand, now from code
+whose runs were repeatable on the 18 public worlds measured. `idle-first` is reproduced on a repeatable run; beyond
+the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a small margin in W2; it cannot be promoted and remains below
+the blind schedule (0.478 / 0.328 / 0.3755). Nothing changes.

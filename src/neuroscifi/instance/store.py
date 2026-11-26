@@ -179,6 +179,26 @@ class InstanceConfig:
         for name in ("broadcast", "broadcast_threshold"):
             if name in values and not _SETTABLE[name](values[name]):
                 del values[name]
+        # Wave 4 lane D: every other stored value is checked too. A damaged ask budget reads as 0 (no question asks the
+        # owner; the executive defers, as when the budget is spent). The ask budget's window is read by
+        # executive._ask_window, which falls back to its default and says so with every decision.
+        if "ask_budget_per_epoch" in values and not _SETTABLE["ask_budget_per_epoch"](values["ask_budget_per_epoch"]):
+            values["ask_budget_per_epoch"] = 0
+        # The settings fixed at `nsf init` fail CLOSED (Wave 4 fix, review4 M1): a damaged one pauses every write
+        # (write_allowed, fixed_damage) until the owner repairs it (`nsf config --repair-fixed`). Its value here is
+        # shown only and decides nothing while writes are paused; it is never a looser limit in force.
+        for name, check in _FIXED.items():
+            if name in values and not check(values[name]):
+                del values[name]
+        for name in sorted(set(raw) & (set(_SETTABLE) | set(_FIXED))):
+            if not (_SETTABLE.get(name) or _FIXED[name])(raw[name]) and name not in _REPORTED:
+                _REPORTED.add(name)             # once per process and setting, the name only
+                if name in _FIXED:
+                    logging.getLogger(__name__).warning("the saved instance setting %s is damaged; writes are paused "
+                                                        "until it is repaired (nsf config lists it)", name)
+                else:
+                    logging.getLogger(__name__).warning("the saved instance setting %s is not a valid value and is "
+                                                        "not used as saved (nsf config says what applies)", name)
         return cls(**values)
 
 
@@ -349,6 +369,17 @@ _SETTABLE = {
     "broadcast_threshold": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                                       and 0 <= v <= 1),
 }
+# The settings fixed at `nsf init` and their checks (Wave 4 lane D: checked on load as well; since the Wave 4 fix a
+# damaged one pauses writes, as on main, where it made the write check fail, until `nsf config --repair-fixed`).
+_FIXED = {
+    "evidence_ttl_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                                       and v >= 0),       # `nsf init --ttl-days` may round to 0 (expires at once)
+    "max_evidence_rows": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= MAX_ROW_LIMIT,
+    "min_free_bytes": lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0,
+    "max_thermal_celsius": lambda v: v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)
+                                                   and math.isfinite(v)),
+}
+_REPORTED: set = set()
 # The executive's rule versions (executive._policy; information.information_policy): added; a released one is never
 # edited (information-v1 was amended once before its release: review1b N4).
 RULE_VERSIONS = ("rules-v1", "information-v1")
@@ -400,9 +431,82 @@ def setting_problems(db):
              "imagine_max_seconds": "; the default of 10 seconds applies until it is set with "
                                     "`nsf config --imagine-max-seconds S`",
              "imagine_max_bytes": "; the default of 512 MiB applies until it is set with "
-                                  "`nsf config --imagine-max-mib M`"}
+                                  "`nsf config --imagine-max-mib M`",
+             "ask_budget_per_epoch": "; it reads as 0 (no question asks you; the executive defers) until it is set "
+                                     "with `nsf config --ask-budget N`",
+             **{name: "; " + _fixed_remedy(name) for name in _FIXED}}
+    checks = _SETTABLE | _FIXED
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
-            for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
+            for name in sorted(checks) if name in raw and not checks[name](raw[name])]
+
+
+# What each fixed setting's check (_FIXED) accepts, in words (the repair refuses anything else and says this).
+_FIXED_ACCEPTS = {"evidence_ttl_seconds": "a finite number of seconds from 0",
+                  "max_evidence_rows": f"a whole number from 0 to {MAX_ROW_LIMIT}",
+                  "min_free_bytes": "a whole number of bytes from 0",
+                  "max_thermal_celsius": "a finite number of degrees Celsius, or null for no limit"}
+# The value a fixed setting had at creation is kept only in the settings row itself (the birth record holds no
+# settings and `nsf init` logs none), so once that row is damaged this file no longer says what it was (Wave 4 second
+# fix round, review4 security second pass 2a). An archive keeps the row as it was when the archive was written.
+CREATION_VALUE_NOTE = ("the value chosen when the individual was created is recorded nowhere in this file; a checkpoint "
+                       "archive taken before the damage holds the value then in force (`nsf checkpoint restore ID "
+                       "NEW_FILE`, then `nsf config --db NEW_FILE`)")
+
+
+def _fixed_remedy(name):
+    default = getattr(InstanceConfig, name)
+    return (f"writes are paused until it is repaired with `nsf config --repair-fixed {name}=VALUE` (VALUE: "
+            f"{_FIXED_ACCEPTS[name]}; {CREATION_VALUE_NOTE}; the default is {json.dumps(default)})")
+
+
+def fixed_damage(db, text=None):
+    """The settings fixed at `nsf init` whose saved value is damaged, by name (sorted); [] for a sound row. While one
+    is damaged every write pauses (write_allowed): the strictest reading, as on main, where such a value made the
+    write check fail (review4 M1)."""
+    try:
+        raw = json.loads(_meta(db, "config") if text is None else text)
+    except ValueError:
+        return []           # an unreadable row: config() itself raises, which already stops every write
+    if not isinstance(raw, dict):
+        return []
+    return sorted(name for name, check in _FIXED.items() if name in raw and not check(raw[name]))
+
+
+# What an agent (the MCP scope) is told instead of a refusal that names damaged settings: the owner's surfaces keep
+# the full sentence (Wave 4 second fix round, review4 security second pass 2a). An exception carrying it is marked
+# `for_repair` where it is raised.
+PAUSED_FOR_REPAIR = "the individual is paused for repair by its owner"
+
+
+def fixed_damage_reason(names):
+    """The owner's sentence for damaged fixed settings: which, what happens, how to repair."""
+    return "; ".join(f"the saved {name} is damaged, so {_fixed_remedy(name)}" for name in names)
+
+
+def repair_fixed(db, name, value, now=None):
+    """Repair ONE damaged setting fixed at `nsf init` (`nsf config --repair-fixed NAME=VALUE`). Only a damaged one
+    can be written this way: a sound fixed setting stays fixed (ValidationError), and only a value the setting's own
+    check accepts (_FIXED). Logged like set_config's changes, with the note that the value at creation is not recorded
+    (CREATION_VALUE_NOTE): the repair cannot be checked against it."""
+    if name not in _FIXED:
+        raise ValidationError(f"{name!r} is not a setting fixed at creation ({', '.join(sorted(_FIXED))})")
+    if not _FIXED[name](value):
+        raise ValidationError(f"{name}: {value!r} is not {_FIXED_ACCEPTS[name]}")
+    with write(db):
+        raw = json.loads(_meta(db, "config"))
+        if name not in fixed_damage(db, json.dumps(raw)):
+            raise ValidationError(f"the saved {name} is not damaged; it is fixed when the individual is created")
+        before = raw[name]
+        raw[name] = value
+        db.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(raw, sort_keys=True),))
+        version = bump_state_version(db)
+        db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                   (SETTING_KIND, name, time.time() if now is None else now,
+                    json.dumps({"from": before, "to": value, "state_version": version, "repair": True,
+                                "creation_value_recorded": False}, sort_keys=True)))
+    return {"config": asdict(config(db)), "changed": [name],
+            "notes": [f"{name} is now {json.dumps(value)} (the damaged value was {json.dumps(before)}); "
+                      f"{CREATION_VALUE_NOTE}, so this repair could not be checked against it"]}
 
 
 def consolidation_room(db, cfg=None):
@@ -593,11 +697,15 @@ def write_allowed(db, path=None):
     """Regulation: return (allowed, reason). Reads stay available while writes are paused.
 
     Pauses on journal size, on free space below the reserve and, when config.max_thermal_celsius is set, on any
-    thermal zone above that temperature. The free-space check uses `path`, else the connection's own file (PRAGMA
+    thermal zone above that temperature; and while a setting fixed at `nsf init` is damaged (fixed_damage). The free-space check uses `path`, else the connection's own file (PRAGMA
     database_list), so every caller is covered whether or not it knows the path; an in-memory database has no
     free-space check.
     """
-    cfg = config(db)
+    text = _meta(db, "config")
+    cfg = InstanceConfig.from_json(text)
+    damaged = fixed_damage(db, text)
+    if damaged:                     # fail closed (review4 M1): no limit is read looser than the owner set it
+        return False, fixed_damage_reason(damaged)
     if path is None:
         path = database_path(db)
     rows = db.execute("SELECT count(*) FROM evidence").fetchone()[0]
@@ -618,7 +726,9 @@ def write_allowed(db, path=None):
 def require_write_allowed(db, path=None):
     allowed, reason = write_allowed(db, path)
     if not allowed:
-        raise WritesPaused(reason)
+        exc = WritesPaused(reason)
+        exc.for_repair = bool(fixed_damage(db))     # an agent is told PAUSED_FOR_REPAIR only
+        raise exc
 
 
 def database_path(db):

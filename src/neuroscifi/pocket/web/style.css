@@ -155,6 +155,8 @@ blockquote small { font-family: var(--font-sans); font-size: var(--fs-sm); margi
 .rmodelanswer li { display: list-item; margin: 4px 0; border: 0; }
 .rmodelanswer small { display: block; }
 .rnote { margin: var(--sp-2) 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--st-info); border-radius: 0 var(--r-sm) var(--r-sm) 0; color: var(--ink); background: var(--st-info-bg); }
+/* ADR-065: the caution where an answer rests on sources that cannot be shown independent (hue only for warn) */
+.rcaution { margin: var(--sp-1) 0 var(--sp-3); padding: var(--sp-1) var(--sp-3); border-left: 3px solid var(--warn); border-radius: 0 var(--r-sm) var(--r-sm) 0; color: var(--ink); background: var(--warn-soft); font-size: .92em; }
 
 /* ---- phones: full-width actions within thumb reach ---- */
 @media (max-width: 559.98px) {
