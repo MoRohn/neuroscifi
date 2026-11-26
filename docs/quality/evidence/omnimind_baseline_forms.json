@@ -2,9 +2,9 @@
  "benchmark": "omnimind-forms-cross-learn",
  "version": 1,
  "environment": {
-  "git_commit": "95f04c7d9b3c67e8853402b4b532962604d98c0a",
+  "git_commit": "f45b2a6a503e78b18c9a73a76d322e6d01fbb516",
   "python": "3.12.16",
-  "generated_at": "2026-11-26T18:24:25Z"
+  "generated_at": "2026-11-26T18:51:20Z"
  },
  "what": "the reference subjects (today's system among them) on both splits of the forms, cross and learn families, with the case tables' statistics; summaries only",
  "labels": {
