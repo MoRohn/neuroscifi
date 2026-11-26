@@ -825,7 +825,7 @@ def replacements(db, *, limit=100) -> list[dict]:
     version and the one it replaced, each with its statement, status and sources, and whether the owner reverted it.
     Read-only."""
     out = []
-    for item in rows(db, "json_extract(verification,'$.decided_by')='rule' ORDER BY id DESC LIMIT ?", (int(limit),)):
+    for item in rows(db, "json_extract(verification,'$.decided_by')='rule'")[::-1][:int(limit)]:
         record = _rule_record(item) or {}
         try:
             old = row(db, int(record.get("replaced")))

@@ -198,7 +198,9 @@ class WebConfig:
     # attribution_independence: a sentence that names the outlet it repeats ("According to X, ...", "..., X says.",
     # "... (X).", "... via X.") counts with that outlet as one source (claims.attribution_keys). echo_recognition: a
     # page repeating a value, or the very wording, that only the individual's own outputs had stated (its model-written
-    # answers, its imagined records) before any source it read did is not evidence (consolidate._without_echoes).
+    # answers stored with its tasks; its imagined store is never read here) before any source it read did, or that
+    # credits what it states to an assistant, a chatbot or an AI model, is not evidence for that value; a disagreement
+    # it raises is still asked (consolidate._without_echoes).
     # Both protect what the individual believes; ADR-061 has the measurement behind their defaults.
     attribution_independence: bool = True
     echo_recognition: bool = True

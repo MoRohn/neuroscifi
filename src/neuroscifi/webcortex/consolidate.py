@@ -282,20 +282,30 @@ def _without_adversarial(cluster, adversarial_urls):
 # ---- ADR-061 (Wave 3 lane S): the individual's own text, republished, is not a source --------------------------------
 #
 # The individual's own outputs are its model-written answers stored with its tasks (result.reasoning: its text, and
-# the sentences of its answer) and the records of its imagined store. A page read later that repeats them is an echo,
+# the sentences of its answer). Its imagined store is NOT read: consolidation never reads that store (ADR-049's
+# quarantine, tests/webcortex/test_imagined_quarantine.py), not even to set something aside, so a value the individual
+# only imagined, and never answered with, is not recognised here (its records are shown only in the console's
+# labelled panel). A page read later that repeats them is an echo,
 # not evidence, when it (a) names a subject the output names and states a specific value of it (not a year, a date or
 # a number below 100) that the output stated BEFORE any source the individual had read stated it for that subject, or
 # (b) repeats the output's own wording (3-word shingle Jaccard >= claims.DUPLICATE_SHINGLE) where that wording was not
 # itself a source's (no claim read before it within claims.SUPPORT_TEXT_SHINGLE). A page published before the output
 # is never its echo (the output may rest on it); a structured record (an API document, a metadata claim) is never one.
-# Own outputs are found by the digits the claim writes (SQL LIKE over web_tasks.result and imagined.payload; at most
-# ECHO_MAX_ROWS rows per token, newest first), so nothing is decoded that cannot match.
+# Own outputs are found by the digits the claim writes (SQL LIKE over web_tasks.result; at most ECHO_MAX_ROWS rows per
+# token, newest first), so nothing is decoded that cannot match.
 # An echo is never evidence FOR a value: it leaves the supporting side of its cluster (and the supersession rule never
 # counts it). An echo that only disagrees with what the sources say stays where it is: the disagreement is still asked,
 # as before, and a disagreement never raises a confidence or writes knowledge. (Removing it there too was measured: it
 # changed what the owner is asked and what curiosity looks at next, on worlds where no echo was ever admitted.)
+# A sentence that credits what it states to an assistant, a chatbot or an AI model ("..., an assistant reported.",
+# "\"...,\" a chatbot told one reader.", "According to an AI model, ...") quotes model-written text, whoever's: by the
+# standing rule (model text never becomes fact) it is treated as an echo too.
 ECHO_MAX_ROWS = 200
 _DIGITS = re.compile(r"\d[\d.,]*\d")
+_MODEL_SPEAKER = r"(?:an?|the|some|one)\s+(?:AI\s+)?(?:assistant|chat\s?bot|language\s+model|AI\s+model|AI)"
+_MODEL_CREDIT = re.compile(r"\baccording\s+to\s+" + _MODEL_SPEAKER + r"\b|\b" + _MODEL_SPEAKER +
+                           r"\s+(?:reported|said|says|told|answered|wrote|stated|claims|claimed|replied)\b",
+                           re.IGNORECASE)
 
 
 def _name_set(sentence) -> set:
@@ -307,20 +317,6 @@ def _specific(value) -> bool:
     from . import text as T
     kind, _group, parsed = T.value_kind(value)
     return kind not in ("date", "year") and not (kind == "number" and abs(parsed) < 100)
-
-
-def _strings(value, out, limit=64):
-    if len(out) >= limit:
-        return out
-    if isinstance(value, str):
-        out.append(value)
-    elif isinstance(value, dict):
-        for v in value.values():
-            _strings(v, out, limit)
-    elif isinstance(value, list):
-        for v in value:
-            _strings(v, out, limit)
-    return out
 
 
 class _Echoes:
@@ -343,9 +339,6 @@ class _Echoes:
             texts = [reasoning.get("text")] + [a.get("text") for a in reasoning.get("answer") or ()
                                                if isinstance(a, dict)]
             found += [(at, t) for t in texts if isinstance(t, str)]
-        for at, raw in self.db.execute("SELECT created_at, payload FROM imagined WHERE payload LIKE ? ORDER BY "
-                                       "created_at DESC LIMIT ?", (pattern, ECHO_MAX_ROWS)):
-            found += [(at, t) for t in _strings(state.loads(raw, {}), [])]
         out = []
         for at, text in found:
             for s in T.sentences(text):
@@ -387,6 +380,8 @@ class _Echoes:
         from . import text as T
         if claim.kind == "metadata" or _claims.is_primary(claim):
             return None
+        if _MODEL_CREDIT.search(claim.text or ""):
+            return "model"
         read, published = state.finite(claim.retrieved_at), state.finite(claim.published_at)
         if read is None:
             return None
