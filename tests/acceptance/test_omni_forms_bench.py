@@ -4,6 +4,7 @@ hand-built subjects, and the reference choosers. Standard library and
 the benchmark only: nothing here imports product code."""
 import ast
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -300,3 +301,26 @@ def test_forms_wording_statistics():
     assert w["pairs_same_cue_different_answer"] >= 30
     blind = w["words_blind_oracle"]
     assert blind["coarse_features"]["share"] <= blind["exact_features"]["share"] < 1.0
+
+
+# ---- the command line ------------------------------------------------------------------------------------------------
+
+def _script(*args, cwd=None):
+    import subprocess
+    import sys
+    script = Path(__file__).resolve().parents[2] / "scripts" / "bench_omni_forms.py"
+    return subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, timeout=300, cwd=cwd)
+
+
+def test_bench_script_refuses_the_checkout_without_evidence(tmp_path):
+    inside = Path(__file__).resolve().parents[2] / "omni_forms_should_not_exist.json"
+    done = _script("run", "--family", "forms", "--subject", "today", "--out", str(inside))
+    assert done.returncode == 2 and "refused" in done.stderr and not inside.exists()
+    out = tmp_path / "forms.json"
+    done = _script("run", "--family", "cross", "--split", "held_out", "--subject", "always_consistent",
+                   "--out", str(out))
+    assert done.returncode == 0, done.stderr
+    result = json.loads(out.read_text())["result"]
+    assert result["correct"]["share"] == 0.5
+    done = _script("run", "--family", "forms", "--subject", "no_such_subject")
+    assert done.returncode != 0
