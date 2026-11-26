@@ -135,7 +135,7 @@ second measurement pass, WAVE4.md §1.4.) *Correction, 2026-11-26 (Wave 4 record
 the correction above is kept).* Wave 4 re-ran `baseline`, `idle-first`, `shipped` and `shipped+idle` on these worlds
 with the tie-breaks fixed (ledger line 10): the references' means and all six gains equal Wave 3's to three decimals.
 `idle-first` is reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a
-small margin in W2; it cannot be promoted and remains below the blind schedule (0.478 / 0.328 / 0.376 against 0.636 /
+small margin in W2; it cannot be promoted and remains below the blind schedule (0.478 / 0.328 / 0.3755 against 0.636 /
 0.541 / 0.537). `shipped+idle` is within the spread in all three. **The front door stays on** (12 of 12 front-door
 questions exact; every other figure equal to the run without it).
 
