@@ -780,6 +780,27 @@ def test_admission_orders_by_strategy_only_while_active(db, monkeypatch):
     assert calls == [1] and out["strategy"]["rule"] == "thompson"
 
 
+@pytest.mark.parametrize("value", [1, "retain", ["retain"], {"decision": "retain"}, 0.5])
+def test_a_truthy_non_boolean_gate_never_ranks_by_strategy(db, monkeypatch, caplog, value):
+    """Wave 2 lane X (lane U's observation): only `True` from strategies.active opens the gate. A truthy value of
+    another type is a failure of the gate: the admitted order stands, the admission says so, a warning is logged, and
+    the self-description does not call strategy selection active."""
+    from neuroscifi import self_description
+    calls = []
+    monkeypatch.setattr(strategies, "rank", lambda db, now, chosen: (calls.append(1) or list(reversed(chosen)),
+                                                                      {"rule": "thompson"}))
+    autonomy.enable(db, T0)
+    reference = autonomy.admission(db, T0, path="idle")
+    monkeypatch.setattr(strategies, "active", lambda db: value)
+    out = autonomy.admission(db, T0, path="idle")
+    assert calls == []
+    assert out["chosen"] == reference["chosen"]
+    assert "not a boolean" in out["strategy"]["error"]
+    assert any("not true or false" in r.getMessage() for r in caplog.records)
+    record = self_description._improvement_ledger(db, T0)
+    assert record["value"]["strategy_selection_active"] is False
+
+
 # ---- background and CLI ------------------------------------------------------------------------------------------------------
 
 def test_both_activities_are_registered_cognition_held_by_quiet():

@@ -788,7 +788,11 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
         log.warning("strategy selection's gate could not be read (%s: %s); the admitted order stands",
                     type(exc).__name__, exc)
         active, out["strategy"] = False, {"error": f"the gate could not be read ({type(exc).__name__})"}
-    if active:          # lane K: ranks the admitted candidates only, once promoted through its gate
+    if not isinstance(active, bool):      # Wave 2 lane X: only `True` opens the gate; anything else is a failure
+        log.warning("strategy selection's gate returned %s, not true or false; the admitted order stands",
+                    type(active).__name__)
+        active, out["strategy"] = False, {"error": f"the gate returned {type(active).__name__}, not a boolean"}
+    if active is True:  # lane K: ranks the admitted candidates only, once promoted through its gate
         out["chosen"], out["strategy"] = strategies.rank(db, now, out["chosen"])
     out["chosen"] = out["chosen"][:limit]
     return out
