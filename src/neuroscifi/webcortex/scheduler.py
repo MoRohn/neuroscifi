@@ -590,7 +590,8 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
             continue
         try:
             done = orchestrator.run(db, action["task_id"], services)
-        except (LeaseHeld, Conflict) as exc:
+        except (LeaseHeld, Conflict) as exc:     # a worker claimed it first: still a task of this pass (review2b N3)
+            budget_left -= 1
             report["queued"].append({"task_id": action["task_id"], "origin": "refresh", "note": str(exc)[:200]})
             continue
         budget_left -= 1

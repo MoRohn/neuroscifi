@@ -248,6 +248,20 @@ def test_a_recheck_that_failed_after_queuing_a_subject_in_curiositys_pool_still_
     assert [q["origin"] for q in report["queued"]] == ["recheck", "curiosity"]
 
 
+def test_a_queued_refresh_leaves_no_budget_so_the_recheck_takes_no_arbitration(individual, monkeypatch):
+    """review2b N3 (H1's residual): with a budget of 2, the re-check takes A and a due refresh of another subject is
+    queued; nothing is left for curiosity, so A refused by the cooldown is no conflict, and the pass queues 2 tasks.
+    Before, a queued refresh did not count: the record fired and curiosity queued B as a third task."""
+    db, _ = individual
+    stage(db, monkeypatch)
+    _recheck_takes(db, monkeypatch, A)
+    refresh = [{"prediction_id": 1, "action": "refresh_submitted", "task_id": "refresh-task", "knowledge_id": 99}]
+    monkeypatch.setattr(predictions, "check_due", lambda *a, **k: refresh)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=2)
+    assert [q["origin"] for q in report["queued"]] == ["recheck", "refresh"]
+    assert _arbitrations(db) == [] and "arbitration" not in report
+
+
 def _admitted_order(db):
     admitted = autonomy.admission(db, T0, path="tick", limit=10)
     return keys(admitted["chosen"]), admitted.get("order")
