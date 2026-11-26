@@ -17,7 +17,7 @@ HEART = {"x": {"label": "Week", "unit": None}, "y": {"label": "Heart rate", "uni
 
 
 def line(**kw):
-    return S.spec("chart_line", kw.pop("title", "Resting heart rate"), copy.deepcopy(kw.pop("data", HEART)),
+    return S.spec("chart.line", kw.pop("title", "Resting heart rate"), copy.deepcopy(kw.pop("data", HEART)),
                   kw.pop("options", {}))
 
 
@@ -73,7 +73,7 @@ def test_time_ticks_are_calendar_aligned_iso_dates():
 
 def test_line_chart_follows_the_reading_contract():
     m = S.made(line())
-    assert m.media_type == "image/svg+xml" and m.spec.made_by == {"generator": "g1.chart_line", "version": 1}
+    assert m.media_type == "image/svg+xml" and m.spec.made_by == {"generator": "g1.chart.line", "version": 1}
     root = S.tree(m.bytes)
     assert len(S.groups(root, "plot")) == 1
     assert len(S.groups(root, "axis", "x")) == 1 and len(S.groups(root, "axis", "y")) == 1
@@ -161,7 +161,6 @@ def test_invalid_specs_are_refused_before_making():
     assert spec_mod.validate(bad)
 
 
-@pytest.mark.xfail(reason="waits for lane K's relaxed content rule", strict=True)
 def test_markup_in_a_label_is_escaped_text():
     data = {**HEART, "series": [{"name": "<script>alert(1)</script> & <b>", "points": [[1, 2], [2, 3]]},
                                 {"name": "https://example.invalid/x", "points": [[1, 1], [2, 1]]}]}

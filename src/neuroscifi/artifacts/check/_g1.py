@@ -10,8 +10,8 @@ from __future__ import annotations
 from ..types import ArtifactError
 from . import Finding, Verdict, register
 
-SVG_FORMS = ("chart_line", "chart_scatter", "chart_bar", "chart_histogram", "chart_heatmap",
-             "chart_small_multiples", "timeline", "graph_nodelink", "graph_tree", "flow_steps", "animation_svg")
+SVG_FORMS = ("chart.line", "chart.scatter", "chart.bar", "chart.histogram", "chart.heatmap",
+             "chart.small_multiples", "timeline", "graph.nodelink", "graph.tree", "flow.steps", "animation.svg")
 
 
 def spec_parts(spec, source):
@@ -51,9 +51,9 @@ def check_svg(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
     return Verdict.of(technical, style)
 
 
-HTML_FORMS = ("table_html", "document_html")
-MD_FORMS = ("document_md",)
-DATA_FORMS = ("data_csv", "data_json")
+HTML_FORMS = ("table.html", "document.html")
+MD_FORMS = ("document.md",)
+DATA_FORMS = ("data.csv", "data.json")
 
 
 def _foreign(form, mine) -> bool:

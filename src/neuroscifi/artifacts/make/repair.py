@@ -8,7 +8,7 @@ dict), or None when no rule applies or three rounds have already been made. The 
 - tick_labels_overlap_x: rotate the x labels; if already rotated, cut category labels to 12 characters (then 8).
 - tick_labels_overlap_y / text_inside_canvas: make the picture 25 % larger (width; height for the y axis).
 - too_many_ticks: keep every second tick (x_tick_every doubles).
-- series_distinguishable (line or scatter): draw one panel per series (chart_small_multiples, same data).
+- series_distinguishable (line or scatter): draw one panel per series (chart.small_multiples, same data).
 - points_exceed_pixels (line): aggregate into one bin per four pixels of width with the min-max rule (stated in the chart's
   description).
 - bars_from_zero (bar): start the value axis at zero again.
@@ -23,7 +23,7 @@ import copy
 from ..spec import Spec, form_schema
 
 MAX_ROUNDS = 3
-CHARTS_XY = ("chart_line", "chart_scatter")
+CHARTS_XY = ("chart.line", "chart.scatter")
 
 
 def _rounds(options: dict) -> int:
@@ -72,15 +72,15 @@ def repair(spec, verdict):
         every = min(50, int(options.get("x_tick_every", 1)) * 2)
         setopt("x_tick_every", every, "too_many_ticks", f"every {every}th tick kept")
     if "series_distinguishable" in failed and form in CHARTS_XY:
-        value["spec"] = "chart_small_multiples"
-        for key in [k for k in options if not _allowed("chart_small_multiples", k)]:
+        value["spec"] = "chart.small_multiples"
+        for key in [k for k in options if not _allowed("chart.small_multiples", k)]:
             options.pop(key)
         changes.append(("series_distinguishable", f"one panel per series instead of one {form} (same data)"))
-    if "points_exceed_pixels" in failed and form == "chart_line" and "aggregate" not in options:
+    if "points_exceed_pixels" in failed and form == "chart.line" and "aggregate" not in options:
         bins = max(2, int(options.get("width", 640)) // 4)      # two points per bin, at most one per 2 px
         setopt("aggregate", {"rule": "min_max", "bins": bins}, "points_exceed_pixels",
                f"aggregated into {bins} bins (min and max of each, stated in the description)")
-    if "bars_from_zero" in failed and form == "chart_bar":
+    if "bars_from_zero" in failed and form == "chart.bar":
         options.pop("y_min", None)
         setopt("y_from_zero", True, "bars_from_zero", "value axis starts at zero")
     if not changes:

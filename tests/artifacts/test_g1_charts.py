@@ -48,15 +48,15 @@ def multiples_data(n=8):
 
 
 CASES = {
-    "bar": ("chart_bar", RAIN, {}),
-    "stacked": ("chart_bar", {**RAIN, "series": [{"name": "Grid", "values": [12, 14, 9, 11, 15, 10]},
+    "bar": ("chart.bar", RAIN, {}),
+    "stacked": ("chart.bar", {**RAIN, "series": [{"name": "Grid", "values": [12, 14, 9, 11, 15, 10]},
                                                  {"name": "Solar", "values": [6, 4, 8, 7, 3, 0]},
                                                  {"name": "Battery", "values": [2, 1, 3, 2, 1, 4]}]},
                 {"mode": "stacked"}),
-    "scatter": ("chart_scatter", None, {}),
-    "histogram": ("chart_histogram", None, {}),
-    "heatmap": ("chart_heatmap", None, {}),
-    "multiples": ("chart_small_multiples", None, {}),
+    "scatter": ("chart.scatter", None, {}),
+    "histogram": ("chart.histogram", None, {}),
+    "heatmap": ("chart.heatmap", None, {}),
+    "multiples": ("chart.small_multiples", None, {}),
 }
 DATA = {"scatter": scatter_data, "histogram": hist_data, "heatmap": heat_data, "multiples": multiples_data}
 
@@ -98,14 +98,14 @@ def test_a_truncated_value_axis_is_a_finding():
     assert any("y_min" in n for n in m.notes) and S.verdict(m.bytes, s).ok
     high = {"categories": ["a", "b", "c", "d"], "x": {"label": "Item"}, "y": {"label": "Score"},
             "series": [{"name": "s", "values": [80, 85, 90, 96]}]}
-    assert S.verdict(S.made(S.spec("chart_bar", "Scores", high)).bytes, S.spec("chart_bar", "Scores", high)).ok
-    s2 = S.spec("chart_bar", "Scores", high, {"y_from_zero": False})
+    assert S.verdict(S.made(S.spec("chart.bar", "Scores", high)).bytes, S.spec("chart.bar", "Scores", high)).ok
+    s2 = S.spec("chart.bar", "Scores", high, {"y_from_zero": False})
     m = S.made(s2)
     assert any("not start at zero" in n for n in m.notes)
     assert "not from zero" in S.tree(m.bytes).find(S.q("desc")).text
     v2 = S.verdict(m.bytes, s2)
     assert S.finding(v2, "axis_truncated") is not None and v2.ok     # asked for: a style finding
-    v3 = S.verdict(m.bytes, S.spec("chart_bar", "Scores", high))      # not asked for: technical
+    v3 = S.verdict(m.bytes, S.spec("chart.bar", "Scores", high))      # not asked for: technical
     assert not v3.ok and "bars_from_zero" in S.failed(v3)
 
 
@@ -127,9 +127,9 @@ def test_too_many_categories_for_the_width_are_refused_with_the_way_out():
     data = {"categories": [f"Category number {i}" for i in range(80)], "x": {"label": "C"}, "y": {"label": "V"},
             "series": [{"name": "s", "values": list(range(80))}]}
     with pytest.raises(ValueError, match="wider"):
-        S.made(S.spec("chart_bar", "Many", data))
-    assert S.verdict(S.made(S.spec("chart_bar", "Many", data, {"width": 2000})).bytes,
-                     S.spec("chart_bar", "Many", data, {"width": 2000})).ok
+        S.made(S.spec("chart.bar", "Many", data))
+    assert S.verdict(S.made(S.spec("chart.bar", "Many", data, {"width": 2000})).bytes,
+                     S.spec("chart.bar", "Many", data, {"width": 2000})).ok
 
 
 def test_long_categories_are_rotated_and_cut_with_the_full_label_kept():
@@ -137,7 +137,7 @@ def test_long_categories_are_rotated_and_cut_with_the_full_label_kept():
                            "Mexico City Metropolitan Area", "Greater Cairo", "Mumbai Metropolitan Region"],
             "x": {"label": "Area"}, "y": {"label": "Population", "unit": "millions"},
             "series": [{"name": "2025", "values": [37.0, 33.8, 29.9, 22.8, 22.5, 22.6, 21.7]}]}
-    s = S.spec("chart_bar", "Largest areas", data)
+    s = S.spec("chart.bar", "Largest areas", data)
     m = S.made(s)
     root = S.tree(m.bytes)
     labels = [t for g in S.groups(root, "axis", "x") for t in g.iter(S.q("text")) if "rotate(" in t.get("transform", "")]
@@ -195,7 +195,7 @@ def test_small_multiples_share_one_scale():
 
 
 def test_more_series_than_styles_is_a_finding_on_a_line_chart():
-    s = S.spec("chart_line", "Eight cities", multiples_data(8))
+    s = S.spec("chart.line", "Eight cities", multiples_data(8))
     m = S.made(s)
     assert any("share" in n for n in m.notes)
     v = S.verdict(m.bytes, s)
@@ -264,6 +264,6 @@ def test_wrong_charts_are_caught(name, mutate, rule):
 
 def test_catalog_lists_every_g1_chart():
     rows = {r["form"]: r for r in make.catalog()}
-    for form in ("chart_line", "chart_bar", "chart_scatter", "chart_histogram", "chart_heatmap",
-                 "chart_small_multiples"):
+    for form in ("chart.line", "chart.bar", "chart.scatter", "chart.histogram", "chart.heatmap",
+                 "chart.small_multiples"):
         assert rows[form]["available"] and rows[form]["generator"] == "g1." + form

@@ -332,8 +332,8 @@ def check_html(data: bytes, form: str | None, source: dict | None, options: dict
     if svgs:
         technical += _svg_findings(svgs)
     tables = [n for n in root.iter() if n.tag == "table" and not any(a.tag == "svg" for a in _ancestors(n))]
-    is_document = any(n.tag == "html" for n in root.iter()) or form == "document_html"
-    if form == "table_html" or (not is_document and tables):
+    is_document = any(n.tag == "html" for n in root.iter()) or form == "document.html"
+    if form == "table.html" or (not is_document and tables):
         if not tables:
             technical.append(Finding("table_structure", False, "no table found"))
         for t in tables[:1]:

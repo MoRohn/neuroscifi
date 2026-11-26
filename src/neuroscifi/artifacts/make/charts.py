@@ -448,7 +448,7 @@ def _xy(spec, form):
     if "x_max" in o:
         xhi = max(xhi, float(o["x_max"]))
 
-    line = form == "chart_line"
+    line = form == "chart.line"
     show_markers = o.get("markers", "auto") == "on" or (
         o.get("markers", "auto") == "auto" and line and max(len(p) for p in drawn) <= 30)
     keys = []
@@ -546,11 +546,11 @@ def _xy(spec, form):
 
 
 def make_line(spec):
-    return _xy(spec, "chart_line")
+    return _xy(spec, "chart.line")
 
 
 def make_scatter(spec):
-    return _xy(spec, "chart_scatter")
+    return _xy(spec, "chart.scatter")
 
 
 # --- bars -------------------------------------------------------------------------------------------------------
@@ -573,14 +573,14 @@ def make_bar(spec):
     from_zero = bool(o.get("y_from_zero", True))
     ylo, yhi, n2 = _y_domain(values, o, from_zero=from_zero)
     notes += n2
-    sid = scope_id("chart_bar", spec.to_json())
+    sid = scope_id("chart.bar", spec.to_json())
     keys = []
     if len(series) > 1:
         for i, s in enumerate(series):
             flag = s.get("flag") if s.get("flag") not in (None, "none") else None
             keys.append((s["name"], bar_key(sid, i, flag_color(flag)), flag))
     frame = Frame(spec, keys)
-    frame.form = "chart_bar"
+    frame.form = "chart.bar"
     frame.title_text = spec.title or f"{d['y']['label']} by {d['x']['label']}"
     xlab, ylab = axis_label(d["x"]), axis_label(d["y"])
     left, bottom = 60.0, 50.0
@@ -676,7 +676,7 @@ def make_histogram(spec):
     for v in values:   # [edge_i, edge_i+1), the last bin closed
         counts[min(len(counts) - 1, bisect.bisect_right(edges, v) - 1)] += 1
     frame = Frame(spec, [])
-    frame.form = "chart_histogram"
+    frame.form = "chart.histogram"
     frame.title_text = spec.title or f"Distribution of {d['x']['label']}"
     ydef = d.get("y") or {"label": "Count", "unit": None}
     xlab, ylab = axis_label(d["x"]), axis_label(ydef)
@@ -731,7 +731,7 @@ def make_heatmap(spec):
         raise Fit("there are no values to draw")
     zt = linear_ticks(min(flat), max(flat), 5)
     frame = Frame(spec, [])
-    frame.form = "chart_heatmap"
+    frame.form = "chart.heatmap"
     frame.title_text = spec.title or f"{d['z']['label']} by {d['x']['label']} and {d['y']['label']}"
     xlab, ylab, zlab = axis_label(d["x"]), axis_label(d["y"]), axis_label(d["z"])
     ylabels = [abbreviate(c, 140, TICK_SIZE) for c in yc]
@@ -828,7 +828,7 @@ def make_small_multiples(spec):
     xlo, xhi = min(p[0] for p in pts_all), max(p[0] for p in pts_all)
     ylo, yhi, notes = _y_domain([p[1] for p in pts_all], o, from_zero=bool(o.get("y_from_zero", False)),
                                 log=(yk == "log"))
-    sid = scope_id("chart_small_multiples", spec.to_json())
+    sid = scope_id("chart.small_multiples", spec.to_json())
     title_text = spec.title or f"{d['y']['label']} against {d['x']['label']}, one panel per series"
     title_svg, top = title_block(W, title_text)
     pw, ph = (W - 16) / cols, (H - top - 30) / rows
@@ -883,16 +883,16 @@ def make_small_multiples(spec):
     body = title_svg + shared + "".join(panels)
     desc = describe(spec, words)
     meta = d if len(str(d)) <= METADATA_MAX else None
-    return head(sid, "chart_small_multiples", W, H, title_text, desc, meta) + body + "</svg>", tuple(notes)
+    return head(sid, "chart.small_multiples", W, H, title_text, desc, meta) + body + "</svg>", tuple(notes)
 
 
 GENERATORS = {
-    "chart_line": (make_line, XY_DATA),
-    "chart_scatter": (make_scatter, XY_DATA),
-    "chart_bar": (make_bar, BAR_DATA),
-    "chart_histogram": (make_histogram, HIST_DATA),
-    "chart_heatmap": (make_heatmap, HEAT_DATA),
-    "chart_small_multiples": (make_small_multiples, XY_DATA),
+    "chart.line": (make_line, XY_DATA),
+    "chart.scatter": (make_scatter, XY_DATA),
+    "chart.bar": (make_bar, BAR_DATA),
+    "chart.histogram": (make_histogram, HIST_DATA),
+    "chart.heatmap": (make_heatmap, HEAT_DATA),
+    "chart.small_multiples": (make_small_multiples, XY_DATA),
 }
 
 __all__ = ["GENERATORS", "OPTIONS", "aggregate", "axis_label", "plain"]

@@ -20,28 +20,28 @@ TABLE = {"columns": [{"name": "City", "kind": "text", "values": ["Lisbon", "=Osl
 NODES = [{"id": f"n{i}", "label": f"Node {i}"} for i in range(9)]
 
 SPECS = {
-    "chart_line": _spec("chart_line", "Rates", XY),
-    "chart_scatter": _spec("chart_scatter", "Rates", XY),
-    "chart_bar": _spec("chart_bar", "Rain", BAR, {"mode": "grouped"}),
-    "chart_histogram": _spec("chart_histogram", "Spread", {"x": {"label": "Value"},
+    "chart.line": _spec("chart.line", "Rates", XY),
+    "chart.scatter": _spec("chart.scatter", "Rates", XY),
+    "chart.bar": _spec("chart.bar", "Rain", BAR, {"mode": "grouped"}),
+    "chart.histogram": _spec("chart.histogram", "Spread", {"x": {"label": "Value"},
                                                            "values": [round(math.sin(i) * 50 + i % 7, 3)
                                                                       for i in range(300)]}),
-    "chart_heatmap": _spec("chart_heatmap", "Grid", {"x": {"label": "Hour", "categories": ["08", "09", "10"]},
+    "chart.heatmap": _spec("chart.heatmap", "Grid", {"x": {"label": "Hour", "categories": ["08", "09", "10"]},
                                                      "y": {"label": "Day", "categories": ["Mon", "Tue"]},
                                                      "z": {"label": "Load"}, "values": [[1, 2, 3], [4, None, 6]]}),
-    "chart_small_multiples": _spec("chart_small_multiples", "Rates", XY),
+    "chart.small_multiples": _spec("chart.small_multiples", "Rates", XY),
     "timeline": _spec("timeline", "Plan", {"x": {"label": "Date", "scale": "time"},
                                            "events": [{"lane": "A", "at": T0 + 86400 * k, "label": f"E{k}"}
                                                       for k in range(0, 40, 7)],
                                            "spans": [{"lane": "B", "start": T0, "end": T0 + 86400 * 20,
                                                       "label": "Build"}]}),
-    "graph_nodelink": _spec("graph_nodelink", "Ring", {"directed": False, "nodes": NODES,
+    "graph.nodelink": _spec("graph.nodelink", "Ring", {"directed": False, "nodes": NODES,
                                                        "edges": [{"from": f"n{i}", "to": f"n{(i * 4 + 1) % 9}"}
                                                                  for i in range(9)]}),
-    "graph_tree": _spec("graph_tree", "Tree", {"nodes": [{"id": "r", "label": "root", "parent": None}]
+    "graph.tree": _spec("graph.tree", "Tree", {"nodes": [{"id": "r", "label": "root", "parent": None}]
                                                + [{"id": f"c{i}", "label": f"child {i}",
                                                    "parent": "r" if i < 3 else f"c{i % 3}"} for i in range(8)]}),
-    "flow_steps": _spec("flow_steps", "Flow", {"steps": [{"id": "a", "label": "Start", "kind": "start"},
+    "flow.steps": _spec("flow.steps", "Flow", {"steps": [{"id": "a", "label": "Start", "kind": "start"},
                                                          {"id": "b", "label": "Ok?", "kind": "decision"},
                                                          {"id": "c", "label": "Fix"}, {"id": "d", "label": "End",
                                                                                          "kind": "end"}],
@@ -49,19 +49,19 @@ SPECS = {
                                                                                     "label": "yes"},
                                                          {"from": "b", "to": "c", "label": "no"},
                                                          {"from": "c", "to": "b"}]}),
-    "table_html": _spec("table_html", "Rain", TABLE),
-    "document_html": _spec("document_html", "Report", {"blocks": [
+    "table.html": _spec("table.html", "Rain", TABLE),
+    "document.html": _spec("document.html", "Report", {"blocks": [
         {"kind": "heading", "level": 1, "text": "Findings"},
         {"kind": "paragraph", "parts": [{"text": "See "}, {"ref": "f"}, {"text": "."}]},
-        {"kind": "figure", "id": "f", "caption": "Rain", "figure": _spec("chart_bar", "Rain", BAR)},
+        {"kind": "figure", "id": "f", "caption": "Rain", "figure": _spec("chart.bar", "Rain", BAR)},
         {"kind": "table", "id": "t", "caption": "Rain", "table": TABLE}]}),
-    "document_md": _spec("document_md", "Report", {"blocks": [
+    "document.md": _spec("document.md", "Report", {"blocks": [
         {"kind": "heading", "level": 1, "text": "Findings"},
         {"kind": "paragraph", "parts": [{"text": "See "}, {"ref": "t"}, {"text": "."}]},
         {"kind": "table", "id": "t", "caption": "Rain", "table": TABLE}]}),
-    "data_csv": _spec("data_csv", "Rain", TABLE),
-    "data_json": _spec("data_json", "Rain", TABLE),
-    "animation_svg": _spec("animation_svg", "Rain by year", {"form": "chart_bar", "frames": [
+    "data.csv": _spec("data.csv", "Rain", TABLE),
+    "data.json": _spec("data.json", "Rain", TABLE),
+    "animation.svg": _spec("animation.svg", "Rain by year", {"form": "chart.bar", "frames": [
         {"label": str(2020 + k), "data": {**BAR, "series": [{"name": "Lisbon", "values": [99 - k, 88, 61, 64]},
                                                              {"name": "Oslo", "values": [49, 36 + k, 47, None]}]}}
         for k in range(3)]}),

@@ -14,25 +14,25 @@ from g1_golden_specs import SPECS
 from neuroscifi.artifacts import make
 
 GOLDEN = {
- "chart_line": "66516c15c737b95f",
- "chart_scatter": "bd28d660caa121ad",
- "chart_bar": "ed17b1ddfc9404c7",
- "chart_histogram": "03c29ab8b044800e",
- "chart_heatmap": "0252193876e14398",
- "chart_small_multiples": "a1db2c97840a60af",
+ "chart.line": "5d19ff56eb7cd4c8",
+ "chart.scatter": "114f19cafa4c5dcf",
+ "chart.bar": "ec7da6982e3c913b",
+ "chart.histogram": "13955816e62dcf23",
+ "chart.heatmap": "adef018c627798d2",
+ "chart.small_multiples": "b48868b2723c437f",
  "timeline": "82f60dd2dd1da575",
- "graph_nodelink": "ff767cd59c293101",
- "graph_tree": "ac0e84601fc3f9ff",
- "flow_steps": "4ea92f74b41ea09c",
- "table_html": "84e0aaa9304e78a1",
- "document_html": "8b0b1151af90ad35",
- "document_md": "486269564d0b2816",
- "data_csv": "55dafe2b54e4fdae",
- "data_json": "7fa57a214a2e97af",
- "animation_svg": "ad3887409919f4c6"
+ "graph.nodelink": "0a518526716f6ba3",
+ "graph.tree": "87e7abcab26e7b9b",
+ "flow.steps": "2ffaf8360ab81cee",
+ "table.html": "2928adfb0bff6b42",
+ "document.html": "89d35ea9245bef7b",
+ "document.md": "486269564d0b2816",
+ "data.csv": "55dafe2b54e4fdae",
+ "data.json": "7fa57a214a2e97af",
+ "animation.svg": "f4b84176db37b308"
 }
-MEDIA = {"table_html": "text/html", "document_html": "text/html", "document_md": "text/markdown",
-         "data_csv": "text/csv", "data_json": "application/json"}
+MEDIA = {"table.html": "text/html", "document.html": "text/html", "document.md": "text/markdown",
+         "data.csv": "text/csv", "data.json": "application/json"}
 
 
 def _digest(form):

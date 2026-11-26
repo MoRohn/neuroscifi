@@ -848,13 +848,13 @@ def carried_diagram(root: Elem, form: str, data: dict) -> list:
     from collections import Counter
     nodes, edges, strays = read_diagram(root)
     labels = [n[0] for n in nodes]
-    if form == "graph_tree":
+    if form == "graph.tree":
         src_nodes = data["nodes"]
         by_id = {n["id"]: n["label"] for n in src_nodes}
         src_edges = [(by_id[n["parent"]], n["label"], "", None) for n in src_nodes if n.get("parent") is not None]
         directed = True
         use_kind = use_label = False
-    elif form == "flow_steps":
+    elif form == "flow.steps":
         src_nodes = data["steps"]
         by_id = {n["id"]: n["label"] for n in src_nodes}
         links = data.get("links")
@@ -888,7 +888,7 @@ def carried_diagram(root: Elem, form: str, data: dict) -> list:
             if a[0] < b[2] - 1 and b[0] < a[2] - 1 and a[1] < b[3] - 1 and b[1] < a[3] - 1:
                 overlaps += 1
     # A tree reads top to bottom (its lines run from parent down to child) and needs no arrowheads.
-    missing_arrows = sum(1 for e in edges if not e[4]) if directed and form != "graph_tree" else 0
+    missing_arrows = sum(1 for e in edges if not e[4]) if directed and form != "graph.tree" else 0
     extra = [_finding("nodes_recovered", n_found == sum(want_nodes.values()),
                       f"{n_found} of {sum(want_nodes.values())} nodes found by label"),
              _finding("edges_recovered", e_found == sum(want_edges.values()),
@@ -910,11 +910,11 @@ def carried_animation(root: Elem, data: dict, options: dict) -> list:
     found = total = stray = 0
     other = []
     for g, f in zip(frames, src):
-        if form == "chart_bar":
+        if form == "chart.bar":
             sub, _style = carried_bar(root, f["data"], options, plots_in=g)
             what = sum(1 for s in f["data"]["series"] for v in s["values"] if v is not None)
         else:
-            sub = carried_xy(root, f["data"], options, line=form == "chart_line", plots_in=g)
+            sub = carried_xy(root, f["data"], options, line=form == "chart.line", plots_in=g)
             what = sum(len(_source_points(s, f["data"]["x"].get("scale", "linear"), f["data"]["y"].get(
                 "scale", "linear"), None)) for s in f["data"]["series"])
         total += what
@@ -947,15 +947,15 @@ def carried_animation(root: Elem, data: dict, options: dict) -> list:
 
 def carried(root: Elem, form: str, data: dict, options: dict) -> tuple[list, list]:
     """(technical, style) findings of carried information for a chart form (empty when it is not a chart)."""
-    if form in ("chart_line", "chart_scatter"):
-        return carried_xy(root, data, options, line=form == "chart_line"), []
-    if form == "chart_bar":
+    if form in ("chart.line", "chart.scatter"):
+        return carried_xy(root, data, options, line=form == "chart.line"), []
+    if form == "chart.bar":
         return carried_bar(root, data, options)
-    if form == "chart_histogram":
+    if form == "chart.histogram":
         return carried_hist(root, data, options), []
-    if form == "chart_heatmap":
+    if form == "chart.heatmap":
         return carried_heat(root, data, options), []
-    if form == "chart_small_multiples":
+    if form == "chart.small_multiples":
         panels = [n for n in root.iter() if n.tag == "g" and "panel" in n.classes()]
         by_name = {p.attrs.get("data-name", ""): p for p in panels}
         found = total = stray = 0
@@ -984,9 +984,9 @@ def carried(root: Elem, form: str, data: dict, options: dict) -> tuple[list, lis
         return _report(found, total, stray, "points", extra), []
     if form == "timeline":
         return carried_timeline(root, data, options), []
-    if form == "animation_svg":
+    if form == "animation.svg":
         return carried_animation(root, data, options), []
-    if form in ("graph_nodelink", "graph_tree", "flow_steps"):
+    if form in ("graph.nodelink", "graph.tree", "flow.steps"):
         return carried_diagram(root, form, data), []
     return [], []
 

@@ -74,14 +74,14 @@ def nodes(r, k, directed):
 
 def specs_for(form, k):
     r = random.Random(f"{form}-{k}")
-    if form in ("chart_line", "chart_scatter", "chart_small_multiples"):
+    if form in ("chart.line", "chart.scatter", "chart.small_multiples"):
         return spec(form, f"{form} {k}", xy(r, k))
-    if form == "chart_bar":
+    if form == "chart.bar":
         return spec(form, f"Bars {k}", bars(r, k), {"mode": "stacked" if k % 2 else "grouped"})
-    if form == "chart_histogram":
+    if form == "chart.histogram":
         return spec(form, f"Spread {k}", {"x": {"label": "Value"},
                                           "values": [round(r.gauss(0, 1 + k), 3) for _ in range(50 + 300 * k)]})
-    if form == "chart_heatmap":
+    if form == "chart.heatmap":
         nx, ny = 3 + 2 * k, 2 + k
         return spec(form, f"Grid {k}", {"x": {"label": "Column", "categories": [f"C{i}" for i in range(nx)]},
                                         "y": {"label": "Row", "categories": [f"R{i}" for i in range(ny)]},
@@ -95,38 +95,38 @@ def specs_for(form, k):
                                         "spans": [{"lane": lanes[i % len(lanes)], "start": T0 + 86400 * 10 * i,
                                                    "end": T0 + 86400 * (10 * i + 15), "label": f"Span {i}"}
                                                   for i in range(1 + k)]})
-    if form == "graph_nodelink":
+    if form == "graph.nodelink":
         return spec(form, f"Graph {k}", nodes(r, k, directed=k % 2 == 0))
-    if form == "graph_tree":
+    if form == "graph.tree":
         n = 4 + 5 * k
         return spec(form, f"Tree {k}", {"nodes": [{"id": "n0", "label": "Root", "parent": None}] +
                                         [{"id": f"n{i}", "label": f"Node {i}", "parent": f"n{r.randint(0, i - 1)}"}
                                          for i in range(1, n)]})
-    if form == "flow_steps":
+    if form == "flow.steps":
         n = 3 + 2 * k
         steps = [{"id": f"s{i}", "label": f"Step {i}", "kind": "decision" if i % 3 == 2 else "step"}
                  for i in range(n)]
         links = [{"from": f"s{i}", "to": f"s{i + 1}"} for i in range(n - 1)] + \
                 [{"from": f"s{i}", "to": f"s{max(0, i - 2)}", "label": "again"} for i in range(2, n, 3)]
         return spec(form, f"Flow {k}", {"steps": steps, "links": links})
-    if form in ("table_html", "data_csv", "data_json"):
+    if form in ("table.html", "data.csv", "data.json"):
         return spec(form, f"Table {k}", table(r, k))
-    if form in ("document_html", "document_md"):
+    if form in ("document.html", "document.md"):
         blocks = []
         for s in range(1 + k):
             blocks += [{"kind": "heading", "level": 1, "text": f"Section {s + 1}"},
                        {"kind": "paragraph", "text": f"Paragraph {s + 1}, written for the evidence run."}]
         blocks += [{"kind": "table", "id": "t", "caption": "Data", "table": table(r, 0)},
                    {"kind": "paragraph", "parts": [{"text": "See "}, {"ref": "t"}, {"text": "."}]}]
-        if form == "document_html":
-            blocks += [{"kind": "figure", "id": "f", "caption": "Bars", "figure": spec("chart_bar", "Bars", bars(r, 0))}]
+        if form == "document.html":
+            blocks += [{"kind": "figure", "id": "f", "caption": "Bars", "figure": spec("chart.bar", "Bars", bars(r, 0))}]
         return spec(form, f"Report {k}", {"blocks": blocks})
-    if form == "animation_svg":
+    if form == "animation.svg":
         base = bars(r, 0)
         frames = [{"label": f"Frame {i}", "data": {**base, "series": [
             {"name": s["name"], "values": [round(v * (1 + 0.1 * i), 1) for v in s["values"]]} for s in base["series"]]}}
             for i in range(2 + k)]
-        return spec(form, f"Animation {k}", {"form": "chart_bar", "frames": frames})
+        return spec(form, f"Animation {k}", {"form": "chart.bar", "frames": frames})
     raise KeyError(form)
 
 
@@ -249,7 +249,7 @@ MUTATIONS = {"image/svg+xml": SVG_MUTATIONS, "text/html": HTML_MUTATIONS, "text/
 CARRIED = ("values_recovered", "cells_match", "values_exact")
 # Edits that change bytes but not what a reader sees: a heatmap's rows are read by their position on the y axis,
 # so renaming the row groups is no fault.
-NOT_FAULTS = {("chart_heatmap", "swapped_series")}
+NOT_FAULTS = {("chart.heatmap", "swapped_series")}
 
 
 def measure(form):

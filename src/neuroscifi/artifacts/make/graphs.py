@@ -488,7 +488,7 @@ def make_nodelink(spec):
     notes = []
     if len(edge_kinds) > len(EDGE_DASHES) or len(node_kinds) > len(KIND_STYLES):
         notes.append("more kinds than distinguishable styles: some look alike")
-    return _canvas(spec, "graph_nodelink", boxes, items, directed=directed, edge_kinds=show_edge_kinds,
+    return _canvas(spec, "graph.nodelink", boxes, items, directed=directed, edge_kinds=show_edge_kinds,
                    node_kinds=show_node_kinds, words=words), tuple(notes)
 
 
@@ -529,7 +529,7 @@ def make_tree(spec):
     words = (f"Tree of {len(nodes)} nodes in {depth} levels with {leaves} leaves; the root "
              f"({nodes[parent.index(None)]['label'][:60]}) is at the top and each line runs from a parent down to "
              "its child.")
-    return _canvas(spec, "graph_tree", boxes, items, directed=False, edge_kinds=[],
+    return _canvas(spec, "graph.tree", boxes, items, directed=False, edge_kinds=[],
                    node_kinds=node_kinds if node_kinds != [""] else [], words=words), ()
 
 

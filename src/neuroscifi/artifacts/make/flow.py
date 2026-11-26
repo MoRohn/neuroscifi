@@ -63,7 +63,7 @@ def make_flow(spec):
     decisions = sum(1 for s in steps if s.get("kind") == "decision")
     words = (f"Flow of {len(steps)} steps ({decisions} decisions) and {len(links)} links, top to bottom"
              + (f"; {loops} links loop back and are drawn around the right side" if loops else "") + ".")
-    return _canvas(spec, "flow_steps", boxes, items, directed=True, edge_kinds=[], node_kinds=[], words=words,
+    return _canvas(spec, "flow.steps", boxes, items, directed=True, edge_kinds=[], node_kinds=[], words=words,
                    extra_points=extra), ()
 
 

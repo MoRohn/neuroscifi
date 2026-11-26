@@ -25,7 +25,7 @@ def tspec(form, data=None, options=None, title="Rainfall in three cities"):
 # --- the HTML table ---------------------------------------------------------------------------------------------
 
 def test_html_table_is_real_and_every_cell_matches():
-    s = tspec("table_html")
+    s = tspec("table.html")
     m = S.made(s)
     text = m.bytes.decode()
     assert m.media_type == "text/html" and "<script" not in text and "style=" not in text and "href" not in text
@@ -40,7 +40,7 @@ def test_html_table_is_real_and_every_cell_matches():
 
 
 def test_decimals_are_stated_and_checked_to_their_precision():
-    s = tspec("table_html", options={"decimals": 1})
+    s = tspec("table.html", options={"decimals": 1})
     m = S.made(s)
     assert "rounded to 1 decimal places" in m.bytes.decode() and ">0.3<" in m.bytes.decode()
     assert S.verdict(m.bytes, s, "text/html").ok
@@ -63,7 +63,7 @@ def _edit(data, old, new):
     (lambda d: _edit(d, 'scope="col">Rainfall', 'scope="col">Rain'), "headers_match"),
 ])
 def test_wrong_tables_are_caught(mutate, rule):
-    s = tspec("table_html")
+    s = tspec("table.html")
     good = S.made(s).bytes
     v = S.verdict(mutate(good), s, "text/html")
     assert not v.ok and rule in S.failed(v), (rule, S.failed(v))
@@ -72,7 +72,7 @@ def test_wrong_tables_are_caught(mutate, rule):
 # --- data files -------------------------------------------------------------------------------------------------
 
 def test_csv_round_trips_exactly_under_its_dialect():
-    s = tspec("data_csv")
+    s = tspec("data.csv")
     m = S.made(s)
     raw = m.bytes
     assert m.media_type == "text/csv" and not raw.startswith(b"\xef\xbb\xbf") and raw.endswith(b"\r\n")
@@ -89,7 +89,7 @@ def test_csv_round_trips_exactly_under_its_dialect():
 
 
 def test_json_round_trips_exactly():
-    s = tspec("data_json")
+    s = tspec("data.json")
     m = S.made(s)
     doc = json.loads(m.bytes)
     assert doc["dialect"] == "neuroscifi.table/1" and "not evidence" in doc["made_by"]
@@ -103,7 +103,7 @@ def test_data_files_compare_with_a_decoded_table():
                      T.Column("name", "text", None, ("a", "b", "c"), 0)), 3)
     data = {"columns": [{"name": "height", "kind": "number", "unit": "m", "values": [1.5, None, 2.25]},
                         {"name": "name", "kind": "text", "values": ["a", "b", "c"]}]}
-    for form, media in (("data_csv", "text/csv"), ("data_json", "application/json")):
+    for form, media in (("data.csv", "text/csv"), ("data.json", "application/json")):
         m = S.made(S.spec(form, "Heights", data))
         assert S.verdict(m.bytes, None, media, source=table).ok
         other = T.Table((T.Column("height", "number", "m", np.array([1.5, np.nan, 2.5]), 1),
@@ -115,24 +115,24 @@ def test_cells_of_the_wrong_kind_are_refused():
     bad = copy.deepcopy(TABLE)
     bad["columns"][2]["values"][0] = 1.5
     with pytest.raises(ValueError, match="integer"):
-        S.made(S.spec("data_csv", "Bad", bad))
+        S.made(S.spec("data.csv", "Bad", bad))
     bad = copy.deepcopy(TABLE)
     bad["columns"][0]["values"].append("extra")
     with pytest.raises(ValueError, match="same number"):
-        S.made(S.spec("data_json", "Bad", bad))
+        S.made(S.spec("data.json", "Bad", bad))
 
 
 @pytest.mark.parametrize("form,media,mutate,rule", [
-    ("data_csv", "text/csv", lambda d: d.replace(b"99.5", b"99.50001", 1), "values_exact"),
-    ("data_csv", "text/csv", lambda d: d.replace(b"\r\n", b"\n"), "csv_dialect"),
-    ("data_csv", "text/csv", lambda d: b"\xef\xbb\xbf" + d, "csv_dialect"),
-    ("data_csv", "text/csv", lambda d: d.replace(b"'=SUM", b"=SUM", 1), "formula_guard"),
-    ("data_csv", "text/csv", lambda d: d.replace(b" [mm]", b"", 1), "header_matches"),
-    ("data_csv", "text/csv", lambda d: d.replace(b"Oslo,,", b'Oslo,"",', 1), "values_exact"),
-    ("data_json", "application/json", lambda d: d.replace(b"99.5", b"NaN", 1), "json_parses"),
-    ("data_json", "application/json", lambda d: d.replace(b'"title"', b'"dialect":"x","title"', 1), "json_parses"),
-    ("data_json", "application/json", lambda d: d.replace(b"76.25", b"76.26", 1), "values_exact"),
-    ("data_json", "application/json", lambda d: d.replace(b"not evidence", b"evidence", 1), "made_by_label"),
+    ("data.csv", "text/csv", lambda d: d.replace(b"99.5", b"99.50001", 1), "values_exact"),
+    ("data.csv", "text/csv", lambda d: d.replace(b"\r\n", b"\n"), "csv_dialect"),
+    ("data.csv", "text/csv", lambda d: b"\xef\xbb\xbf" + d, "csv_dialect"),
+    ("data.csv", "text/csv", lambda d: d.replace(b"'=SUM", b"=SUM", 1), "formula_guard"),
+    ("data.csv", "text/csv", lambda d: d.replace(b" [mm]", b"", 1), "header_matches"),
+    ("data.csv", "text/csv", lambda d: d.replace(b"Oslo,,", b'Oslo,"",', 1), "values_exact"),
+    ("data.json", "application/json", lambda d: d.replace(b"99.5", b"NaN", 1), "json_parses"),
+    ("data.json", "application/json", lambda d: d.replace(b'"title"', b'"dialect":"x","title"', 1), "json_parses"),
+    ("data.json", "application/json", lambda d: d.replace(b"76.25", b"76.26", 1), "values_exact"),
+    ("data.json", "application/json", lambda d: d.replace(b"not evidence", b"evidence", 1), "made_by_label"),
 ])
 def test_wrong_data_files_are_caught(form, media, mutate, rule):
     s = tspec(form)
@@ -144,7 +144,7 @@ def test_wrong_data_files_are_caught(form, media, mutate, rule):
 
 # --- documents --------------------------------------------------------------------------------------------------
 
-BAR = S.spec("chart_bar", "Rainfall by month and city",
+BAR = S.spec("chart.bar", "Rainfall by month and city",
              {"categories": ["Jan", "Feb", "Mar"], "x": {"label": "Month"}, "y": {"label": "Rainfall", "unit": "mm"},
               "series": [{"name": "Lisbon", "values": [99, 88, 61]}, {"name": "Oslo", "values": [49, 36, 47]}]})
 DOC = {"blocks": [
@@ -172,7 +172,7 @@ def dspec(form, data=None, **kw):
 
 
 def test_html_document_is_self_contained_labelled_and_checked():
-    s = dspec("document_html")
+    s = dspec("document.html")
     m = S.made(s)
     text = m.bytes.decode()
     assert text.startswith("<!DOCTYPE html>") and '<html lang="en">' in text
@@ -188,7 +188,7 @@ def test_html_document_is_self_contained_labelled_and_checked():
 
 
 def test_markdown_document_is_text_safe_and_checked():
-    s = dspec("document_md")
+    s = dspec("document.md")
     m = S.made(s)
     text = m.bytes.decode()
     assert text.startswith("> Made by NeuroSciFi")
@@ -203,27 +203,26 @@ def test_documents_refuse_bad_structure():
     skip = copy.deepcopy(DOC)
     skip["blocks"][6]["level"] = 3
     with pytest.raises(ValueError, match="skip"):
-        S.made(dspec("document_html", skip))
+        S.made(dspec("document.html", skip))
     dangling = copy.deepcopy(DOC)
     dangling["blocks"][3]["parts"][1]["ref"] = "nothing"
     with pytest.raises(ValueError, match="no figure or table"):
-        S.made(dspec("document_md", dangling))
+        S.made(dspec("document.md", dangling))
     not_svg = copy.deepcopy(DOC)
-    not_svg["blocks"][4]["figure"] = tspec("table_html")
+    not_svg["blocks"][4]["figure"] = tspec("table.html")
     with pytest.raises(ValueError, match="SVG"):
-        S.made(dspec("document_html", not_svg))
+        S.made(dspec("document.html", not_svg))
     bad_fig = copy.deepcopy(DOC)
     bad_fig["blocks"][4]["figure"]["data"]["series"] = []
     with pytest.raises(ValueError):
-        S.made(dspec("document_html", bad_fig))
+        S.made(dspec("document.html", bad_fig))
 
 
-@pytest.mark.xfail(reason="waits for lane K's relaxed content rule", strict=True)
 def test_addresses_and_markup_in_documents_stay_text():
     data = copy.deepcopy(DOC)
     data["sources"].append({"title": "Met Eireann <averages>", "address": "https://www.met.ie/climate"})
     data["blocks"][1]["text"] = "<script>alert(1)</script> and C:\\temp and /etc/passwd"
-    for form, media in (("document_html", "text/html"), ("document_md", "text/markdown")):
+    for form, media in (("document.html", "text/html"), ("document.md", "text/markdown")):
         s = dspec(form, data, title="Rain <b>now</b>")
         m = S.made(s)
         text = m.bytes.decode()
@@ -238,30 +237,30 @@ def _doc_edit(old, new):
 
 
 @pytest.mark.parametrize("form,media,mutate,rule", [
-    ("document_html", "text/html", _doc_edit("How much does it rain", "TODO: how much does it rain"), "no_placeholders"),
-    ("document_html", "text/html", _doc_edit("<h3 id=", "<h5 id="), "heading_levels"),
-    ("document_html", "text/html", _doc_edit("<p>How much does it rain in January?</p>", ""), "no_empty_sections"),
-    ("document_html", "text/html", _doc_edit('href="#ref-rain"', 'href="https://example.invalid"'), "links_text_only"),
-    ("document_html", "text/html", _doc_edit('href="#ref-rain"', 'href="#nowhere"'), "references_resolve"),
-    ("document_html", "text/html", lambda d: d.replace(b'class="made-by"', b'class="byline"'), "made_by_label"),
-    ("document_html", "text/html", _doc_edit("</main>", "<script>alert(1)</script></main>"), "html_no_script"),
-    ("document_html", "text/html", _doc_edit("<rect class=\"paper\"", "<script>x</script><rect class=\"paper\""),
+    ("document.html", "text/html", _doc_edit("How much does it rain", "TODO: how much does it rain"), "no_placeholders"),
+    ("document.html", "text/html", _doc_edit("<h3 id=", "<h5 id="), "heading_levels"),
+    ("document.html", "text/html", _doc_edit("<p>How much does it rain in January?</p>", ""), "no_empty_sections"),
+    ("document.html", "text/html", _doc_edit('href="#ref-rain"', 'href="https://example.invalid"'), "links_text_only"),
+    ("document.html", "text/html", _doc_edit('href="#ref-rain"', 'href="#nowhere"'), "references_resolve"),
+    ("document.html", "text/html", lambda d: d.replace(b'class="made-by"', b'class="byline"'), "made_by_label"),
+    ("document.html", "text/html", _doc_edit("</main>", "<script>alert(1)</script></main>"), "html_no_script"),
+    ("document.html", "text/html", _doc_edit("<rect class=\"paper\"", "<script>x</script><rect class=\"paper\""),
      "figures_safe"),
-    ("document_html", "text/html", _doc_edit("<figcaption>Figure 1. Monthly rainfall</figcaption>", ""),
+    ("document.html", "text/html", _doc_edit("<figcaption>Figure 1. Monthly rainfall</figcaption>", ""),
      "figures_captioned"),
-    ("document_html", "text/html", _doc_edit("<style>", "<style>@import 'x.css';"), "css_safe"),
-    ("document_html", "text/html", _doc_edit(">99.5<", ">99.6<"), "cells_match"),
-    ("document_md", "text/markdown", _doc_edit("| Lisbon | 99.5 |", "| Lisbon | 99.6 |"), "cells_match"),
-    ("document_md", "text/markdown", _doc_edit("| Dublin |", "| Cork |"), "cells_match"),
-    ("document_md", "text/markdown", _doc_edit("How much does it rain", "Lorem ipsum, how much does it rain"),
+    ("document.html", "text/html", _doc_edit("<style>", "<style>@import 'x.css';"), "css_safe"),
+    ("document.html", "text/html", _doc_edit(">99.5<", ">99.6<"), "cells_match"),
+    ("document.md", "text/markdown", _doc_edit("| Lisbon | 99.5 |", "| Lisbon | 99.6 |"), "cells_match"),
+    ("document.md", "text/markdown", _doc_edit("| Dublin |", "| Cork |"), "cells_match"),
+    ("document.md", "text/markdown", _doc_edit("How much does it rain", "Lorem ipsum, how much does it rain"),
      "no_placeholders"),
-    ("document_md", "text/markdown", _doc_edit("## What was asked", "#### What was asked"), "heading_levels"),
-    ("document_md", "text/markdown", _doc_edit("How much", "[See](https://example.invalid) how much"),
+    ("document.md", "text/markdown", _doc_edit("## What was asked", "#### What was asked"), "heading_levels"),
+    ("document.md", "text/markdown", _doc_edit("How much", "[See](https://example.invalid) how much"),
      "links_text_only"),
-    ("document_md", "text/markdown", _doc_edit("How much", "<img src=x onerror=alert(1)> how much"), "no_raw_html"),
-    ("document_md", "text/markdown", lambda d: d.replace(b"> Made by NeuroSciFi", b"> Written by someone"),
+    ("document.md", "text/markdown", _doc_edit("How much", "<img src=x onerror=alert(1)> how much"), "no_raw_html"),
+    ("document.md", "text/markdown", lambda d: d.replace(b"> Made by NeuroSciFi", b"> Written by someone"),
      "made_by_label"),
-    ("document_md", "text/markdown", _doc_edit("<rect class=\"paper\"", "<foreignObject/><rect class=\"paper\""),
+    ("document.md", "text/markdown", _doc_edit("<rect class=\"paper\"", "<foreignObject/><rect class=\"paper\""),
      "figures_safe"),
 ])
 def test_wrong_documents_are_caught(form, media, mutate, rule):

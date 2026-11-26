@@ -42,8 +42,8 @@ FLOW = {"steps": [{"id": "s", "label": "Spec arrives", "kind": "start"}, {"id": 
                   {"from": "p", "to": "e", "label": "yes"}, {"from": "p", "to": "r", "label": "no"},
                   {"from": "r", "to": "m", "label": "again"}]}
 
-CASES = {"timeline": ("timeline", TIMELINE), "dag": ("graph_nodelink", DAG), "force": ("graph_nodelink", CYCLIC),
-         "tree": ("graph_tree", TREE), "flow": ("flow_steps", FLOW)}
+CASES = {"timeline": ("timeline", TIMELINE), "dag": ("graph.nodelink", DAG), "force": ("graph.nodelink", CYCLIC),
+         "tree": ("graph.tree", TREE), "flow": ("flow.steps", FLOW)}
 
 
 def case(name, **options):
@@ -95,15 +95,15 @@ def test_bad_structures_are_refused():
     t["nodes"][1]["parent"] = "make"                         # a cycle
     t["nodes"][0]["parent"] = None
     with pytest.raises(ValueError):
-        S.made(S.spec("graph_tree", "Cycle", t))
+        S.made(S.spec("graph.tree", "Cycle", t))
     t2 = copy.deepcopy(TREE)
     t2["nodes"][1]["parent"] = None                          # two roots
     with pytest.raises(ValueError, match="one root"):
-        S.made(S.spec("graph_tree", "Two roots", t2))
+        S.made(S.spec("graph.tree", "Two roots", t2))
     g = copy.deepcopy(DAG)
     g["edges"].append({"from": "q", "to": "nowhere"})
     with pytest.raises(ValueError):
-        S.made(S.spec("graph_nodelink", "Dangling", g))
+        S.made(S.spec("graph.nodelink", "Dangling", g))
     tl = copy.deepcopy(TIMELINE)
     tl["spans"][0]["end"] = tl["spans"][0]["start"] - 1
     with pytest.raises(ValueError, match="ends before"):
@@ -113,7 +113,7 @@ def test_bad_structures_are_refused():
 def test_long_node_labels_are_cut_with_the_full_label_kept():
     g = copy.deepcopy(DAG)
     g["nodes"][0]["label"] = "A question that is far too long to fit inside one node box"
-    s = S.spec("graph_nodelink", "Long", g)
+    s = S.spec("graph.nodelink", "Long", g)
     m = S.made(s)
     assert "…" in m.bytes.decode()
     assert S.verdict(m.bytes, s).ok

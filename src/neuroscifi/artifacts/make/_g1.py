@@ -1,7 +1,7 @@
 """Lane G1's forms: their schemas (spec.register_form) and their generators (make.register), in one table.
 
 Importing this module registers every form below once. The registry module (`make/__init__.py`) imports it at the
-merge; nothing else does. Form names use underscores because the specification's form-name pattern has no dot.
+merge; nothing else does. Form names are the brief's dotted names (one dot, as spec.FORM_NAME allows).
 """
 from __future__ import annotations
 
@@ -37,15 +37,15 @@ def _table():
     rows = [(form, fn, data, charts.OPTIONS, "image/svg+xml") for form, (fn, data) in charts.GENERATORS.items()]
     rows += [
         ("timeline", timeline.make_timeline, timeline.DATA, timeline.OPTIONS, "image/svg+xml"),
-        ("graph_nodelink", graphs.make_nodelink, graphs.NODELINK_DATA, graphs.OPTIONS, "image/svg+xml"),
-        ("graph_tree", graphs.make_tree, graphs.TREE_DATA, graphs.OPTIONS, "image/svg+xml"),
-        ("flow_steps", flow.make_flow, flow.DATA, graphs.OPTIONS, "image/svg+xml"),
-        ("table_html", tables.make_table, tables.DATA, tables.OPTIONS, "text/html"),
-        ("document_html", documents.make_html, documents.DATA, documents.OPTIONS, "text/html"),
-        ("document_md", documents.make_markdown, documents.DATA, documents.OPTIONS, "text/markdown"),
-        ("data_csv", datafiles.make_csv, datafiles.DATA, datafiles.OPTIONS, "text/csv"),
-        ("data_json", datafiles.make_json, datafiles.DATA, datafiles.OPTIONS, "application/json"),
-        ("animation_svg", animation.make_animation, animation.ANIMATION_DATA, charts.OPTIONS, "image/svg+xml"),
+        ("graph.nodelink", graphs.make_nodelink, graphs.NODELINK_DATA, graphs.OPTIONS, "image/svg+xml"),
+        ("graph.tree", graphs.make_tree, graphs.TREE_DATA, graphs.OPTIONS, "image/svg+xml"),
+        ("flow.steps", flow.make_flow, flow.DATA, graphs.OPTIONS, "image/svg+xml"),
+        ("table.html", tables.make_table, tables.DATA, tables.OPTIONS, "text/html"),
+        ("document.html", documents.make_html, documents.DATA, documents.OPTIONS, "text/html"),
+        ("document.md", documents.make_markdown, documents.DATA, documents.OPTIONS, "text/markdown"),
+        ("data.csv", datafiles.make_csv, datafiles.DATA, datafiles.OPTIONS, "text/csv"),
+        ("data.json", datafiles.make_json, datafiles.DATA, datafiles.OPTIONS, "application/json"),
+        ("animation.svg", animation.make_animation, animation.ANIMATION_DATA, charts.OPTIONS, "image/svg+xml"),
     ]
     return rows
 

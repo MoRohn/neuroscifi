@@ -1,4 +1,4 @@
-"""Tables: one schema for tabular data (used by table_html, data_csv, data_json and document tables), and the HTML
+"""Tables: one schema for tabular data (used by table.html, data.csv, data.json and document tables), and the HTML
 table fragment.
 
 The table is a real HTML table: `<caption>` (the title, then the description), `<thead>` with `<th scope="col">`
@@ -151,7 +151,7 @@ def table_html(spec_title: str, description: str, data: dict, options: dict, tab
 
 
 def make_table(spec):
-    tid = scope_id("table_html", spec.to_json())
+    tid = scope_id("table.html", spec.to_json())
     return table_html(spec.title, spec.description, spec.data, spec.options, tid) + "\n", ()
 
 

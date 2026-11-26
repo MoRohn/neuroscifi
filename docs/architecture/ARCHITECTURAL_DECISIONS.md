@@ -4240,9 +4240,9 @@ options, sources, made_by) whose `data` and `options` are checked against the fo
 addresses and code are text, escaped on output (XML/HTML escaping in SVG and HTML; Markdown escaping that drops
 leading white space and escapes inline markers and line-start markers; CSV quoting plus a one-apostrophe formula
 guard). The spec is the artifact's editable source and is embedded in made SVG once, as JSON in `<metadata>`.
-Form names use underscores (the spec's form-name pattern has no dot): `chart_line`, `chart_bar` (grouped, stacked),
-`chart_scatter`, `chart_histogram`, `chart_heatmap`, `chart_small_multiples`, `timeline`, `graph_nodelink`,
-`graph_tree`, `flow_steps`, `table_html`, `document_html`, `document_md`, `data_csv`, `data_json`, `animation_svg`.
+Form names (dotted, as the brief names them; `spec.FORM_NAME` allows one dot): `chart.line`, `chart.bar` (grouped, stacked),
+`chart.scatter`, `chart.histogram`, `chart.heatmap`, `chart.small_multiples`, `timeline`, `graph.nodelink`,
+`graph.tree`, `flow.steps`, `table.html`, `document.html`, `document.md`, `data.csv`, `data.json`, `animation.svg`.
 
 **2. The reading contract** (what a reader, human or program, can rely on to recover the data from the picture
 alone, from geometry and tick labels, never from an echo of the input):

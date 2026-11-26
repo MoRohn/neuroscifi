@@ -18,7 +18,7 @@ from .charts import GENERATORS, STR, describe
 from .scales import Fit
 from .svg_base import el, head, num, scope_id, text_el
 
-FORMS = ("chart_line", "chart_bar", "chart_scatter")
+FORMS = ("chart.line", "chart.bar", "chart.scatter")
 ANIMATION_DATA = {"type": "object", "additionalProperties": False, "required": ["form", "frames"],
                   "properties": {"form": {"enum": list(FORMS)},
                                  "frames": {"type": "array", "minItems": 2, "maxItems": 60,
@@ -31,7 +31,7 @@ ANIMATION_DATA = {"type": "object", "additionalProperties": False, "required": [
 
 def _union_options(form, frames, base):
     o = {k: v for k, v in base.items() if k in ("width", "height", "markers", "mode", "x_labels", "abbreviate")}
-    if form == "chart_bar":
+    if form == "chart.bar":
         cats = frames[0]["data"]["categories"]
         names = [s["name"] for s in frames[0]["data"]["series"]]
         for f in frames:
@@ -77,7 +77,7 @@ def make_animation(spec):
     options = _union_options(form, frames, base)
     fn = GENERATORS[form][0]
     title = spec.title or "Animated chart"
-    sid = scope_id("animation_svg", spec.to_json())
+    sid = scope_id("animation.svg", spec.to_json())
     parts = []
     static = None
     width = height = None
@@ -117,10 +117,10 @@ def make_animation(spec):
             frames_css = f"0%{{opacity:0}}{a}%{{opacity:1}}{b}%{{opacity:0}}100%{{opacity:0}}"
         css.append(f"#{sid} .f{i}{{animation-name:{sid}-k{i}}}@keyframes {sid}-k{i}{{{frames_css}}}")
     css.append(f"@media (prefers-reduced-motion:reduce){{#{sid} .frame{{animation:none}}}}")
-    words = (f"Animated {form.replace('chart_', '')} chart in {n} frames ({frames[0]['label']} to "
+    words = (f"Animated {form.replace('chart.', '')} chart in {n} frames ({frames[0]['label']} to "
              f"{frames[-1]['label']}), {num(seconds, 2)} s each{', looping' if loop else ''}; every frame uses "
              "the same axes. With reduced motion, or without animation, the last frame is shown still.")
-    out = head(sid, "animation_svg", width, height, title, describe(spec, words), d, "".join(css),
+    out = head(sid, "animation.svg", width, height, title, describe(spec, words), d, "".join(css),
                defs[len("<defs>"):-len("</defs>")] if defs else "")
     return out + static + "".join(parts) + "</svg>", ()
 
