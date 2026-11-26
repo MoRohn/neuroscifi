@@ -79,10 +79,18 @@ def setting_problems(db) -> list[str]:
         raw = json.loads(row[0]) if row and row[0] else {}
     except ValueError:
         return ["the saved Web Cortex settings cannot be read as JSON"]
-    return [f"the saved {name} ({raw[name]!r}) is not a valid value; its default "
-            f"({getattr(wconfig.WebConfig(), name)!r}) applies until it is set with `nsf web config --set {name}=...`"
-            for name in wconfig.CHECKED_ON_LOAD if isinstance(raw, dict) and name in raw
-            and wconfig.damaged(name, raw[name])]
+    out = []
+    for name in wconfig.CHECKED_ON_LOAD:
+        if not (isinstance(raw, dict) and name in raw and wconfig.damaged(name, raw[name])):
+            continue
+        line = (f"the saved {name} ({raw[name]!r}) is not a valid value; its default "
+                f"({getattr(wconfig.WebConfig(), name)!r}) applies until it is set with `nsf web config --set "
+                f"{name}=...`")
+        rule, safe = wconfig.FAILS_CLOSED.get(name, (None, None))
+        if rule is not None and raw.get(rule, safe) != safe:        # review3b N8: never a looser rule
+            line += f"; meanwhile {rule} reads as {safe!r} (the rule is off until then)"
+        out.append(line)
+    return out
 
 
 def _is_int(v):
@@ -263,6 +271,13 @@ def set_config(db, changes: dict, now) -> wconfig.WebConfig:
     validated = {name: _validate(name, value) for name, value in changes.items()}
     with store.write(db):
         current = get_config(db).to_json()
+        # review3b N8: a checked setting keeps its saved value, damaged or not, until it is itself set; otherwise any
+        # change would write the default of a damaged value (dropping the owner's notice) and persist the safe value
+        # a rule reads as while its bar is damaged (supersession "ask")
+        row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
+        stored = loads(row[0], {}) if row and row[0] else {}
+        if isinstance(stored, dict):
+            current.update({name: stored[name] for name in wconfig.CHECKED_ON_LOAD if name in stored})
         current.update(validated)
         db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                    (wconfig.META_KEY, dumps(current)))

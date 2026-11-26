@@ -388,7 +388,8 @@ def _web_status(c, p, q, b):
             "curiosity": [x for x in curiosity.rank(c.db, c.now, limit=5) if not x["excluded"]][:5]
             if cfg.enabled else None,
             "worker": _worker_view(c, worker),
-            "modes": list(MODES), "memory": wstate.counts(c.db)}
+            "modes": list(MODES), "memory": wstate.counts(c.db),
+            "problems": wstate.setting_problems(c.db)}          # review3b N8: damaged saved settings, as the CLI
 
 
 def _worker_view(c, worker) -> dict:

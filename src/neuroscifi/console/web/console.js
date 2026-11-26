@@ -1596,6 +1596,7 @@ function renderWebStatus(s) {
     ['Task runner', s.worker.embedded ? (s.worker.running ? 'this console (embedded worker, --web-worker)' : 'embedded worker stopped') : 'external: the neuroscifi-webcortex service (nsf web work)'],
     ['Tasks', counts || 'none yet'],
     ['Public cache', s.cache ? `${s.cache.documents} documents, ${fmtBytes(s.cache.bytes)}` : 'empty'],
+    s.problems?.length ? ['Saved settings', s.problems.join(' ')] : null,
   ]));
   fill($('providerTable'), s.providers.length
     ? table('Search provider and engine health', ['Provider / engine', 'State', 'Calls', 'Last error'],
