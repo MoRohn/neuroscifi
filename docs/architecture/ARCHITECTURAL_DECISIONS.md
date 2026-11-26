@@ -4101,7 +4101,10 @@ No schema change, no new background activity, no dependency. Evidence: `docs/qua
 the product as shipped with autonomy on is below the spread in every world (−0.024 to +0.026 against sds of
 0.034–0.054), it costs refreshing in the world where everything is covered (−0.016 to −0.024), and every candidate
 is "unsafe" or "harm" under the rule written before the run. The division stays off; the gap to a blind round-robin
-of the same allowance (0.09–0.26) is not closed by any split.
+of the same allowance is not closed by any split: 0.09–0.26 below it for the reference `shipped+idle` and the four
+candidates (each world's mean `correct`; the other configurations run are further below: `shipped+idle-first` up to
+0.28, the ablation `reserve-0.5/idle-first` up to 0.27, the product without the idle investigation up to 0.32,
+`genesis_wave4_a_held_out.json` `gap_to`).
 
 ## Context
 
@@ -4376,7 +4379,7 @@ without it. About twenty items per split: a description of these items, not a cl
   one source" is also shown on the project's own site (F07, F20), which the product treats as sufficient.
 - Not measured: the open web, where reworded copies are the case the caution is for; whether owners read it.
 
-# ADR-066 One source by evidence of derivation, not by the wording of a credit: built, measured, a TRADE; not supported, do not turn on; OFF
+# ADR-066 One source by evidence of derivation, not by the wording of a credit: not supported, do not turn on; built, measured, OFF
 
 Status: built, **OFF** (`WebConfig.source_derivation`, default `false`). Wave 4, lane S (branch `gen4-s`). No schema
 change. Evidence: `docs/quality/evidence/genesis_wave4_s.json` (summary per world, seed and shape) and
@@ -4405,7 +4408,8 @@ development and on held-out, before and after the fix lane. The rule admits fewe
 below the bar (held-out 127 → 97, of them false now 40 → 30; after the fix lane's hardening 127 → 99, 40 → 31,
 `genesis_wave4_fix.json`) and pays for it with more true values not held (142 → 207 of 612, both) and a lower `correct`
 in every world (−0.066 / −0.054 / −0.101, beyond the spread in two of three; after the fix −0.064 / −0.054 / −0.101).
-It ships off; this ADR recommends against turning it on.
+It ships off; this ADR recommends against turning it on, and since the second fix round `nsf web config` says so
+when it is set on (it still obeys the owner).
 
 ## Context
 
@@ -4481,7 +4485,8 @@ the source-independence worlds (development and held-out, never the withheld), l
 development and held-out; the reviewers' literal scenarios (`tests/webcortex/test_origin_grouping.py`, every order up
 to 120); and the offline research benchmark at the defaults and all off, with every call of `stamp_origins`,
 `independence_groups` and `evaluate` answered by both (re-run by the fix lane on its tree: the same total, 0
-different). On the final code (`a517b4d`): **2,052,099 comparisons, 0
+different; re-run on the second fix round's tree `c921e9e`: worlds and scenarios 2,038,936, offline 13,163, together 2,052,099 comparisons, 0
+different, the offline digest unchanged in both regimes). On the final code (`a517b4d`): **2,052,099 comparisons, 0
 different** (13,888 of them the reviewers' scenarios); the offline research digest `68731d7235cb…` (portable
 `d87dbb4fb77f…`) at the defaults and with every setting off, unchanged.
 
@@ -4493,8 +4498,9 @@ the `knowledge.py`, `integrated*`, `infovalue` and adversarial corpora. It does 
 setting was on (since the fix lane such marks are dropped when the rule is off, above). And "2,052,099" counts highly
 correlated comparisons (each look × 4 setting pairs × several outputs), not independent checks. The comparison can
 fail: a default grouping that merges three groups, or the rule forced on at every call, is caught (review4
-m/probe_q4_power: 0 / 619 / 656 different on one development world of 1,768 comparisons at `d4931c0`; 0 / 619 / 640 on
-the fix lane's tree, the hardening having changed what forcing the rule on produces; kept as
+m/probe_q4_power, one development world, 1,768 comparisons: 0 / 619 / 640 different on this tree (the fix lane's
+`3032cf6`, and re-run on the second fix round's `c921e9e`); it was 0 / 619 / 656 on `d4931c0`, before the hardening
+changed what forcing the rule on produces; kept as
 `tests/acceptance/test_wave4_fix.py::test_the_default_path_comparison_catches_an_injected_regression_and_the_rule_turned_on`).
 
 ## Measured (held-out, 3 worlds × 4 seeds, 12 cycles, 864 looks; development in brackets, 2 worlds × 3 seeds)
@@ -4621,14 +4627,15 @@ look may add `wave4-s:derivation` (pair: `shipped`). Neither can switch the sett
 
 At the shipped defaults nothing changes. An owner who turns it on (`nsf web config --db DB --set
 source_derivation=true`) gets fewer copied stories counted twice and more true facts left unconfirmed, measured
-above; it applies to claims read while it is set, and setting it off returns today's grouping on the next task (the
-rollback test); since the fix lane, stored marks are not read as soon as it is off (claims are loaded with the
-settings in force).
+above; it applies to claims read while it is set. Setting it off returns today's grouping at once: since the fix
+lane, claims are loaded with the settings in force, so its stored marks are not read as soon as it is off (the
+rollback test; `tests/acceptance/test_wave4_fix.py::test_a_stored_cluster_read_with_the_rule_on_groups_as_today_once_it_is_off`).
 
 # ADR-067 The individual's own text recognised by what it emitted: own-text provenance, built and OFF
 
 Status: built, **OFF** (`own_text_provenance`, default `false`). Wave 4 lane E (`gen4-e`); amended by the Wave 4 fix
-lane (`gen4-fix`: review4 security H2, H3, H4, L3, N1 and measurement H1, M1, L1, L2). No schema change (19); one new
+lane (`gen4-fix`: review4 security H2, H3, H4, L3, N1 and measurement H1, M1, L1, L2) and by the second fix round
+(`gen4-fix2`: the expiry, the recorded removal, the warning; review4 security, second pass). No schema change (19); one new
 web setting. Measured on the source-independence family (Wave 4 step 0) and on Wave 3's learning-cycle worlds.
 Evidence: `docs/quality/evidence/genesis_wave4_e.json` (summaries). Expectations committed first
 (`tests/acceptance/test_own_text_provenance.py`, `6518067`), the verdict rule before the first held-out run
@@ -4662,7 +4669,8 @@ claims first, then the earlier claims naming a subject still unsourced, narrowed
 the value holds). Stored as digests keyed by the instance id in rows of `web_strategies` (primary-key
 reads and writes only; no reader of that table lists its names; Pocket, the MCP surface and the self-description never
 read it): `emitted:<digest of name and value>` holds the earliest 3 emissions `[time, flag, number of distinct sources
-found, task digest]`; `emitted-task:<digest of task id>` lists the fingerprints that answer holds. Never the text,
+found, task digest]` of those made within 30 days of the newest (when an emission is recorded, the older ones go first,
+then the list is cut to 3; second fix round); `emitted-task:<digest of task id>` lists the fingerprints that answer holds. Never the text,
 never a source's name or URL, never anything of the imagined store. The instance id is not a secret
 (the owner's self-description and the agent scope's self-status show it): it keeps two individuals' digests apart and
 does not resist a brute-force guess of a (name, value) pair, a small space; nothing outside `emitted.py` reads the
@@ -4676,9 +4684,10 @@ task references each).
 
 **The rule** (consolidation, setting on; `emitted.Echoes`, built before the write transaction): a page's claim (not a
 structured or primary record) is an echo when, for one of its subject names and one of its values, the earliest
-recorded emission of that pair was not sourced, was made before the claim was read and at most 30 days before it
-(`EMISSION_LIFETIME`; the imagined store's bound is the precedent; Wave 4 fix, review4 H3), and the page states no
-publication date before it. **An echo is no evidence, for or against** (Wave 4 fix, review4 H2 = measurement H1): it
+recorded emission of that pair made before the claim was read and at most 30 days before it (`EMISSION_LIFETIME`; the
+imagined store's bound is the precedent; Wave 4 fix, review4 H3) was not sourced, and the page states no publication
+date before it. An emission counts for those 30 days and never after; since the second fix round an expired one never
+hides a newer one (below). **An echo is no evidence, for or against** (Wave 4 fix, review4 H2 = measurement H1): it
 leaves its cluster (`consolidate._without_echoes`, Wave 3's removal, on the supporting side), the supersession rule
 never counts it, and where an echo disagrees with a HELD value every echo of the cluster is removed, the held item is
 neither superseded nor weakened (its confidence and its contradictions unchanged), and the disagreement is asked as a
@@ -4715,18 +4724,27 @@ as one. Built before the write transaction.
 - Another system's output; anything emitted while the setting was off; a subject name the reader does not find (a
   lower-case package name); a year or a whole number below 100; an emission past the caps.
 - Answers of a family device's, an agent's or an autonomous task (Wave 4 fix, review4 H3: only the owner's answers are
-  recorded; the cost: echoes of those answers are not recognised). A value in a part of a sentence that is a
-  question, or that is negated by a negation word, conditional or hedged. Other mentions and denials are still read as
-  assertions: 3 of 18 staged forms in the fix lane's probe ("users ask about Velmora 9.4.0", "Velmora 9.4.0 is
-  rumoured", "is expected next month"), and 9 of another 18 owner phrasings in the security review's second pass
-  (among them "is rumoured for next month", "Some blogs claim X 9.4.0 is out, but no release exists", "Nobody has seen
-  X 9.4.0", "X 9.4.0 is fake news": denials in other words). So the reader misses about half of the denials and
-  mentions outside the forms the first review found; an owner answer "Velmora 9.4.0 is rumoured for next month"
-  followed by the release 20 or 29 days later left 9.4.0 unheld, with no question when nothing was held. An emission
-  older than 30 days. **And, a defect of the expiry (review4 security, second pass; open, the rule ships off):** the
-  rule judges only the EARLIEST of a pair's stored emissions (at most 3 kept), so once that first unsourced emission
-  is older than 30 days a fresh unsourced emission of the same pair is hidden and that value's echoes are no longer
-  recognised (it fails open: the rule stops protecting, it does not suppress).
+  recorded; the cost: echoes of those answers are not recognised).
+- **A mention or a denial in other words is read as an assertion.** The reader leaves out only a part of a sentence
+  that is a question, or that is negated by a negation word, conditional or hedged; every other wording records its
+  values as stated by the individual. Measured: 3 of 18 staged forms in the fix lane's probe still record (mentions:
+  "users ask about Velmora 9.4.0", "Velmora 9.4.0 is rumoured", "is expected next month"), and **9 of another 18 owner
+  phrasings** in the security review's second pass (re-run on the second fix round's tree, the reader unchanged):
+  six mentions ("Velmora 9.4.0 is rumoured for next month", "... is expected next month", "Users ask about Velmora
+  9.4.0 on the forum", "The roadmap lists Velmora 9.4.0", "Rumours of Velmora 9.4.0 circulate", "Velmora 9.4.0 was
+  announced and then withdrawn") and three denials in other words ("Some blogs claim Velmora 9.4.0 is out, but no
+  release exists", "Nobody has seen Velmora 9.4.0", "Velmora 9.4.0 is fake news"). The 9 it leaves out are negated,
+  hedged or questioned ("is not out", "hasn't shipped", "does not exist yet", "There is no Velmora 9.4.0", "I found no
+  Velmora 9.4.0 release", "Reports of Velmora 9.4.0 are false", "A Velmora 9.4.0 beta may appear soon", "is planned,
+  not released", "Velmora 9.4.0? Not yet"). So outside the forms the first review found, the reader misses half of
+  these phrasings. What one costs (the same probe): the owner's answer "Velmora 9.4.0 is rumoured for next month",
+  then the release reported by three outlets 20 or 29 days later, left 9.4.0 unheld (31 days later it was held), and
+  with nothing held no question is asked. Neither set of forms is in the benchmark worlds.
+- An emission older than 30 days when the claim is read. (Before the second fix round, the rule judged only the
+  EARLIEST of a pair's stored emissions and kept the earliest 3, so once a pair's first unsourced emission was 30 days
+  old a fresh emission of the same pair was hidden and its echoes no longer recognised, failing open; review4
+  security, second pass 2b(ii). Fixed: the earliest emission within the 30 days is judged, and expired ones are
+  dropped before the list is cut; `tests/acceptance/test_wave4_fix2.py`.)
 - An adversary's echo: a small edit escapes the reader (a lower-case name, "Velmora-9.4.0", a soft hyphen in the name,
   full-width dots, a spelled-out number; review4 L3). The rule catches accidental echoes only.
 - Two conventions of the worlds' generator (review4 L1): the reformatted numbers of the echo shape are exactly the
@@ -4769,30 +4787,37 @@ set aside and correction has 2 honest pages set aside, review4 measurement, seco
 held-out mixed 0.601 ± 0.064 → 0.598, copies 0.627 ± 0.064 → 0.629, origins 0.656 ± 0.073 → 0.656; every change inside
 the spread; oracle 0.762 / 0.633 and 0.713 / 0.718 / 0.709.
 
-**After the fix lane** (`genesis_wave4_fix.json`, the same worlds and seeds, commit `842ef8b`): own answers admitted
+**After the fix lane** (`genesis_wave4_fix.json`, the same worlds and seeds, commit `842ef8b`; the second fix round's
+re-run of `shipped`, this rule and `echo_recognition` on `c921e9e` is identical field by field on both splits): own
+answers admitted
 2 / 1 (unchanged); wrongly admitted 60 / 123 (unchanged; shipped 64 / 127); suppressed 39 / 145 of 233 / 612 (held-out
 +1); echo pages discarded 18 / 30; honest pages discarded 8 of 1,091 / 14 of 2,670 read. The 5 more honest pages on
 held-out (and 1 on development) are the ones that had escaped through `_against_held` while it kept a disagreeing
 cluster whole (review4 measurement H1: the "9 of 2,670" undercounted); the verdict (`own_verdict`, unchanged) stays
 "effective" on both splits. `correct` held-out mixed 0.596 (was 0.598), the others unchanged.
 
-**The false rejection, measured.** Every honest page the rule discarded on held-out (9, on 4 looks) and on development
-(7) repeats a value the individual had emitted without a source while it was WRONG, which later became true (the
-project released the version the answer had named) and was then reported by outlets. On held-out it cost 2 eligible
-looks (suppressed 142 → 144). (Before the fix lane. After it: 14 honest pages on 6 looks on held-out and 8 on
-development, suppressed 142 → 145; the 2 added looks, Quororra and Wexeth, are of the same class and had been kept
-whole by the defect, review4 measurement, second pass.) What protects a true value here: a page dated before the answer, the project's release
+**The false rejection, measured** (after the fix lane, `genesis_wave4_fix.json`). The rule sets aside 14 honest pages
+on held-out, on 6 looks (pages: 11 in src-ho-mixed, 3 in src-ho-copies), and 8 on development (all in
+src-dev-copies). Every
+one repeats a value the individual had emitted without a source while it was WRONG, which later became true (the
+project released the version the answer had named) and was then reported by outlets. On held-out it costs 3 eligible
+looks (suppressed 142 → 145 of 612: +2 in src-ho-mixed, +1 in src-ho-copies); on development none (39 of 233). (Lane
+E's run before the fix lane counted 9 pages on 4 looks and 2 looks, 142 → 144: the 2 added looks, Quororra and
+Wexeth, are of the same class and had been kept whole by the defect; review4 measurement, second pass.) What protects
+a true value here: a page dated before the answer, the project's release
 page (a primary record is never an echo), and an answer that was sourced. Nothing else: the rule cannot tell such
 outlets from echoes, and a value stated wrongly first can be learned afterwards only from those.
 
-**Dev → held-out drop.** Unsourced echo pages discarded 100 % → 97 % (one paraphrase on held-out was not discarded);
-the share of own answers removed 50 % → 75 %; honest pages discarded per honest page read 0.64 % → 0.34 %; suppressed +0 → +2
-(lane E's run; after the fix lane 0.73 % → 0.52 %, 8 of 1,091 and 14 of 2,670, and +0 → +3).
+**Dev → held-out drop** (after the fix lane). Unsourced echo pages discarded 100 % → 97 % (18 of 18, 30 of 31: one
+paraphrase on held-out was not discarded); the share of own answers removed 50 % → 75 %; honest pages discarded per
+honest page read 0.73 % → 0.52 % (8 of 1,091, 14 of 2,670); suppressed +0 → +3. (Lane E's run: 0.64 % → 0.34 % and
++0 → +2.)
 
 **The verdict** (`sources.own_verdict`, committed before the first held-out run): A1 own answers lower and no world
 higher; A2 no world admits more below the bar; S1 suppression no more than half a seed per world above shipped; C1 no
 world's `correct` lower by more than its sd; G grouping untouched. Development: **effective** (all hold). Held-out:
-**effective** (all hold; suppressed +1, +1, 0 against a tolerance of 2 per world). Under the same rule Wave 3's
+**effective** (all hold; lane E's run suppressed +1, +1, 0 against a tolerance of 2 per world; after the fix lane
++2, +1, 0). Under the same rule Wave 3's
 `echo_recognition` is also "effective" on both splits, with more honest pages discarded on held-out (13 against 9)
 and the phrase list (M5's narrowed pattern) still in it. **What "effective" means after the fix lane** (review4
 measurement, second pass): the verdict function is unchanged (byte-identical since `34494cc`); S1 holds on held-out at
@@ -4801,9 +4826,13 @@ it a "trade"; it does not count questions, and the new disagreement path asked 1
 held-out, every one raised by honest pages (the false rejections Quororra and Wexeth), with a wording ("repeats a
 value that only this system's own earlier answer had stated") false for them; no real echo page reached that path in
 the worlds. The worlds do not exercise the fix lane's restrictions: every answer there is an owner's plain assertion
-made 1 to 11 days before its echoes, and every page is dated. **`wave4:both`** (both rules on; the integration lane):
-no verdict rule was written for the pair; under this ADR's rule it is "unsafe" (the grouping is lane S's, so G fails)
-and under ADR-066's a "trade"; nothing is claimed for it (WAVE4.md §1.3).
+made 1 to 11 days before its echoes (so neither the 30-day lifetime nor the second fix round's change to it is
+reached), and every page is dated.
+
+**`wave4:both`** (both rules on; the integration lane). No verdict rule was pre-registered for the pair. Under this
+ADR's rule it is "unsafe" (the grouping is lane S's, so G fails) and under ADR-066's a "trade"; neither was written for
+it. It inherits ADR-066's "not supported; do not turn on" from the derivation rule, it is not looked at on the
+withheld worlds, and nothing is claimed for it (WAVE4.md §1.3).
 
 **Wave 3's learning-cycle worlds** (`scripts/bench_wave3_s.py`, configuration `fix:own` against `baseline`; sums over
 seeds). In lane S's worlds the individual's own values are planted only in its imagined store (review S-2), which this
@@ -4830,13 +4859,20 @@ removing a task's emissions inside a forget, 0.07 ms. Nothing scans inside a wri
 
 ## Why OFF
 
-The pre-registered verdict is "effective" on both splits, but the gain is small and the counts are few (4 own answers
-admitted at shipped on each split; 1 to 2 remain), and it costs a measured false rejection (true values stated wrongly
-first by the individual, then released and reported: 2 suppressed looks on held-out, 3 after the fix lane). The
-security review's second pass adds that its expiry defect and the mention forms (above) block any recommendation to
-turn it on. Changing what counts as a source
+The pre-registered verdict is "effective" on both splits, but:
+- the gain is small and the counts are few (4 own answers admitted at shipped on each split; 1 to 2 remain);
+- it costs a measured false rejection (true values stated wrongly first by the individual, then released and
+  reported): after the fix lane 14 honest pages set aside on held-out (of 2,670 read) and 8 on development (of 1,091),
+  and 3 more suppressed looks on held-out (142 → 145 of 612). Lane E's pre-fix run counted 9 pages and 2 looks;
+- "effective" holds at zero margin in one held-out world: src-ho-mixed is suppressed 56 → 58 against a tolerance of
+  2, so one more false rejection there makes the verdict "trade";
+- mentions and denials in other words are read as assertions (9 of 18 phrasings, above), which the worlds do not
+  contain.
+The security review's second pass makes these block any recommendation to turn it on (the expiry defect it also
+named is fixed in the second fix round). Changing what counts as a source
 is the owner's decision (Wave 3's lesson): the setting ships off; `nsf web config --db DB --set own_text_provenance=true`
-turns it on for answers stored from then on.
+turns it on for answers stored from then on, and since the second fix round says these limits when it does (it still
+obeys the owner).
 
 ## Alternatives rejected
 
@@ -4858,10 +4894,18 @@ turns it on for answers stored from then on.
   those stored before are not.
 - Backing out: set it false; what was recorded is not read from that moment (off means off; the claim marks its hook
   left under `source_derivation` are dropped on load too, review4 L3); `nsf web config --forget-own-text` removes every
-  fingerprint and task list (two primary-key ranges), and the forgets above remove a task's. **That removal writes no
-  deletion record, so restoring a checkpoint taken before it brings the fingerprints back** (and, with the archive's
-  web settings, the setting too; review4 security, second pass; open). Turning it on again revives only emissions of
-  the last 30 days (but see the expiry defect above: an old first emission hides a newer one). Reverting the lane's merge removes the code; the rows are inert names in
-  `web_strategies`.
+  fingerprint and task list (two primary-key ranges), and the forgets above remove a task's. **What a restore does
+  with that removal** (second fix round; review4 security, second pass 2b(iii): before it, the removal left no record
+  and restoring an older checkpoint brought the fingerprints back): the removal is recorded as a forget is, a
+  `deletion_log` row (kind `own_text`, the state version it committed at); when rows were removed, every valid
+  checkpoint is marked stale and the command rewrites it without the rows (`checkpoints.after_forget`; one it cannot rewrite waits for `nsf
+  checkpoint rebuild`); and every restore or rewrite of an archive written before the removal removes the rows from
+  the copy and records the removal there, so an older archive restored from that copy loses them too
+  (`emitted.replay`). An archive written after the removal keeps what was emitted after it. A restore still brings
+  back the archive's web settings, this setting included (the older rule: of the web settings only `tick_admission`
+  is carried as the owner's current choice), so a copy restored from an archive taken while it was on has it on.
+  Test: `tests/acceptance/test_wave4_fix2.py::test_forget_own_text_survives_a_restore_of_an_archive_taken_before_it`.
+  Turning it on again revives only emissions of the last 30 days. Reverting the lane's merge removes the code; the
+  rows are inert names in `web_strategies`.
 - Open: the echo of a sourced answer; the false rejection of a value first stated wrongly; backdated pages; ungrounded
   model replies outside research tasks; the real rate of unsourced answers in the product.

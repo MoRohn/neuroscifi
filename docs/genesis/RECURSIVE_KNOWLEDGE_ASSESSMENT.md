@@ -405,8 +405,9 @@ aimed at the loop itself, a division of the day's allowance between refreshing h
 hold nothing (ADR-064, lane A), gains nothing: on held-out reach worlds every candidate's paired gain against the
 shipped loop with the idle investigation lies between −0.024 and +0.026, below the spread (0.034–0.054) in every
 world, and every candidate is "unsafe" (more wrong content in one world) or "harm" (retention) under the rule written
-before the run (`genesis_wave4_a_held_out.json`). The loop with or without a division stays 0.09–0.26 below a blind
-round-robin of the same allowance. The diagnosis (development): per look, reaching made more subjects correct than
+before the run (`genesis_wave4_a_held_out.json`). The loop with the idle investigation, with or without a division,
+stays 0.09–0.26 below a blind round-robin of the same allowance (each world's mean; run first, the idle investigation
+is up to 0.28 below; without it, up to 0.32). The diagnosis (development): per look, reaching made more subjects correct than
 refreshing, but reaching runs out of admitted candidates after the first cycles (gaps inside their 7-day window, open
 hypotheses), so a share cannot add what the admission rule does not offer. Wave 3's "coverage is limited by the
 allowance" becomes: by the allowance and, once divided, by the candidates.

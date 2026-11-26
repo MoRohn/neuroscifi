@@ -313,7 +313,9 @@ contradiction (`consolidate._echo_disagreement`) and neither superseded nor weak
 `emitted.derivation_hook` is passed as `stamp_origins(echo=...)` at the orchestrator's two call sites (evaluate,
 adaptive depth) and in the harnesses, so a marked page is in no group. Forget and restore: `_forget_research_core`
 calls `emitted.forget_task`; a forgotten knowledge item calls `forget_knowledge` (live and on replay); `nsf web config
---forget-own-text` calls `forget_all`. Pocket, MCP and the self-description never read these rows. Real when on;
+--forget-own-text` calls `remove_all` (since the second fix round: `forget_all` plus a `deletion_log` row of kind
+`own_text` and stale checkpoints; `checkpoints._replay` calls `emitted.replay`, so a restore of an older archive
+removes the rows too). Pocket, MCP and the self-description never read these rows. Real when on;
 absent at the defaults.
 
 **The caution** (always, display only; ADR-065; new module `webcortex/caution.py`). Computed when a view is drawn
