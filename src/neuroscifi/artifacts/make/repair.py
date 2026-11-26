@@ -5,7 +5,8 @@ vocabulary) to specific changes of the specification's options or form, records 
 `options.history` ({round, rule, change}), and returns the new specification (a Spec if given a Spec, else a
 dict), or None when no rule applies or three rounds have already been made. The rules, in order:
 
-- tick_labels_overlap_x: rotate the x labels; if already rotated, cut category labels to 12 characters (then 8).
+- tick_labels_overlap_x: rotate the x labels; if already rotated, make the picture 50 % wider (labels are never cut
+  by a repair: a reader reads a category from its label's text).
 - tick_labels_overlap_y / text_inside_canvas: make the picture 25 % larger (width; height for the y axis).
 - too_many_ticks: keep every second tick (x_tick_every doubles).
 - series_distinguishable (line or scatter): draw one panel per series (chart.small_multiples, same data).
@@ -59,9 +60,9 @@ def repair(spec, verdict):
     if "tick_labels_overlap_x" in failed:
         if options.get("x_labels") != "rotated" and _allowed(form, "x_labels"):
             setopt("x_labels", "rotated", "tick_labels_overlap_x", "x labels rotated by 45 degrees")
-        else:
-            cut = 12 if options.get("abbreviate", 99) > 12 else 8
-            setopt("abbreviate", cut, "tick_labels_overlap_x", f"category labels cut to {cut} characters")
+        elif _allowed(form, "width"):           # labels are read as their text: widen rather than cut them
+            w = min(2400, int(options.get("width", 640) * 1.5))
+            setopt("width", w, "tick_labels_overlap_x", f"picture made wider ({w} px) so the labels fit")
     if "tick_labels_overlap_y" in failed and _allowed(form, "height"):
         h = int(options.get("height", 400) * 1.25)
         setopt("height", min(2400, h), "tick_labels_overlap_y", f"picture made taller ({min(2400, h)} px)")

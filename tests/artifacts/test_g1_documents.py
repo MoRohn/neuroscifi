@@ -1,6 +1,8 @@
 """Lane G1: the HTML table, the data files (CSV, JSON) and the report documents (HTML, Markdown): exact round trips,
 document structure, and deliberately wrong ones caught."""
 import copy
+import csv
+import io
 import json
 
 import numpy as np
@@ -78,14 +80,24 @@ def test_csv_round_trips_exactly_under_its_dialect():
     assert m.media_type == "text/csv" and not raw.startswith(b"\xef\xbb\xbf") and raw.endswith(b"\r\n")
     assert b"\n" not in raw.replace(b"\r\n", b"")
     lines = raw.decode().split("\r\n")
-    assert lines[0] == "City,Rainfall [mm],Rainy days,Coastal,Measured"
-    assert lines[4].startswith("'=SUM(A1),0.30000000000000004,")          # the formula guard
-    assert lines[5].startswith("''quoted,1e-05,")
+    assert lines[0] == "City,Rainfall,Rainy days,Coastal,Measured"           # names exactly
+    assert lines[4].startswith("=SUM(A1),0.30000000000000004,")              # strings exact (no guard asked)
+    assert lines[5].startswith("'quoted,1e-05,")
     assert lines[3].startswith("Oslo,,8,")                                  # missing: empty, unquoted
     assert lines[6].startswith('"",-0.0,')                                  # empty text: quoted
     v = S.verdict(raw, s, "text/csv")
     assert v.ok, S.failed(v)
     assert S.finding(v, "values_exact").measure == 1.0
+    assert not S.finding(v, "formula_guard").passed                         # said, as a style finding
+    assert csv.reader(io.StringIO(raw.decode(), newline="")).__next__() == [c["name"] for c in TABLE["columns"]]
+
+
+def test_csv_formula_guard_when_asked():
+    s = tspec("data.csv", options={"formula_guard": True})
+    lines = S.made(s).bytes.decode().split("\r\n")
+    assert lines[4].startswith("'=SUM(A1),") and lines[5].startswith("''quoted,")
+    v = S.verdict(S.made(s).bytes, s, "text/csv")
+    assert v.ok and S.finding(v, "formula_guard").passed and S.finding(v, "values_exact").measure == 1.0
 
 
 def test_json_round_trips_exactly():
@@ -122,12 +134,18 @@ def test_cells_of_the_wrong_kind_are_refused():
         S.made(S.spec("data.json", "Bad", bad))
 
 
+def test_an_unguarded_formula_is_a_fault_when_the_guard_was_asked():
+    s = tspec("data.csv", options={"formula_guard": True})
+    bad = S.made(s).bytes.replace(b"'=SUM", b"=SUM", 1)
+    v = S.verdict(bad, s, "text/csv")
+    assert not v.ok and "formula_guard" in S.failed(v)
+
+
 @pytest.mark.parametrize("form,media,mutate,rule", [
     ("data.csv", "text/csv", lambda d: d.replace(b"99.5", b"99.50001", 1), "values_exact"),
     ("data.csv", "text/csv", lambda d: d.replace(b"\r\n", b"\n"), "csv_dialect"),
     ("data.csv", "text/csv", lambda d: b"\xef\xbb\xbf" + d, "csv_dialect"),
-    ("data.csv", "text/csv", lambda d: d.replace(b"'=SUM", b"=SUM", 1), "formula_guard"),
-    ("data.csv", "text/csv", lambda d: d.replace(b" [mm]", b"", 1), "header_matches"),
+    ("data.csv", "text/csv", lambda d: d.replace(b"Rainfall", b"Rain", 1), "header_matches"),
     ("data.csv", "text/csv", lambda d: d.replace(b"Oslo,,", b'Oslo,"",', 1), "values_exact"),
     ("data.json", "application/json", lambda d: d.replace(b"99.5", b"NaN", 1), "json_parses"),
     ("data.json", "application/json", lambda d: d.replace(b'"title"', b'"dialect":"x","title"', 1), "json_parses"),

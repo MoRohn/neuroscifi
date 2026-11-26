@@ -4238,33 +4238,45 @@ versioned description validated before use, never markup or code from outside.
 options, sources, made_by) whose `data` and `options` are checked against the form's JSON schema
 (`inference/jsonschema.py`) before a generator sees them. No string in a spec is interpreted: titles, labels, names,
 addresses and code are text, escaped on output (XML/HTML escaping in SVG and HTML; Markdown escaping that drops
-leading white space and escapes inline markers and line-start markers; CSV quoting plus a one-apostrophe formula
-guard). The spec is the artifact's editable source and is embedded in made SVG once, as JSON in `<metadata>`.
-Form names (dotted, as the brief names them; `spec.FORM_NAME` allows one dot): `chart.line`, `chart.bar` (grouped, stacked),
-`chart.scatter`, `chart.histogram`, `chart.heatmap`, `chart.small_multiples`, `timeline`, `graph.nodelink`,
+leading white space and escapes inline markers and line-start markers; CSV quoting, and a one-apostrophe formula
+guard only when `options.formula_guard` asks for it, since strings are otherwise written exactly). The spec is the artifact's editable source and is embedded in made SVG once, as JSON in `<metadata>`.
+Form names (dotted, as the brief names them; `spec.FORM_NAME` allows one dot): `chart.line`, `chart.bar` (grouped,
+stacked), `chart.scatter`, `chart.histogram`, `chart.heatmap`, `chart.small_multiples`, `timeline`, `graph.nodelink`,
 `graph.tree`, `flow.steps`, `table.html`, `document.html`, `document.md`, `data.csv`, `data.json`, `animation.svg`.
 
 **2. The reading contract** (what a reader, human or program, can rely on to recover the data from the picture
-alone, from geometry and tick labels, never from an echo of the input):
+alone, from geometry and tick labels, never from an echo of the input). The benchmark examiner's reading rules for
+made artifacts are taken as the contract wherever DESIGN §6 leaves a point open (diagrams, timelines, the palette, CSV):
 - Charts: one `<g class="plot">` holds the marks (small multiples: one per `<g class="panel" data-name>`; animation:
   one per `<g class="frame" data-label>`); each axis is `<g class="axis x|y">` (heatmap ramp: `axis z`, ticks with a
   `rect.swatch` whose gray is the value's) holding `<g class="tick" transform="translate(X,Y)">` with a `<text>` that
-  is a plain decimal number, an ISO 8601 date or time ("2026-03-01", "2026-03-01T06:00Z"), or a category label (a cut
-  label carries the full label in a `<title>` child); a continuous axis holds a `<line class="domain">` along the
+  is a plain decimal number, an ISO 8601 date or time ("2026-03-01", "2026-03-01T06:00Z"), or a category label (always
+  the full label: a reader reads the category from the tick's text, so long labels rotate and the picture grows; only
+  `options.abbreviate`, asked for explicitly, cuts them, with the full label in a `<title>` child); a continuous axis holds a `<line class="domain">` along the
   plot. Marks: `<polyline class="series">` (lines), `<circle class="mark">` (points, timeline events; the circle's
   centre IS the value, other marker shapes are drawn around it as `glyph`), `<rect class="mark">` (bars from their
   baseline; stacked segments from the running total; histogram bins `[left, right)`, the last closed; heatmap cells),
   each series inside `<g class="series" data-name>`. Missing values draw nothing.
-- Diagrams: nodes are `<g class="node">` (one shape and a `<text>`), edges `<g class="edge">` with a
-  `<polyline class="edge">` from the source's outline to the target's, an `<path class="arrow">` when directed, a
-  `<text class="edge-label">` when labelled; edge kinds by dash listed as `<g class="key edge-kind" data-name>`.
-- Timelines: lanes are the y axis's category ticks at each lane's marker line; events are circles on that line,
-  spans are rects below it.
+- Diagrams: a node is `<g class="node" transform="translate(cx,cy)">`; its label is its `<text>` (the full label,
+  never cut: the node grows); its position is the centre of the first circle, ellipse or rect inside it, which the
+  generator centres on the group's origin (a decision diamond is a polygon, so its position is the origin itself). An
+  edge is an element of class `edge` (the generator draws a `<polyline class="edge">`; a reader also takes `line` and
+  `path` of M/L/H/V/C/Q commands) running from the source node's centre to the target node's centre, drawn under the
+  nodes, so each end attaches to the nearest node without doubt; its group `<g class="link">` holds the arrowhead
+  `<path class="arrow">` (at the target's outline, when directed) and the `<text class="edge-label">`. Edge kinds by
+  dash, listed as `<g class="key edge-kind" data-name>`; node kinds as `<g class="key node-kind">`. The default
+  (untyped) kind is drawn plainly and has no legend entry; with every edge untyped there is no edge legend. An
+  outline (`graph.tree`) reads depth-first from the node no edge points to, siblings by position across the
+  direction the tree grows; the tidy layout places siblings in the source's order, so the outline reads in it.
+- Timelines: read as a chart: an x axis of ISO 8601 dates (dates and times for short ranges; the end labels are kept
+  on the canvas), lanes as the y axis's category ticks, one `<circle class="mark">` per event; spans are
+  `<rect class="mark">` below the lane line (both x edges carry the start and the end).
 - Documents: one `<h1>` (the title), sections from h2 without skipped levels, an element of class `made-by` saying
   "Made by NeuroSciFi" and "not evidence" (Markdown: a quoted line), a "What this is based on" section, figures as
   inline SVG with a `<figcaption>`, tables with a caption and scoped headers ("Name (unit)"), references as links to
   ids of the same document only; no script, no external reference (a CSP meta says so too).
-- Data files: the dialects stated in `make/datafiles.py` ("neuroscifi.csv/1", "neuroscifi.table/1").
+- Data files: the dialects stated in `make/datafiles.py` ("neuroscifi.csv/1", "neuroscifi.table/1"); the CSV header
+  is the column names exactly (units are in the JSON file and the HTML table) and every string is written exactly.
 
 **3. Make and check are independent.** `artifacts/make/` turns a validated spec into bytes; `artifacts/check/`
 re-reads bytes with its own readers: a bounded expat SVG parser (no DTD, entity or processing instruction; bytes,
@@ -4288,12 +4300,15 @@ a test (recorded on aarch64, Python 3.12; another process with another hash seed
 
 **5. The palette rule.** Gray on `currentColor`, with CSS variables for light and dark (`prefers-color-scheme`);
 series told apart by dash, marker shape and fill pattern (six styles; more series is a technical finding whose repair
-is small multiples); hue only for marks the spec flags `warning` (amber) or `danger` (red), and only on elements
-carrying that flag's class; never green (a check of its own). Heatmaps encode values in gray levels with a swatch
+is small multiples); hue only for marks the spec flags `warning` (amber) or `danger` (red), only on elements carrying,
+or inside, the class `warn` or `danger`, and on no more marks than the spec flags values (finding
+`hue_on_flagged_only`); the two hue variables are defined only in style rules whose selectors name those classes
+(`#id .warn{--nsf-warn:…}`), so a hue cannot resolve anywhere else; grays have exactly equal channels; never green
+(a check of its own). Heatmaps encode values in gray levels with a swatch
 legend and print values in black or white, whichever contrasts more.
 
-**6. Bounded repair.** `make/repair.py`: named rules from failed findings to changes of options or form (rotate, then
-cut labels; a larger canvas; thinner ticks; small multiples; min-max aggregation stated in the description; bars back
+**6. Bounded repair.** `make/repair.py`: named rules from failed findings to changes of options or form (rotate, then a
+wider picture: labels are never cut by a repair; a larger canvas; thinner ticks; small multiples; min-max aggregation stated in the description; bars back
 to zero), recorded in `options.history`, at most three rounds, never a change of the data. No model takes part.
 
 ## What is not made, and why
@@ -4320,6 +4335,11 @@ written by this lane, stated as such in the file, with what its first run found)
   documents must be told apart from at the merge.
 - `make.repair` is the module `make/repair.py`; DESIGN names a function `make.repair(spec, verdict)`: the registry
   should re-export `repair` at the merge.
+- Points of the examiner's reading that no generator can settle alone, to be ruled on: a stacked bar segment's
+  "edge away from zero" is the running total, not the segment's value (the segment's value is its height); small
+  multiples and animations hold one `<g class="plot">` per panel or frame, not one per picture; a node's position at
+  "the first rect" is taken as the rect's centre (a reader taking its corner would be off by half the node's size);
+  heatmap cells are `rect.mark` whose value is their gray, not an edge.
 
 ## Consequences
 

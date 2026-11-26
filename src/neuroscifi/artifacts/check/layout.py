@@ -2,8 +2,8 @@
 
 Technical (decides ok) where it destroys reading: text boxes overlapping substantially (more than 15 % of the
 smaller box) or leaving the canvas, marks outside the plot area, series that look alike, text below 4.5:1 or marks
-below 3:1 contrast against the light or the dark background (WCAG 2), a hue that is not a flagged warning or
-danger, any green, a missing <title> or <desc>, a plot without marks. Style otherwise: small overlaps, more ticks
+below 3:1 contrast against the light or the dark background (WCAG 2), a hue outside the flag classes `warn` and
+`danger` (on an element carrying or inside one, or in a style rule whose selector names one), any green, a missing <title> or <desc>, a plot without marks. Style otherwise: small overlaps, more ticks
 than the axis length carries, more points than pixels.
 
 Text width (stated, independent of any generator): 0.55 em per ASCII character, 1 em per other character; a text
@@ -33,6 +33,9 @@ NAMED = {"black": (0, 0, 0), "white": (255, 255, 255), "gray": (128, 128, 128), 
 PAINT_ATTRS = ("fill", "stroke", "stop-color", "color", "flood-color", "lighting-color")
 _HEX = re.compile(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b")
 _RGB = re.compile(r"rgba?\(\s*([\d.]+)%?\s*[, ]\s*([\d.]+)%?\s*[, ]\s*([\d.]+)%?", re.I)
+_HSL = re.compile(r"hsla?\(\s*(-?[\d.]+)(?:deg)?\s*[, ]\s*([\d.]+)%\s*[, ]\s*([\d.]+)%", re.I)
+FLAGS = ("warn", "danger")
+_FLAG_SELECTOR = re.compile(r"(?<![\w-])(?:warn|danger)(?![\w-])")
 _VAR = re.compile(r"var\(\s*(--[\w-]+)\s*(?:,\s*([^)]*))?\)")
 
 
@@ -107,6 +110,28 @@ def root_styles(root: Elem) -> dict[str, dict[str, str]]:
     return {"light": light, "dark": dark}
 
 
+def class_styles(root: Elem) -> dict[str, dict[str, dict[str, str]]]:
+    """{mode: {class: decls}} of rules whose selector ends in a single class (".warn", "#id .warn")."""
+    css = "".join(n.text for n in root.iter() if n.tag == "style")
+    out: dict[str, dict[str, dict[str, str]]] = {"light": {}, "dark": {}}
+    rules = css_rules(css)
+    for media, sel, decls in rules:
+        for part in sel.split(","):
+            m = re.search(r"\.([\w-]+)\s*$", part.strip())
+            if not m:
+                continue
+            if media is None:
+                for mode in out:
+                    out[mode].setdefault(m.group(1), {}).update(decls)
+    for media, sel, decls in rules:
+        if media and "prefers-color-scheme" in media:
+            for part in sel.split(","):
+                m = re.search(r"\.([\w-]+)\s*$", part.strip())
+                if m:
+                    out["dark" if "dark" in media else "light"].setdefault(m.group(1), {}).update(decls)
+    return out
+
+
 # --- colours ----------------------------------------------------------------------------------------------------
 
 def parse_color(text: str | None):
@@ -126,6 +151,10 @@ def parse_color(text: str | None):
         if "%" in t:
             vals = [v * 2.55 for v in vals]
         return tuple(max(0, min(255, round(v))) for v in vals)
+    m = _HSL.match(t)
+    if m:
+        h, sat, light = float(m.group(1)) % 360 / 360, float(m.group(2)) / 100, float(m.group(3)) / 100
+        return tuple(max(0, min(255, round(c * 255))) for c in colorsys.hls_to_rgb(h, light, sat))
     return NAMED.get(t)
 
 
@@ -141,7 +170,7 @@ def resolve(value: str | None, styles: dict[str, str], depth: int = 0) -> str | 
 
 
 def is_gray(rgb) -> bool:
-    return max(rgb) - min(rgb) <= 3
+    return max(rgb) == min(rgb)                  # equal channels exactly
 
 
 def is_green(rgb) -> bool:
@@ -170,6 +199,7 @@ class Colours:
     def __init__(self, root: Elem):
         self.root = root
         self.styles = root_styles(root)
+        self.by_class = class_styles(root)
         self.paper = {}
         for mode in ("light", "dark"):
             st = self.styles[mode]
@@ -181,8 +211,16 @@ class Colours:
                         rgb = parse_color(resolve(n.attrs.get("fill"), st))
             self.paper[mode] = rgb or ((255, 255, 255) if mode == "light" else (0, 0, 0))
 
+    def style_for(self, node: Elem, mode: str) -> dict[str, str]:
+        """Root declarations, then those of class rules matching the node or its ancestors (outermost first)."""
+        st = dict(self.styles[mode])
+        for n in [*reversed(list(node.ancestors())), node]:
+            for c in n.classes():
+                st.update(self.by_class[mode].get(c, {}))
+        return st
+
     def current(self, node: Elem, mode: str):
-        st = self.styles[mode]
+        st = self.style_for(node, mode)
         for n in [node, *node.ancestors()]:
             if "color" in n.attrs:
                 return parse_color(resolve(n.attrs["color"], st))
@@ -190,7 +228,7 @@ class Colours:
 
     def paint(self, node: Elem, prop: str, mode: str):
         """Resolved (r, g, b, alpha) of `prop` ('fill' or 'stroke') on `node`, or None."""
-        st = self.styles[mode]
+        st = self.style_for(node, mode)
         value = None
         for n in [node, *node.ancestors()]:
             if prop in n.attrs:
@@ -493,7 +531,7 @@ def _signature(group: Elem) -> tuple:
             sig.append((n.tag, d.count("L"), d.count("M"), n.attrs.get("fill", "")[:12]))
         if len(sig) >= 4:
             break
-    flags = tuple(sorted({"warning", "danger"} & group.classes()))
+    flags = tuple(sorted(set(FLAGS) & group.classes()))
     return tuple(sorted(set(sig))) + flags
 
 
@@ -510,11 +548,11 @@ def check_colours(root: Elem, texts) -> tuple[list[Finding], list[Finding]]:
             for rgb, raw in _literals(v):
                 if is_green(rgb):
                     green.append(raw)
-                if not is_gray(rgb) and not (k.startswith("--") and ("warn" in k or "danger" in k)):
+                if not is_gray(rgb) and not _FLAG_SELECTOR.search(sel):
                     hue_bad.append(f"CSS {k}: {raw}")
     flagged_ids = set()
     for n in root.iter():
-        if {"warning", "danger"} & n.classes():
+        if set(FLAGS) & n.classes():
             for d in n.iter():
                 flagged_ids.add(id(d))
     for n in root.iter():
@@ -523,7 +561,7 @@ def check_colours(root: Elem, texts) -> tuple[list[Finding], list[Finding]]:
                 continue
             raw = n.attrs[prop]
             for mode in ("light", "dark"):
-                value = resolve(raw, col.styles[mode])
+                value = resolve(raw, col.style_for(n, mode))
                 rgb = parse_color(value) if value and value.strip().lower() != "currentcolor" else None
                 if rgb is None:
                     continue
@@ -531,7 +569,7 @@ def check_colours(root: Elem, texts) -> tuple[list[Finding], list[Finding]]:
                     green.append(f"{n.tag} {prop}")
                 if not is_gray(rgb) and id(n) not in flagged_ids:
                     hue_bad.append(f"{n.tag} {prop}={raw[:24]}")
-    technical.append(Finding("palette_gray", not hue_bad, "only grays, and hue only on flagged warning/danger marks"
+    technical.append(Finding("palette_gray", not hue_bad, "only grays, and hue only on flagged warn/danger marks"
                              if not hue_bad else f"{len(hue_bad)} hue(s) outside a flagged mark, e.g. {hue_bad[0]}",
                              float(len(hue_bad))))
     technical.append(Finding("no_green", not green, "no green anywhere" if not green else
@@ -600,6 +638,10 @@ def _literals(value: str):
         if rgb:
             yield rgb, m.group(0)
     for m in _RGB.finditer(value or ""):
+        rgb = parse_color(m.group(0) + ")")
+        if rgb:
+            yield rgb, m.group(0)
+    for m in _HSL.finditer(value or ""):
         rgb = parse_color(m.group(0) + ")")
         if rgb:
             yield rgb, m.group(0)

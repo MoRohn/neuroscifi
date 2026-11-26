@@ -1,12 +1,15 @@
 """Diagrams of relations: node-link graphs and trees, as SVG. Deterministic layouts only.
 
-Reading contract for diagrams: nodes are `<g class="node">` inside `<g class="nodes">`, each holding one shape
-(`rect`, `polygon`, `circle`) and a `<text>` label (cut labels carry the full label in `<title>`); edges are
-`<g class="edge">` inside `<g class="edges">`, each holding a `<polyline class="edge">` that runs FROM the source
-node's boundary TO the target node's boundary, an arrowhead `<path class="arrow">` at the target when the graph is
-directed, and the edge's own label as `<text class="edge-label">` when it has one. Edge kinds are told apart by
-dash pattern and listed in a legend: `<g class="key edge-kind" data-name="kind">` holding a line with that dash.
-Node kinds are told apart by border and fill and listed as `<g class="key node-kind">`.
+Reading contract for diagrams (the examiner's reading, ruled as the contract): nodes are
+`<g class="node" transform="translate(cx,cy)">` inside `<g class="nodes">`: the group's origin is the node's centre,
+its first shape (`rect`, or a `polygon` for a decision) is centred there, and its `<text>` holds the node's FULL
+label (never cut: the node grows). An edge is a `<polyline class="edge">` from the source node's centre to the target
+node's centre (through bend points), drawn under the nodes, inside a `<g class="link">` with an arrowhead
+`<path class="arrow">` at the target's outline when the graph is directed and the edge's own label as
+`<text class="edge-label">` when it has one. Edge kinds are told apart by dash pattern and listed in a legend:
+`<g class="key edge-kind" data-name="kind">` holding a line with that dash. Node kinds are told apart by border and
+fill and listed as `<g class="key node-kind">`. The default (untyped) kind is drawn plainly (a solid line, a plain
+box) and gets no legend entry; when every edge (or node) is untyped there is no such legend at all.
 
 Layouts:
 - layered (directed graphs without cycles; flows break cycles first by reversing the edges a depth-first search in
@@ -70,11 +73,30 @@ class Box:
 
     def __init__(self, nid, label, kind="", shape="rect"):
         self.id, self.label, self.kind, self.shape = nid, label, kind, shape
-        self.shown, self.cut = abbreviate(label, NODE_MAX_W - 2 * NODE_PAD, LABEL)
+        self.shown, self.cut = label, False      # the full label: a reader reads the node from its text
         extra = 1.6 if shape == "diamond" else 1.0
         self.w = max(48.0, (text_width(self.shown, LABEL) + 2 * NODE_PAD) * extra)
         self.h = NODE_H * (1.5 if shape == "diamond" else 1.0)
         self.x = self.y = 0.0
+
+    def inside(self, x, y) -> bool:
+        dx, dy = abs(x - self.x), abs(y - self.y)
+        if self.shape == "diamond":
+            return dx / (self.w / 2) + dy / (self.h / 2) <= 1
+        return dx <= self.w / 2 and dy <= self.h / 2
+
+    def entry(self, p, q):
+        """Where the segment from p (outside) to q (inside or on this node) crosses its outline (bisection)."""
+        if self.inside(*p):
+            return q
+        lo, hi = 0.0, 1.0
+        for _ in range(40):
+            mid = (lo + hi) / 2
+            if self.inside(p[0] + (q[0] - p[0]) * mid, p[1] + (q[1] - p[1]) * mid):
+                hi = mid
+            else:
+                lo = mid
+        return p[0] + (q[0] - p[0]) * hi, p[1] + (q[1] - p[1]) * hi
 
     def boundary(self, tx, ty):
         """The point where the segment from this box's centre towards (tx, ty) leaves its outline."""
@@ -92,18 +114,20 @@ class Box:
 def node_svg(b: Box, kinds: list[str]) -> str:
     style = KIND_STYLES[kinds.index(b.kind) % len(KIND_STYLES)] if b.kind in kinds else KIND_STYLES[0]
     fill, op, sw, dash = style
-    common = (("fill", fill), ("fill-opacity", op), ("stroke", "currentColor"), ("stroke-width", sw),
-              ("stroke-dasharray", dash))
-    if b.shape == "diamond":
-        pts = f"{num(b.x)},{num(b.y - b.h / 2)} {num(b.x + b.w / 2)},{num(b.y)} {num(b.x)},{num(b.y + b.h / 2)} " \
-              f"{num(b.x - b.w / 2)},{num(b.y)}"
-        shape = el("polygon", (("points", pts),) + common)
-    else:
+
+    def shape(pairs):
+        if b.shape == "diamond":
+            pts = f"0,{num(-b.h / 2)} {num(b.w / 2)},0 0,{num(b.h / 2)} {num(-b.w / 2)},0"
+            return el("polygon", (("points", pts),) + pairs)
         rx = b.h / 2 if b.shape == "pill" else 6
-        shape = el("rect", (("x", num(b.x - b.w / 2)), ("y", num(b.y - b.h / 2)), ("width", num(b.w)),
-                            ("height", num(b.h)), ("rx", num(rx))) + common)
-    label = text_el(b.x, b.y + LABEL * 0.35, b.shown, size=LABEL, anchor="middle", full=b.label if b.cut else None)
-    return el("g", (("class", "node"),), shape + label)
+        return el("rect", (("x", num(-b.w / 2)), ("y", num(-b.h / 2)), ("width", num(b.w)), ("height", num(b.h)),
+                           ("rx", num(rx))) + pairs)
+    # A see-through fill gets an opaque paper shape underneath, so the edges drawn under the node stay hidden.
+    under = shape((("fill", "var(--nsf-paper)"),)) if op else ""
+    body = under + shape((("fill", fill), ("fill-opacity", op), ("stroke", "currentColor"), ("stroke-width", sw),
+                          ("stroke-dasharray", dash)))
+    label = text_el(0, LABEL * 0.35, b.shown, size=LABEL, anchor="middle")
+    return el("g", (("class", "node"), ("transform", f"translate({num(b.x)},{num(b.y)})")), body + label)
 
 
 def arrow_svg(p, q) -> str:
@@ -118,13 +142,15 @@ def arrow_svg(p, q) -> str:
     return el("path", (("class", "arrow"), ("d", d), ("fill", "currentColor")))
 
 
-def edge_svg(points, *, dash: str, directed: bool, label: str | None) -> str:
+def edge_svg(points, *, dash: str, directed: bool, label: str | None, target: Box | None = None) -> str:
+    """An edge from the source's centre to the target's centre; its arrowhead sits where it enters the target."""
     pts = " ".join(f"{num(x)},{num(y)}" for x, y in points)
     body = el("polyline", (("class", "edge"), ("points", pts), ("fill", "none"), ("stroke", "currentColor"),
                            ("stroke-width", "1.4"), ("stroke-dasharray", dash or None), ("stroke-linecap", "round"),
                            ("stroke-linejoin", "round")))
     if directed:
-        body += arrow_svg(points[-2], points[-1])
+        tip = target.entry(points[-2], points[-1]) if target is not None else points[-1]
+        body += arrow_svg(points[-2], tip)
     if label:   # on the longest segment (a loop's label sits on its long side, not where it crosses others)
         i = max(range(len(points) - 1), key=lambda j: (math.hypot(points[j + 1][0] - points[j][0],
                                                                   points[j + 1][1] - points[j][1]), -j))
@@ -135,14 +161,16 @@ def edge_svg(points, *, dash: str, directed: bool, label: str | None) -> str:
                             ("height", "15"), ("fill", "var(--nsf-paper)")))
         body += text_el(mx, my + 4, shown, size=LABEL - 1, anchor="middle", cls="edge-label",
                         full=label if cut else None)
-    return el("g", (("class", "edge"),), body)
+    return el("g", (("class", "link"),), body)
 
 
 def legend_svg(x, y, width, edge_kinds, node_kinds) -> tuple[str, float]:
     keys, cx, cy = [], x, y
     for kind_list, cls in ((edge_kinds, "edge-kind"), (node_kinds, "node-kind")):
         for i, name in enumerate(kind_list):
-            shown, cut = abbreviate(name or "no kind given", 180, LABEL - 1)
+            if not name:           # the default (untyped) kind draws plainly and needs no legend entry
+                continue
+            shown, cut = abbreviate(name, 180, LABEL - 1)
             w = 34 + text_width(shown, LABEL - 1) + 18
             if cx > x and cx + w > width - 16:
                 cx, cy = x, cy + 20
@@ -400,7 +428,7 @@ def _canvas(spec, form, boxes, edge_items, *, directed, edge_kinds, node_kinds, 
     xe = [b.x + b.w / 2 for b in boxes] + [p[0] for p in extra_points]
     ys = [b.y - b.h / 2 for b in boxes] + [p[1] for p in extra_points]
     ye = [b.y + b.h / 2 for b in boxes] + [p[1] for p in extra_points]
-    for _k, pts, _dash, label in edge_items:
+    for _k, pts, _dash, label, _target in edge_items:
         for x, y in pts:
             xs.append(x - (60 if label else 0))
             xe.append(x + (60 if label else 0))
@@ -416,9 +444,9 @@ def _canvas(spec, form, boxes, edge_items, *, directed, edge_kinds, node_kinds, 
         b.x += dx
         b.y += dy
     edges_out = []
-    for _k, pts, dash, label in edge_items:
+    for _k, pts, dash, label, target in edge_items:
         moved = [(x + dx, y + dy) for x, y in pts]
-        edges_out.append(edge_svg(moved, dash=dash, directed=directed, label=label))
+        edges_out.append(edge_svg(moved, dash=dash, directed=directed, label=label, target=target))
     legend, bottom = legend_svg(16, maxy + dy + 30, W, edge_kinds, node_kinds)
     H = bottom + 24
     if W > MAX_CANVAS or H > MAX_CANVAS:
@@ -431,23 +459,22 @@ def _canvas(spec, form, boxes, edge_items, *, directed, edge_kinds, node_kinds, 
 
 def _route(boxes, u, v, bends):
     a, b = boxes[u], boxes[v]
-    first = bends[0] if bends else (b.x, b.y)
-    last = bends[-1] if bends else (a.x, a.y)
-    return [a.boundary(*first)] + list(bends) + [b.boundary(*last)]
+    return [(a.x, a.y)] + list(bends) + [(b.x, b.y)]
 
 
 def _self_loop(b: Box):
     x, y = b.x + b.w / 2, b.y
-    return [(x, y - 6), (x + 22, y - 18), (x + 22, y + 18), (x, y + 6)]
+    return [(b.x, b.y - 6), (x + 22, y - 18), (x + 22, y + 18), (b.x, b.y + 6)]
 
 
 def kinds_of(items, key="kind"):
+    """Kinds in order of first use, the default (untyped, "") first so that it takes the plain style."""
     out = []
     for it in items:
         k = it.get(key, "")
         if k not in out:
             out.append(k)
-    return out
+    return sorted(out, key=lambda k: k != "")
 
 
 def make_nodelink(spec):
@@ -479,12 +506,13 @@ def make_nodelink(spec):
     for k, (e, (u, v)) in enumerate(zip(edges, pairs)):
         pts = _self_loop(boxes[u]) if u == v else _route(boxes, u, v, bends.get(k, []))
         dash = EDGE_DASHES[edge_kinds.index(e.get("kind", "")) % len(EDGE_DASHES)]
-        items.append((k, pts, dash, e.get("label")))
+        items.append((k, pts, dash, e.get("label"), boxes[v]))
     words = (f"{'Directed' if directed else 'Undirected'} graph of {len(nodes)} nodes and {len(edges)} edges, drawn "
              f"with a {'layered' if use_layered else 'force-directed'} layout"
-             + (f"; edge kinds by dash: {', '.join(k or '(none)' for k in edge_kinds)}" if show_edge_kinds else "")
-             + (f"; node kinds by border and fill: {', '.join(k or '(none)' for k in node_kinds)}"
-                if show_node_kinds else "") + ".")
+             + (f"; edge kinds by dash: {', '.join(k for k in edge_kinds if k)}"
+                + ("; edges without a kind are solid" if "" in edge_kinds else "") if show_edge_kinds else "")
+             + (f"; node kinds by border and fill: {', '.join(k for k in node_kinds if k)}"
+                + ("; nodes without a kind are plain" if "" in node_kinds else "") if show_node_kinds else "") + ".")
     notes = []
     if len(edge_kinds) > len(EDGE_DASHES) or len(node_kinds) > len(KIND_STYLES):
         notes.append("more kinds than distinguishable styles: some look alike")
@@ -522,7 +550,7 @@ def make_tree(spec):
             continue
         a, b = boxes[p], boxes[c]
         mid = (a.y + a.h / 2 + b.y - b.h / 2) / 2
-        items.append((c, [(a.x, a.y + a.h / 2), (a.x, mid), (b.x, mid), (b.x, b.y - b.h / 2)], "", None))
+        items.append((c, [(a.x, a.y), (a.x, mid), (b.x, mid), (b.x, b.y)], "", None, b))
     node_kinds = kinds_of(nodes)
     depth = max(int(round(b.y / (NODE_H + LAYER_GAP * 0.8))) for b in boxes) + 1
     leaves = sum(1 for ch in children if not ch)

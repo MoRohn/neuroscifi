@@ -3,7 +3,7 @@
 Same reading contract as the other diagrams (graphs.py): steps are `<g class="node">` (start and end as pills,
 steps as rectangles, decisions as diamonds), links are `<g class="edge">` with a `<polyline class="edge">` from the
 step it leaves to the step it enters, an arrowhead, and the link's label (a branch's "yes" / "no") as
-`<text class="edge-label">`. Without links, the steps follow each other in the order given. A link that goes back
+`<text class="edge-label">`, inside a `<g class="link">`; the line runs between the steps' centres, under them. Without links, the steps follow each other in the order given. A link that goes back
 up (a loop) leaves its step to the right, runs up the right side of the whole flow, and enters its target from
 above, through the gap between layers.
 """
@@ -53,13 +53,12 @@ def make_flow(spec):
             # (through the gap between layers, where no step sits).
             gap_y = b.y - b.h / 2 - 14 - 4 * (loops - 1)
             entry = b.x + b.w / 4
-            pts = [(a.x + a.w / 2, a.y), (x, a.y), (x, gap_y), (entry, gap_y), (entry, b.y - b.h / 2)]
-            if b.shape == "diamond":
-                pts[-1] = (entry, b.y - b.h / 4)
+            pts = [(a.x, a.y), (x, a.y), (x, gap_y), (entry, gap_y),
+                   (entry, b.y if b.shape != "diamond" else b.y - b.h / 4)]     # ends inside the target
             extra += [(x + 8, a.y), (x + 8, gap_y)]
         else:
             pts = _route(boxes, u, v, bends.get(k, []))
-        items.append((k, pts, "", link.get("label")))
+        items.append((k, pts, "", link.get("label"), b))
     decisions = sum(1 for s in steps if s.get("kind") == "decision")
     words = (f"Flow of {len(steps)} steps ({decisions} decisions) and {len(links)} links, top to bottom"
              + (f"; {loops} links loop back and are drawn around the right side" if loops else "") + ".")

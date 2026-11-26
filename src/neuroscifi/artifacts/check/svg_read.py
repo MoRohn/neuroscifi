@@ -796,52 +796,145 @@ def _shape_box(node: Elem):
     return None
 
 
+_PATH_TOKEN = re.compile(r"[MLHVCQmlhvcq]|-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+_PATH_ARGS = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "Q": 4}
+
+
+def path_ends(d: str | None) -> list[tuple[float, float]]:
+    """The first and last points of a path made of M/L/H/V/C/Q commands (absolute or relative); [] otherwise."""
+    tokens = _PATH_TOKEN.findall(d or "")
+    if len(re.sub(r"[\s,]", "", d or "")) != sum(len(tok) for tok in tokens):
+        return []                                     # a command outside M/L/H/V/C/Q: not an edge this reads
+    x = y = 0.0
+    first = None
+    cmd, i = None, 0
+    while i < len(tokens):
+        if tokens[i].isalpha():
+            cmd, i = tokens[i], i + 1
+        if cmd is None:
+            return []
+        n = _PATH_ARGS[cmd.upper()]
+        try:
+            args = [float(v) for v in tokens[i:i + n]]
+        except ValueError:
+            return []
+        if len(args) < n:
+            return []
+        i += n
+        rel = cmd.islower()
+        c = cmd.upper()
+        if c == "H":
+            x = x * rel + args[0]
+        elif c == "V":
+            y = y * rel + args[0]
+        else:
+            x, y = (x if rel else 0.0) + args[-2], (y if rel else 0.0) + args[-1]
+        if first is None:
+            first = (x, y)
+        if cmd in "Mm":                               # coordinates after a moveto are linetos
+            cmd = "l" if rel else "L"
+    return [first, (x, y)] if first is not None else []
+
+
+def edge_ends(node: Elem) -> list[tuple[float, float]]:
+    """The two ends, in root space, of an element of class `edge` (line, polyline, or path); [] otherwise."""
+    if node.tag in ("line", "polyline"):
+        pts = mark_geometry(node)[1]
+        return [pts[0], pts[-1]] if len(pts) >= 2 else []
+    if node.tag == "path":
+        m = ctm(node)
+        return [apply(m, *p) for p in path_ends(node.attrs.get("d"))]
+    return []
+
+
+def node_position(group: Elem) -> tuple[float, float]:
+    """A node's position: the centre of the first circle, ellipse or rect inside it, else the group's origin."""
+    for n in group.iter():
+        if n is group:
+            continue
+        if n.tag in ("circle", "ellipse"):
+            return apply(ctm(n), fnum(n.attrs.get("cx")), fnum(n.attrs.get("cy")))
+        if n.tag == "rect":
+            x, y = fnum(n.attrs.get("x")), fnum(n.attrs.get("y"))
+            w, h = fnum(n.attrs.get("width")), fnum(n.attrs.get("height"))
+            return apply(ctm(n), x + w / 2, y + h / 2)
+    return apply(ctm(group), 0.0, 0.0)
+
+
 def read_diagram(root: Elem):
-    """Nodes [(label, box)], edges [(src index, dst index, kind, label, has_arrow)], strays (edge ends on no node)."""
+    """Nodes [(label, box, position)], edges [(src index, dst index, kind, label, has_arrow)], strays (edge ends on
+    no node). The reading: nodes are `<g class="node">` (label = its text, position = node_position); edges are the
+    line, polyline and path elements of class `edge`, each end attached to the node whose position is nearest. An end
+    more than 6 px outside that node's outline is a stray (a line that ends nowhere); the edge's arrowhead
+    (`path.arrow`) and label (`text.edge-label`) are read from the edge's own group."""
     nodes = []
     for g in root.iter():
         if g.tag == "g" and "node" in g.classes():
-            box = _shape_box(g)
             text = next((n for n in g.iter() if n.tag == "text"), None)
-            if box is not None:
-                nodes.append((text.full_label() if text is not None else "", box))
+            nodes.append((text.full_label() if text is not None else "", _shape_box(g), node_position(g)))
     kinds = {}
     for key in root.iter():
         if key.tag == "g" and key.has("key", "edge-kind"):
-            line = next((n for n in key.iter() if n.tag in ("line", "polyline")), None)
+            line = next((n for n in key.iter() if n.tag in ("line", "polyline", "path")), None)
             if line is not None:
                 kinds[line.attrs.get("stroke-dasharray", "").strip()] = key.attrs.get("data-name", "")
 
     def nearest(pt):
-        best, best_d = None, None
-        for i, (_l, (x0, y0, x1, y1)) in enumerate(nodes):
-            dx = max(x0 - pt[0], 0, pt[0] - x1)
-            dy = max(y0 - pt[1], 0, pt[1] - y1)
-            d = math.hypot(dx, dy)
-            if best is None or d < best_d:
-                best, best_d = i, d
-        return best if best_d is not None and best_d <= 6 else None
+        if not nodes:
+            return None
+        i = min(range(len(nodes)), key=lambda j: (math.hypot(nodes[j][2][0] - pt[0], nodes[j][2][1] - pt[1]), j))
+        box = nodes[i][1]
+        if box is not None:
+            x0, y0, x1, y1 = box
+            off = math.hypot(max(x0 - pt[0], 0, pt[0] - x1), max(y0 - pt[1], 0, pt[1] - y1))
+        else:
+            off = math.hypot(nodes[i][2][0] - pt[0], nodes[i][2][1] - pt[1])
+        return i if off <= 6 else None
 
     edges, strays = [], 0
-    for g in root.iter():
-        if g.tag != "g" or "edge" not in g.classes():
+    for line in root.iter():
+        if line.tag not in ("line", "polyline", "path") or "edge" not in line.classes():
             continue
-        line = next((n for n in g.iter() if n.tag == "polyline" and "edge" in n.classes()), None)
-        if line is None:
-            continue
-        pts = mark_geometry(line)[1]
-        if len(pts) < 2:
+        ends = edge_ends(line)
+        if len(ends) < 2:
             strays += 1
             continue
-        a, b = nearest(pts[0]), nearest(pts[-1])
+        a, b = nearest(ends[0]), nearest(ends[-1])
         if a is None or b is None:
             strays += 1
             continue
-        label = next((n.full_label() for n in g.iter() if n.tag == "text" and "edge-label" in n.classes()), None)
-        arrow = any(n.tag == "path" and "arrow" in n.classes() for n in g.iter())
+        group = line.parent if line.parent is not None and line.parent.tag == "g" else line
+        own = [n for n in group.iter() if n is not line]
+        label = next((n.full_label() for n in own if n.tag == "text" and "edge-label" in n.classes()), None)
+        arrow = any(n.tag == "path" and "arrow" in n.classes() for n in own)
         kind = kinds.get(line.attrs.get("stroke-dasharray", "").strip(), "") if kinds else ""
         edges.append((a, b, kind, label, arrow))
     return nodes, edges, strays
+
+
+def outline_order(nodes, edges) -> list[str] | None:
+    """Labels depth-first from the node no edge points to, siblings ordered by position across the direction the
+    tree grows (by x when it grows up or down, by y when it grows sideways); None without exactly one such node."""
+    pointed = {b for _a, b, *_rest in edges}
+    roots = [i for i in range(len(nodes)) if i not in pointed]
+    if len(roots) != 1:
+        return None
+    children: dict[int, list[int]] = {}
+    dx = dy = 0.0
+    for a, b, *_rest in edges:
+        children.setdefault(a, []).append(b)
+        dx += abs(nodes[b][2][0] - nodes[a][2][0])
+        dy += abs(nodes[b][2][1] - nodes[a][2][1])
+    across = 0 if dy >= dx else 1
+    out, stack, seen = [], [roots[0]], set()
+    while stack:
+        u = stack.pop()
+        if u in seen:
+            continue
+        seen.add(u)
+        out.append(nodes[u][0])
+        stack.extend(sorted(children.get(u, []), key=lambda c: nodes[c][2][across], reverse=True))
+    return out
 
 
 def carried_diagram(root: Elem, form: str, data: dict) -> list:
@@ -881,10 +974,11 @@ def carried_diagram(root: Elem, form: str, data: dict) -> list:
     e_found = sum((want_edges & got_edges).values())
     stray = sum((got_nodes - want_nodes).values()) + sum((got_edges - want_edges).values()) + strays
     overlaps = 0
-    for i in range(len(nodes)):
-        a = nodes[i][1]
-        for j in range(i + 1, len(nodes)):
-            b = nodes[j][1]
+    boxes = [n[1] for n in nodes if n[1] is not None]
+    for i in range(len(boxes)):
+        a = boxes[i]
+        for j in range(i + 1, len(boxes)):
+            b = boxes[j]
             if a[0] < b[2] - 1 and b[0] < a[2] - 1 and a[1] < b[3] - 1 and b[1] < a[3] - 1:
                 overlaps += 1
     # A tree reads top to bottom (its lines run from parent down to child) and needs no arrowheads.
@@ -897,6 +991,19 @@ def carried_diagram(root: Elem, form: str, data: dict) -> list:
                       f"{overlaps} pair(s) of nodes overlap", float(overlaps)),
              _finding("arrows_present", missing_arrows == 0, "every directed edge has its arrowhead" if not
                       missing_arrows else f"{missing_arrows} directed edge(s) without an arrowhead")]
+    if form == "graph.tree":     # an outline reads depth-first, siblings in the order the source gives them
+        kids: dict[object, list[dict]] = {}
+        for n in src_nodes:
+            kids.setdefault(n.get("parent"), []).append(n)
+        want_order, stack = [], list(reversed(kids.get(None, [])))
+        while stack:
+            n = stack.pop()
+            want_order.append(n["label"])
+            stack.extend(reversed(kids.get(n["id"], [])))
+        got_order = outline_order(nodes, edges)
+        extra.append(_finding("outline_order", got_order == want_order,
+                              "the outline reads in the source's order (depth-first, siblings by position)"
+                              if got_order == want_order else "the outline does not read in the source's order"))
     total = sum(want_nodes.values()) + sum(want_edges.values())
     return _report(n_found + e_found, total, stray, "nodes and edges", extra)
 
@@ -943,6 +1050,45 @@ def carried_animation(root: Elem, data: dict, options: dict) -> list:
             seen.add(fd.rule)
             extra.append(fd)
     return _report(found, total, stray, "values across all frames", extra)
+
+
+FLAG_CLASSES = ("warn", "danger")
+
+
+def flagged_values(form: str, data: dict) -> int | None:
+    """How many values the spec flags (a flagged series flags all of its values); None for forms without flags."""
+    def series_count(items, key):
+        n = 0
+        for s in items:
+            if s.get("flag") in ("warning", "warn", "danger"):
+                n += len(s.get(key, []))
+            else:
+                n += len(set(s.get("warning", [])) | set(s.get("danger", [])))
+        return n
+    if form in ("chart.line", "chart.scatter", "chart.small_multiples"):
+        return series_count(data.get("series", []), "points")
+    if form == "chart.bar":
+        return series_count(data.get("series", []), "values")
+    if form == "timeline":
+        return sum(1 for e in data.get("events", []) + data.get("spans", [])
+                   if e.get("flag") in ("warning", "warn", "danger"))
+    if form == "animation.svg":
+        counts = [flagged_values(data.get("form", ""), f.get("data", {})) for f in data.get("frames", [])]
+        return sum(c or 0 for c in counts) if counts else 0
+    return None
+
+
+def hued_marks(root: Elem) -> int:
+    """Values shown in a flag's hue: circle.mark and rect.mark count one each, a polyline.series one per vertex,
+    when they carry, or sit inside, a flag class."""
+    n = 0
+    for e in root.iter():
+        c = e.classes()
+        mark = e.tag in ("circle", "rect") and "mark" in c
+        line = e.tag == "polyline" and "series" in c
+        if (mark or line) and (set(FLAG_CLASSES) & c or any(set(FLAG_CLASSES) & a.classes() for a in e.ancestors())):
+            n += len(points_of(e.attrs.get("points"))) if line else 1
+    return n
 
 
 def carried(root: Elem, form: str, data: dict, options: dict) -> tuple[list, list]:
@@ -993,4 +1139,5 @@ def carried(root: Elem, form: str, data: dict, options: dict) -> tuple[list, lis
 
 __all__ = ["Axis", "Elem", "HEAT_TOLERANCE", "Parsed", "SeriesMarks", "TOLERANCE", "apply", "axes_of", "canvas",
            "ctm", "fnum", "iso_seconds", "mark_geometry", "parse", "parse_transform", "plot_marks", "points_of",
-           "read_axis", "carried"]
+           "read_axis", "carried", "edge_ends", "flagged_values", "hued_marks", "node_position", "outline_order",
+           "path_ends", "read_diagram"]

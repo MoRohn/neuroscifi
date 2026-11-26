@@ -134,17 +134,25 @@ def scope_id(form: str, spec_json: str) -> str:
 
 
 def style_block(sid: str, extra: str = "") -> str:
-    """The picture's CSS: palette variables for light and dark, scoped to this picture's id."""
-    def vars_(p):
-        return (f"--nsf-ink:{p['ink']};--nsf-paper:{p['paper']};--nsf-warn:{p['warn']};"
-                f"--nsf-danger:{p['danger']};")
-    css = (f"#{sid}{{{vars_(LIGHT)}color:var(--nsf-ink);background:var(--nsf-paper);font-family:{FONT}}}"
-           f"@media (prefers-color-scheme:dark){{#{sid}{{{vars_(DARK)}}}}}" + extra)
+    """The picture's CSS, scoped to this picture's id: grays on the root; the two hues only in rules whose selectors
+    name the flag classes `warn` and `danger` (so a hue exists only on flagged elements), light and dark."""
+    def flags(p):
+        return f"#{sid} .warn{{--nsf-warn:{p['warn']}}}#{sid} .danger{{--nsf-danger:{p['danger']}}}"
+    css = (f"#{sid}{{--nsf-ink:{LIGHT['ink']};--nsf-paper:{LIGHT['paper']};color:var(--nsf-ink);"
+           f"background:var(--nsf-paper);font-family:{FONT}}}" + flags(LIGHT)
+           + f"@media (prefers-color-scheme:dark){{#{sid}{{--nsf-ink:{DARK['ink']};--nsf-paper:{DARK['paper']}}}"
+           + flags(DARK) + "}" + extra)
     return el("style", (), css)
 
 
+def flag_of(value) -> str | None:
+    """The class of a spec's flag value: "warning" -> "warn", "danger" -> "danger", anything else -> None."""
+    return {"warning": "warn", "warn": "warn", "danger": "danger"}.get(value or "")
+
+
 def flag_color(flag: str | None) -> str:
-    return {"warning": "var(--nsf-warn)", "danger": "var(--nsf-danger)"}.get(flag or "", "currentColor")
+    """The paint of a flag class (an element using it must carry, or sit inside, that class)."""
+    return {"warn": "var(--nsf-warn)", "danger": "var(--nsf-danger)"}.get(flag or "", "currentColor")
 
 
 def metadata(table: dict) -> str:
@@ -244,6 +252,6 @@ def gray_hex(level: int) -> str:
 
 
 __all__ = ["AXIS", "CHAR_EM", "DARK", "EDGE_DASHES", "FONT", "Fit", "GRID", "LIGHT", "MUTED", "SERIES_STYLES",
-           "XMLNS", "abbreviate", "attrs", "bar_fill", "blend", "contrast", "el", "esc", "fixed", "flag_color",
+           "XMLNS", "abbreviate", "attrs", "bar_fill", "blend", "contrast", "el", "esc", "fixed", "flag_color", "flag_of",
            "gray_hex", "head", "marker", "metadata", "num", "patterns", "scope_id", "style_block", "text_el",
            "text_width"]

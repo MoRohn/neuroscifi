@@ -12,9 +12,10 @@ mark's own <title> (the description counts them). Spans that overlap in time tak
 """
 from __future__ import annotations
 
-from .charts import FLAG, HISTORY, STR, UNIT, axis_label, describe, plan_x_continuous, title_block, value_words
+from .charts import (FLAG, HISTORY, STR, TICK_SIZE, UNIT, axis_label, describe, plan_x_continuous, title_block,
+                     value_words)
 from .scales import Fit, Scale
-from .svg_base import GRID, abbreviate, el, esc, flag_color, head, num, scope_id, text_el, text_width
+from .svg_base import GRID, abbreviate, el, esc, flag_color, flag_of, head, num, scope_id, text_el, text_width
 
 LABEL = 11
 ROW = 14
@@ -88,6 +89,21 @@ def make_timeline(spec):
     if x1 - x0 < 120:
         raise Fit("the timeline is too narrow: make it wider (options.width)")
     xt, xa = plan_x_continuous(kind, lo, hi, x0, x1, o, nice=(kind != "time"))
+    for _ in range(3):      # long end tick labels (a date and a time) must not run off the canvas: narrow the axis
+        if not xa.labels:
+            break
+        widths = [text_width(s, TICK_SIZE) for s in xa.labels]
+        # horizontal labels are centred on their tick; rotated ones (45 degrees, anchored at their end) run left
+        left_of = [w * 0.7072 if xa.rotated else w / 2 for w in widths]
+        right_of = [8.0 if xa.rotated else w / 2 for w in widths]
+        over = max(p + r for p, r in zip(xa.positions, right_of)) - (W - 4)
+        under = 4 - min(p - h for p, h in zip(xa.positions, left_of))
+        if over <= 0 and under <= 0:
+            break
+        x0, x1 = x0 + max(0.0, under), x1 - max(0.0, over)
+        if x1 - x0 < 120:
+            raise Fit("the timeline is too narrow for its date labels: make it wider (options.width)")
+        xt, xa = plan_x_continuous(kind, lo, hi, x0, x1, o, nice=(kind != "time"))
     sx = Scale(xt.lo, xt.hi, x0, x1)
 
     # Per lane: event label rows, then the marker line, then span rows.
@@ -114,7 +130,7 @@ def make_timeline(spec):
         y_mark = y + nrows * ROW + (10 if evs else 4)
         body = []
         for e, p in zip(evs, placed):
-            flag = e.get("flag") if e.get("flag") not in (None, "none") else None
+            flag = flag_of(e.get("flag"))
             c = flag_color(flag)
             ex = sx(e["at"])
             mark_title = "" if p else el("title", (), esc(e["label"]))
@@ -130,7 +146,7 @@ def make_timeline(spec):
             else:
                 hidden += 1
         for s, r in zip(sps, span_row_of):
-            flag = s.get("flag") if s.get("flag") not in (None, "none") else None
+            flag = flag_of(s.get("flag"))
             c = flag_color(flag)
             a, b = sx(s["start"]), sx(s["end"])
             ry = y_mark + 8 + r * SPAN_ROW

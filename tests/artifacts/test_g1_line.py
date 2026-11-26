@@ -105,12 +105,22 @@ def test_line_chart_is_deterministic_and_checks_clean():
 
 def test_hue_only_on_the_flagged_series():
     root = S.tree(S.made(line()).bytes)
+    parents = {c: p for p in root.iter() for c in p}
+    hued = 0
     for e in root.iter():
         for attr in ("fill", "stroke"):
-            value = e.get(attr, "")
-            if "warn" in value or "danger" in value:
-                assert "warning" in S.classes(e) or any(
-                    "warning" in S.classes(a) for a in root.iter() if e in list(a.iter()))
+            if "warn" in e.get(attr, "") or "danger" in e.get(attr, ""):
+                hued += 1
+                chain, node = set(), e
+                while node is not None:
+                    chain |= S.classes(node)
+                    node = parents.get(node)
+                assert "warn" in chain                     # on, or inside, an element of class warn
+    assert hued
+    css = root.find(S.q("style")).text
+    for rule in css.replace("}", "}\n").split("\n"):
+        if "#9a5b00" in rule or "#f0a23c" in rule:          # the hue is defined only where a selector names warn
+            assert ".warn{" in rule
 
 
 def test_time_axis_line_chart_recovers_every_point():
@@ -249,3 +259,17 @@ def test_check_modules_never_import_make():
                 assert not (node.level == 2 and mod.startswith("make")), path.name
             elif isinstance(node, ast.Import):
                 assert not any("artifacts.make" in a.name for a in node.names), path.name
+
+
+def test_hue_on_more_marks_than_the_spec_flags_is_caught():
+    data = copy.deepcopy(HEART)
+    data["series"][2].pop("flag")
+    data["series"][2]["warning"] = [3]                   # one flagged value
+    s = line(data=data, options={"markers": "on"})
+    m = S.made(s)
+    assert S.verdict(m.bytes, s).ok
+    root = S.tree(m.bytes)
+    g = next(g for g in S.groups(root, "series") if g.get("data-name") == "Runner A")
+    g.set("class", "series warn")                        # a whole unflagged series given the hue's class
+    v = S.verdict(S.to_bytes(root), s)
+    assert not v.ok and "hue_on_flagged_only" in S.failed(v)

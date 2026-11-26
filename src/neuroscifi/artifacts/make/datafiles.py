@@ -2,16 +2,16 @@
 
 CSV dialect ("neuroscifi.csv/1", stated so a reader can parse it back exactly): RFC 4180; UTF-8 without a byte
 order mark; comma separator; CRLF line ends, one after every record including the last; one header record.
-- Header cell: the column's name, or "name [unit]" when it has a unit (a name that itself ends in "]" and has no
-  unit is written "name []", so the header always splits back unambiguously).
+- Header cell: the column's name, exactly (units are not in the CSV: they are in the JSON file and the HTML table).
 - A field is quoted (with inner quotes doubled) when it holds a comma, a quote, CR or LF, starts or ends with a
   space, or is an empty text; a missing value is an empty UNquoted field. So "" (quoted) is empty text and
   nothing is missing.
 - number: Python's shortest round-trip decimal (may use an exponent: "1e-05"); integer: digits;
   boolean: "true" / "false"; time: ISO 8601 UTC, exact ("2026-03-01T06:30:00.25Z");
-- text: as is, except that a text starting with = + - @ TAB CR or an apostrophe gets one apostrophe in front (so
-  a spreadsheet never runs it as a formula); a reader removes exactly one leading apostrophe when the character
-  after it is one of those.
+- text: exactly as is (the examiner's reading: strings exact). With `options.formula_guard` (off by default), a text
+  starting with = + - @ TAB CR or an apostrophe gets one apostrophe in front so that a spreadsheet never runs it as
+  a formula, and a reader removes exactly one leading apostrophe when the character after it is one of those.
+  Trade-off, stated: off, a text such as "=SUM(A1)" is a formula if the file is opened in a spreadsheet.
 Column kinds are not in the CSV: a reader takes them from the specification (or uses the JSON file).
 
 JSON dialect ("neuroscifi.table/1"): {"dialect", "title", "description", "made_by", "columns": [{"name", "kind",
@@ -22,11 +22,14 @@ from __future__ import annotations
 
 import json
 
-from .tables import DATA, OPTIONS, check_table, iso_time
+from .charts import HISTORY
+from .tables import DATA, check_table, iso_time
 
 CSV_DIALECT = "neuroscifi.csv/1"
 JSON_DIALECT = "neuroscifi.table/1"
 _GUARD = ("=", "+", "-", "@", "\t", "\r", "'")
+OPTIONS = {"type": "object", "additionalProperties": False,
+           "properties": {"formula_guard": {"type": "boolean"}, "history": HISTORY}}
 
 
 def _quote(text: str) -> str:
@@ -36,13 +39,10 @@ def _quote(text: str) -> str:
 
 
 def csv_header(column) -> str:
-    name, unit = str(column["name"]), column.get("unit")
-    if unit:
-        return f"{name} [{unit}]"
-    return f"{name} []" if name.endswith("]") else name
+    return str(column["name"])
 
 
-def csv_cell(kind: str, value) -> str:
+def csv_cell(kind: str, value, guard: bool = False) -> str:
     if value is None:
         return ""
     if kind == "number":
@@ -54,7 +54,7 @@ def csv_cell(kind: str, value) -> str:
     if kind == "time":
         return iso_time(value)
     text = str(value)
-    if text.startswith(_GUARD):
+    if guard and text.startswith(_GUARD):
         text = "'" + text
     return _quote(text)
 
@@ -63,9 +63,10 @@ def make_csv(spec):
     data = spec.data
     n = check_table(data)
     cols = data["columns"]
+    guard = bool(spec.options.get("formula_guard", False))
     lines = [",".join(_quote(csv_header(c)) for c in cols)]
     for r in range(n):
-        lines.append(",".join(csv_cell(c["kind"], c["values"][r]) for c in cols))
+        lines.append(",".join(csv_cell(c["kind"], c["values"][r], guard) for c in cols))
     return "\r\n".join(lines) + "\r\n", ()
 
 

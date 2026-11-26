@@ -12,7 +12,8 @@ Every chart follows the reading contract (DESIGN §6, ADR-074) exactly:
 
 Layout is decided by stated rules: tick counts follow the plot's length (one per ~90 px across, ~48 px up); tick
 labels that would overlap by the width model are first given fewer ticks (continuous axes), then rotated by 45
-degrees, then cut with the full label in `<title>`; category axes are never thinned (each bar must keep its label).
+degrees; category labels are never thinned and never cut unless the spec asks (`options.abbreviate`, the full label
+then in `<title>`): the picture grows taller for long rotated labels.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ import math
 from decimal import Decimal
 
 from .scales import Fit, Scale, band, decimals_of, linear_ticks, log_ticks, ticks_for, to_datetime
-from .svg_base import (AXIS, GRID, MUTED, SERIES_STYLES, abbreviate, bar_fill, contrast, el, flag_color, gray_hex,
+from .svg_base import (AXIS, GRID, MUTED, SERIES_STYLES, abbreviate, bar_fill, contrast, el, flag_color, flag_of, gray_hex,
                        head, marker, num, patterns, scope_id, text_el, text_width)
 
 W_DEFAULT, H_DEFAULT = 640, 400
@@ -284,12 +285,8 @@ def plan_x_band(categories, x0, x1, opts):
     if rotated and mode == "auto" and spacing < TICK_SIZE * 1.25:
         raise Fit(f"{len(categories)} categories do not fit {int(x1 - x0)} px with a readable label each: "
                   "make the chart wider (options.width) or show fewer categories")
-    if rotated and mode != "horizontal":
-        cap = 130.0
-        for i, c in enumerate(categories):
-            if text_width(labels[i], TICK_SIZE) > cap:
-                labels[i], _ = abbreviate(c, cap, TICK_SIZE)
-                fulls[i] = c
+    # Labels keep their full text (a reader reads the category from the tick's text); long rotated labels make the
+    # picture taller instead (Frame.plot_box). Only `options.abbreviate`, asked for explicitly, cuts them.
     return XAxis(centres, labels, fulls, rotated)
 
 
@@ -332,6 +329,8 @@ class Frame:
         self.sid = scope_id(spec.spec, spec.to_json())
 
     def plot_box(self, left, bottom, right=20.0):
+        if self.H - bottom - self.top < 160:        # long labels below the plot: the picture grows taller
+            self.H = float(self.top + bottom + 160)
         x0, x1, y0, y1 = left, self.W - right, self.top, self.H - bottom
         if x1 - x0 < 80 or y1 - y0 < 60:
             raise Fit("the chart is too small for its labels: make it larger (options.width, options.height)")
@@ -454,7 +453,7 @@ def _xy(spec, form):
     keys = []
     if len(series) > 1:
         for i, s in enumerate(series):
-            flag = s.get("flag") if s.get("flag") not in (None, "none") else None
+            flag = flag_of(s.get("flag"))
             color = flag_color(flag)
             keys.append((s["name"], line_key(i, color, show_markers) if line else point_key(i, color), flag))
     frame = Frame(spec, keys)
@@ -485,7 +484,7 @@ def _xy(spec, form):
     xaxis = xa.svg(y1, x0, x1, xlab, frame.H - 12)
     groups = []
     for i, (s, pts) in enumerate(zip(series, drawn)):
-        flag = s.get("flag") if s.get("flag") not in (None, "none") else None
+        flag = flag_of(s.get("flag"))
         color = flag_color(flag)
         # Point flags index the source points; an aggregated series has other points, so they do not apply.
         warn, danger = (set(), set()) if agg else (set(s.get("warning", [])), set(s.get("danger", [])))
@@ -513,14 +512,14 @@ def _xy(spec, form):
                 for j, (x, y) in enumerate(pts):
                     if x is None or y is None:
                         continue
-                    pflag = "danger" if j in danger else "warning" if j in warn else None
+                    pflag = "danger" if j in danger else "warn" if j in warn else None
                     body.append(marker(_style(i)[1], sx(x), sy(y), flag_color(pflag) if pflag else color, 3.5,
                                        cls="marker" + (f" {pflag}" if pflag else "")))
         else:
             for j, (x, y) in enumerate(pts):
                 if x is None or y is None or (xk == "log" and x <= 0) or (yk == "log" and y <= 0):
                     continue
-                pflag = "danger" if j in danger else "warning" if j in warn else None
+                pflag = "danger" if j in danger else "warn" if j in warn else None
                 c = flag_color(pflag) if pflag else color
                 g = scatter_glyph(i, sx(x), sy(y), c)
                 body.append(el("g", (("class", pflag),), g) if pflag else g)
@@ -577,7 +576,7 @@ def make_bar(spec):
     keys = []
     if len(series) > 1:
         for i, s in enumerate(series):
-            flag = s.get("flag") if s.get("flag") not in (None, "none") else None
+            flag = flag_of(s.get("flag"))
             keys.append((s["name"], bar_key(sid, i, flag_color(flag)), flag))
     frame = Frame(spec, keys)
     frame.form = "chart.bar"
@@ -610,7 +609,7 @@ def make_bar(spec):
     sub = bw / n if not stacked else bw
     running = [0.0] * len(cats)
     for i, s in enumerate(series):
-        flag = s.get("flag") if s.get("flag") not in (None, "none") else None
+        flag = flag_of(s.get("flag"))
         color = flag_color(flag)
         warn, danger = set(s.get("warning", [])), set(s.get("danger", []))
         fill, opacity = bar_fill(sid, _style(i)[2])
@@ -618,7 +617,7 @@ def make_bar(spec):
         for j, v in enumerate(s["values"]):
             if v is None:
                 continue
-            pflag = "danger" if j in danger else "warning" if j in warn else None
+            pflag = "danger" if j in danger else "warn" if j in warn else None
             c = flag_color(pflag) if pflag else color
             if stacked:
                 a, b = running[j], running[j] + v
@@ -734,7 +733,7 @@ def make_heatmap(spec):
     frame.form = "chart.heatmap"
     frame.title_text = spec.title or f"{d['z']['label']} by {d['x']['label']} and {d['y']['label']}"
     xlab, ylab, zlab = axis_label(d["x"]), axis_label(d["y"]), axis_label(d["z"])
-    ylabels = [abbreviate(c, 140, TICK_SIZE) for c in yc]
+    ylabels = [(c, False) for c in yc]          # full row labels: a reader reads the row from its tick's text
     left = 16 + 18 + max(text_width(s, TICK_SIZE) for s, _ in ylabels) + 12
     right = 24 + max(20 + max(text_width(t, TICK_SIZE) for t in zt.labels), text_width(zlab, LABEL_SIZE)) + 16
     bottom = 50.0
@@ -847,7 +846,7 @@ def make_small_multiples(spec):
         sy = Scale(yt.lo, yt.hi, y1, y0, log=(yk == "log"))
         grid, yaxis = y_axis_svg(yt, sy, x0, x1, y0, y1, "", px + 4)
         xaxis = xa.svg(y1, x0, x1, "", y1 + 34)
-        flag = s.get("flag") if s.get("flag") not in (None, "none") else None
+        flag = flag_of(s.get("flag"))
         color = flag_color(flag)
         run, runs = [], []
         for x, y in ((p[0], p[1]) for p in s["points"]):

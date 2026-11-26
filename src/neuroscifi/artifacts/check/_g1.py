@@ -29,7 +29,7 @@ def spec_parts(spec, source):
 
 def check_svg(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
     from .layout import check_layout
-    from .svg_read import carried, parse
+    from .svg_read import carried, flagged_values, hued_marks, parse
     from .svg_safety import check_svg as safety
     try:
         parsed = parse(data)
@@ -48,6 +48,11 @@ def check_svg(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
                               f"the picture could not be read against the spec ({type(error).__name__})", 0.0)], []
         technical += t3
         style += s3
+        allowed = flagged_values(form, sdata)
+        if allowed is not None:
+            hued = hued_marks(parsed.root)
+            technical.append(Finding("hue_on_flagged_only", hued <= allowed,
+                                     f"{hued} hued mark(s) for {allowed} flagged value(s)", float(hued)))
     return Verdict.of(technical, style)
 
 
@@ -81,10 +86,12 @@ def check_markdown(data: bytes, media_type: str, spec=None, source=None) -> Verd
 
 def check_csv(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
     from .datafiles import check_csv as run
-    form, sdata, _options = spec_parts(spec, source if isinstance(source, dict) else None)
+    form, sdata, options = spec_parts(spec, source if isinstance(source, dict) else None)
     if _foreign(form, DATA_FORMS):
         return Verdict((), (), False)
-    return Verdict.of(run(data, source if source is not None and not isinstance(source, dict) else sdata))
+    technical, style = run(data, source if source is not None and not isinstance(source, dict) else sdata,
+                           bool(options.get("formula_guard", False)))
+    return Verdict.of(technical, style)
 
 
 def check_json(data: bytes, media_type: str, spec=None, source=None) -> Verdict:

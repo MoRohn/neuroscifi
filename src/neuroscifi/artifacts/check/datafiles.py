@@ -3,9 +3,10 @@ exactly (ADR-074).
 
 CSV ("neuroscifi.csv/1"): read by this module's own RFC 4180 reader, which keeps whether a field was quoted (so a
 quoted empty field is empty text and an unquoted empty field is a missing value); CRLF after every record, no byte
-order mark, UTF-8. Header cells are "name" or "name [unit]". Text fields lose exactly one leading apostrophe when the
-character after it is one of = + - @ TAB CR ' (the formula guard), and no text field may start with = + - @ unguarded.
-Numbers must read back to the identical float64; times are ISO 8601 UTC read exactly.
+order mark, UTF-8. Header cells are the column names, exactly. Text is exact; only when the spec asks for the
+formula guard does a text field lose one leading apostrophe followed by one of = + - @ TAB CR '. A text field that
+starts like a formula without the guard is a style finding (a spreadsheet would run it). Numbers must read back to
+the identical float64; times are ISO 8601 UTC read exactly.
 
 JSON ("neuroscifi.table/1"): parsed with duplicate keys, NaN and the infinities refused; columns compared exactly;
 the made-by statement must say the file is not evidence.
@@ -132,7 +133,7 @@ def _same(kind: str, got, want) -> bool:
     return got == want
 
 
-def _csv_value(kind: str, field: str, quoted: bool):
+def _csv_value(kind: str, field: str, quoted: bool, guard: bool = False):
     """(value, ok) of one field read by the dialect for `kind`."""
     if field == "" and not quoted:
         return None, True
@@ -148,12 +149,12 @@ def _csv_value(kind: str, field: str, quoted: bool):
     if kind == "time":
         v = _iso_exact(field)
         return v, v is not None
-    if field.startswith("'") and len(field) > 1 and field[1] in _GUARDED:
+    if guard and field.startswith("'") and len(field) > 1 and field[1] in _GUARDED:
         return field[1:], True
     return field, True
 
 
-def check_csv(data: bytes, source) -> list[Finding]:
+def check_csv(data: bytes, source, guard: bool = False) -> tuple[list[Finding], list[Finding]]:
     if len(data) > MAX_BYTES:
         raise Refused(f"the file is over {MAX_BYTES} bytes", rule="max_bytes", reason="too_large")
     out = []
@@ -161,7 +162,7 @@ def check_csv(data: bytes, source) -> list[Finding]:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
-        return [Finding("csv_parses", False, "the file is not UTF-8")]
+        return [Finding("csv_parses", False, "the file is not UTF-8")], []
     records, problems = read_csv(text)
     if bom:
         problems.append("a byte order mark")
@@ -174,10 +175,9 @@ def check_csv(data: bytes, source) -> list[Finding]:
     cols = source_columns(source)
     unguarded = 0
     if cols is None or not records:
-        return out
+        return out, []
     header = [f for f, _q in records[0]]
-    want = [f"{c['name']} [{c['unit']}]" if c.get("unit") else (f"{c['name']} []" if str(c["name"]).endswith("]")
-                                                               else str(c["name"])) for c in cols]
+    want = [str(c["name"]) for c in cols]
     out.append(Finding("header_matches", header == want, "the header names every column and unit" if header == want
                        else "the header differs from the source"))
     rows = records[1:]
@@ -191,16 +191,21 @@ def check_csv(data: bytes, source) -> list[Finding]:
             field, quoted = rows[r][i]
             if c["kind"] == "text" and field[:1] in ("=", "+", "-", "@"):
                 unguarded += 1
-            value, ok = _csv_value(c["kind"], field, quoted)
+            value, ok = _csv_value(c["kind"], field, quoted, guard)
             bad_fields += not ok
             good += ok and _same(c["kind"], value, c["values"][r])
     out.append(Finding("values_exact", good == total and len(rows) == n,
                        f"{good} of {total} values read back exactly" + ("" if len(rows) == n else
                                                                        f"; {len(rows)} rows for {n}"),
                        good / total if total else 1.0))
-    out.append(Finding("formula_guard", unguarded == 0, "no text field can start a spreadsheet formula"
-                       if not unguarded else f"{unguarded} text field(s) start like a formula"))
-    return out
+    style = []
+    if guard:      # the spec asked for the guard: a field without it is a fault
+        out.append(Finding("formula_guard", unguarded == 0, "no text field can start a spreadsheet formula"
+                           if not unguarded else f"{unguarded} text field(s) start like a formula", float(unguarded)))
+    elif unguarded:
+        style.append(Finding("formula_guard", False, f"{unguarded} text field(s) start like a spreadsheet formula "
+                             "(exact text, as asked; options.formula_guard would guard them)", float(unguarded)))
+    return out, style
 
 
 def check_json(data: bytes, source) -> list[Finding]:

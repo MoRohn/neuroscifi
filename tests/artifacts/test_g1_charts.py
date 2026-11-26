@@ -132,7 +132,7 @@ def test_too_many_categories_for_the_width_are_refused_with_the_way_out():
                      S.spec("chart.bar", "Many", data, {"width": 2000})).ok
 
 
-def test_long_categories_are_rotated_and_cut_with_the_full_label_kept():
+def test_long_categories_are_rotated_and_keep_their_full_text():
     data = {"categories": ["Greater Tokyo Area", "Delhi National Capital Region", "Shanghai", "Greater Sao Paulo",
                            "Mexico City Metropolitan Area", "Greater Cairo", "Mumbai Metropolitan Region"],
             "x": {"label": "Area"}, "y": {"label": "Population", "unit": "millions"},
@@ -141,7 +141,8 @@ def test_long_categories_are_rotated_and_cut_with_the_full_label_kept():
     m = S.made(s)
     root = S.tree(m.bytes)
     labels = [t for g in S.groups(root, "axis", "x") for t in g.iter(S.q("text")) if "rotate(" in t.get("transform", "")]
-    assert labels and any(t.find(S.q("title")) is not None for t in labels)
+    assert sorted(t.text for t in labels) == sorted(data["categories"])     # read as their text: never cut
+    assert all(t.find(S.q("title")) is None for t in labels)
     v = S.verdict(m.bytes, s)
     assert v.ok and S.finding(v, "categories_labelled").passed
 

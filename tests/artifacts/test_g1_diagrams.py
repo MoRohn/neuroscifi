@@ -2,6 +2,7 @@
 import copy
 import datetime
 import re
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -68,7 +69,63 @@ def test_layered_layout_puts_every_edge_downwards():
             ys = [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?", line.get("points"))][1::2]
             assert ys[-1] > ys[0]
     keys = [g.get("data-name") for g in root.iter(S.q("g")) if {"key", "edge-kind"} <= S.classes(g)]
-    assert keys == ["", "recall", "store"]                  # edge kinds by dash, in a legend
+    assert keys == ["recall", "store"]                      # edge kinds by dash, in a legend; untyped: no entry
+    nkeys = [g.get("data-name") for g in root.iter(S.q("g")) if {"key", "node-kind"} <= S.classes(g)]
+    assert nkeys == ["check"]
+    assert "no kind given" not in S.made(case("dag")).bytes.decode()
+
+
+def test_untyped_edges_are_solid_and_have_no_legend():
+    g = copy.deepcopy(DAG)
+    for e in g["edges"]:
+        e.pop("kind", None)
+    for n in g["nodes"]:
+        n.pop("kind", None)
+    s = S.spec("graph.nodelink", "Untyped", g)
+    root = S.tree(S.made(s).bytes)
+    assert not [e for e in root.iter(S.q("g")) if "key" in S.classes(e)]          # no legend at all
+    lines = [e for e in root.iter(S.q("polyline")) if "edge" in S.classes(e)]
+    assert lines and all(e.get("stroke-dasharray") is None for e in lines)         # the plain (solid) style
+    mixed = copy.deepcopy(DAG)
+    mixed["edges"][0]["kind"] = "first"                     # a typed kind before any untyped one: untyped stays solid
+    root = S.tree(S.made(S.spec("graph.nodelink", "Mixed", mixed)).bytes)
+    untyped = [e for e in root.iter(S.q("polyline")) if "edge" in S.classes(e)][1]
+    assert untyped.get("stroke-dasharray") is None
+
+
+def _as_paths_and_lines(data):
+    """The same edges drawn as a path (M/L/C commands, relative too) and as a straight line: the reading is the same."""
+    root = S.tree(data)
+    parents = {c: p for p in root.iter() for c in p}
+    for k, e in enumerate([e for e in root.iter(S.q("polyline")) if "edge" in S.classes(e)]):
+        pts = [tuple(float(v) for v in p.split(",")) for p in e.get("points").split()]
+        (x0, y0), (x1, y1) = pts[0], pts[-1]
+        if k % 2:
+            new = ET.Element(S.q("line"), {"class": "edge", "x1": str(x0), "y1": str(y0), "x2": str(x1), "y2": str(y1),
+                                            "stroke": "currentColor", "stroke-dasharray": e.get("stroke-dasharray", "")})
+        else:
+            d = f"M{x0},{y0} c 0,0 {(x1 - x0) / 2},{(y1 - y0) / 2} {x1 - x0},{y1 - y0}"
+            new = ET.Element(S.q("path"), {"class": "edge", "d": d, "fill": "none", "stroke": "currentColor",
+                                            "stroke-dasharray": e.get("stroke-dasharray", "")})
+        if not new.get("stroke-dasharray"):
+            del new.attrib["stroke-dasharray"]
+        p = parents[e]
+        p.insert(list(p).index(e), new)
+        p.remove(e)
+    return S.to_bytes(root)
+
+
+def test_edges_drawn_as_paths_or_lines_read_the_same():
+    s = case("dag")
+    v = S.verdict(_as_paths_and_lines(S.made(s).bytes), s)
+    assert v.ok, S.failed(v)
+    assert S.finding(v, "values_recovered").measure == 1.0
+
+
+def test_tree_outline_reads_depth_first_in_source_order():
+    s = case("tree")
+    v = S.verdict(S.made(s).bytes, s)
+    assert v.ok and S.finding(v, "outline_order").passed
 
 
 def test_force_layout_differs_by_seed_and_keeps_nodes_apart():
@@ -88,6 +145,16 @@ def test_timeline_hides_no_label_silently():
     assert "shown on their marks only" in desc
     v = S.verdict(m.bytes, s)
     assert v.ok and S.finding(v, "labels_present").passed
+
+
+@pytest.mark.parametrize("span,n,width", [(60, 2, 400), (3600, 5, None), (2 * D, 2, None), (0, 1, None)])
+def test_short_timelines_keep_their_date_and_time_ticks_on_the_canvas(span, n, width):
+    data = {"x": {"label": "Date", "scale": "time"},
+            "events": [{"lane": "A", "at": T0 + span * i / max(1, n - 1), "label": f"Event {i}"} for i in range(n)]}
+    s = S.spec("timeline", "Short", data, {"width": width} if width else {})
+    v = S.verdict(S.made(s).bytes, s)
+    assert v.ok and S.finding(v, "text_inside_canvas").passed, S.failed(v)
+    assert S.finding(v, "values_recovered").measure == 1.0
 
 
 def test_bad_structures_are_refused():
@@ -110,12 +177,20 @@ def test_bad_structures_are_refused():
         S.made(S.spec("timeline", "Backwards", tl))
 
 
-def test_long_node_labels_are_cut_with_the_full_label_kept():
+def test_long_node_labels_keep_their_full_text_and_nodes_sit_at_their_group_origin():
     g = copy.deepcopy(DAG)
-    g["nodes"][0]["label"] = "A question that is far too long to fit inside one node box"
+    g["nodes"][0]["label"] = "A question that is far too long to fit inside one ordinary node box"
     s = S.spec("graph.nodelink", "Long", g)
     m = S.made(s)
-    assert "…" in m.bytes.decode()
+    root = S.tree(m.bytes)
+    nodes = [e for e in root.iter(S.q("g")) if "node" in S.classes(e)]
+    assert next(nodes[0].iter(S.q("text"))).text == g["nodes"][0]["label"] and "…" not in m.bytes.decode()
+    for n in nodes:                       # the group's origin is the centre; its first shape is centred there
+        assert n.get("transform").startswith("translate(")
+        shape = list(n)[0]
+        if shape.tag == S.q("rect"):
+            assert float(shape.get("x")) == -float(shape.get("width")) / 2
+    assert not [e for e in root.iter(S.q("g")) if "edge" in S.classes(e)]     # only the lines carry class edge
     assert S.verdict(m.bytes, s).ok
 
 
@@ -150,7 +225,7 @@ def _reverse_edge(data):
 def _drop_edge(data):
     root = S.tree(data)
     edges = next(g for g in root.iter(S.q("g")) if "edges" in S.classes(g))
-    edges.remove(list(edges)[0])
+    edges.remove(list(edges)[0])                       # one <g class="link">
     return S.to_bytes(root)
 
 
@@ -164,12 +239,18 @@ def _rename_node(data):
 def _stack_nodes(data):
     root = S.tree(data)
     nodes = [g for g in root.iter(S.q("g")) if "node" in S.classes(g)]
-    nodes[1].set("transform", "translate(0,0)")
-    a = next(iter(nodes[0]))
-    b = next(iter(nodes[1]))
-    for k in ("x", "y"):
-        if a.get(k) is not None:
-            b.set(k, a.get(k))
+    nodes[1].set("transform", nodes[0].get("transform"))
+    return S.to_bytes(root)
+
+
+def _swap_siblings(data):
+    """Two leaf siblings ("make", "check") trade places: every node and edge is still there, the order is not."""
+    root = S.tree(data)
+    nodes = {next(g.iter(S.q("text"))).text: g for g in root.iter(S.q("g")) if "node" in S.classes(g)}
+    a, b = nodes["make"], nodes["check"]
+    ta, tb = a.get("transform"), b.get("transform")
+    a.set("transform", tb)
+    b.set("transform", ta)
     return S.to_bytes(root)
 
 
@@ -194,6 +275,7 @@ def _drop_arrows(data):
     ("dag", S.drop_title, "title_and_description"),
     ("force", _stack_nodes, "nodes_apart"),
     ("tree", _reverse_edge, "edges_recovered"),
+    ("tree", _swap_siblings, "outline_order"),
     ("flow", _drop_edge, "edges_recovered"),
     ("flow", S.add_event, "svg_no_event_attributes"),
 ])
