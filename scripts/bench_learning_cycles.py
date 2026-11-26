@@ -24,7 +24,7 @@ is never run here.
 
 `final` scores the WITHHELD learning-cycles worlds (cycles_withheld.py), and nothing else does: one look per run, for
 the main session at the end of a wave (and Wave 3 step 0's look at the unchanged system). It refuses a dirty or
-uncommitted tree, another tree's source and an --out inside this checkout, and appends its line to
+uncommitted tree, another tree's source, an --out inside this checkout and one it cannot write, and appends its line to
 docs/quality/evidence/genesis_final_uses.jsonl before it scores anything. Default configurations: the no-loop
 reference, `baseline` (every Wave 1 setting off) and `shipped` (every setting as a new individual has it).
 """
@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import platform
 import subprocess
@@ -160,6 +161,10 @@ def final(a, configs) -> int:
     if Path(a.out).resolve().is_relative_to(ROOT.resolve()):
         raise SystemExit("final: write --out outside this checkout and copy it in afterwards: a new file in the tree "
                          "would make the tree dirty")
+    out = Path(a.out)           # review3b M-1: a failed write after the ledger line would spend the look for nothing
+    if not out.parent.is_dir() or not os.access(out.parent, os.W_OK) or out.is_dir() or (
+            out.exists() and not os.access(out, os.W_OK)):
+        raise SystemExit(f"final: --out {a.out} cannot be written (its directory must exist and be writable)")
     started = time.perf_counter()
     try:
         value = cycles.final(a.note, configs=configs, mechanism=a.mechanism)

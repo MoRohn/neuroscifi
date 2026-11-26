@@ -133,9 +133,13 @@ READ_BACK = READ_BACK + ("attribution_independence", "echo_recognition", "supers
 
 # Wave 3 fix lane (review3 Q7-2, Q7-8): each lane S fix is decided on its own, so each has its configuration on top of
 # the shipped defaults (in which both are OFF since the fix lane, ADR-061); `baseline` is Step 0's behaviour made
-# explicit: every Wave 1-3 setting off, both lane S fixes off, supersession "ask", lane K's re-check order (the idle
-# investigation is not run in it: no IDLE marker). On the integrated tree before the fix lane, `baseline` left the
-# lane S switches at their default, which was ON.
+# explicit. It sets only WAVE1_OFF_WEB (the fourteen Wave 1 web settings, off; idle_recheck among them, so
+# recheck_per_tick and recheck_daily, left at their defaults, do nothing) and STEP0_BASELINE (Wave 3: both lane S fixes
+# off, supersession "ask", lane K's re-check order "staleness"); the idle investigation is not run in it (no IDLE
+# marker). Every other setting stays at its default, as at Step 0 (review3b L-12), among them three that are ON:
+# `calibrated_forecasts` (ADR-046), `tick_admission` "unified" (ADR-050) and Wave 2's `arbitration_record` (ADR-056, a
+# record only); Wave 2's `salience_attention` is off by its default. On the integrated tree before the fix lane,
+# `baseline` left the lane S switches at their default, which was ON.
 LANE_S_ECHO, LANE_S_ATTRIBUTION = "+lane-s-echo", "+lane-s-attribution"
 ON.update({LANE_S_ECHO: {"echo_recognition": True}, LANE_S_ATTRIBUTION: {"attribution_independence": True}})
 EXTRA.update({"lane-s:echo-only": frozenset({SHIPPED, LANE_S_FIXES_OFF, LANE_S_ECHO}),

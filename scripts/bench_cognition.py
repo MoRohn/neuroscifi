@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -100,6 +101,12 @@ def main(argv=None) -> int:
         root = Path(__file__).resolve().parents[1]
         if not a.out or Path(a.out).resolve().is_relative_to(root.resolve()):
             print("refused: a --final run writes --out to a path OUTSIDE this checkout (copy it in afterwards)",
+                  file=sys.stderr)
+            return 2
+        out = Path(a.out)       # review3b M-1: a failed write after the ledger line would spend the look for nothing
+        if not out.parent.is_dir() or not os.access(out.parent, os.W_OK) or out.is_dir() or (
+                out.exists() and not os.access(out, os.W_OK)):
+            print(f"refused: --out {a.out} cannot be written (its directory must exist and be writable)",
                   file=sys.stderr)
             return 2
     cognition.load_plugins(a.plugin)

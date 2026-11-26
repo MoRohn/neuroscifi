@@ -461,10 +461,111 @@ def sealed(monkeypatch, tmp_path):
 
     def loader():
         raise AssertionError("the withheld worlds were loaded")
+
+    def family(*args, **kwargs):        # review3b L-7: a broken guard fails here, never scores the withheld family
+        raise AssertionError("the withheld family was scored")
     monkeypatch.setattr(cycles, "_withheld", loader)
+    monkeypatch.setattr(cognition, "_withheld", family)
     ledger = tmp_path / "ledger.jsonl"
     monkeypatch.setattr(cognition, "LEDGER", ledger)
     return ledger
+
+
+def _script(name):
+    import importlib.util
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(f"{name}_fix2", root / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _clean(monkeypatch):
+    from neuroscifi.acceptance import cognition
+    monkeypatch.setattr(cognition, "environment", lambda: {"git_commit": "0" * 40, "git_dirty": False})
+
+
+def test_both_looks_refuse_an_output_that_cannot_be_written_before_the_ledger(sealed, monkeypatch, tmp_path):
+    """review3b M-1: a missing or unwritable --out directory (or an --out that is a directory) is refused before the
+    ledger line; before the fix both looks wrote their line and failed only when writing the result."""
+    from neuroscifi.acceptance.cognition import cycles
+    _clean(monkeypatch)
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    bad = [tmp_path / "missing" / "out.json", locked / "out.json", tmp_path]
+    cycles_bench, cognition_bench = _script("bench_learning_cycles"), _script("bench_cognition")
+    try:
+        for out in bad:
+            with pytest.raises(SystemExit, match="cannot be written"):
+                cycles_bench.main(["final", "--look", "wave3", "--mechanism", "wave3", "--note", "a test",
+                                   "--out", str(out)])
+            assert cognition_bench.main(["run", "--family", "withheld", "--mechanism", "imagination", "--final",
+                                         "--note", "a test", "--out", str(out)]) == 2
+    finally:
+        locked.chmod(0o700)
+    assert not sealed.exists() and cycles.withheld_digest() == cycles.WITHHELD_SHA256
+
+
+def test_the_counterfactual_look_refuses_a_misspelt_mechanism_an_unknown_ablation_and_no_note(sealed, monkeypatch,
+                                                                                             tmp_path):
+    """review3b M-2, L-2: the mechanism and the ablation are resolved, and the note required, before the ledger line
+    (before the fix a misspelt mechanism silently fell back to the baseline everywhere, and an unknown ablation was
+    refused only after the line). imagination's fall-back for the three interfaces it has no mechanism for stays."""
+    from neuroscifi.acceptance import cognition
+    _clean(monkeypatch)
+    bench = _script("bench_cognition")
+    look = ["run", "--family", "withheld", "--final", "--out", str(tmp_path / "out.json")]
+    assert bench.main(look + ["--mechanism", "imaginaton", "--note", "a test"]) == 2
+    assert bench.main(look + ["--mechanism", "imagination", "--ablate", "front_dor", "--note", "a test"]) == 2
+    assert bench.main(look + ["--mechanism", "imagination"]) == 2                     # no note
+    assert bench.main(look + ["--mechanism", "imagination", "--note", "  "]) == 2
+    with pytest.raises(cognition.Refused, match="misspelt"):
+        cognition.run(["withheld"], mechanism="imaginaton", final=True, note="a test")
+    assert not sealed.exists()
+    # the intended command passes every check and records its line; the stand-in then stops it before any scoring
+    with pytest.raises(AssertionError, match="withheld family was scored"):
+        bench.main(look + ["--mechanism", "imagination", "--ablate", "front_door", "--note", "a test"])
+    [entry] = [json.loads(line) for line in sealed.read_text().splitlines()]
+    assert entry["mechanism"] == "imagination" and entry["ablate"] == ["front_door"]
+
+
+def test_the_counterfactual_look_refuses_a_changed_withheld_file_before_the_ledger(sealed, monkeypatch):
+    """review3b L-6: withheld.py's bytes are hashed against the pin before the ledger line (never read)."""
+    from neuroscifi.acceptance import cognition
+    from neuroscifi.acceptance.cognition import withheld
+    assert cognition.digest(withheld.__file__) == cognition.WITHHELD_SHA256
+    _clean(monkeypatch)
+    monkeypatch.setattr(cognition, "WITHHELD_SHA256", "f" * 64)
+    with pytest.raises(cognition.Refused, match="SHA-256"):
+        cognition.run(["withheld"], mechanism="imagination", final=True, note="a test")
+    assert not sealed.exists()
+
+
+def _front_door_pair(error):
+    on = {"ablate": [], "families": {"counterfactual": {
+        "mechanism": {"used": "imagination", "fell_back_to_baseline": False},
+        "result": {"summary_by_group": {} if error == "missing" else {"front_door": {"max_relative_error": error}},
+                   "per_seed": [{"front_door": 2, "front_door_declined": 0, "front_door_within_tolerance": 2}]}}}}
+    off = json.loads(json.dumps(on))
+    off["ablate"] = ["front_door"]
+    return on, off
+
+
+@pytest.mark.parametrize("error, a_holds, void", [
+    ({"max": 0.0, "n": 2}, True, False),
+    ({"max": None, "n": 0}, True, False),          # none answered
+    ({"max": None, "n": 2}, False, False),         # answered, yet no maximum: not a pass
+    ({"max": 0.2, "n": 2}, False, False),
+    ("missing", False, True),
+    (0.0, False, True),                            # malformed
+])
+def test_the_front_door_condition_a_does_not_fail_open(error, a_holds, void):
+    """review3b M-3: max None passes only with n == 0; a missing or malformed front_door group is VOID (exit 2)."""
+    compare = _script("compare_front_door_look")
+    out = compare.compare(*_front_door_pair(error))
+    assert out["a_holds"] is a_holds and bool(out["void"]) is void
 
 
 @pytest.mark.parametrize("failure", ["timeout", "exit 128", "oserror"])
