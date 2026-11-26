@@ -1831,6 +1831,7 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                 if echoed:
                     summary.setdefault("echoes", []).extend(echoed)
                 if held_item is not None:   # Wave 4 fix (review4 H2, H4): no evidence on either side; asked
+                    summary.setdefault("echoes", []).extend(sorted(marked - set(echoed)))
                     cluster = _without_claims(cluster, marked, now=now, freshness=freshness,
                                               ttl_overrides=cfg.freshness_ttl or None)
                     _echo_disagreement(db, task_id, whole, held_item, against, now, summary, questions)

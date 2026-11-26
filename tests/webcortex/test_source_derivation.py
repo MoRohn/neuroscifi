@@ -275,15 +275,6 @@ def test_the_name_reader_is_bounded_on_hostile_text():
     assert len(C.derivation_cites(many + [roundup])[roundup.url]) == C.DERIVATION_MAX_CITES
 
 
-def test_derivation_joins_is_display_only_and_absent_at_the_default():
-    docs = [OUTLET_A, doc("feedmill.example", f"Today, {N} {V} is the latest {N} release, Tech Ledger said.")]
-    assert C.derivation_joins(read(docs, derivation=False)[0]) is None
-    out = C.derivation_joins(read(docs)[0])
-    assert out["groups_today"] == 2 and out["groups"] == 1
-    assert out["cited"] == [{"page": "http://feedmill.example/velmora", "names": "techledger",
-                             "same_source": "uncertain"}]
-
-
 def test_the_setting_is_validated_and_a_damaged_value_reads_as_off(tmp_path):
     from neuroscifi.instance.errors import ValidationError
     db = store.create(tmp_path / "s.sqlite", T0)

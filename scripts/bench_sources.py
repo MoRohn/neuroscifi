@@ -43,6 +43,15 @@ def _commit():
         return None
 
 
+def _dirty():
+    """Whether the tree has changes not committed (review4 L4); None when git cannot say."""
+    try:
+        return bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True,
+                                   check=True, timeout=60).stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def _write(value, out):
     text = json.dumps(scoring.rounded(value), indent=1)
     if out:
@@ -74,7 +83,8 @@ def main(argv=None) -> int:
     out = {"label": "Wave 4 step 0, source independence: simulated worlds of fictional software releases with a "
                     "derivation graph, read through the real modules; offline; no model; search, fetching and the "
                     "owner substituted",
-           "commit": _commit(), "environment": {"python": platform.python_version(), "machine": platform.machine()}}
+           "commit": _commit(), "dirty": _dirty(),
+           "environment": {"python": platform.python_version(), "machine": platform.machine()}}
     out |= sources.run_split(a.split, configs=a.config)
     out["wall_seconds"] = time.perf_counter() - started
     _write(out, a.out)

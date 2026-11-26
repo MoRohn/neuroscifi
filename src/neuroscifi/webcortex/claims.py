@@ -1666,7 +1666,7 @@ def _one_way(ident, pointers, label) -> list:
 # acmewire.example, whatever verb or line surrounds them) or links to it (its host or URL). Such a page may derive
 # from the page it names (a copy crediting its origin, a round-up, a mirror) or may have checked the value itself and
 # still name it (a credit, a contributor line): the text cannot tell the two apart, so the join is an uncertain
-# estimate of "same source" and is reported as such (derivation_joins). The rule counts what the evidence cannot
+# estimate of "same source". The rule counts what the evidence cannot
 # separate as ONE source: the consolidation bar counts only groups whose independence is supported; it never lowers it.
 # What the rule may and may not do (the Wave 3 reviews' lessons, review3 H1, review3b N1/N3, review3c F1/F2):
 #   - it starts from today's grouping and only joins: copies today's grouping joins are never separated;
@@ -1838,25 +1838,6 @@ def _derivation_edges(ident, pointers, label) -> list:
         out.append(("g", min(owned)[2]) if owned else ("k", min(keys, key=lambda k: (-popularity[k], k))))
     return out
 
-
-def derivation_joins(claims, *, origins: dict | None = None) -> dict | None:
-    """Display only (ADR-066; lane D's caution reads it, nothing decides on it): for claims read with
-    source_derivation, how many independent groups today's grouping would count and how many the derivation rule
-    counts, and the pages of the groups it counts that name another page of their task, each an UNCERTAIN "same
-    source" (a copy and an outlet that checked the value and still names another look alike). None when the claims
-    were not read with the rule."""
-    from dataclasses import replace
-    claims = [c for c in claims if c is not None]
-    if not claims or not all(isinstance((c.flags or {}).get("derivation"), dict) for c in claims):
-        return None
-    plain = [replace(c, flags={k: v for k, v in (c.flags or {}).items() if k != "derivation"}) for c in claims
-             if not derivation_echo(c)]
-    today = len(independence_groups(plain, origins=origins)) if plain else 0
-    groups = independence_groups(claims, origins=origins)
-    joined = sorted({(c.source_url, k) for g in groups if len(g) > 1 for c in claims if c.id in g
-                     for k in _derivation_mark(c).get("cites") or ()})
-    return {"groups_today": today, "groups": len(groups), "echoes": sum(1 for c in claims if derivation_echo(c)),
-            "cited": [{"page": u, "names": k[len("name:"):], "same_source": "uncertain"} for u, k in joined][:50]}
 
 
 def dependence(claims, documents=(), *, origins: dict | None = None) -> dict:

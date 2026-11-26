@@ -161,3 +161,51 @@ def test_a_credit_to_another_read_outlet_still_joins_after_the_fix():
              ("copydesk.example", f"As Acme Wire reported, {N} {adv._NEW} is the latest {N} release.", T0 - DAY,
               None, ())]
     assert adv._d_groups(pages, derivation=True)[0] == 1 and adv._d_groups(pages, derivation=False)[0] == 2
+
+
+# ---- item 5 (measurement M1, L4): the counters see the pages lane E's hook marks ------------------------------------
+
+def test_the_discarded_counters_count_pages_the_hook_marked_at_extraction(monkeypatch):
+    """With both rules on, a page lane E's hook marks at extraction is set aside even when consolidation's own list
+    does not name it (the reviewer found 6 such pages on held-out, 3 on development, uncounted)."""
+    from neuroscifi.acceptance.cognition import sources, sources_splits_dev as dev
+    from neuroscifi.webcortex import consolidate
+    world = dev.generate(dict(dev.CYCLES["development"]["worlds"][1]) | {"cycles": 5}, 8302)
+    full = sources.run_world(world, "wave4:both")["totals"]
+    assert full["discarded_echo_pages"] + full["discarded_honest_pages"] > 0
+    run = consolidate.run
+
+    def without_list(*a, **k):
+        out = run(*a, **k)
+        out.pop("echoes", None)
+        return out
+    monkeypatch.setattr(consolidate, "run", without_list)
+    blind = sources.run_world(world, "wave4:both")["totals"]
+    assert (blind["discarded_echo_pages"], blind["discarded_honest_pages"]) == \
+        (full["discarded_echo_pages"], full["discarded_honest_pages"])
+
+
+def test_the_bench_records_whether_the_tree_was_dirty(monkeypatch, tmp_path):
+    """review4 L4: lane S's held-out evidence named a commit while the harness had uncommitted edits."""
+    import importlib.util
+    import subprocess
+    from pathlib import Path
+    from neuroscifi.acceptance.cognition import sources
+    path = Path(__file__).resolve().parents[2] / "scripts" / "bench_sources.py"
+    spec = importlib.util.spec_from_file_location("bench_sources_fix", path)
+    bench = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bench)
+    status = {"out": " M src/x.py\n"}
+
+    def fake(cmd, **kw):
+        if "status" in cmd:
+            if status["out"] is None:
+                raise OSError("no git")
+            return subprocess.CompletedProcess(cmd, 0, status["out"], "")
+        return subprocess.CompletedProcess(cmd, 0, "abc1234\n", "")
+    monkeypatch.setattr(bench.subprocess, "run", fake)
+    monkeypatch.setattr(sources, "run_split", lambda split, configs=None: {"split": split})
+    for out, dirty in ((" M src/x.py\n", True), ("", False), (None, None)):
+        status["out"] = out
+        bench.main(["run", "--split", "development", "--out", str(tmp_path / "o.json")])
+        assert json.loads((tmp_path / "o.json").read_text())["dirty"] is dirty

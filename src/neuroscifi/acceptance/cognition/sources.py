@@ -309,7 +309,9 @@ class Run:
         self.prints.append(json.dumps([sorted(together), sorted(map(str, admitted)), sorted(out.get("contested") and
                                        [str(x.get("key")) for x in out["contested"]] or [])]))
         self._count(shape, pages_with_claims=len(read), **pairs)
-        gone = set(out.get("echoes") or [])
+        # the pages a rule set aside as echoes: consolidation's (out["echoes"]) and, with source_derivation also on,
+        # those lane E's hook marked at extraction, which never reach consolidation's list (review4 M1)
+        gone = set(out.get("echoes") or []) | {c.id for cl in clusters for c in cl.claims if claims.derivation_echo(c)}
         discarded = [page_of[u] for u in sorted({c.source_url for cl in clusters for c in cl.claims if c.id in gone})
                      if u in page_of]
         self._count(shape, discarded_echo_pages=sum(1 for p in discarded if p["basis"] == "echo"),
