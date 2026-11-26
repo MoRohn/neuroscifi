@@ -579,8 +579,54 @@ class ArtifactsSubject:
                        "media_type": getattr(made, "media_type", "")}, "answered")
 
     def _transform(self, task: Task) -> Answer:
-        from .transform import drive
-        return drive(self, task)
+        """The steps a transform task needs, chained HERE from DESIGN §3 and §6 calls (decode, then make): the
+        production pipeline is a later wave; when it exists, this should call it instead."""
+        request = json.loads(task.files["request.json"])
+        (name, data), = [(n, d) for n, d in task.files.items() if n != "request.json"]
+        rep = _descend_single(self._decode(name, data, task.declared.get(name)).representation)
+        kind = request["transform"]
+        if kind in ("csv_to_chart", "table_to_sound"):
+            table = _tables(rep)[0]
+
+            def column(col):
+                if isinstance(table, _Records):
+                    return [table.rows[i].get(col) for i in range(table.n_rows)]
+                match = [c for c in table.columns if c.name == col]
+                if not match:
+                    raise Cannot(f"no column {col}")
+                return _value_list(match[0])
+            if kind == "csv_to_chart":
+                xs, ys = column(request["x"]), column(request["y"])
+                made = ({"form": "line", "series": [{"name": request["y"], "x": xs, "y": ys}]}
+                        if request["form"] == "line" else {"form": "scatter", "points": [list(p) for p in zip(xs, ys)]})
+            else:
+                values = column(request["column"])
+                made = {"form": "sonify", "values": values, "low_hz": request["low_hz"], "high_hz": request["high_hz"],
+                        "domain": [min(values), max(values)], "tone_s": request["tone_s"]}
+        elif kind == "mesh_to_stl":
+            if _kind(rep) != "Mesh":
+                raise Cannot(f"a {_kind(rep)} is not a mesh")
+            made = {"form": "mesh", "format": request["format"], "vertices": np.asarray(rep.vertices).tolist(),
+                    "faces": np.asarray(rep.faces).tolist()}
+        elif kind == "doc_to_outline":
+            nodes, edges, stack = [], [], []
+            for block in _blocks(rep, "heading"):
+                text = _norm(block.text)
+                nodes.append(text)
+                while stack and stack[-1][0] >= block.level:
+                    stack.pop()
+                if stack:
+                    edges.append([stack[-1][1], text])
+                stack.append((block.level, text))
+            made = {"form": "diagram", "nodes": nodes, "edges": edges}
+        elif kind == "archive_index":
+            if _kind(rep) != "Bundle":
+                raise Cannot(f"a {_kind(rep)} is not an archive")
+            made = {"form": "data_file", "format": "csv", "columns": ["path", "size", "format"],
+                    "rows": [[str(m.path), int(m.size), m.detected.format] for m in _members(rep)]}
+        else:
+            raise Cannot(f"unknown transform {kind}")
+        return self._make(made)
 
 
 def _plain(value):

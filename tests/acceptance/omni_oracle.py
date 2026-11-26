@@ -165,20 +165,23 @@ def docx_doc(data: bytes) -> dict:
     z = zipfile.ZipFile(io.BytesIO(data))
     w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
     body = ET.fromstring(z.read("word/document.xml")).find(w + "body")
-    heads, tables, text = [], [], []
+    heads, tables, text, captions = [], [], [], []
     for el in body:
         if el.tag == w + "p":
             t = "".join(x.text or "" for x in el.iter(w + "t"))
             style = el.find(f"{w}pPr/{w}pStyle")
             if style is not None and style.get(w + "val", "").startswith("Heading"):
                 heads.append(norm(t))
+            if style is not None and style.get(w + "val", "") == "Caption":
+                captions.append(norm(t))
             text.append(t)
         elif el.tag == w + "tbl":
             rows = [["".join(x.text or "" for x in tc.iter(w + "t")) for tc in tr.iter(w + "tc")]
                     for tr in el.iter(w + "tr")]
             tables.append(rows[1:])
     title = "".join(ET.fromstring(z.read("docProps/core.xml")).itertext())
-    return {"kind": "doc", "title": norm(title), "headings": heads, "tables": tables, "text": norm(" ".join(text))}
+    return {"kind": "doc", "title": norm(title), "headings": heads, "tables": tables, "text": norm(" ".join(text)),
+            "figures": captions}
 
 
 def odt_doc(data: bytes) -> dict:
@@ -395,7 +398,7 @@ def sound_measure(d: dict, name: str, arg: str):
 
 
 def mesh_read(name: str, data: bytes) -> dict:
-    if name.endswith(".stl") and not data.startswith(b"solid"):
+    if name.endswith(".stl") and len(data) >= 84 and len(data) == 84 + 50 * struct.unpack("<I", data[80:84])[0]:
         n = struct.unpack("<I", data[80:84])[0]
         tri = [struct.unpack("<12f", data[84 + 50 * i:84 + 50 * i + 48])[3:] for i in range(n)]
         corners = np.array(tri, dtype=float).reshape(-1, 3)

@@ -373,6 +373,7 @@ def _path_ends(d: str) -> list[tuple[float, float]]:
 class DiagramReading:
     labels: list[str]
     edges: list[tuple[str, str]]
+    positions: list[tuple[float, float]] = field(default_factory=list)
 
 
 def read_diagram(data: bytes) -> DiagramReading:
@@ -400,7 +401,7 @@ def read_diagram(data: bytes) -> DiagramReading:
         a, b = ends[0], ends[-1]
         near = [min(centers, key=lambda c: (c[1][0] - p[0]) ** 2 + (c[1][1] - p[1]) ** 2)[0] for p in (a, b)]
         edges.append((near[0], near[1]))
-    return DiagramReading([label for label, _ in centers], edges)
+    return DiagramReading([label for label, _ in centers], edges, [p for _, p in centers])
 
 
 # ---- SVG safety and palette -----------------------------------------------------------------------------------------
