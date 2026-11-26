@@ -20,7 +20,13 @@ Signals, each read from the records (never from a model):
 Display and record only: autonomy.candidates attaches it to every candidate and the decision event of a queued
 investigation stores it (autonomy.decision_inputs). It never changes what is admitted or the order: the owner's
 records, permissions, budgets, `quiet` and min_gain decide exactly as before. Off: `nsf web config --set
-salience_record=false`."""
+salience_record=false`.
+
+ADR-056 (Wave 2 lane L), off by default: with salience_attention on, order() decides which of the candidates
+autonomy.admission already admitted (idle and timer paths) is taken first. Admission itself is unchanged: the same
+candidates are admitted and refused, with the same reasons, and the caps, budgets, cooldown and quiet are read as
+before; nothing raises its own priority, budget or frequency. The weights stay the fixed ones above (nothing is
+learned or rewarded)."""
 from __future__ import annotations
 
 from . import state
@@ -34,6 +40,28 @@ assert abs(sum(WEIGHTS.values()) - 1.0) < 1e-9
 
 def enabled(db) -> bool:
     return getattr(state.get_config(db), "salience_record", True) is True
+
+
+def attention(db) -> bool:
+    """The owner's salience_attention setting (ADR-056): the salience record orders the candidates admission already
+    admitted. It needs the record itself (salience_record)."""
+    cfg = state.get_config(db)
+    return getattr(cfg, "salience_attention", False) is True and getattr(cfg, "salience_record", True) is True
+
+
+def order(chosen: list) -> tuple[list, dict]:
+    """(the admitted candidates in the order they are taken, the record of that order) with salience_attention on:
+    the owner's own records first, as before; then the higher salience score first, then the higher priority, then
+    the key. Never adds or removes a candidate. Each candidate keeps `priority_rank`, its place in admission's own
+    (priority) order, so the decision event says whether the priority order would have taken another first; the
+    other candidate is named by its place, never by its subject (a forgotten subject leaves nothing in another
+    task's record)."""
+    if not chosen or any(not isinstance(c.get("salience"), dict) for c in chosen):
+        return chosen, {"by": "priority", "why": "a candidate carries no salience record"}
+    ranked = [c | {"priority_rank": i} for i, c in enumerate(chosen)]
+    ranked.sort(key=lambda c: (not c.get("owner"), -float(c["salience"].get("score") or 0.0),
+                               -float(c.get("priority") or 0.0), str(c.get("key"))))
+    return ranked, {"by": "salience", "priority_rank_of_first": ranked[0]["priority_rank"]}
 
 
 def _clip(value) -> float:
@@ -72,4 +100,4 @@ def score(db, item: dict, now: float) -> dict:
     return {"score": total, "signals": values, "weights": dict(WEIGHTS), "explanation": explanation}
 
 
-__all__ = ["ERROR_WINDOW", "NOVELTY_WINDOW", "WEIGHTS", "enabled", "score"]
+__all__ = ["ERROR_WINDOW", "NOVELTY_WINDOW", "WEIGHTS", "attention", "enabled", "order", "score"]

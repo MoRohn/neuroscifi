@@ -8,7 +8,9 @@ the stores; the row's own time for a persisted one). The record carries the stat
 can tell whether two records (or a record and a store) describe the same state.
 
 Sections and the five questions they answer (record["answers"] lists the field paths):
-  doing      What am I doing?            tasks (running, queued, with origins), goals, open questions, epoch, quiet
+  doing      What am I doing?            tasks (running, queued, with origins), goals, open questions, epoch, quiet,
+                                         the background loop (the latest background investigation and how it was
+                                         admitted, the latest arbitrations, the settled predictions; ADR-056)
   knows      What do I know?             memory inventory, web knowledge counts
   uncertain  What am I uncertain about?  least certain factor of the current epoch's beliefs, open contradictions,
                                          lowest-confidence knowledge in use, unsettled predictions, the monitoring
@@ -58,18 +60,22 @@ MAX_ITEMS = 8
 RECENT_ITEMS = 8
 TEXT = 120          # characters of an objective or a key quoted by reference
 ANSWERS = {
-    "what_am_i_doing": ["doing.tasks", "doing.questions", "doing.goals", "doing.epoch", "doing.quiet"],
+    "what_am_i_doing": ["doing.tasks", "doing.questions", "doing.goals", "doing.epoch", "doing.quiet", "doing.cycle"],
     "what_do_i_know": ["knows.memory", "knows.knowledge", "provenance.counts"],
     "what_am_i_uncertain_about": ["uncertain.beliefs", "uncertain.contradictions", "uncertain.low_confidence",
                                   "uncertain.predictions"],
     "what_can_i_do_next": ["decisions.executive_now", "can.capabilities", "can.limits", "can.tools"],
     "what_evidence_supports_that_decision": ["decisions.executive_now", "decisions.executive_recorded",
-                                             "decisions.autonomy", "decisions.broadcast"],
+                                             "decisions.autonomy", "decisions.broadcast", "doing.cycle"],
 }
 FAMILY_ANSWERS = {"what_am_i_doing": ["doing.tasks", "doing.quiet"], "what_can_i_do_next": ["can.capabilities",
                                                                                             "can.limits"]}
 DEVICE = {"console": "console", "voice": "console voice", "pocket": "Pocket", "pocket-voice": "Pocket voice",
           "cli": "command line", "mcp": "an agent (MCP)", "owner": "owner"}
+CYCLE_WORDS = {"idle": "a look while nothing else was queued", "tick": "a look on the timer",
+               "recheck": "a re-check of something that may be out of date",
+               "prediction refresh (predictions.check_due)": "a check of something I expected to still hold",
+               "refresh": "a check of something I expected to still hold"}
 DECISION_WORDS = {"act": "act on what I have learned", "observe": "wait for readings", "ask": "ask you a question",
                   "test_reference": "ask for a known reference test", "defer": "wait"}
 RUNNING = ("discovering", "reading", "evaluating", "synthesizing")
@@ -477,6 +483,57 @@ def _broadcast_decisions(db, now) -> dict:
               now)
 
 
+ARBITRATION_ITEMS = 3
+
+
+def _cycle(db, now) -> dict:
+    """The background loop as the records hold it (ADR-056): the latest background investigation and how it was
+    admitted (path, rule, order, the salience score it carried, its place in the priority order), the latest
+    arbitrations between background mechanisms (who took a subject, which mechanism lost, by what rule), and the
+    predictions settled so far and how. Ids, numbers and fixed words only: no objective, key or statement, so nothing
+    a forget removes stays here."""
+    from .background import ORIGIN_SQL
+    row = db.execute(f"SELECT id, origin, status, created_at FROM web_tasks WHERE {ORIGIN_SQL} AND "
+                     "origin NOT GLOB 'monitor:*' ORDER BY created_at DESC, rowid DESC LIMIT 1").fetchone()
+    last = None
+    if row is not None:
+        tid, origin, status, at = row
+        admitted = {"path": "prediction refresh (predictions.check_due)"} if str(origin).startswith("refresh:") \
+            else {"path": None}
+        for (detail,) in db.execute("SELECT detail FROM web_events WHERE task_id=? AND kind='decision' AND "
+                                    "json_extract(detail,'$.autonomy') IS NOT NULL ORDER BY id LIMIT 1", (tid,)):
+            picked = (_json(detail) or {}).get("autonomy")
+            if isinstance(picked, dict):
+                admission = picked.get("admission") or {}
+                admitted = {"path": admission.get("path"), "rule": admission.get("rule"),
+                            "order": admission.get("order", "priority"), "kind": picked.get("kind"),
+                            "salience": (picked.get("salience") or {}).get("score")
+                            if isinstance(picked.get("salience"), dict) else None,
+                            "priority_rank": picked.get("priority_rank")}
+        last = {"task_id": tid, "origin": "refresh" if str(origin).startswith("refresh:") else str(origin),
+                "status": status, "at": at, "admitted": admitted}
+    arbitration = []
+    for tid, detail, at in db.execute(
+            "SELECT task_id, detail, created_at FROM (SELECT id, task_id, detail, created_at FROM web_events WHERE "
+            "kind='decision' ORDER BY created_at DESC, id DESC LIMIT ?) WHERE json_extract(detail,'$.arbitration') "
+            "IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT ?", (DECISIONS_READ, ARBITRATION_ITEMS)):
+        value = (_json(detail) or {}).get("arbitration") or {}
+        arbitration.append({"task_id": tid, "winner": value.get("winner"), "loser": value.get("loser"),
+                            "rule": value.get("rule"), "at": at})
+    counts = dict(db.execute("SELECT outcome, count(*) FROM web_predictions WHERE outcome IS NOT NULL GROUP BY "
+                             "outcome").fetchall())
+    latest = db.execute("SELECT id, outcome, checked_at FROM web_predictions WHERE outcome IS NOT NULL ORDER BY "
+                        "checked_at DESC, id DESC LIMIT 1").fetchone()
+    predictions = {"settled": sum(counts.values()), "errors": counts.get("error", 0),
+                   "confirmed": counts.get("confirmed", 0), "inconclusive": counts.get("inconclusive", 0),
+                   "latest": {"prediction_id": latest[0], "outcome": latest[1], "at": latest[2]} if latest else None}
+    times = [(last or {}).get("at"), *(a["at"] for a in arbitration), (predictions["latest"] or {}).get("at")]
+    newest = max((t for t in times if t is not None), default=None)
+    return _f({"last_investigation": last, "arbitration": arbitration, "predictions": predictions},
+              "web_tasks (background origins), web_events kind=decision (autonomy, arbitration; ADR-056), "
+              "web_predictions (settled outcomes)", newest, now)
+
+
 # ---- the other Wave 1 records (integration): each read from its own module, with its source and age ----------------
 
 def _internal_state(db, path, now, *, agent=False) -> dict:
@@ -660,6 +717,8 @@ def _build(db, path, now, scope, family) -> dict:
                 [_short(x) for x in _goals(db, now, agent)[:MAX_ITEMS]],
                 "webcortex.autonomy.goals (active owner monitors; research the owner asked for in the last 7 days)"
                 + ("; the owner's own research only" if agent else ""), now, now))
+            doing["cycle"] = g("web_tasks, web_events, web_predictions (the background loop)",
+                               lambda: _cycle(db, now))
     record["doing"] = doing
 
     def level():
@@ -803,6 +862,15 @@ def short(record) -> list[str]:
         parts.append(f"{_n(questions['open'], 'question')} waiting for you")
     if parts:
         out.append("Right now: " + "; ".join(parts) + ".")
+    cycle = value(record, "doing.cycle") or {}
+    last = cycle.get("last_investigation")
+    if last:
+        how = CYCLE_WORDS.get((last.get("admitted") or {}).get("path") or last.get("origin"), "on my own")
+        settled = (cycle.get("predictions") or {}).get("settled") or 0
+        wrong = (cycle.get("predictions") or {}).get("errors") or 0
+        out.append(f"My last background look was {how} ({last.get('status')})"
+                   + (f"; {_n(settled, 'prediction')} checked so far, {wrong} turned out wrong" if settled else "")
+                   + ".")
     beliefs = value(record, "uncertain.beliefs")
     if beliefs and beliefs.get("epoch"):
         least = beliefs["least_certain"]

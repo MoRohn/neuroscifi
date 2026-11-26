@@ -414,6 +414,22 @@ def _over_cap(db, now, cfg, *, ignore_tasks=False):
 # Under the unified rule a curiosity pick may name the subject a due prediction's refresh queued in the same tick
 # (any version of that knowledge item): one task per subject, the refresh.
 REFRESHED_THIS_TICK = "its due prediction's refresh was queued in this tick"
+# ADR-056: when two background mechanisms want one subject in one pass, the tick's own order decides (the knowledge
+# re-check, then the due refreshes, then curiosity) and, with arbitration_record on, says so on the winner's task.
+TAKEN_BY_RECHECK = "the knowledge re-check queued this subject earlier in this pass (cooldown)"
+
+
+def _arbitrated(db, report, now, winner_task, winner, loser, rule):
+    """Record one arbitration: a decision event on the winner's task naming the mechanism that lost and the rule
+    that decided (never the subject: it is the winner's task's own, and goes with that task). A record only; nothing
+    is admitted, refused or launched here."""
+    if not getattr(state.get_config(db), "arbitration_record", True):
+        return
+    detail = {"arbitration": {"slot": "one investigation per subject per timer pass", "winner": winner,
+                              "loser": loser, "rule": rule}}
+    with store.write(db):
+        state.log_event(db, winner_task, "decision", detail, now)
+    report.setdefault("arbitration", []).append({"task_id": winner_task, **detail["arbitration"]})
 
 
 def _wave1_step(report, what, step, fallback=None):
@@ -505,12 +521,14 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         return _retention(report, services, now)
     # lane K: the re-check of the knowledge most at risk of being stale, before the due-order refreshes (setting
     # `idle_recheck`, off by default; its own share of the daily allowance; recheck.run asks the owner's quiet)
+    taken = {}          # knowledge id -> the re-check's task queued for it in this pass (ADR-056 arbitration)
     if recheck.enabled(db) and budget_left > 0:
         rechecked = _wave1_step(report, "knowledge re-check", lambda: recheck.run(
             db, now, limit=min(cfg.recheck_per_tick, budget_left), over_cap=lambda: _over_cap(db, now, cfg)),
             fallback={"skipped": [], "submitted": []})
         report["skipped"] += rechecked["skipped"]
         for item in rechecked["submitted"]:
+            taken[item["knowledge_id"]] = item["task_id"]
             budget_left -= 1
             if queue:
                 report["queued"].append({"task_id": item["task_id"], "origin": "recheck"})
@@ -561,17 +579,26 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     report["admission"] = admitted["rule"]
     if admitted["gate"]:
         report["skipped"].append({"what": "curiosity", "reason": admitted["gate"]})
+    taken_keys = {k: taken[kid] for kid, k in db.execute(f"SELECT id, key FROM web_knowledge WHERE id IN "
+                                                         f"({','.join('?' * len(taken))})", tuple(taken))}
     for refused in admitted["refused"]:
         report["skipped"].append({"target": refused.get("target") or {"key": refused.get("key"),
                                                                         "knowledge_id": refused.get("knowledge_id")},
                                   "reason": refused["reason"]})
-    refreshed = {a.get("knowledge_id") for a in report["predictions"] if a["action"] == "refresh_submitted"} - {None}
-    refreshed_keys = {k for (k,) in db.execute(f"SELECT key FROM web_knowledge WHERE id IN "
-                                               f"({','.join('?' * len(refreshed))})", tuple(refreshed))}
+        if refused.get("key") in taken_keys and str(refused.get("reason", "")).startswith("investigated autonomously"):
+            _arbitrated(db, report, now, taken_keys[refused["key"]], "recheck", "curiosity", TAKEN_BY_RECHECK)
+    refreshes = {a["knowledge_id"]: a["task_id"] for a in report["predictions"]
+                 if a["action"] == "refresh_submitted" and a.get("knowledge_id") is not None}
+    refreshed = set(refreshes)
+    refreshed_keys = {k: refreshes[kid] for kid, k in db.execute(f"SELECT id, key FROM web_knowledge WHERE id IN "
+                                                                 f"({','.join('?' * len(refreshed))})",
+                                                                 tuple(refreshed))}
     for pick in admitted["chosen"]:
         target = pick.get("target") or {"key": pick["key"], "knowledge_id": pick.get("knowledge_id")}
         if admitted["rule"] == "unified" and (pick.get("knowledge_id") in refreshed or pick["key"] in refreshed_keys):
             report["skipped"].append({"target": target, "reason": REFRESHED_THIS_TICK})
+            winner = refreshes.get(pick.get("knowledge_id")) or refreshed_keys.get(pick["key"])
+            _arbitrated(db, report, now, winner, "refresh", "curiosity", REFRESHED_THIS_TICK)
             continue
         cap = _over_cap(db, now, cfg)
         if cap or budget_left <= 0:

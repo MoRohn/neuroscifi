@@ -778,6 +778,9 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
                                           f"{item['kind']} (the idle investigator's)"})
             continue
         out["chosen"].append(item)
+    from . import salience
+    if salience.attention(db):      # ADR-056: salience orders what admission admitted; it admits nothing itself
+        out["chosen"], out["order"] = salience.order(out["chosen"])
     from . import strategies
     try:                # Wave 2 lane U: a gate that cannot be read is closed (the admitted order), said and logged
         active = strategies.active(db)
@@ -797,8 +800,11 @@ def decision_inputs(pick, admitted) -> dict:
               if k in pick}
     inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast",
                                     "forecast_as_read", "info_gain_as_read", "owner", "depth", "salience",
-                                    "learning_progress") if k in pick}
-    return inputs | {"admission": {"rule": admitted["rule"], "path": admitted["path"]}}
+                                    "learning_progress", "priority_rank") if k in pick}
+    admission = {"rule": admitted["rule"], "path": admitted["path"]}
+    if admitted.get("order"):           # ADR-056: taken in salience order (salience.order)
+        admission["order"] = admitted["order"]["by"]
+    return inputs | {"admission": admission}
 
 
 # ---- the idle investigator -----------------------------------------------------------------------------------------
