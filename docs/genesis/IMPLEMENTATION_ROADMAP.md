@@ -5,7 +5,9 @@ and rollback. Wave 0 is integrated on branch `cognitive-genesis` (`76a478e`), re
 validation is recorded in [WAVE0.md](WAVE0.md). Wave 1 (lanes I, M, W, C, K) is **integrated (`3c2a3bc`), reviewed
 three times, fixed by three lanes and reconciled (`gen-rec1`)**; its record, with the shipped defaults and the
 benchmark on the reconciled tree, is [WAVE1.md](WAVE1.md), which also records the re-review of the fixes, the final
-validation (`816fa12`) and the one look at the withheld family (§6.5, §7, §8). Sources: the
+validation (`816fa12`) and the one look at the withheld family (§6.5, §7, §8). Wave 2 (lanes U, F, L) is
+integrated on `genesis-wave2` (`828ca8e`); its record is [WAVE2.md](WAVE2.md) and its results are negative or neutral
+(§4, "Wave 2"). Sources: the
 handoff's build plan and rulings, the lane rules, the lane reports, [COGNITIVE_BENCHMARK.md](../quality/COGNITIVE_BENCHMARK.md),
 ADR-049 and ADR-050.
 
@@ -47,7 +49,8 @@ it"):
 | 1 integration | order I, M, K (its migration is 18), C, W last (it surfaces the others) | Wave 0 in `main` | done: `3c2a3bc` on `genesis-wave1` |
 | 1 review and fixes | three independent reviews (security; core; runtime and benchmark integrity); fix lanes A, B, C (A appends migration 19, an index); reconciliation `gen-rec1` | Wave 1 integrated | done; [WAVE1.md](WAVE1.md) §6 |
 | 1, closing | re-review of the fix round; fix lanes D and E; a second check; final validation; the one `--final` look at the withheld family | Wave 1 reconciled | done: [WAVE1.md](WAVE1.md) §6.5, §7, §8 |
-| 2 | the integration pass (directive §8), regression and cognitive UAT (§12), the recursive knowledge assessment, deliverables E–J in `docs/genesis/` | Wave 1 merged into `main` | not started |
+| 2 | U regression and cognitive UAT (§12, deliverable H); F the recursive knowledge assessment (§7, deliverable F); L the integration loop (§8, ADR-056) | Wave 1 merged into `main` (`3559069`) | built on `gen2-u`, `gen2-f`, `gen2-l` from `3559069`; integrated on `genesis-wave2` (`828ca8e`) |
+| 2, closing | X follow-ups (lane L's settings in lane U's checks, the reflection bound, `strategies.active`, voice delivery under a failing claim, reflection retention); D deliverables E, G, I, J and the Wave 2 record; reviews and final validation | Wave 2 integrated | X and D from `828ca8e`; reviews and validation: [WAVE2.md](WAVE2.md) §4–5 |
 
 Per wave (the owner's standing instruction, 2026-11-25: "Proceed forward sequentially on waves after each is
 completed and validated with merges into main"): integrate → full validation (gate, browser suite, acceptance, guard
@@ -83,6 +86,22 @@ Results on the reconciled tree (`genesis_wave1.json`, `genesis_wave1_wide.json`;
 | W | self-description, held-out: 29 of 30 under the original answer key, 30 of 30 under the changed key (baseline 24 of 30, 4 surfaces → 1); two probes are plumbing checks; the held-out states were printed once during development | broadcast off: no benchmark shows that holding a finding back helps |
 | C | on 10 held-out claims, adding the verification state to the posterior lowers Brier 0.122 → 0.022 with the unfitted score now shipped (0.042 with the fitted map; the verdict-word rule 0.0025); no answer confidence shown (not enough development data), so on development the record ranks nothing (AURC of a constant 0.143 against the baseline's 0.080); no held-out evidence of a gain from selective answering | selective answering off: no held-out evidence of a gain; turned on it would withhold 12 of 20 right held-out answers (development: 3 of 3 wrong and 12 of 18 right); escalation off: no metric change, +2 pages; adaptive depth off: equal quality, 581 → 559 pages, wall time not lower (owner decision) |
 | K | strategy selection 0.395 against 0.265 verified per investigation | gate verdict "revise": needs one withheld run, and the withheld family has no strategy-selection world; idle re-check within noise on retention (0.695 against 0.693) |
+
+### Wave 2 (integrated on `genesis-wave2`, `828ca8e`; record in [WAVE2.md](WAVE2.md))
+
+| Lane | Scope | Acceptance | Settings (default) | Rollback |
+|---|---|---|---|---|
+| U regression and UAT | the 20 test areas of §12; ten adversarial cases (`added_wave2`) with expectations committed first; fault injection of every Wave 1 entry point (raise, time out, garbage) and the guards it proves necessary; rollback of every switch; Wave 0 equivalence | every guard proved by a test that fails without it; Wave 0's offline digest at the defaults; acceptance, guard differential and reproduction as before | none (guards always on; they act only on a failure) | revert the guard commits (`314ab80`, `9a7796f`) |
+| F recursive knowledge assessment | §7 mapped to the code; the learning-cycles experiment on worlds committed first, with a verdict rule committed before the held-out run | the pre-registered rule (retain / revise / no evidence) | none (no mechanism added) | revert the commits; nothing in the product reads the harness |
+| L the integration loop | the link map of the eight §8 requirements; the arbitration record; salience ordering the admitted; `doing.cycle`; the integrated family on worlds committed first | the roadmap's gain rule (§2) on the new held-out split | `arbitration_record` **on** (record); `salience_attention` **off** | `nsf web config --set arbitration_record=false`; revert before merge. No schema change |
+
+Results (held-out; the evidence files named):
+
+| Lane | Result | Why the defaults are what they are |
+|---|---|---|
+| U | fault injection 75 of 75 with 14 guards in 10 files (44 of 75 fail without them); voice 6 of 6 (6 of 6 without the guards fail); rollback 26 of 26; adversarial `added_wave2` 9 of 10 (`reflection_bounded_when_everything_asks` fails: 21 lines against 20); Wave 0 digest unchanged ([REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md)) | no default changed |
+| F | the existing loop against no loop 0.574 → 0.631 and 0.497 → 0.571 (8 of 8 seeds) at about twice the pages, but knowledge decays in every configuration (0.88 → 0.44, 0.85 → 0.46 over 14 cycles); each of lane K's six mechanisms "no evidence" (`genesis_learning_cycles.json`) | nothing to turn on for knowledge quality |
+| L | integrated 0.710 against the baseline's 0.713 (paired −0.003, sd 0.028), no link alone above the baseline, +70 % wall time; scenario records worse than equal futures (0.698–0.712 against 0.667) (`genesis_integration.json`) | the integrated configuration is not recommended; salience attention off (no gain); the arbitration record on (identical results, a record) |
 
 ## 5. Integration work already known
 

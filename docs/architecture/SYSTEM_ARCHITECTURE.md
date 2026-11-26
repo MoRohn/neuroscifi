@@ -85,6 +85,14 @@ AI-agent action controls (from the mandate): the executive never acts on externa
 - **Observability.** JSON outputs. `nsf regulation` reports backlog, write volume, pause state and open questions. `nsf birth` reports the inventory and development counters. `nsf bench` reports decision latency percentiles on the host. The servers keep no content logs by design.
 - **Recovery.** `nsf checkpoint create|verify|restore`. Restore never overwrites and never resurrects forgotten ids.
 
-## 7. Technology choices
+## 7. Cognitive mechanisms added by Project Cognitive Genesis
+
+The records, switches and flows added in Waves 0–2 (the quarantined imagined store, the quiet switch and one admission
+rule, the internal-state, salience, monitoring and arbitration records, the self-description, the imagination
+commands, the knowledge re-check and reflection) are described as the code runs them, with what is real,
+display-only or absent at the shipped defaults, in
+[ARCHITECTURE_AFTER_GENESIS.md](../genesis/ARCHITECTURE_AFTER_GENESIS.md). Decisions: ADR-049 to ADR-056.
+
+## 8. Technology choices
 
 Python 3.12 with numpy 2.3.5 and zstandard 0.25.0 (prototype pins). SQLite from the standard library. The web side is vanilla ES modules with no build step and a strict CSP. Tests use pytest, Node for the JavaScript checks, and Playwright with Chromium plus axe-core for end-to-end and accessibility. Linting is ruff with error-class rules only (ADR-004).

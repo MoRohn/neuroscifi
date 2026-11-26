@@ -386,6 +386,11 @@ the DGX Spark, the open web or a live answer model).
 
 Not run here: anything on the open web, a live answer model, real hardware, a real second account, or systemd.
 
+CI's first run on the Wave 1 pull request (at `1152654`) failed `tests/e2e/test_presence.py::test_presence_axe[dark]`:
+axe read Pocket's nav links while their background was still fading after the theme switch, a race in the test, not
+in the product (the push run on the same commit passed); it was fixed in `7b24901` by waiting until no colour
+transition is running, and CI then passed all six checks.
+
 ## 8. The withheld run
 
 The withheld family was looked at once for Wave 1, on the clean final tree `816fa12`, after every fix above and
