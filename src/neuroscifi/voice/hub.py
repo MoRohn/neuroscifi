@@ -33,6 +33,11 @@ never RESUME_MAX_AGE after the task finished; it says "before the restart" only 
 When the person is live only on another process when the answer is ready, that process's follower (if it has one)
 gets ELSEWHERE_GRACE seconds to claim it; if none did, the answer goes into the asking session's transcript (review1b
 R3: it used to be left undelivered, and stayed awaited on the ended session).
+A claim that cannot be made (the database stays locked past its wait, an I/O error) is not a claim (Wave 2 lane X,
+review2 M1): nothing is delivered, the follow stays on the sessions, and the follower asks again after each pause
+of CLAIM_WAITS (until FOLLOW_MAX), logging the task id and the error's type; it delivers only on a real count above
+0, after reading the task again (a task forgotten meanwhile is never given). The answer is then late, never given
+twice and never given after a forget.
 """
 from __future__ import annotations
 
@@ -78,6 +83,9 @@ FOLLOW_FIRST = 0.1           # the first wait; it doubles up to FOLLOW_POLL (fol
 FOLLOW_MAX = 3 * 3600.0
 RESUME_MAX_AGE = 24 * 3600.0  # a task that finished longer ago than this is not picked up by a new session
 ELSEWHERE_GRACE = 3 * FOLLOW_POLL  # how long another process's follower may claim an answer before this one does
+# Wave 2 lane X (review2 M1): the pauses between attempts at a delivery claim that could not be made; the last one
+# repeats until FOLLOW_MAX, so a database that stays unwritable costs one log line per pause, never a busy loop
+CLAIM_WAITS = (0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 300.0)
 _LIVE_HUBS: set[str] = set()  # the follow_by tokens of this process's hubs that are not closed
 PROGRESS_SPEAK_EVERY = 30.0
 TERMINAL = ("completed", "partial", "failed", "cancelled")
@@ -95,6 +103,15 @@ def follow_waits():
     while True:
         yield wait
         wait = min(FOLLOW_POLL, wait * 2)
+
+
+def claim_waits():
+    """The pauses before asking a delivery claim again (CLAIM_WAITS, read when the follower starts); the last one
+    repeats."""
+    waits = tuple(CLAIM_WAITS)
+    yield from waits
+    while True:
+        yield waits[-1]
 
 
 def sentences(texts) -> list[str]:
@@ -329,8 +346,8 @@ class VoiceHub:
             if self._resume_follow(s, context.get("follow_task_id"), context.get("follow_by"), previous) is not None:
                 raise TypeError("the pick-up returned a value; it returns nothing")
         except Exception as exc:          # noqa: BLE001 - logged; the session starts without the pick-up
-            log.warning("voice follow-up: picking up task %s failed (%s: %s); the session starts without it",
-                        context.get("follow_task_id"), type(exc).__name__, exc)
+            log.warning("voice follow-up: picking up task %s failed (%s); the session starts without it",
+                        context.get("follow_task_id"), type(exc).__name__)
         return self.public(s)
 
     def _resume_follow(self, s: Session, task_id, by=None, previous=None):
@@ -343,28 +360,40 @@ class VoiceHub:
             return
         if not self._watch(task_id, unless_followed=True):
             return                   # this hub still follows it (a session that merely ended, not a restart)
-        alive = _hub_alive(by)
-        try:
-            with self.db() as db:
-                task = orchestrator.get(db, task_id, family=s.principal.family)
-        except InstanceError:
-            task = None
-        finished = task.get("finished_at") if task else None
-        ended = (previous or {}).get("ended_at")
-        stale = task is None or (task["status"] in TERMINAL and finished is not None and (
-            self.clock() - finished > RESUME_MAX_AGE or (alive is not False and ended is not None
-                                                          and finished < ended)))
-        if stale or not self._followers.acquire(blocking=False):
-            with self.lock:
-                self._following.pop(task_id, None)
-            if stale:
+        slot = started = False
+        try:        # Wave 2 lane X (review2 L6): a failure part-way gives back the count and the slot taken here
+            alive = _hub_alive(by)
+            try:
                 with self.db() as db:
-                    tx.clear_follow(db, s.principal.name, task_id)
-            return
-        self._emit(s, "notice", text="Picking up the research you asked about before the restart." if alive is False
-                   else "Picking up the research you asked about earlier.")
-        threading.Thread(target=self._follow, args=(s, task_id, True, True), daemon=True,
-                         name="nsf-voice-follow").start()
+                    task = orchestrator.get(db, task_id, family=s.principal.family)
+            except InstanceError:
+                task = None
+            finished = task.get("finished_at") if task else None
+            ended = (previous or {}).get("ended_at")
+            stale = task is None or (task["status"] in TERMINAL and finished is not None and (
+                self.clock() - finished > RESUME_MAX_AGE or (alive is not False and ended is not None
+                                                              and finished < ended)))
+            slot = not stale and self._followers.acquire(blocking=False)
+            if not slot:                         # the count goes back below (finally)
+                if stale:
+                    with self.db() as db:
+                        tx.clear_follow(db, s.principal.name, task_id)
+                return
+            self._emit(s, "notice", text="Picking up the research you asked about before the restart."
+                       if alive is False else "Picking up the research you asked about earlier.")
+            threading.Thread(target=self._follow, args=(s, task_id, True, True), daemon=True,
+                             name="nsf-voice-follow").start()
+            started = True
+        finally:
+            if not started:
+                with self.lock:
+                    left = self._following.get(task_id, 1) - 1
+                    if left > 0:
+                        self._following[task_id] = left
+                    else:
+                        self._following.pop(task_id, None)
+                if slot:
+                    self._followers.release()
 
     def _wake(self, s: Session, mode):
         """Load again the speech services this mode needs if the idle policy unloaded them; the client is told
@@ -909,6 +938,23 @@ class VoiceHub:
             if turn is not None:
                 threading.Thread(target=self._synthesize, args=(s, turn, received), daemon=True,
                                  name="nsf-voice-tts").start()
+        # R8: the follow is kept with the session BEFORE the reply that promises it is shown (Wave 2 lane X: it used
+        # to be written after, so a process that ended right after the acknowledgement lost the follow); the
+        # follower starts after the reply, so its events come after it
+        follow = reply.follow if reply.follow and s.principal.research else None
+        slot = kept = False
+        if follow:
+            slot = self._followers.acquire(blocking=False)
+            if slot:
+                with self.db() as db:      # R8: kept with the session, so a restarted process picks it up again
+                    try:
+                        if vconfig.get(db).get("resume_follow"):     # off: nothing is written (review1 A15)
+                            tx.update_session(db, s.id, self.clock(), context={"follow_task_id": follow,
+                                                                              "follow_by": self.token})
+                            kept = True
+                    except (NotFound, InstanceError):
+                        pass
+                self._watch(follow)
         self._emit(s, "reply", reply=reply.public(), segment=_seg(seg) if seg else None,
                    turn={"id": turn.id, "sentences": len(turn.sentences)} if turn else None)
         for action in actions_after:
@@ -933,19 +979,9 @@ class VoiceHub:
                     self._deliver(s, rest)
                 else:
                     self._emit(s, "notice", text="There is nothing interrupted to continue.")
-        if reply.follow and s.principal.research:
-            if self._followers.acquire(blocking=False):
-                kept = False
-                with self.db() as db:      # R8: kept with the session, so a restarted process picks it up again
-                    try:
-                        if vconfig.get(db).get("resume_follow"):     # off: nothing is written (review1 A15)
-                            tx.update_session(db, s.id, self.clock(), context={"follow_task_id": reply.follow,
-                                                                              "follow_by": self.token})
-                            kept = True
-                    except (NotFound, InstanceError):
-                        pass
-                self._watch(reply.follow)
-                threading.Thread(target=self._follow, args=(s, reply.follow, True, kept), daemon=True,
+        if follow:
+            if slot:
+                threading.Thread(target=self._follow, args=(s, follow, True, kept), daemon=True,
                                  name="nsf-voice-follow").start()
             else:
                 self._emit(s, "notice", text="The research continues, but I can't follow more tasks right now; ask "
@@ -1158,6 +1194,7 @@ class VoiceHub:
         started = time.monotonic()
         last_stage, last_spoken = None, time.monotonic()
         waits = follow_waits()
+        pauses, graced = claim_waits(), False
         while time.monotonic() - started < FOLLOW_MAX:
             try:
                 with self.db() as db:
@@ -1167,23 +1204,30 @@ class VoiceHub:
             live = self._live(s)
             if task["status"] in TERMINAL:
                 if kept:
-                    with self.db() as db:
-                        elsewhere = live is None and tx.active_elsewhere(db, s.principal.name, list(self.sessions))
-                    if elsewhere:            # the person is on another process now: its follower, if it has one,
-                        if self._closed.wait(ELSEWHERE_GRACE):     # tells them; if none claims it, this one
-                            return           # writes it into the asking transcript (review1b R3)
-                        live = self._live(s)
-                    try:     # Wave 2 lane U: a claim that fails delivers here, as before R8, rather than never
+                    if not graced:
+                        graced = True
                         with self.db() as db:
-                            claimed = tx.clear_follow(db, s.principal.name, task_id)
-                        if not isinstance(claimed, int):
-                            raise TypeError(f"the claim returned {type(claimed).__name__}, not a count")
-                    except Exception as exc:     # noqa: BLE001 - logged; the answer still reaches the person
-                        log.warning("voice follow-up: the delivery claim of task %s failed (%s: %s); delivered "
-                                    "by this follower", task_id, type(exc).__name__, exc)
-                        claimed = 1
+                            elsewhere = live is None and tx.active_elsewhere(db, s.principal.name,
+                                                                             list(self.sessions))
+                        if elsewhere:        # the person is on another process now: its follower, if it has one,
+                            if self._closed.wait(ELSEWHERE_GRACE):     # tells them; if none claims it, this one
+                                return       # writes it into the asking transcript (review1b R3)
+                            live = self._live(s)
+                    claimed = self._claim(s, task_id)
+                    if claimed is None:      # could not ask is not a yes (Wave 2 lane X, review2 M1): nothing is
+                        pause = next(pauses)  # delivered and the follow stays; the claim is asked again later
+                        log.warning("voice follow-up: the delivery claim of task %s could not be made; asked again "
+                                    "in %.1f s, nothing delivered meanwhile", task_id, pause)
+                        if self._closed.wait(pause):
+                            return
+                        continue
                     if not claimed:
                         return               # delivered by another follower, or forgotten meanwhile
+                    try:                     # claimed: read it again, so a task forgotten meanwhile is not given
+                        with self.db() as db:
+                            task = orchestrator.get(db, task_id, family=s.principal.family)
+                    except InstanceError:
+                        return
                 target = live or s           # no open session: the answer still goes into the asking transcript
                 reply = vbridge.compose_answer(task)
                 reply.actions.append({"kind": "context", "last_task_id": task_id, "follow_task_id": None})
@@ -1208,6 +1252,22 @@ class VoiceHub:
         if kept:                                     # given up: no later session picks it up (review1 S9)
             with self.db() as db:
                 tx.clear_follow(db, s.principal.name, task_id)
+
+    def _claim(self, s: Session, task_id) -> int | None:
+        """One attempt at the delivery claim (transcripts.clear_follow): how many sessions awaited the answer, or
+        None when it could not be made (it raised, timed out, or returned something that is not a count). A failure
+        is logged with the task id and the exception's type only."""
+        try:
+            with self.db() as db:
+                claimed = tx.clear_follow(db, s.principal.name, task_id)
+        except Exception as exc:         # noqa: BLE001 - logged; the caller asks again later and delivers nothing
+            log.warning("voice follow-up: the delivery claim of task %s failed (%s)", task_id, type(exc).__name__)
+            return None
+        if isinstance(claimed, int) and not isinstance(claimed, bool):
+            return claimed
+        log.warning("voice follow-up: the delivery claim of task %s returned %s, not a count", task_id,
+                    type(claimed).__name__)
+        return None
 
     # ---- transcripts -------------------------------------------------------------------------------------------------
     def transcripts(self, principal, *, session_id=None, query=None, limit=200) -> dict:
