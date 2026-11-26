@@ -90,6 +90,7 @@ OPTIONS = {"type": "object", "additionalProperties": False, "properties": {
     "markers": {"enum": ["auto", "on", "off"]},
     "y_from_zero": {"type": "boolean"},
     "y_min": {"type": "number"}, "y_max": {"type": "number"},
+    "x_min": {"type": "number"}, "x_max": {"type": "number"},
     "mode": {"enum": ["grouped", "stacked"]},
     "bins": {"type": "integer", "minimum": 1, "maximum": 500},
     "bin_width": {"type": "number", "minimum": 0},
@@ -442,6 +443,10 @@ def _xy(spec, form):
     ylo, yhi, n2 = _y_domain(ys, o, from_zero=bool(o.get("y_from_zero", False)), log=(yk == "log"))
     notes += n2
     xlo, xhi = min(xs), max(xs)
+    if "x_min" in o and (xk != "log" or o["x_min"] > 0):    # the x axis covers at least [x_min, x_max]
+        xlo = min(xlo, float(o["x_min"]))
+    if "x_max" in o:
+        xhi = max(xhi, float(o["x_max"]))
 
     line = form == "chart_line"
     show_markers = o.get("markers", "auto") == "on" or (

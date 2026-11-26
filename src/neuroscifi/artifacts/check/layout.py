@@ -211,6 +211,8 @@ class Colours:
             return None
         alpha = 1.0
         for n in [node, *node.ancestors()]:
+            if n.tag == "g" and "frame" in n.classes():
+                continue    # an animation frame is judged as it looks while it is shown
             alpha *= max(0.0, min(1.0, fnum(n.attrs.get("opacity"), 1.0)))
         for n in [node, *node.ancestors()]:
             if f"{prop}-opacity" in n.attrs:
@@ -311,6 +313,10 @@ def _axis_of(node: Elem) -> str | None:
     return None
 
 
+def _frame_of(node: Elem):
+    return next((a for a in node.ancestors() if a.tag == "g" and "frame" in a.classes()), None)
+
+
 def _in_tick(node: Elem) -> bool:
     return any("tick" in n.classes() for n in node.ancestors())
 
@@ -375,6 +381,9 @@ def check_layout(root: Elem) -> tuple[list[Finding], list[Finding]]:
                     continue
                 share = area / max(1e-9, min(_area(pi), _area(pj)))
                 ti, tj = boxes[i][1], boxes[j][1]
+                fi, fj = _frame_of(ti), _frame_of(tj)
+                if fi is not None and fj is not None and fi is not fj:
+                    continue        # two frames of an animation are never shown together
                 ai, aj = _axis_of(ti), _axis_of(tj)
                 rule = f"tick_labels_overlap_{ai}" if ai and ai == aj and _in_tick(ti) and _in_tick(tj) else "text_overlap"
                 worst[rule] = max(worst.get(rule, 0.0), share)

@@ -513,13 +513,13 @@ def _match(source, recovered, ax: Axis, ay: Axis):
     return matched, used.count(False)
 
 
-def carried_xy(scope: Elem, data: dict, options: dict, *, line: bool) -> list:
+def carried_xy(scope: Elem, data: dict, options: dict, *, line: bool, plots_in: Elem | None = None) -> list:
     axes = axes_of(scope)
     out = _axes_ok(axes)
     if "x" not in axes or "y" not in axes or axes["x"].kind == "band" or axes["y"].kind == "band":
         return out + [_finding("values_recovered", False, "the axes cannot be fitted, so no value can be read", 0.0)]
     ax, ay = axes["x"], axes["y"]
-    plots = [n for n in scope.iter() if n.tag == "g" and "plot" in n.classes()]
+    plots = [n for n in (plots_in or scope).iter() if n.tag == "g" and "plot" in n.classes()]
     recovered = {s.name: s for p in plots for s in plot_marks(p)}
     xk, yk = data["x"].get("scale", "linear"), data["y"].get("scale", "linear")
     found = total = stray = 0
@@ -543,14 +543,14 @@ def carried_xy(scope: Elem, data: dict, options: dict, *, line: bool) -> list:
     return out + _report(found, total, stray, "points", extra)
 
 
-def carried_bar(scope: Elem, data: dict, options: dict) -> list:
+def carried_bar(scope: Elem, data: dict, options: dict, plots_in: Elem | None = None) -> list:
     axes = axes_of(scope, bands=("x",))
     out = _axes_ok(axes)
     ax, ay = axes.get("x"), axes.get("y")
     if ax is None or ay is None or ax.kind != "band" or ay.kind not in ("linear",):
         return out + [_finding("values_recovered", False, "the axes cannot be read as categories and values", 0.0)]
     stacked = options.get("mode") == "stacked"
-    plots = [n for n in scope.iter() if n.tag == "g" and "plot" in n.classes()]
+    plots = [n for n in (plots_in or scope).iter() if n.tag == "g" and "plot" in n.classes()]
     recovered = {s.name: s for p in plots for s in plot_marks(p)}
     cats = data["categories"]
     labelled = [c for c in cats if c in ax.categories]
@@ -894,6 +894,50 @@ def carried_diagram(root: Elem, form: str, data: dict) -> list:
     return _report(n_found + e_found, total, stray, "nodes and edges", extra)
 
 
+def carried_animation(root: Elem, data: dict, options: dict) -> list:
+    """Each frame's plot read through the shared axes and compared with that frame's data; the static picture (no
+    animation, or reduced motion) must be the last frame alone."""
+    frames = [g for g in root.iter() if g.tag == "g" and "frame" in g.classes()]
+    src = data.get("frames", [])
+    form = data.get("form")
+    found = total = stray = 0
+    other = []
+    for g, f in zip(frames, src):
+        if form == "chart_bar":
+            sub, _style = carried_bar(root, f["data"], options, plots_in=g)
+            what = sum(1 for s in f["data"]["series"] for v in s["values"] if v is not None)
+        else:
+            sub = carried_xy(root, f["data"], options, line=form == "chart_line", plots_in=g)
+            what = sum(len(_source_points(s, f["data"]["x"].get("scale", "linear"), f["data"]["y"].get(
+                "scale", "linear"), None)) for s in f["data"]["series"])
+        total += what
+        for fd in sub:
+            if fd.rule == "values_recovered":
+                found += round((fd.measure or 0) * what)
+            elif fd.rule == "marks_match_source":
+                stray += int(fd.measure or 0)
+            elif not fd.passed:
+                other.append(fd)
+    for f in src[len(frames):]:
+        total += 1
+    hidden = [g.attrs.get("opacity", "").strip() in ("0", "0.0") for g in frames]
+    static_ok = bool(frames) and all(hidden[:-1]) and not hidden[-1]
+    css = "".join(n.text for n in root.iter() if n.tag == "style")
+    flat = re.sub(r"\s+", "", css).lower()
+    reduced = bool(re.search(r"@media\(prefers-reduced-motion:reduce\)\{[^{}]*\.frame\{animation:none", flat))
+    extra = [_finding("frames_present", len(frames) == len(src), f"{len(frames)} of {len(src)} frames drawn"),
+             _finding("static_last_frame", static_ok, "without animation the last frame alone is shown"
+                      if static_ok else "the still picture is not the last frame alone"),
+             _finding("reduced_motion_honoured", reduced, "reduced motion turns the animation off" if reduced else
+                      "no reduced-motion rule turns the animation off")]
+    seen = set()
+    for fd in other:
+        if fd.rule not in seen:
+            seen.add(fd.rule)
+            extra.append(fd)
+    return _report(found, total, stray, "values across all frames", extra)
+
+
 def carried(root: Elem, form: str, data: dict, options: dict) -> tuple[list, list]:
     """(technical, style) findings of carried information for a chart form (empty when it is not a chart)."""
     if form in ("chart_line", "chart_scatter"):
@@ -933,6 +977,8 @@ def carried(root: Elem, form: str, data: dict, options: dict) -> tuple[list, lis
         return _report(found, total, stray, "points", extra), []
     if form == "timeline":
         return carried_timeline(root, data, options), []
+    if form == "animation_svg":
+        return carried_animation(root, data, options), []
     if form in ("graph_nodelink", "graph_tree", "flow_steps"):
         return carried_diagram(root, form, data), []
     return [], []

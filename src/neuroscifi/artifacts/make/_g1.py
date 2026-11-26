@@ -33,7 +33,7 @@ class G1Generator(Generator):
 
 
 def _table():
-    from . import charts, datafiles, documents, flow, graphs, tables, timeline
+    from . import animation, charts, datafiles, documents, flow, graphs, tables, timeline
     rows = [(form, fn, data, charts.OPTIONS, "image/svg+xml") for form, (fn, data) in charts.GENERATORS.items()]
     rows += [
         ("timeline", timeline.make_timeline, timeline.DATA, timeline.OPTIONS, "image/svg+xml"),
@@ -45,6 +45,7 @@ def _table():
         ("document_md", documents.make_markdown, documents.DATA, documents.OPTIONS, "text/markdown"),
         ("data_csv", datafiles.make_csv, datafiles.DATA, datafiles.OPTIONS, "text/csv"),
         ("data_json", datafiles.make_json, datafiles.DATA, datafiles.OPTIONS, "application/json"),
+        ("animation_svg", animation.make_animation, animation.ANIMATION_DATA, charts.OPTIONS, "image/svg+xml"),
     ]
     return rows
 
