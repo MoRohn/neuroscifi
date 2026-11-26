@@ -70,8 +70,9 @@ def default_dir(db_path):
     return path.parent / f"{path.stem}.checkpoints"
 
 
-# Deletions of payload (not the checkpoint bookkeeping that rebuild and prune log).
-_LAST_DELETION = "SELECT COALESCE(MAX(id),0) FROM deletion_log WHERE target_kind!='checkpoint'"
+# Deletions of payload (not the checkpoint bookkeeping that rebuild and prune log, nor a web setting's change:
+# webcortex.state.SETTING_KIND, which deletes nothing).
+_LAST_DELETION = "SELECT COALESCE(MAX(id),0) FROM deletion_log WHERE target_kind NOT IN ('checkpoint','web_setting')"
 
 
 def create(db, db_path, out_dir, now, *, policy="cold"):

@@ -136,7 +136,7 @@ def _web(report, a, db):
     elif a.dry_run:
         _step(report, "web", "would do", "turn on web access and Pocket research")
     else:
-        state.set_config(db, {"enabled": True, "pocket_research": True}, time.time())
+        state.set_config(db, {"enabled": True, "pocket_research": True}, time.time(), by="owner:setup")
         _step(report, "web", "done", "web access and Pocket research are on")
 
 
@@ -296,7 +296,8 @@ def _brave(report, a, db):
         elif a.dry_run:
             _step(report, "brave_cap", "would do", f"set the daily cap to {a.brave_daily_cap}")
         else:
-            state.set_config(db, {"daily_provider_queries": {"brave": a.brave_daily_cap}}, time.time())
+            state.set_config(db, {"daily_provider_queries": {"brave": a.brave_daily_cap}}, time.time(),
+                             by="owner:setup")
             _step(report, "brave_cap", "done", f"daily cap {a.brave_daily_cap}"
                   + (" (Brave off)" if a.brave_daily_cap == 0 else ""))
 

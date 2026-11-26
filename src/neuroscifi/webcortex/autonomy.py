@@ -154,12 +154,12 @@ def record_switch(db, on: bool, now, *, by="owner") -> dict:
 
 
 def enable(db, now, *, by="owner") -> dict:
-    state.set_config(db, {"autonomous": True}, now)
+    state.set_config(db, {"autonomous": True}, now, by=by)
     return record_switch(db, True, now, by=by)
 
 
 def disable(db, now, *, by="owner") -> dict:
-    state.set_config(db, {"autonomous": False}, now)
+    state.set_config(db, {"autonomous": False}, now, by=by)
     return record_switch(db, False, now, by=by)
 
 

@@ -406,7 +406,7 @@ def _worker_view(c, worker) -> dict:
 def _web_config_set(c, p, q, b):
     _fields(b, (), WEB_SWITCHES)
     before = wstate.get_config(c.db).autonomous
-    cfg = wstate.set_config(c.db, b, c.now)
+    cfg = wstate.set_config(c.db, b, c.now, by="owner:console")
     if "autonomous" in b and (b["autonomous"] or before):   # the owner's switch is recorded (D4)
         from ..webcortex import autonomy
         autonomy.record_switch(c.db, bool(b["autonomous"]), c.now, by="owner:console")

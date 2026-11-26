@@ -411,6 +411,19 @@ def test_forget_a_consolidated_reading_and_a_camera(console, new_page):
     go(page, "memory")
     assert "porch-cam" not in page.locator("#memory").inner_text()       # the log keeps a digest label only
     expect(page.locator("#deletionLog")).to_contain_text("camera camera:#")
+    # a web setting's change is in the log by name and who changed it, never its value (OMNIMIND lane S)
+    from neuroscifi.webcortex import state
+    db = store.open_existing(console.path)
+    try:
+        state.set_config(db, {"private_terms": ["porch-secret"]}, time.time(), by="owner:console")
+    finally:
+        db.close()
+    go(page, "overview")
+    go(page, "memory")
+    expect(page.locator("#deletionLog")).to_contain_text("web_setting private_terms")
+    expect(page.locator("#deletionLog")).to_contain_text("Web setting changed by owner:console; the value is not "
+                                                         "recorded.")
+    assert "porch-secret" not in page.locator("#memory").inner_text()
 
 
 def test_the_overview_says_when_consolidated_readings_reach_their_limit(console, new_page):

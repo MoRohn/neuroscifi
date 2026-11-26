@@ -1332,6 +1332,7 @@ async function loadMemory() {
     ? table('Deletion log, newest first', [{ label: 'Id', num: true }, 'Time', 'Target', 'Effects', 'Failure'],
         deletions.items.map((d) => [d.id, fmtTime(d.time), `${d.payload.target_kind} ${d.payload.target_id}`,
           d.payload.target_kind === 'setting' ? settingSummary(d.payload.effects ?? {})
+            : d.payload.target_kind === 'web_setting' ? webSettingSummary(d.payload.effects ?? {})
             : forgetSummary({ status: 'forgotten', effects: d.payload.effects ?? {} }), d.payload.failure ?? 'none']))
     : empty('Nothing has been forgotten or expired.'));
   fill($('decisionLog'), decisions.items.length
@@ -1347,6 +1348,11 @@ function scopeText(scope) {
 }
 
 // A changed instance setting in the deletion log (the log is where forgets and sweeps are, whose meaning it changes).
+// A web setting's row names who changed it, never the value (it may be private: the private terms).
+function webSettingSummary(e) {
+  return `Web setting changed${e.by ? ` by ${e.by}` : ''}; the value is not recorded.`;
+}
+
 function settingSummary(e) {
   return `Setting changed from ${JSON.stringify(e.from)} to ${JSON.stringify(e.to)}` +
     (e.carried_by_restore ? ', carried over from the instance this copy was restored from.' : '.');
