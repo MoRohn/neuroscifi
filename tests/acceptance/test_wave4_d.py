@@ -105,7 +105,8 @@ def test_every_saved_instance_setting_is_checked_and_a_damaged_one_is_listed(tmp
                     assert not allowed and f"saved {f.name} is damaged" in reason, (f.name, junk)
                     assert f"nsf config --repair-fixed {f.name}=" in reason and listed[0].endswith(")"), junk
                 else:
-                    assert getattr(cfg, f.name) == cautious.get(f.name, getattr(store.InstanceConfig, f.name)), \
+                    # (the default read from an instance: a list setting such as artifact_adapters has a factory)
+                    assert getattr(cfg, f.name) == cautious.get(f.name, getattr(store.InstanceConfig(), f.name)), \
                         (f.name, junk)
 
 
