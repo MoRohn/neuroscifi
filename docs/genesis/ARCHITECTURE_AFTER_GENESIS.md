@@ -1,7 +1,7 @@
 # Architecture after Project Cognitive Genesis (deliverable I)
 
-Status: 2026-11-25, on the Wave 2 integration tree `828ca8e` (branch `genesis-wave2`); §8 added for Wave 3 on
-2026-11-26. Deliverable I of the
+Status: 2026-11-25, on the Wave 2 integration tree `828ca8e` (branch `genesis-wave2`); §8 added for Wave 3 and §9
+for Wave 4 on 2026-11-26. Deliverable I of the
 directive's §13: the subsystems and information flows as the code actually runs them after Waves 0, 1 and 2: what
 produces which record, who reads it, which setting gates it, and whether it is **real** (a consumer changes behaviour
 on it), **display-only** (recorded or shown, nothing acts on it) or **absent** at the shipped defaults. The core of
@@ -282,3 +282,81 @@ imagined, never evidence; nothing stored; the command opens no individual.
 | front door (`nsf imagine scm`) | on | real for the owner's command (an answer shown, nothing stored) |
 | `nsf readiness`, `uncertain.outcomes_readiness` | always | display-only (read-only, owner scope) |
 | the three reconciliation guards (claims, echoes, the rule) | always | act only when a mechanism fails |
+
+## 9. After Wave 4 (2026-11-26; [WAVE4.md](WAVE4.md))
+
+Read from `3032cf6` (`genesis-wave4` after its fix lane); ADR-064 to ADR-067. No schema change (19); no new
+background activity, daemon, listener or dependency.
+
+**What counts as an independent source, at the shipped defaults: unchanged.** `claims.independence_groups` groups
+as in §8 (`origin_grouping` "transitive"). Wave 4 added two rules on top of it, both off.
+
+**Derivation** (`source_derivation`, off; ADR-066; code in `webcortex/claims.py`). With it on,
+`claims.stamp_origins(..., derivation=True)` stores on each claim `flags["derivation"]["cites"]`: the normalised
+names (`"name:<site label>"`, at most 16, the first 5,000 words read) of the other pages of the task that its page
+names in capitalised words or links to (`derivation_cites`), never a flagged or claimless page, never the subject's own
+name or a calendar word, never a page stated as published later. `independence_groups` then takes today's groups and
+only joins them, one edge per group chosen from content (`_derivation_edges`); claims are loaded with the settings in
+force (`state.claim_from_row`), so stored marks are inert when it is off. It runs inside consolidation's write
+transaction in memory over one task's claims and reads no row. Real when on; absent at the defaults.
+
+**What the individual itself said** (`own_text_provenance`, off; ADR-067; new module `webcortex/emitted.py`). With it
+on, the orchestrator's final write of an owner's model-written answer (`emitted.owner_task`: console, CLI, voice,
+`refresh-owner:`) records, for each asserting part of a sentence (`emitted.asserted`), the (subject name, value) pairs
+it states (`names`, `value_key`) with their time and whether a claim read by then states them (`prepare`, one bounded
+pass before the write transaction; `record` inside it). Stored as salted digests in `web_strategies` rows
+(`emitted:<digest>`, `emitted-task:<digest>`; primary-key reads only; at most 200,000 rows; an emission counts for 30
+days). Consolidation's `emitted.Echoes` (built before the write transaction, at most 512 point lookups) marks a page's
+claim as an echo when the earliest emission of one of its pairs was unsourced and made before the page was read; an
+echo leaves the supporting side, supersession never counts it, and a held item it disagrees with is asked about as a
+contradiction (`consolidate._echo_disagreement`) and neither superseded nor weakened. With both rules on,
+`emitted.derivation_hook` is passed as `stamp_origins(echo=...)` at the orchestrator's two call sites (evaluate,
+adaptive depth) and in the harnesses, so a marked page is in no group. Forget and restore: `_forget_research_core`
+calls `emitted.forget_task`; a forgotten knowledge item calls `forget_knowledge` (live and on replay); `nsf web config
+--forget-own-text` calls `forget_all`. Pocket, MCP and the self-description never read these rows. Real when on;
+absent at the defaults.
+
+**The caution** (always, display only; ADR-065; new module `webcortex/caution.py`). Computed when a view is drawn
+(`for_report`, `for_knowledge`, `for_pending`, `for_contested`; `facts` over the stored supporting claims with today's
+`independence_groups`; `_Own` reads `consolidate._Echoes` for the owner's views only, 0.5 s per view, at most 50
+statements in the open-questions view). Imported only by the views: `console/server.py`, `webcortex/cli.py`,
+`pocket/server.py`, `voice/hub.py`, `voice/bridge.py` (a test scans `src`); MCP does not import it. It shows "Only one
+source says this." for a single page; with `caution_detail` (off) also the copy trigger and the own-answer flag.
+Display-only.
+
+**The day's allowance** (`allowance_division`, `"race"`; ADR-064). With `"reserve"` or `"yield"`,
+`scheduler._division` computes places held for reaching (`round(tasks × reach_share)`, released while the admission
+rule admits no reaching candidate) and `scheduler._over_cap(..., held=)` keeps the timer's pass out of them;
+`autonomy.idle` takes reaching candidates into any room and records the division in its decision event. `"race"` reads
+nothing: absent at the defaults. **The tie-breaks** (always): `autonomy._lineage` visits the owner's records, then
+tasks in creation order; `curiosity.search_terms` and `rank` take the claim stored last (`rowid`). Real.
+
+**Settings and budgets** (always). `config.CHECKED_ON_LOAD` holds every `WebConfig` field; a damaged value reads as
+`config.CAUTIOUS` or its default, and the `FAILS_CLOSED` network limits turn web access off
+(`state.require_enabled` names `nsf web config --set NAME=VALUE`); `InstanceConfig` checks `ask_budget_per_epoch` and
+the settings fixed at `nsf init`, whose damage pauses writes (`write_allowed`, `fixed_damage`) until `nsf config
+--repair-fixed NAME=VALUE` (`store.repair_fixed`); `voice/config.py` checks every stored value. `orchestrator.requeue`
+checks the day's autonomous count inside its transaction; `governance.prepare_replay_marks` scans before a restore's
+transaction. Real.
+
+**Benchmark code** (`acceptance/cognition/sources.py`, new): the source-independence harness: the worlds
+(`sources_splits_dev.py`, `sources_splits_heldout.py`; `sources_withheld.py` loaded only by `sources.final()`), the
+metrics, the references, the verdict rules (`verdict_derivation`, `own_verdict`), the guard (pinned digests, a ledger
+line before loading); commands `scripts/bench_sources.py run|final`. Also `cycles_reach_splits.py` and the `division`
+configurations of `cycles.py` (`scripts/bench_learning_cycles.py division`, `division-cost`); `scripts/bench_caution.py`,
+`assess_derivation_evidence.py`, `compare_source_derivation.py`, `cost_source_derivation.py`,
+`families_with_source_derivation.py`, `report_source_derivation.py`, `summarise_wave4_e.py`, `summarise_wave4_fix.py`.
+
+**New owner commands:** `nsf config --repair-fixed NAME=VALUE`; `nsf web config --forget-own-text`.
+
+**The settings Wave 4 added, at the shipped defaults:**
+
+| Setting | Default | Real / display-only / absent |
+|---|---|---|
+| `source_derivation` (web) | off (not supported; not recommended) | absent |
+| `own_text_provenance` (web) | off | absent (nothing recorded or read) |
+| `allowance_division` (web), `reach_share` | `"race"`, 0.25 | absent (reads nothing) |
+| `caution_detail` (web) | off | absent; display-only when set |
+| the caution ("Only one source says this.") | always | display-only |
+| settings checked on load; fixed settings and network limits fail closed | always | real (acts only on a damaged value) |
+| `requeue` within the day's count; the restore's scan; the tie-breaks | always | real |
