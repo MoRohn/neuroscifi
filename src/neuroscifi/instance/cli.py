@@ -9,7 +9,7 @@ import sys
 import time
 
 from . import store
-from .errors import InstanceError
+from .errors import InstanceError, ValidationError
 
 SUBMODULES = ["neuroscifi.instance.cli_evidence", "neuroscifi.instance.cli_graphs", "neuroscifi.instance.cli_memory",
               "neuroscifi.instance.cli_imagined", "neuroscifi.instance.cli_imagine"]
@@ -208,6 +208,14 @@ def _config(db, args, now):
         changes["broadcast_threshold"] = args.broadcast_threshold
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
+    for item in args.repair_fixed or ():      # review4 M1: a damaged setting fixed at creation pauses writes
+        name, _, text = item.partition("=")
+        try:
+            value = json.loads(text)
+        except ValueError:
+            raise ValidationError(f"--repair-fixed {name}: the value must be JSON (a number, or null)") from None
+        out = out | {"changed": out["changed"] + store.repair_fixed(db, name.strip(), value, now)["changed"],
+                     "config": asdict(store.config(db))}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
     from . import graph_migration
     record = graph_migration._record(db) if store.config(db).graph_rule_migration else None
@@ -260,6 +268,10 @@ def register(sub):
 
     p = sub.add_parser("config", help="instance settings: show them, or change the ones an owner may change")
     store.add_db_argument(p)
+    p.add_argument("--repair-fixed", action="append", metavar="NAME=VALUE",
+                   help="repair a DAMAGED setting fixed at creation (evidence_ttl_seconds, max_evidence_rows, "
+                        "min_free_bytes, max_thermal_celsius); writes are paused until it is repaired. VALUE is JSON "
+                        "(a number, or null for no thermal limit); a sound fixed setting cannot be changed")
     p.add_argument("--ask-budget", type=bounded_int(0, 1000), help="questions per epoch and window before deferring")
     p.add_argument("--ask-window-days", type=days_or_zero,
                    help="the ask budget counts questions of the last this many days (0 = the whole epoch)")

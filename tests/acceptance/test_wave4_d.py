@@ -100,6 +100,10 @@ def test_every_saved_instance_setting_is_checked_and_a_damaged_one_is_listed(tmp
                 if f.name == "ask_budget_window_seconds":     # read by the executive, which says so with each decision
                     window, warning = executive._ask_window(cfg)
                     assert window == store.InstanceConfig.ask_budget_window_seconds and warning, junk
+                elif f.name in store._FIXED:                  # fails closed (Wave 4 fix, review4 M1)
+                    allowed, reason = store.write_allowed(db)
+                    assert not allowed and f"saved {f.name} is damaged" in reason, (f.name, junk)
+                    assert f"nsf config --repair-fixed {f.name}=" in reason and listed[0].endswith(")"), junk
                 else:
                     assert getattr(cfg, f.name) == cautious.get(f.name, getattr(store.InstanceConfig, f.name)), \
                         (f.name, junk)
@@ -127,6 +131,62 @@ def test_every_saved_voice_setting_is_checked_and_a_damaged_one_reads_as_its_cau
         assert len(vconfig.problems(db)) == 1
         _with(db, "voice_pref:fam", {"speed": "fast", "mode": "text_only"})
         assert vconfig.effective(db, "fam", owner=False)["speed"] == vconfig.DEFAULTS["speed"]
+
+
+OWNER_FIXED = {"evidence_ttl_seconds": 86400, "max_evidence_rows": 5000, "min_free_bytes": 1 << 20,
+               "max_thermal_celsius": 70}
+DAMAGED_FIXED = {"evidence_ttl_seconds": "1d", "max_evidence_rows": 5000.0, "min_free_bytes": "10G",
+                 "max_thermal_celsius": "70"}
+
+
+@pytest.mark.parametrize("name", sorted(OWNER_FIXED))
+def test_a_damaged_setting_fixed_at_creation_pauses_writes_until_the_owner_repairs_it(tmp_path, name, caplog):
+    """review4 M1: on main a damaged fixed setting made the write check fail; lane D read it as its loosest default
+    (no thermal limit, a 7-day lifetime, a million rows, a 64 MiB reserve) and logged that as "cautious"."""
+    from neuroscifi.instance import evidence
+    from neuroscifi.instance.errors import ValidationError, WritesPaused
+    path = tmp_path / f"fixed-{name}.sqlite"
+    db = store.create(path, T0, note="wave 4 fix M1", config=store.InstanceConfig(**OWNER_FIXED))
+    with closing(db):
+        assert store.write_allowed(db, path)[0] in (True, False)          # sound: whatever the host says
+        with pytest.raises(ValidationError):
+            store.repair_fixed(db, name, OWNER_FIXED[name])                # a sound fixed setting stays fixed
+        evidence.start_epoch(db, "desk", T0)
+        store._REPORTED.discard(name)
+        _with(db, "config", {name: DAMAGED_FIXED[name]})
+        with caplog.at_level("WARNING"):
+            allowed, reason = store.write_allowed(db, path)
+        assert not allowed and reason.startswith(f"the saved {name} is damaged, so writes are paused")
+        assert f"`nsf config --repair-fixed {name}=VALUE`" in reason
+        assert not any("cautious" in r.getMessage() for r in caplog.records)
+        assert any(f"{name} is damaged; writes are paused" in r.getMessage() for r in caplog.records)
+        with pytest.raises(WritesPaused):
+            evidence.observe(db, {"id": "ev-1", "epoch": "desk", "channel": "camera", "action": 1, "bit": 0,
+                                  "root": "cam-a"}, T0, path=path)
+        if name == "min_free_bytes":
+            with pytest.raises(WritesPaused, match="min_free_bytes is damaged"):
+                checkpoints.create(db, path, tmp_path / "ckpt", T0)
+        listed = [p for p in store.setting_problems(db) if f"saved {name} " in p]
+        assert len(listed) == 1 and "writes are paused" in listed[0]
+        with pytest.raises(ValidationError):
+            store.repair_fixed(db, name, "still junk")
+        out = store.repair_fixed(db, name, OWNER_FIXED[name], T0)
+        assert out["changed"] == [name] and getattr(store.config(db), name) == OWNER_FIXED[name]
+        assert not store.fixed_damage(db) and not [p for p in store.setting_problems(db) if f"saved {name} " in p]
+
+
+def test_the_owner_repairs_a_damaged_fixed_setting_with_the_named_command(tmp_path, capsys):
+    from neuroscifi.cli import main
+    path = tmp_path / "repair.sqlite"
+    db = store.create(path, T0, note="wave 4 fix M1 cli")
+    with closing(db):
+        _with(db, "config", {"max_thermal_celsius": "70"})
+        assert not store.write_allowed(db, path)[0]
+    main(["config", "--db", str(path), "--repair-fixed", "max_thermal_celsius=70"])
+    assert '"max_thermal_celsius"' in capsys.readouterr().out
+    db = store.open_existing(path)
+    with closing(db):
+        assert store.config(db).max_thermal_celsius == 70 and not store.fixed_damage(db)
 
 
 def test_damaged_saved_settings_are_shown_by_the_cli(tmp_path, capsys):

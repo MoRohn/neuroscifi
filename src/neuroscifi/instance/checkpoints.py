@@ -85,7 +85,10 @@ def create(db, db_path, out_dir, now, *, policy="cold"):
     out_dir = Path(out_dir)
     out_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(out_dir, 0o700)
-    # The snapshot and the archive can each approach the database size.
+    # The snapshot and the archive can each approach the database size. A damaged reserve is not read as a looser
+    # one (review4 M1): the checkpoint is refused, as on main, until the owner repairs it.
+    if "min_free_bytes" in store.fixed_damage(db):
+        raise WritesPaused(store.fixed_damage_reason(["min_free_bytes"]))
     needed = Path(db_path).stat().st_size + store.config(db).min_free_bytes
     free = shutil.disk_usage(out_dir).free
     if free < needed:
