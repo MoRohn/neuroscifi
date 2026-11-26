@@ -3264,3 +3264,150 @@ splits and the brief, and every later search excluded `*withheld*`.
   schema change, no migration, no background activity, no dependency.
 - The counterfactual family's recorded imagination figures move only in the front-door group and the pooled figures
   (held-out 0.875 -> 1.000, development 0.844 -> 0.969); earlier evidence files are not rewritten.
+
+# ADR-060 The order of the timer's knowledge re-check: what the loop's shortfall is made of, and an order by observed change that ships off
+
+Status: Wave 3 lane R, branch `gen3-r` from `a0717c1`. Measured on `320ae8e`. Evidence
+`docs/quality/evidence/genesis_recheck_order.json`. Simulated worlds through the real modules, offline, no model.
+
+## Context
+
+Wave 2 measured that the timer's loop recovers about half of what a blind same-budget round-robin recovers over
+never refreshing (RECURSIVE_KNOWLEDGE_ASSESSMENT §3), and that the idle re-check, which takes the oldest items, caught
+a change in 7 of 72 looks against 19 of 79 for the due order. Step 0 of Wave 3 confirmed the loop falling behind the
+blind schedule on the withheld worlds. FINAL_EVALUATION §6 direction 4: re-check what is likely to have changed, not
+what is oldest. The question: with the same budget, can the order in which the timer refreshes and re-checks be made
+at least as good as a blind schedule, and better where change rates differ?
+
+## Diagnosis (development only; `cycles.decompose`)
+
+The harness now records every autonomous look (what the newest held item was, what the look's pages said by
+majority, what it changed). `cycles.decompose` splits the gap between a reference and a run, in the units of the
+primary metric (`correct`, mean over cycles), into the subject-cycles where the reference holds the true version
+and the run does not: (a) **uncovered**, the run holds nothing (the owner's research gave the subject no knowledge);
+**wrong source**, the newest item is a wire-story or own-output version; (d) **found, not revised**, a look since the
+item went stale read the true version and the item stayed stale (contested; lane S's subject); **looked,
+unreadable**, looks since then whose pages did not show the true version; (c) **not looked**, no look since it went
+stale; minus where the run is ahead. The parts sum to the gap (tested). (b), looks spent on subjects that had not
+changed, is counted per look.
+
+Development, today's loop (`baseline`) against the blind round-robin (majority read), mean of 3 seeds:
+
+| World | Gap | (a) uncovered | (d) found, not revised | unreadable | (c) not looked | loop ahead | Looks used / allowance | (b) looks on unchanged subjects: loop / blind |
+|---|---|---|---|---|---|---|---|---|
+| dev-steady (lane F) | 0.194 | 0.114 | 0.035 | 0.006 | 0.050 | −0.011 | 21.0 / 24 | 71 % / 69 % |
+| dev-churn (lane F) | 0.132 | 0.074 | 0.032 | 0.008 | 0.033 | −0.015 | 27.7 / 36 | 46 % / 56 % |
+| dev-rate-mixed | 0.166 | 0.119 | 0.031 | 0.003 | 0.030 | −0.017 | 25.7 / 28 | 66 % / 67 % |
+| dev-rate-uniform | 0.185 | 0.097 | 0.061 | 0.012 | 0.045 | −0.030 | 25.7 / 28 | 42 % / 48 % |
+| dev-rate-shift | 0.158 | 0.133 | 0.010 | 0.019 | 0.029 | −0.033 | 23.7 / 29 | 49 % / 62 % |
+
+Pooled over the five worlds (pooled, not a claim): uncovered 64 % of the gap, found-not-revised 20 %, not looked 22 %,
+unreadable 6 %, the loop ahead −13 %; wrong source 0. Against the oracle the "not looked" part is larger (0.116 and
+0.151 of gaps 0.321 and 0.338 in lane F's worlds), because the oracle looks only at subjects that changed.
+
+What it decides. (a) dominates and is out of any order's reach: its subjects (an owner look that found one origin
+only, the wrong story alone, or a contested page set) are not knowledge, and the timer admits only knowledge items
+(`autonomy.admission`, "propose it instead"); the owner or the worker's idle investigation (not run here) could
+reach them. (d) is lane S's. The loop's own looks are not more wasteful than the blind schedule's ((b): 42–71 % on
+unchanged subjects against 48–69 %); what an order can reach is (c), 0.03–0.05 against the blind schedule, partly
+the 2–8 looks of the allowance the loop leaves unused per run. The rule cannot see a gain below the baseline's sd
+(0.03–0.10 on these seeds), so the expected effect of any order is at or below what the rule can see: build little.
+
+## Decision
+
+- **WebConfig.recheck_order**, default `"staleness"`: lane K's value (importance × staleness × futility),
+  unchanged. Otherwise a `+`-joined set of: `rate` (the chance the item changed since it was last verified,
+  1 − exp(−rate × TTLs elapsed), with the rate from its subject's own verified changes, the rows of its key a newer
+  version superseded, per TTL of exposure, and a prior of one change per TTL weighing as one TTL); `seen` (that chance
+  is 1 for an item marked to re-check, marked stale, or one a newer version was seen for); `rotation` (an item not
+  looked at for one TTL or more, by a refresh, a re-check, a curiosity task of its subject or a verification, goes
+  first, the longest-waiting first; alone, a blind rotation by last look).
+- It only re-orders the re-check's pool (`recheck.rank`'s `value`): the same items (those whose default value is
+  above 0), the same `info_gain`, `p_current` and signals, the same admission (`autonomy.admission(path="recheck")`),
+  the same per-pass and daily shares (`recheck_per_tick`, `recheck_daily`) and the daily autonomous allowance. It
+  reads only knowledge rows, refresh tasks and autonomous decision events; never an imagined record, never a model.
+  No new background activity, no schema change. It needs `idle_recheck` on to act.
+- Each pick's decision event records the order and its inputs (`autonomy.recheck.order`: rule, chance, changes seen,
+  rate, TTLs since verified and waited, overdue, newer seen); the self-description's "to re-check" names the order
+  when it is not the default.
+- **Default: unchanged (`staleness`; `idle_recheck` stays off).** No order showed a held-out gain (below).
+
+## Measured (held-out, once, on `320ae8e`)
+
+Worlds: `cycles_rate_splits.py` (committed alone first, `3f75ed8`; seeds 2701–2704: subjects with learnable rate
+classes, one rate for all, classes redrawn at one cycle with a per-cycle allowance) and lane F's held-out (disclosed:
+looked at by three lanes and two reviews before). `/all`: `recheck_per_tick` and `recheck_daily` 100 (the owner's
+bounds), so the re-check may take the whole daily allowance, which still caps every pass. Mean `correct` over 4
+seeds; paired gain against `baseline` (seeds better of 4); the rule's smallest visible gain is the baseline's sd.
+
+| | ho-rate-mixed | ho-rate-uniform | ho-rate-shift | ho-sparse (lane F) | ho-busy (lane F) |
+|---|---|---|---|---|---|
+| baseline sd (the smallest visible gain) | 0.089 | 0.071 | 0.080 | 0.105 | 0.057 |
+| reference: snapshot / blind round-robin / oracle | 0.651 / 0.724 / 0.873 | 0.573 / 0.724 / 0.949 | 0.712 / 0.797 / 0.940 | 0.670 / 0.786 / 0.957 | 0.574 / 0.708 / 0.928 |
+| no loop | 0.539 | 0.503 | 0.614 | 0.574 | 0.497 |
+| **baseline** (today's loop) | **0.587** | **0.617** | **0.646** | **0.631** | **0.571** |
+| lane K's order (`recheck:staleness`) | −0.023 (0) | +0.007 (2) | −0.002 (1) | −0.019 (1) | −0.004 (1) |
+| blind rotation, whole allowance (`recheck:rotation/all`) | −0.006 (0) | −0.007 (1) | +0.001 (2) | −0.007 (1) | +0.022 (3) |
+| **the combination** (`recheck:rate+seen+rotation/all`) | −0.003 (1) | −0.004 (1) | +0.004 (2) | −0.011 (1) | +0.005 (3) |
+| without rate (`seen+rotation/all`) | −0.003 (1) | −0.002 (2) | +0.000 (2) | −0.011 (1) | +0.001 (3) |
+| without seen (`rate+rotation/all`) | −0.007 (0) | +0.009 (2) | +0.007 (3) | −0.011 (1) | +0.014 (3) |
+| without rotation (`rate+seen/all`) | −0.013 (2) | −0.002 (2) | −0.002 (2) | −0.023 (1) | −0.001 (2) |
+| without the whole allowance (`rate+seen+rotation`) | −0.008 (1) | −0.009 (2) | +0.001 (2) | −0.002 (1) | +0.004 (2) |
+| the combination against the blind rotation (same share) | +0.003 | +0.003 | +0.004 | −0.004 | −0.016 |
+
+- **Verdict (the rule committed before the run, `cycles.order_verdicts`): "no evidence" for every one of the 14
+  order configurations in both held-out families**: no paired gain beats the baseline's sd in any world (the largest
+  is +0.022, against 0.057); retention (c) and safety (d) hold everywhere. None is "not exercised": every order
+  changed what was investigated in nearly every cycle (the combination, against lane K's order at the same share:
+  62 of 64, 46 of 56 and 61 of 64 seed-cycles in lane R's worlds).
+- The paired noise is small (sd of the combination's paired differences 0.008–0.021), so the result is not only the
+  rule's blindness: every measured paired gain lies between −0.029 and +0.022.
+- **At least as good as a blind schedule:** inside the product, the combination is within ±0.004 of the blind
+  rotation on lane R's worlds and 0.004 and 0.016 below it on lane F's. **Better where change rates differ: no**
+  (+0.003 against the blind rotation in the learnable world, 1 seed better, 1 worse). Why: with more items than one
+  TTL's allowance, the rotation floor decides most picks (30.8 of 32 per run in ho-rate-mixed), and the rate is
+  learned from verified changes, which are rare when 6.0 of the 13.8 looks per run at a changed subject find the change
+  and do not revise (baseline, ho-rate-mixed); the
+  combination without the rate gives identical results in two of the five held-out worlds.
+- **A fair rotation as the default** (brief item 5) is not supported either: `recheck:rotation/all` gains −0.006,
+  −0.007, +0.001, −0.007 and +0.022 over today's loop.
+- What the order did (held-out, per run, the combination): every autonomous look a re-check pick (32, 42 and 33 in
+  lane R's worlds; 28 and 42 in lane F's), of which overdue under the floor 30.8, 20.2, 28.0, 27.0, 21.2, and with a
+  newer version seen 16.2, 21.5, 14.5, 11.8, 21.8; coverage identical to the baseline in every world (no order can
+  reach the uncovered subjects).
+- Safety and retention, every run of every configuration (192 + 128 held-out, 144 + 96 development): 0 own-output
+  versions admitted, 0 wrong-story versions admitted, 0 one-origin confidence rises, 0 subjects lost or regressed.
+  These worlds do not reproduce the withheld worlds' holes (Step 0), so they do not show the order safe where those
+  holes exist; lane S closes them.
+- Cost (held-out, per run, baseline → the combination): pages 222 → 226, 175 → 200, 210 → 217, 208 → 208,
+  191 → 209 (the whole allowance used); wall time +20 to +33 % (0.40–0.47 s → 0.53–0.58 s).
+- Cognitive benchmark with every individual reading `idle_recheck` on, the whole allowance and the combination
+  (scripts/bench_wave1.py's regime), development and held-out: retention all retained; adversarial 28 of 28 scored
+  cases pass (5 directive items not staged), as at the defaults and with lane K's order. Offline research digest at
+  the shipped defaults: `68731d72…` (the Wave 0 equivalence test, aarch64).
+
+## Alternatives rejected
+
+- Covering the never-covered subjects from the timer (the largest part): it would widen what the timer admits (non-
+  knowledge subjects), which the admission rule forbids ("propose it instead"); the owner or the idle investigator
+  decides those.
+- Counting contested sightings of a newer version as changes in the rate: they are not verified values; `seen` uses
+  them only to order, never as a change of what is known.
+- Re-ordering the due refreshes (`predictions.check_due`): the due set is gated by the 7-day TTL, so a fast-changing
+  subject cannot be reached before it; the re-check's pool holds every live item.
+- Raising the re-check's share by itself: the shares are the owner's settings; `/all` is measured as an owner choice.
+
+## Consequences
+
+- Defaults unchanged: `recheck_order` "staleness", `idle_recheck` off. Nothing here argues for turning either on.
+- Changed code: `webcortex/recheck.py` (`order_parts`, `_histories`, `_ordered`, `_assess`; `rank` and `submit`),
+  `autonomy.admission` (carries a pick's `order` on the re-check path), `WebConfig.recheck_order` and its validation,
+  `self_description._to_recheck`. Harness: `cycles.py` (looks, `decompose`, `rate:` splits, `order_configurations`,
+  `order_verdicts`), `scripts/bench_learning_cycles.py` (`--orders`).
+- Tests: `tests/webcortex/test_recheck_order.py`, `tests/acceptance/test_learning_cycles_orders.py`, the rollback and
+  Wave 0 equivalence lists (`tests/uat/`).
+- Withheld look (main session only): `scripts/bench_learning_cycles.py final --note ... --out <outside> --mechanism
+  recheck_order --config reference:no-loop --config baseline --config recheck:rate+seen+rotation/all --config
+  recheck:rotation/all`. Not needed to keep the default.
+- Not verified: the open web, real change rates, a live model, the worker's idle investigation (which shares the
+  allowance), an owner who answers, timer passes more often than once a simulated day.

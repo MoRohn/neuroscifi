@@ -94,7 +94,32 @@ WITHHELD = "withheld"     # the split of cycles_withheld.py: scored only by fina
 # Settings read back from the individual inside each run, to show which mechanisms were on (review: read the
 # configuration back inside a run).
 READ_BACK = tuple(WAVE1_OFF_WEB) + ("salience_attention", "arbitration_record", "calibrated_forecasts",
-                                    "tick_admission", "enabled", "autonomous")
+                                    "tick_admission", "enabled", "autonomous", "recheck_order", "recheck_per_tick",
+                                    "recheck_daily")
+
+# Wave 3 lane R (ADR-060): the re-check's order (recheck_order; the re-check itself, idle_recheck, on) at the shipped
+# share of the allowance (recheck_per_tick 1, recheck_daily 4) and with the whole allowance ("/all": both set to 100,
+# the owner's own bounds; the daily autonomous allowance still caps every pass). "recheck:staleness" is lane K's
+# order (= only:idle_recheck). Ablations: the combination without each ingredient.
+ORDER_RULES = ("rotation", "rate", "rate+seen", "rate+seen+rotation", "seen+rotation", "rate+rotation")
+for _rule in ORDER_RULES:
+    ON[f"order:{_rule}"] = {"idle_recheck": True, "recheck_order": _rule}
+ON["share:all"] = {"recheck_per_tick": 100, "recheck_daily": 100}
+
+
+def order_configurations() -> dict:
+    """{name: mechanisms}: the no-loop reference, baseline, lane K's re-check order and each lane R order, at the
+    shipped share and with the whole allowance."""
+    out = {"reference:no-loop": frozenset({NO_LOOP}), "baseline": frozenset(),
+           "recheck:staleness": frozenset({"idle_recheck"}),
+           "recheck:staleness/all": frozenset({"idle_recheck", "share:all"})}
+    for rule in ORDER_RULES:
+        out[f"recheck:{rule}"] = frozenset({f"order:{rule}"})
+        out[f"recheck:{rule}/all"] = frozenset({f"order:{rule}", "share:all"})
+    return out
+
+
+EXTRA |= {k: v for k, v in order_configurations().items() if k not in ("reference:no-loop", "baseline")}
 
 
 def configurations() -> dict:
@@ -219,6 +244,7 @@ class Run:
         self.strategy = {"calls": 0, "changed": 0}    # strategies.rank calls / those that changed the order
         self.config = {}                  # READ_BACK as the individual holds them after start()
         self.allowance = []               # the daily autonomous tasks the individual held in each cycle 1..N
+        self.looks = []                   # Wave 3 lane R: every autonomous look, what it met and what it changed
 
     # ---- the world ----------------------------------------------------------------------------------------------
     def subject_in(self, text):
@@ -287,6 +313,7 @@ class Run:
             self.one_origin_looks += 1
             single = one_origin_confidence(db, task, docs[0], now)
         stated = [s["value"] for s in self.self_now if s["subject"] == name]
+        prior = self._newest_version(name) if name and kind != "owner" else None
         out = investigate(db, task, docs, now,
                           answer=f"{name} {stated[0]} is the latest {name} release." if stated else None)
         if single is not None:
@@ -294,7 +321,28 @@ class Run:
                 for kid, _mm, conf, _v in rows:
                     if kid in before and conf > max(before[kid], single) + 1e-9:
                         self.rises += 1
+        if name and kind != "owner":      # Wave 3 lane R: what each autonomous look met and did (the diagnosis)
+            self.looks.append({"cycle": self.cycle, "kind": kind, "subject": name, "before": prior,
+                               "truth": self.truth(name), "read": _look_majority(self.world, name, self.cycle),
+                               "look": look["kind"], "after": self._newest_version(name),
+                               "outcome": {k: len(out.get(k) or []) for k in ("provisional", "strengthened",
+                                                                             "unchanged", "superseded", "contested",
+                                                                             "held")}})
         return out
+
+    def _order_picks(self) -> dict:
+        """Re-check picks recorded with a recheck_order (ADR-060): all, those taken by the rotation floor (overdue),
+        those taken because a newer version was seen or the item was marked."""
+        rows = self.db.execute("SELECT json_extract(detail,'$.autonomy.recheck.order.overdue'), json_extract(detail,"
+                               "'$.autonomy.recheck.order.newer_seen') FROM web_events WHERE kind='decision' AND "
+                               "json_extract(detail,'$.autonomy.recheck.order') IS NOT NULL").fetchall()
+        return {"recheck_order_picks": len(rows), "recheck_overdue_picks": sum(1 for o, _ in rows if o),
+                "recheck_seen_picks": sum(1 for _, n in rows if n)}
+
+    def _newest_version(self, name):
+        """The newest held item's minor version (None: nothing held; -1: a version that is not 1.x), as score()."""
+        top = self.newest(self.held().get(name) or [])
+        return top[1][1] if top and top[1] and top[1][0] == 1 else (None if top is None else -1)
 
     def owner_research(self, name, at):
         from ...webcortex import knowledge, orchestrator
@@ -469,9 +517,11 @@ class Run:
             "activity": {"hypothesis_detail_rows": counts["web_hypothesis_details"],
                          "premise_rows": counts["web_premises"], "recheck_rows": counts["web_rechecks"],
                          "recheck_tasks": self.tasks["recheck"], "strategy_rank_calls": self.strategy["calls"],
-                         "strategy_rank_changed": self.strategy["changed"]},
+                         "strategy_rank_changed": self.strategy["changed"],
+                         # Wave 3 lane R: re-check picks made under another order, and why (their decision events)
+                         **self._order_picks()},
             "launches": list(self.launches), "history": {n: list(h) for n, h in self.history.items()},
-            "config": dict(self.config), "allowance": list(self.allowance),
+            "config": dict(self.config), "allowance": list(self.allowance), "looks": list(self.looks),
         }
 
 
@@ -531,7 +581,10 @@ SCALARS = ("mean.accuracy", "mean.coverage", "mean.correct", "final.correct", "c
            # what each mechanism did, and whether it changed what was investigated or held (lane Y, M1)
            "activity.hypothesis_detail_rows", "activity.premise_rows", "activity.recheck_rows",
            "activity.recheck_tasks", "activity.strategy_rank_calls", "activity.strategy_rank_changed",
-           "changed_launch_cycles", "changed_held_cycles")
+           "changed_launch_cycles", "changed_held_cycles",
+           # Wave 3 lane R (ADR-060): what a re-check order did, and what it changed against lane K's order
+           "activity.recheck_order_picks", "activity.recheck_overdue_picks", "activity.recheck_seen_picks",
+           "order_changed_launch_cycles", "order_changed_held_cycles")
 
 
 def _get(d, dotted):
@@ -560,18 +613,27 @@ def _changed(row, base) -> tuple[int, int]:
     return launch, len(held_cycles)
 
 
-def _public(split) -> dict:
-    """A split of cycles_splits.py. The withheld worlds are reached only through final()."""
+RATE = "rate:"            # Wave 3 lane R: "rate:development", "rate:held_out" are the splits of cycles_rate_splits.py
+SPLITS = ("development", "held_out", RATE + "development", RATE + "held_out")
+
+
+def _public(split) -> tuple[dict, object]:
+    """(a split of cycles_splits.py or, named "rate:<split>", of cycles_rate_splits.py, its generator or None for
+    cycles_splits.generate). The withheld worlds are reached only through final()."""
     if split == WITHHELD:
         from . import Refused
         raise Refused("the withheld learning-cycles worlds are scored only by cycles.final() (scripts/"
                       "bench_learning_cycles.py final), which records the run in the ledger first. Do not look at "
                       "them while developing.")
-    return worlds.CYCLES[split]
+    if split.startswith(RATE):
+        from . import cycles_rate_splits
+        return cycles_rate_splits.CYCLES[split[len(RATE):]], cycles_rate_splits.generate
+    return worlds.CYCLES[split], None
 
 
 def run_split(split, *, configs=None, cycles=None, seeds=None) -> dict:
-    return _run_split(split, _public(split), None, configs=configs, cycles=cycles, seeds=seeds)
+    spec, generate = _public(split)
+    return _run_split(split, spec, generate, configs=configs, cycles=cycles, seeds=seeds)
 
 
 def _run_split(split, spec, generate, *, configs=None, cycles=None, seeds=None) -> dict:
@@ -580,10 +642,18 @@ def _run_split(split, spec, generate, *, configs=None, cycles=None, seeds=None) 
     raw = {(name, world["name"]): [run_world(world, seed, mechanisms, cycles=cycles, generate=generate)
                                    for seed in seeds]
            for name, mechanisms in configs.items() for world in spec["worlds"]}
+    specs = {w["name"]: w for w in spec["worlds"]}
     for (name, world), rows in raw.items():
         base = raw.get(("baseline", world))
+        # Wave 3 lane R: what a re-check order changed against lane K's order at the same share
+        lane_k = "recheck:staleness" + ("/all" if name.endswith("/all") else "")
+        same_share = raw.get((lane_k, world)) if name.startswith("recheck:") and name != lane_k else None
         for i, r in enumerate(rows):
             r["changed_launch_cycles"], r["changed_held_cycles"] = _changed(r, base[i]) if base else (None, None)
+            r["order_changed_launch_cycles"], r["order_changed_held_cycles"] = \
+                _changed(r, same_share[i]) if same_share else (None, None)
+            r["decomposition"] = decompose(r, specs[world] | ({"cycles": int(cycles)} if cycles is not None else {}),
+                                           seeds[i], generate)
     out = {}
     for name, mechanisms in configs.items():
         per_world = {}
@@ -600,7 +670,11 @@ def _run_split(split, spec, generate, *, configs=None, cycles=None, seeds=None) 
                 # the settings as the individual held them, and its daily allowance per cycle (Wave 3 step 0)
                 "config_read_back": rows[0]["config"],
                 "config_same_every_seed": all(r["config"] == rows[0]["config"] for r in rows),
-                "allowance": rows[0]["allowance"]}
+                "allowance": rows[0]["allowance"],
+                # Wave 3 lane R: the shortfall's decomposition (decompose), mean over seeds, and per seed
+                "decomposition": _mean_decomposition([r["decomposition"] for r in rows]),
+                "decomposition_per_seed": [{ref: r["decomposition"][ref] for ref in ("round_robin", "oracle")}
+                                           for r in rows]}
         out[name] = {"mechanisms": sorted(mechanisms), "worlds": per_world}
     return {"split": split, "seeds": list(seeds), "configurations": out,
             "strategy_selection_note": "in force without passing the real gate (a 'retain' row written into each "
@@ -639,14 +713,17 @@ def _look_majority(world, name, cycle):
     return best[0] if len(best) == 1 else None
 
 
-def references(spec, seed, generate=None) -> dict:
+def references(spec, seed, generate=None, *, trace=None) -> dict:
     """{reference: [correct at cycle 0..N]} and the world's changes per cycle (see REFERENCES); the budget is the
-    run's in each cycle (budget_at)."""
+    run's in each cycle (budget_at). `trace` (a dict, Wave 3 lane R): filled with {reference: {cycle: {subject:
+    held value}}, reference + ":looks": [(cycle, subject)]} for the diagnosis; the series are unchanged by it."""
     world = (generate or worlds.generate)(spec, seed)
     subjects, n = world["subjects"], spec["cycles"]
     out = {}
     for ref in REFERENCES:
         held, last, series = {}, {}, []
+        if trace is not None:
+            trace[ref], trace[ref + ":looks"] = {}, []
         for c in range(n + 1):
             for s in subjects:
                 if s["born"] == c:
@@ -664,17 +741,114 @@ def references(spec, seed, generate=None) -> dict:
                     if value is not None:
                         held[s["name"]] = value
                     last[s["name"]] = c
+                    if trace is not None:
+                        trace[ref + ":looks"].append((c, s["name"]))
             live = [s for s in subjects if s["born"] <= c]
             series.append(sum(1 for s in live if held[s["name"]] == s["truth"][c]) / len(live))
+            if trace is not None:
+                trace[ref][c] = dict(held)
         out[ref] = series
     changes = sum(1 for s in subjects for c in range(s["born"] + 1, n + 1) if s["truth"][c] != s["truth"][c - 1])
     return {"series": out, "changes_per_cycle": changes / n}
 
 
+# ---- the diagnosis of the loop's shortfall (Wave 3 lane R, ADR-060) ------------------------------------------------
+#
+# decompose() splits the gap between a reference (the blind round-robin, the oracle) and a measured run, in the units
+# of PRIMARY (per cycle: subjects / subjects so far; mean over cycles 1..N), into the subject-cycles where the
+# reference holds the true version and the run does not, by why the run does not:
+#   uncovered          the run holds nothing about the subject (the owner's research gave it no knowledge)
+#   wrong_source       the run's newest item is not a 1.x version (the wire story or the individual's own output)
+#   found_not_revised  stale 1.x; since it went wrong an autonomous look read the true version (the look's majority,
+#                      as the round-robin reads it) and the newest item stayed wrong (contested, held: lane S's part)
+#   looked_unreadable  stale; it was looked at since it went wrong, but no look's pages showed the true version
+#   not_looked         stale; no autonomous look at it since it went wrong (the order and the allowance)
+# minus run_ahead: the subject-cycles where the run holds the true version and the reference does not. The parts sum
+# to the gap. Beside it, every autonomous look by what it met (confirmed an item already true, caught the change,
+# found it and did not revise, read nothing true, nothing held) and the allowance left unused; and the reference's
+# own looks, the share of them spent on subjects whose held value was already true.
+GAP_PARTS = ("uncovered", "wrong_source", "found_not_revised", "looked_unreadable", "not_looked", "run_ahead")
+LOOK_PARTS = ("confirm", "caught", "found_not_revised", "unreadable", "nothing_held")
+
+
+def decompose(row, spec, seed, generate=None) -> dict:
+    """{reference: {"gap", parts...}, "looks": {...}, "reference_looks": {...}} for one run summary (see above)."""
+    world = (generate or worlds.generate)(spec, seed)
+    subjects = {s["name"]: s for s in world["subjects"]}
+    n = spec["cycles"]
+    trace = {}
+    references(spec, seed, generate, trace=trace)
+    hist = {name: dict(h) for name, h in row["history"].items()}
+    looks_at = {}
+    for look in row["looks"]:
+        looks_at.setdefault(look["subject"], []).append(look)
+    out = {}
+    for ref in ("round_robin", "oracle"):
+        parts = dict.fromkeys(GAP_PARTS, 0.0)
+        for c in range(1, n + 1):
+            live = [s for s in subjects.values() if s["born"] <= c]
+            for s in live:
+                name, truth = s["name"], s["truth"][c]
+                mine = hist.get(name, {}).get(c)
+                ref_right, my_right = trace[ref][c].get(name) == truth, mine == truth
+                if my_right and not ref_right:
+                    parts["run_ahead"] -= 1 / len(live)
+                if ref_right and not my_right:
+                    if mine is None:
+                        part = "uncovered"
+                    elif mine == -1:
+                        part = "wrong_source"
+                    else:
+                        start = c          # the first cycle of the run of cycles in which the held value is wrong
+                        while start - 1 >= s["born"] and hist.get(name, {}).get(start - 1) not in (
+                                None, s["truth"][start - 1]):
+                            start -= 1
+                        since = [lk for lk in looks_at.get(name, []) if start <= lk["cycle"] <= c]
+                        part = ("not_looked" if not since else
+                                "found_not_revised" if any(lk["read"] == lk["truth"] for lk in since) else
+                                "looked_unreadable")
+                    parts[part] += 1 / len(live)
+        parts = {k: v / n for k, v in parts.items()}
+        out[ref] = {"gap": sum(parts.values())} | parts
+    looks = dict.fromkeys(LOOK_PARTS, 0)
+    by_kind = {}
+    for lk in row["looks"]:
+        part = ("nothing_held" if lk["before"] is None else "confirm" if lk["before"] == lk["truth"] else
+                "caught" if lk["after"] == lk["truth"] else
+                "found_not_revised" if lk["read"] == lk["truth"] else "unreadable")
+        looks[part] += 1
+        by_kind.setdefault(lk["kind"], dict.fromkeys(LOOK_PARTS, 0))[part] += 1
+    allowance = sum(row["allowance"]) if row.get("allowance") else sum(budget_at(spec, c) for c in range(1, n + 1))
+    out["looks"] = looks | {"total": len(row["looks"]), "allowance": allowance,
+                            "unused": allowance - len(row["looks"]), "by_kind": by_kind}
+    ref_looks = {}
+    for ref in ("round_robin", "oracle"):
+        confirm = sum(1 for c, name in trace[ref + ":looks"]
+                      if trace[ref].get(c - 1, {}).get(name) == subjects[name]["truth"][c])
+        ref_looks[ref] = {"total": len(trace[ref + ":looks"]), "confirm": confirm}
+    out["reference_looks"] = ref_looks
+    return out
+
+
+def _mean_decomposition(rows) -> dict:
+    """decompose() results of several seeds: the mean of every number (looks by kind included)."""
+    def mean(values):
+        return sum(values) / len(values)
+    out = {ref: {k: mean([r[ref][k] for r in rows]) for k in rows[0][ref]} for ref in ("round_robin", "oracle")}
+    out["looks"] = {k: mean([r["looks"][k] for r in rows]) for k in rows[0]["looks"] if k != "by_kind"}
+    kinds = sorted({k for r in rows for k in r["looks"]["by_kind"]})
+    out["looks"]["by_kind"] = {k: {p: mean([r["looks"]["by_kind"].get(k, {}).get(p, 0) for r in rows])
+                                   for p in LOOK_PARTS} for k in kinds}
+    out["reference_looks"] = {ref: {k: mean([r["reference_looks"][ref][k] for r in rows]) for k in ("total", "confirm")}
+                              for ref in ("round_robin", "oracle")}
+    return out
+
+
 def run_references(split, *, seeds=None) -> dict:
     """Per world: budget, changes per cycle, and per reference the mean of `correct` over cycles 1..N (spread over
     seeds, as PRIMARY), at cycle 0 and at cycle N, and the per-cycle mean series."""
-    return _run_references(split, _public(split), None, seeds=seeds)
+    spec, generate = _public(split)
+    return _run_references(split, spec, generate, seeds=seeds)
 
 
 def _run_references(split, spec, generate, *, seeds=None) -> dict:
@@ -830,4 +1004,92 @@ def verdicts(result) -> dict:
     retention, adversarial = _safe(result, "all")
     out["all"] = {"per_world": {w: dict(zip(("beats", "gain", "baseline_sd", "paired"), _beats(result, "all", w)))
                                 for w in names}, "c_retention": retention, "d_adversarial": adversarial}
+    return out
+
+
+# ---- Wave 3 lane R: the verdict on the re-check orders, written before the held-out run (ADR-060) ---------------------
+#
+# The same PRIMARY, pairing and spread as above, for every configuration of order_configurations() against `baseline`
+# (today's loop), on each held-out world:
+#   (a) beats:      the paired gain over the baseline > the baseline's sd, in every world
+#   (b) ablation:   for the combination (COMBINATION) only: it beats in every world, and each ablation (ABLATIONS: the
+#                   combination without one ingredient) does not beat in at least one world; None (not applicable)
+#                   for every other configuration, or when the combination does not beat
+#   (c) retention:  subjects lost plus regressed not above the baseline's, in every world and seed
+#   (d) safety:     own-output versions admitted, wrong-story versions admitted and one-origin confidence rises each
+#                   not above the baseline's, in every world and seed (Wave 3 addendum: a gain that comes with more
+#                   wrongly admitted content is not a gain); the counts themselves are reported beside the gain
+# retain = (a), (c), (d) and (b) where it applies; revise = not retain, (c) and (d), and the gain positive in every world
+# with at least 3 paired seeds better, or (a) in some world; "not exercised" when the order changed no launch against
+# lane K's order at the same share in any run (order_changed_launch_cycles all 0); else "no evidence".
+# Descriptive, not part of the rule: the paired difference against the product's blind rotation at the same share
+# (`recheck:rotation[/all]`: the "at least as good as a blind schedule" question).
+COMBINATION = "recheck:rate+seen+rotation/all"
+ABLATIONS = {"rate": "recheck:seen+rotation/all", "seen": "recheck:rate+rotation/all",
+             "rotation": "recheck:rate+seen/all", "whole allowance": "recheck:rate+seen+rotation"}
+SAFETY = ("self_admitted", "wire_admitted", "one_origin_rises")
+LOSSES = ("retention.lost", "retention.regressed")
+
+
+def _not_above(result, config, keys, *, total=False) -> bool:
+    """Every world and seed: the configuration's counts not above the baseline's (each, or their total)."""
+    mine = result["configurations"][config]["worlds"]
+    base = result["configurations"]["baseline"]["worlds"]
+    for w in mine:
+        for r, b in zip(mine[w]["per_seed"], base[w]["per_seed"]):
+            pairs = [(sum(r[k] or 0 for k in keys), sum(b[k] or 0 for k in keys))] if total else \
+                [(r[k] or 0, b[k] or 0) for k in keys]
+            if any(x > y for x, y in pairs):
+                return False
+    return True
+
+
+def order_verdicts(result) -> dict:
+    """{configuration: {"verdict", "checks", "per_world"}} under the rule above (a run_split result over
+    order_configurations())."""
+    confs = result["configurations"]
+    names = list(confs["baseline"]["worlds"])
+    combination_beats = COMBINATION in confs and all(_beats(result, COMBINATION, w)[0] for w in names)
+    out = {}
+    for config in confs:
+        if config in ("baseline", "reference:no-loop"):
+            continue
+        blind = "recheck:rotation" + ("/all" if config.endswith("/all") else "")
+        per_world = {}
+        for w in names:
+            beats, gain, spread, diffs = _beats(result, config, w)
+            rows = confs[config]["worlds"][w]["per_seed"]
+            vs_blind = ([a[PRIMARY] - b[PRIMARY] for a, b in zip(rows, confs[blind]["worlds"][w]["per_seed"])]
+                        if blind in confs else [])
+            per_world[w] = {"gain": gain, "baseline_sd": spread, "beats": beats, "paired": diffs,
+                            "better_seeds": sum(1 for d in diffs if d > 1e-12),
+                            "worse_seeds": sum(1 for d in diffs if d < -1e-12),
+                            "vs_blind_rotation": sum(vs_blind) / len(vs_blind) if vs_blind else None,
+                            "vs_blind_rotation_better_seeds": sum(1 for d in vs_blind if d > 1e-12),
+                            "vs_blind_rotation_worse_seeds": sum(1 for d in vs_blind if d < -1e-12),
+                            "safety": {k: sum(r[k] or 0 for r in rows) for k in SAFETY},
+                            "baseline_safety": {k: sum(r[k] or 0 for r in confs["baseline"]["worlds"][w]["per_seed"])
+                                                for k in SAFETY},
+                            "retention_lost_or_regressed": sum(r[k] or 0 for r in rows for k in LOSSES),
+                            "order_changed_launch_cycles": [r.get("order_changed_launch_cycles") for r in rows]}
+        a = all(per_world[w]["beats"] for w in names)
+        b = None
+        if config == COMBINATION and combination_beats:
+            b = all(any(not _beats(result, ablated, w)[0] for w in names)
+                    for ablated in ABLATIONS.values() if ablated in confs)
+        retention = _not_above(result, config, LOSSES, total=True)
+        safety = _not_above(result, config, SAFETY)
+        changed = [c for w in names for c in per_world[w]["order_changed_launch_cycles"] if c is not None]
+        if a and retention and safety and b is not False:
+            verdict = "retain"
+        elif retention and safety and (all(per_world[w]["gain"] > 0 and per_world[w]["better_seeds"] >= 3
+                                           for w in names) or any(per_world[w]["beats"] for w in names)):
+            verdict = "revise"
+        elif changed and not any(changed):
+            verdict = "not exercised"
+        else:
+            verdict = "no evidence"
+        out[config] = {"verdict": verdict, "checks": {"a_beats_spread": a, "b_ablation_removes": b,
+                                                      "c_retention": retention, "d_safety": safety},
+                       "per_world": per_world}
     return out

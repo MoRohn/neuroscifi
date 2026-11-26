@@ -111,6 +111,13 @@ def _validate(name, value):
         if not _is_int(value) or not 0 <= value <= 100:
             raise ValidationError(f"{name} must be an integer between 0 and 100")
         return value
+    if name == "recheck_order":         # ADR-060: stored in its canonical order
+        from .recheck import DEFAULT_ORDER, order_parts
+        try:
+            parts = order_parts(value)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from None
+        return "+".join(parts) if parts else DEFAULT_ORDER
     if name == "reflection_interval_days":
         if not _is_num(value) or not 1 <= value <= 365:
             raise ValidationError("reflection_interval_days must be a number of days between 1 and 365")

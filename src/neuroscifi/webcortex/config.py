@@ -157,6 +157,12 @@ class WebConfig:
     idle_recheck: bool = False
     recheck_per_tick: int = 1
     recheck_daily: int = 4
+    # ADR-060 (Wave 3 lane R): the order of that re-check's pool. "staleness" (the default) is the value above;
+    # otherwise a "+"-joined set of "rate" (the chance the item changed since it was verified, from its subject's own
+    # verified changes, with a prior), "seen" (certain for an item a newer version was seen for, or marked) and
+    # "rotation" (an item not looked at for one TTL goes first; alone, a blind rotation). It only orders what the
+    # same rule admits, within the same shares and allowance. Default unchanged: no held-out gain (ADR-060).
+    recheck_order: str = "staleness"
     # The bounded reflection routine (reflection.py) on the timer, every reflection_interval_days; `nsf knowledge
     # reflect` runs it when the owner asks. Off by default. reflection_model_summary lets a local model phrase the
     # report (display only, stored as an 'inference' in the imagined store); off by default.
