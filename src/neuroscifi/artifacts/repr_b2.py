@@ -1,7 +1,8 @@
 """Representations of lane B2 that also carry the artifact's own words (PNG text chunks, WAV LIST/INFO fields, MIDI
 track names and lyrics, OBJ group names, ...).
 
-`types.Raster`, `Frames`, `Signal` and `Mesh` return "" from `text()`. These subclasses add one field, `words`
+`types.Raster`, `Frames`, `Signal` and `Mesh` return "" from `text()` (and a container `Tree` has no node values
+to offer). These subclasses add one field, `words`
 (untrusted, bounded to TEXT_MAX_CHARS), and return it from `text()`; everything else (kind, invariants,
 `describe()`, `shape()`) is the parent's, so `isinstance(x, types.Raster)` holds and no consumer needs to know them.
 """
@@ -53,4 +54,22 @@ class Mesh(T.Mesh):
         return _words(self.words)
 
 
-__all__ = ["Frames", "Mesh", "Raster", "Signal"]
+@dataclass(frozen=True, eq=False)
+class Tree(T.Tree):
+    words: str = ""
+
+    def text(self) -> str:
+        return _words(self.words)
+
+
+@dataclass(frozen=True, eq=False)
+class Table(T.Table):
+    """A table whose text() also holds words that are not cells (a MIDI file's track names and lyrics)."""
+
+    words: str = ""
+
+    def text(self) -> str:
+        return T._bounded_text([super().text(), self.words])
+
+
+__all__ = ["Frames", "Mesh", "Raster", "Signal", "Table", "Tree"]

@@ -124,10 +124,11 @@ def _iso(head):
 
 def _ebml(head):
     at = head.find(b"\x42\x82", 4, 64)
-    if at > 0:
-        size_byte = head[at + 2] if at + 2 < len(head) else 0
-        if size_byte & 0x80:
-            doctype = head[at + 3:at + 3 + (size_byte & 0x7F)].rstrip(b"\x00")
+    if at > 0 and at + 2 < len(head) and head[at + 2]:
+        n = 9 - head[at + 2].bit_length()
+        size = int.from_bytes(head[at + 2:at + 2 + n], "big") & ((1 << (7 * n)) - 1)
+        if size <= 32:
+            doctype = head[at + 2 + n:at + 2 + n + size].rstrip(b"\x00")
             if doctype == b"webm":
                 return _hit("webm", "an EBML header names the document type 'webm'", container="ebml")
             if doctype == b"matroska":
