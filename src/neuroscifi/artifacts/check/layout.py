@@ -414,7 +414,8 @@ def check_layout(root: Elem) -> tuple[list[Finding], list[Finding]]:
                     if npts > width > 0:
                         style.append(Finding("points_exceed_pixels", False,
                                              f"a series draws {npts} points across {width:.0f} px", npts / width))
-            if "z" not in axes and len(series) > 1:
+            lanes = axes.get("y") is not None and axes["y"].kind == "band"    # rows apart by position
+            if not lanes and len(series) > 1:
                 sigs: dict[tuple, str] = {}
                 for s in series:
                     sig = _signature(s.node)

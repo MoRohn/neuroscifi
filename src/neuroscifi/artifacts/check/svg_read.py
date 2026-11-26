@@ -712,6 +712,188 @@ def carried_heat(scope: Elem, data: dict, options: dict) -> list:
     return out + _report(found, total, stray, "cell values", extra)
 
 
+def carried_timeline(root: Elem, data: dict, options: dict) -> list:
+    axes = axes_of(root, bands=("y",))
+    out = _axes_ok(axes, need=("x",))
+    ax, ay = axes.get("x"), axes.get("y")
+    if ax is None or ax.kind == "band" or ay is None:
+        return out + [_finding("values_recovered", False, "the time axis or the lanes cannot be read", 0.0)]
+    lane_y = ay.categories
+    ordered = sorted(lane_y.values())
+    plots = [n for n in root.iter() if n.tag == "g" and "plot" in n.classes()]
+    groups = {s.name: s for p in plots for s in plot_marks(p)}
+    tol = ax.tol()
+    found = total = stray = misplaced = 0
+    labels_missing = 0
+    for lane in dict.fromkeys([e["lane"] for e in data.get("events", [])] + [s["lane"] for s in data.get("spans", [])]
+                              + list(data.get("lanes") or [])):
+        evs = sorted(e["at"] for e in data.get("events", []) if e["lane"] == lane)
+        sps = sorted((s["start"], s["end"]) for s in data.get("spans", []) if s["lane"] == lane)
+        total += len(evs) + len(sps)
+        g = groups.pop(lane, None)
+        if g is None or lane not in lane_y:
+            continue
+        y = lane_y[lane]
+        below = [v for v in ordered if v > y + 0.5]
+        next_y = below[0] if below else float("inf")
+        got_e = sorted(ax.value(px) for px, py in g.points)
+        misplaced += sum(1 for px, py in g.points if abs(py - y) > 1.5)
+        got_s = sorted((ax.value(b[0]), ax.value(b[2])) for b in g.boxes)
+        misplaced += sum(1 for b in g.boxes if not (y < (b[1] + b[3]) / 2 < next_y))
+        used = [False] * len(got_e)
+        for t in evs:
+            j = next((j for j, v in enumerate(got_e) if not used[j] and abs(v - t) <= tol), None)
+            if j is not None:
+                used[j] = True
+                found += 1
+        stray += used.count(False)
+        used = [False] * len(got_s)
+        for a, b in sps:
+            j = next((j for j, (u, v) in enumerate(got_s)
+                      if not used[j] and abs(u - a) <= tol and abs(v - b) <= tol), None)
+            if j is not None:
+                used[j] = True
+                found += 1
+        stray += used.count(False)
+        texts = set()
+        for n in g.node.iter():
+            if n.tag == "text":
+                texts.add(n.full_label())
+            elif n.tag == "circle":
+                texts.update(c.text.strip() for c in n.children if c.tag == "title")
+        want = [e["label"] for e in data.get("events", []) if e["lane"] == lane] + \
+               [s["label"] for s in data.get("spans", []) if s["lane"] == lane]
+        labels_missing += sum(1 for w in want if w not in texts)
+    for g in groups.values():
+        stray += len(g.points) + len(g.boxes)
+    extra = [_finding("marks_in_their_lanes", misplaced == 0, "every mark sits in its lane" if not misplaced else
+                      f"{misplaced} mark(s) sit outside their lane", float(misplaced)),
+             _finding("labels_present", labels_missing == 0, "every event and span carries its label" if not
+                      labels_missing else f"{labels_missing} label(s) missing", float(labels_missing))]
+    return out + _report(found, total, stray, "event times and span ends", extra)
+
+
+def _shape_box(node: Elem):
+    for c in node.children:
+        g = mark_geometry(c)
+        if g is None:
+            continue
+        if g[0] == "box":
+            return g[1:]
+        if g[0] == "point":
+            r = fnum(c.attrs.get("r"))
+            return g[1] - r, g[2] - r, g[1] + r, g[2] + r
+        if g[0] == "line" and g[1]:
+            xs, ys = [p[0] for p in g[1]], [p[1] for p in g[1]]
+            return min(xs), min(ys), max(xs), max(ys)
+    return None
+
+
+def read_diagram(root: Elem):
+    """Nodes [(label, box)], edges [(src index, dst index, kind, label, has_arrow)], strays (edge ends on no node)."""
+    nodes = []
+    for g in root.iter():
+        if g.tag == "g" and "node" in g.classes():
+            box = _shape_box(g)
+            text = next((n for n in g.iter() if n.tag == "text"), None)
+            if box is not None:
+                nodes.append((text.full_label() if text is not None else "", box))
+    kinds = {}
+    for key in root.iter():
+        if key.tag == "g" and key.has("key", "edge-kind"):
+            line = next((n for n in key.iter() if n.tag in ("line", "polyline")), None)
+            if line is not None:
+                kinds[line.attrs.get("stroke-dasharray", "").strip()] = key.attrs.get("data-name", "")
+
+    def nearest(pt):
+        best, best_d = None, None
+        for i, (_l, (x0, y0, x1, y1)) in enumerate(nodes):
+            dx = max(x0 - pt[0], 0, pt[0] - x1)
+            dy = max(y0 - pt[1], 0, pt[1] - y1)
+            d = math.hypot(dx, dy)
+            if best is None or d < best_d:
+                best, best_d = i, d
+        return best if best_d is not None and best_d <= 6 else None
+
+    edges, strays = [], 0
+    for g in root.iter():
+        if g.tag != "g" or "edge" not in g.classes():
+            continue
+        line = next((n for n in g.iter() if n.tag == "polyline" and "edge" in n.classes()), None)
+        if line is None:
+            continue
+        pts = mark_geometry(line)[1]
+        if len(pts) < 2:
+            strays += 1
+            continue
+        a, b = nearest(pts[0]), nearest(pts[-1])
+        if a is None or b is None:
+            strays += 1
+            continue
+        label = next((n.full_label() for n in g.iter() if n.tag == "text" and "edge-label" in n.classes()), None)
+        arrow = any(n.tag == "path" and "arrow" in n.classes() for n in g.iter())
+        kind = kinds.get(line.attrs.get("stroke-dasharray", "").strip(), "") if kinds else ""
+        edges.append((a, b, kind, label, arrow))
+    return nodes, edges, strays
+
+
+def carried_diagram(root: Elem, form: str, data: dict) -> list:
+    from collections import Counter
+    nodes, edges, strays = read_diagram(root)
+    labels = [n[0] for n in nodes]
+    if form == "graph_tree":
+        src_nodes = data["nodes"]
+        by_id = {n["id"]: n["label"] for n in src_nodes}
+        src_edges = [(by_id[n["parent"]], n["label"], "", None) for n in src_nodes if n.get("parent") is not None]
+        directed = True
+        use_kind = use_label = False
+    elif form == "flow_steps":
+        src_nodes = data["steps"]
+        by_id = {n["id"]: n["label"] for n in src_nodes}
+        links = data.get("links")
+        if links is None:
+            links = [{"from": a["id"], "to": b["id"]} for a, b in zip(src_nodes, src_nodes[1:])]
+        src_edges = [(by_id[k["from"]], by_id[k["to"]], "", k.get("label")) for k in links]
+        directed, use_kind, use_label = True, False, True
+    else:
+        src_nodes = data["nodes"]
+        by_id = {n["id"]: n["label"] for n in src_nodes}
+        src_edges = [(by_id[e["from"]], by_id[e["to"]], e.get("kind", ""), e.get("label")) for e in data["edges"]]
+        directed = bool(data.get("directed", True))
+        use_kind = any(e.get("kind") for e in data["edges"])
+        use_label = any(e.get("label") for e in data["edges"])
+
+    def key(a, b, kind, label):
+        pair = (a, b) if directed else tuple(sorted((a, b)))
+        return pair + ((kind or "",) if use_kind else ()) + ((label or "",) if use_label else ())
+    want_nodes = Counter(n["label"] for n in src_nodes)
+    got_nodes = Counter(labels)
+    want_edges = Counter(key(*e) for e in src_edges)
+    got_edges = Counter(key(labels[a], labels[b], k, lab) for a, b, k, lab, _arrow in edges)
+    n_found = sum((want_nodes & got_nodes).values())
+    e_found = sum((want_edges & got_edges).values())
+    stray = sum((got_nodes - want_nodes).values()) + sum((got_edges - want_edges).values()) + strays
+    overlaps = 0
+    for i in range(len(nodes)):
+        a = nodes[i][1]
+        for j in range(i + 1, len(nodes)):
+            b = nodes[j][1]
+            if a[0] < b[2] - 1 and b[0] < a[2] - 1 and a[1] < b[3] - 1 and b[1] < a[3] - 1:
+                overlaps += 1
+    # A tree reads top to bottom (its lines run from parent down to child) and needs no arrowheads.
+    missing_arrows = sum(1 for e in edges if not e[4]) if directed and form != "graph_tree" else 0
+    extra = [_finding("nodes_recovered", n_found == sum(want_nodes.values()),
+                      f"{n_found} of {sum(want_nodes.values())} nodes found by label"),
+             _finding("edges_recovered", e_found == sum(want_edges.values()),
+                      f"{e_found} of {sum(want_edges.values())} edges found from their line ends"),
+             _finding("nodes_apart", overlaps == 0, "no two nodes overlap" if not overlaps else
+                      f"{overlaps} pair(s) of nodes overlap", float(overlaps)),
+             _finding("arrows_present", missing_arrows == 0, "every directed edge has its arrowhead" if not
+                      missing_arrows else f"{missing_arrows} directed edge(s) without an arrowhead")]
+    total = sum(want_nodes.values()) + sum(want_edges.values())
+    return _report(n_found + e_found, total, stray, "nodes and edges", extra)
+
+
 def carried(root: Elem, form: str, data: dict, options: dict) -> tuple[list, list]:
     """(technical, style) findings of carried information for a chart form (empty when it is not a chart)."""
     if form in ("chart_line", "chart_scatter"):
@@ -749,6 +931,10 @@ def carried(root: Elem, form: str, data: dict, options: dict) -> tuple[list, lis
                  _finding("axis_ticks_consistent", not bad_axes, "every panel's ticks fit one scale" if not bad_axes
                           else bad_axes[0])]
         return _report(found, total, stray, "points", extra), []
+    if form == "timeline":
+        return carried_timeline(root, data, options), []
+    if form in ("graph_nodelink", "graph_tree", "flow_steps"):
+        return carried_diagram(root, form, data), []
     return [], []
 
 

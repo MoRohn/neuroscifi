@@ -33,8 +33,15 @@ class G1Generator(Generator):
 
 
 def _table():
-    from . import charts
-    return [(form, fn, data, charts.OPTIONS, "image/svg+xml") for form, (fn, data) in charts.GENERATORS.items()]
+    from . import charts, flow, graphs, timeline
+    rows = [(form, fn, data, charts.OPTIONS, "image/svg+xml") for form, (fn, data) in charts.GENERATORS.items()]
+    rows += [
+        ("timeline", timeline.make_timeline, timeline.DATA, timeline.OPTIONS, "image/svg+xml"),
+        ("graph_nodelink", graphs.make_nodelink, graphs.NODELINK_DATA, graphs.OPTIONS, "image/svg+xml"),
+        ("graph_tree", graphs.make_tree, graphs.TREE_DATA, graphs.OPTIONS, "image/svg+xml"),
+        ("flow_steps", flow.make_flow, flow.DATA, graphs.OPTIONS, "image/svg+xml"),
+    ]
+    return rows
 
 
 FORMS: dict[str, str] = {}      # form -> media type of what its generator makes
