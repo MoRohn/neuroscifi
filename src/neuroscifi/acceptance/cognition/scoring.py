@@ -293,3 +293,37 @@ def rounded(value, digits: int = 6):
     if isinstance(value, (list, tuple)):
         return [rounded(v, digits) for v in value]
     return value
+
+
+# Wave 4 lane D: an evidence file holds summaries per world and seed by default; the per-cycle histories (Wave 3 added
+# about 45 MB of them) only when a harness is asked for them (--full-history). Every pre-registered rule reads the
+# summaries (tests/acceptance/test_wave4_d.py checks the committed Wave 3 runs give the same verdicts without them).
+HISTORY_KEYS = ("history",          # each subject's newest held version, cycle by cycle, per seed (cycles_s)
+                "series_mean")      # the mean over seeds of each metric, cycle by cycle (cycles, its references)
+
+
+def summary(value):
+    """A copy without the per-cycle histories: the HISTORY_KEYS, and the (subject, cycle) list beside the class counts
+    of cycles_s.item_changes ("items" next to "classes"; the counts stay)."""
+    if isinstance(value, dict):
+        return {k: summary(v) for k, v in value.items()
+                if k not in HISTORY_KEYS and not (k == "items" and "classes" in value)}
+    if isinstance(value, (list, tuple)):
+        return [summary(v) for v in value]
+    return value
+
+
+def dumps(value, levels: int = 4) -> str:
+    """JSON with the outer `levels` levels one member per line and anything deeper on one line: indent=1 everywhere
+    made the Wave 3 files about three times their content. json.loads reads it back unchanged."""
+    import json
+
+    def out(v, level):
+        if level >= levels or not isinstance(v, (dict, list)) or not v:
+            return json.dumps(v, separators=(",", ":"))
+        pad = " " * (level + 1)
+        if isinstance(v, dict):
+            body = ",\n".join(f"{pad}{json.dumps(str(k))}: {out(x, level + 1)}" for k, x in v.items())
+            return "{\n" + body + "\n" + " " * level + "}"
+        return "[\n" + ",\n".join(pad + out(x, level + 1) for x in v) + "\n" + " " * level + "]"
+    return out(value, 0)

@@ -1,12 +1,15 @@
 """Wave 4 lane D: housekeeping left open by Wave 3's reviews (each test fails without its fix)."""
 from contextlib import closing
+import functools
+import importlib.util
 import json
+from pathlib import Path
 import random
 import time
 
 import pytest
 
-from neuroscifi.acceptance.cognition import adversarial as adv
+from neuroscifi.acceptance.cognition import adversarial as adv, scoring
 from neuroscifi.instance import checkpoints, governance, store
 from neuroscifi.webcortex import autonomy, consolidate, orchestrator, scheduler, state
 
@@ -126,3 +129,88 @@ def test_a_checkpoint_restore_reads_no_task_result_by_scanning_inside_its_write_
             answers = [json.loads(r)["reasoning"] for (r,) in restored.execute(
                 "SELECT result FROM web_tasks WHERE result LIKE ? AND id NOT LIKE 'bulk%'", ("%model:%",))]
             assert answers and all(consolidate.own_sentences(r) == [] for r in answers)
+
+
+# ---- item 5: the harnesses write summaries by default, the per-cycle histories only on request ---------------------
+
+ROOT = Path(__file__).resolve().parents[2]
+EVIDENCE = ROOT / "docs" / "quality" / "evidence"
+
+
+def _script(name):
+    spec = importlib.util.spec_from_file_location(f"wave4d_{name}", ROOT / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _keys(value):
+    if isinstance(value, dict):
+        return set(value) | set().union(*(_keys(v) for v in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_keys(v) for v in value)) if value else set()
+    return set()
+
+
+def test_the_learning_cycles_harness_writes_summaries_unless_asked_for_the_history(monkeypatch, tmp_path):
+    from neuroscifi.acceptance.cognition import cycles
+    bench = _script("bench_learning_cycles")
+    monkeypatch.setattr(cycles, "run_split", functools.partial(cycles.run_split, cycles=2, seeds=(41,)))
+    monkeypatch.setattr(cycles, "idle_configurations", lambda: {k: v for k, v in cycles.configurations().items()
+                                                                if k == "baseline"})
+    small, full = tmp_path / "idle.json", tmp_path / "idle_full.json"
+    assert bench.main(["idle", "--split", "development", "--out", str(small)]) == 0
+    assert bench.main(["idle", "--split", "development", "--out", str(full), "--full-history"]) == 0
+    a, b = json.loads(small.read_text()), json.loads(full.read_text())
+    assert "series_mean" in _keys(b) and not _keys(a) & set(scoring.HISTORY_KEYS)
+    assert a["verdicts"] == b["verdicts"] and a["safety_all_runs"] == b["safety_all_runs"]
+    per_seed = [r["configurations"]["baseline"]["worlds"][w]["per_seed"] for r in (a["runs"]["development"],
+                                                                                  b["runs"]["development"])
+                for w in sorted(r["configurations"]["baseline"]["worlds"])]
+    half = len(per_seed) // 2
+    assert [[s[cycles.PRIMARY] for s in x] for x in per_seed[:half]] == \
+        [[s[cycles.PRIMARY] for s in x] for x in per_seed[half:]]
+    assert small.stat().st_size < full.stat().st_size
+
+
+def test_the_source_rules_harness_writes_summaries_unless_asked_for_the_history(monkeypatch, tmp_path):
+    from neuroscifi.acceptance.cognition import cycles_s
+    bench = _script("bench_wave3_s")
+    monkeypatch.setattr(cycles_s, "run_split", functools.partial(cycles_s.run_split, cycles_=2, seeds=(241,)))
+    small, full = tmp_path / "s.json", tmp_path / "s_full.json"
+    args = ["run", "--family", "lane-s", "--split", "development", "--config", "baseline", "--config", "fixes"]
+    assert bench.main([*args, "--out", str(small)]) == 0
+    assert bench.main([*args, "--out", str(full), "--full-history"]) == 0
+    a, b = json.loads(small.read_text()), json.loads(full.read_text())
+    assert {"history", "items"} <= _keys(b) and not _keys(a) & {"history", "series_mean", "items"}
+    assert a["verdicts"] == b["verdicts"] and "classes" in _keys(a)
+
+
+@pytest.mark.parametrize("name, rule", [
+    ("genesis_wave3_fix_orders.json", "order_verdicts"), ("genesis_wave3_fix_idle.json", "idle_verdicts"),
+    ("genesis_recheck_order.json", "order_verdicts")])
+def test_the_committed_wave3_runs_give_the_same_verdicts_without_their_histories(name, rule):
+    """What the pre-registered rules read is in the summaries: dropping the per-cycle histories from the committed
+    Wave 3 runs changes no verdict (the files themselves are not rewritten)."""
+    from neuroscifi.acceptance.cognition import cycles
+    runs = json.loads((EVIDENCE / name).read_text())["runs"]
+    for split, run in runs.items():
+        assert getattr(cycles, rule)(run) == getattr(cycles, rule)(scoring.summary(run)), split
+
+
+def test_the_committed_source_rule_runs_give_the_same_verdicts_without_their_histories():
+    from neuroscifi.acceptance.cognition import cycles_s
+    results = json.loads((EVIDENCE / "genesis_wave3_s.json").read_text())["results"]
+    compared = 0
+    for name, result in results.items():
+        short = scoring.summary(result)
+        for config in result["configurations"]:
+            if config != "baseline":
+                assert cycles_s.verdict(result, config, "baseline") == cycles_s.verdict(short, config, "baseline")
+                compared += 1
+    assert compared
+
+
+def test_the_compact_layout_reads_back_unchanged():
+    value = {"a": [1, 2.5, {"b": None, "c": "x\n"}], "d": {"e": {"f": {"g": {"h": [1, {"i": []}]}}}}, "j": {}}
+    assert json.loads(scoring.dumps(value)) == value and json.loads(scoring.dumps(value, levels=0)) == value

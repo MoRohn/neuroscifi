@@ -8,6 +8,9 @@ improve knowledge over repeated cycles, and what does each of lane K's mechanism
   python scripts/bench_learning_cycles.py run --split development --cycles 3 --config baseline   # a quick look
   python scripts/bench_learning_cycles.py final --note TEXT --out /outside/the/tree.json          # THE look (below)
 
+`run` and `idle` write summaries per world and seed; the per-cycle means (series_mean, also the references') only with
+--full-history (Wave 4 lane D: Wave 3's files carried them). `final` and `verdict` write everything, as before.
+
 Wave 3 lane R (ADR-060), the re-check orders on lane R's worlds (cycles_rate_splits.py) and on lane F's:
   python scripts/bench_learning_cycles.py run --split rate:held_out --orders --out rate_held.json
   python scripts/bench_learning_cycles.py verdict --orders rate_held.json
@@ -53,8 +56,10 @@ def _commit():
         return None
 
 
-def _write(value, out):
-    text = json.dumps(scoring.rounded(value), indent=1)
+def _write(value, out, *, full=True):
+    """full=False (run and idle without --full-history): summaries only (scoring.summary), compact layout."""
+    text = json.dumps(scoring.rounded(value), indent=1) if full else \
+        scoring.dumps(scoring.rounded(scoring.summary(value)))
     if out:
         Path(out).write_text(text + "\n", encoding="utf-8")
         print(f"wrote {out}")
@@ -77,6 +82,7 @@ def main(argv=None) -> int:
                    help="the configurations of a withheld look (cycles.LOOKS), on a public split: a dry run of it")
     r.add_argument("--cycles", type=int, help="shorten every world to this many cycles")
     r.add_argument("--out")
+    r.add_argument("--full-history", action="store_true", help="also write the per-cycle means (scoring.HISTORY_KEYS)")
     v = sub.add_parser("verdict")
     v.add_argument("result")
     v.add_argument("--out")
@@ -93,6 +99,7 @@ def main(argv=None) -> int:
                                     "cycles.idle_configurations(), its references and cycles.idle_verdicts")
     i.add_argument("--out", required=True)
     i.add_argument("--split", action="append", choices=cycles.SPLITS, help="repeatable; default every public split")
+    i.add_argument("--full-history", action="store_true", help="also write the per-cycle means (scoring.HISTORY_KEYS)")
     a = ap.parse_args(argv)
     if a.command == "idle":
         return idle(a)
@@ -125,7 +132,7 @@ def main(argv=None) -> int:
     if a.look:                  # the look's report fields, as final() writes them
         out |= cycles.look_view(out) | {"look_name": a.look}
     out["wall_seconds"] = time.perf_counter() - started
-    _write(out, a.out)
+    _write(out, a.out, full=a.full_history)
     return 0
 
 
@@ -147,7 +154,7 @@ def idle(a) -> int:
         out["safety_all_runs"][split] = {"runs": len(rows)} | {k: sum(r[k] or 0 for r in rows)
                                                                for k in cycles.SAFETY + cycles.LOSSES}
     out["wall_seconds"] = time.perf_counter() - started
-    _write(out, a.out)
+    _write(out, a.out, full=a.full_history)
     return 0
 
 
