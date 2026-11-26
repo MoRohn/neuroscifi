@@ -103,9 +103,11 @@ def test_a_page_crediting_an_assistant_is_never_evidence_for_its_value():
 
 
 def test_an_echo_that_only_disagrees_is_still_asked_never_decided():
-    """An echo of the individual's own value that only contradicts what two outlets say about a held item is not
-    removed: the disagreement is asked as before, and no row states the echoed value. (An echo that would lead its
-    cluster is removed: test above.)"""
+    """An echo of the individual's own value that only contradicts what two outlets say about a held item: the
+    disagreement is asked as before, and no row states the echoed value. (An echo that would lead its cluster is
+    removed: test above.) Since the Wave 4 fix (review4 H2: an echo is no evidence for OR against a held value) the
+    echo is also removed from the contradicting side, so it is named among the echoes; the question is asked by
+    consolidate._echo_disagreement and the held item is unchanged."""
     with adv._s_individual("echo-asked") as (db, _):
         kid = adv._s_item(db)
         adv._s_look(db, T0 + DAY, [], answer="Velmora 9.2.0 is the latest Velmora release.")
@@ -113,8 +115,10 @@ def test_an_echo_that_only_disagrees_is_still_asked_never_decided():
                                              adv._s_page("factline.example", adv._OLD, T0 - DAY),
                                              ("askboard.example", "Someone on the forum says Velmora 9.2.0 is now the "
                                                                   "latest Velmora release.", T0 + 2 * DAY - 3600, None)])
-        assert adv._s_rows(db, "9.2.0") == [] and adv._s_live(db, kid)["status"] == "provisional"
-        assert out.get("echoes") in (None, []) and any(c.get("knowledge_id") == kid for c in out["contested"])
+        held = adv._s_live(db, kid)
+        assert adv._s_rows(db, "9.2.0") == [] and held["status"] == "provisional"
+        assert len(out.get("echoes") or []) == 1 and held["contradicting"] == []
+        assert any(c.get("knowledge_id") == kid and c.get("echo") for c in out["contested"])
 
 
 # ---- supersession: the setting, the review list and the revert -------------------------------------------------------

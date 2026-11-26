@@ -220,10 +220,20 @@ def _config(db, args, now):
         changes["artifact_adapters"] = [n for n in (p.strip() for p in args.artifact_adapters.split(",")) if n]
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
+    repair_notes = []
+    for item in args.repair_fixed or ():      # review4 M1: a damaged setting fixed at creation pauses writes
+        name, _, text = item.partition("=")
+        try:
+            value = json.loads(text)
+        except ValueError:
+            raise ValidationError(f"--repair-fixed {name}: the value must be JSON (a number, or null)") from None
+        repaired = store.repair_fixed(db, name.strip(), value, now)
+        repair_notes += repaired["notes"]
+        out = out | {"changed": out["changed"] + repaired["changed"], "config": asdict(store.config(db))}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
     from . import graph_migration
     record = graph_migration._record(db) if store.config(db).graph_rule_migration else None
-    notes = []
+    notes = list(repair_notes)
     if record is not None and record.get("status") == "reversed":
         # The setting only decides whether a migration not yet run may run; an undone one never runs again.
         notes.append("the graph-rule migration was undone (`nsf graph migration undo`); turning "
@@ -272,6 +282,12 @@ def register(sub):
 
     p = sub.add_parser("config", help="instance settings: show them, or change the ones an owner may change")
     store.add_db_argument(p)
+    p.add_argument("--repair-fixed", action="append", metavar="NAME=VALUE",
+                   help="repair a DAMAGED setting fixed at creation (evidence_ttl_seconds, max_evidence_rows, "
+                        "min_free_bytes, max_thermal_celsius); writes are paused until it is repaired. VALUE is JSON "
+                        "(a number, or null for no thermal limit) that the setting's own check accepts; a sound fixed "
+                        "setting cannot be changed. The value chosen at creation is recorded nowhere in the file once "
+                        "its row is damaged (a checkpoint archive taken before holds it); the repair is logged")
     p.add_argument("--ask-budget", type=bounded_int(0, 1000), help="questions per epoch and window before deferring")
     p.add_argument("--ask-window-days", type=days_or_zero,
                    help="the ask budget counts questions of the last this many days (0 = the whole epoch)")

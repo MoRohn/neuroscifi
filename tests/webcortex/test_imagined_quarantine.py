@@ -89,6 +89,9 @@ WRITERS: dict[str, str] = {
     "acceptance/cognition/cycles.py": "lane F's learning-cycles experiment plants the individual's own outputs (an "
                                       "inference asserting a version no source states) in temporary individuals to "
                                       "measure that they never become knowledge",
+    "acceptance/cognition/sources.py": "Wave 4 step 0's source-independence family plants the individual's own "
+                                       "answers in temporary individuals, as cycles.py does, so echoes of them can "
+                                       "be measured",
 }
 DISPLAYS: dict[str, str] = {
     "console/server.py": "lane W (ADR-053): the console's read-only 'Imagined, not evidence' panel (GET "

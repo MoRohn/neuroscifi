@@ -31,7 +31,8 @@ WAVE0_VOICE = {"mode", "voice", "speed", "retain_audio", "audio_ttl_hours", "tra
 # Numbers Wave 1 added: bounds of a switch, not switches (test_uat_rollback.py's docstring says so)
 BOUNDS = {"imagine_max_seconds", "imagine_max_bytes", "broadcast_threshold", "recheck_per_tick", "recheck_daily",
           "reflection_interval_days", "supersession_min_sources",
-          "artifact_max_bytes", "artifact_store_max_bytes"}       # OMNIMIND lane A (ADR-071): the store's caps
+          "artifact_max_bytes", "artifact_store_max_bytes",       # OMNIMIND lane A (ADR-071): the store's caps
+          "reach_share"}        # Wave 4 lane A (ADR-064): the bound of allowance_division
 
 
 def _added():
@@ -73,6 +74,27 @@ def test_every_wave3_setting_is_rolled_back_and_made_to_fail():
     assert switches - {m for m, *_ in faults.WAVE3_ENTRIES} == set(), "add it to WAVE3_ENTRIES"
 
 
+# Wave 4 (append-only, one name per line): the fields each Wave 4 lane added, rolled back, made to fail and switched off
+# by the equivalence test as Wave 3's are, each off at the shipped defaults
+WAVE4_FIELDS = {
+    "source_derivation",            # lane S (ADR-066)
+    "own_text_provenance",          # lane E (ADR-067)
+    "allowance_division",           # lane A (ADR-064)
+}
+
+
+def test_every_wave4_setting_is_rolled_back_and_made_to_fail():
+    import uat.test_uat_fault_injection as faults
+    assert WAVE4_FIELDS <= {f.name for f in dataclasses.fields(WebConfig)}
+    switches = WAVE4_FIELDS - BOUNDS
+    assert switches - set(rollback.SWITCHES) == set(), "add a rollback test and a SWITCHES entry"
+    made_to_fail = {m for m, *_ in faults.WAVE3_ENTRIES} | {m for m, *_ in faults.WAVE4_S_ENTRIES} | \
+        {m for m, *_ in faults.WAVE4A_ENTRIES}
+    assert switches - made_to_fail == set(), "add it to WAVE3_ENTRIES, WAVE4_S_ENTRIES or WAVE4A_ENTRIES"
+    assert switches - set(equivalence.OFF_WEB) == set(), "add it to OFF_WEB"
+    assert all(getattr(WebConfig(), name) == equivalence.OFF_WEB[name] for name in switches)
+
+
 def test_the_wave0_settings_are_the_ones_wave0_had():
     """The frozen Wave 0 lists above are not allowed to grow: a setting added later must be classified."""
     assert WAVE0_INSTANCE <= {f.name for f in dataclasses.fields(InstanceConfig)}
@@ -101,3 +123,18 @@ def test_the_other_copies_of_the_list_agree_on_what_off_means():
     for where, values in copies.items():
         differ = {k: (v, off[k]) for k, v in values.items() if k in off and v != off[k]}
         assert differ == {}, (where, differ)
+
+
+# Wave 4 lane A (ADR-064): the fields it added, rolled back and made to fail by the fault-injection test
+WAVE4A_FIELDS = {"allowance_division", "reach_share"}
+
+
+def test_every_wave4_lane_a_setting_is_rolled_back_and_made_to_fail():
+    import uat.test_uat_fault_injection as faults
+    assert WAVE4A_FIELDS <= {f.name for f in dataclasses.fields(WebConfig)}
+    switches = WAVE4A_FIELDS - BOUNDS
+    assert switches == {"allowance_division"}
+    assert switches - set(rollback.SWITCHES) == set(), "add a rollback test and a SWITCHES entry"
+    assert switches - {m for m, *_ in faults.WAVE4A_ENTRIES} == set(), "add it to WAVE4A_ENTRIES"
+    from neuroscifi.webcortex.config import CHECKED_ON_LOAD
+    assert WAVE4A_FIELDS <= set(CHECKED_ON_LOAD)

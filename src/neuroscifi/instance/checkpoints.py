@@ -86,7 +86,10 @@ def create(db, db_path, out_dir, now, *, policy="cold"):
     out_dir = Path(out_dir)
     out_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(out_dir, 0o700)
-    # The snapshot and the archive can each approach the database size.
+    # The snapshot and the archive can each approach the database size. A damaged reserve is not read as a looser
+    # one (review4 M1): the checkpoint is refused, as on main, until the owner repairs it.
+    if "min_free_bytes" in store.fixed_damage(db):
+        raise WritesPaused(store.fixed_damage_reason(["min_free_bytes"]))
     needed = Path(db_path).stat().st_size + store.config(db).min_free_bytes
     free = shutil.disk_usage(out_dir).free
     if free < needed:
@@ -409,6 +412,11 @@ def _read_forgets(db, now, wanted=None):
                        "SELECT target_id, requested_at, effects FROM deletion_log WHERE target_kind='epoch' "
                        "ORDER BY id")],
         "web": db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall(),
+        # The owner's removal of every own-text fingerprint (`nsf web config --forget-own-text`, ADR-067): no tombstone,
+        # so the deletion log is the record, as for epochs above (webcortex.emitted.replay).
+        "own_text": [(json.loads(effects).get("state_version", float("inf")), requested_at, effects)
+                     for requested_at, effects in db.execute(
+                         "SELECT requested_at, effects FROM deletion_log WHERE target_kind='own_text' ORDER BY id")],
         # Imagined records the live file removed (purged, forgotten with a source, expired, evicted; ADR-049).
         "imagined": db.execute("SELECT digest,reason,forgotten_at FROM imagined_forgotten").fetchall()
         if imagined.present(db) else [],
@@ -453,6 +461,8 @@ def _replay(copy, forgets, now):
     invalidated = []
     copy.execute("PRAGMA secure_delete=ON")
     migrate(copy)  # an older archive gains forgotten_roots before the scrub below
+    # Wave 4 lane D (review3c F6): the answer marks' scan of every task result, made before the write transaction
+    web_marks = governance.prepare_replay_marks(copy, {(k, d) for k, d, _ in web}) if web else None
     copy.execute("BEGIN IMMEDIATE")
     if forgets and forgets.get("settings"):
         # First of all, so that nothing done to the copy from here on runs under a setting the owner has changed.
@@ -581,9 +591,13 @@ def _replay(copy, forgets, now):
                              "VALUES('epoch',?,?,?)", (epoch, requested_at, json.dumps(carried, sort_keys=True)))
                 # as the live forget does: the archives the copy lists were written before the forget
                 copy.execute("UPDATE checkpoints SET status='stale' WHERE status='valid'")
+    own_text = forgets.get("own_text") if forgets else None
+    if own_text:
+        from ..webcortex import emitted
+        own_text_removed = emitted.replay(copy, own_text, version)
     if web:
         copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", web)
-        web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now)
+        web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now, web_marks)
         voice = governance.replay_voice_forgets(copy, {(k, d) for k, d, _ in web}, now)
     # a signed request accepted after the archive was written stays a replay in the copy (security review A-5)
     copy.executemany("INSERT OR IGNORE INTO node_nonces(device,nonce,seen_at) VALUES(?,?,?)", nonces)
@@ -633,7 +647,8 @@ def _replay(copy, forgets, now):
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked,
             "imagined_removed": imagined_removed,
-            **({"artifacts_removed": artifacts_removed} if artifacts_removed else {})}
+            **({"artifacts_removed": artifacts_removed} if artifacts_removed else {})} | (
+                {"own_text_removed": own_text_removed} if own_text else {})
 
 
 # ---- rewrite in place after a forget ------------------------------------------------------------------------------
@@ -643,7 +658,8 @@ def _replay(copy, forgets, now):
 # rows the replay does not reach, and an archive made stale while it was written has no recorded cause: those stay
 # stale until `rebuild` replaces them.
 REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND,
-                              "artifact"})       # artifacts/store.py DELETION_KIND: replay() is its whole cascade
+                              "artifact",        # artifacts/store.py DELETION_KIND: replay() is its whole cascade
+                              "own_text"})       # webcortex.emitted.DELETION_KIND: its replay is the whole removal
 JOURNAL_SUFFIX = ".rewrite"
 
 

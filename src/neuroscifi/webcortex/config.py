@@ -42,16 +42,41 @@ MODE_BUDGETS = {
 }
 assert set(MODE_BUDGETS) == set(MODES)
 
-# Wave 3 settings whose stored value is checked when it is read (WebConfig.from_json; security review L8)
-CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognition", "supersession",
-                   "supersession_min_sources", "origin_grouping")
+# Settings whose stored value is checked when it is read (WebConfig.from_json): the five Wave 3 ones since the Wave 3
+# fix lane (security review L8), and every other one since Wave 4 lane D (CHECKED_ON_LOAD is filled in below the class).
+CHECKED_ON_LOAD: tuple = ()
 
 
 # review3b N8: a damaged value of a setting that tunes an opt-in rule never loosens that rule: the rule itself reads as
 # off (its safe value) until the owner sets the setting again (a damaged supersession_min_sources read as 2 while the
 # owner had set 5 and supersession stayed "independent"). {damaged setting: (the rule, its safe value)}
-FAILS_CLOSED = {"supersession_min_sources": ("supersession", "ask")}
+# Wave 4 lane D: the same for what bounds or screens what the Web Cortex sends: a damaged deny list, list of private
+# terms, per-host interval, budget ceiling or document size turns web access off until it is set again (its default
+# could be looser than what the owner had set, and a lost private term could leave in a query).
+FAILS_CLOSED = {"supersession_min_sources": ("supersession", "ask"),
+                **{name: ("enabled", False) for name in ("deny_domains", "private_terms", "min_domain_interval",
+                                                         "budget_ceiling", "max_document_bytes")}}
+# Wave 4 lane D: what a damaged value reads as where the default is not the most cautious value (everything else reads
+# as its default, which is the cautious direction: off, loopback, not configured). Allowances and caps of work the owner
+# did not ask for read as 0 (none), rendering as off, read-ahead as one page at a time, the bars for admitting a fact
+# without the owner as their highest (nothing becomes provisional by itself), strategy selection as off, the
+# reflection interval as its longest.
+CAUTIOUS = {"news_rendering": False, "daily_renders": 0, "daily_provider_queries": {k: 0 for k in
+                                                                                    DEFAULT_PROVIDER_DAILY_QUERIES},
+            "daily_autonomous": {"tasks": 0, "requests": 0, "bytes": 0},
+            "daily_mcp": {"tasks": 0, "requests": 0, "bytes": 0}, "mcp_research_per_hour": 0, "read_ahead": 1,
+            "recheck_per_tick": 0, "recheck_daily": 0, "auto_provisional_min_sources": 50,
+            "auto_provisional_min_confidence": 1.0, "strategy_selection": "off", "reflection_interval_days": 365.0}
 _REPORTED: set = set()
+
+
+def closed_by(raw) -> list:
+    """The damaged saved settings (FAILS_CLOSED) that turned web access off although the saved switch is on, by name
+    (Wave 4 fix, review4 L1: `nsf web config --enable` alone cannot turn it on while one is damaged)."""
+    if not isinstance(raw, dict) or raw.get("enabled") is not True:
+        return []
+    return sorted(name for name, (rule, _) in FAILS_CLOSED.items()
+                  if rule == "enabled" and name in raw and damaged(name, raw[name]))
 
 
 def damaged(name, value) -> bool:
@@ -251,27 +276,73 @@ class WebConfig:
     # N1 and keeps copies naming several origins one source on the staged cases (review3c F1), but no benchmark world
     # holds a page naming two origins, so neither direction is measured. Applies to claims read while it is set.
     origin_grouping: str = "transitive"
+    # ADR-067 (Wave 4 lane E), the individual's own text by what it emitted. own_text_provenance: when a model-written
+    # answer of the OWNER's task is stored (console, command line, the owner's voice, the owner's refresh; since the
+    # Wave 4 fix lane a family device's, an agent's or an autonomous task's answer records nothing), the subject names
+    # and normalised values its asserting parts state (no question, negated, hedged or conditional part) are recorded as
+    # salted fingerprints with the time and whether a source the individual had read stated that value then
+    # (webcortex/emitted.py; never the text); a page read later, published after that answer and within 30 days of
+    # it, stating for that subject a value the individual emitted with no source is not evidence for or against it (a
+    # disagreement it raises is still asked). OFF by default: with it off nothing is recorded or read and consolidation
+    # is as before; turning it on is the owner's decision (ADR-067 has the measurements, both directions, and its
+    # limits; `nsf web config` repeats them when it is set on).
+    own_text_provenance: bool = False
+    # ADR-066 (Wave 4 lane S): what counts as one source by evidence of derivation, not by the wording of a credit. On,
+    # a page that names another page read in the same task (capitalised words equal to that page's site label,
+    # whatever surrounds them) or links to it counts with that page (one edge per group, never between two groups that
+    # each hold a page naming no other page, only between groups stating the same values, never to a page published
+    # later), on top of today's grouping, which it never splits; a page lane E's echo check marks counts for nothing.
+    # OFF by default: an outlet that checked a value and still names another outlet looks exactly like a copy, so the
+    # rule trades true facts not verified for copies not counted twice (ADR-066 has both, per shape). NOT SUPPORTED: do
+    # not turn it on (review4 H1, M2, M3): its signal is a convention of the benchmark worlds, and one page that every
+    # honest outlet links or names can still merge them. Applies to claims read while it is set; off, its stored marks
+    # are not read. `nsf web config` says so when it is set on (and still obeys the owner).
+    source_derivation: bool = False
+    # ADR-064 (Wave 4 lane A): how the day's autonomous task count (daily_autonomous.tasks) is divided between
+    # REFRESHING what is held (the timer's re-check, due refreshes and curiosity, and idle investigations of a
+    # knowledge item) and REACHING subjects that hold nothing (idle investigations of a candidate that is no knowledge
+    # item). "race" (the default): as before ADR-064, whichever path asks first takes the room. "reserve": round(tasks
+    # x reach_share) places are held for reaching while the one admission rule admits a reaching candidate (released
+    # at once when it admits none); refreshing may not take them, reaching may take any room. "yield": as "reserve",
+    # with the share read from what each path's finished tasks of the last 7 days wrote to knowledge (bounded
+    # 0.1-0.9). Never more tasks, no new activity: the cap, the admission rule, quiet and the owner's own work are
+    # unchanged. Off ("race") by default: the owner's decision (ADR-064 has the measurements).
+    allowance_division: str = "race"
+    reach_share: float = 0.25
+    # ADR-065 (Wave 4 fix, review4 M4): the caution shown to the owner says "only one source" (a single page) by default, the
+    # one trigger its measurement supports. On, it also says when pages were counted together as copies and when a page
+    # repeats an earlier answer of the individual's own (computed either way; wrong about 3 times in 10 on held-out
+    # worlds). Display only: nothing reads it to decide anything. Not carried by a restore: as every web setting but
+    # tick_admission, a restored copy keeps the archive's value (checkpoints._replay; review4 security second pass 2c).
+    caution_detail: bool = False
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":
-        raw = json.loads(text) if text else {}
+        try:
+            raw = json.loads(text) if text else {}
+        except ValueError:
+            raw = None
+        if not isinstance(raw, dict):       # Wave 4 lane D: an unreadable row is every setting damaged
+            raw = {name: _UNREADABLE for name in CHECKED_ON_LOAD}
         known = {f.name for f in fields(cls)}
         values = {k: v for k, v in raw.items() if k in known}
-        # Wave 3 fix lane (security review L8): a damaged stored value of a Wave 3 setting is never used as it stands
-        # (a non-string recheck_order made every timer pass raise; a non-int supersession_min_sources made
-        # consolidation raise with the rule on): its default applies, state.setting_problems() names it, and a
-        # warning is logged with the setting's name only.
+        # Wave 3 fix lane (security review L8), every setting since Wave 4 lane D: a damaged stored value is never used
+        # as it stands (a non-string recheck_order made every timer pass raise; a non-int supersession_min_sources made
+        # consolidation raise with the rule on): its cautious value applies (CAUTIOUS, else the default; FAILS_CLOSED),
+        # state.setting_problems() names it, and a warning is logged once with the setting's name only.
+        closed = {}
         for name in sorted(set(values) & set(CHECKED_ON_LOAD)):
-            if damaged(name, values[name]):
+            if values[name] is _UNREADABLE or damaged(name, values[name]):
                 if name not in _REPORTED:           # review3b N8: once per process and setting, not on every read
                     _REPORTED.add(name)
                     logging.getLogger(__name__).warning("the saved Web Cortex setting %s is not a valid value; "
-                                                        "its default is used", name)
+                                                        "its cautious value is used", name)
                 del values[name]
-                if name in FAILS_CLOSED and values.get(FAILS_CLOSED[name][0], FAILS_CLOSED[name][1]) != \
-                        FAILS_CLOSED[name][1]:
-                    values[FAILS_CLOSED[name][0]] = FAILS_CLOSED[name][1]
-        return cls(**values)
+                if name in CAUTIOUS:
+                    values[name] = CAUTIOUS[name]
+                if name in FAILS_CLOSED:
+                    closed[FAILS_CLOSED[name][0]] = FAILS_CLOSED[name][1]
+        return cls(**(values | closed))
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -287,3 +358,7 @@ class WebConfig:
         elif not (requested and "max_browser_sessions" in requested):
             budget.max_browser_sessions = max(budget.max_browser_sessions, 1)   # rendering only as an escalation
         return budget.clamp(self.ceiling())
+
+
+CHECKED_ON_LOAD = tuple(f.name for f in fields(WebConfig))       # every setting (Wave 4 lane D)
+_UNREADABLE = object()          # what each setting of a row that is not a JSON object reads as before its check

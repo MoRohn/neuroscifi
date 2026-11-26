@@ -1,0 +1,4042 @@
+{
+ "label": "Wave 4 fix lane (gen4-fix): the source-independence family after the reviews' fixes (review4 security and measurement); simulated worlds of fictional software releases read through the real modules, offline, no model; summaries per configuration, world and shape",
+ "development": {
+  "commit": "842ef8b",
+  "dirty": false,
+  "seeds": [
+   8301,
+   8302,
+   8303
+  ],
+  "configurations": {
+   "shipped": {
+    "read_back": {},
+    "totals": {
+     "looks": 360,
+     "pages_with_claims": 1120,
+     "eligible": 233,
+     "admitted": 216,
+     "wrongly_admitted": 64,
+     "wrongly_admitted_false": 21,
+     "own_admitted": 4,
+     "suppressed": 39,
+     "suppressed_contested": 26,
+     "dependent_rises": 1,
+     "discarded_echo_pages": 0,
+     "discarded_honest_pages": 0,
+     "tp": 151,
+     "fp": 22,
+     "fn": 604
+    },
+    "precision": 0.873,
+    "recall": 0.2,
+    "worlds": {
+     "src-dev-mixed": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 540,
+       "eligible": 130,
+       "admitted": 116,
+       "wrongly_admitted": 23,
+       "wrongly_admitted_false": 6,
+       "own_admitted": 0,
+       "suppressed": 14,
+       "suppressed_contested": 6,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 51,
+       "fp": 11,
+       "fn": 293
+      },
+      "mean_correct": {
+       "mean": 0.703962,
+       "sd": 0.063703,
+       "min": 0.636632,
+       "max": 0.763281,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.711972,
+       0.636632,
+       0.763281
+      ]
+     },
+     "src-dev-copies": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 580,
+       "eligible": 103,
+       "admitted": 100,
+       "wrongly_admitted": 41,
+       "wrongly_admitted_false": 15,
+       "own_admitted": 4,
+       "suppressed": 25,
+       "suppressed_contested": 20,
+       "dependent_rises": 1,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 100,
+       "fp": 11,
+       "fn": 311
+      },
+      "mean_correct": {
+       "mean": 0.579429,
+       "sd": 0.049681,
+       "min": 0.543194,
+       "max": 0.636063,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.559031,
+       0.543194,
+       0.636063
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 14,
+      "pages_with_claims": 50,
+      "eligible": 14,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 10,
+      "suppressed_contested": 10,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 15,
+      "pages_with_claims": 37,
+      "eligible": 4,
+      "admitted": 5,
+      "wrongly_admitted": 4,
+      "wrongly_admitted_false": 3,
+      "own_admitted": 4,
+      "suppressed": 2,
+      "suppressed_contested": 2,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 3,
+      "fp": 1,
+      "fn": 14
+     },
+     "extra_origin": {
+      "looks": 26,
+      "pages_with_claims": 86,
+      "eligible": 4,
+      "admitted": 16,
+      "wrongly_admitted": 16,
+      "wrongly_admitted_false": 6,
+      "own_admitted": 0,
+      "suppressed": 3,
+      "suppressed_contested": 3,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 10,
+      "fp": 0,
+      "fn": 66
+     },
+     "independent": {
+      "looks": 86,
+      "pages_with_claims": 220,
+      "eligible": 86,
+      "admitted": 70,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 11,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 18,
+      "pages_with_claims": 57,
+      "eligible": 1,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 59,
+      "fp": 0,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 42,
+      "pages_with_claims": 127,
+      "eligible": 42,
+      "admitted": 35,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 138
+     },
+     "roundup": {
+      "looks": 22,
+      "pages_with_claims": 53,
+      "eligible": 22,
+      "admitted": 20,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 31
+     },
+     "stale": {
+      "looks": 5,
+      "pages_with_claims": 21,
+      "eligible": 3,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 2,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 57,
+      "pages_with_claims": 217,
+      "eligible": 9,
+      "admitted": 31,
+      "wrongly_admitted": 31,
+      "wrongly_admitted_false": 11,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 7,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 25,
+      "fp": 1,
+      "fn": 218
+     },
+     "syndicated_nocredit": {
+      "looks": 33,
+      "pages_with_claims": 131,
+      "eligible": 6,
+      "admitted": 13,
+      "wrongly_admitted": 13,
+      "wrongly_admitted_false": 1,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 1,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 29,
+      "fp": 0,
+      "fn": 117
+     },
+     "two_origins": {
+      "looks": 14,
+      "pages_with_claims": 42,
+      "eligible": 14,
+      "admitted": 11,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 11,
+      "fp": 3,
+      "fn": 17
+     },
+     "verified_credit": {
+      "looks": 16,
+      "pages_with_claims": 41,
+      "eligible": 16,
+      "admitted": 14,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 12,
+      "pages_with_claims": 38,
+      "eligible": 12,
+      "admitted": 1,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 14,
+      "fp": 0,
+      "fn": 3
+     }
+    }
+   },
+   "own_text_provenance": {
+    "read_back": {
+     "own_text_provenance": true
+    },
+    "totals": {
+     "looks": 360,
+     "pages_with_claims": 1120,
+     "eligible": 233,
+     "admitted": 213,
+     "wrongly_admitted": 60,
+     "wrongly_admitted_false": 20,
+     "own_admitted": 2,
+     "suppressed": 39,
+     "suppressed_contested": 24,
+     "dependent_rises": 1,
+     "discarded_echo_pages": 18,
+     "discarded_honest_pages": 8,
+     "tp": 151,
+     "fp": 22,
+     "fn": 604
+    },
+    "precision": 0.873,
+    "recall": 0.2,
+    "worlds": {
+     "src-dev-mixed": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 540,
+       "eligible": 130,
+       "admitted": 116,
+       "wrongly_admitted": 23,
+       "wrongly_admitted_false": 6,
+       "own_admitted": 0,
+       "suppressed": 14,
+       "suppressed_contested": 6,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 5,
+       "discarded_honest_pages": 0,
+       "tp": 51,
+       "fp": 11,
+       "fn": 293
+      },
+      "mean_correct": {
+       "mean": 0.703962,
+       "sd": 0.063703,
+       "min": 0.636632,
+       "max": 0.763281,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.711972,
+       0.636632,
+       0.763281
+      ]
+     },
+     "src-dev-copies": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 580,
+       "eligible": 103,
+       "admitted": 97,
+       "wrongly_admitted": 37,
+       "wrongly_admitted_false": 14,
+       "own_admitted": 2,
+       "suppressed": 25,
+       "suppressed_contested": 18,
+       "dependent_rises": 1,
+       "discarded_echo_pages": 13,
+       "discarded_honest_pages": 8,
+       "tp": 100,
+       "fp": 11,
+       "fn": 311
+      },
+      "mean_correct": {
+       "mean": 0.568445,
+       "sd": 0.058666,
+       "min": 0.53108,
+       "max": 0.636063,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.53108,
+       0.538194,
+       0.636063
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 14,
+      "pages_with_claims": 50,
+      "eligible": 14,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 10,
+      "suppressed_contested": 10,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 1,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 15,
+      "pages_with_claims": 37,
+      "eligible": 4,
+      "admitted": 4,
+      "wrongly_admitted": 2,
+      "wrongly_admitted_false": 2,
+      "own_admitted": 2,
+      "suppressed": 2,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 18,
+      "discarded_honest_pages": 2,
+      "tp": 3,
+      "fp": 1,
+      "fn": 14
+     },
+     "extra_origin": {
+      "looks": 26,
+      "pages_with_claims": 86,
+      "eligible": 4,
+      "admitted": 16,
+      "wrongly_admitted": 16,
+      "wrongly_admitted_false": 6,
+      "own_admitted": 0,
+      "suppressed": 3,
+      "suppressed_contested": 3,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 10,
+      "fp": 0,
+      "fn": 66
+     },
+     "independent": {
+      "looks": 86,
+      "pages_with_claims": 220,
+      "eligible": 86,
+      "admitted": 70,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 11,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 18,
+      "pages_with_claims": 57,
+      "eligible": 1,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 59,
+      "fp": 0,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 42,
+      "pages_with_claims": 127,
+      "eligible": 42,
+      "admitted": 35,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 138
+     },
+     "roundup": {
+      "looks": 22,
+      "pages_with_claims": 53,
+      "eligible": 22,
+      "admitted": 20,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 31
+     },
+     "stale": {
+      "looks": 5,
+      "pages_with_claims": 21,
+      "eligible": 3,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 2,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 57,
+      "pages_with_claims": 217,
+      "eligible": 9,
+      "admitted": 30,
+      "wrongly_admitted": 30,
+      "wrongly_admitted_false": 11,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 7,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 2,
+      "tp": 25,
+      "fp": 1,
+      "fn": 218
+     },
+     "syndicated_nocredit": {
+      "looks": 33,
+      "pages_with_claims": 131,
+      "eligible": 6,
+      "admitted": 12,
+      "wrongly_admitted": 12,
+      "wrongly_admitted_false": 1,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 1,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 29,
+      "fp": 0,
+      "fn": 117
+     },
+     "two_origins": {
+      "looks": 14,
+      "pages_with_claims": 42,
+      "eligible": 14,
+      "admitted": 11,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 11,
+      "fp": 3,
+      "fn": 17
+     },
+     "verified_credit": {
+      "looks": 16,
+      "pages_with_claims": 41,
+      "eligible": 16,
+      "admitted": 14,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 12,
+      "pages_with_claims": 38,
+      "eligible": 12,
+      "admitted": 1,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 14,
+      "fp": 0,
+      "fn": 3
+     }
+    }
+   },
+   "source_derivation": {
+    "read_back": {
+     "source_derivation": true
+    },
+    "totals": {
+     "looks": 360,
+     "pages_with_claims": 1120,
+     "eligible": 233,
+     "admitted": 178,
+     "wrongly_admitted": 55,
+     "wrongly_admitted_false": 17,
+     "own_admitted": 4,
+     "suppressed": 65,
+     "suppressed_contested": 29,
+     "dependent_rises": 0,
+     "discarded_echo_pages": 0,
+     "discarded_honest_pages": 0,
+     "tp": 268,
+     "fp": 52,
+     "fn": 487
+    },
+    "precision": 0.838,
+    "recall": 0.355,
+    "worlds": {
+     "src-dev-mixed": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 540,
+       "eligible": 130,
+       "admitted": 96,
+       "wrongly_admitted": 19,
+       "wrongly_admitted_false": 4,
+       "own_admitted": 0,
+       "suppressed": 27,
+       "suppressed_contested": 7,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 125,
+       "fp": 30,
+       "fn": 219
+      },
+      "mean_correct": {
+       "mean": 0.621041,
+       "sd": 0.050137,
+       "min": 0.563241,
+       "max": 0.652788,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.652788,
+       0.563241,
+       0.647094
+      ]
+     },
+     "src-dev-copies": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 580,
+       "eligible": 103,
+       "admitted": 82,
+       "wrongly_admitted": 36,
+       "wrongly_admitted_false": 13,
+       "own_admitted": 4,
+       "suppressed": 38,
+       "suppressed_contested": 22,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 143,
+       "fp": 22,
+       "fn": 268
+      },
+      "mean_correct": {
+       "mean": 0.48688,
+       "sd": 0.027111,
+       "min": 0.469711,
+       "max": 0.518134,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.472795,
+       0.469711,
+       0.518134
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 14,
+      "pages_with_claims": 50,
+      "eligible": 14,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 10,
+      "suppressed_contested": 10,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 15,
+      "pages_with_claims": 37,
+      "eligible": 4,
+      "admitted": 5,
+      "wrongly_admitted": 4,
+      "wrongly_admitted_false": 3,
+      "own_admitted": 4,
+      "suppressed": 3,
+      "suppressed_contested": 3,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 3,
+      "fp": 1,
+      "fn": 14
+     },
+     "extra_origin": {
+      "looks": 26,
+      "pages_with_claims": 86,
+      "eligible": 4,
+      "admitted": 13,
+      "wrongly_admitted": 13,
+      "wrongly_admitted_false": 4,
+      "own_admitted": 0,
+      "suppressed": 4,
+      "suppressed_contested": 4,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 25,
+      "fp": 0,
+      "fn": 51
+     },
+     "independent": {
+      "looks": 86,
+      "pages_with_claims": 220,
+      "eligible": 86,
+      "admitted": 70,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 4,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 11,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 18,
+      "pages_with_claims": 57,
+      "eligible": 1,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 59,
+      "fp": 0,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 42,
+      "pages_with_claims": 127,
+      "eligible": 42,
+      "admitted": 35,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 138
+     },
+     "roundup": {
+      "looks": 22,
+      "pages_with_claims": 53,
+      "eligible": 22,
+      "admitted": 6,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 10,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 22,
+      "fp": 2,
+      "fn": 9
+     },
+     "stale": {
+      "looks": 5,
+      "pages_with_claims": 21,
+      "eligible": 3,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 2,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 57,
+      "pages_with_claims": 217,
+      "eligible": 9,
+      "admitted": 24,
+      "wrongly_admitted": 24,
+      "wrongly_admitted_false": 9,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 7,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 97,
+      "fp": 1,
+      "fn": 146
+     },
+     "syndicated_nocredit": {
+      "looks": 33,
+      "pages_with_claims": 131,
+      "eligible": 6,
+      "admitted": 14,
+      "wrongly_admitted": 14,
+      "wrongly_admitted_false": 1,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 2,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 29,
+      "fp": 0,
+      "fn": 117
+     },
+     "two_origins": {
+      "looks": 14,
+      "pages_with_claims": 42,
+      "eligible": 14,
+      "admitted": 10,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 17,
+      "fp": 3,
+      "fn": 11
+     },
+     "verified_credit": {
+      "looks": 16,
+      "pages_with_claims": 41,
+      "eligible": 16,
+      "admitted": 1,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 12,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 32,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 12,
+      "pages_with_claims": 38,
+      "eligible": 12,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 8,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 16,
+      "fp": 0,
+      "fn": 1
+     }
+    }
+   },
+   "wave4:both": {
+    "read_back": {
+     "source_derivation": true,
+     "own_text_provenance": true
+    },
+    "totals": {
+     "looks": 360,
+     "pages_with_claims": 1120,
+     "eligible": 233,
+     "admitted": 175,
+     "wrongly_admitted": 51,
+     "wrongly_admitted_false": 16,
+     "own_admitted": 2,
+     "suppressed": 64,
+     "suppressed_contested": 27,
+     "dependent_rises": 0,
+     "discarded_echo_pages": 18,
+     "discarded_honest_pages": 8,
+     "tp": 266,
+     "fp": 52,
+     "fn": 489
+    },
+    "precision": 0.836,
+    "recall": 0.352,
+    "worlds": {
+     "src-dev-mixed": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 540,
+       "eligible": 130,
+       "admitted": 96,
+       "wrongly_admitted": 19,
+       "wrongly_admitted_false": 4,
+       "own_admitted": 0,
+       "suppressed": 27,
+       "suppressed_contested": 7,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 5,
+       "discarded_honest_pages": 0,
+       "tp": 124,
+       "fp": 30,
+       "fn": 220
+      },
+      "mean_correct": {
+       "mean": 0.621041,
+       "sd": 0.050137,
+       "min": 0.563241,
+       "max": 0.652788,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.652788,
+       0.563241,
+       0.647094
+      ]
+     },
+     "src-dev-copies": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 580,
+       "eligible": 103,
+       "admitted": 79,
+       "wrongly_admitted": 32,
+       "wrongly_admitted_false": 12,
+       "own_admitted": 2,
+       "suppressed": 37,
+       "suppressed_contested": 20,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 13,
+       "discarded_honest_pages": 8,
+       "tp": 142,
+       "fp": 22,
+       "fn": 269
+      },
+      "mean_correct": {
+       "mean": 0.477748,
+       "sd": 0.041008,
+       "min": 0.444844,
+       "max": 0.52369,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.444844,
+       0.464711,
+       0.52369
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 14,
+      "pages_with_claims": 50,
+      "eligible": 14,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 10,
+      "suppressed_contested": 10,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 1,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 15,
+      "pages_with_claims": 37,
+      "eligible": 4,
+      "admitted": 4,
+      "wrongly_admitted": 2,
+      "wrongly_admitted_false": 2,
+      "own_admitted": 2,
+      "suppressed": 2,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 18,
+      "discarded_honest_pages": 2,
+      "tp": 2,
+      "fp": 1,
+      "fn": 15
+     },
+     "extra_origin": {
+      "looks": 26,
+      "pages_with_claims": 86,
+      "eligible": 4,
+      "admitted": 13,
+      "wrongly_admitted": 13,
+      "wrongly_admitted_false": 4,
+      "own_admitted": 0,
+      "suppressed": 4,
+      "suppressed_contested": 4,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 25,
+      "fp": 0,
+      "fn": 51
+     },
+     "independent": {
+      "looks": 86,
+      "pages_with_claims": 220,
+      "eligible": 86,
+      "admitted": 70,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 4,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 11,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 18,
+      "pages_with_claims": 57,
+      "eligible": 1,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 59,
+      "fp": 0,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 42,
+      "pages_with_claims": 127,
+      "eligible": 42,
+      "admitted": 35,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 138
+     },
+     "roundup": {
+      "looks": 22,
+      "pages_with_claims": 53,
+      "eligible": 22,
+      "admitted": 6,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 10,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 22,
+      "fp": 2,
+      "fn": 9
+     },
+     "stale": {
+      "looks": 5,
+      "pages_with_claims": 21,
+      "eligible": 3,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 2,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 57,
+      "pages_with_claims": 217,
+      "eligible": 9,
+      "admitted": 23,
+      "wrongly_admitted": 23,
+      "wrongly_admitted_false": 9,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 7,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 2,
+      "tp": 97,
+      "fp": 1,
+      "fn": 146
+     },
+     "syndicated_nocredit": {
+      "looks": 33,
+      "pages_with_claims": 131,
+      "eligible": 6,
+      "admitted": 13,
+      "wrongly_admitted": 13,
+      "wrongly_admitted_false": 1,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 2,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 28,
+      "fp": 0,
+      "fn": 118
+     },
+     "two_origins": {
+      "looks": 14,
+      "pages_with_claims": 42,
+      "eligible": 14,
+      "admitted": 10,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 17,
+      "fp": 3,
+      "fn": 11
+     },
+     "verified_credit": {
+      "looks": 16,
+      "pages_with_claims": 41,
+      "eligible": 16,
+      "admitted": 1,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 12,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 32,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 12,
+      "pages_with_claims": 38,
+      "eligible": 12,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 8,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 16,
+      "fp": 0,
+      "fn": 1
+     }
+    }
+   },
+   "echo_recognition": {
+    "read_back": {
+     "echo_recognition": true
+    },
+    "totals": {
+     "looks": 360,
+     "pages_with_claims": 1120,
+     "eligible": 233,
+     "admitted": 211,
+     "wrongly_admitted": 58,
+     "wrongly_admitted_false": 18,
+     "own_admitted": 0,
+     "suppressed": 39,
+     "suppressed_contested": 24,
+     "dependent_rises": 1,
+     "discarded_echo_pages": 18,
+     "discarded_honest_pages": 7,
+     "tp": 151,
+     "fp": 22,
+     "fn": 604
+    },
+    "precision": 0.873,
+    "recall": 0.2,
+    "worlds": {
+     "src-dev-mixed": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 540,
+       "eligible": 130,
+       "admitted": 116,
+       "wrongly_admitted": 23,
+       "wrongly_admitted_false": 6,
+       "own_admitted": 0,
+       "suppressed": 14,
+       "suppressed_contested": 6,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 2,
+       "discarded_honest_pages": 0,
+       "tp": 51,
+       "fp": 11,
+       "fn": 293
+      },
+      "mean_correct": {
+       "mean": 0.703962,
+       "sd": 0.063703,
+       "min": 0.636632,
+       "max": 0.763281,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.711972,
+       0.636632,
+       0.763281
+      ]
+     },
+     "src-dev-copies": {
+      "totals_sum": {
+       "looks": 180,
+       "pages_with_claims": 580,
+       "eligible": 103,
+       "admitted": 95,
+       "wrongly_admitted": 35,
+       "wrongly_admitted_false": 12,
+       "own_admitted": 0,
+       "suppressed": 25,
+       "suppressed_contested": 18,
+       "dependent_rises": 1,
+       "discarded_echo_pages": 16,
+       "discarded_honest_pages": 7,
+       "tp": 100,
+       "fp": 11,
+       "fn": 311
+      },
+      "mean_correct": {
+       "mean": 0.568445,
+       "sd": 0.058666,
+       "min": 0.53108,
+       "max": 0.636063,
+       "n": 3
+      },
+      "per_seed_mean_correct": [
+       0.53108,
+       0.538194,
+       0.636063
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 14,
+      "pages_with_claims": 50,
+      "eligible": 14,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 10,
+      "suppressed_contested": 10,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 15,
+      "pages_with_claims": 37,
+      "eligible": 4,
+      "admitted": 2,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 18,
+      "discarded_honest_pages": 2,
+      "tp": 3,
+      "fp": 1,
+      "fn": 14
+     },
+     "extra_origin": {
+      "looks": 26,
+      "pages_with_claims": 86,
+      "eligible": 4,
+      "admitted": 16,
+      "wrongly_admitted": 16,
+      "wrongly_admitted_false": 6,
+      "own_admitted": 0,
+      "suppressed": 3,
+      "suppressed_contested": 3,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 10,
+      "fp": 0,
+      "fn": 66
+     },
+     "independent": {
+      "looks": 86,
+      "pages_with_claims": 220,
+      "eligible": 86,
+      "admitted": 70,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 11,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 18,
+      "pages_with_claims": 57,
+      "eligible": 1,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 59,
+      "fp": 0,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 42,
+      "pages_with_claims": 127,
+      "eligible": 42,
+      "admitted": 35,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 138
+     },
+     "roundup": {
+      "looks": 22,
+      "pages_with_claims": 53,
+      "eligible": 22,
+      "admitted": 20,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 31
+     },
+     "stale": {
+      "looks": 5,
+      "pages_with_claims": 21,
+      "eligible": 3,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 2,
+      "suppressed_contested": 2,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 57,
+      "pages_with_claims": 217,
+      "eligible": 9,
+      "admitted": 30,
+      "wrongly_admitted": 30,
+      "wrongly_admitted_false": 11,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 7,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 2,
+      "tp": 25,
+      "fp": 1,
+      "fn": 218
+     },
+     "syndicated_nocredit": {
+      "looks": 33,
+      "pages_with_claims": 131,
+      "eligible": 6,
+      "admitted": 12,
+      "wrongly_admitted": 12,
+      "wrongly_admitted_false": 1,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 1,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 29,
+      "fp": 0,
+      "fn": 117
+     },
+     "two_origins": {
+      "looks": 14,
+      "pages_with_claims": 42,
+      "eligible": 14,
+      "admitted": 11,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 1,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 11,
+      "fp": 3,
+      "fn": 17
+     },
+     "verified_credit": {
+      "looks": 16,
+      "pages_with_claims": 41,
+      "eligible": 16,
+      "admitted": 14,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 0,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 12,
+      "pages_with_claims": 38,
+      "eligible": 12,
+      "admitted": 1,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 14,
+      "fp": 0,
+      "fn": 3
+     }
+    }
+   }
+  },
+  "verdicts": {
+   "own_verdict:own_text_provenance": {
+    "config": "own_text_provenance",
+    "reference": "shipped",
+    "verdict": "effective",
+    "checks": {
+     "A1": true,
+     "A2": true,
+     "S1": true,
+     "C1": true,
+     "G": true
+    },
+    "per_world": {
+     "src-dev-mixed": {
+      "own_admitted": [
+       0,
+       0
+      ],
+      "wrongly_admitted": [
+       23,
+       23
+      ],
+      "suppressed": [
+       14,
+       14
+      ],
+      "discarded_honest_pages": 0,
+      "discarded_echo_pages": 5,
+      "mean_correct": [
+       0.703962,
+       0.703962,
+       0.063703
+      ],
+      "grouping_same": true
+     },
+     "src-dev-copies": {
+      "own_admitted": [
+       4,
+       2
+      ],
+      "wrongly_admitted": [
+       41,
+       37
+      ],
+      "suppressed": [
+       25,
+       25
+      ],
+      "discarded_honest_pages": 8,
+      "discarded_echo_pages": 13,
+      "mean_correct": [
+       0.579429,
+       0.568445,
+       0.049681
+      ],
+      "grouping_same": true
+     }
+    }
+   },
+   "own_verdict:echo_recognition": {
+    "config": "echo_recognition",
+    "reference": "shipped",
+    "verdict": "effective",
+    "checks": {
+     "A1": true,
+     "A2": true,
+     "S1": true,
+     "C1": true,
+     "G": true
+    },
+    "per_world": {
+     "src-dev-mixed": {
+      "own_admitted": [
+       0,
+       0
+      ],
+      "wrongly_admitted": [
+       23,
+       23
+      ],
+      "suppressed": [
+       14,
+       14
+      ],
+      "discarded_honest_pages": 0,
+      "discarded_echo_pages": 2,
+      "mean_correct": [
+       0.703962,
+       0.703962,
+       0.063703
+      ],
+      "grouping_same": true
+     },
+     "src-dev-copies": {
+      "own_admitted": [
+       4,
+       0
+      ],
+      "wrongly_admitted": [
+       41,
+       35
+      ],
+      "suppressed": [
+       25,
+       25
+      ],
+      "discarded_honest_pages": 7,
+      "discarded_echo_pages": 16,
+      "mean_correct": [
+       0.579429,
+       0.568445,
+       0.049681
+      ],
+      "grouping_same": true
+     }
+    }
+   },
+   "own_verdict:wave4:both": {
+    "config": "wave4:both",
+    "reference": "shipped",
+    "verdict": "unsafe",
+    "checks": {
+     "A1": true,
+     "A2": true,
+     "S1": false,
+     "C1": false,
+     "G": false
+    },
+    "per_world": {
+     "src-dev-mixed": {
+      "own_admitted": [
+       0,
+       0
+      ],
+      "wrongly_admitted": [
+       23,
+       19
+      ],
+      "suppressed": [
+       14,
+       27
+      ],
+      "discarded_honest_pages": 0,
+      "discarded_echo_pages": 5,
+      "mean_correct": [
+       0.703962,
+       0.621041,
+       0.063703
+      ],
+      "grouping_same": false
+     },
+     "src-dev-copies": {
+      "own_admitted": [
+       4,
+       2
+      ],
+      "wrongly_admitted": [
+       41,
+       32
+      ],
+      "suppressed": [
+       25,
+       37
+      ],
+      "discarded_honest_pages": 8,
+      "discarded_echo_pages": 13,
+      "mean_correct": [
+       0.579429,
+       0.477748,
+       0.049681
+      ],
+      "grouping_same": false
+     }
+    }
+   },
+   "verdict_derivation:source_derivation": {
+    "verdict": "trade",
+    "A_admissions": true,
+    "B_suppression": false,
+    "C_correct": false,
+    "D_grouping": false,
+    "totals": {
+     "wrongly_admitted": {
+      "shipped": 64,
+      "source_derivation": 55
+     },
+     "wrongly_admitted_false": {
+      "shipped": 21,
+      "source_derivation": 17
+     },
+     "own_admitted": {
+      "shipped": 4,
+      "source_derivation": 4
+     },
+     "suppressed": {
+      "shipped": 39,
+      "source_derivation": 65
+     },
+     "eligible": {
+      "shipped": 233,
+      "source_derivation": 233
+     },
+     "tp": {
+      "shipped": 151,
+      "source_derivation": 268
+     },
+     "fp": {
+      "shipped": 22,
+      "source_derivation": 52
+     },
+     "fn": {
+      "shipped": 604,
+      "source_derivation": 487
+     },
+     "looks": {
+      "shipped": 360,
+      "source_derivation": 360
+     }
+    },
+    "precision_recall": {
+     "shipped": [
+      0.872832,
+      0.2
+     ],
+     "source_derivation": [
+      0.8375,
+      0.354967
+     ]
+    },
+    "paired_correct": {
+     "src-dev-copies": {
+      "mean": -0.092549,
+      "sd_base": 0.049681,
+      "better": 0,
+      "worse": 3
+     },
+     "src-dev-mixed": {
+      "mean": -0.082921,
+      "sd_base": 0.063703,
+      "better": 0,
+      "worse": 3
+     }
+    }
+   },
+   "verdict_derivation:wave4:both": {
+    "verdict": "trade",
+    "A_admissions": true,
+    "B_suppression": false,
+    "C_correct": false,
+    "D_grouping": false,
+    "totals": {
+     "wrongly_admitted": {
+      "shipped": 64,
+      "wave4:both": 51
+     },
+     "wrongly_admitted_false": {
+      "shipped": 21,
+      "wave4:both": 16
+     },
+     "own_admitted": {
+      "shipped": 4,
+      "wave4:both": 2
+     },
+     "suppressed": {
+      "shipped": 39,
+      "wave4:both": 64
+     },
+     "eligible": {
+      "shipped": 233,
+      "wave4:both": 233
+     },
+     "tp": {
+      "shipped": 151,
+      "wave4:both": 266
+     },
+     "fp": {
+      "shipped": 22,
+      "wave4:both": 52
+     },
+     "fn": {
+      "shipped": 604,
+      "wave4:both": 489
+     },
+     "looks": {
+      "shipped": 360,
+      "wave4:both": 360
+     }
+    },
+    "precision_recall": {
+     "shipped": [
+      0.872832,
+      0.2
+     ],
+     "wave4:both": [
+      0.836478,
+      0.352318
+     ]
+    },
+    "paired_correct": {
+     "src-dev-copies": {
+      "mean": -0.101681,
+      "sd_base": 0.049681,
+      "better": 0,
+      "worse": 3
+     },
+     "src-dev-mixed": {
+      "mean": -0.082921,
+      "sd_base": 0.063703,
+      "better": 0,
+      "worse": 3
+     }
+    }
+   }
+  },
+  "world_digests": {
+   "src-dev-mixed": [
+    "e35c982f94642af2884c7fd53d3cef0e82c5aec418a390d29e79a6e7108940d7",
+    "e2010242dc23795b7c8ae7a3d683176631b8f52c85df0ac16f84e2a861b55272",
+    "36800410eb5462bdd9754cd8b839e2c9f675e056fcc7663cfcf226b43485ebd1"
+   ],
+   "src-dev-copies": [
+    "6ef74d963f6f4638c66d9a6aab68aec8241b303e1992f52c6044ccefd09e4aea",
+    "4b741788c196b38eb54da24f5bde42124bedb8ef3c90952e8357e9e36f9df435",
+    "4490f4dd12d70ee5fd4c96c9644835e0f4f90e1ba0547018c38a657cfdd33043"
+   ]
+  }
+ },
+ "held_out": {
+  "commit": "842ef8b",
+  "dirty": false,
+  "seeds": [
+   8401,
+   8402,
+   8403,
+   8404
+  ],
+  "configurations": {
+   "shipped": {
+    "read_back": {},
+    "totals": {
+     "looks": 864,
+     "pages_with_claims": 2711,
+     "eligible": 612,
+     "admitted": 479,
+     "wrongly_admitted": 127,
+     "wrongly_admitted_false": 40,
+     "own_admitted": 4,
+     "suppressed": 142,
+     "suppressed_contested": 73,
+     "dependent_rises": 1,
+     "discarded_echo_pages": 0,
+     "discarded_honest_pages": 0,
+     "tp": 363,
+     "fp": 87,
+     "fn": 1426
+    },
+    "precision": 0.807,
+    "recall": 0.203,
+    "worlds": {
+     "src-ho-mixed": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 889,
+       "eligible": 209,
+       "admitted": 164,
+       "wrongly_admitted": 42,
+       "wrongly_admitted_false": 7,
+       "own_admitted": 1,
+       "suppressed": 56,
+       "suppressed_contested": 25,
+       "dependent_rises": 1,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 128,
+       "fp": 38,
+       "fn": 411
+      },
+      "mean_correct": {
+       "mean": 0.60076,
+       "sd": 0.063589,
+       "min": 0.532342,
+       "max": 0.657154,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.652582,
+       0.657154,
+       0.532342,
+       0.560961
+      ]
+     },
+     "src-ho-copies": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 950,
+       "eligible": 190,
+       "admitted": 153,
+       "wrongly_admitted": 51,
+       "wrongly_admitted_false": 22,
+       "own_admitted": 3,
+       "suppressed": 44,
+       "suppressed_contested": 32,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 122,
+       "fp": 25,
+       "fn": 585
+      },
+      "mean_correct": {
+       "mean": 0.627351,
+       "sd": 0.063657,
+       "min": 0.56356,
+       "max": 0.703775,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.703775,
+       0.588119,
+       0.653949,
+       0.56356
+      ]
+     },
+     "src-ho-origins": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 872,
+       "eligible": 213,
+       "admitted": 162,
+       "wrongly_admitted": 34,
+       "wrongly_admitted_false": 11,
+       "own_admitted": 0,
+       "suppressed": 42,
+       "suppressed_contested": 16,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 113,
+       "fp": 24,
+       "fn": 430
+      },
+      "mean_correct": {
+       "mean": 0.656431,
+       "sd": 0.073359,
+       "min": 0.577705,
+       "max": 0.730114,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.577705,
+       0.706411,
+       0.730114,
+       0.611491
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 32,
+      "pages_with_claims": 112,
+      "eligible": 32,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 20,
+      "suppressed_contested": 20,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 21,
+      "pages_with_claims": 50,
+      "eligible": 3,
+      "admitted": 5,
+      "wrongly_admitted": 4,
+      "wrongly_admitted_false": 3,
+      "own_admitted": 4,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 3,
+      "fp": 1,
+      "fn": 22
+     },
+     "extra_origin": {
+      "looks": 58,
+      "pages_with_claims": 206,
+      "eligible": 12,
+      "admitted": 26,
+      "wrongly_admitted": 26,
+      "wrongly_admitted_false": 6,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 23,
+      "fp": 2,
+      "fn": 163
+     },
+     "independent": {
+      "looks": 183,
+      "pages_with_claims": 459,
+      "eligible": 183,
+      "admitted": 134,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 16,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 53,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 58,
+      "pages_with_claims": 203,
+      "eligible": 18,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 12,
+      "suppressed_contested": 12,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 157,
+      "fp": 3,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 103,
+      "pages_with_claims": 316,
+      "eligible": 103,
+      "admitted": 88,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 4,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 350
+     },
+     "roundup": {
+      "looks": 53,
+      "pages_with_claims": 136,
+      "eligible": 53,
+      "admitted": 42,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 5,
+      "fn": 83
+     },
+     "stale": {
+      "looks": 16,
+      "pages_with_claims": 53,
+      "eligible": 6,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 109,
+      "pages_with_claims": 454,
+      "eligible": 30,
+      "admitted": 62,
+      "wrongly_admitted": 61,
+      "wrongly_admitted_false": 23,
+      "own_admitted": 0,
+      "suppressed": 23,
+      "suppressed_contested": 23,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 34,
+      "fp": 3,
+      "fn": 499
+     },
+     "syndicated_nocredit": {
+      "looks": 72,
+      "pages_with_claims": 277,
+      "eligible": 13,
+      "admitted": 36,
+      "wrongly_admitted": 36,
+      "wrongly_admitted_false": 8,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 5,
+      "dependent_rises": 1,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 51,
+      "fp": 2,
+      "fn": 250
+     },
+     "two_origins": {
+      "looks": 43,
+      "pages_with_claims": 129,
+      "eligible": 43,
+      "admitted": 34,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 35,
+      "fp": 8,
+      "fn": 51
+     },
+     "verified_credit": {
+      "looks": 55,
+      "pages_with_claims": 138,
+      "eligible": 55,
+      "admitted": 47,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 4,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 6,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 61,
+      "pages_with_claims": 178,
+      "eligible": 61,
+      "admitted": 5,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 33,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 60,
+      "fp": 0,
+      "fn": 8
+     }
+    }
+   },
+   "own_text_provenance": {
+    "read_back": {
+     "own_text_provenance": true
+    },
+    "totals": {
+     "looks": 864,
+     "pages_with_claims": 2711,
+     "eligible": 612,
+     "admitted": 473,
+     "wrongly_admitted": 123,
+     "wrongly_admitted_false": 37,
+     "own_admitted": 1,
+     "suppressed": 145,
+     "suppressed_contested": 73,
+     "dependent_rises": 1,
+     "discarded_echo_pages": 30,
+     "discarded_honest_pages": 14,
+     "tp": 363,
+     "fp": 87,
+     "fn": 1426
+    },
+    "precision": 0.807,
+    "recall": 0.203,
+    "worlds": {
+     "src-ho-mixed": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 889,
+       "eligible": 209,
+       "admitted": 161,
+       "wrongly_admitted": 41,
+       "wrongly_admitted_false": 7,
+       "own_admitted": 1,
+       "suppressed": 58,
+       "suppressed_contested": 26,
+       "dependent_rises": 1,
+       "discarded_echo_pages": 5,
+       "discarded_honest_pages": 11,
+       "tp": 128,
+       "fp": 38,
+       "fn": 411
+      },
+      "mean_correct": {
+       "mean": 0.596344,
+       "sd": 0.066687,
+       "min": 0.525246,
+       "max": 0.657154,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.64911,
+       0.657154,
+       0.525246,
+       0.553865
+      ]
+     },
+     "src-ho-copies": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 950,
+       "eligible": 190,
+       "admitted": 150,
+       "wrongly_admitted": 48,
+       "wrongly_admitted_false": 19,
+       "own_admitted": 0,
+       "suppressed": 45,
+       "suppressed_contested": 31,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 20,
+       "discarded_honest_pages": 3,
+       "tp": 122,
+       "fp": 25,
+       "fn": 585
+      },
+      "mean_correct": {
+       "mean": 0.629262,
+       "sd": 0.069005,
+       "min": 0.56356,
+       "max": 0.718515,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.718515,
+       0.588119,
+       0.646854,
+       0.56356
+      ]
+     },
+     "src-ho-origins": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 872,
+       "eligible": 213,
+       "admitted": 162,
+       "wrongly_admitted": 34,
+       "wrongly_admitted_false": 11,
+       "own_admitted": 0,
+       "suppressed": 42,
+       "suppressed_contested": 16,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 5,
+       "discarded_honest_pages": 0,
+       "tp": 113,
+       "fp": 24,
+       "fn": 430
+      },
+      "mean_correct": {
+       "mean": 0.656431,
+       "sd": 0.073359,
+       "min": 0.577705,
+       "max": 0.730114,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.577705,
+       0.706411,
+       0.730114,
+       0.611491
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 32,
+      "pages_with_claims": 112,
+      "eligible": 32,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 20,
+      "suppressed_contested": 20,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 2,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 21,
+      "pages_with_claims": 50,
+      "eligible": 3,
+      "admitted": 3,
+      "wrongly_admitted": 1,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 1,
+      "suppressed": 1,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 30,
+      "discarded_honest_pages": 1,
+      "tp": 3,
+      "fp": 1,
+      "fn": 22
+     },
+     "extra_origin": {
+      "looks": 58,
+      "pages_with_claims": 206,
+      "eligible": 12,
+      "admitted": 25,
+      "wrongly_admitted": 25,
+      "wrongly_admitted_false": 6,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 23,
+      "fp": 2,
+      "fn": 163
+     },
+     "independent": {
+      "looks": 183,
+      "pages_with_claims": 459,
+      "eligible": 183,
+      "admitted": 133,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 17,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 0,
+      "fp": 53,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 58,
+      "pages_with_claims": 203,
+      "eligible": 18,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 12,
+      "suppressed_contested": 12,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 157,
+      "fp": 3,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 103,
+      "pages_with_claims": 316,
+      "eligible": 103,
+      "admitted": 87,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 2,
+      "tp": 0,
+      "fp": 0,
+      "fn": 350
+     },
+     "roundup": {
+      "looks": 53,
+      "pages_with_claims": 136,
+      "eligible": 53,
+      "admitted": 42,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 5,
+      "fn": 83
+     },
+     "stale": {
+      "looks": 16,
+      "pages_with_claims": 53,
+      "eligible": 6,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 109,
+      "pages_with_claims": 454,
+      "eligible": 30,
+      "admitted": 62,
+      "wrongly_admitted": 61,
+      "wrongly_admitted_false": 23,
+      "own_admitted": 0,
+      "suppressed": 23,
+      "suppressed_contested": 23,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 34,
+      "fp": 3,
+      "fn": 499
+     },
+     "syndicated_nocredit": {
+      "looks": 72,
+      "pages_with_claims": 277,
+      "eligible": 13,
+      "admitted": 36,
+      "wrongly_admitted": 36,
+      "wrongly_admitted_false": 8,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 5,
+      "dependent_rises": 1,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 51,
+      "fp": 2,
+      "fn": 250
+     },
+     "two_origins": {
+      "looks": 43,
+      "pages_with_claims": 129,
+      "eligible": 43,
+      "admitted": 34,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 35,
+      "fp": 8,
+      "fn": 51
+     },
+     "verified_credit": {
+      "looks": 55,
+      "pages_with_claims": 138,
+      "eligible": 55,
+      "admitted": 46,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 0,
+      "fp": 6,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 61,
+      "pages_with_claims": 178,
+      "eligible": 61,
+      "admitted": 5,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 33,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 60,
+      "fp": 0,
+      "fn": 8
+     }
+    }
+   },
+   "source_derivation": {
+    "read_back": {
+     "source_derivation": true
+    },
+    "totals": {
+     "looks": 864,
+     "pages_with_claims": 2711,
+     "eligible": 612,
+     "admitted": 382,
+     "wrongly_admitted": 99,
+     "wrongly_admitted_false": 31,
+     "own_admitted": 4,
+     "suppressed": 207,
+     "suppressed_contested": 75,
+     "dependent_rises": 1,
+     "discarded_echo_pages": 0,
+     "discarded_honest_pages": 0,
+     "tp": 626,
+     "fp": 180,
+     "fn": 1163
+    },
+    "precision": 0.777,
+    "recall": 0.35,
+    "worlds": {
+     "src-ho-mixed": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 889,
+       "eligible": 209,
+       "admitted": 133,
+       "wrongly_admitted": 34,
+       "wrongly_admitted_false": 6,
+       "own_admitted": 1,
+       "suppressed": 76,
+       "suppressed_contested": 25,
+       "dependent_rises": 1,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 194,
+       "fp": 71,
+       "fn": 345
+      },
+      "mean_correct": {
+       "mean": 0.536731,
+       "sd": 0.064112,
+       "min": 0.482374,
+       "max": 0.61562,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.562227,
+       0.61562,
+       0.482374,
+       0.486703
+      ]
+     },
+     "src-ho-copies": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 950,
+       "eligible": 190,
+       "admitted": 123,
+       "wrongly_admitted": 39,
+       "wrongly_admitted_false": 18,
+       "own_admitted": 3,
+       "suppressed": 57,
+       "suppressed_contested": 32,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 238,
+       "fp": 48,
+       "fn": 469
+      },
+      "mean_correct": {
+       "mean": 0.573172,
+       "sd": 0.10448,
+       "min": 0.448243,
+       "max": 0.661871,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.656927,
+       0.525647,
+       0.661871,
+       0.448243
+      ]
+     },
+     "src-ho-origins": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 872,
+       "eligible": 213,
+       "admitted": 126,
+       "wrongly_admitted": 26,
+       "wrongly_admitted_false": 7,
+       "own_admitted": 0,
+       "suppressed": 74,
+       "suppressed_contested": 18,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 0,
+       "discarded_honest_pages": 0,
+       "tp": 194,
+       "fp": 61,
+       "fn": 349
+      },
+      "mean_correct": {
+       "mean": 0.555547,
+       "sd": 0.051393,
+       "min": 0.491646,
+       "max": 0.600619,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.491646,
+       0.593525,
+       0.600619,
+       0.536398
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 32,
+      "pages_with_claims": 112,
+      "eligible": 32,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 21,
+      "suppressed_contested": 21,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 21,
+      "pages_with_claims": 50,
+      "eligible": 3,
+      "admitted": 5,
+      "wrongly_admitted": 4,
+      "wrongly_admitted_false": 3,
+      "own_admitted": 4,
+      "suppressed": 1,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 3,
+      "fp": 1,
+      "fn": 22
+     },
+     "extra_origin": {
+      "looks": 58,
+      "pages_with_claims": 206,
+      "eligible": 12,
+      "admitted": 18,
+      "wrongly_admitted": 18,
+      "wrongly_admitted_false": 4,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 7,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 75,
+      "fp": 2,
+      "fn": 111
+     },
+     "independent": {
+      "looks": 183,
+      "pages_with_claims": 459,
+      "eligible": 183,
+      "admitted": 136,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 18,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 53,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 58,
+      "pages_with_claims": 203,
+      "eligible": 18,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 12,
+      "suppressed_contested": 12,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 157,
+      "fp": 3,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 103,
+      "pages_with_claims": 316,
+      "eligible": 103,
+      "admitted": 88,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 4,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 350
+     },
+     "roundup": {
+      "looks": 53,
+      "pages_with_claims": 136,
+      "eligible": 53,
+      "admitted": 19,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 22,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 42,
+      "fp": 5,
+      "fn": 41
+     },
+     "stale": {
+      "looks": 16,
+      "pages_with_claims": 53,
+      "eligible": 6,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 109,
+      "pages_with_claims": 454,
+      "eligible": 30,
+      "admitted": 42,
+      "wrongly_admitted": 41,
+      "wrongly_admitted_false": 16,
+      "own_admitted": 0,
+      "suppressed": 22,
+      "suppressed_contested": 22,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 183,
+      "fp": 3,
+      "fn": 350
+     },
+     "syndicated_nocredit": {
+      "looks": 72,
+      "pages_with_claims": 277,
+      "eligible": 13,
+      "admitted": 36,
+      "wrongly_admitted": 36,
+      "wrongly_admitted_false": 8,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 1,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 51,
+      "fp": 2,
+      "fn": 250
+     },
+     "two_origins": {
+      "looks": 43,
+      "pages_with_claims": 129,
+      "eligible": 43,
+      "admitted": 33,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 8,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 51,
+      "fp": 8,
+      "fn": 35
+     },
+     "verified_credit": {
+      "looks": 55,
+      "pages_with_claims": 138,
+      "eligible": 55,
+      "admitted": 2,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 42,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 99,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 61,
+      "pages_with_claims": 178,
+      "eligible": 61,
+      "admitted": 3,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 38,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 64,
+      "fp": 0,
+      "fn": 4
+     }
+    }
+   },
+   "wave4:both": {
+    "read_back": {
+     "source_derivation": true,
+     "own_text_provenance": true
+    },
+    "totals": {
+     "looks": 864,
+     "pages_with_claims": 2711,
+     "eligible": 612,
+     "admitted": 378,
+     "wrongly_admitted": 96,
+     "wrongly_admitted_false": 29,
+     "own_admitted": 1,
+     "suppressed": 209,
+     "suppressed_contested": 74,
+     "dependent_rises": 1,
+     "discarded_echo_pages": 30,
+     "discarded_honest_pages": 16,
+     "tp": 622,
+     "fp": 177,
+     "fn": 1167
+    },
+    "precision": 0.778,
+    "recall": 0.348,
+    "worlds": {
+     "src-ho-mixed": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 889,
+       "eligible": 209,
+       "admitted": 131,
+       "wrongly_admitted": 33,
+       "wrongly_admitted_false": 6,
+       "own_admitted": 1,
+       "suppressed": 77,
+       "suppressed_contested": 25,
+       "dependent_rises": 1,
+       "discarded_echo_pages": 5,
+       "discarded_honest_pages": 11,
+       "tp": 192,
+       "fp": 68,
+       "fn": 347
+      },
+      "mean_correct": {
+       "mean": 0.534089,
+       "sd": 0.065571,
+       "min": 0.479607,
+       "max": 0.61562,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.558755,
+       0.61562,
+       0.482374,
+       0.479607
+      ]
+     },
+     "src-ho-copies": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 950,
+       "eligible": 190,
+       "admitted": 120,
+       "wrongly_admitted": 36,
+       "wrongly_admitted_false": 15,
+       "own_admitted": 0,
+       "suppressed": 58,
+       "suppressed_contested": 31,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 20,
+       "discarded_honest_pages": 4,
+       "tp": 237,
+       "fp": 48,
+       "fn": 470
+      },
+      "mean_correct": {
+       "mean": 0.571398,
+       "sd": 0.102514,
+       "min": 0.448243,
+       "max": 0.656927,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.656927,
+       0.525647,
+       0.654776,
+       0.448243
+      ]
+     },
+     "src-ho-origins": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 872,
+       "eligible": 213,
+       "admitted": 127,
+       "wrongly_admitted": 27,
+       "wrongly_admitted_false": 8,
+       "own_admitted": 0,
+       "suppressed": 74,
+       "suppressed_contested": 18,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 5,
+       "discarded_honest_pages": 1,
+       "tp": 193,
+       "fp": 61,
+       "fn": 350
+      },
+      "mean_correct": {
+       "mean": 0.555547,
+       "sd": 0.051393,
+       "min": 0.491646,
+       "max": 0.600619,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.491646,
+       0.593525,
+       0.600619,
+       0.536398
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 32,
+      "pages_with_claims": 112,
+      "eligible": 32,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 21,
+      "suppressed_contested": 20,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 21,
+      "pages_with_claims": 50,
+      "eligible": 3,
+      "admitted": 3,
+      "wrongly_admitted": 1,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 1,
+      "suppressed": 1,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 30,
+      "discarded_honest_pages": 1,
+      "tp": 0,
+      "fp": 1,
+      "fn": 25
+     },
+     "extra_origin": {
+      "looks": 58,
+      "pages_with_claims": 206,
+      "eligible": 12,
+      "admitted": 17,
+      "wrongly_admitted": 17,
+      "wrongly_admitted_false": 4,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 7,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 74,
+      "fp": 2,
+      "fn": 112
+     },
+     "independent": {
+      "looks": 183,
+      "pages_with_claims": 459,
+      "eligible": 183,
+      "admitted": 135,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 19,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 0,
+      "fp": 53,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 58,
+      "pages_with_claims": 203,
+      "eligible": 18,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 12,
+      "suppressed_contested": 12,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 157,
+      "fp": 3,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 103,
+      "pages_with_claims": 316,
+      "eligible": 103,
+      "admitted": 87,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 2,
+      "tp": 0,
+      "fp": 0,
+      "fn": 350
+     },
+     "roundup": {
+      "looks": 53,
+      "pages_with_claims": 136,
+      "eligible": 53,
+      "admitted": 19,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 22,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 42,
+      "fp": 5,
+      "fn": 41
+     },
+     "stale": {
+      "looks": 16,
+      "pages_with_claims": 53,
+      "eligible": 6,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 109,
+      "pages_with_claims": 454,
+      "eligible": 30,
+      "admitted": 43,
+      "wrongly_admitted": 42,
+      "wrongly_admitted_false": 17,
+      "own_admitted": 0,
+      "suppressed": 22,
+      "suppressed_contested": 22,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 1,
+      "tp": 183,
+      "fp": 3,
+      "fn": 350
+     },
+     "syndicated_nocredit": {
+      "looks": 72,
+      "pages_with_claims": 277,
+      "eligible": 13,
+      "admitted": 36,
+      "wrongly_admitted": 36,
+      "wrongly_admitted_false": 8,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 1,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 51,
+      "fp": 2,
+      "fn": 250
+     },
+     "two_origins": {
+      "looks": 43,
+      "pages_with_claims": 129,
+      "eligible": 43,
+      "admitted": 33,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 8,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 51,
+      "fp": 8,
+      "fn": 35
+     },
+     "verified_credit": {
+      "looks": 55,
+      "pages_with_claims": 138,
+      "eligible": 55,
+      "admitted": 2,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 42,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 0,
+      "fp": 96,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 61,
+      "pages_with_claims": 178,
+      "eligible": 61,
+      "admitted": 3,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 38,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 64,
+      "fp": 0,
+      "fn": 4
+     }
+    }
+   },
+   "echo_recognition": {
+    "read_back": {
+     "echo_recognition": true
+    },
+    "totals": {
+     "looks": 864,
+     "pages_with_claims": 2711,
+     "eligible": 612,
+     "admitted": 473,
+     "wrongly_admitted": 123,
+     "wrongly_admitted_false": 37,
+     "own_admitted": 1,
+     "suppressed": 145,
+     "suppressed_contested": 73,
+     "dependent_rises": 1,
+     "discarded_echo_pages": 29,
+     "discarded_honest_pages": 13,
+     "tp": 363,
+     "fp": 87,
+     "fn": 1426
+    },
+    "precision": 0.807,
+    "recall": 0.203,
+    "worlds": {
+     "src-ho-mixed": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 889,
+       "eligible": 209,
+       "admitted": 161,
+       "wrongly_admitted": 41,
+       "wrongly_admitted_false": 7,
+       "own_admitted": 1,
+       "suppressed": 58,
+       "suppressed_contested": 26,
+       "dependent_rises": 1,
+       "discarded_echo_pages": 5,
+       "discarded_honest_pages": 11,
+       "tp": 128,
+       "fp": 38,
+       "fn": 411
+      },
+      "mean_correct": {
+       "mean": 0.596344,
+       "sd": 0.066687,
+       "min": 0.525246,
+       "max": 0.657154,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.64911,
+       0.657154,
+       0.525246,
+       0.553865
+      ]
+     },
+     "src-ho-copies": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 950,
+       "eligible": 190,
+       "admitted": 150,
+       "wrongly_admitted": 48,
+       "wrongly_admitted_false": 19,
+       "own_admitted": 0,
+       "suppressed": 45,
+       "suppressed_contested": 31,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 18,
+       "discarded_honest_pages": 2,
+       "tp": 122,
+       "fp": 25,
+       "fn": 585
+      },
+      "mean_correct": {
+       "mean": 0.629262,
+       "sd": 0.069005,
+       "min": 0.56356,
+       "max": 0.718515,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.718515,
+       0.588119,
+       0.646854,
+       0.56356
+      ]
+     },
+     "src-ho-origins": {
+      "totals_sum": {
+       "looks": 288,
+       "pages_with_claims": 872,
+       "eligible": 213,
+       "admitted": 162,
+       "wrongly_admitted": 34,
+       "wrongly_admitted_false": 11,
+       "own_admitted": 0,
+       "suppressed": 42,
+       "suppressed_contested": 16,
+       "dependent_rises": 0,
+       "discarded_echo_pages": 6,
+       "discarded_honest_pages": 0,
+       "tp": 113,
+       "fp": 24,
+       "fn": 430
+      },
+      "mean_correct": {
+       "mean": 0.656431,
+       "sd": 0.073359,
+       "min": 0.577705,
+       "max": 0.730114,
+       "n": 4
+      },
+      "per_seed_mean_correct": [
+       0.577705,
+       0.706411,
+       0.730114,
+       0.611491
+      ]
+     }
+    },
+    "by_shape_sum": {
+     "correction": {
+      "looks": 32,
+      "pages_with_claims": 112,
+      "eligible": 32,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 20,
+      "suppressed_contested": 20,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 2,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "echo": {
+      "looks": 21,
+      "pages_with_claims": 50,
+      "eligible": 3,
+      "admitted": 3,
+      "wrongly_admitted": 1,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 1,
+      "suppressed": 1,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 29,
+      "discarded_honest_pages": 0,
+      "tp": 3,
+      "fp": 1,
+      "fn": 22
+     },
+     "extra_origin": {
+      "looks": 58,
+      "pages_with_claims": 206,
+      "eligible": 12,
+      "admitted": 25,
+      "wrongly_admitted": 25,
+      "wrongly_admitted_false": 6,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 23,
+      "fp": 2,
+      "fn": 163
+     },
+     "independent": {
+      "looks": 183,
+      "pages_with_claims": 459,
+      "eligible": 183,
+      "admitted": 133,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 17,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 0,
+      "fp": 53,
+      "fn": 0
+     },
+     "mirror_dates": {
+      "looks": 58,
+      "pages_with_claims": 203,
+      "eligible": 18,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 12,
+      "suppressed_contested": 12,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 157,
+      "fp": 3,
+      "fn": 0
+     },
+     "primary_cited": {
+      "looks": 103,
+      "pages_with_claims": 316,
+      "eligible": 103,
+      "admitted": 87,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 2,
+      "tp": 0,
+      "fp": 0,
+      "fn": 350
+     },
+     "roundup": {
+      "looks": 53,
+      "pages_with_claims": 136,
+      "eligible": 53,
+      "admitted": 42,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 5,
+      "fn": 83
+     },
+     "stale": {
+      "looks": 16,
+      "pages_with_claims": 53,
+      "eligible": 6,
+      "admitted": 0,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 6,
+      "suppressed_contested": 6,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 0,
+      "fp": 2,
+      "fn": 0
+     },
+     "syndicated_credit": {
+      "looks": 109,
+      "pages_with_claims": 454,
+      "eligible": 30,
+      "admitted": 62,
+      "wrongly_admitted": 61,
+      "wrongly_admitted_false": 23,
+      "own_admitted": 0,
+      "suppressed": 23,
+      "suppressed_contested": 23,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 34,
+      "fp": 3,
+      "fn": 499
+     },
+     "syndicated_nocredit": {
+      "looks": 72,
+      "pages_with_claims": 277,
+      "eligible": 13,
+      "admitted": 36,
+      "wrongly_admitted": 36,
+      "wrongly_admitted_false": 8,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 5,
+      "dependent_rises": 1,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 51,
+      "fp": 2,
+      "fn": 250
+     },
+     "two_origins": {
+      "looks": 43,
+      "pages_with_claims": 129,
+      "eligible": 43,
+      "admitted": 34,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 7,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 35,
+      "fp": 8,
+      "fn": 51
+     },
+     "verified_credit": {
+      "looks": 55,
+      "pages_with_claims": 138,
+      "eligible": 55,
+      "admitted": 46,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 5,
+      "suppressed_contested": 1,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 3,
+      "tp": 0,
+      "fp": 6,
+      "fn": 0
+     },
+     "wire_like_host": {
+      "looks": 61,
+      "pages_with_claims": 178,
+      "eligible": 61,
+      "admitted": 5,
+      "wrongly_admitted": 0,
+      "wrongly_admitted_false": 0,
+      "own_admitted": 0,
+      "suppressed": 33,
+      "suppressed_contested": 0,
+      "dependent_rises": 0,
+      "discarded_echo_pages": 0,
+      "discarded_honest_pages": 0,
+      "tp": 60,
+      "fp": 0,
+      "fn": 8
+     }
+    }
+   }
+  },
+  "verdicts": {
+   "own_verdict:own_text_provenance": {
+    "config": "own_text_provenance",
+    "reference": "shipped",
+    "verdict": "effective",
+    "checks": {
+     "A1": true,
+     "A2": true,
+     "S1": true,
+     "C1": true,
+     "G": true
+    },
+    "per_world": {
+     "src-ho-mixed": {
+      "own_admitted": [
+       1,
+       1
+      ],
+      "wrongly_admitted": [
+       42,
+       41
+      ],
+      "suppressed": [
+       56,
+       58
+      ],
+      "discarded_honest_pages": 11,
+      "discarded_echo_pages": 5,
+      "mean_correct": [
+       0.60076,
+       0.596344,
+       0.063589
+      ],
+      "grouping_same": true
+     },
+     "src-ho-copies": {
+      "own_admitted": [
+       3,
+       0
+      ],
+      "wrongly_admitted": [
+       51,
+       48
+      ],
+      "suppressed": [
+       44,
+       45
+      ],
+      "discarded_honest_pages": 3,
+      "discarded_echo_pages": 20,
+      "mean_correct": [
+       0.627351,
+       0.629262,
+       0.063657
+      ],
+      "grouping_same": true
+     },
+     "src-ho-origins": {
+      "own_admitted": [
+       0,
+       0
+      ],
+      "wrongly_admitted": [
+       34,
+       34
+      ],
+      "suppressed": [
+       42,
+       42
+      ],
+      "discarded_honest_pages": 0,
+      "discarded_echo_pages": 5,
+      "mean_correct": [
+       0.656431,
+       0.656431,
+       0.073359
+      ],
+      "grouping_same": true
+     }
+    }
+   },
+   "own_verdict:echo_recognition": {
+    "config": "echo_recognition",
+    "reference": "shipped",
+    "verdict": "effective",
+    "checks": {
+     "A1": true,
+     "A2": true,
+     "S1": true,
+     "C1": true,
+     "G": true
+    },
+    "per_world": {
+     "src-ho-mixed": {
+      "own_admitted": [
+       1,
+       1
+      ],
+      "wrongly_admitted": [
+       42,
+       41
+      ],
+      "suppressed": [
+       56,
+       58
+      ],
+      "discarded_honest_pages": 11,
+      "discarded_echo_pages": 5,
+      "mean_correct": [
+       0.60076,
+       0.596344,
+       0.063589
+      ],
+      "grouping_same": true
+     },
+     "src-ho-copies": {
+      "own_admitted": [
+       3,
+       0
+      ],
+      "wrongly_admitted": [
+       51,
+       48
+      ],
+      "suppressed": [
+       44,
+       45
+      ],
+      "discarded_honest_pages": 2,
+      "discarded_echo_pages": 18,
+      "mean_correct": [
+       0.627351,
+       0.629262,
+       0.063657
+      ],
+      "grouping_same": true
+     },
+     "src-ho-origins": {
+      "own_admitted": [
+       0,
+       0
+      ],
+      "wrongly_admitted": [
+       34,
+       34
+      ],
+      "suppressed": [
+       42,
+       42
+      ],
+      "discarded_honest_pages": 0,
+      "discarded_echo_pages": 6,
+      "mean_correct": [
+       0.656431,
+       0.656431,
+       0.073359
+      ],
+      "grouping_same": true
+     }
+    }
+   },
+   "own_verdict:wave4:both": {
+    "config": "wave4:both",
+    "reference": "shipped",
+    "verdict": "unsafe",
+    "checks": {
+     "A1": true,
+     "A2": true,
+     "S1": false,
+     "C1": false,
+     "G": false
+    },
+    "per_world": {
+     "src-ho-mixed": {
+      "own_admitted": [
+       1,
+       1
+      ],
+      "wrongly_admitted": [
+       42,
+       33
+      ],
+      "suppressed": [
+       56,
+       77
+      ],
+      "discarded_honest_pages": 11,
+      "discarded_echo_pages": 5,
+      "mean_correct": [
+       0.60076,
+       0.534089,
+       0.063589
+      ],
+      "grouping_same": false
+     },
+     "src-ho-copies": {
+      "own_admitted": [
+       3,
+       0
+      ],
+      "wrongly_admitted": [
+       51,
+       36
+      ],
+      "suppressed": [
+       44,
+       58
+      ],
+      "discarded_honest_pages": 4,
+      "discarded_echo_pages": 20,
+      "mean_correct": [
+       0.627351,
+       0.571398,
+       0.063657
+      ],
+      "grouping_same": false
+     },
+     "src-ho-origins": {
+      "own_admitted": [
+       0,
+       0
+      ],
+      "wrongly_admitted": [
+       34,
+       27
+      ],
+      "suppressed": [
+       42,
+       74
+      ],
+      "discarded_honest_pages": 1,
+      "discarded_echo_pages": 5,
+      "mean_correct": [
+       0.656431,
+       0.555547,
+       0.073359
+      ],
+      "grouping_same": false
+     }
+    }
+   },
+   "verdict_derivation:source_derivation": {
+    "verdict": "trade",
+    "A_admissions": true,
+    "B_suppression": false,
+    "C_correct": false,
+    "D_grouping": false,
+    "totals": {
+     "wrongly_admitted": {
+      "shipped": 127,
+      "source_derivation": 99
+     },
+     "wrongly_admitted_false": {
+      "shipped": 40,
+      "source_derivation": 31
+     },
+     "own_admitted": {
+      "shipped": 4,
+      "source_derivation": 4
+     },
+     "suppressed": {
+      "shipped": 142,
+      "source_derivation": 207
+     },
+     "eligible": {
+      "shipped": 612,
+      "source_derivation": 612
+     },
+     "tp": {
+      "shipped": 363,
+      "source_derivation": 626
+     },
+     "fp": {
+      "shipped": 87,
+      "source_derivation": 180
+     },
+     "fn": {
+      "shipped": 1426,
+      "source_derivation": 1163
+     },
+     "looks": {
+      "shipped": 864,
+      "source_derivation": 864
+     }
+    },
+    "precision_recall": {
+     "shipped": [
+      0.806667,
+      0.202907
+     ],
+     "source_derivation": [
+      0.776675,
+      0.349916
+     ]
+    },
+    "paired_correct": {
+     "src-ho-copies": {
+      "mean": -0.054179,
+      "sd_base": 0.063657,
+      "better": 1,
+      "worse": 3
+     },
+     "src-ho-mixed": {
+      "mean": -0.064029,
+      "sd_base": 0.063589,
+      "better": 0,
+      "worse": 4
+     },
+     "src-ho-origins": {
+      "mean": -0.100883,
+      "sd_base": 0.073359,
+      "better": 0,
+      "worse": 4
+     }
+    }
+   },
+   "verdict_derivation:wave4:both": {
+    "verdict": "trade",
+    "A_admissions": true,
+    "B_suppression": false,
+    "C_correct": false,
+    "D_grouping": false,
+    "totals": {
+     "wrongly_admitted": {
+      "shipped": 127,
+      "wave4:both": 96
+     },
+     "wrongly_admitted_false": {
+      "shipped": 40,
+      "wave4:both": 29
+     },
+     "own_admitted": {
+      "shipped": 4,
+      "wave4:both": 1
+     },
+     "suppressed": {
+      "shipped": 142,
+      "wave4:both": 209
+     },
+     "eligible": {
+      "shipped": 612,
+      "wave4:both": 612
+     },
+     "tp": {
+      "shipped": 363,
+      "wave4:both": 622
+     },
+     "fp": {
+      "shipped": 87,
+      "wave4:both": 177
+     },
+     "fn": {
+      "shipped": 1426,
+      "wave4:both": 1167
+     },
+     "looks": {
+      "shipped": 864,
+      "wave4:both": 864
+     }
+    },
+    "precision_recall": {
+     "shipped": [
+      0.806667,
+      0.202907
+     ],
+     "wave4:both": [
+      0.778473,
+      0.34768
+     ]
+    },
+    "paired_correct": {
+     "src-ho-copies": {
+      "mean": -0.055952,
+      "sd_base": 0.063657,
+      "better": 1,
+      "worse": 3
+     },
+     "src-ho-mixed": {
+      "mean": -0.066671,
+      "sd_base": 0.063589,
+      "better": 0,
+      "worse": 4
+     },
+     "src-ho-origins": {
+      "mean": -0.100883,
+      "sd_base": 0.073359,
+      "better": 0,
+      "worse": 4
+     }
+    }
+   }
+  },
+  "world_digests": {
+   "src-ho-mixed": [
+    "1bc03a707df256ce5d6720d502f5343594a32e56e61bbf463e8710c7f63f8d9a",
+    "bdd59cc5c506afccb7d1fae235adb90135b386ca5b8602e7e1bda33d6a3ba16c",
+    "aafaa4db9a2712cbb6c63f0a044be5455c4ccf207628900f386cbab23ab85d62",
+    "2755b38845753aad9af0d722148bef4fe0002251df8599fa7d6bedcb397df7ba"
+   ],
+   "src-ho-copies": [
+    "1fc3e594196d80c80dd5a78228ffb56849780dafc06d933ef122acc7cf9c828c",
+    "5522643ffbb029411644cf23a07b76ad13b7db3262d466aae044e0336be00c5b",
+    "f3506bc0496c54846ed5560727369e356dd3691a0bb27ff0ca14eb62df32025d",
+    "2d15bf2797622388a9fa53d0f4c5129fe3f0b03505d78798ab98a0e6b03f534f"
+   ],
+   "src-ho-origins": [
+    "2b2099defb72ea0e7ac6428ce4b634fb72bbdee228694b804d4defc20c30f770",
+    "e5a20fba820cb19e93a46c8eae16df8e32f34cc6f79abe29bab396e067434039",
+    "561757a02a752f1ffea0e24eb80daf516af89cfc568e701ab7bb4958bed8491c",
+    "43c42546b2531d8dfe97bfac9e80cd617c32e29ed50d258fe25d83b957dc206e"
+   ]
+  }
+ }
+}

@@ -72,23 +72,28 @@ def get_config(db) -> wconfig.WebConfig:
 
 
 def setting_problems(db) -> list[str]:
-    """The checked Wave 3 settings (config.CHECKED_ON_LOAD) whose saved value set_config would refuse, as sentences:
-    each is read as its default until it is set again (`nsf web config --set NAME=VALUE`)."""
+    """The settings (config.CHECKED_ON_LOAD: every one since Wave 4 lane D) whose saved value set_config would refuse,
+    as sentences: each reads as its cautious value (config.CAUTIOUS, else its default; config.FAILS_CLOSED) until it is
+    set again (`nsf web config --set NAME=VALUE`)."""
     row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
     try:
         raw = json.loads(row[0]) if row and row[0] else {}
     except ValueError:
-        return ["the saved Web Cortex settings cannot be read as JSON"]
+        raw = None
+    if not isinstance(raw, dict):
+        return [f"the saved Web Cortex settings cannot be read as {'a JSON object' if raw is not None else 'JSON'}; "
+                "every setting reads as its cautious value (web access off) until one is set with `nsf web config`"]
     out = []
     for name in wconfig.CHECKED_ON_LOAD:
-        if not (isinstance(raw, dict) and name in raw and wconfig.damaged(name, raw[name])):
+        if not (name in raw and wconfig.damaged(name, raw[name])):
             continue
-        line = (f"the saved {name} ({raw[name]!r}) is not a valid value; its default "
-                f"({getattr(wconfig.WebConfig(), name)!r}) applies until it is set with `nsf web config --set "
-                f"{name}=...`")
+        shown = wconfig.CAUTIOUS.get(name, getattr(wconfig.WebConfig(), name))
+        line = (f"the saved {name} ({raw[name]!r}) is not a valid value; it reads as {shown!r} until it is set with "
+                f"`nsf web config --set {name}=...`")
         rule, safe = wconfig.FAILS_CLOSED.get(name, (None, None))
         if rule is not None and raw.get(rule, safe) != safe:        # review3b N8: never a looser rule
-            line += f"; meanwhile {rule} reads as {safe!r} (the rule is off until then)"
+            line += f"; meanwhile {rule} reads as {safe!r} (" + \
+                ("web access is off" if rule == "enabled" else "the rule is off") + " until then)"
         out.append(line)
     return out
 
@@ -116,7 +121,12 @@ def _validate(name, value):
                 "salience_record", "hypothesis_fields", "hypothesis_abandon", "premise_recheck", "idle_recheck",
                 "reflection", "reflection_model_summary", "answer_monitoring", "selective_answering",
                 "verification_escalation", "adaptive_depth", "pocket_recent", "salience_attention",
-                "arbitration_record", "attribution_independence", "echo_recognition"):
+                "arbitration_record", "attribution_independence", "echo_recognition", "source_derivation"):
+        if not isinstance(value, bool):
+            raise ValidationError(f"{name} must be true or false")
+        return value
+    if name in ("own_text_provenance",               # Wave 4 lane E (ADR-067)
+                "caution_detail"):                   # ADR-065 (Wave 4 fix): display only
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
@@ -139,6 +149,17 @@ def _validate(name, value):
             raise ValidationError("origin_grouping must be 'transitive' (a page naming its origin joins it and what it "
                                   "names, as before ADR-063) or 'one_way' (it attaches to one origin)")
         return value
+    if name == "allowance_division":      # ADR-064
+        from .autonomy import DIVISIONS
+        if value not in DIVISIONS:
+            raise ValidationError("allowance_division must be 'race' (as before: whichever path asks first), "
+                                  "'reserve' (a share held for reaching subjects that hold nothing) or 'yield' (that "
+                                  "share read from what each path wrote to knowledge)")
+        return value
+    if name == "reach_share":             # ADR-064
+        if not _is_num(value) or not 0 < value < 1:
+            raise ValidationError("reach_share must be a number between 0 and 1 (exclusive)")
+        return float(value)
     if name == "supersession_min_sources":
         if not _is_int(value) or not 2 <= value <= 10:
             raise ValidationError("supersession_min_sources must be an integer between 2 and 10")
@@ -391,10 +412,33 @@ def remove_feed(db, url, now) -> list[str]:
     return set_feeds(db, [f for f in feeds if f != target], now)
 
 
+def disabled_message(closed=()) -> str:
+    """Why web access is off and what turns it on: DISABLED_MESSAGE, or, when damaged saved settings turned it off
+    (config.closed_by), the command that repairs them (Wave 4 fix, review4 L1)."""
+    if not closed:
+        return DISABLED_MESSAGE
+    names = ", ".join(closed)
+    return (f"Web access is off because the saved {names} {'is' if len(closed) == 1 else 'are'} damaged; it stays off "
+            f"until {'it is' if len(closed) == 1 else 'each is'} set again with `nsf web config --set NAME=VALUE` "
+            "(`nsf web config` lists what is wrong); `nsf web config --enable` alone does not turn it on")
+
+
+def closed_settings(db) -> list:
+    """config.closed_by of the saved settings ([] when they cannot be read)."""
+    row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
+    try:
+        return wconfig.closed_by(json.loads(row[0]) if row and row[0] else {})
+    except ValueError:
+        return []
+
+
 def require_enabled(db) -> wconfig.WebConfig:
     cfg = get_config(db)
     if not cfg.enabled:
-        raise Conflict(DISABLED_MESSAGE)
+        closed = closed_settings(db)
+        exc = Conflict(disabled_message(closed))
+        exc.for_repair = bool(closed)             # an agent is told store.PAUSED_FOR_REPAIR only
+        raise exc
     return cfg
 
 
@@ -408,7 +452,9 @@ def require_writable(db, path=None):
     """WritesPaused unless regulation allows new writes (web research, consolidation, monitors, proposals)."""
     allowed, reason = write_allowed(db, path)
     if not allowed:
-        raise WritesPaused(f"web memory writes are paused: {reason}")
+        exc = WritesPaused(f"web memory writes are paused: {reason}")
+        exc.for_repair = bool(store.fixed_damage(db))     # an agent is told store.PAUSED_FOR_REPAIR only
+        raise exc
 
 
 def family_digest(db, fingerprint: str) -> str:
@@ -522,14 +568,23 @@ CLAIM_COLUMNS = ("id", "task_id", "source_id", "text", "key", "kind", "polarity"
                  "relevance", "doc_sha256", "sentence_index", "cluster_status", "confidence", "flags", "created_at")
 
 
-def claim_from_row(row: dict) -> Claim:
+def claim_from_row(row: dict, settings=None) -> Claim:
+    """A stored claim. With `settings` (the WebConfig in force), a mark a rule left while it was on is dropped when
+    the rule is now off (Wave 4 fix, measurement review L3: off means off): source_derivation's flags["derivation"],
+    and inside it own_text_provenance's "echo"."""
+    flags = row["flags"] if isinstance(row["flags"], dict) else loads(row["flags"], {})
+    mark = flags.get("derivation") if isinstance(flags, dict) and settings is not None else None
+    if mark is not None:
+        if not getattr(settings, "source_derivation", False):
+            flags = {k: v for k, v in flags.items() if k != "derivation"}
+        elif isinstance(mark, dict) and "echo" in mark and not getattr(settings, "own_text_provenance", False):
+            flags = dict(flags, derivation={k: v for k, v in mark.items() if k != "echo"})
     return Claim(id=row["id"], text=row["text"], source_url=row["source_url"], domain=row["domain"],
                  title=row["title"] or "", retrieved_at=row["retrieved_at"], key=row["key"], kind=row["kind"],
                  polarity=row["polarity"], values=_as_read(_listed(row["claim_values"]), row["text"]),
                  published_at=row["published_at"],
                  event_at=row["event_at"], relevance=row["relevance"] or 0.0, doc_sha256=row["doc_sha256"] or "",
-                 sentence_index=row["sentence_index"] or 0,
-                 flags=row["flags"] if isinstance(row["flags"], dict) else loads(row["flags"], {}))
+                 sentence_index=row["sentence_index"] or 0, flags=flags)
 
 
 def _listed(value):
@@ -622,7 +677,8 @@ def load_clusters(db, task_id) -> list[ClaimCluster]:
     row = db.execute("SELECT checkpoint FROM web_tasks WHERE id=?", (task_id,)).fetchone()
     if row is None:
         raise NotFound(f"No research task {task_id}")
-    stored = {c["id"]: claim_from_row(c) for c in claims(db, task_id)}
+    settings = get_config(db)
+    stored = {c["id"]: claim_from_row(c, settings) for c in claims(db, task_id)}
     out = []
     for item in (loads(row[0], None) or {}).get("clusters", []):
         members = [stored[cid] for cid in item.get("claims", []) if cid in stored]

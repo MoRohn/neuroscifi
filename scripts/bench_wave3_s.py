@@ -5,6 +5,10 @@ stale item, measured on the learning-cycle worlds.
   python scripts/bench_wave3_s.py run --out docs/quality/evidence/genesis_wave3_s.json     # every split and family
   python scripts/bench_wave3_s.py run --family lane-s --split development --config fixes   # a quick look
 
+The file holds summaries per world and seed; each run's per-cycle history (every subject's held version, cycle by
+cycle) and the (subject, cycle) list behind the item-change counts only with --full-history (Wave 4 lane D: Wave 3's
+files carried them, about 45 MB in all).
+
 Offline and deterministic per seed (apart from wall seconds); no model is called and no connection is made. Worlds:
 src/neuroscifi/acceptance/cognition/cycles_splits_s.py (lane S, committed alone before any mechanism) and
 cycles_splits.py (lane F; its held-out split was looked at in Wave 2: disclosed, never a claim alone). The withheld
@@ -13,7 +17,6 @@ learning-cycles worlds are never loaded here; that look is the main session's (c
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 import platform
 import subprocess
@@ -75,9 +78,11 @@ def main(argv=None) -> int:
     r.add_argument("--split", action="append", choices=("development", "held_out"))
     r.add_argument("--config", action="append", choices=tuple(cycles_s.CONFIGS))
     r.add_argument("--out")
+    r.add_argument("--full-history", action="store_true",
+                   help="also write each run's per-cycle history (scoring.HISTORY_KEYS); the default is summaries")
     a = ap.parse_args(argv)
     result = run(a.family or ["lane-s", "lane-f"], a.split or ["development", "held_out"], a.config)
-    text = json.dumps(scoring.rounded(result), indent=1)
+    text = scoring.dumps(scoring.rounded(result if a.full_history else scoring.summary(result)))
     if a.out:
         Path(a.out).write_text(text + "\n", encoding="utf-8")
         print(f"wrote {a.out}")

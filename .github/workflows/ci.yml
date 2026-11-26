@@ -11,6 +11,8 @@ jobs:
     timeout-minutes: 40   # a test that leaves processes holding the log pipe must not hold a runner for 6 hours
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # the default-path comparison's power check reads an earlier commit of this repository
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

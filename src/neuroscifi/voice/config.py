@@ -57,10 +57,67 @@ def loopback_url(url: str) -> bool:
         return False
 
 
+# Wave 4 lane D: every stored value is checked when it is read (get); a damaged one reads as its cautious value: the
+# default (no audio kept, PersonaPlex off, loopback endpoints, the built-in key path), except that kept audio lives
+# for the shortest time and no device's consent is assumed. problems() lists them for `nsf voice config` and the
+# console; each is logged once, by name.
+CAUTIOUS = {"audio_ttl_hours": 1, "consent": {}}
+_REPORTED: set = set()
+
+
+def _sound(name, value) -> bool:
+    if name == "consent":
+        return isinstance(value, dict) and all(isinstance(k, str) and isinstance(v, (int, float))
+                                               and not isinstance(v, bool) for k, v in value.items())
+    try:
+        _validate(name, value)
+    except ValidationError:
+        return False
+    return True
+
+
+def _stored(db, key="voice"):
+    """The stored object under `key`, {} when there is none, None when it cannot be read as a JSON object."""
+    row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    try:
+        stored = json.loads(row[0]) if row else {}
+    except (TypeError, ValueError):
+        return None
+    return stored if isinstance(stored, dict) else None
+
+
 def get(db) -> dict:
-    row = db.execute("SELECT value FROM meta WHERE key='voice'").fetchone()
-    stored = json.loads(row[0]) if row else {}
-    return {**DEFAULTS, **{k: v for k, v in stored.items() if k in DEFAULTS}}
+    stored = _stored(db)
+    if stored is None:              # an unreadable row: every setting at its cautious value
+        stored = {k: _UNREADABLE for k in DEFAULTS}
+    out = dict(DEFAULTS)
+    for k, v in stored.items():
+        if k not in DEFAULTS:
+            continue
+        if v is not _UNREADABLE and _sound(k, v):
+            out[k] = v
+            continue
+        out[k] = CAUTIOUS.get(k, DEFAULTS[k])
+        if k not in _REPORTED:
+            _REPORTED.add(k)
+            import logging
+            logging.getLogger(__name__).warning("the saved voice setting %s is not a valid value; its cautious "
+                                                "value is used", k)
+    return out
+
+
+_UNREADABLE = object()
+
+
+def problems(db) -> list[str]:
+    """The saved voice settings that set_config would refuse, as sentences for the owner (CLI and console)."""
+    stored = _stored(db)
+    if stored is None:
+        return ["the saved voice settings cannot be read as a JSON object; every voice setting reads as its cautious "
+                "value (no audio kept, no device consent assumed) until one is set with `nsf voice config`"]
+    return [f"the saved voice setting {k} ({v!r}) is not a valid value; it reads as "
+            f"{CAUTIOUS.get(k, DEFAULTS[k])!r} until it is set again" for k, v in sorted(stored.items())
+            if k in DEFAULTS and not _sound(k, v)]
 
 
 def _validate(name, value):
@@ -110,9 +167,8 @@ def effective(db, principal: str | None = None, owner: bool = True) -> dict:
     cfg = get(db)
     if owner or not principal:
         return cfg
-    row = db.execute("SELECT value FROM meta WHERE key=?", ("voice_pref:" + principal,)).fetchone()
-    prefs = json.loads(row[0]) if row else {}
-    return {**cfg, **{k: v for k, v in prefs.items() if k in PREF_KEYS}}
+    prefs = _stored(db, "voice_pref:" + principal) or {}      # Wave 4 lane D: a damaged preference is not used
+    return {**cfg, **{k: v for k, v in prefs.items() if k in PREF_KEYS and _sound(k, v)}}
 
 
 def update_pref(db, principal: str, changes: dict) -> dict:
@@ -124,8 +180,7 @@ def update_pref(db, principal: str, changes: dict) -> dict:
         raise ValidationError("only the owner console may change " + ", ".join(sorted(set(changes) - set(PREF_KEYS))))
     key = "voice_pref:" + principal
     with store.write(db):
-        row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
-        prefs = json.loads(row[0]) if row else {}
+        prefs = {k: v for k, v in (_stored(db, key) or {}).items() if k in PREF_KEYS and _sound(k, v)}
         prefs.update({k: _validate(k, v) for k, v in changes.items()})
         db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                    (key, json.dumps(prefs, sort_keys=True)))

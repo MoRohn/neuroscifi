@@ -74,7 +74,8 @@ def _settings(args):
             from ..instance.errors import ValidationError
             raise ValidationError("--set takes a JSON object")
         cfg = config.update(db, changes) if changes else config.get(db)
-        return config.public(cfg)
+        problems = config.problems(db)          # Wave 4 lane D: damaged saved values, read as cautious ones
+        return config.public(cfg) | ({"problems": problems} if problems else {})
     finally:
         db.close()
 

@@ -1238,6 +1238,7 @@ def _forget_research_core(db, task_id, now, marks=None):
     db.execute("UPDATE web_knowledge SET task_id=NULL WHERE task_id=?", (task_id,))
     _unlink_ledger(db, task_id)
     _scrub_voice_context(db, task_id)
+    _forget_emissions(db, task_id)
     db.execute("DELETE FROM web_tasks WHERE id=?", (task_id,))
     _web_tombstones(db, "task", [task_id], now)
     effects = _web_cascade(db, claim_ids, now)
@@ -1246,6 +1247,21 @@ def _forget_research_core(db, task_id, now, marks=None):
     effects["deleted"] = deleted
     urls, shas = _unreferenced(db, {u for r in sources for u in r[:3] if u}, {r[3] for r in sources if r[3]})
     return effects, {"urls": urls, "sha256": shas}
+
+
+def _forget_emissions(db, task_id):
+    """ADR-067: the fingerprints of what the task's answer emitted (webcortex/emitted.py), removed with the task in the
+    live forget and in every checkpoint replay (primary-key lookups only; rows exist only while own_text_provenance
+    was on)."""
+    from ..webcortex import emitted
+    emitted.forget_task(db, task_id)
+
+
+def _forget_emitted_knowledge(db, ids):
+    """ADR-067: the fingerprints of a forgotten knowledge item's subject names and values (read before the rows go),
+    in the live forget and in every checkpoint replay."""
+    from ..webcortex import emitted
+    emitted.forget_knowledge(db, ids)
 
 
 def _unlink_ledger(db, task_id):
@@ -1370,6 +1386,7 @@ def _forget_knowledge_core(db, knowledge_id, now, marks=None):
             refreshes.append(task_id)
             cache = {k: sorted(set(cache[k]) | set(out[1].get(k) or [])) for k in cache}
     chain = [kid for kid in chain if db.execute("SELECT 1 FROM web_knowledge WHERE id=?", (kid,)).fetchone()]
+    _forget_emitted_knowledge(db, chain)
     effects = _drop_knowledge(db, chain, now)
     db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
     effects["refresh_tasks_forgotten"] = refreshes
@@ -1567,35 +1584,61 @@ def _suffixes(domain):
     return [".".join(parts[i:]) for i in range(len(parts)) if parts[i]]
 
 
-def replay_web_forgets(db, forgotten, now):
+def _replay_targets(db, forgotten):
+    """wanted(kind, value): whether a web tombstone in `forgotten` ({(kind, digest)}) names it (replay_web_forgets)."""
+    instance_id = store.birth(db)["instance_id"]
+    return lambda kind, value: (kind, web_digest(instance_id, kind, value)) in forgotten
+
+
+def prepare_replay_marks(db, forgotten):
+    """The read-only half of replay_web_forgets' answer marks: prepare_sourced_marks for every claim the replay may
+    forget (its tasks', and those of its source URLs and domains; a superset is harmless, the mark re-reads each
+    claim's plan inside). Run on the copy BEFORE the restore's write transaction (Wave 4 lane D; review3c F6: the one
+    pass over every task result ran inside it, 1.5-1.7 s at 10,000 answers of 20 kB). None without tombstones."""
+    if not forgotten:
+        return None
+    wanted = _replay_targets(db, forgotten)
+    ids = set()
+    for (task_id,) in db.execute("SELECT id FROM web_tasks").fetchall():
+        if wanted("task", task_id):
+            ids.update(_ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,)))
+    urls = {u for row in db.execute("SELECT url, final_url, canonical_url FROM web_sources") for u in row if u}
+    urls |= {u for row in db.execute("SELECT source_url, canonical_url FROM web_claims") for u in row if u}
+    domains = {d for (d,) in db.execute("SELECT domain FROM web_sources UNION SELECT domain FROM web_claims") if d}
+    for target in [u for u in sorted(urls) if wanted("source_url", u)] + \
+            [d for d in sorted({s for d in domains for s in _suffixes(d)}) if wanted("source_domain", d)]:
+        ids.update(_source_selection(db, target)[-1])
+    return prepare_sourced_marks(db, ids)
+
+
+def replay_web_forgets(db, forgotten, now, marks=None):
     """Re-apply web tombstones to a restored copy: every task, knowledge version and source (URL or domain) whose
     digest is in `forgotten` ({(kind, digest)}) is forgotten again with the same cascade as the live forget.
-    Caller owns the transaction. Returns counts."""
+    Caller owns the transaction. `marks`: prepare_replay_marks, made before it (else the mark scans every answer
+    inside it). Returns counts."""
     out = {"tasks": 0, "knowledge": 0, "sources": 0}
     if not forgotten:
         return out
-    instance_id = store.birth(db)["instance_id"]
-
-    def wanted(kind, value):
-        return (kind, web_digest(instance_id, kind, value)) in forgotten
+    wanted = _replay_targets(db, forgotten)
 
     for (task_id,) in db.execute("SELECT id FROM web_tasks ORDER BY rowid").fetchall():
-        if wanted("task", task_id) and _forget_research_core(db, task_id, now) is not None:
+        if wanted("task", task_id) and _forget_research_core(db, task_id, now, marks) is not None:
             out["tasks"] += 1
     doomed = [kid for kid, key in db.execute("SELECT id, key FROM web_knowledge").fetchall()
               if wanted("knowledge", _knowledge_subject(kid, key))]
     if doomed:
+        _forget_emitted_knowledge(db, doomed)
         _drop_knowledge(db, doomed, now)
         db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
         out["knowledge"] = len(doomed)
     urls = {u for row in db.execute("SELECT url, final_url, canonical_url FROM web_sources") for u in row if u}
     urls |= {u for row in db.execute("SELECT source_url, canonical_url FROM web_claims") for u in row if u}
     for url in sorted(urls):
-        if wanted("source_url", url) and _forget_source_core(db, url, now) is not None:
+        if wanted("source_url", url) and _forget_source_core(db, url, now, marks) is not None:
             out["sources"] += 1
     domains = {d for (d,) in db.execute("SELECT domain FROM web_sources UNION SELECT domain FROM web_claims") if d}
     for domain in sorted({s for d in domains for s in _suffixes(d)}):
-        if wanted("source_domain", domain) and _forget_source_core(db, domain, now) is not None:
+        if wanted("source_domain", domain) and _forget_source_core(db, domain, now, marks) is not None:
             out["sources"] += 1
     if any(out.values()):
         _scrub_rule_records(db)
