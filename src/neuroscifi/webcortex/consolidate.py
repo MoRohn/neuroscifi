@@ -1545,7 +1545,7 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
             db.execute("ROLLBACK TO lane_k_records")
             db.execute("RELEASE lane_k_records")
             state.log_event(db, task_id, "error", {"stage": "consolidating: premises and hypothesis fields",
-                                                   "error": type(exc).__name__, "detail": str(exc)[:300]}, now)
+                                                   "error": type(exc).__name__}, now)   # no message (L1)
             rechecked = {"marked": [], "closed": []}
         if rechecked["marked"] or rechecked["closed"]:
             summary["rechecks"] = {"marked": rechecked["marked"], "closed": rechecked["closed"]}

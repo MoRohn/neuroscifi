@@ -403,6 +403,86 @@ def test_hypothesis_abandon(individual):
     assert db.execute("SELECT count(*) FROM web_hypotheses WHERE status='abandoned'").fetchone()[0] == 1  # kept
 
 
+# ---- Wave 2 lane L's switches (ADR-056), added by lane X -------------------------------------------------------
+
+# two knowledge items whose orders disagree: A has the greater information gain (admission's priority order), B the
+# greater salience (accepted, held with little confidence); as tests/webcortex/test_integration_arbitration.py
+_A = (1, "ostra basin area", "The Ostra basin covers 9,400 square kilometres of lowland.", 0.5)
+_B = (2, "varnel river length", "The Varnel River is 412 kilometres long and drains the Ostra basin.", 0.3)
+
+
+def _two_subjects(db, monkeypatch, *rows):
+    with store.write(db):
+        for (kid, key, statement, _), status, confidence in ((_A, "provisional", 0.9), (_B, "accepted", 0.2)):
+            db.execute("INSERT INTO web_knowledge(id,key,version,statement,status,confidence,uncertainty,"
+                       "freshness_class,first_verified_at,last_verified_at,created_at,updated_at) "
+                       "VALUES(?,?,1,?,?,?,0.2,'stable',1,1,1,1)", (kid, key, statement, status, confidence))
+    ranked = [{"excluded": False, "kind": "stale", "mode": "fact_verification", "reason": "stale", "info_gain": gain,
+               "target": {"knowledge_id": kid, "key": key, "statement": statement}}
+              for kid, key, statement, gain in (rows or (_A, _B))]
+    monkeypatch.setattr(curiosity, "rank", lambda db, now, limit=10: ranked)
+    autonomy.enable(db, T0)
+    autonomy.set_policy(db, {"idle_interval": 0.0}, T0)
+    state.set_config(db, {"autonomous": True}, T0)
+
+
+def _forget_task(task_id):
+    from neuroscifi.instance import governance
+    return lambda d: governance.forget_research(d, task_id, time.time())
+
+
+def test_salience_attention_and_its_records(individual, tmp_path, monkeypatch):
+    """Off: admission's own (priority) order; on: the more salient first; off again: the priority order on the next
+    call. The idle investigation queued while on keeps its decision event (taken in salience order): readable with
+    the switch off, in a restored checkpoint, removed by forgetting the task, not brought back by a restore."""
+    from neuroscifi.webcortex import predictions
+    db, path = individual
+    _two_subjects(db, monkeypatch)
+    monkeypatch.setattr(predictions, "check_due", lambda *a, **k: [])
+    on, off = web_switch(db, "salience_attention")
+    assert_rolls_back(*cycle(on, off, lambda: [c["key"] for c in autonomy.admission(db, T0, path="idle",
+                                                                                     limit=10)["chosen"]]))
+    on()
+    done = autonomy.idle(db, T0)
+    off()
+    assert done["action"] == "queued"
+
+    def count(d):
+        return d.execute("SELECT count(*) FROM web_events WHERE task_id=? AND kind='decision' AND "
+                         "json_extract(detail,'$.autonomy.admission.order')='salience'",
+                         (done["task_id"],)).fetchone()[0]
+    readable_forgettable_restorable(db, path, tmp_path, count, _forget_task(done["task_id"]))
+
+
+def test_arbitration_record_and_its_records(individual, tmp_path, monkeypatch):
+    """A due refresh and the timer's curiosity want one subject in one pass. Off: no record; on: a decision event on
+    the refresh's task names curiosity as the loser; off again: none, on the next pass, and the same launches each
+    time. The record written while on is readable with the switch off, in a restored checkpoint, removed by
+    forgetting the winner's task, not brought back by a restore."""
+    from neuroscifi.webcortex import orchestrator, predictions, scheduler
+    db, path = individual
+    _two_subjects(db, monkeypatch, _A)
+    prepared = orchestrator.prepare(db, _A[2], T0, mode="fact_verification", origin=f"refresh:{_A[0]}")
+    with store.write(db):
+        winner = orchestrator.insert(db, prepared, T0)
+    refresh = [{"prediction_id": 1, "action": "refresh_submitted", "task_id": winner, "knowledge_id": _A[0]}]
+    monkeypatch.setattr(predictions, "check_due", lambda *a, **k: refresh)
+    on, off = web_switch(db, "arbitration_record")
+    tick = iter(range(1, 100))
+
+    def probe():
+        report = scheduler.tick(db, T0 + next(tick), None, queue=True)
+        return report["queued"], [a["loser"] for a in report.get("arbitration", [])]
+    reference, on_, again = cycle(on, off, probe)
+    assert reference[1] == [] and on_[1] == ["curiosity"] and reference[0] == on_[0]   # a record only
+    assert_rolls_back(reference, on_, again)
+
+    def count(d):
+        return d.execute("SELECT count(*) FROM web_events WHERE task_id=? AND kind='decision' AND "
+                         "json_extract(detail,'$.arbitration') IS NOT NULL", (winner,)).fetchone()[0]
+    readable_forgettable_restorable(db, path, tmp_path, count, _forget_task(winner))
+
+
 # ---- the research run's switches (lane C, ADR-054): through the worker, offline ---------------------------------
 
 _SAID = ("The Zephyr compiler version 4.2.0 was released on 17 November 2026 by the Zephyr project team.",
@@ -542,3 +622,24 @@ def test_voice_resume_follow(hub):
             return tx.session(db, sid)["context"].get("follow_task_id") is not None
     on, off = _voice(hub, "resume_follow")
     assert_rolls_back(*cycle(on, off, probe))
+
+
+# Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
+# Wave 1/2 switch of the config classes is here; Wave 2 lane X)
+SWITCHES = {
+    "internal_state_history": test_internal_state_history, "predictive_regulation": test_predictive_regulation,
+    "executive_rule": test_executive_rule, "decision_information": test_decision_information,
+    "imagine_what_if": test_imagination_commands, "imagine_retrospect": test_imagination_commands,
+    "imagine_forecast": test_imagination_commands, "imagine_scenarios": test_imagine_scenarios,
+    "broadcast": test_broadcast, "salience_record": test_salience_record,
+    "curiosity_learning_progress": test_curiosity_learning_progress,
+    "premise_recheck": test_premise_recheck_and_its_records, "hypothesis_fields": test_hypothesis_fields,
+    "idle_recheck": test_idle_recheck, "reflection": test_reflection_and_its_records,
+    "reflection_model_summary": test_reflection_model_summary,
+    "strategy_selection": test_strategy_selection_off_closes_the_gate, "pocket_recent": test_pocket_recent,
+    "hypothesis_abandon": test_hypothesis_abandon, "answer_monitoring": test_research_run_switches,
+    "verification_escalation": test_research_run_switches, "adaptive_depth": test_research_run_switches,
+    "selective_answering": test_research_run_switches, "status_questions": test_voice_status_questions,
+    "resume_follow": test_voice_resume_follow, "salience_attention": test_salience_attention_and_its_records,
+    "arbitration_record": test_arbitration_record_and_its_records,
+}

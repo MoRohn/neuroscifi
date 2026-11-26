@@ -43,6 +43,7 @@ from test_pocket_research import PAGES, QUESTION, Spark, corpus, html
 TOKEN = "uat-fault-token-" + "f" * 32
 GARBAGE = "staged-garbage-value"     # ASCII, so it is found in JSON as it is shown
 MODES = ("raise", "timeout", "garbage")
+MARKER = "SUBJECT-MARKER-5513"
 
 # Every Wave 1 setting on (the "everything on" regime), with what the scenario needs.
 INSTANCE_ON = {"internal_state_history": True, "predictive_regulation": True, "executive_rule": "information-v1",
@@ -52,7 +53,7 @@ WEB_ON = {"enabled": True, "pocket_research": True, "min_domain_interval": 0.0, 
           "curiosity_learning_progress": True, "answer_monitoring": True, "selective_answering": True,
           "verification_escalation": True, "adaptive_depth": True, "hypothesis_fields": True, "premise_recheck": True,
           "idle_recheck": True, "hypothesis_abandon": True, "reflection": True, "reflection_interval_days": 1.0,
-          "pocket_recent": True}
+          "pocket_recent": True, "salience_attention": True, "arbitration_record": True}
 
 # (mechanism, module, attribute): every entry point the product calls
 ENTRIES = (
@@ -81,6 +82,12 @@ ENTRIES = (
     ("reflection", "neuroscifi.webcortex.reflection", "scheduled"),
     ("strategies", "neuroscifi.webcortex.strategies", "active"),
     ("curiosity_progress", "neuroscifi.webcortex.curiosity", "progress"),
+    # Wave 2 lane L (ADR-056), added by lane X: salience orders what admission admitted (salience_attention), the
+    # arbitration record (arbitration_record), the background loop in the self-description (doing.cycle)
+    ("salience_attention", "neuroscifi.webcortex.salience", "attention"),
+    ("salience_attention", "neuroscifi.webcortex.salience", "order"),
+    ("arbitration_record", "neuroscifi.webcortex.scheduler", "_arbitrated"),
+    ("self_description_cycle", "neuroscifi.self_description", "_cycle"),
 )
 
 
@@ -93,6 +100,8 @@ class Fault:
 
     def _faulty(self, *args, **kwargs):
         self.calls += 1
+        if self.mode == "marked":        # a message that names a subject (review2 L1)
+            raise RuntimeError(f"failure about the subject {MARKER}")
         if self.mode == "raise":
             raise RuntimeError(f"staged failure of {self.where}")
         if self.mode == "timeout":
@@ -121,6 +130,10 @@ class Rig:
                                       "bit": (i % 2) ^ action if i >= 12 else action, "provenance": "simulated",
                                       "actor": "simulator"}, now - 200 + i)
             autonomy.enable(db, now - 100)
+            # Wave 2 lane X: an item verified 30 days ago, which the knowledge re-check and the timer's curiosity
+            # both want in the timer's pass, so lane L's arbitration (scheduler._arbitrated) is reached
+            from neuroscifi.acceptance.cognition import adversarial
+            adversarial._k_item(db, now - 30 * 86_400.0)
         self.console = console_server.ConsoleServer(self.path, 0, token=TOKEN)
         threading.Thread(target=self.console.serve_forever, daemon=True).start()
         status, phone = self.spark.req("pair", {"code": "invite"})
@@ -164,6 +177,8 @@ def web():
 
 @pytest.fixture
 def rig(tmp_path):
+    from neuroscifi.resources import policy
+    policy._FORECAST_FAILURES.clear()     # logged once per kind of failure per process: each case is a new process
     r = Rig(tmp_path)
     yield r
     r.close()
@@ -331,3 +346,26 @@ def test_a_failing_mechanism_leaves_the_owner_in_control(rig, web, monkeypatch, 
                                                          mode):
     problems, fault, visible = check(rig, web, monkeypatch, caplog, module, name, mode)
     assert not problems, (problems, fault.calls, visible)
+
+
+def _stored_text(r):
+    """Every stored text a failure could be written into: task events, task errors, decisions, the timer's own
+    records."""
+    with r.db() as db:
+        return [t for (t,) in db.execute("SELECT detail FROM web_events UNION ALL SELECT coalesce(error,'') FROM "
+                                         "web_tasks UNION ALL SELECT reason FROM decisions")]
+
+
+@pytest.mark.parametrize("mechanism,module,name", ENTRIES, ids=[f"{m}:{n}" for m, _, n in ENTRIES])
+def test_a_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record(rig, web, monkeypatch, caplog,
+                                                                                mechanism, module, name):
+    """Wave 2 lane X (review2 L1): the guards log and store the exception's TYPE and ids only. A message may name a
+    subject, and the process log (journal) is out of the owner's forget's reach, as is an event on another subject's
+    task. Every entry point fails with a message holding a marker; the owner keeps control (the checks above) and the
+    marker is in no log record and no stored event, task error or decision."""
+    problems, fault, visible = check(rig, web, monkeypatch, caplog, module, name, "marked")
+    assert not problems, (problems, fault.calls, visible)
+    logged = [rec.getMessage() for rec in caplog.records if MARKER in rec.getMessage()]
+    assert not logged, logged
+    stored = [t for t in _stored_text(rig) if MARKER in t]
+    assert not stored, stored

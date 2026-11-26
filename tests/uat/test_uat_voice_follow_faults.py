@@ -3,9 +3,14 @@ default) made to fail. Its two entry points: the delivery claim (voice.transcrip
 awaited answer, once) and the pick-up at a new session (VoiceHub._resume_follow). With each made to raise, time out or
 return garbage: the spoken question still queued its research task, the answer still reaches the person, a new
 session still starts and answers, ending it still works, and the failure is visible. Fake audio engines (the voice
-suite's FakeEngines): real microphones and speakers are not part of this."""
-from contextlib import closing
+suite's FakeEngines): real microphones and speakers are not part of this.
+
+Wave 2 lane X (review2 M1): a claim that cannot be made is not a claim. Nothing is delivered while it fails; the
+follow stays and the claim is asked again, so a transient failure delivers once, late; two hubs never both deliver;
+a forget that holds the lock during the claim leaves nothing of the forgotten task behind."""
+from contextlib import closing, contextmanager
 import logging
+import threading
 import time
 
 import pytest
@@ -17,6 +22,7 @@ from neuroscifi.webcortex import orchestrator, state as wstate
 from voice.conftest import OWNER, FakeEngines, wait_for
 
 MODES = ("raise", "timeout", "garbage")
+REAL_CLAIM = tx.clear_follow
 
 
 def new_hub(instance):
@@ -51,6 +57,36 @@ def faulty(mode, calls):
     return fail
 
 
+def transient(mode, calls, failures):
+    """The claim fails `failures` times in the chosen way (each failure appends 1 to `calls`), then works: the real
+    transcripts.clear_follow (each real claim appends 0)."""
+    real, fail = REAL_CLAIM, faulty(mode, calls)
+
+    def claim(*args, **kwargs):
+        if len(calls) < failures:
+            return fail(*args, **kwargs)
+        calls.append(0)
+        return real(*args, **kwargs)
+    return claim
+
+
+def ask(hub, sid, objective="Research the Zephyr compiler release"):
+    hub.text(sid, OWNER, objective)
+    return wait_for(lambda: replies(hub, sid, "research"))[0]["reply"]["task_id"]
+
+
+def answers(instance, task_id):
+    with closing(store.connect(instance)) as db:
+        return db.execute("SELECT session_id FROM voice_segments WHERE task_id=? AND speaker='neuroscifi' AND "
+                          "json_extract(detail,'$.intent')='research_result'", (task_id,)).fetchall()
+
+
+def awaiting(instance, task_id):
+    with closing(store.connect(instance)) as db:
+        return db.execute("SELECT count(*) FROM voice_sessions WHERE json_extract(context,'$.follow_task_id')=?",
+                          (task_id,)).fetchone()[0]
+
+
 @pytest.fixture
 def instance(tmp_path):
     path = tmp_path / "individual.sqlite"
@@ -60,28 +96,158 @@ def instance(tmp_path):
 
 
 @pytest.mark.parametrize("mode", MODES)
-def test_a_failing_delivery_claim_still_delivers_the_spoken_answer(instance, monkeypatch, caplog, mode):
+def test_a_transiently_failing_delivery_claim_delivers_the_spoken_answer_once(instance, monkeypatch, caplog, mode):
+    """Lane U's intent, kept: an answer is not silently lost when the claim fails for a while. The claim fails twice,
+    then works: the answer is delivered once, after the real claim, and each failure is logged with the task id and
+    the error's type only (never its message)."""
     caplog.set_level(logging.WARNING)
     monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    monkeypatch.setattr(vhub, "CLAIM_WAITS", (0.05,), raising=False)
     calls = []
-    monkeypatch.setattr(tx, "clear_follow", faulty(mode, calls))
+    monkeypatch.setattr(tx, "clear_follow", transient(mode, calls, 2))
     hub = new_hub(instance)
     try:
         sid = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
-        hub.text(sid, OWNER, "Research the Zephyr compiler release")
-        ack = wait_for(lambda: replies(hub, sid, "research"))[0]
-        task_id = ack["reply"]["task_id"]
+        task_id = ask(hub, sid)
         with closing(store.connect(instance)) as db:
             assert orchestrator.get(db, task_id)["status"] == "queued"       # the question became research
             orchestrator.cancel(db, task_id, time.time())                     # it ends (here: cancelled)
         done = wait_for(lambda: replies(hub, sid, "research_result"), timeout=10)
         assert done and done[0]["reply"]["task_id"] == task_id, "the answer did not reach the person"
-        assert calls, "the delivery claim was never reached"
+        time.sleep(0.3)
+        assert len(replies(hub, sid, "research_result")) == 1 and len(answers(instance, task_id)) == 1
+        assert calls[:3] == [1, 1, 0], calls                  # delivered only after the third, real, claim
+        assert awaiting(instance, task_id) == 0
         hub.text(sid, OWNER, "status report")
         assert wait_for(lambda: len(replies(hub, sid)) >= 3), "the session stopped answering"
         assert hub.stop(sid, OWNER)["status"] == "ended"                          # the owner's stop still works
         warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
-        assert any("follow" in w for w in warned), warned
+        assert any("claim of task " + task_id in w for w in warned), warned
+        assert not any("staged" in w for w in warned), warned
+    finally:
+        close(hub)
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_claim_that_cannot_be_made_delivers_nothing_and_keeps_the_follow(instance, monkeypatch, caplog, mode):
+    """review2 M1: "could not ask" is not "yes". While every claim fails nothing is delivered and the follow stays on
+    the session; once a claim can be made again the answer is delivered once: late, not lost, not twice."""
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    monkeypatch.setattr(vhub, "CLAIM_WAITS", (0.05,), raising=False)
+    calls = []
+    monkeypatch.setattr(tx, "clear_follow", transient(mode, calls, 10 ** 6))
+    hub = new_hub(instance)
+    try:
+        sid = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        task_id = ask(hub, sid)
+        with closing(store.connect(instance)) as db:
+            orchestrator.cancel(db, task_id, time.time())
+        wait_for(lambda: len(calls) >= 4)
+        assert not replies(hub, sid, "research_result") and not answers(instance, task_id)
+        assert awaiting(instance, task_id) == 1                                   # still awaited: not lost
+        assert any("claim of task " + task_id in r.getMessage() for r in caplog.records)
+        calls.clear()
+        monkeypatch.setattr(tx, "clear_follow", transient(mode, calls, 0))      # the database answers again
+        wait_for(lambda: replies(hub, sid, "research_result"), timeout=10)
+        time.sleep(0.3)
+        assert len(replies(hub, sid, "research_result")) == 1 and len(answers(instance, task_id)) == 1
+        assert awaiting(instance, task_id) == 0
+    finally:
+        close(hub)
+
+
+def test_two_hubs_with_a_failing_claim_deliver_the_answer_once(instance, monkeypatch):
+    """review2 M1 (lane U's guard could deliver from both): two hubs (two server processes) follow one task and the
+    claim fails for both for a while. Exactly one answer is given, only after a real claim."""
+    monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    monkeypatch.setattr(vhub, "CLAIM_WAITS", (0.05,), raising=False)
+    calls = []
+    monkeypatch.setattr(tx, "clear_follow", transient("raise", calls, 6))
+    first = new_hub(instance)
+    sid = first.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+    task_id = ask(first, sid)
+    second = new_hub(instance)
+    try:
+        other = second.start(OWNER, "console:dev5678", "Console", "text_only")["session"]
+        notices = [e.get("text", "") for e in second.events(other, OWNER, 0, wait=0.1)["events"]
+                   if e["type"] == "notice"]
+        assert any("asked about earlier" in t for t in notices), notices         # both hubs follow it
+        with closing(store.connect(instance)) as db:
+            orchestrator.cancel(db, task_id, time.time())
+        wait_for(lambda: answers(instance, task_id), timeout=10)
+        wait_for(lambda: calls.count(0) >= 2, timeout=10)                       # both followers made a real claim
+        time.sleep(0.3)
+        assert len(answers(instance, task_id)) == 1
+        assert len(replies(first, sid, "research_result")) + len(replies(second, other, "research_result")) == 1
+        assert awaiting(instance, task_id) == 0
+    finally:
+        close(first)
+        close(second)
+
+
+def test_a_forget_holding_the_lock_past_the_wait_leaves_nothing_of_the_task(instance, monkeypatch):
+    """review2 M1, the reviewer's case with a real forget: when the follower claims the answer, the owner's forget of
+    the task holds the write lock longer than the database wait, so the claim fails; the forget then commits. Nothing
+    about the forgotten task is written to a transcript or a session's context afterwards (the forget of a research
+task scrubs the session contexts; the question's own earlier segments belong to the transcript, which the owner
+forgets separately). The wait of the hub's
+    connections is shortened (300 ms instead of 10 s) so the test does not sleep 10 s."""
+    from neuroscifi.instance import governance
+    monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    monkeypatch.setattr(vhub, "CLAIM_WAITS", (0.3,), raising=False)
+    hub = new_hub(instance)
+
+    @contextmanager
+    def short_wait():
+        conn = store.connect(instance)
+        conn.execute("PRAGMA busy_timeout=300")
+        try:
+            yield conn
+        finally:
+            conn.close()
+    hub.db = short_wait
+    real = tx.clear_follow
+    locked, forgot, outcome, seen = threading.Event(), threading.Event(), [], set()
+
+    def long_forget(task_id):
+        conn = store.connect(instance)
+        conn.execute("BEGIN IMMEDIATE")
+        governance._forget_research_core(conn, task_id, time.time())
+        locked.set()
+        time.sleep(0.45)                   # longer than the hub's wait, shorter than the pause before a new claim
+        conn.execute("COMMIT")
+        conn.close()
+        forgot.set()
+
+    def claim(db, principal, task_id):
+        if not locked.is_set():            # what the transcripts held before the claim and the forget
+            seen.update(i for (i,) in db.execute("SELECT id FROM voice_segments"))
+            threading.Thread(target=long_forget, args=(task_id,), daemon=True).start()
+            locked.wait(5)
+        try:
+            outcome.append(real(db, principal, task_id))
+        except Exception as exc:          # noqa: BLE001 - recorded, then raised as the database raised it
+            outcome.append(type(exc).__name__)
+            raise
+        return outcome[-1]
+    monkeypatch.setattr(tx, "clear_follow", claim)
+    try:
+        sid = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        task_id = ask(hub, sid, "Research the Zephyr compiler release FORGET-MARKER-4417")
+        with closing(store.connect(instance)) as db:
+            orchestrator.cancel(db, task_id, time.time())
+        assert forgot.wait(10)
+        time.sleep(1.0)                    # the pause before a new claim, and a poll that finds the task gone
+        # the claim failed; afterwards the follower either found the task gone, or found nothing left to claim
+        assert outcome and outcome[0] == "OperationalError" and outcome[1:] in ([], [0]), outcome
+        with closing(store.connect(instance)) as db:
+            assert db.execute("SELECT count(*) FROM web_tasks WHERE id=?", (task_id,)).fetchone()[0] == 0
+            segments = [s for s in db.execute("SELECT id, text, task_id FROM voice_segments") if s[0] not in seen]
+            contexts = [c for (c,) in db.execute("SELECT context FROM voice_sessions")]
+        assert not [s for s in segments if s[2] == task_id or "FORGET-MARKER" in (s[1] or "")], segments
+        assert not [c for c in contexts if task_id in c or "FORGET-MARKER" in c], contexts
+        assert not replies(hub, sid, "research_result")
     finally:
         close(hub)
 
@@ -111,5 +277,41 @@ def test_a_failing_pick_up_after_a_restart_never_stops_a_session_from_starting(i
         assert second.stop(again, OWNER)["status"] == "ended"                  # the owner's stop still works
         warned = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
         assert any("follow" in w for w in warned), warned
+    finally:
+        close(second)
+
+
+def test_a_pick_up_failing_part_way_gives_back_its_count_and_slot(instance, monkeypatch):
+    """review2 L6: when the pick-up fails after it counted the task as followed (here: the read of the task raises
+    a database error), the count and the follower slot go back, so the same hub can still pick the answer up at the
+    next session."""
+    monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    first = new_hub(instance)
+    sid = first.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+    task_id = ask(first, sid)
+    first.close()
+    vstate.reset()
+    second = new_hub(instance)
+    try:
+        with closing(store.connect(instance)) as db:
+            tx.end_orphans(db, "console:", time.time())
+        real_get = orchestrator.get
+        broken = {"on": True}
+
+        def get(db, tid, **kw):
+            if broken["on"]:
+                raise RuntimeError("staged: the read failed part-way")
+            return real_get(db, tid, **kw)
+        monkeypatch.setattr(orchestrator, "get", get)
+        slots = second._followers._value
+        again = second.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        assert second._following.get(task_id) is None                       # the count went back
+        assert second._followers._value == slots                             # and the slot
+        broken["on"] = False
+        second.stop(again, OWNER)
+        later = second.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        notices = [e.get("text", "") for e in second.events(later, OWNER, 0, wait=0.1)["events"]
+                   if e["type"] == "notice"]
+        assert any("Picking up" in t for t in notices), notices              # picked up at the next session
     finally:
         close(second)

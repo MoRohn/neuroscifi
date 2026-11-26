@@ -12,6 +12,9 @@ ids it was read from ("refs"); there is no model text, no self-assessment and no
   strategies   per research mode: finished tasks and their external outcomes (strategies.outcomes) and the mode's own
                recorded statistics; a mode with at least MIN_MODE_TASKS tasks whose rate of external outcomes is more
                than UNDERPERFORM below the period's overall rate is listed as underperforming
+Bounds: at most MAX_LINES lines per section (a section that joins several queries keeps their lines in the order
+above and is cut at MAX_LINES; report["cut"] then counts the lines left out per section, Wave 2 lane X), at most
+MAX_LINES refs per line, at most MAX_TEXT characters of text per line; five sections.
 reflect() stores the report (web_reflections) and takes at most MAX_ACTIONS bounded actions, each recorded with the
 line it came from:
   re-check     a knowledge item whose prediction failed and that is still live, not already marked (premises.mark,
@@ -34,7 +37,8 @@ from ..instance import store
 from ..instance.errors import ValidationError
 from . import state
 
-MAX_LINES = 20            # lines per section
+MAX_LINES = 20            # lines per section; refs per line
+MAX_TEXT = 300            # characters of one line's text
 MAX_ACTIONS = 5           # actions per reflection
 MIN_MODE_TASKS = 3        # finished tasks of a mode before it can be called underperforming
 UNDERPERFORM = 0.2        # its rate of external outcomes this far below the period's overall rate
@@ -51,7 +55,7 @@ def present(db) -> bool:
 
 
 def _line(kind, text, refs, **detail):
-    return {"kind": kind, "text": text, "refs": [[k, str(i)] for k, i in refs]} | detail
+    return {"kind": kind, "text": str(text)[:MAX_TEXT], "refs": [[k, str(i)] for k, i in refs][:MAX_LINES]} | detail
 
 
 def report(db, since, until) -> dict:
@@ -137,9 +141,15 @@ def report(db, since, until) -> dict:
                            f"gained verified knowledge or settled a prediction (overall {overall:.2f})", [],
                            mode=mode, tasks=n, rewarded=rewarded or 0, rate=round(rate, 6),
                            underperformed=bool(under), self_reported_runs=own.get("runs")))
-    return {"period": {"from": since, "to": until}, "learned": learned, "failed": failed,
-            "assumptions": assumptions, "missing": missing, "strategies": modes,
-            "label": "records only: every line names the record ids it was read from; no model text"}
+    out = {"period": {"from": since, "to": until}, "learned": learned, "failed": failed,
+           "assumptions": assumptions, "missing": missing, "strategies": modes,
+           "label": "records only: every line names the record ids it was read from; no model text"}
+    cut = {s: len(out[s]) - MAX_LINES for s in SECTIONS if len(out[s]) > MAX_LINES}
+    for section in cut:             # Wave 2 lane X: the documented bound holds for every section
+        out[section] = out[section][:MAX_LINES]
+    if cut:
+        out["cut"] = cut
+    return out
 
 
 def _actions(db, rep, now) -> list[dict]:

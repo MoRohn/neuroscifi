@@ -63,6 +63,30 @@ def test_the_answer_reaches_the_next_session_after_a_restart(instance, monkeypat
         vstate.reset()
 
 
+def test_the_follow_is_kept_before_the_acknowledgement_is_shown(instance, monkeypatch):
+    """Wave 2 lane X: the acknowledgement ("I'll tell you what I find") used to be shown before the follow was
+    written to the session, so a process that ended right after it lost the follow; under load the test above read
+    the context in that gap (KeyError 'follow_task_id', lane L's full-suite run). The write is made slow here (0.3 s,
+    deterministic): when the acknowledgement is visible, the follow is already stored."""
+    real = tx.update_session
+
+    def slow(db, sid, now, **kw):
+        if (kw.get("context") or {}).get("follow_task_id"):
+            time.sleep(0.3)
+        return real(db, sid, now, **kw)
+    monkeypatch.setattr(tx, "update_session", slow)
+    hub = new_hub(instance)
+    try:
+        sid, task_id = ask(hub, monkeypatch)
+        with closing(store.connect(instance)) as db:
+            assert tx.session(db, sid)["context"].get("follow_task_id") == task_id
+    finally:
+        for s in list(hub.sessions.values()):
+            hub._end(s, "test")
+        hub.close()
+        vstate.reset()
+
+
 def test_the_owner_can_switch_it_off(instance, monkeypatch):
     with closing(store.connect(instance)) as db:
         vconfig.update(db, {"resume_follow": False})

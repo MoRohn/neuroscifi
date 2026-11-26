@@ -20,7 +20,9 @@ from neuroscifi.webcortex import state
 T0 = 1_800_000_000.0
 DAY = 86_400.0
 
-# Every Wave 1 setting off: what Wave 0 did (scripts/bench_wave1.py WAVE1_OFF_*; voice settings are not read here)
+# Every Wave 1 and Wave 2 setting off: what Wave 0 did (scripts/bench_wave1.py WAVE1_OFF_*, plus lane L's two
+# settings, ADR-056; voice settings are not read here). tests/uat/test_uat_setting_lists.py fails when a setting of
+# the config classes is missing here.
 OFF_INSTANCE = {"internal_state_history": False, "predictive_regulation": False, "executive_rule": "rules-v1",
                 "decision_information": False, "imagine_what_if": False, "imagine_forecast": False,
                 "imagine_retrospect": False, "imagine_scenarios": False, "broadcast": "off"}
@@ -28,7 +30,8 @@ OFF_WEB = {"curiosity_learning_progress": False, "salience_record": False, "hypo
            "hypothesis_abandon": False, "premise_recheck": False, "idle_recheck": False, "reflection": False,
            "reflection_model_summary": False, "strategy_selection": "off", "answer_monitoring": False,
            "selective_answering": False, "verification_escalation": False, "adaptive_depth": False,
-           "pocket_recent": False}
+           "pocket_recent": False, "salience_attention": False, "arbitration_record": False}
+WAVE0_DIGEST = "68731d7235cbae9fca289124ea59bed99c1aa5b578ecaf8784d2e3df54cdf9d5"
 
 
 def _scenario(db):
@@ -69,9 +72,42 @@ def test_a_new_individual_at_the_shipped_defaults_reads_and_decides_as_with_ever
             if regime == "off":
                 store.set_config(db, OFF_INSTANCE, T0)
                 state.set_config(db, OFF_WEB, T0)
+            else:       # the shipped defaults include lane L's arbitration record, on (Wave 2 lane X)
+                assert state.get_config(db).arbitration_record is True
+                assert state.get_config(db).salience_attention is False
             _scenario(db)
             reads[regime] = _read(db)
     assert reads["defaults"] == reads["off"]
+
+
+def _offline_digest(web_overrides):
+    """The offline research benchmark (scripts/bench_wave1.py offline: the `nsf web bench` corpus, loopback, no
+    model), in process, with these web settings read by every individual (scripts/bench_wave1.py's regime); the
+    sha256 of its deterministic metrics. docs/quality/evidence/webcortex_bench.json is neither read nor written."""
+    import hashlib
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("bench_wave1_uat", Path(__file__).resolve().parents[2] / "scripts"
+                                                  / "bench_wave1.py")
+    bench = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bench)
+    if web_overrides is None:
+        return bench.offline("defaults")["sha256"]
+    bench.REGIMES["uat_off"] = lambda: bench.regime(OFF_INSTANCE, web_overrides)
+    out = bench.offline("uat_off")
+    assert out["sha256"] == hashlib.sha256(json.dumps(out["deterministic"], sort_keys=True, default=str)
+                                           .encode()).hexdigest()
+    return out["sha256"]
+
+
+def test_the_offline_research_benchmark_equals_wave0_at_the_shipped_defaults_and_with_every_setting_off():
+    """Wave 2 lane X: the offline research benchmark's digest is Wave 0's (68731d72…, Wave 0's own commit 15b0f03)
+    at the shipped defaults, which have lane L's arbitration_record on, and with every Wave 1 and Wave 2 setting off
+    (OFF_WEB, which has arbitration_record and salience_attention off)."""
+    from neuroscifi.webcortex.config import WebConfig
+    assert WebConfig().arbitration_record is True and WebConfig().salience_attention is False
+    assert _offline_digest(None) == WAVE0_DIGEST
+    assert _offline_digest(OFF_WEB) == WAVE0_DIGEST
 
 
 def _source(tmp_path):

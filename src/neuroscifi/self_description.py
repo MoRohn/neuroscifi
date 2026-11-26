@@ -600,7 +600,7 @@ def _improvement_ledger(db, now) -> dict:
     from .webcortex import strategies
     rows = [{k: e[k] for k in ("id", "capability", "level", "decision", "decided_by", "created_at")}
             for e in strategies.ledger(db, limit=MAX_ITEMS)]
-    return _f({"strategy_selection_active": strategies.active(db), "latest": rows},
+    return _f({"strategy_selection_active": strategies.active(db) is True, "latest": rows},
               "improvement_ledger (webcortex/strategies.py, ADR-055; `nsf knowledge ledger`)",
               rows[0]["created_at"] if rows else None, now)
 
