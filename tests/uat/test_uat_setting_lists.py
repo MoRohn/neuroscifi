@@ -59,7 +59,7 @@ def test_every_added_switch_is_rolled_back_by_a_test_that_names_it():
 # fields it added (ADR-060, ADR-061), which must also be made to fail by the fault-injection test.
 WAVE3_OTHER = {"predictive_regulation_shadow", "front_door"}
 WAVE3_FIELDS = {"recheck_order", "attribution_independence", "echo_recognition", "supersession",
-                "supersession_min_sources"}
+                "supersession_min_sources", "origin_grouping"}
 
 
 def test_every_wave3_setting_is_rolled_back_and_made_to_fail():

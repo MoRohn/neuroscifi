@@ -390,14 +390,15 @@ def test_a_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record(
 #
 # The same owner session and checks, on an individual with every Wave 1 setting on and every Wave 3 setting on:
 # recheck_order (ADR-060) another order than lane K's; attribution_independence and echo_recognition (ADR-061, on by
-# default); supersession "independent" (ADR-061; off by default); predictive_regulation "shadow" (ADR-058; the third
-# value of a Wave 1 setting, so the Wave 1 predictive gate's own case above keeps it True); the self-description's
+# default); supersession "independent" (ADR-061; off by default); origin_grouping "one_way" (ADR-063; off by default;
+# a failing one-way grouping is logged and the default grouping decides); predictive_regulation "shadow" (ADR-058; the
+# third value of a Wave 1 setting, so the Wave 1 predictive gate's own case above keeps it True); the self-description's
 # readiness field (ADR-058, owner scope); the front door of `nsf imagine scm` (ADR-059, a flag of an owner's command,
 # on by default). Where the owner's question cannot reach an entry point, a stage makes it reachable through the
 # product's own code: a refresh whose sources disagree with a held item, read through consolidation (supersession), and
 # the owner's own front-door question (the front door).
 WAVE3_WEB_ON = {"recheck_order": "rate+seen+rotation", "attribution_independence": True, "echo_recognition": True,
-                "supersession": "independent"}
+                "supersession": "independent", "origin_grouping": "one_way"}
 WAVE3_INSTANCE_ON = {"predictive_regulation": "shadow"}
 
 
@@ -449,6 +450,7 @@ WAVE3_ENTRIES = (
     ("attribution_independence", "neuroscifi.webcortex.claims", "attribution_keys", None),
     ("echo_recognition", "neuroscifi.webcortex.consolidate", "_without_echoes", None),
     ("supersession", "neuroscifi.webcortex.consolidate", "_rule_replacement", _superseding_refresh),
+    ("origin_grouping", "neuroscifi.webcortex.claims", "_one_way", None),
     ("predictive_regulation_shadow", "neuroscifi.resources.shadow", "_verdict", None),
     ("readiness", "neuroscifi.readiness", "report", None),
     ("front_door", "neuroscifi.causal", "_frontdoor", _front_door_question),

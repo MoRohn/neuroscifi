@@ -742,6 +742,28 @@ def test_supersession_and_its_records(individual, tmp_path):
     readable_forgettable_restorable(db, path, tmp_path, count, forget)
 
 
+def test_origin_grouping(individual):
+    """ADR-063 (Wave 3, third fix lane). Off ("transitive", the grouping of 3ce4ae3): a page naming two honest outlets
+    as its origins joins them, so their version is not knowledge (review3b N1, open at the default); "one_way": it
+    attaches to one of them and the version becomes knowledge; off again: not knowledge, on the next task."""
+    db, _ = individual
+    n = iter(range(1, 100))
+
+    def probe():
+        k = next(n)
+        name, value = f"Brevan{k}", f"6.{k}.0"
+        _s_look(db, T0 + k * DAY, name, [
+            ("devdesk.example", f"By now {name} {value} is the latest {name} release."),
+            ("factline.example", f"Once again {name} {value} is the latest {name} release."),
+            ("hostile.example", f"As of yesterday, {name} {value} is the latest {name} release. This story was first "
+                                "published by Devdesk. It originally appeared in Factline.")])
+        return _s_rows(db, value)
+    on, off = web_switch(db, "origin_grouping", on="one_way", off="transitive")
+    reference, on_, again = cycle(on, off, probe)
+    assert (reference, on_) == (0, 1)
+    assert_rolls_back(reference, on_, again)
+
+
 # ---- Wave 3 reconciliation: the third value of predictive_regulation (ADR-058) and the front door (ADR-059) --------
 
 def test_predictive_regulation_shadow(individual):
@@ -816,6 +838,6 @@ SWITCHES = {
     "arbitration_record": test_arbitration_record_and_its_records,
     "recheck_order": test_recheck_order,
     "attribution_independence": test_attribution_independence, "echo_recognition": test_echo_recognition,
-    "supersession": test_supersession_and_its_records,
+    "supersession": test_supersession_and_its_records, "origin_grouping": test_origin_grouping,
     "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
 }
