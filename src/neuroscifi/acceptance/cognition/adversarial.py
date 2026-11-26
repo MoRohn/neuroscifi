@@ -1142,17 +1142,21 @@ _TEMPLATES = {"relnotes.example": "{N} {v} is the latest {N} release.",
               "weekly-builds.example": "As of now, {N} {v} is the latest {N} release."}
 _WIRE_TEXT = "{N} {v} is the latest {N} release, the Syndiwire desk reports."
 LANE_S_OFF = {"attribution_independence": False, "echo_recognition": False, "supersession": "ask"}
+# The expectations above were written with the two fixes ON ("the fixes keep their shipped values" meant ON when they
+# were written). Since the fix lane both ship OFF (ADR-061), so the cases switch them on themselves: what each case
+# stages and expects is unchanged.
+LANE_S_ON = {"attribution_independence": True, "echo_recognition": True}
 RULE_ON = {"supersession": "independent", "supersession_min_sources": 2}
 
 
 @contextmanager
 def _s_individual(name, **settings):
     """A temporary individual for lane S's cases, its resource gate held open and no model called (cycles'
-    environment); `settings` over the defaults."""
+    environment); the two fixes on (LANE_S_ON), then `settings`."""
     from ...webcortex import state
     from . import cycles
     with _individual(name) as (db, path):
-        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0} | settings, T0 - 30 * DAY)
+        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0} | LANE_S_ON | settings, T0 - 30 * DAY)
         with cycles._environment([None]):
             yield db, path
 

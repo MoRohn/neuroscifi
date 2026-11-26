@@ -207,9 +207,11 @@ class WebConfig:
     # answers stored with its tasks; its imagined store is never read here) before any source it read did, or that
     # credits what it states to an assistant, a chatbot or an AI model, is not evidence for that value; a disagreement
     # it raises is still asked (consolidate._without_echoes).
-    # Both protect what the individual believes; ADR-061 has the measurement behind their defaults.
-    attribution_independence: bool = True
-    echo_recognition: bool = True
+    # Both are OFF by default (ADR-061, Wave 3 fix lane): the lane's own pre-registered rule returned "unsafe" for
+    # them, attribution merges honest outlets that credit each other (a correctness cost beyond the spread on staged
+    # worlds), and echo recognition rests on a phrase list chosen after held-out runs. The owner may turn either on.
+    attribution_independence: bool = False
+    echo_recognition: bool = False
     # supersession: "ask" (the standing rule of ADR-026/038: a refresh that contradicts a held item asks the owner and
     # never revises it) or "independent": a newer value (by its stated time) stated by at least
     # supersession_min_sources independent sources, never contradicted by an owner's answer and never the
