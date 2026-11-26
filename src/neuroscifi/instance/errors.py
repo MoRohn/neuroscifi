@@ -35,3 +35,20 @@ class LeaseHeld(InstanceError):
 class WritesPaused(InstanceError):
     """Regulation paused new writes; reads and approved skills remain available."""
     http_status = 507
+
+
+def failure_kind(exc: BaseException) -> str:
+    """A failure described without its message, for a log line (Wave 2 reconciliation, review2b N5): the exception's
+    type, with SQLite's error name for a database error (SQLITE_BUSY, SQLITE_IOERR_WRITE, ...) and the errno name for
+    an OS error (ENOSPC, ...). A message may name a subject and the process log is out of forget's reach, so the
+    message itself is never included."""
+    import errno
+    import re
+    kind = type(exc).__name__
+    name = getattr(exc, "sqlite_errorname", None)
+    if isinstance(name, str) and re.fullmatch(r"SQLITE_[A-Z0-9_]{1,40}", name):
+        return f"{kind} {name}"
+    code = getattr(exc, "errno", None) if isinstance(exc, OSError) else None
+    if isinstance(code, int) and not isinstance(code, bool) and code in errno.errorcode:
+        return f"{kind} {errno.errorcode[code]}"
+    return kind

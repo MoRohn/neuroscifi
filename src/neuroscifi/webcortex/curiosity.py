@@ -267,7 +267,7 @@ def rank(db, now, *, limit=10) -> list[dict]:
     chosen, excluded = [], []
     lp_on = learning_progress_on(db)
 
-    def damp(key, gain, factor, futile):
+    def damp(key, gain, factor, futile, kid=None):
         """The futility factor, or learning progress when the owner's setting is on and it down-weights more (both
         read the same web_feedback rows, so the stronger of the two applies, never their product), and the
         record."""
@@ -279,8 +279,10 @@ def rank(db, now, *, limit=10) -> list[dict]:
             lp, note, record = progress(db, key, gain, now)     # L2): it falls back to the strict rule of the
             lp = float(lp)                                      # setting off, never to the gentler one
         except Exception as exc:          # noqa: BLE001 - recorded with the candidate and logged, never silent
-            log.warning("learning progress of a curiosity candidate could not be read (%s); the futility rule "
-                        "applies as with the setting off", type(exc).__name__)
+            from ..instance.errors import failure_kind      # review2b N5: the item's id, never its key or message
+            log.warning("learning progress of the curiosity candidate %s could not be read (%s); the futility rule "
+                        "applies as with the setting off", f"knowledge #{kid}" if kid is not None else
+                        "without a knowledge item", failure_kind(exc))
             return (*strict, {"learning_progress": {"error": f"could not be read ({type(exc).__name__})"}})
         if lp >= factor:
             return factor, futile, {"learning_progress": record}
@@ -300,7 +302,7 @@ def rank(db, now, *, limit=10) -> list[dict]:
             against = max(1, len({c.get("claim") for c in item["contradicting"] if isinstance(c, dict)}))
             share = 0.7 / (support + against)
             gain = categorical_gain([support * share, against * share, 0.15, 0.15])
-            factor, futile, lp = damp(item["key"], gain, factor, futile)
+            factor, futile, lp = damp(item["key"], gain, factor, futile, item["id"])
             chosen.append(_entry(
                 "contested", target, gain, "fact_verification", importance,
                 f"contested: {support} supporting vs {against} contradicting claim(s); distinguishing 4 hypotheses "
@@ -314,7 +316,7 @@ def rank(db, now, *, limit=10) -> list[dict]:
             elapsed = max(0.0, now - item["last_verified_at"])
             p = 1.0 - (1.0 - math.exp(-elapsed / max(1.0, _ttl(cfg, item["freshness_class"])))) / 2.0
         gain = info_gain(p)
-        factor, futile, lp = damp(item["key"], gain, factor, futile)
+        factor, futile, lp = damp(item["key"], gain, factor, futile, item["id"])
         age = temporal.describe_age(item["last_verified_at"], now)
         if item["id"] in due:
             chosen.append(_entry("prediction", target | {"prediction_id": due[item["id"]]}, gain,

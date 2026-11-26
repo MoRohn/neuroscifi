@@ -135,3 +135,74 @@ def test_an_arbitration_record_that_cannot_be_written_never_costs_the_rest_of_th
     assert "arbitration" not in report
     assert [q["origin"] for q in report["queued"]].count("curiosity") == 1   # B, the other subject, still launched
     assert report["cache"] == {"pruned": 0}                                  # and the retention ran
+
+
+# ---- Wave 2 reconciliation: the check of the fixes (review2b N5) --------------------------------------------------
+
+MARKER = "SUBJECT-MARKER-7302"
+
+
+def _sqlite_failure(kind, tmp_path):
+    """A real sqlite3 error carrying the marker in its message: 'error' (SQLITE_ERROR, no such table) or 'readonly'
+    (SQLITE_READONLY, a write on a read-only connection)."""
+    import sqlite3
+    path = tmp_path / f"{kind}.sqlite"
+    sqlite3.connect(path).execute("CREATE TABLE t(x)").connection.commit()
+    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        db.execute(f"SELECT * FROM missing_{kind}" if kind == "error" else "INSERT INTO t VALUES (1)")
+    except sqlite3.Error as exc:
+        exc.args = (f"{exc.args[0]} about {MARKER}",)
+        return exc
+    finally:
+        db.close()
+
+
+def test_a_forecast_failure_is_logged_by_its_kind_with_its_repeats_and_no_subject(tmp_path, monkeypatch, caplog):
+    """review2b N5: the gate logged a forecast failure once per exception TYPE per process, so a later failure of the
+    same type with another cause was silent. It is logged once per kind (the type with SQLite's error name), and a
+    repeat again at 10, 100, ... with its count; never the message."""
+    import logging
+    from neuroscifi import internal_state
+    from neuroscifi.resources import policy
+    caplog.set_level(logging.WARNING)
+    policy._FORECAST_FAILURES.clear()
+    failures = {"now": _sqlite_failure("error", tmp_path)}
+
+    def history(*args, **kwargs):
+        raise failures["now"]
+    monkeypatch.setattr(policy, "predictive_on", lambda db_path: True)
+    monkeypatch.setattr(internal_state, "history", history)
+    gate = {"level": "ok", "reasons": []}
+    for _ in range(10):
+        assert policy.background_gate(tmp_path / "x.sqlite", sample=gate, audio=False)["allowed"]
+    failures["now"] = _sqlite_failure("readonly", tmp_path)
+    policy.background_gate(tmp_path / "x.sqlite", sample=gate, audio=False)
+    logged = [r.getMessage() for r in caplog.records if "forecast failed" in r.getMessage()]
+    assert logged == ["predictive regulation: the forecast failed (OperationalError SQLITE_ERROR); it adds no hold",
+                      "predictive regulation: the forecast failed (OperationalError SQLITE_ERROR) 10 times in this "
+                      "process; it adds no hold",
+                      "predictive regulation: the forecast failed (OperationalError SQLITE_READONLY); it adds no "
+                      "hold"], logged
+    assert not [r for r in caplog.records if MARKER in r.getMessage()]
+    policy._FORECAST_FAILURES.clear()
+
+
+def test_a_failing_learning_progress_read_names_the_knowledge_item_never_its_subject(individual, monkeypatch, caplog,
+                                                                                    tmp_path):
+    """review2b N5: the curiosity warning named no item at all; it names the knowledge id and SQLite's error name,
+    never the key or the message."""
+    import logging
+    caplog.set_level(logging.WARNING)
+    db, _ = individual
+    _two_items(db)
+    state.set_config(db, {"curiosity_learning_progress": True}, T0)
+    failure = _sqlite_failure("error", tmp_path)
+
+    def progress(*args, **kwargs):
+        raise failure
+    monkeypatch.setattr(curiosity, "progress", progress)
+    curiosity.rank(db, T0 + 400 * DAY, limit=10)
+    logged = [r.getMessage() for r in caplog.records if "learning progress" in r.getMessage()]
+    assert any("knowledge #1" in m and "OperationalError SQLITE_ERROR" in m for m in logged), logged
+    assert not [m for m in logged if MARKER in m or A[1] in m or B[1] in m], logged

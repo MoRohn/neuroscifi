@@ -33,7 +33,7 @@ import time
 from . import monitor, shared
 
 log = logging.getLogger(__name__)
-_FORECAST_FAILURES: set = set()     # forecast failures already logged by this process (background_gate)
+_FORECAST_FAILURES: dict = {}       # forecast failures seen by this process, kind -> count (background_gate)
 
 BACKGROUND_MODEL_SLOTS = 2         # background model calls at a time (= the default concurrent autonomy cap)
 BACKGROUND_MODEL_SLOTS_AUDIO = 1    # ... while a voice session is capturing or speaking
@@ -214,13 +214,19 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
             if not isinstance(verdict, dict):
                 raise TypeError(f"the forecast is {type(verdict).__name__}, not a verdict")
         except Exception as exc:   # noqa: BLE001 - fail open: a forecast may only add a hold, a broken one adds none
-            # Wave 2 lane U: never silent; logged once per kind of failure in this process (the gate runs often)
-            seen = type(exc).__name__        # Wave 2 lane X (review2 L1): the type only, never the message
-            if seen not in _FORECAST_FAILURES:
-                if len(_FORECAST_FAILURES) > 64:
-                    _FORECAST_FAILURES.clear()
-                _FORECAST_FAILURES.add(seen)
+            # Wave 2 lane U: never silent; logged once per kind of failure in this process (the gate runs often).
+            # Wave 2 lane X (review2 L1): never the message; reconciliation (review2b N5): the kind includes SQLite's
+            # error name or the errno name, and a repeat is logged again with its count at 10, 100, 1000, ...
+            from ..instance.errors import failure_kind
+            seen = failure_kind(exc)
+            if seen not in _FORECAST_FAILURES and len(_FORECAST_FAILURES) > 64:
+                _FORECAST_FAILURES.clear()
+            count = _FORECAST_FAILURES[seen] = _FORECAST_FAILURES.get(seen, 0) + 1
+            if count == 1:
                 log.warning("predictive regulation: the forecast failed (%s); it adds no hold", seen)
+            elif count == 10 ** (len(str(count)) - 1):
+                log.warning("predictive regulation: the forecast failed (%s) %d times in this process; it adds no "
+                            "hold", seen, count)
             verdict = {"hold": False}
         if verdict.get("hold"):
             reason, why = verdict["reason"], "forecast"
