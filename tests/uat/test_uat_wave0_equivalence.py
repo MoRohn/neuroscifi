@@ -31,7 +31,8 @@ OFF_WEB = {"curiosity_learning_progress": False, "salience_record": False, "hypo
            "hypothesis_abandon": False, "premise_recheck": False, "idle_recheck": False, "reflection": False,
            "reflection_model_summary": False, "strategy_selection": "off", "answer_monitoring": False,
            "selective_answering": False, "verification_escalation": False, "adaptive_depth": False,
-           "pocket_recent": False, "salience_attention": False, "arbitration_record": False}
+           "pocket_recent": False, "salience_attention": False, "arbitration_record": False,
+           "attribution_independence": False, "echo_recognition": False, "supersession": "ask"}
 WAVE0_DIGEST = "68731d7235cbae9fca289124ea59bed99c1aa5b578ecaf8784d2e3df54cdf9d5"
 WAVE0_DIGEST_MACHINE = "aarch64"         # platform.machine() of the host the digest was recorded on
 

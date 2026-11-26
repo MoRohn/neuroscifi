@@ -1948,7 +1948,8 @@ class _Run:
         except Exception:      # an untrusted page that does not extract adds nothing here; evaluate() decides
             found = []
         everything = [c for page in self.depth_seen for c in page[0]] + list(found)
-        origins = claims.stamp_origins(everything, self.documents)
+        origins = claims.stamp_origins(everything, self.documents,
+                                       attribution=self.cfg.attribution_independence)
         freshness = (self.checkpoint.get("assessment") or {}).get("freshness_class") or "stable"
         scored = [claims.score(c, now=self.clock(), freshness_class=freshness, ttl_overrides=self.ttl_overrides(),
                                origins=origins) for c in claims.cluster(everything)]
@@ -2058,7 +2059,8 @@ class _Run:
                 continue
             per_doc.append((doc, len(extracted)))
             found += extracted
-        origins = claims.stamp_origins(found, self.documents)   # copies of one story are one source (ADR-035)
+        # copies of one story are one source (ADR-035), also when a sentence credits it (ADR-061)
+        origins = claims.stamp_origins(found, self.documents, attribution=self.cfg.attribution_independence)
         now = self.clock()
         scored = [claims.score(c, now=now, freshness_class=freshness, ttl_overrides=self.ttl_overrides(),
                                origins=origins) for c in claims.cluster(found)]
