@@ -3411,3 +3411,148 @@ seeds; paired gain against `baseline` (seeds better of 4); the rule's smallest v
   recheck:rotation/all`. Not needed to keep the default.
 - Not verified: the open web, real change rates, a live model, the worker's idle investigation (which shares the
   allowance), an owner who answers, timer passes more often than once a simulated day.
+
+# ADR-062 Coverage: the worker's idle investigation measured inside the timer's allowance, and the day's task count it now honours
+
+Status: Wave 3 lane V, branch `gen3-v` from `f56f9cb`. Held-out measured on `0ee88fe`; development re-run on `41198b3`.
+Evidence `docs/quality/evidence/genesis_idle_coverage.json`. Simulated worlds through the real modules, offline, no
+model. No schema change, no new setting, no new background activity.
+
+## Context
+
+Lane R (ADR-060) split the loop's shortfall against a blind same-budget round-robin: 64 % of it (pooled, development)
+is subjects the loop never covers. The owner's one look gave them no knowledge item, and the timer admits only
+knowledge items. Lanes F and R measured the timer's pass only. The worker's idle investigation (`autonomy.idle`) was
+never run in the cycles harness (Wave 2 review M4). In the product it shares the daily allowance with the timer and
+can investigate gaps. The questions were: does the product's whole loop reach the never-covered subjects? If a
+coverage gap remains, what is the smallest mechanism, and does reaching more subjects add wrong content?
+
+## Measurement (step 1)
+
+`cycles.idle_configurations()`. The worker's idle investigation runs as the product runs it. Each decision is
+`autonomy.idle` as by its own worker at the cycle's instant (the harness compresses a day to one instant, as it does
+for the owner and the timer), and the queued task is executed at once. Admission, quiet, the recorded enable,
+`min_gain`, the cooldown and lineage are its own.
+
+There is one allowance, `daily_autonomous.tasks` (the world's budget), counted as the timer counts it (curiosity and
+refresh tasks of the rolling 24 h). The references get the same budget.
+- `idle` and `shipped+idle`: the timer's pass first, then idle decisions until the count is reached.
+- `idle-first`: idle decisions first, then the pass with what is left.
+
+The product runs both all day (the timer every 15 min, idle every 300 s per worker when nothing is queued), so its
+split lies between these two. **"The loop as shipped with autonomy on" is `shipped+idle`**: the owner's enable
+starts the timer's autonomous part and the worker's idle investigation. On these worlds `shipped` equals `baseline`
+in every metric, and `shipped+idle` equals `idle`.
+
+Held-out: mean `correct` over 4 seeds. Each change is the paired gain against the same configuration without idle
+(seeds better / worse). The rule's smallest visible gain is the sd of the configuration without idle.
+
+| | ho-rate-mixed | ho-rate-uniform | ho-rate-shift | ho-sparse (F, disclosed) | ho-busy (F, disclosed) |
+|---|---|---|---|---|---|
+| baseline sd (smallest visible gain) | 0.089 | 0.071 | 0.080 | 0.105 | 0.057 |
+| snapshot / blind round-robin / oracle | 0.651 / 0.724 / 0.873 | 0.573 / 0.724 / 0.949 | 0.712 / 0.797 / 0.940 | 0.670 / 0.786 / 0.957 | 0.574 / 0.708 / 0.928 |
+| no loop / baseline (timer only) | 0.539 / 0.587 | 0.503 / 0.617 | 0.614 / 0.646 | 0.574 / 0.631 | 0.497 / 0.571 |
+| `idle` = `shipped+idle` (timer first) | +0.000 (0/0) | +0.046 (4/0) | +0.049 (4/0) | +0.017 (1/0) | +0.015 (2/1) |
+| `idle-first` | +0.057 (3/1) | +0.012 (3/1) | +0.086 (4/0) | +0.035 (3/1) | +0.018 (3/1) |
+| paired sd: `idle` / `idle-first` | 0.000 / 0.069 | 0.036 / 0.048 | 0.012 / 0.032 | 0.034 / 0.055 | 0.023 / 0.017 |
+| coverage: baseline / `idle` / `idle-first` | 0.822 / 0.822 / 0.940 | 0.867 / 0.930 / 0.958 | 0.857 / 0.928 / 0.978 | 0.861 / 0.881 / 0.968 | 0.831 / 0.869 / 0.925 |
+| uncovered part of the gap to round-robin: baseline / `idle` / `idle-first` | 0.112 / 0.112 / 0.032 | 0.087 / 0.041 / 0.025 | 0.109 / 0.049 / 0.018 | 0.104 / 0.085 / 0.029 | 0.111 / 0.084 / 0.054 |
+| not-looked part: baseline / `idle` / `idle-first` | 0.018 / 0.018 / 0.062 | 0.033 / 0.035 / 0.087 | 0.024 / 0.026 / 0.071 | 0.038 / 0.040 / 0.096 | 0.040 / 0.042 / 0.083 |
+| whole gap to round-robin: baseline / `idle` / `idle-first` | 0.137 / 0.137 / 0.081 | 0.108 / 0.062 / 0.096 | 0.151 / 0.102 / 0.065 | 0.155 / 0.138 / 0.120 | 0.138 / 0.123 / 0.120 |
+| idle tasks per run: `idle` / `idle-first` | 0.25 / 32.0 | 5.75 / 38.5 | 2.5 / 32.75 | 0.5 / 28.0 | 5.0 / 37.75 |
+| idle looks at subjects that held nothing (after them, held the true version) | 0.0 (0.0) / 10.75 (4.5) | 4.75 (2.0) / 12.0 (4.25) | 2.5 (1.75) / 8.25 (4.0) | 0.5 (0.5) / 8.75 (4.0) | 4.0 (1.0) / 16.25 (5.5) |
+| looks used of the allowance: baseline / with idle | 31.75 / 32.0 of 32 | 33.0 / 38.75 of 42 | 30.25 / 32.75 of 33 | 27.5 / 28.0 of 28 | 33.5 / 38.25 of 42 |
+| pages per run: baseline / `idle` / `idle-first` | 222 / 223 / 235 | 175 / 191 / 210 | 210 / 220 / 228 | 208 / 210 / 218 | 191 / 206 / 208 |
+
+- **Does the idle path reach the never-covered subjects?** Yes, when it gets a share of the allowance. Taking the
+  allowance first, it removes 51–83 % of the uncovered part (held-out). But the due refreshes it displaces show up
+  as "not looked" (+0.043 to +0.058). Taking what the timer leaves, it gets 0.25–5.75 looks per run. The timer's
+  pass used the whole day in most cycles: the idle decisions were stopped by the allowance in 12–16 of 14–16 (mean over seeds)
+  cycles. On ho-rate-mixed it changed nothing.
+- **Verdict** (the rule committed at `0ee88fe` before the run, `cycles.idle_verdicts`):
+  - `idle` and `shipped+idle`: **no evidence** in both held-out families. No gain is beyond the sd; it is +0.000 in
+    one world.
+  - `idle-first`: **revise** in both families. The gain is positive in every world with 3 or 4 of 4 seeds better,
+    but it is beyond the sd in one world only (ho-rate-shift, +0.086 against 0.080).
+  - Retention (c) and safety (d) hold everywhere.
+  - Development: `idle` no evidence (lane F's worlds) and revise (lane R's); `idle-first` revise in both.
+- **Even with idle first, the loop stays below the blind round-robin** in every world (gap 0.065–0.120).
+- **Safety, all 210 runs** (36 + 54 development, 48 + 72 held-out): 0 own-output versions admitted, 0 wrong-story
+  versions admitted, 0 one-origin confidence rises, 0 subjects lost or regressed. Reaching more subjects met more
+  pages here (+1 to +35 pages per run) and admitted nothing wrong. These worlds do not reproduce the withheld worlds'
+  holes (Step 0), so this does not show it safe where those holes exist.
+- **Cost:** wall time +0 to +13 % with `idle` and +39 to +72 % with `idle-first` (0.39–0.47 s to 0.61–0.69 s per
+  run). No extra looks beyond the allowance in any run: tested.
+
+## Is a mechanism called for (step 2)? No
+
+The brief's mechanism adds candidates for subjects the owner asked about that hold no knowledge item. Development
+diagnosis: every subject-cycle in which a subject held nothing, sorted by what `autonomy.candidates()` offered for
+it.
+
+| development | subject-cycles holding nothing | admitted candidate | refused (cooldown) | no candidate |
+|---|---|---|---|---|
+| lane F, `idle` | 191 | 157 (82 %) | 10 | 24 (13 %) |
+| lane F, `idle-first` | 100 | 66 (66 %) | 23 | 11 (11 %) |
+| lane R, `idle` | 336 | 216 (64 %) | 8 | 112 (33 %) |
+| lane R, `idle-first` | 184 | 109 (59 %) | 40 | 35 (19 %) |
+
+- **Most uncovered subjects already have an admitted candidate.** Lane D's hypothesis with an open prediction
+  (`hypothesis_prediction`), a contested subject (`hypothesis`) or a single-source `gap` turns the owner's look
+  without knowledge into one. These candidates go unlooked because the allowance is spent, not because they are
+  missing.
+- **What has no candidate is one-origin owner looks** whose hypothesis no longer has an open prediction and whose
+  7-day gap window has passed, plus a few wire-only looks.
+- **More candidates cannot add looks without more budget.** Under either split the allowance binds: with the timer
+  first, idle has 0.25–5.75 looks per run against tens of admitted, unreached subject-cycles. They could only
+  re-order what the same allowance reaches.
+- **Nothing was built.** The measurement does not call for it.
+
+What decides coverage here is the split of one allowance between re-checking what is known (the due refreshes) and
+reaching what is not (idle). Today that split is a race between the timer and the worker. `idle-first` is one
+extreme of it, and it earned "revise", not a gain. A share for coverage would have to be chosen on development and
+tested on worlds no lane has seen, since these held-out worlds have now been used for this question.
+
+## Decision
+
+- **Harness (measurement only):** `cycles.idle_configurations`, `Run.idle_investigations` (registered as a
+  benchmark runner in `background.py`), the idle activity counts, `cycles.idle_verdicts`, and
+  `scripts/bench_learning_cycles.py run --idle`, `verdict --idle` and `idle --out <file>` (every public split, the
+  references, the verdicts and the safety sums in one command).
+- **Product fix (on).** At `0ee88fe`, `autonomy.idle` read the D4 budgets, the concurrency cap and the request and
+  byte part of `daily_autonomous`. It never read the day's task count, which the timer honours and which
+  RESEARCH_POLICY §2 says applies in addition. With the harness's own stop removed, it queued more looks per cycle
+  than the allowance. It now refuses at that count (`autonomy._tasks_spent`, the timer's own count), with a decision
+  event as for a spent D4 budget. This is a tightening of an owner budget, not a mechanism: no setting, nothing
+  admitted that was refused before. The harness stops before that point, so the measurement is unchanged by it.
+  Test: `tests/webcortex/test_autonomy.py::test_idle_shares_the_days_autonomous_task_count_with_the_timer` (fails
+  without it).
+- **Defaults unchanged.** No new setting. Autonomy stays opt-in.
+
+## Alternatives rejected
+
+- **Owner-asked subjects without knowledge as new candidates** (the brief's step 2): most already have one (above),
+  and the allowance, not the pool, binds.
+- **A share of the allowance reserved for the idle investigation:** not tested on unseen worlds. Choosing it now
+  would be choosing on held-out worlds that have been looked at.
+- **Letting the timer admit non-knowledge subjects:** the admission rule forbids it ("propose it instead"; ADR-060).
+- **Measuring idle without the task count** (as the product did before the fix): more looks than the references
+  get, so not a fair comparison.
+
+## Consequences
+
+- Changed code: `webcortex/autonomy.py` (`_tasks_spent`, one condition in `idle`), `background.py` (one runner),
+  `acceptance/cognition/cycles.py`, `scripts/bench_learning_cycles.py`, and `docs/autonomy/RESEARCH_POLICY.md` §2.
+- Tests: `tests/acceptance/test_learning_cycles_idle.py` (5) and one in `tests/webcortex/test_autonomy.py`.
+- Re-run for the reconciliation with lane S's rule on: `scripts/bench_learning_cycles.py idle --out <file>`.
+- Withheld look (main session only): `scripts/bench_learning_cycles.py final --note ... --out <outside>
+  --mechanism idle_investigation --config reference:no-loop --config baseline --config shipped+idle --config
+  idle-first`. `shipped+idle` is the product as shipped with autonomy on. It is worth taking after lane S's rule is
+  in, because reaching more subjects means meeting more of the sources that admitted wrong content there.
+- Not verified:
+  - The open web, real change rates and a live model.
+  - The real interleaving of the timer and the worker (bracketed by `idle` and `idle-first`).
+  - The D4 budgets, which the harness never charges.
+  - Timer passes more often than once a simulated day.
+  - An owner who answers.
+  - The withheld worlds.

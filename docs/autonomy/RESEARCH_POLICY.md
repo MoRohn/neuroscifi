@@ -84,7 +84,10 @@ The console equivalent is `POST /api/web/autonomy` with the same keys.
   `forgotten:<hex>` id and its open and settle times the start of its UTC day. The same happens in every checkpoint
   the forget rewrites (the replay runs the same code), so neither the live database nor a rewritten archive links
   the usage to the task. Only `deletion_log` names the forgotten task id, by design.
-- The 0.6 rolling 24-hour caps (`daily_autonomous`: tasks, requests and bytes) still apply in addition.
+- The 0.6 rolling 24-hour caps (`daily_autonomous`: tasks, requests and bytes) still apply in addition. The idle
+  investigator counts the day's autonomous tasks as the timer does: once the curiosity and refresh tasks of the last
+  24 hours reach `daily_autonomous.tasks`, `autonomy.idle` refuses with `daily autonomous cap reached: tasks N of N`
+  (ADR-062; before Wave 3 it read only the requests and bytes of that cap).
 
 ## 3. Prioritisation
 
