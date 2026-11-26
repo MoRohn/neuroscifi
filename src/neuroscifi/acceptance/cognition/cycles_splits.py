@@ -42,20 +42,24 @@ DAY = 86_400.0
 
 # Six honest outlets, each with its own wording. The wordings were checked (development, before this commit) to give
 # the same claim key ("latest releas <name>") and the version value through the real extractor, and to stay distinct
-# enough that no two are read as copies of each other.
+# enough that no two are read as copies of each other (3-word shingle Jaccard at most 0.71, below 0.8). Amended
+# before the harness was committed, on a development run only: four first wordings ("As of this week", "We can
+# confirm", "..., we reported", "It is true that") and the echo's "told us" are read by consolidation as not
+# self-contained (a pronoun or 'this ...'), so a cluster they head is never knowledge; that would have measured the
+# wording, not the loop. No held-out world had been run.
 OUTLETS = (
     ("relnotes.example", "Relnotes", "{N} {v} is the latest {N} release."),
-    ("weekly-builds.example", "Weekly Builds", "As of this week, {N} {v} is the latest {N} release."),
-    ("pkgwatch.example", "Pkgwatch", "We can confirm that {N} {v} is the latest {N} release."),
-    ("devdesk.example", "Devdesk", "Today {N} {v} is the latest {N} release, we reported."),
-    ("factline.example", "Factline", "It is true that {N} {v} is the latest {N} release."),
-    ("dailytrack.example", "Dailytrack", "As of today, {N} {v} is the latest {N} release."),
+    ("weekly-builds.example", "Weekly Builds", "As of now, {N} {v} is the latest {N} release."),
+    ("pkgwatch.example", "Pkgwatch", "As of today, {N} {v} is the latest {N} release."),
+    ("devdesk.example", "Devdesk", "By now {N} {v} is the latest {N} release."),
+    ("factline.example", "Factline", "Once again {N} {v} is the latest {N} release."),
+    ("dailytrack.example", "Dailytrack", "As of yesterday, {N} {v} is the latest {N} release."),
 )
 WIRE = ("syndiwire.example", "Syndiwire", "{N} {v} is the latest {N} release, the Syndiwire desk reports.")
 COPY_HOSTS = ("mirror-one.example", "mirror-two.example", "mirror-three.example", "mirror-four.example",
               "mirror-five.example")
 ECHO_HOST = "notes-board.example"
-ECHO = "{N} {v} is the latest {N} release, an assistant told us."
+ECHO = "{N} {v} is the latest {N} release, an assistant reported."
 ATTRIBUTION = "This story first appeared on {S}."
 
 _PREFIX = ("Vel", "Quil", "Tar", "Mor", "Zen", "Bri", "Cal", "Dov", "Fen", "Gor", "Hal", "Jor", "Kel", "Lun", "Nar",
