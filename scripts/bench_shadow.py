@@ -261,8 +261,8 @@ def readiness_cost(knowledge=10_000, events=500_000, tasks=10_000, predictions=2
             "report_seconds": {"median": round(statistics.median(times), 4), "max": round(max(times), 4), "runs": 5},
             "for_comparison_strategies_outcomes_seconds": {
                 "median": round(statistics.median(strategy_times), 4),
-                "note": "the existing webcortex.strategies.outcomes on the same individual (two unindexed look-ups "
-                        "per task); the report counts the same with one pass per table",
+                "note": "webcortex.strategies.outcomes on the same individual: one pass per table since the Wave 3 "
+                        "fix lane (440429c; two unindexed look-ups per task before, 5.8 s here), as the report counts",
                 "same_counts_as_the_report": same},
             "answers_with_a_later_verdict": out["answers"]["with_a_later_verdict"],
             "scenario_records_settled": out["scenarios"]["settled"]}

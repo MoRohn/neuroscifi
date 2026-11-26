@@ -145,8 +145,9 @@ def _marked(item) -> str:
     return _cited(item) + (f" ({'; '.join(marks)})" if marks else "")
 
 
-def compose_answer(task) -> Reply:
-    """The reply for a finished research task, from its report only."""
+def compose_answer(task, caution=None) -> Reply:
+    """The reply for a finished research task, from its report only. `caution`: webcortex.caution.for_report of it
+    (ADR-065, display only): the transcript shows each caution, the voice says the first one once, briefly."""
     status, objective = task.get("status"), task.get("objective") or ""
     report = task.get("result") if isinstance(task.get("result"), dict) else None
     if status in ("failed", "cancelled") or report is None:
@@ -200,6 +201,12 @@ def compose_answer(task) -> Reply:
     if verdict and verdict.get("label"):
         reply.text += f"\nVerdict: {verdict['label']}" + (f" - {verdict.get('statement')}"
                                                          if verdict.get("statement") else "")
+    shown = [c for c in [(caution or {}).get("verdict"), *((caution or {}).get("answer") or ())]
+             if isinstance(c, dict) and c.get("text")]
+    if shown:               # ADR-065: where the answer rests on sources that cannot be shown independent
+        reply.text += "".join(f"\nCaution: {t}" for t in dict.fromkeys(c["text"] for c in shown))
+        if reply.speech and shown[0].get("brief"):
+            reply.speech = list(reply.speech) + [shown[0]["brief"]]
     if status == "partial":
         reply.text += "\n(Partial result: the research stopped early; say 'continue previous investigation'.)"
     if reply.speech and len(reply.text) > sum(len(s) for s in reply.speech) + 40:

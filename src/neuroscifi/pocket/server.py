@@ -539,15 +539,24 @@ def task_summary(task):
             "mode": task["mode"], "created": task["created_at"], "updated": task["updated_at"]}
 
 
-def task_detail(task):
+def task_detail(task, db=None):
     usage = task.get("usage") if isinstance(task.get("usage"), dict) else {}
+    report = phone_report(task.get("result"))
+    from ..webcortex.types import TERMINAL_STATES
+    if db is not None and report is not None and task.get("status") in TERMINAL_STATES:
+        # ADR-065 (Wave 4 lane D): the caution in plain words, display only, from this task's own records. Never the
+        # flag about the individual's own earlier answers: a family device may not learn what the owner was answered.
+        from ..webcortex import caution
+        shown = caution.for_report(db, task["id"], task["result"], own_check=False)
+        report["caution"] = {"answer": [(c or {}).get("text") for c in shown["answer"][:20]],
+                             "verdict": (shown["verdict"] or {}).get("text")}
     return task_summary(task) | {"stages_done": task.get("stages_done", []),
                                  "cancel_requested": bool(task.get("cancel_requested")),
                                  "error": _text(task.get("error"), 200) or None,
                                  # incremental progress (0.7.0): what the Spark has spent on it so far
                                  "spent": {"searches": _count(usage.get("queries")), "pages": _count(usage.get("pages"))},
                                  "continued_from": task.get("parent_id") if isinstance(task.get("parent_id"), str) else None,
-                                 "report": phone_report(task.get("result"))}
+                                 "report": report}
 
 
 def family_tag(family, instance):
@@ -662,7 +671,7 @@ def research(server, token, route, data, raw=b"", headers=None):
             if set(data) != {"id"}:
                 raise ValueError()
             ident = event_id(data["id"])
-            return 200, task_detail(orchestrator.get(db, ident, family=digest))
+            return 200, task_detail(orchestrator.get(db, ident, family=digest), db)
         except (NotFound, Conflict):
             return 404, {}  # another family's task, a forgotten one, or web access switched off meanwhile
         except ValidationError:

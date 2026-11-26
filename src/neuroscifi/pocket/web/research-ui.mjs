@@ -352,13 +352,16 @@ function show(t,saved=false){
       if(x.note)view.append(node("p",x.note,"rnote"));
     }
     view.append(node("h4",model?"Extractive summary (quoted evidence)":"Answer"));
-    for(const item of r.answer||[]){
+    (r.answer||[]).forEach((item,i)=>{
       const block=item.type==="quote"?node("blockquote"):node("p");
       block.append(node("span",item.type==="quote"?"“"+item.text+"”":item.text),cites(item.citations||[]));
       const rating=rated(item.status,item.confidence);if(rating)block.append(rating);
       const dup=copies(item)||copies((r.findings||[]).find(f=>f.statement===item.text));if(dup)block.append(node("small",dup,"rcopies"));
       view.append(block);
-    }
+      // ADR-065: where the answer rests on sources that cannot be shown independent, say so (display only)
+      const care=r.caution?.answer?.[i];if(typeof care==="string"&&care)view.append(node("p","Caution: "+care,"rcaution"));
+    });
+    if(typeof r.caution?.verdict==="string"&&r.caution.verdict)view.append(node("p","Caution: "+r.caution.verdict,"rcaution"));
     if(r.contradictions?.length){
       view.append(node("h4","Contradictions"));const ul=node("ul",null,"rnotes");
       for(const c of r.contradictions){

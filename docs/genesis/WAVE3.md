@@ -869,3 +869,13 @@ failed in none of the three runs.
 
 Not run here: anything on the open web, a live answer model, real hardware, a real second account, two real
 processes for the voice follow-up, systemd, or a week of the shadow record on the host (the owner's to run).
+
+**Note added 2026-11-26 (Wave 4 lane D), from CI after the merge.** The Wave 3 pull request (#7, head `c967604`,
+merged as `8f68beb`) passed all six of its checks on the first run: three jobs (lint, tests, JS checks and the
+numerical reproduction; the browser suite with axe-core; the simulated first-release milestones) in each of its two
+workflow runs (`pull_request` 45835871829 and `push` 45835782417, attempt 1, every job "success"; read with read-only
+`gh`). The pull-request run's artifact `offline-deterministic` (x86_64) has the portable digest `d87dbb4fb77f…`, the
+same as the development host's at the shipped defaults; the full digests (CI `426abca5d803…`, the host
+`68731d7235cb…`) differ in exactly one leaf, the browser's file path (`probes.content.js_shell.render.availability`:
+`chromium at /usr/bin/chromium` here, Playwright's own Chromium under `/home/runner/.cache` on CI), by
+`scripts/diff_deterministic.py` against a run of `scripts/bench_wave1.py offline --regime defaults` on `8f68beb`.

@@ -42,15 +42,31 @@ MODE_BUDGETS = {
 }
 assert set(MODE_BUDGETS) == set(MODES)
 
-# Wave 3 settings whose stored value is checked when it is read (WebConfig.from_json; security review L8)
-CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognition", "supersession",
-                   "supersession_min_sources", "origin_grouping")
+# Settings whose stored value is checked when it is read (WebConfig.from_json): the five Wave 3 ones since the Wave 3
+# fix lane (security review L8), and every other one since Wave 4 lane D (CHECKED_ON_LOAD is filled in below the class).
+CHECKED_ON_LOAD: tuple = ()
 
 
 # review3b N8: a damaged value of a setting that tunes an opt-in rule never loosens that rule: the rule itself reads as
 # off (its safe value) until the owner sets the setting again (a damaged supersession_min_sources read as 2 while the
 # owner had set 5 and supersession stayed "independent"). {damaged setting: (the rule, its safe value)}
-FAILS_CLOSED = {"supersession_min_sources": ("supersession", "ask")}
+# Wave 4 lane D: the same for what bounds or screens what the Web Cortex sends: a damaged deny list, list of private
+# terms, per-host interval, budget ceiling or document size turns web access off until it is set again (its default
+# could be looser than what the owner had set, and a lost private term could leave in a query).
+FAILS_CLOSED = {"supersession_min_sources": ("supersession", "ask"),
+                **{name: ("enabled", False) for name in ("deny_domains", "private_terms", "min_domain_interval",
+                                                         "budget_ceiling", "max_document_bytes")}}
+# Wave 4 lane D: what a damaged value reads as where the default is not the most cautious value (everything else reads
+# as its default, which is the cautious direction: off, loopback, not configured). Allowances and caps of work the owner
+# did not ask for read as 0 (none), rendering as off, read-ahead as one page at a time, the bars for admitting a fact
+# without the owner as their highest (nothing becomes provisional by itself), strategy selection as off, the
+# reflection interval as its longest.
+CAUTIOUS = {"news_rendering": False, "daily_renders": 0, "daily_provider_queries": {k: 0 for k in
+                                                                                    DEFAULT_PROVIDER_DAILY_QUERIES},
+            "daily_autonomous": {"tasks": 0, "requests": 0, "bytes": 0},
+            "daily_mcp": {"tasks": 0, "requests": 0, "bytes": 0}, "mcp_research_per_hour": 0, "read_ahead": 1,
+            "recheck_per_tick": 0, "recheck_daily": 0, "auto_provisional_min_sources": 50,
+            "auto_provisional_min_confidence": 1.0, "strategy_selection": "off", "reflection_interval_days": 365.0}
 _REPORTED: set = set()
 
 
@@ -254,24 +270,31 @@ class WebConfig:
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":
-        raw = json.loads(text) if text else {}
+        try:
+            raw = json.loads(text) if text else {}
+        except ValueError:
+            raw = None
+        if not isinstance(raw, dict):       # Wave 4 lane D: an unreadable row is every setting damaged
+            raw = {name: _UNREADABLE for name in CHECKED_ON_LOAD}
         known = {f.name for f in fields(cls)}
         values = {k: v for k, v in raw.items() if k in known}
-        # Wave 3 fix lane (security review L8): a damaged stored value of a Wave 3 setting is never used as it stands
-        # (a non-string recheck_order made every timer pass raise; a non-int supersession_min_sources made
-        # consolidation raise with the rule on): its default applies, state.setting_problems() names it, and a
-        # warning is logged with the setting's name only.
+        # Wave 3 fix lane (security review L8), every setting since Wave 4 lane D: a damaged stored value is never used
+        # as it stands (a non-string recheck_order made every timer pass raise; a non-int supersession_min_sources made
+        # consolidation raise with the rule on): its cautious value applies (CAUTIOUS, else the default; FAILS_CLOSED),
+        # state.setting_problems() names it, and a warning is logged once with the setting's name only.
+        closed = {}
         for name in sorted(set(values) & set(CHECKED_ON_LOAD)):
-            if damaged(name, values[name]):
+            if values[name] is _UNREADABLE or damaged(name, values[name]):
                 if name not in _REPORTED:           # review3b N8: once per process and setting, not on every read
                     _REPORTED.add(name)
                     logging.getLogger(__name__).warning("the saved Web Cortex setting %s is not a valid value; "
-                                                        "its default is used", name)
+                                                        "its cautious value is used", name)
                 del values[name]
-                if name in FAILS_CLOSED and values.get(FAILS_CLOSED[name][0], FAILS_CLOSED[name][1]) != \
-                        FAILS_CLOSED[name][1]:
-                    values[FAILS_CLOSED[name][0]] = FAILS_CLOSED[name][1]
-        return cls(**values)
+                if name in CAUTIOUS:
+                    values[name] = CAUTIOUS[name]
+                if name in FAILS_CLOSED:
+                    closed[FAILS_CLOSED[name][0]] = FAILS_CLOSED[name][1]
+        return cls(**(values | closed))
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -287,3 +310,7 @@ class WebConfig:
         elif not (requested and "max_browser_sessions" in requested):
             budget.max_browser_sessions = max(budget.max_browser_sessions, 1)   # rendering only as an escalation
         return budget.clamp(self.ceiling())
+
+
+CHECKED_ON_LOAD = tuple(f.name for f in fields(WebConfig))       # every setting (Wave 4 lane D)
+_UNREADABLE = object()          # what each setting of a row that is not a JSON object reads as before its check

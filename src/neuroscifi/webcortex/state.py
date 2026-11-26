@@ -72,23 +72,28 @@ def get_config(db) -> wconfig.WebConfig:
 
 
 def setting_problems(db) -> list[str]:
-    """The checked Wave 3 settings (config.CHECKED_ON_LOAD) whose saved value set_config would refuse, as sentences:
-    each is read as its default until it is set again (`nsf web config --set NAME=VALUE`)."""
+    """The settings (config.CHECKED_ON_LOAD: every one since Wave 4 lane D) whose saved value set_config would refuse,
+    as sentences: each reads as its cautious value (config.CAUTIOUS, else its default; config.FAILS_CLOSED) until it is
+    set again (`nsf web config --set NAME=VALUE`)."""
     row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
     try:
         raw = json.loads(row[0]) if row and row[0] else {}
     except ValueError:
-        return ["the saved Web Cortex settings cannot be read as JSON"]
+        raw = None
+    if not isinstance(raw, dict):
+        return [f"the saved Web Cortex settings cannot be read as {'a JSON object' if raw is not None else 'JSON'}; "
+                "every setting reads as its cautious value (web access off) until one is set with `nsf web config`"]
     out = []
     for name in wconfig.CHECKED_ON_LOAD:
-        if not (isinstance(raw, dict) and name in raw and wconfig.damaged(name, raw[name])):
+        if not (name in raw and wconfig.damaged(name, raw[name])):
             continue
-        line = (f"the saved {name} ({raw[name]!r}) is not a valid value; its default "
-                f"({getattr(wconfig.WebConfig(), name)!r}) applies until it is set with `nsf web config --set "
-                f"{name}=...`")
+        shown = wconfig.CAUTIOUS.get(name, getattr(wconfig.WebConfig(), name))
+        line = (f"the saved {name} ({raw[name]!r}) is not a valid value; it reads as {shown!r} until it is set with "
+                f"`nsf web config --set {name}=...`")
         rule, safe = wconfig.FAILS_CLOSED.get(name, (None, None))
         if rule is not None and raw.get(rule, safe) != safe:        # review3b N8: never a looser rule
-            line += f"; meanwhile {rule} reads as {safe!r} (the rule is off until then)"
+            line += f"; meanwhile {rule} reads as {safe!r} (" + \
+                ("web access is off" if rule == "enabled" else "the rule is off") + " until then)"
         out.append(line)
     return out
 

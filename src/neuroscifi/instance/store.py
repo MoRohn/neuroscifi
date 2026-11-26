@@ -179,6 +179,20 @@ class InstanceConfig:
         for name in ("broadcast", "broadcast_threshold"):
             if name in values and not _SETTABLE[name](values[name]):
                 del values[name]
+        # Wave 4 lane D: every other stored value is checked too. A damaged ask budget reads as 0 (no question asks the
+        # owner; the executive defers, as when the budget is spent); the settings fixed at `nsf init` read as their
+        # defaults (what `nsf init` writes). The ask budget's window is read by executive._ask_window, which falls
+        # back to its default and says so with every decision.
+        if "ask_budget_per_epoch" in values and not _SETTABLE["ask_budget_per_epoch"](values["ask_budget_per_epoch"]):
+            values["ask_budget_per_epoch"] = 0
+        for name, check in _FIXED.items():
+            if name in values and not check(values[name]):
+                del values[name]
+        for name in sorted(set(raw) & (set(_SETTABLE) | set(_FIXED))):
+            if not (_SETTABLE.get(name) or _FIXED[name])(raw[name]) and name not in _REPORTED:
+                _REPORTED.add(name)             # once per process and setting, the name only
+                logging.getLogger(__name__).warning("the saved instance setting %s is not a valid value; its "
+                                                    "cautious value is used (nsf config lists it)", name)
         return cls(**values)
 
 
@@ -349,6 +363,17 @@ _SETTABLE = {
     "broadcast_threshold": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                                       and 0 <= v <= 1),
 }
+# The settings fixed at `nsf init` and their checks (Wave 4 lane D: checked on load as well; a damaged one reads as
+# its default).
+_FIXED = {
+    "evidence_ttl_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                                       and v >= 0),       # `nsf init --ttl-days` may round to 0 (expires at once)
+    "max_evidence_rows": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= MAX_ROW_LIMIT,
+    "min_free_bytes": lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0,
+    "max_thermal_celsius": lambda v: v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)
+                                                   and math.isfinite(v)),
+}
+_REPORTED: set = set()
 # The executive's rule versions (executive._policy; information.information_policy): added; a released one is never
 # edited (information-v1 was amended once before its release: review1b N4).
 RULE_VERSIONS = ("rules-v1", "information-v1")
@@ -400,9 +425,14 @@ def setting_problems(db):
              "imagine_max_seconds": "; the default of 10 seconds applies until it is set with "
                                     "`nsf config --imagine-max-seconds S`",
              "imagine_max_bytes": "; the default of 512 MiB applies until it is set with "
-                                  "`nsf config --imagine-max-mib M`"}
+                                  "`nsf config --imagine-max-mib M`",
+             "ask_budget_per_epoch": "; it reads as 0 (no question asks you; the executive defers) until it is set "
+                                     "with `nsf config --ask-budget N`",
+             **{name: f"; its default ({getattr(InstanceConfig, name)!r}) applies (it is fixed when the individual "
+                      "is created)" for name in _FIXED}}
+    checks = _SETTABLE | _FIXED
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
-            for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
+            for name in sorted(checks) if name in raw and not checks[name](raw[name])]
 
 
 def consolidation_room(db, cfg=None):

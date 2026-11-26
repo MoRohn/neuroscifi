@@ -403,7 +403,10 @@ def test_scenario_f_phone_queues_spark_runs_tablet_reads(spark, devices, web):
     assert done["stages_done"] == ["discovering", "reading", "evaluating", "synthesizing"]
     report = done["report"]
     assert set(report) == {"live", "reasoning", "answer", "verdict", "contradictions", "uncertainties", "limitations",
-                           "freshness", "sources"}      # reasoning: the model-written answer (R6 D8), None without one
+                           "freshness", "sources", "caution"}  # reasoning: the model-written answer (R6 D8), None without one
+    # ADR-065 (Wave 4 lane D): the caution reaches a family device as plain text only (no own-answer flag, no facts)
+    assert set(report["caution"]) == {"answer", "verdict"} and len(report["caution"]["answer"]) == len(report["answer"])
+    assert all(x is None or isinstance(x, str) for x in [*report["caution"]["answer"], report["caution"]["verdict"]])
     assert report["verdict"] is None, "only a claim check has a verdict"
     assert all(set(x) == {"text", "type", "citations", "status", "confidence", "copies", "independent_sources"}
                    for x in report["answer"])

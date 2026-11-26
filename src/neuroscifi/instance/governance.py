@@ -1543,20 +1543,45 @@ def _suffixes(domain):
     return [".".join(parts[i:]) for i in range(len(parts)) if parts[i]]
 
 
-def replay_web_forgets(db, forgotten, now):
+def _replay_targets(db, forgotten):
+    """wanted(kind, value): whether a web tombstone in `forgotten` ({(kind, digest)}) names it (replay_web_forgets)."""
+    instance_id = store.birth(db)["instance_id"]
+    return lambda kind, value: (kind, web_digest(instance_id, kind, value)) in forgotten
+
+
+def prepare_replay_marks(db, forgotten):
+    """The read-only half of replay_web_forgets' answer marks: prepare_sourced_marks for every claim the replay may
+    forget (its tasks', and those of its source URLs and domains; a superset is harmless, the mark re-reads each
+    claim's plan inside). Run on the copy BEFORE the restore's write transaction (Wave 4 lane D; review3c F6: the one
+    pass over every task result ran inside it, 1.5-1.7 s at 10,000 answers of 20 kB). None without tombstones."""
+    if not forgotten:
+        return None
+    wanted = _replay_targets(db, forgotten)
+    ids = set()
+    for (task_id,) in db.execute("SELECT id FROM web_tasks").fetchall():
+        if wanted("task", task_id):
+            ids.update(_ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,)))
+    urls = {u for row in db.execute("SELECT url, final_url, canonical_url FROM web_sources") for u in row if u}
+    urls |= {u for row in db.execute("SELECT source_url, canonical_url FROM web_claims") for u in row if u}
+    domains = {d for (d,) in db.execute("SELECT domain FROM web_sources UNION SELECT domain FROM web_claims") if d}
+    for target in [u for u in sorted(urls) if wanted("source_url", u)] + \
+            [d for d in sorted({s for d in domains for s in _suffixes(d)}) if wanted("source_domain", d)]:
+        ids.update(_source_selection(db, target)[-1])
+    return prepare_sourced_marks(db, ids)
+
+
+def replay_web_forgets(db, forgotten, now, marks=None):
     """Re-apply web tombstones to a restored copy: every task, knowledge version and source (URL or domain) whose
     digest is in `forgotten` ({(kind, digest)}) is forgotten again with the same cascade as the live forget.
-    Caller owns the transaction. Returns counts."""
+    Caller owns the transaction. `marks`: prepare_replay_marks, made before it (else the mark scans every answer
+    inside it). Returns counts."""
     out = {"tasks": 0, "knowledge": 0, "sources": 0}
     if not forgotten:
         return out
-    instance_id = store.birth(db)["instance_id"]
-
-    def wanted(kind, value):
-        return (kind, web_digest(instance_id, kind, value)) in forgotten
+    wanted = _replay_targets(db, forgotten)
 
     for (task_id,) in db.execute("SELECT id FROM web_tasks ORDER BY rowid").fetchall():
-        if wanted("task", task_id) and _forget_research_core(db, task_id, now) is not None:
+        if wanted("task", task_id) and _forget_research_core(db, task_id, now, marks) is not None:
             out["tasks"] += 1
     doomed = [kid for kid, key in db.execute("SELECT id, key FROM web_knowledge").fetchall()
               if wanted("knowledge", _knowledge_subject(kid, key))]
@@ -1567,11 +1592,11 @@ def replay_web_forgets(db, forgotten, now):
     urls = {u for row in db.execute("SELECT url, final_url, canonical_url FROM web_sources") for u in row if u}
     urls |= {u for row in db.execute("SELECT source_url, canonical_url FROM web_claims") for u in row if u}
     for url in sorted(urls):
-        if wanted("source_url", url) and _forget_source_core(db, url, now) is not None:
+        if wanted("source_url", url) and _forget_source_core(db, url, now, marks) is not None:
             out["sources"] += 1
     domains = {d for (d,) in db.execute("SELECT domain FROM web_sources UNION SELECT domain FROM web_claims") if d}
     for domain in sorted({s for d in domains for s in _suffixes(d)}):
-        if wanted("source_domain", domain) and _forget_source_core(db, domain, now) is not None:
+        if wanted("source_domain", domain) and _forget_source_core(db, domain, now, marks) is not None:
             out["sources"] += 1
     if any(out.values()):
         _scrub_rule_records(db)

@@ -35,7 +35,6 @@ decline a monitor or research proposal).
 """
 import json
 import logging
-import math
 import re
 
 from . import beliefs, store
@@ -222,10 +221,10 @@ def _ask_window(cfg):
     damaged settings row can hold one) gives the default window and a warning for the decision to carry, so the
     executive keeps deciding."""
     window = cfg.ask_budget_window_seconds
-    if isinstance(window, bool) or not isinstance(window, (int, float)) or not math.isfinite(window) or window < 0:
+    if not store.valid_setting("ask_budget_window_seconds", window):    # Wave 4 lane D: set_config's own check
         default = store.InstanceConfig.ask_budget_window_seconds
-        return default, (f"the saved ask_budget_window_seconds ({window!r}) is not a number of seconds from 0 up; "
-                         f"the default of {default / 86400:g} days is used (set it with `nsf config "
+        return default, (f"the saved ask_budget_window_seconds ({window!r}) is not a number of seconds from 0 up "
+                         f"to 100 years; the default of {default / 86400:g} days is used (set it with `nsf config "
                          "--ask-window-days`)")
     return window, None
 
