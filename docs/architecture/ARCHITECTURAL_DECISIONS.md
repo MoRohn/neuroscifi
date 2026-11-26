@@ -4195,6 +4195,12 @@ text. C13 labels: decision 3. C14 the memory envelope: not exposed through `memo
 - Lanes B1/B2 (decoders) fill the index and the text layer through the registry without touching the store; lanes
   G1/G2 store what they make with `add_made`. Their tests must not register adapters globally without the fixture
   pattern of `tests/artifacts`.
+- Cost (`docs/quality/evidence/omnimind_a.json`, 10,000 synthetic artifacts, 2 GiB, a loaded aarch64 host, two runs):
+  adding about 31 ms per 210 KiB artifact (p95 42 ms); listing all 10,000 0.15 s; the live reconcile 0.02 s; the
+  forget of a root scans every stored byte once, about 11 s for 2 GiB, OUTSIDE the write transaction, and holds the
+  instance's write lock about 15 ms for the removal; a restore copies the 2 GiB its index still names into the copy's
+  sidecar in about 8 s. The scan grows with the stored bytes: an owner with a far larger store waits longer for a
+  partner forget, but nothing else waits on it.
 - Rollback: `artifact_adapters` back to `[]` stops any external adapter on the next call; the store can be emptied
   with `nsf artifact forget`; the schema stays (forward-only), and software before schema 20 refuses the file (a
   restore of the pre-upgrade checkpoint is the rollback, as for every schema change).
