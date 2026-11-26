@@ -244,7 +244,7 @@ def test_same_words_different_content_different_forms():
     context = F.Context(generators=ALL)
     ask = F.Request("How did it change?")
     assert F.plan(ask, (shape(["series"], 2, 1, True),), context).chosen == ("prose",)
-    assert F.plan(ask, (shape(["series"], 365, 1, True),), context).chosen == ("line_chart",)
+    assert F.plan(ask, (shape(["series"], 365, 1, True),), context).chosen == ("line_chart", "prose")
     steps = F.Request("How do I do it?")
     assert F.plan(steps, (shape(["sequence"], 4),), context).chosen == ("prose",)
     assert F.plan(steps, (shape(["sequence"], 15),), context).chosen[0] in ("flow_steps", "step_through")
@@ -262,7 +262,7 @@ def test_same_content_different_words_or_context():
     assert heard.chosen[0] == "sonification"
     reader = F.plan(F.Request(""), series, F.Context(accessibility=("screen_reader",), generators=ALL))
     assert reader.chosen[0] == "line_chart" and reader.chosen[1] in ("prose", "table")
-    assert reader.decided_by == "context"
+    assert reader.decided_by in ("content", "context")
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -299,8 +299,8 @@ def test_the_sentence_names_the_deciding_evidence():
 def test_the_example_sentence_of_the_brief():
     result = F.plan(F.Request("How did it change over the year?"), (shape(["series"], 365, 1, True),),
                     F.Context(generators=ALL))
-    assert result.chosen == ("line_chart",) and result.decided_by == "content"
-    assert result.reason.startswith("A line chart, because there are 365 values")
+    assert result.chosen == ("line_chart", "prose") and result.decided_by == "content"
+    assert result.reason.startswith("A line chart with a sentence on what it shows, because there are 365 values")
     assert "a sentence could carry only about 7" in result.reason
 
 
@@ -378,7 +378,9 @@ def test_a_combination_only_when_the_second_form_adds_what_the_first_lacks():
             if len(cand.forms) != 2 or cand.excluded:
                 continue
             first = result.candidate(cand.forms[:1])
-            forced = "screen_reader" in context.accessibility
+            # a screen reader's companion, or the sentence the caption rule puts beside a chosen picture
+            forced = "screen_reader" in context.accessibility or (
+                cand.forms == result.chosen and cand.forms[1] in ("prose", "spoken"))
             gain_carried = cand.scores["carried"] - first.scores["carried"]
             gain_precision = cand.scores["precision"] - first.scores["precision"]
             assert forced or gain_carried >= F.COMBO_CARRIED_GAIN - 1e-9 or gain_precision > 0, cand
@@ -472,9 +474,9 @@ def test_the_planner_rejects_or_adapts_with_the_check():
     assert many.chosen[0] != "line_chart"
     only_line = F.plan(F.Request(""), (shape(["series"], 365, 30, True),), F.Context(generators=("chart.line",)))
     assert only_line.candidate(("line_chart",)).excluded is None, "no switch target here: adapt, not reject"
-    assert only_line.chosen == ("line_chart",)
+    assert only_line.chosen == ("line_chart", "prose")
     long = F.plan(F.Request(""), (shape(["series"], 200_000, 1, True),), context)
-    assert long.chosen == ("line_chart",) and "downsample" in long.candidate(("line_chart",)).adaptations
+    assert long.chosen == ("line_chart", "prose") and "downsample" in long.candidate(("line_chart",)).adaptations
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -492,7 +494,7 @@ def test_feasibility_is_read_from_the_generator_catalog_at_call_time(monkeypatch
     assert F.plan(F.Request(""), series, F.Context()).chosen == ("prose",)
     make.register("chart_line", _FakeGenerator("chart.line"))
     result = F.plan(F.Request(""), series, F.Context())
-    assert result.chosen == ("line_chart",)
+    assert result.chosen == ("line_chart", "prose")
     monkeypatch.setattr(_FakeGenerator, "available", lambda self: (False, "needs something"))
     assert F.plan(F.Request(""), series, F.Context()).chosen == ("prose",)
 

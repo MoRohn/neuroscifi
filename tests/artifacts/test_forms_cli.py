@@ -28,7 +28,7 @@ def test_plan_prints_the_form_and_the_reason(capsys):
                        "--assume-available", "--alternatives", "2")
     assert code in (0, None)
     assert "Form: A line chart" in out
-    assert "Why: A line chart, because there are 365 values in time order" in out
+    assert "Why: A line chart with a sentence on what it shows, because there are 365 values in time order" in out
     assert "Decided by: the content itself" in out
     assert "Different kinds of form that would also work:" in out
     assert "never whether the content is true" in out
@@ -52,7 +52,7 @@ def test_json_output_is_the_whole_plan(capsys):
 def test_accessibility_and_named_form_options(capsys):
     _, out, _ = run(capsys, "--request", "", "--shape", SERIES, "--assume-available", "--accessibility",
                     "screen_reader", "--json")
-    assert json.loads(out)["chosen"] == ["line_chart", "table"]
+    assert json.loads(out)["chosen"] == ["line_chart", "prose"]
     _, out, _ = run(capsys, "--request", "", "--shape", SERIES, "--assume-available", "--form", "table", "--json")
     assert json.loads(out)["chosen"] == ["table"]
 

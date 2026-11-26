@@ -54,9 +54,9 @@ from .types import SHAPE_KINDS, ContentShape, Malformed
 
 DEVICES = ("console", "pocket", "voice", "cli", "agent")
 MEDIA = ("text", "speech", "picture", "sound", "interactive", "motion", "file", "3d")
-ACCESSIBILITY = ("voice_only", "screen_reader", "reduced_motion")
+ACCESSIBILITY = ("voice_only", "screen_reader", "reduced_motion", "no_sound")
 PURPOSES = ("look_up", "compare", "change_over_time", "distribution", "relation", "follow_process", "what_if",
-            "locate", "hear", "keep", "learn", "look_at")
+            "locate", "hear", "keep", "learn", "look_at", "decide", "understand")
 CRITERIA = ("clarity", "carried", "precision", "interactivity", "effort", "feasibility", "accessibility", "cost")
 DECIDED_BY = ("explicit", "content", "words", "context")
 
@@ -363,8 +363,8 @@ def _units(kind: str, shape: ContentShape) -> float:
         return max(1, shape.n_items) * max(1, shape.n_series)
     if unit == "dist":
         return min(max(1, shape.n_items), DIST_UNITS) * max(1, shape.n_series)
-    if unit == "chars":
-        return max(1, shape.text_chars)
+    if unit == "chars":     # words or code: their characters, or their items when no characters are known
+        return max(1, shape.text_chars) if shape.text_chars else max(1, shape.n_items)
     return max(1, shape.n_items)
 
 
@@ -462,6 +462,18 @@ def _cover_sonify(kind, shape, display):
 def _cover_document(kind, shape, display):
     if kind == "hierarchy" and "prose" not in shape.kinds:
         return 0.5 * _within(max(1, shape.n_items), 2000, 0.5)    # an outline of names, not headings over text
+    return None
+
+
+def _cover_map(kind, shape, display):
+    if shape.has_space < 2 and kind != "map":
+        return 0.0      # values without places are not drawn on a map
+    return None
+
+
+def _cover_stepping(kind, shape, display):
+    if kind == "code" and not {"sequence", "process"} & set(shape.kinds):
+        return 0.2      # code that is not run in steps is read, not stepped through
     return None
 
 
@@ -708,7 +720,7 @@ _form("spoken", "a spoken summary", "words", "words", ("speech",),
 _form("table", "a table", "table", "grid", ("text",),
       {"scalar": 1, "series": 1, "categories": 1, "distribution": 1, "relation": 0.8, "records": 1,
        "hierarchy": 0.5, "network": 0.6, "sequence": 0.8, "timeline": 0.9, "process": 0.4, "surface": 0.6,
-       "solid": 0.2, "map": 0.6, "image": 0.1, "sound": 0.1, "prose": 0.2, "code": 0.1},
+       "solid": 0.2, "map": 0.4, "image": 0.1, "sound": 0.1, "prose": 0.2, "code": 0.1},
       capacity={"values": 20_000, "dist": 20_000, "items": 2000, "chars": 20_000, "samples": 0}, floor=0.3,
       rule="every cell up to 20,000 (in pages of one screen); beyond that 0.3 plus the share that fits",
       generator="table.html", precision=1.0, interactivity=0.0, effort=0.1, complexity=1, cost_class="low",
@@ -797,6 +809,7 @@ _form("step_through", "a step-through", "stepper", "order", ("picture", "interac
       rule="one state per step up to 500 steps; beyond that 0.5 plus the share",
       generator="explorable.steps", precision=0.7, interactivity=0.6, effort=0.35, complexity=4,
       cost_class="medium", fallback="table", bytes_per_unit=400, base_bytes=60_000, check=_check_steps,
+      cover=_cover_stepping,
       min_items=2)
 _form("explorable", "an explorable model with sliders", "model", "manipulation", ("picture", "interactive"),
       {"process": 1, "relation": 0.6, "series": 0.5, "surface": 0.6},
@@ -844,6 +857,13 @@ _form("image", "a picture", "raster", "pixels", ("picture",),
       rule="every pixel up to 16 million when the content has two spatial dimensions",
       generator="image.raster", precision=0.3, interactivity=0.0, effort=0.1, complexity=2, cost_class="medium",
       fallback="prose", bytes_per_unit=1.0, base_bytes=1000, cover=_cover_image, check=_check_raster)
+_form("map", "a map", "map", "place", ("picture",),
+      {"map": 1, "categories": 0.6, "records": 0.5, "relation": 0.3, "surface": 0.4},
+      capacity={"items": 5000, "values": 5000}, floor=0.5,
+      rule="every place up to 5,000 (values shown by shade or size) when the content has two spatial dimensions; "
+           "beyond that clustered, 0.5 plus the share",
+      generator="map.points", precision=0.4, interactivity=0.0, effort=0.2, complexity=3, cost_class="medium",
+      fallback="table", bytes_per_unit=60, base_bytes=6000, cover=_cover_map, min_items=1)
 _form("image_sequence", "an animated picture", "motion", "pixels", ("picture", "motion"),
       {"image": 1, "sequence": 0.9, "process": 0.4},
       rule="every frame up to 600 when the pictures come in order",
@@ -859,7 +879,7 @@ PURPOSE_FIT = {
                 "timeline": 0.5, "node_link": 0.35, "tree_diagram": 0.45, "flow_steps": 0.4, "step_through": 0.3,
                 "explorable": 0.2, "animation": 0.1, "sonification": 0.1, "tone": 0.3, "sound_view": 0.3,
                 "solid_view": 0.4, "surface_view": 0.3, "image": 0.5, "image_sequence": 0.3},
-    "compare": {"bar_chart": 1.0, "table": 0.85, "small_multiples": 0.8, "line_chart": 0.7, "heatmap": 0.6,
+    "compare": {"bar_chart": 1.0, "table": 0.85, "small_multiples": 0.8, "line_chart": 0.7, "heatmap": 0.6, "map": 0.6,
                 "prose": 0.55, "scatter_chart": 0.5, "spoken": 0.4, "histogram": 0.5, "explorable": 0.5,
                 "document": 0.4, "timeline": 0.3, "node_link": 0.3, "tree_diagram": 0.3, "sound_view": 0.4,
                 "solid_view": 0.3, "surface_view": 0.3, "image": 0.3, "animation": 0.3},
@@ -868,7 +888,7 @@ PURPOSE_FIT = {
                          "image_sequence": 0.5, "table": 0.45, "prose": 0.4, "scatter_chart": 0.4, "spoken": 0.3,
                          "explorable": 0.4, "flow_steps": 0.3, "document": 0.3, "sound_view": 0.4,
                          "surface_view": 0.3},
-    "distribution": {"histogram": 1.0, "small_multiples": 0.6, "bar_chart": 0.6, "heatmap": 0.5,
+    "distribution": {"histogram": 1.0, "small_multiples": 0.6, "bar_chart": 0.6, "heatmap": 0.5, "map": 0.6,
                      "scatter_chart": 0.4, "line_chart": 0.3, "table": 0.4, "prose": 0.45, "spoken": 0.35,
                      "sonification": 0.3},
     "relation": {"scatter_chart": 1.0, "node_link": 0.95, "heatmap": 0.75, "tree_diagram": 0.8, "line_chart": 0.5,
@@ -880,7 +900,7 @@ PURPOSE_FIT = {
     "what_if": {"explorable": 1.0, "step_through": 0.6, "animation": 0.5, "line_chart": 0.5,
                 "small_multiples": 0.5, "table": 0.4, "prose": 0.35, "scatter_chart": 0.4, "spoken": 0.25,
                 "surface_view": 0.5, "solid_view": 0.3, "heatmap": 0.4},
-    "locate": {"image": 0.9, "scatter_chart": 0.8, "surface_view": 0.5, "solid_view": 0.6, "table": 0.5,
+    "locate": {"map": 1.0, "image": 0.9, "scatter_chart": 0.8, "surface_view": 0.5, "solid_view": 0.6, "table": 0.5,
                "prose": 0.6, "spoken": 0.5, "node_link": 0.3, "tree_diagram": 0.4, "document": 0.3, "heatmap": 0.5},
     "hear": {"tone": 1.0, "sonification": 0.95, "sound_view": 0.6, "spoken": 0.6, "prose": 0.3, "line_chart": 0.3,
              "table": 0.2},
@@ -890,15 +910,22 @@ PURPOSE_FIT = {
               "small_multiples": 0.6, "bar_chart": 0.6, "scatter_chart": 0.6, "histogram": 0.6, "heatmap": 0.5,
               "table": 0.5, "spoken": 0.6, "sonification": 0.4, "sound_view": 0.6, "tone": 0.5, "solid_view": 0.7,
               "surface_view": 0.6, "image": 0.6, "image_sequence": 0.6, "data_file": 0.1},
-    "look_at": {"image": 1.0, "solid_view": 1.0, "surface_view": 1.0, "sound_view": 0.9, "image_sequence": 0.8,
+    "look_at": {"image": 1.0, "solid_view": 1.0, "surface_view": 1.0, "sound_view": 0.9, "image_sequence": 0.8, "map": 0.8,
                 "heatmap": 0.6, "animation": 0.8, "scatter_chart": 0.4, "prose": 0.35, "spoken": 0.3, "table": 0.2,
                 "line_chart": 0.3},
 }
 # How much each purpose needs exact values (precision) and manipulation (interactivity).
-PRECISION_NEED = {"look_up": 1.0, "keep": 1.0, "compare": 0.6, "locate": 0.5, "follow_process": 0.4,
+# "understand" asks for the same as "learn" (an explanation that can be followed); "decide" asks to weigh options:
+# side by side, with exact values, and with the inputs to try where the content has them.
+PURPOSE_FIT["understand"] = dict(PURPOSE_FIT["learn"])
+PURPOSE_FIT["decide"] = {"explorable": 0.9, "table": 0.85, "bar_chart": 0.85, "small_multiples": 0.7,
+                         "line_chart": 0.7, "prose": 0.75, "heatmap": 0.6, "scatter_chart": 0.5, "spoken": 0.5,
+                         "document": 0.5, "step_through": 0.4, "map": 0.5, "data_file": 0.2}
+PRECISION_NEED = {"decide": 0.6, "understand": 0.3, "look_up": 1.0, "keep": 1.0, "compare": 0.6, "locate": 0.5, "follow_process": 0.4,
                   "change_over_time": 0.3, "distribution": 0.3, "relation": 0.3, "learn": 0.3, "what_if": 0.3,
                   "look_at": 0.2, "hear": 0.1}
-INTERACTION_NEED = {"what_if": 1.0, "follow_process": 0.4, "learn": 0.4, "look_at": 0.3}
+INTERACTION_NEED = {"what_if": 1.0, "follow_process": 0.4, "learn": 0.4, "understand": 0.4, "look_at": 0.3,
+                    "decide": 0.4}
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -915,7 +942,7 @@ ALIASES = {
     "picture": None, "visual": None, "table": ("table",), "spreadsheet": ("data_file", "table"),
     "file": ("data_file",), "csv": ("data_file",), "sound": SOUNDS, "audio": SOUNDS, "3d": ("solid_view",
                                                                                               "surface_view"),
-    "map": ("image", "scatter_chart"), "animation": ("animation", "image_sequence"), "video": ("animation",
+    "map": ("map", "image", "scatter_chart"), "animation": ("animation", "image_sequence"), "video": ("animation",
                                                                                                "image_sequence"),
     "simulation": ("explorable",), "interactive": ("explorable", "step_through"), "steps": ("step_through",
                                                                                             "flow_steps"),
@@ -948,7 +975,7 @@ _NOUNS = (
     (r"3d(?: (?:model|view|viewer|object|render|print))?s?|three[- ]dimensional (?:model|view)s?", ("solid_view",
                                                                                                     "surface_view")),
     (r"surface (?:plot|view)s?", ("surface_view",)),
-    (r"maps?", ("image", "scatter_chart")),
+    (r"maps?", ("map", "image", "scatter_chart")),
     (r"(?:pictures?|images?|visuals?|visuali[sz]ations?|graphics?|infographics?|illustrations?|drawings?)", None),
     (r"diagrams?", DIAGRAMS),
     (r"charts?|plots?", CHARTS),
@@ -977,7 +1004,7 @@ _FORM_VERBS = (
     (r"plot|chart|graph", CHARTS),
     (r"tabulate|tabulise|tabularise", ("table",)),
     (r"map out", DIAGRAMS),
-    (r"map", ("image", "scatter_chart")),
+    (r"map", ("map", "image", "scatter_chart")),
     (r"diagram", DIAGRAMS),
     (r"animate", ("animation", "image_sequence")),
     (r"sonify", ("sonification",)),
@@ -989,6 +1016,7 @@ _FORM_VERBS = (
 _CLAUSE_START = r"(?:^|[.;:!?,]\s*|\b(?:please|can you|could you|would you|will you|and|then|now|also|just)\s+)"
 _VERB_RE = [(re.compile(_CLAUSE_START + r"(?:" + pattern + r")\b"), forms) for pattern, forms in _FORM_VERBS]
 _ALOUD = re.compile(r"\b(?:out loud|aloud)\b")
+_INDEFINITE_BEFORE = re.compile(r"\b(?:an?|some)\s+(?:[a-z0-9-]+\s+){0,2}$")
 _NEGATION = re.compile(r"\b(?:no|not|without|don't|do not|never|skip|avoid|rather than|instead of|nothing like)\s+"
                        r"(?:[a-z0-9'-]+\s+){0,3}$")
 
@@ -1021,7 +1049,9 @@ PURPOSE_CUES = {
     "locate": r"\b(?:where|locat\w*|positions?|nearest|how far|coordinates?)\b",
     "hear": r"\b(?:hear|listen|sounds? like|audible|pitch)\b",
     "keep": r"\b(?:export|download|save|keep a copy|csv|spreadsheet|excel|reuse|import (?:it )?into|for my records)\b",
-    "learn": r"\b(?:explain\w*|teach|understand|learn|why|intuition|what does .{0,40} mean)\b",
+    "learn": r"\b(?:explain\w*|teach|learn|why|intuition|what does .{0,40} mean)\b",
+    "understand": r"\b(?:understand\w*|make sense of|get my head around|grasp)\b",
+    "decide": r"\b(?:decide|decision|choose|should (?:i|we)|which (?:option|one) should|worth it|go with)\b",
     "look_at": r"\b(?:looks? like|see (?:it|the|what)|view|shape of|appearance)\b",
 }
 _PURPOSE_RE = {purpose: re.compile(pattern) for purpose, pattern in PURPOSE_CUES.items()}
@@ -1089,6 +1119,10 @@ def read_request(request: Request) -> Reading:
             if _DEFINITE_BEFORE.search(before) or low[span[1]:span[1] + 12].startswith(" of contents"):
                 taken.append(span)
                 continue        # names content ("in the table"), not an output
+            if forms is None and not _INDEFINITE_BEFORE.search(before):
+                taken.append(span)
+                continue        # "the full picture", "the big picture": a general word for a picture names one
+                #                 only with "a" ("draw me a picture")
             if _PREP_CUE.search(before) or _VERB_CUE.search(before):
                 taken.append(span)
                 if explicit is None:
@@ -1224,9 +1258,11 @@ def _content_purposes(shape: ContentShape | None, n_pieces: int) -> dict:
             options = ("distribution",)
         elif kind == "categories":
             options = ("compare",)
-        else:   # scalar, records, prose, code
+        elif kind == "code":
+            options = ("learn",)    # code is read to see how it works
+        else:   # scalar, records, prose
             options = ("look_up",)
-        weight = GENERIC_PURPOSE_WEIGHT if kind in ("scalar", "records", "prose", "code") else CONTENT_WEIGHT
+        weight = GENERIC_PURPOSE_WEIGHT if kind in ("scalar", "records", "prose") else CONTENT_WEIGHT
         for purpose in options:
             found[purpose] = found.get(purpose, 0.0) + weight / len(kinds) / len(options)
     if n_pieces >= 2 and any(k in VALUE_KINDS for k in kinds):
@@ -1238,7 +1274,7 @@ def serves(purpose: str, shape: ContentShape | None, n_pieces: int = 1) -> bool:
     """Whether the content has what the purpose needs (a change needs an order, a relation two measures ...). No rule
     here counts items: a purpose that switched on as content grew could move the choice back to words (content of
     one or two values is words anyway)."""
-    if purpose in ("look_up", "learn"):
+    if purpose in ("look_up", "learn", "understand", "decide"):
         return True
     if shape is None or not shape.kinds:
         return False
@@ -1291,6 +1327,8 @@ def resolve_display(context: Context) -> Display:
     shows = set(context.shows if context.shows is not None else DEVICE_SHOWS[context.device])
     if "voice_only" in context.accessibility:
         shows &= {"speech", "sound"}
+    if "no_sound" in context.accessibility:     # the person cannot or will not listen: nothing heard, no speech
+        shows -= {"speech", "sound"}
     width, rows, cols = _DEVICE_SIZE[context.device]
     return Display(context.device, frozenset(shows), int(context.width_px or width), rows, cols)
 
@@ -1393,8 +1431,11 @@ def _interactivity(forms, need) -> float:
 
 
 def _effort_of(form: Form, shape: ContentShape | None, display: Display) -> float:
-    """Base effort plus reading time: a table's pages, a document's length, prose's length, a sound's duration."""
+    """Base effort plus reading time: a table's pages, a document's length, prose's length, a sound's duration. A
+    file costs a person the trouble of opening it elsewhere; it costs an agent (a program) nothing."""
     effort = form.effort
+    if form.name == "data_file" and display.device == "agent":
+        effort = 0.0
     if shape is None:
         return effort
     if form.name == "table" and display.screen_rows:
@@ -1509,6 +1550,12 @@ class _Run:
 
 def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Display, generators, purposes,
                weights, use_words: bool, relaxed: bool) -> _Run:
+    if not relaxed and display.device == "agent" and shape is not None and serves("keep", shape, n_pieces):
+        # an agent is a program: it keeps and reads data, so a copy it can parse is one of its purposes
+        purposes = dict(purposes)
+        purposes["keep"] = purposes.get("keep", 0.0) + AGENT_KEEP
+        total_p = sum(purposes.values())
+        purposes = {p: w / total_p for p, w in purposes.items()}
     need_precision = sum(PRECISION_NEED[p] * w for p, w in purposes.items()) / (sum(purposes.values()) or 1)
     if use_words and reading.precise:
         need_precision = max(need_precision, PRECISE_NEED)
@@ -1718,6 +1765,17 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
     if not lost and not _is_text(choice.forms[0]) and words_total is not None and \
             best.total - words_total < material:
         choice, rule = next(c for c in by_total if _is_text(c.forms[0])), "words"
+    # Rule 7: a picture, sound or model chosen unasked comes with a sentence that says what it shows (the directive's
+    # "a diagram plus two sentences"; text supports the experience): the pair, when words are admitted and the two
+    # together fit the budget.
+    if len(choice.forms) == 1 and not _is_text(choice.forms[0]) and words_cands:
+        captioned = next((c for c in candidates if c.forms == (choice.forms[0], words_form)), None)
+        if captioned is not None and (captioned.excluded is None or
+                                      any(w in captioned.excluded for w in CAPTION_EXEMPT)):
+            if captioned.excluded is not None:
+                captioned = _replace(captioned, excluded=None)
+                candidates = [captioned if c.forms == captioned.forms else c for c in candidates]
+            return _Run(captioned.forms, ranked(), None, "caption")
     return _Run(choice.forms, ranked(), None, rule)
 
 
@@ -1805,6 +1863,11 @@ def _units_within_budget(form: Form, context: Context) -> float | None:
     return fit if fit >= MIN_FIT_UNITS else None
 
 
+# Exclusions of a (picture, words) pair that the caption rule overrides: the gain rules judge words as carriers;
+# as a caption they state what the picture shows.
+CAPTION_EXEMPT = ("would add nothing", "carries too little of this content to lead")
+
+AGENT_KEEP = 0.5            # the weight an agent device adds to keeping a copy (before renormalising)
 ACCESS_FACTOR = 3.0         # the accessibility weight's multiple when the person has stated needs
 NEAREST_WEIGHT = 0.3        # how much difference in kind from the named form counts against a substitute's total
 
@@ -1888,7 +1951,8 @@ PURPOSE_PHRASE = {"look_up": "a value to look up", "compare": "how they compare"
                   "how it changed", "distribution": "how the values are spread", "relation": "how things are related",
                   "follow_process": "how to follow it step by step", "what_if": "what happens when the inputs change",
                   "locate": "where things are", "hear": "how it sounds", "keep": "a copy to keep",
-                  "learn": "an explanation", "look_at": "what it looks like"}
+                  "learn": "an explanation", "look_at": "what it looks like", "understand": "to understand it",
+                  "decide": "what to choose"}
 
 
 def label_of(forms) -> str:
@@ -1897,6 +1961,10 @@ def label_of(forms) -> str:
     if len(forms) == 1:
         return FORMS[forms[0]].label
     first, second = FORMS[forms[0]].label, FORMS[forms[1]]
+    if second.name == "prose":
+        return f"{first} with a sentence on what it shows"
+    if second.name == "spoken":
+        return f"{first} with a spoken sentence on what it shows"
     return f"{first} with {second.label}"
 
 

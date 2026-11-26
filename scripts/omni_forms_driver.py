@@ -15,13 +15,13 @@ TO_BENCH = {"prose": "prose", "spoken": "spoken", "table": "table", "document": 
             "step_through": "step_through", "explorable": "explorable", "animation": "animation",
             "sonification": "sonification", "tone": "sonification", "sound_view": "waveform_spectrum",
             "solid_view": "solid_viewer", "surface_view": "solid_viewer", "image": "image_view",
-            "image_sequence": "animation"}
+            "image_sequence": "animation", "map": "map"}
 FROM_BENCH = {"prose": "prose", "spoken": "spoken", "table": "table", "data_file": "data_file",
               "line_chart": "line_chart", "bar_chart": "bar_chart", "scatter_chart": "scatter_chart",
               "histogram": "histogram", "heatmap": "heatmap", "timeline": "timeline", "node_link": "node_link",
               "flow": "flow_steps", "image_view": "image", "waveform_spectrum": "sound_view",
               "step_through": "step_through", "animation": "animation", "explorable": "explorable",
-              "sonification": "sonification", "solid_viewer": "solid_view"}        # "map": the planner has no such form
+              "sonification": "sonification", "solid_viewer": "solid_view", "map": "map"}
 MEDIA = {"text": ("text",), "picture": ("picture",), "sound": ("sound", "speech"), "interaction": ("interactive",),
          "motion": ("motion",), "file": ("file",), "3d": ("3d",)}
 GENERATORS = tuple(sorted({f.generator for f in P.FORMS.values() if f.generator}))
@@ -34,8 +34,6 @@ def choose(view):
     for m in x["shows"]:
         shows.extend(MEDIA[m])
     access = [a for a in x["access"] if a in P.ACCESSIBILITY]
-    if "no_sound" in x["access"]:
-        shows = [m for m in shows if m not in ("sound", "speech")]
     prefs = {}
     for name in x["prefer"]:
         if name in FROM_BENCH: prefs[FROM_BENCH[name]] = 1.0
