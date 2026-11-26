@@ -88,6 +88,9 @@ FORMATS: dict[str, tuple[str, str]] = {
     "atom": ("tree", "application/atom+xml"), "plist": ("tree", "application/x-plist"),
     "csv": ("table", "text/csv"), "tsv": ("table", "text/tab-separated-values"),
     "ipynb": ("notebook", "application/x-ipynb+json"),
+    # project manifests: named by the exact file name AND confirmed by the bytes (see _manifest)
+    "pyproject": ("code", "application/toml"), "requirements": ("code", "text/plain"),
+    "package-json": ("code", "application/json"),
     "yaml": ("tree", "application/yaml"), "toml": ("tree", "application/toml"), "ini": ("tree", "text/x-ini"),
     # source code
     "python": ("code", "text/x-python"), "javascript": ("code", "text/javascript"),
@@ -629,6 +632,10 @@ _HTML_TAGS = ("html", "head", "body", "div", "p", "title", "meta", "table", "spa
               "h1", "h2", "h3", "ul", "ol", "section", "article", "header", "nav")
 
 
+_HTML_EVIDENCE = re.compile(r"<(?:head|body|div|p|br|span|table|tr|td|script|style|meta|link|title|h[1-6]|ul|ol|li|"
+                            r"img|section|article|nav|header|footer)[\s/>]", re.I)
+
+
 def _xml_like(text: str) -> tuple[str, list[str]] | None:
     stripped = text.lstrip()
     if not stripped.startswith("<"):
@@ -646,8 +653,10 @@ def _xml_like(text: str) -> tuple[str, list[str]] | None:
     reasons = [("an XML declaration and " if declared else "") + f"the root element <{root[:40]}>"]
     if "<!DOCTYPE" in stripped[:m.end() if m else 0].upper() and local != "html":
         reasons.append("it declares a DOCTYPE (a decoder will refuse it)")
-    if local == "html" or (not declared and local in _HTML_TAGS):
+    if local in ("html", "head", "body"):
         return "html", reasons
+    if not declared and local in _HTML_TAGS and _HTML_EVIDENCE.search(rest[:HEAD_MAX]):
+        return "html", reasons + ["it uses tags that only HTML defines"]
     if local == "svg":
         return "svg", reasons
     if local == "feed" and "http://www.w3.org/2005/Atom" in rest[:2048]:
@@ -817,6 +826,46 @@ def _identify(head: bytes, size: int | None) -> tuple[str, list[str], str | None
     return None
 
 
+_REQUIREMENT = re.compile(r"(?:[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[A-Za-z0-9_,.\s-]*\])?\s*(?:(?:[<>=!~]=?|===)\s*[^\s;#]+"
+                          r"\s*(?:,\s*(?:[<>=!~]=?|===)\s*[^\s;#]+\s*)*)?(?:@\s*\S+)?\s*(?:;[^#]*)?|-[-\w]+(?:[ =]\S+)?)"
+                          r"\s*(?:#.*)?")
+
+
+def _manifest(name, fmt: str, head: bytes, size: int | None) -> tuple[str, str, list[str]] | None:
+    """A project manifest: the exact file name names it, and the bytes must agree (format, basis, reasons)."""
+    if not isinstance(name, str):
+        return None
+    base = name.replace("\\", "/").rsplit("/", 1)[-1]
+    if base == "package.json" and fmt == "json" and head.lstrip(b"\xef\xbb\xbf \t\r\n")[:1] == b"{":
+        return "package-json", "structure", ["the file is named package.json and holds a JSON object"]
+    if fmt != "text":
+        return None
+    complete = (size is not None and len(head) >= size) or (size is None and len(head) < HEAD_MAX)
+    decoded = _as_text(head, complete)
+    if decoded is None:
+        return None
+    text = decoded[0]
+    if base == "pyproject.toml":
+        if not complete:
+            return "pyproject", "declared", ["the file is named pyproject.toml; only a prefix was seen, so TOML "
+                                             "was not checked"]
+        try:
+            import tomllib
+            tomllib.loads(text)
+        except Exception:
+            return None   # named pyproject.toml but not TOML: the text answer (and the hint) stand
+        return "pyproject", "structure", ["the file is named pyproject.toml and parses as TOML"]
+    if re.fullmatch(r"requirements(?:[-_.][\w.-]+)?\.(?:txt|in)", base):
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+        if not complete and lines:
+            lines = lines[:-1]
+        if lines and all(_REQUIREMENT.fullmatch(ln) for ln in lines[:2000]):
+            return "requirements", "structure", [f"the file is named {base[:60]} and every line is a requirement "
+                                                 "specifier, an option or a comment"]
+        return None
+    return None
+
+
 def detect(head: bytes, *, name: str | None = None, declared: str | None = None,
            size: int | None = None) -> Detected:
     try:
@@ -840,6 +889,9 @@ def detect(head: bytes, *, name: str | None = None, declared: str | None = None,
             return _make(fmt, "declared", [UNKNOWN_REASON, why + "; nothing in the bytes confirms it"])
         return _unknown([UNKNOWN_REASON])
     fmt, reasons, container, basis = found
+    manifest = _manifest(name, fmt, head, size)
+    if manifest is not None:
+        return _make(manifest[0], manifest[1], reasons + manifest[2])
     for hinted, why in hints:
         if hinted == fmt:
             reasons.append(why + ", which agrees")

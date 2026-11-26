@@ -17,7 +17,8 @@ from neuroscifi.artifacts.types import FAMILIES  # noqa: E402
 GENERAL = {"docx": {"zip"}, "xlsx": {"zip"}, "pptx": {"zip"}, "odt": {"zip"}, "ods": {"zip"}, "odp": {"zip"},
            "epub": {"zip"}, "jar": {"zip"}, "apk": {"zip"}, "npz": {"zip"}, "doc": {"ole"}, "xls": {"ole"},
            "ppt": {"ole"}, "ipynb": {"json"}, "geojson": {"json"}, "ndjson": {"json"}, "atom": {"xml"},
-           "rss": {"xml"}, "kml": {"xml"}, "gpx": {"xml"}, "plist": {"xml"}, "svg": {"xml"}}
+           "rss": {"xml"}, "kml": {"xml"}, "gpx": {"xml"}, "plist": {"xml"}, "svg": {"xml"},
+           "pyproject": {"toml"}, "package-json": {"json"}}
 
 
 def _run(data, kw):

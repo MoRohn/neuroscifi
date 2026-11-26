@@ -25,7 +25,8 @@ from neuroscifi.artifacts.types import ArtifactError  # noqa: E402
 GENERAL = {"docx": {"zip"}, "xlsx": {"zip"}, "pptx": {"zip"}, "odt": {"zip"}, "ods": {"zip"}, "odp": {"zip"},
            "epub": {"zip"}, "jar": {"zip"}, "apk": {"zip"}, "npz": {"zip"}, "doc": {"ole"}, "xls": {"ole"},
            "ppt": {"ole"}, "ipynb": {"json"}, "geojson": {"json"}, "ndjson": {"json"}, "atom": {"xml"},
-           "rss": {"xml"}, "kml": {"xml"}, "gpx": {"xml"}, "plist": {"xml"}, "svg": {"xml"}}
+           "rss": {"xml"}, "kml": {"xml"}, "gpx": {"xml"}, "plist": {"xml"}, "svg": {"xml"},
+           "pyproject": {"toml"}, "package-json": {"json"}}
 CUTS = (1, 2, 3, 4, 8, 16, 32, 64, 128, 512)
 RANDOM_SEED, RANDOM_N = 20261126, 20000
 
