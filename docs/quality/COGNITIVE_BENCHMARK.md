@@ -566,7 +566,11 @@ The idle-first figures are single runs of code whose idle runs were not repeatab
 followed random task ids; fixed in Wave 4). On public worlds a world's mean gain moved by up to 0.015 between repeats,
 so "beyond the spread" is not established for W2 (margin 0.003) and for W3 (margin 0.017) is not shown to fail but is
 not verified on those worlds (review4 measurement, second pass); the held-out figures of ADR-062 are exactly
-repeatable. **The front door stays on** (12 of 12 front-door questions exact; every
+repeatable. *Correction, 2026-11-26 (Wave 4 record lane, after Wave 4's withheld look; the correction above is
+kept).* Wave 4 re-ran `baseline`, `idle-first`, `shipped` and `shipped+idle` on these worlds with the tie-breaks fixed
+(ledger line 10; "The looks at the end of Wave 4", below): the references' means and all six gains equal the figures
+above to three decimals. `idle-first` is reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in
+W3 on four seeds; a small margin in W2; it cannot be promoted and remains below the blind schedule. **The front door stays on** (12 of 12 front-door questions exact; every
 other figure equal to the run without it).
 
 ## Wave 4: the source-independence family
@@ -790,3 +794,48 @@ the fixed harness reports. Evidence
 `docs/quality/evidence/genesis_wave4_e.json` (234 kB, summaries). **For the single withheld look**: configurations
 `shipped` and `own_text_provenance` (and `echo_recognition` beside them for comparison); reported per world from
 `own_verdict`'s fields and the two new counters.
+
+### The looks at the end of Wave 4
+
+Taken once each by the main session on 2026-11-26, on the clean tree `e812a8e`, by the rule in
+[WAVE4.md](../genesis/WAVE4.md) ("The rule for the withheld look", committed in `81474e5` and corrected before any
+look in `e812a8e`). The ledger `genesis_final_uses.jsonl` now has **ten lines**: line 9 is the source-independence
+look (family `sources_withheld`; `shipped`, `own_text_provenance`, `echo_recognition` and the four references), line
+10 the learning-cycle look (family `learning_cycles_withheld`; `baseline`, `idle-first`, `shipped`, `shipped+idle`),
+both `"dirty": false`. Evidence: `docs/quality/evidence/genesis_wave4_look_sources.json` (377 kB) and
+`genesis_wave4_look_cycles.json` (428 kB) name the withheld worlds and **join the files no lane opens**, with
+`genesis_cycles_withheld_baseline.json`, `genesis_sources_withheld_baseline.json` and `genesis_wave3_look_cycles.json`;
+`genesis_wave4_look_analysis.json` (5 kB) is the main session's reading of both by the rule, and every figure below
+is from it.
+
+**Look 1, sources** (two worlds, wh-a and wh-b, seeds 8501–8504; 576 looks, 1,831 pages, 356 eligible). Control:
+`shipped` reproduces step 0's look (above) in every compared key: the world digests, and per world the 18 keys of
+`totals_sum` and the 5 of `mean_correct`: 0 differences, so the look is valid. Summed over worlds and seeds:
+
+| | `shipped` | `own_text_provenance` | `echo_recognition` |
+|---|---|---|---|
+| own answers admitted | 2 | 1 | 0 |
+| wrongly admitted | 110 (26 false) | 108 | 107 |
+| suppressed of 356 eligible | 129 | 128 | 128 |
+| honest pages discarded (wh-a / wh-b) | 0 | 14 (4 / 10) | 14 (4 / 10) |
+| echo pages discarded (wh-a / wh-b) | 0 | 12 (4 / 8) | 15 (4 / 11) |
+| grouping (`tp`, `fp`, `fn`) | 281, 68, 984 | unchanged | unchanged |
+| `mean_correct` wh-a / wh-b | 0.535 / 0.489 | 0.535 / 0.493 | 0.535 / 0.493 |
+| `sources.own_verdict` | — | "effective" (A1, A2, S1, C1, G hold) | "effective" (all hold) |
+
+Reading: "effective" rests on a base of two events (2 own answers admitted as shipped, both in wh-b); the new rule
+stopped one, the older rule both, each at the cost of 14 honest pages discarded; the hole is untouched by either (110
+→ 108 / 107; 129 → 128). The new rule is not shown to be better than the older one. The harness does not record the
+owner's question load, and none of the limits the rule lists (mentions and denials, undated pages, an adversary's
+edits, a family device's or an agent's answers, the 30-day lifetime) is exercised. Both stay off.
+
+**Look 2, learning cycles** (Wave 3's three withheld worlds, W1–W3 in file order, four seeds, the tie-breaks fixed).
+The references' means (`baseline` = `shipped`: 0.465 / 0.286 / 0.323) equal Wave 3's to three decimals; the blind
+round-robin from the worlds alone is 0.636 / 0.541 / 0.537, as in Wave 3. Mean paired gains of `mean.correct`, against
+the sd of the reference over this look's four seeds (0.064 / 0.039 / 0.035): `idle-first` − `baseline` +0.013 /
++0.042 / +0.052 (within; beyond by 0.003; beyond by 0.017; one seed negative in W1 and one in W2); `shipped+idle` −
+`shipped` +0.006 / +0.035 / +0.024 (within in all three). All six equal Wave 3's figures to three decimals: on these
+worlds the ties that followed random task ids did not move the result, and Wave 3's figures stand, now from code
+whose runs were repeatable on the 18 public worlds measured. `idle-first` is reproduced on a repeatable run; beyond
+the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a small margin in W2; it cannot be promoted and remains below
+the blind schedule (0.478 / 0.328 / 0.376). Nothing changes.
