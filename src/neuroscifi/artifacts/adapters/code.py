@@ -430,7 +430,7 @@ def read_manifest(data, detected, limits):
     text, tnotes = decode_text(data)
     notes = list(tnotes)
     fmt = detected.format
-    if fmt in ("pyproject", "pyproject-toml"):
+    if fmt == "pyproject":
         try:
             doc = tomllib.loads(text)
         except (tomllib.TOMLDecodeError, ValueError):
@@ -455,7 +455,7 @@ def read_manifest(data, detected, limits):
         for group, body in (poetry.get("group") or {}).items():
             for dep, spec in ((body or {}).get("dependencies") or {}).items():
                 _dep(b, root, f"{dep} {spec if isinstance(spec, str) else ''}", "dev", group)
-    elif fmt in ("requirements", "requirements-txt"):
+    elif fmt == "requirements":
         root = b.node("project:requirements", "project", "requirements.txt")
         for line in text.splitlines():
             line = line.split(" #", 1)[0].strip()
@@ -516,7 +516,7 @@ class SurfaceCodeAdapter(Adapter):
 
 class ManifestAdapter(Adapter):
     name = "b1-manifests"
-    formats = ("pyproject", "pyproject-toml", "requirements", "requirements-txt", "package-json")
+    formats = ("pyproject", "requirements", "package-json")
     families = ("code",)
 
     def decode(self, data, detected, limits):
