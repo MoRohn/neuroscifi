@@ -547,11 +547,12 @@ def test_a_fetch_ahead_abandoned_between_two_of_its_reads_reads_one_byte_more_no
     real, takes = net._Speculation.take, []
 
     def take(self, wanted):
+        page = sum(1 for e in self.events if e[0] == "request") >= 2     # the page's body (robots.txt read before)
+        if page and len(takes) == 1:
+            self.abandon()              # the reader's abandon, after the body's first read and before the next
         granted = real(self, wanted)
-        if sum(1 for e in self.events if e[0] == "request") >= 2:      # the page's body (robots.txt read before)
+        if page:
             takes.append(granted)
-            if len(takes) == 1:
-                self.abandon()          # the reader's abandon, between this read and the next
         return granted
     monkeypatch.setattr(net._Speculation, "take", take)
     assert fetcher.speculate("http://a.example/p", usage=usage, budget=budget)
