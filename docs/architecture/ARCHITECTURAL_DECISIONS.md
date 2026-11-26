@@ -4081,3 +4081,126 @@ counted as a pass: the family scores every staged case as a pass or failure of a
   rollback test). Claims read while it was set keep their mark, so a grouping made only of them (an older stored
   cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
   it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).
+
+# ADR-072 Artifact detection, the adapter registry and the native representations (OMNIMIND kernel)
+
+Status: built. OMNIMIND Wave O-0, lane K. No schema change, no setting. Nothing existing imports
+`neuroscifi.artifacts`, so with every setting at its default every existing output is byte-identical. The one visible
+addition is the command `nsf inspect FILE [--json]`. Roll back by removing `neuroscifi.artifacts.cli` from
+`cli.COMMAND_MODULES` (the command goes away) or by reverting the package (nothing else refers to it).
+
+## Context
+
+The Phase I audit found that NeuroSciFi takes in documents only from the web by URL, speech as text, and one-bit
+readings. It has no file intake, and the only decoders on the default path are the standard library, numpy and
+zstandard. The directive (§5.1, §5.3) asks for a capability-resolution workflow: Detect → Inspect → Identify → Resolve
+→ Decode → Validate → Represent → Integrate. It also asks for adapters that can be added without touching the core,
+and for an unknown format to get a reasoned answer instead of a generic failure or an invented interpretation. §16
+lists the attack surface this opens: malformed and adversarial files, archive bombs, unsafe deserialisation, path
+traversal, untrusted executable content, prompt injection in documents, and excessive resource use.
+
+## Decision
+
+1. **Representations** (`artifacts/types.py`): frozen dataclasses for what can be decoded. These are Table and Column,
+   Signal, Raster, Frames, Drawing and Shape, Mesh, Features and Feature, Tree and Node, Graph with GNode and Edge,
+   Document and Block, Bundle and Member, and Opaque for what nothing decodes. Each top-level representation has
+   `describe()`, `shape()` and `text()`. `describe()` gives structure and measurements only. It is JSON with NaN and
+   infinities as null, and at most 32 KiB however large the content (the rest is shrunk and marked `truncated`).
+   `shape()` gives a `ContentShape` for the form planner, with no reference to the bytes. `text()` gives the
+   artifact's own words, at most 1 Mi characters. Those words are untrusted and must pass
+   `webcortex.safety.scan_injection` before they reach a model. Construction checks each type's stated invariants
+   (dtype, dimensions, ranges, closed vocabularies) and raises `Malformed` if one fails. Classes that hold arrays
+   compare by identity.
+2. **Detection** (`artifacts/detect.py`). `detect(head, name=, declared=, size=)` sees at most 64 KiB and never
+   raises. It tries, in order:
+   - Signatures, each confirmed by whatever else the prefix shows: a RIFF form type, an ISO BMFF brand, an EBML
+     DocType, the first Ogg packet, ZIP member names or a stored `mimetype`, OLE stream names, a tar header checksum,
+     three consecutive MPEG frames, the 84 + 50·n size rule for binary STL.
+   - Structure, on the prefix decoded as text.
+   - The declared type and the extension. These are **hints**. A hint that contradicts the bytes loses, and the
+     reasons say so. A hint may only refine a generic answer it is consistent with: text named `.yaml`, or a ZIP named
+     `.docx` whose members were not seen. Even then `basis` is `"declared"`.
+
+   Prefixes under 32 bytes of an input known to be longer get no structure verdict. Pickle is identified so that it
+   can be refused.
+3. **The chain and the registry** (`artifacts/adapters/__init__.py`). `decode(data, name=, declared=, limits=)` runs
+   these steps in order:
+   1. Refuse oversize input and depth below zero.
+   2. Detect the format, and refuse pickle.
+   3. Resolve an adapter. The latest registered available adapter for the format wins, so a lane's specific adapter
+      takes over from the kernel's general one.
+   4. Run the adapter under the limits.
+   5. Check that it returned a valid `Decoded`.
+
+   Nothing decodable gives an `Opaque` from `inspect_unknown`, never an exception for "unknown". Adapter failures are
+   named `ArtifactError`s. Any other exception becomes `Malformed`, and the message names only the exception's type,
+   never the content. `on_gap(callback)` is called with `(detected, "opaque" | "unsupported")` for every gap, so lane A
+   can count missing formats (directive §10.5).
+4. **Unknown bytes** (`artifacts/unknown.py`). The findings are measurements:
+   - size, entropy, printable and zero shares;
+   - runs of text, given as counts, lengths and offsets only, never their content;
+   - embedded signatures at offsets;
+   - record periodicity by autocorrelation;
+   - float layouts.
+
+   Candidates are worded as **consistent with**, each with its reason. Needs name what would have to exist.
+5. **External adapters.** They are discovered through the entry-point group `neuroscifi.artifact_adapters`, from
+   metadata only (nothing is imported). They are loaded only by `load_external(approved_names)`, which lane A calls
+   with the owner's `artifact_adapters` list. Discovered but unnamed adapters appear in `catalog()` as "found, not
+   approved". An external adapter runs under the same limits and the same chain.
+6. **`catalog()` is the only source for the word "supported."** Each row gives name, formats, families, available,
+   reason and source, and the refused formats are listed with their reason. A format that is detected but has no
+   available adapter is "identified, not decoded here", never "supported". `make.catalog()` and `check.catalog()` play
+   the same role for generators and validators.
+7. **Limits** (`types.Limits`; every decoder honours them, and nested decodes get what is left):
+
+   | Limit | Value | Why |
+   |---|---|---|
+   | `max_bytes` | 64 MiB | The owner's `artifact_max_bytes`. It is larger than any document the web path keeps (5 MB), and small enough that a whole file in memory is safe on this host. |
+   | `max_decoded_bytes` | 256 MiB | The total any decode may materialise, shared down the nesting. |
+   | `max_ratio` | 200 per stream, never below 1 MiB | Real text compresses 3–10 times. 200 leaves room for repetitive logs and sparse arrays while stopping bombs. The 1 MiB floor keeps tiny repetitive streams legitimate at harmless cost. |
+   | `max_members` | 4096 | Checked from the ZIP end-of-central-directory record before the directory is parsed. |
+   | `max_depth` | 4 | Containers in containers (gzip in tar in zip is three). |
+   | `max_elements` | 5 000 000 | Cells, nodes or vertices. For JSON an upper bound is counted from structural characters before parsing. |
+   | `max_seconds` | 20 s | Checked cooperatively in decoder loops. |
+
+8. **Shared safety** (`artifacts/safe.py`):
+   - A file reader that refuses links, devices, pipes and oversize files.
+   - Deadlines and budgets.
+   - gzip, zlib, bzip2 and xz inflated in chunks that can never pass the cap. zstd is fed small enough pieces that
+     even RLE blocks cannot pass the cap by more than one block, and a truncated frame is `Malformed`, where the
+     library would silently return nothing.
+   - `SafeZip`: in memory, member names never used as paths, CRC verified, encryption and unknown methods
+     `Unsupported`.
+   - `parse_xml`: expat with every DOCTYPE and entity declaration refused, as `webcortex.safety.safe_xml_parse` does,
+     plus bounds on element count, depth and character data.
+   - Cell parsing that never guesses. Times are ISO 8601 only, numbers are plain or grouped by three, and one cell
+     that does not parse keeps a column as text.
+9. **Specifications** (`artifacts/spec.py`): the envelope of DESIGN §6, validated with `inference/jsonschema.py` and
+   a form's registered schemas before anything is made. Bounds: 256 KiB without data arrays, 32 MiB total, depth 16,
+   4096 characters per string. A content rule refuses markup, script, URLs, paths and control or direction-override
+   characters in every string and key. The rule is deliberately broad: a refused title costs a rephrasing, while a
+   passed script costs much more. Generator and validator registries (`artifacts/make`, `artifacts/check`) are empty
+   here. `make` validates first and records the generator that really made the bytes. `check` decides `ok` from
+   technical findings only, and bytes no validator covers are not ok.
+10. **Three pattern adapters** for the other lanes to copy:
+    - Plain text → Document (encoding by BOM or validity; no guessed code page).
+    - JSON → Tree, plus `as_table()` for an array of flat records.
+    - gzip, zstd, bzip2 and xz → Bundle of one member, decoded again through the chain with `nested(limits, used,
+      elapsed)`.
+
+## Honest boundaries
+
+- `detect` identifies about a hundred formats. Lane K decodes **three families**: UTF text, JSON and the four
+  compression streams. Everything else is identified and reported as Opaque with "an adapter for X" needed until
+  another lane registers one. `catalog()` says which.
+- Pixels of JPEG, WebP, TIFF and HEIC, the samples of MP3, AAC, Opus and FLAC, and the frames of any video are not
+  decoded on this host, because no decoder is installed.
+- The detection corpus is hand-assembled by the same lane that wrote the detector, from the formats' published layouts
+  (`tests/artifacts/detect_corpus.py`). Files from the wild are **unverified**. Real files may carry variants the corpus
+  lacks: an MP3 without ID3 and with a damaged first frame, or a ZIP whose first members are not the telling ones.
+- Evidence: `docs/quality/evidence/omnimind_k.json`, regenerated by `scripts/omnimind_k_evidence.py` (`--check` is a
+  test). It covers 121 corpus items across 96 formats, all identified as constructed; 21 conflicting-hint and
+  adversarial items, all as expected; and 2662 truncated prefixes with 0 false identifications. Of 20 000 seeded random
+  inputs of 1–4095 bytes, 19 997 are unknown and 3 are called text: they are 1–2 bytes of printable ASCII, which is
+  valid text.

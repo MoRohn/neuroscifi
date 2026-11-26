@@ -25,6 +25,7 @@ import struct
 from .types import Detected
 
 HEAD_MAX = 64 << 10
+MIN_STRUCTURE_PREFIX = 32   # structure tests need at least this much of an input known to be longer
 
 # format -> (family, media type): the single table of names this module may answer with.
 FORMATS: dict[str, tuple[str, str]] = {
@@ -808,6 +809,8 @@ def _identify(head: bytes, size: int | None) -> tuple[str, list[str], str | None
         if found is not None:
             return found[0], list(found[1]), found[2], "signature"
     complete = (size is not None and len(head) >= size) or (size is None and len(head) < HEAD_MAX)
+    if size is not None and not complete and len(head) < MIN_STRUCTURE_PREFIX:
+        return None   # a few bytes of a longer input say nothing about its structure
     found = _structure(head, complete)
     if found is not None:
         return found[0], list(found[1]), None, "structure"
