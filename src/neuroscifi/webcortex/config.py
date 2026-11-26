@@ -44,7 +44,8 @@ assert set(MODE_BUDGETS) == set(MODES)
 
 # Wave 3 settings whose stored value is checked when it is read (WebConfig.from_json; security review L8)
 CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognition", "supersession",
-                   "supersession_min_sources", "origin_grouping")
+                   "supersession_min_sources", "origin_grouping",
+                   "allowance_division", "reach_share")       # ADR-064 (Wave 4 lane A)
 
 
 # review3b N8: a damaged value of a setting that tunes an opt-in rule never loosens that rule: the rule itself reads as
@@ -251,6 +252,17 @@ class WebConfig:
     # N1 and keeps copies naming several origins one source on the staged cases (review3c F1), but no benchmark world
     # holds a page naming two origins, so neither direction is measured. Applies to claims read while it is set.
     origin_grouping: str = "transitive"
+    # ADR-064 (Wave 4 lane A): how the day's autonomous task count (daily_autonomous.tasks) is divided between
+    # REFRESHING what is held (the timer's re-check, due refreshes and curiosity, and idle investigations of a
+    # knowledge item) and REACHING subjects that hold nothing (idle investigations of a candidate that is no knowledge
+    # item). "race" (the default): as before ADR-064, whichever path asks first takes the room. "reserve": round(tasks
+    # x reach_share) places are held for reaching while the one admission rule admits a reaching candidate (released
+    # at once when it admits none); refreshing may not take them, reaching may take any room. "yield": as "reserve",
+    # with the share read from what each path's finished tasks of the last 7 days wrote to knowledge (bounded
+    # 0.1-0.9). Never more tasks, no new activity: the cap, the admission rule, quiet and the owner's own work are
+    # unchanged. Off ("race") by default: the owner's decision (ADR-064 has the measurements).
+    allowance_division: str = "race"
+    reach_share: float = 0.25
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

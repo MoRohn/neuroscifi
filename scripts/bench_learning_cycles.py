@@ -72,6 +72,8 @@ def main(argv=None) -> int:
                    help="lane R's configurations (cycles.order_configurations) instead of lane K's")
     r.add_argument("--idle", action="store_true",
                    help="lane V's configurations (cycles.idle_configurations): the worker's idle investigation")
+    r.add_argument("--division", action="store_true",
+                   help="Wave 4 lane A's configurations (cycles.division_configurations): the allowance division")
     r.add_argument("--config", action="append", help="repeatable; default every configuration")
     r.add_argument("--look", choices=sorted(cycles.LOOKS),
                    help="the configurations of a withheld look (cycles.LOOKS), on a public split: a dry run of it")
@@ -82,6 +84,8 @@ def main(argv=None) -> int:
     v.add_argument("--out")
     v.add_argument("--orders", action="store_true", help="lane R's rule (cycles.order_verdicts)")
     v.add_argument("--idle", action="store_true", help="lane V's rule (cycles.idle_verdicts)")
+    v.add_argument("--division", action="store_true",
+                   help="Wave 4 lane A's rule (cycles.division_verdicts) and the development choice")
     f = sub.add_parser("final")
     f.add_argument("--note", required=True)
     f.add_argument("--out", required=True, help="a path OUTSIDE this checkout; copy it in afterwards")
@@ -97,12 +101,17 @@ def main(argv=None) -> int:
     if a.command == "idle":
         return idle(a)
     if a.command == "verdict":
+        if a.division:
+            verdicts = cycles.division_verdicts(json.loads(Path(a.result).read_text(encoding="utf-8")))
+            _write({"verdicts": verdicts, "choice": cycles.division_choice(verdicts)}, a.out)
+            return 0
         rule = cycles.order_verdicts if a.orders else cycles.idle_verdicts if a.idle else cycles.verdicts
         _write(rule(json.loads(Path(a.result).read_text(encoding="utf-8"))), a.out)
         return 0
     known = cycles.configurations() | cycles.EXTRA
     configs = ((cycles.order_configurations() if a.orders else cycles.idle_configurations() if a.idle else
-                cycles.configurations()) if a.command == "run" else {k: known[k] for k in cycles.FINAL_CONFIGS})
+                cycles.division_configurations() if a.division else cycles.configurations())
+               if a.command == "run" else {k: known[k] for k in cycles.FINAL_CONFIGS})
     if a.config and getattr(a, "look", None):
         ap.error("--look names the configurations itself; give it without --config")
     if a.config:

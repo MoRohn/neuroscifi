@@ -818,6 +818,50 @@ def test_front_door(tmp_path):
     assert_rolls_back(reference, on_, again)
 
 
+# ---- Wave 4 lane A: the division of the day's allowance (ADR-064) ---------------------------------------------------
+
+def test_allowance_division(individual, tmp_path):
+    """Off ("race"): with two of four autonomous places used and the owner's hypothesis open (a subject that holds no
+    knowledge item), the timer's pass may take the rest; "reserve" at 0.5: the rest is held for reaching it; off
+    again: the pass may take it, on the next call. The idle investigation made while on records its path in its
+    decision event, which stays readable with the setting off and goes with its task when the owner forgets it."""
+    from neuroscifi.instance import governance
+    from neuroscifi.webcortex import claims, evolution, orchestrator, scheduler, text
+    db, path = individual
+    statement = "The Zephyr compiler version 4.2.0 was released on 17 November 2026"
+    state.set_config(db, {"autonomous": True, "daily_autonomous": {"tasks": 4, "requests": 400, "bytes": 80_000_000}},
+                     T0)
+    autonomy.enable(db, T0)
+    with store.write(db):
+        hid, _ = evolution.open_hypothesis(
+            db, key=claims.claim_key(statement), statement=statement, origin="owner",
+            verification={"policy": "ADR-035", "state": "not_evaluated", "basis": "owner_hypothesis",
+                          "confidence": 0.5}, claims=[], values=text.values(statement),
+            polarity=claims.polarity(statement), now=T0, with_prediction=False)
+        evolution.predict(db, hid, T0, deadline=T0 + 20 * DAY, probability=0.5)
+    for objective in ("Orchid database replicas", "Maple cache eviction"):
+        orchestrator.submit(db, objective, T0, mode="fact_verification", origin="curiosity")
+    on, off = web_switch(db, "allowance_division", on="reserve", off="race")
+    state.set_config(db, {"reach_share": 0.5}, T0)
+
+    def probe():
+        cfg = state.get_config(db)
+        return scheduler._over_cap(db, T0, cfg, held=scheduler._division(db, T0, cfg, {"skipped": []}))
+    reference, on_, again = cycle(on, off, probe)
+    assert reference is None and autonomy.HELD_FOR_REACHING in on_
+    assert_rolls_back(reference, on_, again)
+    on()
+    queued = autonomy.idle(db, T0, worker="rollback")
+    off()
+    assert queued["candidate"]["division"]["path"] == "reach"
+
+    def count(d):
+        return d.execute("SELECT count(*) FROM web_events WHERE json_extract(detail,'$.autonomy.division.path') IS "
+                         "NOT NULL").fetchone()[0]
+    readable_forgettable_restorable(db, path, tmp_path, count,
+                                    lambda d: governance.forget_research(d, queued["task_id"], time.time()))
+
+
 # Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
 # Wave 1/2 switch of the config classes is here; Wave 2 lane X)
 SWITCHES = {
@@ -840,4 +884,5 @@ SWITCHES = {
     "attribution_independence": test_attribution_independence, "echo_recognition": test_echo_recognition,
     "supersession": test_supersession_and_its_records, "origin_grouping": test_origin_grouping,
     "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
+    "allowance_division": test_allowance_division,
 }

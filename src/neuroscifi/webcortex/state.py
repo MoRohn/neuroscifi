@@ -139,6 +139,17 @@ def _validate(name, value):
             raise ValidationError("origin_grouping must be 'transitive' (a page naming its origin joins it and what it "
                                   "names, as before ADR-063) or 'one_way' (it attaches to one origin)")
         return value
+    if name == "allowance_division":      # ADR-064
+        from .autonomy import DIVISIONS
+        if value not in DIVISIONS:
+            raise ValidationError("allowance_division must be 'race' (as before: whichever path asks first), "
+                                  "'reserve' (a share held for reaching subjects that hold nothing) or 'yield' (that "
+                                  "share read from what each path wrote to knowledge)")
+        return value
+    if name == "reach_share":             # ADR-064
+        if not _is_num(value) or not 0 < value < 1:
+            raise ValidationError("reach_share must be a number between 0 and 1 (exclusive)")
+        return float(value)
     if name == "supersession_min_sources":
         if not _is_int(value) or not 2 <= value <= 10:
             raise ValidationError("supersession_min_sources must be an integer between 2 and 10")

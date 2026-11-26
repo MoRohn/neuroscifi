@@ -30,7 +30,8 @@ WAVE0_VOICE = {"mode", "voice", "speed", "retain_audio", "audio_ttl_hours", "tra
                "asr_model", "tts_url", "key_file", "personaplex", "personaplex_url", "personaplex_voice", "consent"}
 # Numbers Wave 1 added: bounds of a switch, not switches (test_uat_rollback.py's docstring says so)
 BOUNDS = {"imagine_max_seconds", "imagine_max_bytes", "broadcast_threshold", "recheck_per_tick", "recheck_daily",
-          "reflection_interval_days", "supersession_min_sources"}
+          "reflection_interval_days", "supersession_min_sources",
+          "reach_share"}        # Wave 4 lane A (ADR-064): the bound of allowance_division
 
 
 def _added():
@@ -100,3 +101,18 @@ def test_the_other_copies_of_the_list_agree_on_what_off_means():
     for where, values in copies.items():
         differ = {k: (v, off[k]) for k, v in values.items() if k in off and v != off[k]}
         assert differ == {}, (where, differ)
+
+
+# Wave 4 lane A (ADR-064): the fields it added, rolled back and made to fail by the fault-injection test
+WAVE4A_FIELDS = {"allowance_division", "reach_share"}
+
+
+def test_every_wave4_lane_a_setting_is_rolled_back_and_made_to_fail():
+    import uat.test_uat_fault_injection as faults
+    assert WAVE4A_FIELDS <= {f.name for f in dataclasses.fields(WebConfig)}
+    switches = WAVE4A_FIELDS - BOUNDS
+    assert switches == {"allowance_division"}
+    assert switches - set(rollback.SWITCHES) == set(), "add a rollback test and a SWITCHES entry"
+    assert switches - {m for m, *_ in faults.WAVE4A_ENTRIES} == set(), "add it to WAVE4A_ENTRIES"
+    from neuroscifi.webcortex.config import CHECKED_ON_LOAD
+    assert WAVE4A_FIELDS <= set(CHECKED_ON_LOAD)
