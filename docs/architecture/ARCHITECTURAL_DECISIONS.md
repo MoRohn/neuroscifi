@@ -4081,3 +4081,111 @@ counted as a pass: the family scores every staged case as a pass or failure of a
   rollback test). Claims read while it was set keep their mark, so a grouping made only of them (an older stored
   cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
   it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).
+
+# ADR-074 Things the system makes: specifications instead of generated markup, a reading contract, and checks that never ask the maker
+
+Status: built (OMNIMIND Wave O-0, lane G1: pictures, documents and data files; lane G2 appends its section below).
+No schema change, no setting: nothing runs unless `make.make` or `check.check` is called, and nothing existing calls
+them yet. Rollback: do not import `artifacts/make/_g1.py` and `artifacts/check/_g1.py` (or revert the lane's commits);
+nothing else depends on them.
+
+## Context
+
+The answer path produces sentences. DESIGN §6 of OMNIMIND asks for pictures, documents and data files, and the
+directive (§8.3, §8.4, §11, §16) for quality that is checked by something other than the maker, with a broad attack
+surface kept narrow. The precedent is the Presence scene specification (`presence/scene_spec.py`): a typed, bounded,
+versioned description validated before use, never markup or code from outside.
+
+## Decision
+
+**1. A specification, never markup.** Every made thing starts as a `spec.Spec` (form, title, description, data,
+options, sources, made_by) whose `data` and `options` are checked against the form's JSON schema
+(`inference/jsonschema.py`) before a generator sees them. No string in a spec is interpreted: titles, labels, names,
+addresses and code are text, escaped on output (XML/HTML escaping in SVG and HTML; Markdown escaping that drops
+leading white space and escapes inline markers and line-start markers; CSV quoting plus a one-apostrophe formula
+guard). The spec is the artifact's editable source and is embedded in made SVG once, as JSON in `<metadata>`.
+Form names use underscores (the spec's form-name pattern has no dot): `chart_line`, `chart_bar` (grouped, stacked),
+`chart_scatter`, `chart_histogram`, `chart_heatmap`, `chart_small_multiples`, `timeline`, `graph_nodelink`,
+`graph_tree`, `flow_steps`, `table_html`, `document_html`, `document_md`, `data_csv`, `data_json`, `animation_svg`.
+
+**2. The reading contract** (what a reader, human or program, can rely on to recover the data from the picture
+alone, from geometry and tick labels, never from an echo of the input):
+- Charts: one `<g class="plot">` holds the marks (small multiples: one per `<g class="panel" data-name>`; animation:
+  one per `<g class="frame" data-label>`); each axis is `<g class="axis x|y">` (heatmap ramp: `axis z`, ticks with a
+  `rect.swatch` whose gray is the value's) holding `<g class="tick" transform="translate(X,Y)">` with a `<text>` that
+  is a plain decimal number, an ISO 8601 date or time ("2026-03-01", "2026-03-01T06:00Z"), or a category label (a cut
+  label carries the full label in a `<title>` child); a continuous axis holds a `<line class="domain">` along the
+  plot. Marks: `<polyline class="series">` (lines), `<circle class="mark">` (points, timeline events; the circle's
+  centre IS the value, other marker shapes are drawn around it as `glyph`), `<rect class="mark">` (bars from their
+  baseline; stacked segments from the running total; histogram bins `[left, right)`, the last closed; heatmap cells),
+  each series inside `<g class="series" data-name>`. Missing values draw nothing.
+- Diagrams: nodes are `<g class="node">` (one shape and a `<text>`), edges `<g class="edge">` with a
+  `<polyline class="edge">` from the source's outline to the target's, an `<path class="arrow">` when directed, a
+  `<text class="edge-label">` when labelled; edge kinds by dash listed as `<g class="key edge-kind" data-name>`.
+- Timelines: lanes are the y axis's category ticks at each lane's marker line; events are circles on that line,
+  spans are rects below it.
+- Documents: one `<h1>` (the title), sections from h2 without skipped levels, an element of class `made-by` saying
+  "Made by NeuroSciFi" and "not evidence" (Markdown: a quoted line), a "What this is based on" section, figures as
+  inline SVG with a `<figcaption>`, tables with a caption and scoped headers ("Name (unit)"), references as links to
+  ids of the same document only; no script, no external reference (a CSP meta says so too).
+- Data files: the dialects stated in `make/datafiles.py` ("neuroscifi.csv/1", "neuroscifi.table/1").
+
+**3. Make and check are independent.** `artifacts/make/` turns a validated spec into bytes; `artifacts/check/`
+re-reads bytes with its own readers: a bounded expat SVG parser (no DTD, entity or processing instruction; bytes,
+elements and depth bounded while parsing), an HTML tree reader over `html.parser`, a Markdown line reader, an RFC 4180
+reader that keeps quoting, a JSON reader refusing duplicate keys and NaN. No module under `check/` imports from
+`make/` (a test parses every check module's imports); checks are written from the formats and this contract, with
+their own constants (the text width estimate, tolerances, the colour resolution). With a spec they measure **carried
+information**: each axis is fitted from its ticks (linear, log10, ISO time; categories by position when the form says
+so, because "08" looks numeric), every mark is mapped back to values, and the share of source values recovered
+within the stated tolerance (0.5 % of an axis's tick span; heatmap 1 % of the ramp; tables and data files exactly, or
+to stated decimals) is reported with every mark that maps to no source value. `Verdict.ok` is decided by technical
+findings: safety, recovery, legibility where it destroys reading (substantial text overlap, text off the canvas,
+marks outside the plot, look-alike series, contrast below 4.5:1 for text and 3:1 for marks in light AND dark), the
+palette, title and description. Small overlaps, crowded ticks and more points than pixels are style findings.
+
+**4. Determinism.** The same spec gives the same bytes in any process on any host: no time, no random id (ids are a
+hash of the spec), fixed number formatting, layouts by stated rules (layered: longest-path layers, barycentre
+ordering with input-order ties; force: framed Fruchterman-Reingold from a circle, 300 iterations, sums taken in a
+fixed order, positions rounded each step; tree: leaves in depth-first order). Golden digests of one spec per form are
+a test (recorded on aarch64, Python 3.12; another process with another hash seed must agree).
+
+**5. The palette rule.** Gray on `currentColor`, with CSS variables for light and dark (`prefers-color-scheme`);
+series told apart by dash, marker shape and fill pattern (six styles; more series is a technical finding whose repair
+is small multiples); hue only for marks the spec flags `warning` (amber) or `danger` (red), and only on elements
+carrying that flag's class; never green (a check of its own). Heatmaps encode values in gray levels with a swatch
+legend and print values in black or white, whichever contrasts more.
+
+**6. Bounded repair.** `make/repair.py`: named rules from failed findings to changes of options or form (rotate, then
+cut labels; a larger canvas; thinner ticks; small multiples; min-max aggregation stated in the description; bars back
+to zero), recorded in `options.history`, at most three rounds, never a change of the data. No model takes part.
+
+## What is not made, and why
+
+- Raster images, sound, solids and the interactive runtime: lane G2 (below).
+- Video: not in Wave O-0 (DESIGN §8); animation is declarative animated SVG with a still last frame for reduced motion.
+- Typeset mathematics (equations are shown as their source text), maps, and anything needing a font file, the network
+  or a browser to be valid.
+- No hue beyond the two flags, no script in anything G1 makes, no link out of a made document (addresses are text).
+
+## Evidence
+
+`docs/quality/evidence/omnimind_g1.json` (`scripts/omni_g1_evidence.py`): five specs per form, 80 of 80 pass their
+independent check, carried information 1.0 on every form, 485 of 485 deliberately wrong artifacts caught (mutations
+written by this lane, stated as such in the file, with what its first run found). Tests: `tests/artifacts/test_g1_*.py`.
+
+## What stays open
+
+- The text width model is an estimate: a font far wider than common sans faces can still overlap; the check uses its
+  own narrower estimate and would not see that either. A rendered-pixel check (Chromium, optional) is not built.
+- Golden digests are recorded on aarch64 only; x86_64 is **unverified**.
+- G1's validators answer for G1's forms; for bytes of another form with a spec they give no verdict; without a spec
+  they judge any SVG, HTML, Markdown, CSV or JSON by G1's rules (a script in HTML fails), which G2's interactive
+  documents must be told apart from at the merge.
+- `make.repair` is the module `make/repair.py`; DESIGN names a function `make.repair(spec, verdict)`: the registry
+  should re-export `repair` at the merge.
+
+## Consequences
+
+Anything made is checked by code that never asked the maker; a chart either gives back its numbers or says how many
+it lost. Specs stay small, typed and editable; nothing a model writes is ever rendered as markup.
