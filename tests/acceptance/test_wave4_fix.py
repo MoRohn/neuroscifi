@@ -240,6 +240,7 @@ def test_the_caution_shows_only_one_source_by_default():
     copies = {"pages": 3, "groups": 2, "joined": ["near_duplicate"], "own_answer": True}
     one = {"pages": 1, "groups": 1, "joined": [], "own_answer": True}
     assert caution.sentence(copies) is None and caution.brief(copies) is None
+    assert caution.sentence({"pages": 2, "groups": 1, "joined": ["near_duplicate"], "own_answer": False}) is None
     assert caution.sentence(one) == "Only one source says this." and "said earlier" not in caution.sentence(one)
     assert "count as 2 sources" in caution.sentence(copies, True) and "said earlier" in caution.sentence(copies, True)
 

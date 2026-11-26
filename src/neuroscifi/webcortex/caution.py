@@ -19,8 +19,10 @@ The facts, per statement:
 When a caution is shown (the rule written before it was measured; ADR-065): when the statement rests on at most one
 source that can be told apart (groups <= 1), when some of its pages were counted together as copies (pages > groups:
 copying is present in this story, and reworded copies are not caught), or when a supporting page repeats an earlier
-answer of the individual's own. Since the Wave 4 fix (review4 measurement M4, security L2) only the first trigger is
-SHOWN: it is the only one the measurement supports (all 3 wrong answers carried it); the copy trigger sat on truly
+answer of the individual's own. Since the Wave 4 fix (review4 measurement M4, security L2) only "one source" in the
+sense measured is SHOWN: a single page (pages <= 1, "Only one source says this."), the only trigger the measurement
+supports (all 3 wrong answers carried it, each on one page); several pages counted as one source are the copy
+trigger. The copy trigger sat on truly
 independent pages in 79 of 264 cases on held-out worlds, and the own-answer flag had no echo page in 7 of 22, and a
 caution that is wrong three times in ten teaches the owner to ignore cautions. The other two are still computed (the
 facts) and are shown only with WebConfig.caution_detail (off by default). The words say what is known and what is
@@ -99,9 +101,14 @@ class _Own:
 
 
 def shown(f: dict | None, detail: bool = False) -> bool:
-    """Whether a caution is shown for these facts (the module docstring): one source only; with `detail`
-    (WebConfig.caution_detail) also pages counted together as copies and a page repeating an earlier answer."""
-    return bool(f) and (f["groups"] <= 1 or (detail and (f["pages"] > f["groups"] or f.get("own_answer") is True)))
+    """Whether a caution is shown for these facts (the module docstring): one page only; with `detail`
+    (WebConfig.caution_detail) as the rule was written: at most one source, pages counted together as copies, a page
+    repeating an earlier answer."""
+    if not f:
+        return False
+    if detail:
+        return f["groups"] <= 1 or f["pages"] > f["groups"] or f.get("own_answer") is True
+    return f["pages"] <= 1
 
 
 def sentence(f: dict | None, detail: bool = False) -> str | None:

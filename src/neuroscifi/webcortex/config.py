@@ -304,8 +304,8 @@ class WebConfig:
     # unchanged. Off ("race") by default: the owner's decision (ADR-064 has the measurements).
     allowance_division: str = "race"
     reach_share: float = 0.25
-    # ADR-065 (Wave 4 fix, review4 M4): the caution shown to the owner says "only one source" by default, the one
-    # trigger its measurement supports. On, it also says when pages were counted together as copies and when a page
+    # ADR-065 (Wave 4 fix, review4 M4): the caution shown to the owner says "only one source" (a single page) by default, the
+    # one trigger its measurement supports. On, it also says when pages were counted together as copies and when a page
     # repeats an earlier answer of the individual's own (computed either way; wrong about 3 times in 10 on held-out
     # worlds). Display only: nothing reads it to decide anything.
     caution_detail: bool = False
