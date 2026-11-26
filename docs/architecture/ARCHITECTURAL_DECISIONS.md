@@ -4857,9 +4857,25 @@ transaction, 0.39 s median for 16 pairs (one pass; 0.80 s with half the pairs un
 its write inside the transaction 0.09 ms; the consolidation's check of 64 claims, before the transaction, 0.9 ms;
 removing a task's emissions inside a forget, 0.07 ms. Nothing scans inside a write transaction.
 
+**The withheld look** (added 2026-11-26 by the Wave 4 record lane; WAVE4.md, "The withheld looks"; ledger line 9,
+clean tree `e812a8e`; `docs/quality/evidence/genesis_wave4_look_analysis.json`, the main session's reading by the
+committed rule). Taken once, on the two withheld source-independence worlds (four seeds, 576 looks, 356 eligible true
+values), with `shipped` and Wave 3's `echo_recognition` beside this rule. The control holds: `shipped` reproduces step
+0's look in every compared key (0 differences). Under `sources.own_verdict` this rule reads **"effective"** (A1, A2,
+S1, C1, G all hold): own answers admitted 2 → 1, wrongly admitted 110 → 108, eligible not held 129 → 128, 14 honest
+pages set aside (4 and 10 per world) and 12 echo pages; grouping unchanged. `echo_recognition`, under the same
+function, also "effective": 2 → 0, 110 → 107, 129 → 128, 14 honest pages, 15 echo pages. Read honestly: **the word
+"effective" rests on a base of two events** (the two own answers admitted as shipped, both in one world); this rule
+stopped one of them and the older rule both, **each at the cost of 14 honest pages set aside**; the hole itself (110
+rows below the bar, 26 of them false as shipped) is untouched by either (108, 107). **This rule is not shown to be
+better than the older one.** The look cannot report the owner's question load (the harness does not record how many
+disagreement questions were asked), and none of the limits listed in the look rule is exercised by these worlds
+(answers that only mention or deny a value, undated pages, an adversary's edits, answers of a family device or an
+agent, the 30-day lifetime). Nothing changes: the setting stays off.
+
 ## Why OFF
 
-The pre-registered verdict is "effective" on both splits, but:
+The pre-registered verdict is "effective" on both splits (and on the withheld look, on a base of two), but:
 - the gain is small and the counts are few (4 own answers admitted at shipped on each split; 1 to 2 remain);
 - it costs a measured false rejection (true values stated wrongly first by the individual, then released and
   reported): after the fix lane 14 honest pages set aside on held-out (of 2,670 read) and 8 on development (of 1,091),
@@ -4867,7 +4883,9 @@ The pre-registered verdict is "effective" on both splits, but:
 - "effective" holds at zero margin in one held-out world: src-ho-mixed is suppressed 56 → 58 against a tolerance of
   2, so one more false rejection there makes the verdict "trade";
 - mentions and denials in other words are read as assertions (9 of 18 phrasings, above), which the worlds do not
-  contain.
+  contain;
+- on the withheld worlds it did less than Wave 3's older rule (own answers 2 → 1 against 2 → 0) at the same cost (14
+  honest pages), and left the hole as large (above).
 The security review's second pass makes these block any recommendation to turn it on (the expiry defect it also
 named is fixed in the second fix round). Changing what counts as a source
 is the owner's decision (Wave 3's lesson): the setting ships off; `nsf web config --db DB --set own_text_provenance=true`
