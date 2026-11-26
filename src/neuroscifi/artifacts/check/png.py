@@ -289,12 +289,12 @@ def _grid(rows) -> np.ndarray:
 
 def _contract(spec, source):
     form = getattr(spec, "spec", None)
-    if form not in ("image_raster", "image_apng"):
+    if form not in ("image.raster", "image.apng"):
         return None
     if source is not None:
-        grids = [np.asarray(g, dtype=np.float64) for g in (source if form == "image_apng" else [source])]
+        grids = [np.asarray(g, dtype=np.float64) for g in (source if form == "image.apng" else [source])]
     else:
-        grids = [_grid(spec.data["grid"])] if form == "image_raster" else [_grid(g) for g in spec.data["frames"]]
+        grids = [_grid(spec.data["grid"])] if form == "image.raster" else [_grid(g) for g in spec.data["frames"]]
     o = spec.options
     if "range" in o:
         lo, hi = float(o["range"][0]), float(o["range"][1])
@@ -302,7 +302,7 @@ def _contract(spec, source):
         present = np.concatenate([g[np.isfinite(g)] for g in grids])
         lo, hi = (float(present.min()), float(present.max())) if present.size else (0.0, 1.0)
     delays = None
-    if form == "image_apng":
+    if form == "image.apng":
         delays = list(spec.data["delays_ms"])
         delays = delays * len(grids) if len(delays) == 1 else delays
     return {"grids": grids, "lo": lo, "hi": hi, "ramp": o.get("ramp", "dark_low"), "bits": int(o.get("bits", 8)),

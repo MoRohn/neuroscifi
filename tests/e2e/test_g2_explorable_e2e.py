@@ -21,7 +21,7 @@ def _spec(form, data, title):
             "options": {}, "sources": ["request"], "made_by": {"generator": "", "version": 0}}
 
 
-MODEL = _spec("explorable_model", {
+MODEL = _spec("explorable.model", {
     "parameters": [{"name": "m", "label": "Mass", "min": 0.5, "max": 4, "step": 0.5, "value": 1, "unit": "kg"},
                    {"name": "k", "label": "Stiffness", "min": 1, "max": 20, "step": 1, "value": 10, "unit": "N/m"},
                    {"name": "c", "label": "Damping", "min": 0, "max": 2, "step": 0.1, "value": 0.3}],
@@ -36,7 +36,7 @@ MODEL = _spec("explorable_model", {
               {"kind": "table", "title": "Numbers", "items": ["omega", "zeta", "x", "energy"]},
               {"kind": "bars", "title": "Compared", "items": ["omega", "energy"]},
               {"kind": "plot", "title": "Damping ratio", "x": "c", "y": ["zeta"], "points": 21}]}, "A spring")
-STEPS = _spec("explorable_steps", {
+STEPS = _spec("explorable.steps", {
     "code": ["lo ← 0; hi ← n − 1", "look at the middle", "found"],
     "arrays": [{"name": "a", "label": "The list"}],
     "steps": [{"note": "Start.", "line": 0, "arrays": [[1, 3, 5, 7, 9]],
@@ -45,7 +45,7 @@ STEPS = _spec("explorable_steps", {
                "marks": [{"array": 0, "index": 2, "kind": "active"}], "vars": [{"name": "mid", "value": 2}]},
               {"note": "Found 5.", "line": 2, "arrays": [[1, 3, 5, 7, 9]],
                "marks": [{"array": 0, "index": 2, "kind": "found"}]}]}, "Three steps")
-SOLID = explorable.solid_view_spec(_spec("solid_revolve", {"profile": [[0, 0], [2, 0], [1, 3], [0, 3]]},
+SOLID = explorable.solid_view_spec(_spec("solid.revolve", {"profile": [[0, 0], [2, 0], [1, 3], [0, 3]]},
                                          "A cone"), title="A cone to turn")
 AXE_SOURCE = AXE.read_text() if AXE.exists() else None
 

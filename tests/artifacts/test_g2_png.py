@@ -82,18 +82,18 @@ def test_reader_undoes_every_filter_of_a_hand_built_png(kind):
 @pytest.mark.parametrize("options", [{}, {"bits": 16}, {"ramp": "light_low", "warn_above": 9},
                                      {"warn_below": 1, "bits": 16, "range": [0, 10]}, {"cell_px": 1}])
 def test_raster_made_and_every_value_recovered(options):
-    made = make.make(_spec("image_raster", {"grid": GRID}, options))
+    made = make.make(_spec("image.raster", {"grid": GRID}, options))
     assert made.media_type == "image/png"
     verdict = check.check(made.bytes, made.media_type, made.spec)
     assert verdict.ok, [(f.rule, f.detail) for f in verdict.technical if not f.passed]
     assert next(f for f in verdict.technical if f.rule == "values_recovered").measure == 1.0
-    assert made.bytes == make.make(_spec("image_raster", {"grid": GRID}, options)).bytes
+    assert made.bytes == make.make(_spec("image.raster", {"grid": GRID}, options)).bytes
     assert "Gray scale" in pngcheck.read(made.bytes).texts["Description"]
 
 
 def test_animation_made_and_checked():
     frames = [[[(i + j + k) % 5 for j in range(8)] for i in range(6)] for k in range(10)]
-    made = make.make(_spec("image_apng", {"frames": frames, "delays_ms": [100]}, {"warn_above": 3}))
+    made = make.make(_spec("image.apng", {"frames": frames, "delays_ms": [100]}, {"warn_above": 3}))
     assert made.media_type == "image/apng"
     verdict = check.check(made.bytes, made.media_type, made.spec)
     assert verdict.ok, _failed(verdict)
@@ -102,15 +102,15 @@ def test_animation_made_and_checked():
 
 
 def test_a_changed_value_is_caught_with_its_share():
-    made = make.make(_spec("image_raster", {"grid": GRID}))
-    changed = Spec.from_dict(_spec("image_raster", {"grid": [[0, 1, 2, 3], [4, None, 6, 7], [8, 9, 9.5, 11]]}))
+    made = make.make(_spec("image.raster", {"grid": GRID}))
+    changed = Spec.from_dict(_spec("image.raster", {"grid": [[0, 1, 2, 3], [4, None, 6, 7], [8, 9, 9.5, 11]]}))
     verdict = check.check(made.bytes, "image/png", changed)
     rec = next(f for f in verdict.technical if f.rule == "values_recovered")
     assert not rec.passed and rec.measure == pytest.approx(10 / 11)
 
 
 def test_a_green_fill_and_an_opaque_missing_cell_are_caught():
-    made = make.make(_spec("image_raster", {"grid": GRID}, {"warn_above": 9}))
+    made = make.make(_spec("image.raster", {"grid": GRID}, {"warn_above": 9}))
     image = pngcheck.read(made.bytes).image.copy()        # RGBA: warnings and a missing value
     image[0:10, 0:10] = (0, 200, 0, 255)                  # green over a cell the spec does not flag
     image[128:256, 128:256, 3] = 255                      # the missing cell made opaque
@@ -119,7 +119,7 @@ def test_a_green_fill_and_an_opaque_missing_cell_are_caught():
 
 
 def test_a_flagged_cell_without_its_outline_is_caught():
-    made = make.make(_spec("image_raster", {"grid": [[0, 5], [10, 2]]}, {"warn_above": 9}))
+    made = make.make(_spec("image.raster", {"grid": [[0, 5], [10, 2]]}, {"warn_above": 9}))
     image = pngcheck.read(made.bytes).image.copy()
     centre = image[image.shape[0] * 3 // 4, image.shape[1] // 4, 0]
     image[image.shape[0] // 2:, : image.shape[1] // 2, :3] = centre    # paint over the outline of the cell holding 10
@@ -129,15 +129,15 @@ def test_a_flagged_cell_without_its_outline_is_caught():
 
 def test_wrong_delays_and_frame_count_are_caught():
     frames = [[[k, k + 1], [k + 2, k + 3]] for k in range(4)]
-    made = make.make(_spec("image_apng", {"frames": frames, "delays_ms": [100, 100, 100, 100]}))
-    slower = Spec.from_dict(_spec("image_apng", {"frames": frames, "delays_ms": [100, 200, 100, 100]}))
+    made = make.make(_spec("image.apng", {"frames": frames, "delays_ms": [100, 100, 100, 100]}))
+    slower = Spec.from_dict(_spec("image.apng", {"frames": frames, "delays_ms": [100, 200, 100, 100]}))
     assert "delays" in _failed(check.check(made.bytes, "image/apng", slower))
-    more = Spec.from_dict(_spec("image_apng", {"frames": frames + frames[:1], "delays_ms": [100]}))
+    more = Spec.from_dict(_spec("image.apng", {"frames": frames + frames[:1], "delays_ms": [100]}))
     assert "frame_count" in _failed(check.check(made.bytes, "image/apng", more))
 
 
 def test_a_bad_crc_truncation_and_trailing_bytes_are_caught():
-    made = make.make(_spec("image_raster", {"grid": GRID}))
+    made = make.make(_spec("image.raster", {"grid": GRID}))
     corrupt = bytearray(made.bytes)
     corrupt[40] ^= 0xFF
     assert "crc" in _failed(check.check(bytes(corrupt), "image/png", made.spec))
@@ -147,7 +147,7 @@ def test_a_bad_crc_truncation_and_trailing_bytes_are_caught():
 
 def test_sequence_gap_in_an_animation_is_caught():
     frames = [[[k, k + 1], [k + 2, k + 3]] for k in range(3)]
-    made = make.make(_spec("image_apng", {"frames": frames, "delays_ms": [50]}))
+    made = make.make(_spec("image.apng", {"frames": frames, "delays_ms": [50]}))
     data = bytearray(made.bytes)
     at = data.find(b"fdAT")
     data[at + 4:at + 8] = struct.pack(">I", 9)

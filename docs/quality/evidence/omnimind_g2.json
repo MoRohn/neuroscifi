@@ -3,40 +3,40 @@
  "browser_run": {
   "axe": "not run here (the e2e test runs it where axe-core is installed)",
   "documents": {
-   "explorable_model/dark": {
+   "explorable.model/dark": {
     "failed": [],
     "ok": true,
-    "seconds": 1.56,
+    "seconds": 1.83,
     "values_follow_parameters": 1.0
    },
-   "explorable_model/light": {
+   "explorable.model/light": {
     "failed": [],
     "ok": true,
-    "seconds": 1.36,
+    "seconds": 1.45,
     "values_follow_parameters": 1.0
    },
-   "explorable_steps/dark": {
+   "explorable.steps/dark": {
     "failed": [],
     "ok": true,
-    "seconds": 0.57,
+    "seconds": 0.71,
     "values_follow_parameters": null
    },
-   "explorable_steps/light": {
-    "failed": [],
-    "ok": true,
-    "seconds": 0.68,
-    "values_follow_parameters": null
-   },
-   "solid_view/dark": {
+   "explorable.steps/light": {
     "failed": [],
     "ok": true,
     "seconds": 0.63,
     "values_follow_parameters": null
    },
-   "solid_view/light": {
+   "solid.view/dark": {
     "failed": [],
     "ok": true,
     "seconds": 0.63,
+    "values_follow_parameters": null
+   },
+   "solid.view/light": {
+    "failed": [],
+    "ok": true,
+    "seconds": 0.71,
     "values_follow_parameters": null
    }
   },
@@ -52,24 +52,24 @@
   "values_equal": 5252
  },
  "forms": {
-  "explorable_model": {
+  "explorable.model": {
    "bytes": 62915,
    "carried_information": 1.0,
    "check_ok": true,
-   "check_s": 0.0065,
+   "check_s": 0.0111,
    "deterministic": true,
    "made": true,
-   "make_s": 0.0079,
+   "make_s": 0.0179,
    "media_type": "application/vnd.neuroscifi.explorable+html",
    "wrong_caught": 9,
    "wrong_missed": [],
    "wrong_total": 9
   },
-  "explorable_steps": {
+  "explorable.steps": {
    "bytes": 61785,
    "carried_information": null,
    "check_ok": true,
-   "check_s": 0.0002,
+   "check_s": 0.0003,
    "deterministic": true,
    "made": true,
    "make_s": 0.0007,
@@ -78,47 +78,47 @@
    "wrong_missed": [],
    "wrong_total": 9
   },
-  "image_apng": {
+  "image.apng": {
    "bytes": 13401,
    "carried_information": 1.0,
    "check_ok": true,
-   "check_s": 0.0071,
+   "check_s": 0.0148,
    "deterministic": true,
    "made": true,
-   "make_s": 0.0174,
+   "make_s": 0.0299,
    "media_type": "image/apng",
    "wrong_caught": 3,
    "wrong_missed": [],
    "wrong_total": 3
   },
-  "image_raster": {
+  "image.raster": {
    "bytes": 7976,
    "carried_information": 1.0,
    "check_ok": true,
-   "check_s": 0.0018,
+   "check_s": 0.0048,
    "deterministic": true,
    "made": true,
-   "make_s": 0.0063,
+   "make_s": 0.0121,
    "media_type": "image/png",
    "wrong_caught": 6,
    "wrong_missed": [],
    "wrong_total": 6
   },
-  "solid_box": {
+  "solid.box": {
    "bytes": 684,
    "carried_information": null,
    "check_ok": true,
-   "check_s": 0.0004,
+   "check_s": 0.0034,
    "deterministic": true,
    "geometry_matches": true,
    "made": true,
-   "make_s": 0.0004,
+   "make_s": 0.0003,
    "media_type": "model/stl",
    "wrong_caught": 5,
    "wrong_missed": [],
    "wrong_total": 5
   },
-  "solid_extrude": {
+  "solid.extrude": {
    "bytes": 1684,
    "carried_information": null,
    "check_ok": true,
@@ -126,17 +126,17 @@
    "deterministic": true,
    "geometry_matches": true,
    "made": true,
-   "make_s": 0.0012,
+   "make_s": 0.0011,
    "media_type": "model/stl",
    "wrong_caught": 5,
    "wrong_missed": [],
    "wrong_total": 5
   },
-  "solid_points": {
+  "solid.points": {
    "bytes": 20084,
    "carried_information": 1.0,
    "check_ok": true,
-   "check_s": 0.0016,
+   "check_s": 0.0046,
    "deterministic": true,
    "geometry_matches": true,
    "made": true,
@@ -146,75 +146,75 @@
    "wrong_missed": [],
    "wrong_total": 5
   },
-  "solid_revolve": {
+  "solid.revolve": {
    "bytes": 38484,
    "carried_information": null,
    "check_ok": true,
-   "check_s": 0.0021,
+   "check_s": 0.0051,
    "deterministic": true,
    "geometry_matches": true,
    "made": true,
-   "make_s": 0.0009,
+   "make_s": 0.0008,
    "media_type": "model/stl",
    "wrong_caught": 5,
    "wrong_missed": [],
    "wrong_total": 5
   },
-  "solid_view": {
+  "solid.view": {
    "bytes": 88191,
    "carried_information": null,
    "check_ok": true,
-   "check_s": 0.0014,
+   "check_s": 0.0015,
    "deterministic": true,
    "made": true,
-   "make_s": 0.01,
+   "make_s": 0.0148,
    "media_type": "application/vnd.neuroscifi.explorable+html",
    "wrong_caught": 9,
    "wrong_missed": [],
    "wrong_total": 9
   },
-  "sound_sequence": {
+  "sound.sequence": {
    "bytes": 128114,
    "carried_information": 1.0,
    "check_ok": true,
-   "check_s": 0.0035,
+   "check_s": 0.0033,
    "deterministic": true,
    "made": true,
-   "make_s": 0.0007,
+   "make_s": 0.0036,
    "media_type": "audio/wav"
   },
-  "sound_sonify": {
+  "sound.sonify": {
    "bytes": 1229894,
    "carried_information": 1.0,
    "check_ok": true,
-   "check_s": 0.0196,
+   "check_s": 0.0284,
    "deterministic": true,
    "made": true,
-   "make_s": 0.0065,
+   "make_s": 0.0111,
    "media_type": "audio/wav",
    "wrong_caught": 5,
    "wrong_missed": [],
    "wrong_total": 5
   },
-  "sound_tone": {
+  "sound.tone": {
    "bytes": 88408,
    "carried_information": 1.0,
    "check_ok": true,
-   "check_s": 0.0047,
+   "check_s": 0.0067,
    "deterministic": true,
    "made": true,
-   "make_s": 0.0013,
+   "make_s": 0.0009,
    "media_type": "audio/wav"
   },
-  "surface_grid": {
+  "surface.grid": {
    "bytes": 69584,
    "carried_information": 1.0,
    "check_ok": true,
-   "check_s": 0.007,
+   "check_s": 0.0129,
    "deterministic": true,
    "geometry_matches": true,
    "made": true,
-   "make_s": 0.0017,
+   "make_s": 0.0047,
    "media_type": "model/stl",
    "wrong_caught": 5,
    "wrong_missed": [],

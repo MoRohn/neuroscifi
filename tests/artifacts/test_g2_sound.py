@@ -66,7 +66,7 @@ def _contract_pitch(v, lo=1.0, hi=10.0, low=220.0, high=880.0):
 
 
 def test_sonify_made_and_checked_with_every_value_recovered():
-    made = make.make(_spec("sound_sonify", {"values": SERIES, "name": "rainfall", "unit": "mm"}))
+    made = make.make(_spec("sound.sonify", {"values": SERIES, "name": "rainfall", "unit": "mm"}))
     assert made.media_type == "audio/wav"
     verdict = check.check(made.bytes, made.media_type, made.spec)
     assert verdict.ok, _failed(verdict)
@@ -77,8 +77,8 @@ def test_sonify_made_and_checked_with_every_value_recovered():
 
 
 def test_tone_sequence_and_stereo_pass():
-    for form, data in (("sound_tone", {"frequency_hz": 440, "duration_s": 0.5}),
-                       ("sound_sequence", {"notes": [{"frequency_hz": 262, "duration_s": 0.3},
+    for form, data in (("sound.tone", {"frequency_hz": 440, "duration_s": 0.5}),
+                       ("sound.sequence", {"notes": [{"frequency_hz": 262, "duration_s": 0.3},
                                                      {"frequency_hz": None, "duration_s": 0.2},
                                                      {"frequency_hz": 392, "duration_s": 0.3}]})):
         for channels in (1, 2):
@@ -89,7 +89,7 @@ def test_tone_sequence_and_stereo_pass():
 
 
 def test_same_spec_same_bytes_and_the_sine_is_exact():
-    value = _spec("sound_sonify", {"values": SERIES})
+    value = _spec("sound.sonify", {"values": SERIES})
     assert make.make(value).bytes == make.make(value).bytes
     t = np.linspace(-3.7, 5.2, 100_001)
     assert np.max(np.abs(sound.sin_turns(t) - np.sin(2 * np.pi * t))) < 1e-13
@@ -104,7 +104,7 @@ def test_reader_reads_a_hand_built_tone_and_its_pitch():
 
 
 def test_hand_built_contract_file_passes_and_a_wrong_pitch_is_caught():
-    spec = Spec.from_dict(_spec("sound_sonify", {"values": SERIES}))
+    spec = Spec.from_dict(_spec("sound.sonify", {"values": SERIES}))
     lead = (220.0, 880.0)
     right = _hand_tones([_contract_pitch(v) for v in SERIES], lead=lead)
     assert check.check(_hand_wav(right), "audio/wav", spec).ok
@@ -117,14 +117,14 @@ def test_hand_built_contract_file_passes_and_a_wrong_pitch_is_caught():
 
 
 def test_swapped_tones_break_the_order():
-    spec = Spec.from_dict(_spec("sound_sonify", {"values": [1, 4, 7, 10]}))
+    spec = Spec.from_dict(_spec("sound.sonify", {"values": [1, 4, 7, 10]}))
     freqs = [_contract_pitch(v) for v in (1, 7, 4, 10)]
     verdict = check.check(_hand_wav(_hand_tones(freqs, lead=(220.0, 880.0))), "audio/wav", spec)
     assert {"values_recovered", "order_preserved"} <= _failed(verdict)
 
 
 def test_clipped_file_is_caught():
-    made = make.make(_spec("sound_sonify", {"values": SERIES}))
+    made = make.make(_spec("sound.sonify", {"values": SERIES}))
     w = wavcheck.read(made.bytes)
     loud = np.clip(w.samples[:, 0] * 3.0, -32768, 32767)
     verdict = check.check(_hand_wav(loud), "audio/wav", made.spec)
@@ -132,7 +132,7 @@ def test_clipped_file_is_caught():
 
 
 def test_truncated_data_chunk_is_caught():
-    made = make.make(_spec("sound_sonify", {"values": SERIES}))
+    made = make.make(_spec("sound.sonify", {"values": SERIES}))
     cut = made.bytes[: len(made.bytes) // 2]
     verdict = check.check(cut, "audio/wav", made.spec)
     assert {"data_complete", "duration"} <= _failed(verdict)
@@ -163,16 +163,16 @@ def test_non_pcm16_and_hostile_bytes_are_named_findings():
 
 
 def test_spec_layout_mismatch_is_caught():
-    made = make.make(_spec("sound_tone", {"frequency_hz": 440, "duration_s": 0.5}))
-    other = Spec.from_dict(_spec("sound_tone", {"frequency_hz": 440, "duration_s": 0.5}, {"channels": 2}))
+    made = make.make(_spec("sound.tone", {"frequency_hz": 440, "duration_s": 0.5}))
+    other = Spec.from_dict(_spec("sound.tone", {"frequency_hz": 440, "duration_s": 0.5}, {"channels": 2}))
     assert "layout_matches_spec" in _failed(check.check(made.bytes, "audio/wav", other))
-    wrong = Spec.from_dict(_spec("sound_tone", {"frequency_hz": 660, "duration_s": 0.5}))
+    wrong = Spec.from_dict(_spec("sound.tone", {"frequency_hz": 660, "duration_s": 0.5}))
     assert "values_recovered" in _failed(check.check(made.bytes, "audio/wav", wrong))
 
 
 def test_over_the_duration_bound_is_refused_then_repaired_by_the_stated_rule():
     values = [float((i * 37) % 101) for i in range(1000)]
-    value = _spec("sound_sonify", {"values": values})
+    value = _spec("sound.sonify", {"values": values})
     with pytest.raises(Refused) as e:
         make.make(value)
     assert e.value.rule == "max_duration"
@@ -187,22 +187,22 @@ def test_over_the_duration_bound_is_refused_then_repaired_by_the_stated_rule():
     assert verdict.ok, _failed(verdict)
     assert sound.bucket_means([1, 2, None, None, 5, 7], 3) == [1.5, None, 6.0]
     assert _g2.repair(fixed, None) is None                       # no problem, no repair
-    assert _g2.repair(_spec("sound_tone", {"frequency_hz": 440, "duration_s": 1}), e.value) is None
+    assert _g2.repair(_spec("sound.tone", {"frequency_hz": 440, "duration_s": 1}), e.value) is None
 
 
 def test_impossible_specs_are_named_errors():
     with pytest.raises(Malformed):
-        make.make(_spec("sound_tone", {"frequency_hz": 5000, "duration_s": 1}, {"rate_hz": 8000}))
+        make.make(_spec("sound.tone", {"frequency_hz": 5000, "duration_s": 1}, {"rate_hz": 8000}))
     with pytest.raises(Malformed):
-        make.make(_spec("sound_sonify", {"values": [1, 2]}, {"low_hz": 900, "high_hz": 300}))
+        make.make(_spec("sound.sonify", {"values": [1, 2]}, {"low_hz": 900, "high_hz": 300}))
     with pytest.raises(Malformed):
-        make.make(_spec("sound_tone", {"frequency_hz": 440, "duration_s": 1}, {"volume": 3}))
+        make.make(_spec("sound.tone", {"frequency_hz": 440, "duration_s": 1}, {"volume": 3}))
     with pytest.raises(Refused):
-        make.make(_spec("sound_tone", {"frequency_hz": 440, "duration_s": 500}))
+        make.make(_spec("sound.tone", {"frequency_hz": 440, "duration_s": 500}))
 
 
 def test_a_constant_series_sounds_at_the_middle_pitch():
-    made = make.make(_spec("sound_sonify", {"values": [4, 4, 4]}, {"reference": "none"}))
+    made = make.make(_spec("sound.sonify", {"values": [4, 4, 4]}, {"reference": "none"}))
     assert check.check(made.bytes, made.media_type, made.spec).ok
     w = wavcheck.read(made.bytes)
     a, b = wavcheck.segments(w.samples[:, 0], RATE)[0]

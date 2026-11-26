@@ -31,11 +31,11 @@ from html.parser import HTMLParser
 from .. import expr
 from . import Finding, Verdict
 
-RUNTIME_SHA256 = "XUAmCNmBB6x/rDG0eNBI9v/tFJLzMpI07oEh7AGRWxA="
+RUNTIME_SHA256 = "MVc2JhdxNJXrRNEMAf/XeDakPZsZ0PaI7N7E2ccETiU="
 STYLE_SHA256 = "9C0U6Rqw+WnuqE/DpRhcS2tCPZxhLGiYV4gyMT7+SWU="
 EXPECTED_CSP = (f"default-src 'none'; script-src 'sha256-{RUNTIME_SHA256}'; style-src 'sha256-{STYLE_SHA256}'; "
                 "base-uri 'none'; form-action 'none'")
-FORMS = ("explorable_model", "explorable_steps", "solid_view")
+FORMS = ("explorable.model", "explorable.steps", "solid.view")
 MAX_BYTES = 40 << 20
 MAX_ELEMENTS = 200_000
 
@@ -164,7 +164,7 @@ def spec_problems(value) -> list[str]:
     d = value["data"]
     if not isinstance(d, dict):
         return ["no data"]
-    if value["spec"] == "explorable_model":
+    if value["spec"] == "explorable.model":
         params = d.get("parameters")
         if not isinstance(params, list) or not 1 <= len(params) <= 12 or not isinstance(d.get("views"), list):
             return ["a model needs 1 to 12 parameters and its views"]
@@ -180,7 +180,7 @@ def spec_problems(value) -> list[str]:
             return expr.model_problems(d)
         except (AttributeError, TypeError, KeyError, StopIteration):
             return ["the model's parts are not shaped as the form says"]
-    if value["spec"] == "explorable_steps":
+    if value["spec"] == "explorable.steps":
         try:
             arrays, steps, code = d["arrays"], d["steps"], d.get("code", [])
             problems = []
@@ -280,7 +280,7 @@ def check_explorable(data: bytes, media_type: str = "", spec=None, source=None) 
     else:
         detail = f"{len(data_blocks)} JSON block(s) where one is expected"
     technical.append(Finding("spec_block", block_ok, detail))
-    if block_ok and value["spec"] == "explorable_model":
+    if block_ok and value["spec"] == "explorable.model":
         try:
             want = expr.evaluate_model(value["data"])["values"]
         except (expr.ExprError, KeyError, TypeError, StopIteration):

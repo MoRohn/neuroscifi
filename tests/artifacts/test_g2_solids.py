@@ -23,18 +23,18 @@ def _spec(form, data, options=None):
 
 
 CASES = {
-    "box": ("solid_box", {"size": [2, 3, 4], "center": [1, 1, 1]}),
-    "plate_with_holes": ("solid_extrude", {"outline": [[0, 0], [10, 0], [10, 6], [0, 6]], "height": 2,
+    "box": ("solid.box", {"size": [2, 3, 4], "center": [1, 1, 1]}),
+    "plate_with_holes": ("solid.extrude", {"outline": [[0, 0], [10, 0], [10, 6], [0, 6]], "height": 2,
                                            "holes": [[[2, 2], [4, 2], [4, 4], [2, 4]], [[6, 1], [8, 1], [8, 5], [6, 5]]]}),
-    "outline_with_straight_points": ("solid_extrude", {"outline": [[0, 0], [2, 0], [4, 0], [4, 2], [4, 4], [2, 4],
+    "outline_with_straight_points": ("solid.extrude", {"outline": [[0, 0], [2, 0], [4, 0], [4, 2], [4, 4], [2, 4],
                                                                    [0, 4], [0, 2]], "height": 1,
                                                        "holes": [[[1, 1], [1, 2], [2, 2], [2, 1]]]}),
-    "vase": ("solid_revolve", {"profile": [[0, 0], [2, 0], [2, 1], [1, 2], [1, 4], [0, 4]]}),
-    "ring": ("solid_revolve", {"profile": [[1, 0], [2, 1], [1, 2]]}),
-    "surface": ("surface_grid", {"values": [[0, 1, 2], [1, 2, 3], [0, 0.5, 1], [2, 2, 2]], "x": [0, 3], "y": [0, 4]}),
-    "closed_surface": ("surface_grid", {"values": [[0, 1, 2], [1, 2, 3], [0, 0.5, 1], [2, 2, 2]], "x": [0, 3],
+    "vase": ("solid.revolve", {"profile": [[0, 0], [2, 0], [2, 1], [1, 2], [1, 4], [0, 4]]}),
+    "ring": ("solid.revolve", {"profile": [[1, 0], [2, 1], [1, 2]]}),
+    "surface": ("surface.grid", {"values": [[0, 1, 2], [1, 2, 3], [0, 0.5, 1], [2, 2, 2]], "x": [0, 3], "y": [0, 4]}),
+    "closed_surface": ("surface.grid", {"values": [[0, 1, 2], [1, 2, 3], [0, 0.5, 1], [2, 2, 2]], "x": [0, 3],
                                         "y": [0, 4], "base_z": -1}),
-    "points": ("solid_points", {"points": [[0, 0, 0], [1, 2, 3], [4, 1, 0]]}),
+    "points": ("solid.points", {"points": [[0, 0, 0], [1, 2, 3], [4, 1, 0]]}),
 }
 
 
@@ -60,7 +60,7 @@ def test_analytic_volumes_are_the_ones_checked():
     assert e["volume"] == 24.0
     e = meshes.expectations(Spec.from_dict(_spec(*CASES["plate_with_holes"])))
     assert e["volume"] == (60 - 4 - 8) * 2
-    cyl = Spec.from_dict(_spec("solid_revolve", {"profile": [[0, 0], [1, 0], [1, 1], [0, 1]]}, {"segments": 256}))
+    cyl = Spec.from_dict(_spec("solid.revolve", {"profile": [[0, 0], [1, 0], [1, 1], [0, 1]]}, {"segments": 256}))
     e = meshes.expectations(cyl)
     assert e["volume"] == pytest.approx(0.5 * 256 * math.sin(2 * math.pi / 256))
     assert e["smooth_volume"] == pytest.approx(math.pi)
@@ -158,18 +158,18 @@ def test_truncated_stl_is_caught():
 
 
 @pytest.mark.parametrize("form,data,needle", [
-    ("solid_extrude", {"outline": [[0, 0], [4, 4], [4, 0], [0, 5]], "height": 1}, "crosses"),
-    ("solid_extrude", {"outline": [[0, 0], [4, 0], [4, 4], [0, 4]], "height": 1,
+    ("solid.extrude", {"outline": [[0, 0], [4, 4], [4, 0], [0, 5]], "height": 1}, "crosses"),
+    ("solid.extrude", {"outline": [[0, 0], [4, 0], [4, 4], [0, 4]], "height": 1,
                        "holes": [[[5, 5], [6, 5], [6, 6]]]}, "outside"),
-    ("solid_extrude", {"outline": [[0, 0], [4, 0], [4, 4], [0, 4]], "height": 1,
+    ("solid.extrude", {"outline": [[0, 0], [4, 0], [4, 4], [0, 4]], "height": 1,
                        "holes": [[[1, 1], [3, 1], [3, 3]], [[2, 0.5], [3.5, 2], [2, 2]]]}, "crosses"),
-    ("solid_extrude", {"outline": [[0, 0], [1, 0], [2, 0]], "height": 1}, "no area"),
-    ("solid_revolve", {"profile": [[0, 0], [-1, 1], [0, 2]]}, "negative radius"),
-    ("solid_revolve", {"profile": [[1, 0], [0, 1], [1, 2]]}, "ends of a profile"),
-    ("solid_revolve", {"profile": [[1, 0], [2, 2], [2, 0], [1, 2]]}, "crosses"),
-    ("surface_grid", {"values": [[0, 1], [1, 2]], "x": [0, 1], "y": [0, 1], "base_z": 0.5}, "below"),
-    ("surface_grid", {"values": [[0, 1], [1, 2, 3]], "x": [0, 1], "y": [0, 1]}, "same length"),
-    ("surface_grid", {"values": [[0, 1], [1, 2]], "x": [1, 0], "y": [0, 1]}, "rise"),
+    ("solid.extrude", {"outline": [[0, 0], [1, 0], [2, 0]], "height": 1}, "no area"),
+    ("solid.revolve", {"profile": [[0, 0], [-1, 1], [0, 2]]}, "negative radius"),
+    ("solid.revolve", {"profile": [[1, 0], [0, 1], [1, 2]]}, "ends of a profile"),
+    ("solid.revolve", {"profile": [[1, 0], [2, 2], [2, 0], [1, 2]]}, "crosses"),
+    ("surface.grid", {"values": [[0, 1], [1, 2]], "x": [0, 1], "y": [0, 1], "base_z": 0.5}, "below"),
+    ("surface.grid", {"values": [[0, 1], [1, 2, 3]], "x": [0, 1], "y": [0, 1]}, "same length"),
+    ("surface.grid", {"values": [[0, 1], [1, 2]], "x": [1, 0], "y": [0, 1]}, "rise"),
 ])
 def test_impossible_geometry_is_refused_not_fixed(form, data, needle):
     with pytest.raises(Malformed, match=needle):
@@ -184,7 +184,7 @@ def test_triangulation_covers_random_outlines_exactly():
         r = rng.uniform(4, 10, n)
         outline = np.column_stack([r * np.cos(ang), r * np.sin(ang)]).round(3).tolist()
         holes = [[[-1, -1], [-1, 1], [1, 1], [1, -1]]] if trial % 2 else []
-        made = make.make(_spec("solid_extrude", {"outline": outline, "holes": holes, "height": 1.5}))
+        made = make.make(_spec("solid.extrude", {"outline": outline, "holes": holes, "height": 1.5}))
         assert check.check(made.bytes, made.media_type, made.spec).ok, trial
 
 
@@ -194,7 +194,7 @@ def test_large_outline_stays_within_a_second_or_two():
     r = 6 + 3 * np.sin(7 * ang)
     outline = np.column_stack([r * np.cos(ang), r * np.sin(ang)]).tolist()
     start = time.perf_counter()
-    made = make.make(_spec("solid_extrude", {"outline": outline, "holes": [[[-1, -1], [-1, 1], [1, 1], [1, -1]]],
+    made = make.make(_spec("solid.extrude", {"outline": outline, "holes": [[[-1, -1], [-1, 1], [1, 1], [1, -1]]],
                                              "height": 1}))
     assert time.perf_counter() - start < 5.0
     assert check.check(made.bytes, made.media_type, made.spec).ok

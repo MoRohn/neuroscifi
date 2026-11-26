@@ -1,9 +1,9 @@
 """Sound from a specification (DESIGN §6, ADR-074 lane G2): tones, sequences and sonified series as 16-bit PCM WAV.
 
 Three forms:
-- `sound_tone`: one tone of a stated pitch and length.
-- `sound_sequence`: notes (a pitch, or a rest) one after another, each followed by a short silence.
-- `sound_sonify`: a series as equal-length tones whose pitch is linear in the value between two stated frequencies
+- `sound.tone`: one tone of a stated pitch and length.
+- `sound.sequence`: notes (a pitch, or a rest) one after another, each followed by a short silence.
+- `sound.sonify`: a series as equal-length tones whose pitch is linear in the value between two stated frequencies
   (the reading contract of DESIGN §6), optionally preceded by two reference tones (the lowest and the highest value
   of the axis); a missing value is a rest.
 
@@ -49,14 +49,14 @@ def _options(extra: dict) -> dict:
 
 
 SCHEMAS = {
-    "sound_tone": {
+    "sound.tone": {
         "data": {"type": "object", "additionalProperties": False, "required": ["frequency_hz", "duration_s"],
                  "properties": {"frequency_hz": {"type": "number", "minimum": 20, "maximum": 20000},
                                 "duration_s": {"type": "number", "minimum": 0.02, "maximum": HARD_MAX_DURATION_S},
                                 "amplitude": {"type": "number", "minimum": 0.01, "maximum": 1}}},
         "options": _options({}),
     },
-    "sound_sequence": {
+    "sound.sequence": {
         "data": {"type": "object", "additionalProperties": False, "required": ["notes"],
                  "properties": {"notes": {"type": "array", "minItems": 1, "maxItems": 4000, "items": {
                      "type": "object", "additionalProperties": False, "required": ["frequency_hz", "duration_s"],
@@ -65,7 +65,7 @@ SCHEMAS = {
                                     "amplitude": {"type": "number", "minimum": 0.01, "maximum": 1}}}}}},
         "options": _options({"gap_s": {"type": "number", "minimum": 0.01, "maximum": 2}}),
     },
-    "sound_sonify": {
+    "sound.sonify": {
         "data": {"type": "object", "additionalProperties": False, "required": ["values"],
                  "properties": {"values": {"type": "array", "minItems": 1, "maxItems": 10000,
                                            "items": {"type": ["number", "null"]}},
@@ -147,11 +147,11 @@ def pitch_of(value: float, lo: float, hi: float, low_hz: float, high_hz: float) 
 def _plan(spec: Spec) -> list[tuple[float | None, float, float]]:
     """The sound as (pitch or None for silence, seconds, amplitude) parts, in order."""
     form = spec.spec
-    if form == "sound_tone":
+    if form == "sound.tone":
         return [(float(spec.data["frequency_hz"]), float(spec.data["duration_s"]),
                  float(spec.data.get("amplitude", 1.0)))]
     gap = float(_opt(spec, "gap_s"))
-    if form == "sound_sequence":
+    if form == "sound.sequence":
         parts = []
         for note in spec.data["notes"]:
             f = note["frequency_hz"]
@@ -183,9 +183,9 @@ def listening_guide(spec: Spec) -> str:
     if spec.options.get("spoken"):
         return str(spec.options["spoken"])
     form = spec.spec
-    if form == "sound_tone":
+    if form == "sound.tone":
         return f"One steady tone at {_fmt(spec.data['frequency_hz'])} hertz for {_fmt(spec.data['duration_s'])} seconds."
-    if form == "sound_sequence":
+    if form == "sound.sequence":
         notes = spec.data["notes"]
         rests = sum(1 for n in notes if n["frequency_hz"] is None)
         text = f"{len(notes) - rests} notes one after another, each followed by a short silence."
@@ -285,9 +285,9 @@ def bucket_means(values: list, n: int) -> list:
 
 
 def repair(value: dict, problem) -> dict | None:
-    """One bounded repair for a `sound_sonify` spec that is over its duration bound: the series is resampled to as
+    """One bounded repair for a `sound.sonify` spec that is over its duration bound: the series is resampled to as
     many tones as fit, each the mean of consecutive values, and the description says so. Any other problem: None."""
-    if value.get("spec") != "sound_sonify":
+    if value.get("spec") != "sound.sonify":
         return None
     over = getattr(problem, "rule", None) == "max_duration" or any(
         getattr(f, "rule", None) == "duration_bound" and not f.passed for f in getattr(problem, "technical", ()))

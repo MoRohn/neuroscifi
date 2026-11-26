@@ -1,14 +1,14 @@
 """Solids and surfaces from a specification (DESIGN §6, ADR-074 lane G2): binary STL or Wavefront OBJ.
 
 Forms (each a reading contract the checker re-derives from the spec alone):
-- `solid_box`: a box of `size` [x, y, z] centred on `center`.
-- `solid_extrude`: a 2-D outline with optional holes, extruded along z from `base_z` by `height`.
-- `solid_revolve`: a profile of [r, z] points turned about the z axis; ring vertices at the angles 2*pi*j/n
+- `solid.box`: a box of `size` [x, y, z] centred on `center`.
+- `solid.extrude`: a 2-D outline with optional holes, extruded along z from `base_z` by `height`.
+- `solid.revolve`: a profile of [r, z] points turned about the z axis; ring vertices at the angles 2*pi*j/n
   (j = 0 .. n-1) from the +x axis; an end of the profile off the axis is closed by a flat cap.
-- `surface_grid`: z = values[i][j] at x = x0 + j*(x1-x0)/(nx-1), y = y0 + i*(y1-y0)/(ny-1); each cell is split along
+- `surface.grid`: z = values[i][j] at x = x0 + j*(x1-x0)/(nx-1), y = y0 + i*(y1-y0)/(ny-1); each cell is split along
   the diagonal from its (x low, y low) corner to its (x high, y high) corner; with `base_z` it is closed into a solid
   (walls down to the base and a flat bottom).
-- `solid_points`: a small octahedron of half-size `marker` at each point (default: 1/100 of the points' largest
+- `solid.points`: a small octahedron of half-size `marker` at each point (default: 1/100 of the points' largest
   extent, or 1 when they all coincide).
 
 Every solid is watertight with outward normals (the faces are flipped together if the signed volume came out
@@ -51,21 +51,21 @@ def _options(extra=None):
 
 
 SCHEMAS = {
-    "solid_box": {"data": _data(["size"], {"size": {**_POINT3, "items": {"type": "number", "minimum": 1e-6,
+    "solid.box": {"data": _data(["size"], {"size": {**_POINT3, "items": {"type": "number", "minimum": 1e-6,
                                                                           "maximum": 1e9}},
                                            "center": _POINT3}),
                   "options": _options()},
-    "solid_extrude": {"data": _data(["outline", "height"], {
+    "solid.extrude": {"data": _data(["outline", "height"], {
         "outline": _RING, "holes": {"type": "array", "maxItems": MAX_HOLES, "items": _RING},
         "height": {"type": "number", "minimum": 1e-6, "maximum": 1e9}, "base_z": _NUM}), "options": _options()},
-    "solid_revolve": {"data": _data(["profile"], {
+    "solid.revolve": {"data": _data(["profile"], {
         "profile": {"type": "array", "minItems": 2, "maxItems": MAX_RING_POINTS, "items": _POINT2}}),
         "options": _options({"segments": {"type": "integer", "minimum": 8, "maximum": 512}})},
-    "surface_grid": {"data": _data(["values", "x", "y"], {
+    "surface.grid": {"data": _data(["values", "x", "y"], {
         "values": {"type": "array", "minItems": 2, "maxItems": 512,
                    "items": {"type": "array", "minItems": 2, "maxItems": 512, "items": _NUM}},
         "x": _POINT2, "y": _POINT2, "base_z": _NUM}), "options": _options()},
-    "solid_points": {"data": _data(["points"], {
+    "solid.points": {"data": _data(["points"], {
         "points": {"type": "array", "minItems": 1, "maxItems": 20000, "items": _POINT3}}),
         "options": _options({"marker": {"type": "number", "minimum": 1e-9, "maximum": 1e9}})},
 }
@@ -414,15 +414,15 @@ def markers(points, marker: float | None = None):
 def mesh_of(spec: Spec) -> tuple[np.ndarray, np.ndarray]:
     d = spec.data
     form = spec.spec
-    if form == "solid_box":
+    if form == "solid.box":
         return box(d["size"], d.get("center", (0.0, 0.0, 0.0)))
-    if form == "solid_extrude":
+    if form == "solid.extrude":
         return extrude(d["outline"], d.get("holes", []), float(d["height"]), float(d.get("base_z", 0.0)))
-    if form == "solid_revolve":
+    if form == "solid.revolve":
         return revolve(d["profile"], int(spec.options.get("segments", 64)))
-    if form == "surface_grid":
+    if form == "surface.grid":
         return surface(d["values"], d["x"], d["y"], d.get("base_z"))
-    if form == "solid_points":
+    if form == "solid.points":
         return markers(d["points"], spec.options.get("marker"))
     raise Malformed(f"{form} is not a solid form")
 

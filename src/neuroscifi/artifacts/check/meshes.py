@@ -138,12 +138,12 @@ def expectations(spec) -> dict | None:
     form = getattr(spec, "spec", None)
     d = spec.data if form else {}
     unit = spec.options.get("unit", "mm") if form else None
-    if form == "solid_box":
+    if form == "solid.box":
         s = np.asarray(d["size"], dtype=np.float64)
         c = np.asarray(d.get("center", [0, 0, 0]), dtype=np.float64)
         return {"unit": unit, "closed": True, "triangles": 12, "lo": c - s / 2, "hi": c + s / 2,
                 "volume": float(np.prod(s))}
-    if form == "solid_extrude":
+    if form == "solid.extrude":
         holes = d.get("holes", [])
         out = np.asarray(d["outline"], dtype=np.float64)
         base, h = float(d.get("base_z", 0.0)), float(d["height"])
@@ -152,7 +152,7 @@ def expectations(spec) -> dict | None:
         return {"unit": unit, "closed": True, "triangles": 2 * (n_pts + 2 * len(holes) - 2) + 2 * n_pts,
                 "lo": np.array([*out.min(axis=0), base]), "hi": np.array([*out.max(axis=0), base + h]),
                 "volume": area * h}
-    if form == "solid_revolve":
+    if form == "solid.revolve":
         n = int(spec.options.get("segments", 64))
         p = [(float(r), float(z)) for r, z in d["profile"]]
         ends_on_axis = (p[0][0] == 0, p[-1][0] == 0)
@@ -168,7 +168,7 @@ def expectations(spec) -> dict | None:
                 "hi": np.array([rmax * np.cos(ang).max(), rmax * np.sin(ang).max(), max(zs)]),
                 "volume": abs(0.5 * n * math.sin(2 * math.pi / n) * integral),
                 "smooth_volume": abs(math.pi * integral)}
-    if form == "surface_grid":
+    if form == "surface.grid":
         z = np.asarray(d["values"], dtype=np.float64)
         ny, nx = z.shape
         xs = np.linspace(d["x"][0], d["x"][1], nx)
@@ -187,7 +187,7 @@ def expectations(spec) -> dict | None:
             upper = (h[:-1, :-1] + h[1:, 1:] + h[1:, :-1]) / 3.0      # (x low, y low), (x high, y high), (x low, y high)
             out["volume"] = float(cell * (lower.sum() + upper.sum()))
         return out
-    if form == "solid_points":
+    if form == "solid.points":
         p = np.asarray(d["points"], dtype=np.float64)
         s = spec.options.get("marker")
         if s is None:

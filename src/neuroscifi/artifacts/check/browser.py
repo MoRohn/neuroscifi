@@ -186,7 +186,7 @@ def _interact(page, spec_value, technical) -> None:
     technical.append(Finding("keyboard_reachable", len(reached) >= controls,
                              f"{len(reached)} of {controls} controls reached with Tab"))
     form = (spec_value or {}).get("spec")
-    if form == "explorable_model":
+    if form == "explorable.model":
         page.evaluate("() => document.querySelectorAll('#nsf-xp-root details').forEach(d => d.open = true)")
         agree, total = _compare_model(page, spec_value)
         moved_ok = total > 0 and agree == total
@@ -203,7 +203,7 @@ def _interact(page, spec_value, technical) -> None:
                                  f"{agree} of {total} shown values equal the model's for the slider positions "
                                  "(each slider moved to both ends with the keyboard)",
                                  measure=(agree / total) if total else 0.0))
-    elif form == "explorable_steps":
+    elif form == "explorable.steps":
         steps = len(spec_value["data"]["steps"])
         status = page.locator("#nsf-xp-root .nsf-xp-note")
         before = status.text_content()
@@ -219,7 +219,7 @@ def _interact(page, spec_value, technical) -> None:
                  and last.startswith(f"Step {steps} of {steps}") and current == (0 if line is None else 1))
         technical.append(Finding("steps_move", moved, "Next and Last move the step, its words and its line"
                                  if moved else "the step controls do not move the trace as they say"))
-    elif form == "solid_view":
+    elif form == "solid.view":
         canvas = page.locator("#nsf-xp-root canvas")
         before = canvas.get_attribute("aria-label")
         canvas.focus()

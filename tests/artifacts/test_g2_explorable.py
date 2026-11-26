@@ -26,7 +26,7 @@ def _spec(form, data, title="A model", description="Made for a test."):
             "sources": ["request"], "made_by": {"generator": "", "version": 0}}
 
 
-SPRING = _spec("explorable_model", {
+SPRING = _spec("explorable.model", {
     "parameters": [{"name": "m", "label": "Mass", "min": 0.1, "max": 5, "step": 0.1, "value": 1, "unit": "kg"},
                    {"name": "k", "label": "Stiffness", "min": 1, "max": 50, "step": 1, "value": 10, "unit": "N/m"},
                    {"name": "c", "label": "Damping", "min": 0, "max": 5, "step": 0.1, "value": 0.4}],
@@ -39,14 +39,14 @@ SPRING = _spec("explorable_model", {
               {"kind": "table", "title": "Numbers", "items": ["omega", "x", "energy"]},
               {"kind": "plot", "title": "Frequency", "x": "k", "y": ["omega"], "points": 20}]})
 
-TRACE = _spec("explorable_steps", {
+TRACE = _spec("explorable.steps", {
     "code": ["lo ← 0; hi ← n − 1", "while lo ≤ hi: look at the middle"],
     "arrays": [{"name": "a", "label": "The list"}],
     "steps": [{"note": "Start.", "line": 0, "arrays": [[1, 3, 5, 7]], "pointers": [{"name": "lo", "array": 0, "index": 0}]},
               {"note": "Look at 3.", "line": 1, "arrays": [[1, 3, 5, 7]], "marks": [{"array": 0, "index": 1}],
                "vars": [{"name": "mid", "value": 1}]}]})
 
-BOX = explorable.solid_view_spec(_spec("solid_box", {"size": [1, 2, 3]}), title="A box")
+BOX = explorable.solid_view_spec(_spec("solid.box", {"size": [1, 2, 3]}), title="A box")
 
 
 def _failed(verdict):
@@ -187,12 +187,10 @@ def test_the_palette_is_gray():
         assert r == g == b, hexcode
 
 
-# Strings in a specification may hold "<" as text once lane K relaxes the content rule (DESIGN §6); at lane K's
-# contract commit the rule still refuses it. These tests wait for that merge.
-_WAIT = pytest.mark.xfail(reason="waits for lane K's relaxed content rule", strict=True)
+# Strings in a specification may hold "<" as text (DESIGN §6, lane K's relaxed content rule): an expression's
+# comparison and pseudocode's "<" are text, escaped wherever they are written.
 
 
-@_WAIT
 def test_a_comparison_written_with_less_than_is_accepted_in_a_spec():
     value = copy.deepcopy(SPRING)
     value["data"]["quantities"].append({"name": "slow", "label": "Slow", "expr": "if(omega < k, 1, 0)"})
@@ -200,7 +198,6 @@ def test_a_comparison_written_with_less_than_is_accepted_in_a_spec():
     assert check.check(made.bytes, MEDIA, made.spec).ok
 
 
-@_WAIT
 def test_pseudocode_with_less_than_is_shown_as_text():
     value = copy.deepcopy(TRACE)
     value["data"]["code"][1] = "while lo <= hi: if a[mid] < target"

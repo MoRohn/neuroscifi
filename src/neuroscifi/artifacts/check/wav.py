@@ -183,18 +183,18 @@ def _click_ratio(mono: np.ndarray, start: int, end: int, rate: int) -> float:
 
 def _expected(spec, source) -> dict | None:
     form = getattr(spec, "spec", None)
-    if form not in ("sound_tone", "sound_sequence", "sound_sonify"):
+    if form not in ("sound.tone", "sound.sequence", "sound.sonify"):
         return None
     opt = lambda name: spec.options.get(name, _DEFAULTS.get(name))   # noqa: E731
     out = {"rate": int(opt("rate_hz")), "channels": int(opt("channels")), "tones": [], "references": [],
            "values": None, "span_hz": None, "max_duration": float(opt("max_duration_s"))}
-    if form == "sound_tone":
+    if form == "sound.tone":
         out["tones"] = [float(spec.data["frequency_hz"])]
         out["duration"] = float(spec.data["duration_s"])
         out["span_hz"] = float(spec.data["frequency_hz"])
         return out
     gap = float(opt("gap_s"))
-    if form == "sound_sequence":
+    if form == "sound.sequence":
         notes = spec.data["notes"]
         out["tones"] = [float(n["frequency_hz"]) for n in notes if n["frequency_hz"] is not None]
         out["duration"] = sum(float(n["duration_s"]) + gap for n in notes)

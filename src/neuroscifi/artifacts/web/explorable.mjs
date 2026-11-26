@@ -1,7 +1,7 @@
 // NeuroSciFi explorable runtime (OMNIMIND lane G2, DESIGN §6 and §8). One fixed, audited file.
 //
 // It shows a declared specification as something to explore: a model with sliders and plots
-// (explorable_model), a step-through of a recorded trace (explorable_steps), or a solid to turn (solid_view).
+// (explorable.model), a step-through of a recorded trace (explorable.steps), or a solid to turn (solid.view).
 // Two settings, one file: inlined into a self-contained document (its SHA-256 is pinned in that document's
 // Content-Security-Policy), or imported as a first-party module by a host page that calls mount(element, spec).
 //
@@ -367,7 +367,7 @@ export function evaluateModel(data, values) {
 // ------------------------------------------------------------------------------------------------------------
 // Specification checks done again in the browser (the server checks first; this is the second, independent check)
 
-const FORMS = ['explorable_model', 'explorable_steps', 'solid_view'];
+const FORMS = ['explorable.model', 'explorable.steps', 'solid.view'];
 const isText = (v, max) => typeof v === 'string' && v.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f‪-‮⁦-⁩]/.test(v);
 
 export function specProblems(spec) {
@@ -377,14 +377,14 @@ export function specProblems(spec) {
   if (!isText(spec.title, 200) || !isText(spec.description, 2000)) return ['the title or description is not plain text'];
   const d = spec.data;
   if (!d || typeof d !== 'object' || Array.isArray(d)) return ['the specification has no data'];
-  if (spec.spec === 'explorable_model') {
+  if (spec.spec === 'explorable.model') {
     const problems = [];
     if (!Array.isArray(d.parameters) || d.parameters.length < 1 || d.parameters.length > 12) problems.push('a model has 1 to 12 parameters');
     if (!Array.isArray(d.views) || d.views.length < 1 || d.views.length > 6) problems.push('a model has 1 to 6 views');
     for (const p of d.parameters || []) if (!isText(p.label, 80) || (p.unit !== undefined && !isText(p.unit, 24))) problems.push('a parameter label is not plain text');
     return problems.length ? problems : modelProblems(d);
   }
-  if (spec.spec === 'explorable_steps') {
+  if (spec.spec === 'explorable.steps') {
     const problems = [];
     const code = d.code || [];
     const arrays = d.arrays || [];
@@ -972,7 +972,7 @@ export function mount(element, spec, options = {}) {
       });
     },
   };
-  const build = spec.spec === 'explorable_model' ? modelView : spec.spec === 'explorable_steps' ? stepsView : solidView;
+  const build = spec.spec === 'explorable.model' ? modelView : spec.spec === 'explorable.steps' ? stepsView : solidView;
   const view = build(doc, wrap, spec, ctx);
   view.render();
   let lastWidth = wrap.clientWidth;
@@ -982,7 +982,7 @@ export function mount(element, spec, options = {}) {
     });
     observer.observe(wrap);
   }
-  if (win && win.matchMedia && spec.spec === 'solid_view') {
+  if (win && win.matchMedia && spec.spec === 'solid.view') {
     media = win.matchMedia('(prefers-color-scheme: dark)');
     media.addEventListener('change', view.render);
   }

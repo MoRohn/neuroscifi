@@ -1,4 +1,4 @@
-"""Raster images from a numeric grid (DESIGN §6, ADR-074 lane G2): `image_raster` (PNG) and `image_apng` (animated
+"""Raster images from a numeric grid (DESIGN §6, ADR-074 lane G2): `image.raster` (PNG) and `image.apng` (animated
 PNG from a stack of grids).
 
 The reading contract of a raster (the checker re-derives it from the spec alone):
@@ -43,10 +43,10 @@ _OPTIONS = {
     "history": {"type": "array", "maxItems": 3, "items": {"type": "string", "maxLength": 300}},
 }
 SCHEMAS = {
-    "image_raster": {
+    "image.raster": {
         "data": {"type": "object", "additionalProperties": False, "required": ["grid"], "properties": {"grid": _GRID}},
         "options": {"type": "object", "additionalProperties": False, "properties": _OPTIONS}},
-    "image_apng": {
+    "image.apng": {
         "data": {"type": "object", "additionalProperties": False, "required": ["frames", "delays_ms"],
                  "properties": {"frames": {"type": "array", "minItems": 1, "maxItems": MAX_FRAMES, "items": _GRID},
                                 "delays_ms": {"type": "array", "minItems": 1, "maxItems": MAX_FRAMES,
@@ -139,7 +139,7 @@ def _fmt(x) -> str:
 
 def render(spec: Spec, limits: Limits = Limits()) -> tuple[bytes, tuple[str, ...]]:
     o = spec.options
-    if spec.spec == "image_raster":
+    if spec.spec == "image.raster":
         grids = [_grid(spec.data["grid"])]
     else:
         grids = [_grid(g) for g in spec.data["frames"]]
@@ -162,7 +162,7 @@ def render(spec: Spec, limits: Limits = Limits()) -> tuple[bytes, tuple[str, ...
     texts = [("Title", spec.title), ("Description", (spec.description + " " + words).strip()),
              ("Software", "NeuroSciFi; made by the system from a specification; not evidence")]
     detail = f"{cols * cell} by {rows * cell} pixels, {cell} pixel(s) per cell"
-    if spec.spec == "image_raster":
+    if spec.spec == "image.raster":
         data = png_write.png(pictures[0], texts)
     else:
         delays = list(spec.data["delays_ms"])
@@ -176,7 +176,7 @@ def render(spec: Spec, limits: Limits = Limits()) -> tuple[bytes, tuple[str, ...
 
 
 def media_type(spec: Spec) -> str:
-    return "image/apng" if spec.spec == "image_apng" else "image/png"
+    return "image/apng" if spec.spec == "image.apng" else "image/png"
 
 
 __all__ = ["AMBER", "SCHEMAS", "default_cell", "media_type", "picture", "render", "scale_words"]

@@ -1,8 +1,8 @@
 """Lane G2's forms, registered in one place: their spec schemas (spec.register_form) and their generators
 (make.register). Importing this module registers them once.
 
-Form names use underscores (`sound_sonify`, not `sound.sonify`): the envelope's form name is a lower-case word
-(`spec.FORM_NAME`), which has no dots.
+Every form lane G2 makes is in the one table FORM_TABLE below (dotted names, as the planner and the benchmark lanes
+use them; `spec.FORM_NAME` allows one dot).
 """
 from __future__ import annotations
 
@@ -44,14 +44,30 @@ def _add(form: str, schemas: dict, generator: Generator, repair=None) -> None:
         REPAIRS[form] = repair
 
 
-for _form in ("sound_tone", "sound_sequence", "sound_sonify"):
-    _add(_form, sound.SCHEMAS[_form], _Form("g2.sound", "audio/wav", sound.render), sound.repair)
-for _form in ("solid_box", "solid_extrude", "solid_revolve", "surface_grid", "solid_points"):
-    _add(_form, solids.SCHEMAS[_form], _Form("g2.solids", solids.media_type, solids.render))
-for _form in ("image_raster", "image_apng"):
-    _add(_form, raster.SCHEMAS[_form], _Form("g2.raster", raster.media_type, raster.render))
-for _form in ("explorable_model", "explorable_steps", "solid_view"):
-    _add(_form, explorable.SCHEMAS[_form], _Form("g2.explorable", explorable.MEDIA_TYPE, explorable.render))
+_SOUND = _Form("g2.sound", "audio/wav", sound.render)
+_SOLIDS = _Form("g2.solids", solids.media_type, solids.render)
+_RASTER = _Form("g2.raster", raster.media_type, raster.render)
+_EXPLORABLE = _Form("g2.explorable", explorable.MEDIA_TYPE, explorable.render)
+
+# form -> (schemas of its data and options, generator, bounded repair rule or None)
+FORM_TABLE = {
+    "sound.tone": (sound.SCHEMAS["sound.tone"], _SOUND, sound.repair),
+    "sound.sequence": (sound.SCHEMAS["sound.sequence"], _SOUND, sound.repair),
+    "sound.sonify": (sound.SCHEMAS["sound.sonify"], _SOUND, sound.repair),
+    "solid.box": (solids.SCHEMAS["solid.box"], _SOLIDS, None),
+    "solid.extrude": (solids.SCHEMAS["solid.extrude"], _SOLIDS, None),
+    "solid.revolve": (solids.SCHEMAS["solid.revolve"], _SOLIDS, None),
+    "surface.grid": (solids.SCHEMAS["surface.grid"], _SOLIDS, None),
+    "solid.points": (solids.SCHEMAS["solid.points"], _SOLIDS, None),
+    "image.raster": (raster.SCHEMAS["image.raster"], _RASTER, None),
+    "image.apng": (raster.SCHEMAS["image.apng"], _RASTER, None),
+    "explorable.model": (explorable.SCHEMAS["explorable.model"], _EXPLORABLE, None),
+    "explorable.steps": (explorable.SCHEMAS["explorable.steps"], _EXPLORABLE, None),
+    "solid.view": (explorable.SCHEMAS["solid.view"], _EXPLORABLE, None),
+}
+
+for _form, (_schemas, _generator, _repair) in FORM_TABLE.items():
+    _add(_form, _schemas, _generator, _repair)
 
 
 def repair(value: dict, problem) -> dict | None:

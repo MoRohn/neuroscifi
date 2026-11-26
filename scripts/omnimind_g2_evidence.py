@@ -169,7 +169,7 @@ def html_wrongs(made):
 
 
 def samples():
-    spring = env("explorable_model", {
+    spring = env("explorable.model", {
         "parameters": [{"name": "m", "label": "Mass", "min": 0.1, "max": 5, "step": 0.1, "value": 1},
                        {"name": "k", "label": "Stiffness", "min": 1, "max": 50, "step": 1, "value": 10},
                        {"name": "c", "label": "Damping", "min": 0, "max": 5, "step": 0.1, "value": 0.4}],
@@ -179,35 +179,35 @@ def samples():
                                {"name": "x", "initial": "0.5", "update": "x + v * dt"}], "steps": 2000, "dt": 0.005},
         "views": [{"kind": "plot", "x": "time", "y": ["x"]}, {"kind": "table", "items": ["omega", "x", "energy"]},
                   {"kind": "plot", "x": "k", "y": ["omega"]}]})
-    trace = env("explorable_steps", {"code": ["look", "found"], "arrays": [{"name": "a"}], "steps": [
+    trace = env("explorable.steps", {"code": ["look", "found"], "arrays": [{"name": "a"}], "steps": [
         {"note": "Look at the middle.", "line": 0, "arrays": [[1, 3, 5, 7, 9]], "marks": [{"array": 0, "index": 2}]},
         {"note": "Found.", "line": 1, "arrays": [[1, 3, 5, 7, 9]], "marks": [{"array": 0, "index": 2,
                                                                                "kind": "found"}]}]})
-    revolve = env("solid_revolve", {"profile": [[0, 0], [3, 0], [3.4, 0.6], [4.2, 3], [3.2, 6.5], [2.1, 8],
+    revolve = env("solid.revolve", {"profile": [[0, 0], [3, 0], [3.4, 0.6], [4.2, 3], [3.2, 6.5], [2.1, 8],
                                                 [2.6, 9.2], [2.4, 9.4], [1.6, 8.2], [0, 8.2]]}, {"segments": 48})
     rng = np.random.default_rng(1)
     grid = rng.normal(20, 5, (24, 32)).round(2).tolist()
     grid[3][4] = None
     return [
-        ("sound_tone", env("sound_tone", {"frequency_hz": 440, "duration_s": 1.0}), None),
-        ("sound_sequence", env("sound_sequence", {"notes": [{"frequency_hz": f, "duration_s": 0.25}
+        ("sound.tone", env("sound.tone", {"frequency_hz": 440, "duration_s": 1.0}), None),
+        ("sound.sequence", env("sound.sequence", {"notes": [{"frequency_hz": f, "duration_s": 0.25}
                                                             for f in (262, 294, 330, 349, 392)]}), None),
-        ("sound_sonify", env("sound_sonify", {"values": [float(v) for v in rng.normal(50, 15, 60).round(1)]}),
+        ("sound.sonify", env("sound.sonify", {"values": [float(v) for v in rng.normal(50, 15, 60).round(1)]}),
          wav_wrongs),
-        ("solid_box", env("solid_box", {"size": [2, 3, 4]}), mesh_wrongs),
-        ("solid_extrude", env("solid_extrude", {"outline": [[0, 0], [10, 0], [10, 6], [0, 6]], "height": 2,
+        ("solid.box", env("solid.box", {"size": [2, 3, 4]}), mesh_wrongs),
+        ("solid.extrude", env("solid.extrude", {"outline": [[0, 0], [10, 0], [10, 6], [0, 6]], "height": 2,
                                                 "holes": [[[2, 2], [4, 2], [4, 4], [2, 4]]]}), mesh_wrongs),
-        ("solid_revolve", revolve, mesh_wrongs),
-        ("surface_grid", env("surface_grid", {"values": rng.normal(0, 1, (20, 30)).round(3).tolist(), "x": [0, 3],
+        ("solid.revolve", revolve, mesh_wrongs),
+        ("surface.grid", env("surface.grid", {"values": rng.normal(0, 1, (20, 30)).round(3).tolist(), "x": [0, 3],
                                               "y": [0, 2], "base_z": -5}), mesh_wrongs),
-        ("solid_points", env("solid_points", {"points": rng.uniform(-5, 5, (50, 3)).round(3).tolist()}),
+        ("solid.points", env("solid.points", {"points": rng.uniform(-5, 5, (50, 3)).round(3).tolist()}),
          mesh_wrongs),
-        ("image_raster", env("image_raster", {"grid": grid}, {"warn_above": 28}), png_wrongs),
-        ("image_apng", env("image_apng", {"frames": [[[float((i + j + k) % 7) for j in range(16)] for i in range(12)]
+        ("image.raster", env("image.raster", {"grid": grid}, {"warn_above": 28}), png_wrongs),
+        ("image.apng", env("image.apng", {"frames": [[[float((i + j + k) % 7) for j in range(16)] for i in range(12)]
                                                      for k in range(12)], "delays_ms": [80]}), apng_wrongs),
-        ("explorable_model", spring, html_wrongs),
-        ("explorable_steps", trace, html_wrongs),
-        ("solid_view", explorable.solid_view_spec(revolve), html_wrongs),
+        ("explorable.model", spring, html_wrongs),
+        ("explorable.steps", trace, html_wrongs),
+        ("solid.view", explorable.solid_view_spec(revolve), html_wrongs),
     ]
 
 

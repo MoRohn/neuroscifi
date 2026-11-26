@@ -54,20 +54,20 @@ ok(X.modelProblems(broken).some((p) => p.includes('sweep')), 'a sweep of a chang
 
 // ---- the browser-side spec check ----
 const envelope = (form, data, title = 'T') => ({ spec: form, version: 1, title, description: 'D', data, options: {}, sources: [], made_by: { generator: 'g2.explorable', version: 1 } });
-eq(X.specProblems(envelope('explorable_model', spring)), [], 'model spec');
+eq(X.specProblems(envelope('explorable.model', spring)), [], 'model spec');
 ok(X.specProblems(envelope('chart_line', spring)).length === 1, 'a form this runtime does not show');
-ok(X.specProblems(envelope('explorable_model', spring, 'a‮b')).length === 1, 'bidirectional override refused');
+ok(X.specProblems(envelope('explorable.model', spring, 'a‮b')).length === 1, 'bidirectional override refused');
 ok(X.specProblems(null).length === 1 && X.specProblems([]).length === 1, 'not an object');
 const trace = { code: ['a', 'b'], arrays: [{ name: 'a', label: 'A' }],
   steps: [{ note: 'one', line: 0, arrays: [[1, 2, 3]], pointers: [{ name: 'lo', array: 0, index: 0 }], marks: [{ array: 0, index: 2, kind: 'found' }], vars: [{ name: 'n', value: 3 }] },
     { note: 'two', line: 1, arrays: [[1, 2, 3]] }] };
-eq(X.specProblems(envelope('explorable_steps', trace)), [], 'trace spec');
+eq(X.specProblems(envelope('explorable.steps', trace)), [], 'trace spec');
 const badTrace = structuredClone(trace);
 badTrace.steps[0].pointers[0].index = 7;
-ok(X.specProblems(envelope('explorable_steps', badTrace)).some((p) => p.includes('outside')), 'pointer outside');
+ok(X.specProblems(envelope('explorable.steps', badTrace)).some((p) => p.includes('outside')), 'pointer outside');
 const solid = { vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], faces: [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]], unit: 'mm' };
-eq(X.specProblems(envelope('solid_view', solid)), [], 'solid spec');
-ok(X.specProblems(envelope('solid_view', { ...solid, faces: [[0, 1, 9]] })).length === 1, 'face outside');
+eq(X.specProblems(envelope('solid.view', solid)), [], 'solid spec');
+ok(X.specProblems(envelope('solid.view', { ...solid, faces: [[0, 1, 9]] })).length === 1, 'face outside');
 
 // ---- numbers in words ----
 for (const [n, want] of [[0, '0'], [-0, '0'], [3.16227766, '3.162'], [1234.5678, '1235'], [0.000123456, '0.0001235'],
@@ -98,7 +98,7 @@ doc.createElementNS = (ns, tag) => { assert.equal(ns, 'http://www.w3.org/2000/sv
 doc.createTextNode = (text) => ({ text });
 const count = (n) => 1 + (n.childNodes || []).reduce((s, c) => s + count(c), 0);
 const texts = (n) => (n.text !== undefined ? [n.text] : (n.childNodes || []).flatMap(texts));
-for (const [form, data] of [['explorable_model', spring], ['explorable_steps', trace], ['solid_view', solid]]) {
+for (const [form, data] of [['explorable.model', spring], ['explorable.steps', trace], ['solid.view', solid]]) {
   const host = new Node('div', doc);
   const kept = { text: 'fallback' };
   host.append(kept);
@@ -111,11 +111,11 @@ for (const [form, data] of [['explorable_model', spring], ['explorable_steps', t
   ok(host.childNodes.length === 1 && host.childNodes[0] === kept, `${form}: unmount puts the element back`);
 }
 const host = new Node('div', doc);
-X.mount(host, envelope('explorable_model', broken));
+X.mount(host, envelope('explorable.model', broken));
 ok(texts(host).some((s) => s.startsWith('This could not be shown')), 'an invalid spec shows a plain message');
 // the steps view moves
 const stepsHost = new Node('div', doc);
-X.mount(stepsHost, envelope('explorable_steps', trace));
+X.mount(stepsHost, envelope('explorable.steps', trace));
 const find = (n, pred) => (pred(n) ? n : (n.childNodes || []).map((c) => find(c, pred)).find(Boolean));
 const next = find(stepsHost, (n) => n.attributes && n.attributes.get('aria-label') === 'Next step');
 next.listeners.get('click')();

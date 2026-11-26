@@ -1,5 +1,5 @@
-"""Explorable documents (DESIGN §6 and §8, ADR-074 lane G2): `explorable_model` (sliders, a model, plots),
-`explorable_steps` (a step-through of a recorded trace) and `solid_view` (a solid to turn).
+"""Explorable documents (DESIGN §6 and §8, ADR-074 lane G2): `explorable.model` (sliders, a model, plots),
+`explorable.steps` (a step-through of a recorded trace) and `solid.view` (a solid to turn).
 
 Each is ONE self-contained HTML document: the fixed runtime `artifacts/web/explorable.mjs` inlined as the only
 script that runs, the fixed stylesheet `artifacts/web/explorable.css` as the only style, the specification as a JSON
@@ -40,7 +40,7 @@ def _obj(required, properties):
 
 
 SCHEMAS = {
-    "explorable_model": {"data": _obj(["parameters", "views"], {
+    "explorable.model": {"data": _obj(["parameters", "views"], {
         "parameters": {"type": "array", "minItems": 1, "maxItems": 12, "items": _obj(
             ["name", "label", "min", "max", "step", "value"],
             {"name": _NAME, "label": _TEXT, "min": _NUM, "max": _NUM, "step": _NUM, "value": _NUM, "unit": _UNIT})},
@@ -59,7 +59,7 @@ SCHEMAS = {
             "from": _NUM, "to": _NUM, "points": {"type": "integer", "minimum": 2, "maximum": expr.MAX_SWEEP},
             "y_label": _TEXT, "items": {"type": "array", "minItems": 1, "maxItems": 16, "items": _NAME}})}}),
         "options": _OPTIONS},
-    "explorable_steps": {"data": _obj(["arrays", "steps"], {
+    "explorable.steps": {"data": _obj(["arrays", "steps"], {
         "code": {"type": "array", "maxItems": 60, "items": {"type": "string", "maxLength": 120}},
         "arrays": {"type": "array", "minItems": 1, "maxItems": 4, "items": _obj(["name"], {"name": _NAME,
                                                                                         "label": _TEXT})},
@@ -78,7 +78,7 @@ SCHEMAS = {
                 "name": {"type": "string", "maxLength": 32},
                 "value": {"type": ["number", "string", "null"], "maxLength": 40}})}})}}),
         "options": _OPTIONS},
-    "solid_view": {"data": _obj(["vertices", "faces"], {
+    "solid.view": {"data": _obj(["vertices", "faces"], {
         "vertices": {"type": "array", "minItems": 3, "maxItems": 20000, "items": {
             "type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": -1e9,
                                                                       "maximum": 1e9}}},
@@ -196,7 +196,7 @@ def _fallback(spec: Spec) -> str:
     if spec.description:
         parts.append(f"<p>{_esc(spec.description)}</p>")
     parts.append(f'<p class="nsf-xp-made">{_esc(MADE_LABEL)}</p>')
-    if spec.spec == "explorable_model":
+    if spec.spec == "explorable.model":
         result = expr.evaluate_model(d)
         labels = {p["name"]: (p["label"], p.get("unit", "")) for p in d["parameters"]}
         labels.update({q["name"]: (q.get("label", q["name"]), q.get("unit", "")) for q in d.get("quantities", [])})
@@ -215,7 +215,7 @@ def _fallback(spec: Spec) -> str:
             rows.append(f'<tr><th scope="row">{_esc(label)}{after}</th><td data-name="{_esc(name)}" '
                         f'data-value="{float(value)!r}">{_esc(_with_unit(value, unit))}</td></tr>')
         parts.append("<table><caption>At the starting settings</caption><tbody>" + "".join(rows) + "</tbody></table>")
-    elif spec.spec == "explorable_steps":
+    elif spec.spec == "explorable.steps":
         parts.append("<p>This page needs scripts to step through the trace. Here is every step in words.</p>")
         if d.get("code"):
             parts.append("<pre><code>" + _esc("\n".join(d["code"])) + "</code></pre>")
@@ -251,15 +251,15 @@ def document(spec: Spec) -> bytes:
 
 def render(spec: Spec, limits: Limits = Limits()) -> tuple[bytes, tuple[str, ...]]:
     d = spec.data
-    if spec.spec == "explorable_model":
+    if spec.spec == "explorable.model":
         problems = expr.model_problems(d)
-    elif spec.spec == "explorable_steps":
+    elif spec.spec == "explorable.steps":
         problems = steps_problems(d)
     else:
         problems = mesh_problems(d)
     if problems:
         raise Malformed("the specification cannot be shown: " + "; ".join(problems[:5]))
-    if spec.spec == "explorable_model" and d.get("dynamics"):
+    if spec.spec == "explorable.model" and d.get("dynamics"):
         work = d["dynamics"]["steps"] * (len(d["dynamics"]["state"]) + len(d.get("quantities", [])))
         if work > limits.max_elements:
             raise Refused("the model would take too many evaluations", rule="max_elements", reason="too_large")
@@ -270,10 +270,10 @@ def render(spec: Spec, limits: Limits = Limits()) -> tuple[bytes, tuple[str, ...
 
 
 def solid_view_spec(solid: dict, *, title: str | None = None, description: str | None = None) -> dict:
-    """A `solid_view` spec that shows the mesh a solid spec makes (its vertices and triangles, exactly)."""
+    """A `solid.view` spec that shows the mesh a solid spec makes (its vertices and triangles, exactly)."""
     made = Spec.from_dict(solid)
     vertices, faces = solids.mesh_of(made)
-    return {"spec": "solid_view", "version": 1, "title": title or made.title,
+    return {"spec": "solid.view", "version": 1, "title": title or made.title,
             "description": description if description is not None else made.description,
             "data": {"vertices": [[float(c) for c in v] for v in vertices], "faces": faces.tolist(),
                      "unit": made.options.get("unit", "mm")},
