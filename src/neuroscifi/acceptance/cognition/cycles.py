@@ -95,6 +95,14 @@ WITHHELD = "withheld"     # the split of cycles_withheld.py: scored only by fina
 # configuration back inside a run).
 READ_BACK = tuple(WAVE1_OFF_WEB) + ("salience_attention", "arbitration_record", "calibrated_forecasts",
                                     "tick_admission", "enabled", "autonomous")
+# Wave 3 lane S (ADR-061), for the main session's one withheld look (cycles_s.py measures the rest): the shipped
+# defaults with lane S's two fixes off (what Step 0 ran), and with supersession on at the K chosen on development.
+LANE_S_FIXES_OFF, LANE_S_SUPERSEDE = "-lane-s-fixes", "+lane-s-supersession-K2"
+ON.update({LANE_S_FIXES_OFF: {"attribution_independence": False, "echo_recognition": False},
+           LANE_S_SUPERSEDE: {"supersession": "independent", "supersession_min_sources": 2}})
+EXTRA.update({"lane-s:fixes-off": frozenset({SHIPPED, LANE_S_FIXES_OFF}),
+              "lane-s:supersede-K2": frozenset({SHIPPED, LANE_S_SUPERSEDE})})
+READ_BACK = READ_BACK + ("attribution_independence", "echo_recognition", "supersession", "supersession_min_sources")
 
 
 def configurations() -> dict:

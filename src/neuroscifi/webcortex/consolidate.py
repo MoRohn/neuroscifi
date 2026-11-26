@@ -290,6 +290,10 @@ def _without_adversarial(cluster, adversarial_urls):
 # is never its echo (the output may rest on it); a structured record (an API document, a metadata claim) is never one.
 # Own outputs are found by the digits the claim writes (SQL LIKE over web_tasks.result and imagined.payload; at most
 # ECHO_MAX_ROWS rows per token, newest first), so nothing is decoded that cannot match.
+# An echo is never evidence FOR a value: it leaves the supporting side of its cluster (and the supersession rule never
+# counts it). An echo that only disagrees with what the sources say stays where it is: the disagreement is still asked,
+# as before, and a disagreement never raises a confidence or writes knowledge. (Removing it there too was measured: it
+# changed what the owner is asked and what curiosity looks at next, on worlds where no echo was ever admitted.)
 ECHO_MAX_ROWS = 200
 _DIGITS = re.compile(r"\d[\d.,]*\d")
 
@@ -323,7 +327,7 @@ class _Echoes:
     """The own-output index of one consolidation (see the section comment), filled lazily per digit token."""
 
     def __init__(self, db):
-        self.db, self.by_token, self.sourced, self.worded = db, {}, {}, {}
+        self.db, self.by_token, self.sourced, self.worded, self.seen = db, {}, {}, {}, {}
 
     def _own(self, token):
         from . import text as T
@@ -375,6 +379,11 @@ class _Echoes:
 
     def of(self, claim) -> str | None:
         """'value' or 'wording' when `claim` echoes an own output (see the section comment), else None."""
+        if claim.id not in self.seen:
+            self.seen[claim.id] = self._of(claim)
+        return self.seen[claim.id]
+
+    def _of(self, claim) -> str | None:
         from . import text as T
         if claim.kind == "metadata" or _claims.is_primary(claim):
             return None
@@ -398,17 +407,23 @@ class _Echoes:
 
 
 def _without_echoes(echoes, cluster, *, now, freshness, ttl_overrides):
-    """(the cluster without the claims that echo the individual's own outputs, re-scored as _without_set_aside
-    re-scores; [the echo claim ids]). Unchanged when none does."""
+    """(the cluster without the supporting claims that echo the individual's own outputs, re-scored as
+    _without_set_aside re-scores, until its supporting side holds none; [the echo claim ids removed]). Echoes that
+    only contradict the representative stay (see the section comment). Unchanged when no supporting claim echoes."""
     from dataclasses import replace
-    gone = [c.id for c in cluster.claims if echoes.of(c)]
-    if not gone:
-        return cluster, []
-    kept = [c for c in cluster.claims if c.id not in set(gone)]
-    if not kept:
-        return replace(cluster, claims=[]), gone
-    return _claims.score(replace(cluster, claims=kept), now=now, freshness_class=freshness,
-                         ttl_overrides=ttl_overrides), gone
+    gone = []
+    for _ in range(4):          # a removal can make another side the representative; four rounds bound it
+        head = _head(cluster)
+        found = [c.id for c in cluster.claims if _claims.bearing(head, c) == "support" and echoes.of(c)]
+        if not found:
+            break
+        gone += found
+        kept = [c for c in cluster.claims if c.id not in set(gone)]
+        if not kept:
+            return replace(cluster, claims=[]), gone
+        cluster = _claims.score(replace(cluster, claims=kept), now=now, freshness_class=freshness,
+                                ttl_overrides=ttl_overrides)
+    return cluster, gone
 
 
 def _eligibility(db, task_id, cluster, removed=0):
@@ -1422,10 +1437,13 @@ RESTORE_COLUMNS = ("status", "valid_until", "superseded_by", "confidence", "unce
                    "contradicting", "sources", "note", "pending_id", "last_verified_at", "updated_at")
 
 
-def _rule_side(cluster, item):
-    """The claims of the cluster that conflict with the item and state one value (see the section comment)."""
+def _rule_side(cluster, item, echoes=None):
+    """The claims of the cluster that conflict with the item and state one value (see the section comment); an echo
+    of the individual's own output (echo_recognition) is never one of them."""
     sides = {}
     for c in cluster.claims:
+        if echoes is not None and echoes.of(c):
+            continue
         relation, _ = _compare(list(c.values or []), -1 if c.polarity < 0 else 1, item)
         if relation == "conflict":
             sides.setdefault((tuple(sorted(c.values or [])), c.polarity < 0), []).append(c)
@@ -1435,14 +1453,14 @@ def _rule_side(cluster, item):
                                                  max(_claims._effective(c) for c in side)))
 
 
-def _rule_replacement(db, cfg, cluster, item, now, *, freshness, window, focus):
+def _rule_replacement(db, cfg, cluster, item, now, *, freshness, window, focus, echoes=None):
     """(the side as a scored cluster, its verdict, its independent groups) when the rule replaces `item`, else
     None (see the section comment)."""
     from dataclasses import replace
     if cfg.supersession != "independent" or item.get("provenance") == "user_asserted" or \
             item["status"] == "accepted":
         return None
-    side = _rule_side(cluster, item)
+    side = _rule_side(cluster, item, echoes)
     if not side:
         return None
     groups = len(_claims.independence_groups(side))
@@ -1513,7 +1531,7 @@ def _contested_against(db, task_id, cluster, item, reason, now, summary, questio
     `rule` ({cfg, freshness, window, focus}, only with supersession "independent"): first, the supersession rule."""
     if rule is not None:
         found = _rule_replacement(db, rule["cfg"], cluster, item, now, freshness=rule["freshness"],
-                                  window=rule["window"], focus=rule["focus"])
+                                  window=rule["window"], focus=rule["focus"], echoes=rule.get("echoes"))
         if found is not None:
             _replace_by_rule(db, task_id, rule["cfg"], found, item, rule["freshness"], now, summary, questions,
                              ids_by_key)
@@ -1625,7 +1643,8 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                     "the sources disagree"
                 if item is not None:
                     _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key,
-                                       rule={"cfg": cfg, "freshness": freshness, "window": window, "focus": focus}
+                                       rule={"cfg": cfg, "freshness": freshness, "window": window, "focus": focus,
+                                             "echoes": echoes}
                                        if cfg.supersession == "independent" else None)
                     continue
                 described = "; ".join(sorted({c.get("description") or c.get("reason") or ""
