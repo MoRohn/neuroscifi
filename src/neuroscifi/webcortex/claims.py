@@ -2218,8 +2218,10 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
     unique = list({c.id: c for c in claims}.values())
     order = sorted(unique, key=lambda c: (-c.relevance, -_effective(c), c.source_url, c.sentence_index, c.id))
     shown = order
-    # a page lane E's echo check marked under source_derivation (ADR-066) counts for nothing, as an adversarial one
-    order = [c for c in order if not is_adversarial(c) and not derivation_echo(c)]
+    # a page lane E's echo check marked under source_derivation (ADR-066) counts for nothing, as an adversarial one,
+    # where the derivation rule groups (every claim read with it, as independence_groups decides; review4 L3)
+    marked = bool(order) and all(isinstance((c.flags or {}).get("derivation"), dict) for c in order)
+    order = [c for c in order if not is_adversarial(c) and not (marked and derivation_echo(c))]
     empty = {"alpha": PRIOR_ALPHA, "beta": PRIOR_BETA, "representative": None, "agree": [], "contra": [],
              "related": [], "pairs": [], "groups": [], "support_groups": 0, "contra_groups": 0, "order": shown}
     if not order:

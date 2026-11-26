@@ -37,7 +37,8 @@ _JOINED_WORDS = {"same_site": "some are on the same site", "near_duplicate": "so
 def facts(db, claim_rows, *, own_check: bool = True, own=None) -> dict | None:
     """The facts of one statement from its supporting claims' rows (state.CLAIM_COLUMNS dicts); None without any.
     `own`: an _Own made for several statements at once (one time budget per view)."""
-    claims = [state.claim_from_row(r) for r in claim_rows[:MAX_CLAIMS]]
+    settings = state.get_config(db)          # a rule's stored marks count only while it is on (review4 L3)
+    claims = [state.claim_from_row(r, settings) for r in claim_rows[:MAX_CLAIMS]]
     if not claims:
         return None
     groups = C.independence_groups(claims)

@@ -273,6 +273,12 @@ def _config(db, a, now):
         from . import autonomy
         autonomy.record_switch(db, bool(changes["autonomous"]), now, by="owner:cli")
     out = {"config": cfg.to_json(), "changed": sorted(changes)}
+    if getattr(a, "forget_own_text", False):     # ADR-067 (Wave 4 fix, review4 L3): remove every fingerprint
+        from . import emitted
+        from ..instance import store
+        with store.write(db):
+            out["own_text_removed"] = emitted.forget_all(db)
+            store.bump_state_version(db)
     problems = state.setting_problems(db)
     if problems:                            # a damaged saved value, read as its default (security review L8)
         out["problems"] = problems
@@ -1116,6 +1122,9 @@ def register(sub):
                    help="pages a research task may fetch at once while reading, one per site (default 4; 1 = one at "
                         "a time for every task)")
     p.add_argument("--set", action="append", metavar="KEY=JSON", help="set one field, e.g. --set 'engines=[\"bing\"]'")
+    p.add_argument("--forget-own-text", action="store_true",
+                   help="remove every record of what this individual's own answers stated (own_text_provenance's "
+                        "fingerprints, ADR-067); with the setting off they are already not read")
 
     cmd("status", _status, "configuration, provider health, daemon, cache, tasks and executing node")
     p = cmd("health", _health, "check the open-webSearch daemon; --probe also asks each structured provider once")

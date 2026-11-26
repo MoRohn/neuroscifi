@@ -531,14 +531,23 @@ CLAIM_COLUMNS = ("id", "task_id", "source_id", "text", "key", "kind", "polarity"
                  "relevance", "doc_sha256", "sentence_index", "cluster_status", "confidence", "flags", "created_at")
 
 
-def claim_from_row(row: dict) -> Claim:
+def claim_from_row(row: dict, settings=None) -> Claim:
+    """A stored claim. With `settings` (the WebConfig in force), a mark a rule left while it was on is dropped when
+    the rule is now off (Wave 4 fix, measurement review L3: off means off): source_derivation's flags["derivation"],
+    and inside it own_text_provenance's "echo"."""
+    flags = row["flags"] if isinstance(row["flags"], dict) else loads(row["flags"], {})
+    mark = flags.get("derivation") if isinstance(flags, dict) and settings is not None else None
+    if mark is not None:
+        if not getattr(settings, "source_derivation", False):
+            flags = {k: v for k, v in flags.items() if k != "derivation"}
+        elif isinstance(mark, dict) and "echo" in mark and not getattr(settings, "own_text_provenance", False):
+            flags = dict(flags, derivation={k: v for k, v in mark.items() if k != "echo"})
     return Claim(id=row["id"], text=row["text"], source_url=row["source_url"], domain=row["domain"],
                  title=row["title"] or "", retrieved_at=row["retrieved_at"], key=row["key"], kind=row["kind"],
                  polarity=row["polarity"], values=_as_read(_listed(row["claim_values"]), row["text"]),
                  published_at=row["published_at"],
                  event_at=row["event_at"], relevance=row["relevance"] or 0.0, doc_sha256=row["doc_sha256"] or "",
-                 sentence_index=row["sentence_index"] or 0,
-                 flags=row["flags"] if isinstance(row["flags"], dict) else loads(row["flags"], {}))
+                 sentence_index=row["sentence_index"] or 0, flags=flags)
 
 
 def _listed(value):
@@ -631,7 +640,8 @@ def load_clusters(db, task_id) -> list[ClaimCluster]:
     row = db.execute("SELECT checkpoint FROM web_tasks WHERE id=?", (task_id,)).fetchone()
     if row is None:
         raise NotFound(f"No research task {task_id}")
-    stored = {c["id"]: claim_from_row(c) for c in claims(db, task_id)}
+    settings = get_config(db)
+    stored = {c["id"]: claim_from_row(c, settings) for c in claims(db, task_id)}
     out = []
     for item in (loads(row[0], None) or {}).get("clusters", []):
         members = [stored[cid] for cid in item.get("claims", []) if cid in stored]

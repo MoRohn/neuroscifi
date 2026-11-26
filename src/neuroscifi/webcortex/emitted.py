@@ -2,11 +2,15 @@
 rule that a page repeating a value only the individual had stated is no evidence for it. Setting
 `own_text_provenance` (WebConfig; OFF by default: with it off nothing here runs and nothing is recorded).
 
-EMISSION. A model-written answer stored with a task (orchestrator: the report the console shows, Pocket lists, voice
-speaks and MCP returns; the benchmark harnesses store theirs the same way) is the individual's own output. Its
-sentences (reasoning["text"] and every reasoning["answer"] sentence; a template, extractive answer quotes sources and
-is not read) are read for the pairs (subject name, value): a subject name as consolidation's subject check reads it
-(consolidate._name_set) and every value of the sentence, normalised (value_key: a version or dotted release number by
+EMISSION. A model-written answer stored with a task of the OWNER (OWNER_ORIGINS: the console, the command line, the
+owner's voice and the owner's refresh of a knowledge item; the benchmark harnesses store theirs as the console) is the
+individual's own output. A family device's (Pocket), an agent's (MCP) or an autonomous task's answer records nothing
+(Wave 4 fix, review4 H3: such a task could otherwise make the owner's individual refuse a value; the cost: echoes of
+those answers are not recognised). Its sentences (reasoning["text"] and every reasoning["answer"] sentence; a
+template, extractive answer quotes sources and is not read) are read for the pairs (subject name, value), from the
+parts of a sentence that ASSERT (asserted(): a question, a negated, hedged or conditional part asserts nothing, so a
+denial such as "9.4.0 has not been released" records nothing): a subject name as consolidation's subject check reads it
+(consolidate._name_set) and every value the part asserts, normalised (value_key: a version or dotted release number by
 its numeric parts with trailing zero parts dropped, as PEP 440 compares release segments, "2.4" = "v2.4.0"; a date as
 its day; money, percentages and quantities by the existing normaliser's group and base-unit value, "41 m" = "4100 cm";
 a year or a whole number below 100 is not specific enough and is not read). For each pair, at most MAX_PER_ANSWER per
@@ -14,8 +18,8 @@ answer, the emission records: its time, and whether a claim the individual had r
 first, then ONE pass over the earlier ones naming a subject still unsourced, at most SUPPORT_ROWS per name, the whole
 within SUPPORT_SECONDS) states that value about that subject: 1 sourced, 0 not, 2 not known (the bound reached or the
 time up; counted as sourced: never an echo, and logged with counts and the task id only). No text is recorded, no source's
-name or URL: only salted digests (the instance's id is the salt), the time, the flag and a count of the distinct
-sources (domains) found stating it (`n`, at most MAX_GROUPS; a count, so a forgotten source leaves nothing of itself).
+name or URL: only digests keyed by the instance's id (not a secret; see below), the time, the flag and a count of the
+distinct sources (domains) found stating it (`n`, at most MAX_GROUPS; a count, so a forgotten source leaves nothing of itself).
 
 STORAGE (no schema change): rows of web_strategies (procedural memory; primary-key lookups only; no reader of that
 table lists names, and no Pocket, family, MCP or agent surface reads it):
@@ -27,10 +31,11 @@ sees no later emission). The count is read before the write transaction (an inde
 
 THE RULE (consolidate.run, with the setting on). A page's claim (not a structured record, not a primary record) is
 an echo of the individual's own output when, for one of its subject names and one of its values, the EARLIEST recorded
-emission of that pair was not sourced (0), was made before the claim was read, and the page's stated publication is
-not before it (or the page states none). An echo is never evidence FOR its value: it leaves the supporting side of its
-cluster (consolidate._without_echoes, as Wave 3's echo_recognition); an echo that only disagrees stays where it is and
-counts against a held value only as today. A value the individual emitted with source support is not an echo: the
+emission of that pair was not sourced (0), was made before the claim was read and at most EMISSION_LIFETIME before it
+(30 days; the imagined store's bound is the precedent: an older emission no longer counts), and the page's stated
+publication is not before it (or the page states none). An echo is never evidence, for or against: it leaves its
+cluster (consolidate._without_echoes; Wave 4 fix, review4 H2: where it disagrees with a held value it neither
+supersedes nor weakens it, and the disagreement is asked, consolidate._echo_disagreement). A value the individual emitted with source support is not an echo: the
 sources carry it. The checks are point lookups by digest made before the write transaction: at most MAX_LOOKUPS per
 consolidation and MAX_KEYS_PER_CLAIM per claim, shared out claim by claim; a claim whose pairs were not all looked up is
 not an echo and is named in `echo_skipped` and logged (ids only).
@@ -46,7 +51,13 @@ FORGET AND RESTORE. Forgetting a task (research, the refresh tasks of a forgotte
 and every checkpoint replay of them: governance._forget_research_core) removes its emissions (forget_task); forgetting
 a knowledge item removes the fingerprints of its subject names and values (forget_knowledge; also on replay). A
 forgotten source changes nothing here: an emission it supported stays sourced (security review M3) and nothing of the
-source was kept.
+source was kept. With the setting off nothing here is read (the fingerprints are inert at once); every fingerprint is
+removed by `nsf web config --forget-own-text` (forget_all).
+
+WHAT THE STORED VALUES ARE. Digests of (instance id, subject name, value). The instance id is not secret (the owner's
+self-description and the agent scope's self-status show it), so it only keeps two individuals' digests apart: a reader
+of the file could recompute the digest of any guessed (name, value) pair, a small space. Nothing outside this module
+reads the rows, and the answers they come from sit in clear text beside them in the same file (review4 N1).
 """
 from __future__ import annotations
 
@@ -68,6 +79,10 @@ MAX_LOOKUPS = 512
 MAX_KEYS_PER_CLAIM = 32
 SUPPORT_ROWS = 2000
 SUPPORT_SECONDS = 1.0
+EMISSION_LIFETIME = 30 * 86400.0    # an emission counts for this long after it was made (Wave 4 fix, review4 H3, L3)
+# Whose answers are the individual's own statements (Wave 4 fix, review4 H3): the owner's tasks only.
+OWNER_ORIGINS = ("console", "cli", "voice")
+OWNER_ORIGIN_PREFIXES = ("refresh-owner:",)
 SOURCED, UNSOURCED, UNKNOWN = 1, 0, 2
 _DOTTED = re.compile(r"\d+\.\d+")
 _log = logging.getLogger(__name__)
@@ -123,6 +138,39 @@ def fingerprint(salt, name, key) -> str:
 
 def task_row(salt, task_id) -> str:
     return TASK_PREFIX + _digest(salt, "task", task_id)
+
+
+_PARTS = re.compile(r";\s+|:\s+(?=[A-Z])")
+_CONDITIONAL = re.compile(r"\b(?:if|unless|whether)\b", re.IGNORECASE)
+
+
+def asserted(sentence) -> list[str]:
+    """The parts of one emitted sentence that assert something (Wave 4 fix, review4 H3), with the claim reader's own
+    rules: a question asserts nothing; the sentence is cut at semicolons and at a colon before a capital ("No: X has
+    not been released; the latest is Y" is two parts); a part asserts when it holds no conditional ("if", "unless",
+    "whether"), its main clause (claims._main_clause) is not negated (claims.polarity) and not hedged
+    (claims.claim_kind), and what it keeps of that clause is claims.asserted_text (a figure it only reports as a myth or
+    an earlier belief is left out)."""
+    from . import claims as C
+    s = " ".join(str(sentence or "").split())
+    if not s or s.rstrip().endswith("?"):
+        return []
+    out = []
+    for part in _PARTS.split(s):
+        part = part.strip()
+        if not part or part.endswith("?") or _CONDITIONAL.search(part):
+            continue
+        main = C._main_clause(part)
+        if C.polarity(main) < 0 or C.claim_kind(main) == "interpretation":
+            continue
+        out.append(C.asserted_text(main))
+    return [p for p in out if p]
+
+
+def owner_task(task) -> bool:
+    """Whether a task's answer is the owner's (OWNER_ORIGINS): no family, and an owner origin."""
+    origin = str((task or {}).get("origin") or "")
+    return not (task or {}).get("family") and (origin in OWNER_ORIGINS or origin.startswith(OWNER_ORIGIN_PREFIXES))
 
 
 def own_sentences(reasoning) -> list[str]:
@@ -229,9 +277,13 @@ def prepare(db, task_id, report, now, *, cfg=None, clock=None, seconds=None) -> 
     cfg = cfg or state.get_config(db)
     if not getattr(cfg, "own_text_provenance", False) or not isinstance(report, dict):
         return None
+    row = db.execute("SELECT origin, family FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+    if row is None or not owner_task({"origin": row[0], "family": row[1]}):
+        return None                     # only the owner's answers are the individual's statements (review4 H3)
     found = []
     for sentence in own_sentences(report.get("reasoning")):
-        found += pairs(names(sentence), T.values(sentence))
+        for part in asserted(sentence):
+            found += pairs(names(part), T.values(part))
     found = list(dict.fromkeys(found))[:MAX_PER_ANSWER]
     if not found:
         return None
@@ -349,6 +401,16 @@ def forget_knowledge(db, ids) -> int:
     return len(held)
 
 
+def forget_all(db) -> int:
+    """Remove every fingerprint and task list (`nsf web config --forget-own-text`; caller owns the transaction). Two
+    ranges of the primary key, no scan. Returns the rows removed."""
+    removed = 0
+    for prefix in (PREFIX, TASK_PREFIX):
+        removed += db.execute("DELETE FROM web_strategies WHERE name >= ? AND name < ?",
+                              (prefix, prefix[:-1] + chr(ord(prefix[-1]) + 1))).rowcount
+    return removed
+
+
 # ---- the rule ------------------------------------------------------------------------------------------------------------
 
 class Echoes:
@@ -389,7 +451,8 @@ class Echoes:
                 if not emissions or read is None:
                     continue
                 at, sourced = emissions[0][0], emissions[0][1]
-                if sourced == UNSOURCED and at < read and (published is None or published >= at):
+                if sourced == UNSOURCED and at < read and read - at <= EMISSION_LIFETIME and \
+                        (published is None or published >= at):
                     verdict = "emitted"
                     break
             self.seen[c.id] = verdict

@@ -1,0 +1,133 @@
+"""Wave 4 fix lane: what the two reviews of the integrated Wave 4 found (review4 security and measurement). Each case
+fails on the integrated tree (d4931c0) and passes with its fix."""
+from contextlib import contextmanager
+import json
+
+import pytest
+
+from neuroscifi.acceptance.cognition import adversarial as adv
+from neuroscifi.webcortex import claims, emitted, orchestrator, state
+
+T0, DAY, N = adv.T0, adv.DAY, adv._SN
+ANSWER = f"{N} 9.4.0 is the latest {N} release, which brings several fixes."
+ECHOES = [f"By now {N} 9.4.0 is the latest {N} release.", f"Once again {N} 9.4.0 is the latest {N} release."]
+REPORT = {"reasoning": {"generated_by": "model:stub", "text": ANSWER}, "answer": []}
+
+
+@contextmanager
+def _own(name, **settings):
+    with adv._s_individual(name, **({"attribution_independence": False, "echo_recognition": False,
+                                     "own_text_provenance": True} | settings)) as (db, path):
+        yield db, path
+
+
+def _pages(texts, published):
+    return [(f"site{i}.example", t, published, None) for i, t in enumerate(texts)]
+
+
+def _rows(db, value="9.4.0"):
+    return [r["status"] for r in adv._s_rows(db, value) if N in r["statement"]]
+
+
+def _fingerprints(db):
+    return db.execute("SELECT count(*) FROM web_strategies WHERE name LIKE 'emitted:%'").fetchone()[0]
+
+
+# ---- item 3 (security H3): who can cause an emission to be recorded, and what is recorded --------------------------
+
+@pytest.mark.parametrize("origin,family,recorded", [
+    ("console", None, True), ("cli", None, True), ("voice", None, True), ("refresh-owner:7", None, True),
+    ("pocket", "fam-1", False), ("pocket-voice", "fam-1", False), ("mcp", None, False), ("curiosity", None, False),
+    ("refresh:7", None, False), ("monitor:3", None, False)])
+def test_only_the_owners_answers_are_recorded(origin, family, recorded):
+    with _own(f"origin-{origin.replace(':', '-')}") as (db, _):
+        task = orchestrator.submit(db, adv._SQ, T0, mode="fact_verification", origin=origin, family=family)
+        out = emitted.prepare(db, task["id"], REPORT, T0)
+        assert (out is not None and bool(out["rows"])) is recorded, origin
+
+
+@pytest.mark.parametrize("sentence", [
+    f"No: {N} 9.4.0 has not been released; the latest {N} release is 9.3.0.",      # review4 s/p2
+    f"{N} 9.4.0 has not been released.", f"Is {N} 9.4.0 out yet?", f"If {N} 9.4.0 is out, upgrade to it.",
+    f"Upgrade to {N} 9.4.0 if it is out.", f"It is unclear whether {N} 9.4.0 is out.",
+    f"{N} 9.4.0 might be the latest {N} release.", f"There is no evidence that {N} 9.4.0 exists."])
+def test_a_denial_a_question_a_condition_or_a_hedge_records_no_value(sentence):
+    found = {k for part in emitted.asserted(sentence) for _, k in emitted.pairs(emitted.names(part),
+                                                                                emitted.T.values(part))}
+    assert "version:9.4" not in found, sentence
+    assert {k for _, k in emitted.pairs(emitted.names(ANSWER), emitted.T.values(ANSWER))} == {"version:9.4"}
+
+
+def test_the_owner_denying_a_value_does_not_stop_it_being_learned_later():
+    """review4 s/p2 and s/p3 with the owner's own task: before the fix the denial recorded 9.4.0 as stated by the
+    individual, and pages reporting it later were discarded as echoes."""
+    with _own("denial") as (db, _):
+        adv._s_look(db, T0, [], answer=f"No: {N} 9.4.0 has not been released; the latest {N} release is 9.3.0.")
+        out = adv._s_look(db, T0 + 10 * DAY, _pages(ECHOES, T0 + 9 * DAY))
+        assert not out.get("echoes") and _rows(db) == ["provisional"]
+
+
+@pytest.mark.parametrize("days,echo", [(5, True), (29, True), (31, False), (60, False)])
+def test_an_emission_counts_for_thirty_days(days, echo):
+    with _own(f"lifetime-{days}") as (db, _):
+        adv._s_look(db, T0, [], answer=ANSWER)
+        out = adv._s_look(db, T0 + days * DAY, _pages(ECHOES, T0 + days * DAY - 3600))
+        assert bool(out.get("echoes")) is echo and (_rows(db) == []) is echo, days
+
+
+def test_turned_off_the_fingerprints_are_not_read_and_the_owner_can_remove_them(tmp_path, capsys):
+    from neuroscifi.cli import main
+    with _own("off") as (db, path):
+        adv._s_look(db, T0, [], answer=ANSWER)
+        assert _fingerprints(db) == 1
+        state.set_config(db, {"own_text_provenance": False}, T0 + DAY)
+        out = adv._s_look(db, T0 + 2 * DAY, _pages(ECHOES, T0 + 2 * DAY - 3600))
+        assert not out.get("echoes") and _rows(db) == ["provisional"]
+        db.commit()
+        main(["web", "config", "--db", str(path), "--forget-own-text"])
+        assert json.loads(capsys.readouterr().out)["own_text_removed"] == 2           # the fingerprint, its task list
+        assert db.execute("SELECT count(*) FROM web_strategies WHERE name LIKE 'emitted%'").fetchone()[0] == 0
+
+
+# ---- item 3 (measurement L3): a rule's marks stored on claims are inert once it is off --------------------------------
+
+def _claim(cid, text, mark):
+    from neuroscifi.webcortex import text as T
+    from neuroscifi.webcortex.types import Claim
+    return Claim(id=cid, text=text, source_url=f"http://{cid}.example/a", domain=f"{cid}.example", title=N,
+                 retrieved_at=T0, kind="statement", values=T.values(text), polarity=1, published_at=T0 - 3600,
+                 flags={"derivation": mark})
+
+
+def test_stored_derivation_and_echo_marks_are_dropped_when_their_settings_are_off():
+    row = {c: None for c in state.CLAIM_COLUMNS} | {
+        "id": "x", "text": ECHOES[0], "claim_values": '["v9.4.0"]', "polarity": 1, "relevance": 1.0,
+        "flags": json.dumps({"derivation": {"cites": ["name:devdesk"], "echo": True}, "origin": ["k"]})}
+    cfg = state.wconfig.WebConfig
+    assert state.claim_from_row(row).flags["derivation"] == {"cites": ["name:devdesk"], "echo": True}
+    assert state.claim_from_row(row, cfg(source_derivation=True, own_text_provenance=True)).flags["derivation"] == \
+        {"cites": ["name:devdesk"], "echo": True}
+    assert state.claim_from_row(row, cfg(source_derivation=True)).flags["derivation"] == {"cites": ["name:devdesk"]}
+    assert "derivation" not in state.claim_from_row(row, cfg()).flags
+    assert state.claim_from_row(row, cfg()).flags["origin"] == ["k"]
+    # evaluate drops a page marked as an echo only where the derivation rule groups (every claim marked)
+    marked = _claim("a", ECHOES[0], {"cites": [], "echo": True})
+    plain = _claim("b", ECHOES[1], None)
+    plain.flags = {}
+    assert claims.evaluate([marked, plain])["support_groups"] == 2
+    assert claims.evaluate([marked, _claim("c", ECHOES[1], {"cites": []})])["support_groups"] == 1
+
+
+def test_a_stored_cluster_read_with_the_rule_on_groups_as_today_once_it_is_off():
+    """Two outlets naming each other's site label, read with source_derivation on (one source), then the rule turned
+    off: the stored cluster, as consolidation loads it, counts them as two."""
+    with adv._s_individual("marks-off", **adv.LANE_S_OFF, source_derivation=True) as (db, _):
+        adv._s_look(db, T0, [("devdesk.example", f"As Factline reported, {N} 1.5.0 is the latest {N} release.",
+                              T0 - DAY, None),
+                             ("factline.example", f"Today {N} 1.5.0 is the latest {N} release.", T0 - DAY, None)])
+        task = db.execute("SELECT id FROM web_tasks ORDER BY rowid DESC LIMIT 1").fetchone()[0]
+        groups = lambda: len(claims.independence_groups([c for cl in state.load_clusters(db, task)  # noqa: E731
+                                                         for c in cl.claims]))
+        assert groups() == 1
+        state.set_config(db, {"source_derivation": False}, T0 + DAY)
+        assert groups() == 2
