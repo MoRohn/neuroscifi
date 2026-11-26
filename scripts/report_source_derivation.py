@@ -31,16 +31,27 @@ def _load(path):
     return json.loads(Path(path).read_text(encoding="utf-8")) if path else None
 
 
+BY_SHAPE_KEPT = ("shipped", "source_derivation", "attribution_independence", "echo_recognition")
+
+
+def _nonzero(by_shape):
+    return {s: {k: v for k, v in row.items() if v} for s, row in by_shape.items()}
+
+
 def _bench_summary(out):
+    """Per configuration and world; shapes (zero counts left out) for BY_SHAPE_KEPT and the references, totals only for
+    the ablations and the one-way rule."""
     keep = {}
     for name, conf in out["configurations"].items():
         keep[name] = {"settings": conf["settings"], "worlds": {
-            w: {"totals_sum": e["totals_sum"], "by_shape_sum": e["by_shape_sum"], "mean_correct": e["mean_correct"],
+            w: {"totals_sum": e["totals_sum"], "mean_correct": e["mean_correct"]}
+            | ({"by_shape_sum": _nonzero(e["by_shape_sum"])} if name in BY_SHAPE_KEPT else {}) | {
                 "mean_correct_per_seed": [s["mean_correct"] for s in e["per_seed"]],
                 "config_read_back": e.get("config_read_back"), "config_same_every_seed": e.get("config_same_every_seed"),
                 "looks_changed_vs_shipped": e.get("looks_changed_vs_shipped"), "cost_mean": e.get("cost_mean")}
             for w, e in conf["worlds"].items()}}
-    refs = {w: {r: {"totals_sum": e["totals_sum"], "by_shape_sum": e["by_shape_sum"], "mean_correct": e["mean_correct"]}
+    refs = {w: {r: {"totals_sum": e["totals_sum"], "by_shape_sum": _nonzero(e["by_shape_sum"]),
+                    "mean_correct": e["mean_correct"]}
                 for r, e in v.items()} for w, v in out["references"].items()}
     return {"commit": out.get("commit"), "split": out["split"], "seeds": out["seeds"],
             "world_digests": out["world_digests"], "configurations": keep, "references": refs}

@@ -744,3 +744,16 @@ support was below the bar (26 of them false now), 2 of them own answers, and doe
 had enough support (66 of those looks opened a contradiction question); it joins about a fifth of truly same-source
 page pairs. Its `correct` is 0.08 and 0.17 below the oracle's. Wrongly admitted content is of the held-out order (127
 over three worlds there); suppression is higher (29 % and 45 % of eligible looks, against 23 % on held-out).
+
+### Wave 4 lane S: `source_derivation` (ADR-066), development and held-out
+
+Configurations added (`sources.CONFIGS`): `source_derivation` and its ablations `source_derivation:no-names`, `:no-links`,
+`:no-time`, `:no-values`, `:no-whole-group` (set for the run only through `claims.DERIVATION_ABLATE`; read back as
+`_ablate`). The verdict rule, `sources.verdict_derivation`, was committed (`8e46b98`) before the one held-out run: (A)
+fewer false values admitted, in no world more, own answers in no world more; (B) suppressed not higher; (C) in no world
+`correct` below minus the spread; (D) precision within 0.02, recall higher. Verdict on both splits: **trade** (A holds;
+B, C and D fail). Held-out, all shapes (shipped → rule): wrongly admitted 127 (40 false) → 97 (30), own answers 4 → 4,
+suppressed 142 → 207 of 612, precision 0.81 → 0.78, recall 0.20 → 0.35; `correct` −0.066 / −0.054 / −0.101 (seeds worse
+4 / 3 / 4 of 4). Development: 64 (21) → 54 (17), 39 → 65 of 233, −0.083 / −0.093. The rule ships off. Per shape, the
+evidence assessment, ablations, cost, the other worlds and the census of what it cannot see: ADR-066 and
+`docs/quality/evidence/genesis_wave4_s.json`.
