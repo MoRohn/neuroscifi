@@ -1274,8 +1274,8 @@ def document_origins(documents) -> dict[str, list[str]]:
     return out
 
 
-def stamp_origins(claims, documents, *, attribution: bool = False,
-                  grouping: str = "transitive") -> dict[str, list[str]]:
+def stamp_origins(claims, documents, *, attribution: bool = False, grouping: str = "transitive",
+                  derivation: bool = False, echo=None) -> dict[str, list[str]]:
     """Add each claim's document_origins keys to its flags["origin"] (in place) and return the origins: copies
     of one story then form one independence group wherever the claims go next (scoring, the report verdict,
     per-claim states, consolidation from stored clusters), not only where the documents are at hand. With
@@ -1284,8 +1284,32 @@ def stamp_origins(claims, documents, *, attribution: bool = False,
     sentence counts with that origin, and a credit never joins two other groups (independence_groups).
     `grouping` (WebConfig.origin_grouping, ADR-063): "one_way" marks each claim flags["origin_grouping"] = "one_way"
     (independence_groups uses the one-way rule for claims that all carry it); any other value removes the mark, and a
-    claim never marked is left exactly as it was."""
+    claim never marked is left exactly as it was.
+    `derivation` (WebConfig.source_derivation, ADR-066): each claim gets flags["derivation"] = {"cites": the other
+    pages of these documents its page names or links to (derivation_cites)}, and {"echo": true} besides when `echo`
+    (a callable claim -> bool: lane E's check whether the page repeats the individual's own answer; None: no check)
+    says so; independence_groups then uses the derivation rule for claims that all carry it. Off: the mark is removed
+    where present, and a claim never marked is left exactly as it was."""
     origins = document_origins(documents)
+    cites = derivation_cites(documents) if derivation else {}
+    echo_failed = None
+    for c in claims:
+        if derivation:
+            mark = {"cites": list(cites.get(c.source_url) or ())}
+            if echo is not None:
+                try:            # a failing check is logged (its type only); the page then counts as without the hook
+                    if echo(c) is True:
+                        mark["echo"] = True
+                except Exception as exc:        # noqa: BLE001 - logged below (its type only), never silent
+                    from ..instance.errors import failure_kind
+                    echo_failed = echo_failed or failure_kind(exc)
+            c.flags = dict(c.flags or {}, derivation=mark)
+        elif "derivation" in (c.flags or {}):
+            c.flags = {k: v for k, v in c.flags.items() if k != "derivation"}
+    if echo_failed is not None:
+        import logging
+        logging.getLogger(__name__).warning("the echo check failed (%s); those pages count as without it",
+                                            echo_failed)
     failed = None
     for c in claims:
         extra = list(origins.get(c.source_url) or ())
@@ -1418,8 +1442,22 @@ def independence_groups(claims, *, origins: dict | None = None) -> list[list[str
     of 3ce4ae3, unchanged, so a named origin joins transitively and a page naming two honest outlets as its origins
     makes them one source (review3b N1, open at the shipped defaults). When every claim was read with origin_grouping "one_way"
     (stamp_origins marks it in flags["origin_grouping"]), _one_way_groups decides instead; one claim read without it
-    and this rule decides. A one-way grouping that fails is logged (its type only) and this rule decides."""
+    and this rule decides. A one-way grouping that fails is logged (its type only) and this rule decides.
+
+    When every claim was read with WebConfig.source_derivation (ADR-066; stamp_origins marks flags["derivation"]),
+    _derivation_groups decides: this grouping, coarsened by one-way citation edges (see there). A derivation grouping
+    that fails is logged (its type only) and the grouping without it decides."""
     claims = list(claims)
+    if claims and all(isinstance((c.flags or {}).get("derivation"), dict) for c in claims):
+        try:
+            return _derivation_groups(claims, origins)
+        except Exception as exc:        # noqa: BLE001 - logged below (its type only); the grouping without it decides
+            from dataclasses import replace
+            from ..instance.errors import failure_kind
+            import logging
+            logging.getLogger(__name__).warning("the derivation grouping failed (%s); the grouping without it is used",
+                                                failure_kind(exc))
+            claims = [replace(c, flags={k: v for k, v in c.flags.items() if k != "derivation"}) for c in claims]
     if claims and all((c.flags or {}).get("origin_grouping") == "one_way" for c in claims):
         try:
             return _one_way_groups(claims, origins)
@@ -1619,6 +1657,186 @@ def _one_way(ident, pointers, label) -> list:
         if a != b:
             parent[a] = b
     return [find(("g", g)) for g in range(len(ident))]
+
+
+# ---- ADR-066 (Wave 4 lane S): one source by evidence of derivation, not by the wording of a credit --------------------
+#
+# WebConfig.source_derivation, OFF by default. Evidence a page carries about the OTHER pages of its task: it names one
+# of them (capitalised words of its text that, joined, equal that page's site label: "Tech Ledger" for
+# techledger.example, whatever verb or line surrounds them) or links to it (its host or URL). Such a page may derive
+# from the page it names (a copy crediting its origin, a round-up, a mirror) or may have checked the value itself and
+# still name it (a credit, a contributor line): the text cannot tell the two apart, so the join is an uncertain
+# estimate of "same source" and is reported as such (derivation_joins). The rule counts what the evidence cannot
+# separate as ONE source: the consolidation bar counts only groups whose independence is supported; it never lowers it.
+# What the rule may and may not do (the Wave 3 reviews' lessons, review3 H1, review3b N1/N3, review3c F1/F2):
+#   - it starts from today's grouping and only joins: copies today's grouping joins are never separated;
+#   - a group moves only when every page in it names another page; it takes ONE edge (_derivation_edges, chosen from
+#     content only, so every order of the claims gives the same groups), to a group that names nothing or to a name
+#     where groups naming it meet, never to a group that itself names another; so two groups that each hold a page
+#     naming no other page are never joined, however many pages name them (a round-up is not a bridge), and no page
+#     can carry an honest copy into a third group;
+#   - the edge goes only to a group stating exactly the same values (a copy never joins the other side of a
+#     disagreement), and never to a page stated as published after the naming page (a derivation cannot precede its
+#     origin);
+#   - no list of phrases, hosts or names: the only text it reads is capitalised words matched against the site labels
+#     of the pages read in the same task (the identity key independence_groups already uses);
+#   - lane E's hook: a page its echo check marks (flags["derivation"]["echo"]) counts for nothing: it is in no group.
+# Bounds: DERIVATION_SCAN_WORDS words of a page are read; DERIVATION_MAX_CITES pages kept per page; a site label
+# shorter than DERIVATION_MIN_KEY characters is never matched in text (links still count).
+DERIVATION_MIN_KEY = 4
+DERIVATION_SCAN_WORDS = 5000
+DERIVATION_MAX_CITES = 16
+# The benchmark's ablations only (empty in the product): "names", "links", "time" (the publication-order filter),
+# "values" (the same-values condition), "whole_group" (a group moves only when every page in it cites).
+DERIVATION_ABLATE: frozenset = frozenset()
+_CAPITALISED = re.compile(r"[^\W_][\w'’&-]*")
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def _capitalised_keys(text: str) -> set:
+    """Letters and digits of 1-4 consecutive capitalised words, lower-cased and joined ("Tech Ledger" -> "techledger");
+    a sentence's first word alone is not one ("Today, ..." names nothing). The first DERIVATION_SCAN_WORDS words."""
+    out, seen = set(), 0
+    for sentence in _SENTENCE_BREAK.split(text or ""):
+        words = [m.group(0) for m in _CAPITALISED.finditer(sentence)]
+        words = words[:max(0, DERIVATION_SCAN_WORDS - seen)]
+        seen += len(words)
+        for i in range(len(words)):
+            for k in range(1, 5):
+                run = words[i:i + k]
+                if len(run) < k or not all(w[0].isupper() for w in run) or (k == 1 and i == 0):
+                    continue
+                out.add(re.sub(r"[^a-z0-9]", "", " ".join(run).lower()))
+        if seen >= DERIVATION_SCAN_WORDS:
+            break
+    return out
+
+
+def derivation_cites(documents) -> dict[str, list[str]]:
+    """{source url: identity keys "name:<site label>" of the OTHER documents (another host and label) that this
+    document names (_capitalised_keys meets their site label) or links to}, sorted, at most DERIVATION_MAX_CITES; a
+    document stated as published after this one is never cited (a derivation cannot precede its origin). Only the
+    normalised name is kept, never a host or URL: the key is what the citing page's own words already say, and
+    forgetting the cited page leaves nothing of it here."""
+    docs = [d for d in documents or () if d is not None]
+    own = [(d.domain or _host(d.final_url or d.url or "")).lower() for d in docs]
+    labels = [re.sub(r"[^a-z0-9]", "", site_label(h)) for h in own]
+    out: dict[str, list[str]] = {}
+    for i, d in enumerate(docs):
+        named = _capitalised_keys(d.text)
+        linked = set()
+        for link in (d.links or ())[:DERIVATION_MAX_CITES * 8]:
+            if isinstance(link, str):
+                linked.add(link)
+                linked.add(_host(link))
+        keys = set()
+        for j, e in enumerate(docs):
+            if not own[j] or own[j] == own[i]:
+                continue
+            if d.published_at is not None and e.published_at is not None and e.published_at > d.published_at and \
+                    "time" not in DERIVATION_ABLATE:
+                continue
+            if len(labels[j]) >= DERIVATION_MIN_KEY and labels[j] != labels[i] and labels[j] in named and \
+                    "names" not in DERIVATION_ABLATE:
+                keys.add("name:" + labels[j])
+            if labels[j] and labels[j] != labels[i] and "links" not in DERIVATION_ABLATE and \
+                    (own[j] in linked or bool({e.url, e.final_url, e.canonical_url} & linked)):
+                keys.add("name:" + labels[j])          # the same key as the words: no host or URL is kept
+        if keys:
+            for u in {d.canonical_url, d.final_url, d.url} - {None, ""}:
+                out[u] = sorted(keys)[:DERIVATION_MAX_CITES]
+    return out
+
+
+def _derivation_mark(claim: Claim) -> dict:
+    mark = (claim.flags or {}).get("derivation")
+    return mark if isinstance(mark, dict) else {}
+
+
+def derivation_echo(claim: Claim) -> bool:
+    """Lane E's hook, as the derivation rule reads it: the page was marked as repeating the individual's own answer."""
+    return _derivation_mark(claim).get("echo") is True
+
+
+def _derivation_groups(claims, origins) -> list[list[str]]:
+    """independence_groups with WebConfig.source_derivation (ADR-066; see the section comment). Today's grouping of the
+    claims (every other setting as it is), then: each group all of whose pages cite another page of the task takes
+    ONE edge (_derivation_edges) to a group that owns a cited key, cites nothing and states exactly the same values (or
+    to the key, where the groups citing it meet); pages marked as echoes are in no group."""
+    from dataclasses import replace
+    counted = [c for c in claims if not derivation_echo(c)]
+    if not counted:
+        return []
+    base = independence_groups([replace(c, flags={k: v for k, v in (c.flags or {}).items() if k != "derivation"})
+                                for c in counted], origins=origins)
+    by_id = {c.id: c for c in counted}
+    ident, pointers, label = [], [], []
+    for ids in base:
+        members = [by_id[i] for i in ids]
+        sig = "" if "values" in DERIVATION_ABLATE else \
+            "|" + ",".join(sorted({str(v) for c in members for v in (c.values or ())}))
+        ident.append({k + sig for c in members for k in _identity_keys(c)})
+        cited = [set(_derivation_mark(c).get("cites") or ()) for c in members]
+        moves = any(cited) if "whole_group" in DERIVATION_ABLATE else all(cited)
+        pointers.append({k + sig for k in set().union(*cited)} - ident[-1] if moves else set())
+        label.append(tuple(sorted({_domain(c) or "" for c in members})))
+    comp = _derivation_edges(ident, pointers, label)
+    if not (isinstance(comp, list) and len(comp) == len(base)):
+        raise TypeError(f"the derivation components are {type(comp).__name__}, not one per group")
+    groups: dict = {}
+    for ids, idx in zip(base, comp):
+        groups.setdefault(idx, []).extend(ids)
+    first = {}
+    for n, c in enumerate(counted):
+        first.setdefault(c.id, n)
+    out = [sorted(dict.fromkeys(ids), key=first.get) for ids in groups.values()]
+    return sorted(out, key=lambda ids: first[ids[0]])
+
+
+def _derivation_edges(ident, pointers, label) -> list:
+    """The component of each group under the derivation rule: ident[g] the keys group g owns, pointers[g] the keys it
+    cites (empty: it does not move), label[g] its sort label. A group that cites takes ONE edge, chosen from content
+    only: to a group that owns a cited key and cites nothing itself (ties by key, then label); else to the cited key
+    no such group owns that the most citing groups cite (ties by key), where citing groups meet. An edge never ends at
+    a group that cites, so no page can carry another into a third group (review3c F2: a page on a host labelled like
+    the outlet an honest copy names, itself naming an honest outlet)."""
+    roots: dict = {}
+    for g, keys in enumerate(ident):
+        if not pointers[g]:
+            for k in keys:
+                roots.setdefault(k, []).append(g)
+    popularity: dict = {}
+    for keys in pointers:
+        for k in keys:
+            popularity[k] = popularity.get(k, 0) + 1
+    out = []
+    for g, keys in enumerate(pointers):
+        if not keys:
+            out.append(("g", g))
+            continue
+        owned = [(k, label[o], o) for k in keys for o in roots.get(k, ()) if o != g]
+        out.append(("g", min(owned)[2]) if owned else ("k", min(keys, key=lambda k: (-popularity[k], k))))
+    return out
+
+
+def derivation_joins(claims, *, origins: dict | None = None) -> dict | None:
+    """Display only (ADR-066; lane D's caution reads it, nothing decides on it): for claims read with
+    source_derivation, how many independent groups today's grouping would count and how many the derivation rule
+    counts, and the pages of the groups it counts that name another page of their task, each an UNCERTAIN "same
+    source" (a copy and an outlet that checked the value and still names another look alike). None when the claims
+    were not read with the rule."""
+    from dataclasses import replace
+    claims = [c for c in claims if c is not None]
+    if not claims or not all(isinstance((c.flags or {}).get("derivation"), dict) for c in claims):
+        return None
+    plain = [replace(c, flags={k: v for k, v in (c.flags or {}).items() if k != "derivation"}) for c in claims
+             if not derivation_echo(c)]
+    today = len(independence_groups(plain, origins=origins)) if plain else 0
+    groups = independence_groups(claims, origins=origins)
+    joined = sorted({(c.source_url, k) for g in groups if len(g) > 1 for c in claims if c.id in g
+                     for k in _derivation_mark(c).get("cites") or ()})
+    return {"groups_today": today, "groups": len(groups), "echoes": sum(1 for c in claims if derivation_echo(c)),
+            "cited": [{"page": u, "names": k[len("name:"):], "same_source": "uncertain"} for u, k in joined][:50]}
 
 
 def dependence(claims, documents=(), *, origins: dict | None = None) -> dict:
@@ -2000,7 +2218,8 @@ def evaluate(claims, *, now: float | None = None, freshness_class: str | None = 
     unique = list({c.id: c for c in claims}.values())
     order = sorted(unique, key=lambda c: (-c.relevance, -_effective(c), c.source_url, c.sentence_index, c.id))
     shown = order
-    order = [c for c in order if not is_adversarial(c)]
+    # a page lane E's echo check marked under source_derivation (ADR-066) counts for nothing, as an adversarial one
+    order = [c for c in order if not is_adversarial(c) and not derivation_echo(c)]
     empty = {"alpha": PRIOR_ALPHA, "beta": PRIOR_BETA, "representative": None, "agree": [], "contra": [],
              "related": [], "pairs": [], "groups": [], "support_groups": 0, "contra_groups": 0, "order": shown}
     if not order:

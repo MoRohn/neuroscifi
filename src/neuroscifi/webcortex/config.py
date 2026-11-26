@@ -44,7 +44,7 @@ assert set(MODE_BUDGETS) == set(MODES)
 
 # Wave 3 settings whose stored value is checked when it is read (WebConfig.from_json; security review L8)
 CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognition", "supersession",
-                   "supersession_min_sources", "origin_grouping")
+                   "supersession_min_sources", "origin_grouping", "source_derivation")
 
 
 # review3b N8: a damaged value of a setting that tunes an opt-in rule never loosens that rule: the rule itself reads as
@@ -251,6 +251,15 @@ class WebConfig:
     # N1 and keeps copies naming several origins one source on the staged cases (review3c F1), but no benchmark world
     # holds a page naming two origins, so neither direction is measured. Applies to claims read while it is set.
     origin_grouping: str = "transitive"
+    # ADR-066 (Wave 4 lane S): what counts as one source by evidence of derivation, not by the wording of a credit. On,
+    # a page that names another page read in the same task (capitalised words equal to that page's site label,
+    # whatever surrounds them) or links to it counts with that page (one edge per group, never between two groups that
+    # each hold a page naming no other page, only between groups stating the same values, never to a page published
+    # later), on top of today's grouping, which it never splits; a page lane E's echo check marks counts for nothing.
+    # OFF by default: an outlet that checked a value and still names another outlet looks exactly like a copy, so the
+    # rule trades true facts not verified for copies not counted twice (ADR-066 has both, per shape). Applies to claims
+    # read while it is set.
+    source_derivation: bool = False
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

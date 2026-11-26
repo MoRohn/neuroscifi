@@ -255,7 +255,8 @@ def investigate(db, task, docs, now, *, answer=None) -> dict:
     for d in docs:
         found += claims.extract_claims(d, task["objective"])
     cfg = state.get_config(db)
-    origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping)
+    origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping,
+                                   derivation=cfg.source_derivation)
     clusters = [claims.score(c, now=now, freshness_class=freshness, origins=origins)
                 for c in claims.cluster(found)] if found else []
     with store.write(db):

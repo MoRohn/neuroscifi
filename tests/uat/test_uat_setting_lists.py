@@ -72,6 +72,16 @@ def test_every_wave3_setting_is_rolled_back_and_made_to_fail():
     assert switches - {m for m, *_ in faults.WAVE3_ENTRIES} == set(), "add it to WAVE3_ENTRIES"
 
 
+WAVE4_S_FIELDS = {"source_derivation"}       # Wave 4 lane S (ADR-066)
+
+
+def test_every_wave4_s_setting_is_rolled_back_and_made_to_fail():
+    import uat.test_uat_fault_injection as faults
+    assert WAVE4_S_FIELDS <= {f.name for f in dataclasses.fields(WebConfig)}
+    assert WAVE4_S_FIELDS - set(rollback.SWITCHES) == set(), "add a rollback test and a SWITCHES entry"
+    assert WAVE4_S_FIELDS - {m for m, *_ in faults.WAVE4_S_ENTRIES} == set(), "add it to WAVE4_S_ENTRIES"
+
+
 def test_the_wave0_settings_are_the_ones_wave0_had():
     """The frozen Wave 0 lists above are not allowed to grow: a setting added later must be classified."""
     assert WAVE0_INSTANCE <= {f.name for f in dataclasses.fields(InstanceConfig)}
