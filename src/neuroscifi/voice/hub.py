@@ -39,6 +39,7 @@ from __future__ import annotations
 from collections import deque
 from contextlib import contextmanager
 import hashlib
+import logging
 import os
 import queue
 import re
@@ -51,6 +52,8 @@ from ..instance.errors import Conflict, InstanceError, NotFound, ValidationError
 from ..resources import idle
 from . import bridge as vbridge, commands as vcommands, config as vconfig, engines as vengines, selftest as vselftest, \
     state as vstate, transcripts as tx
+
+log = logging.getLogger(__name__)
 
 RATE = 16000
 MAX_CHUNK = 64 * 1024
@@ -322,7 +325,12 @@ class VoiceHub:
         self._state(s, mode=mode, session_active=True, capture_device=None, mic_capturing=False, speaking=False,
                     user_speaking=False, interrupted_at=None)
         self._wake(s, mode)
-        self._resume_follow(s, context.get("follow_task_id"), context.get("follow_by"), previous)
+        try:            # Wave 2 lane U: a failing pick-up of an awaited answer never stops a session from starting
+            if self._resume_follow(s, context.get("follow_task_id"), context.get("follow_by"), previous) is not None:
+                raise TypeError("the pick-up returned a value; it returns nothing")
+        except Exception as exc:          # noqa: BLE001 - logged; the session starts without the pick-up
+            log.warning("voice follow-up: picking up task %s failed (%s: %s); the session starts without it",
+                        context.get("follow_task_id"), type(exc).__name__, exc)
         return self.public(s)
 
     def _resume_follow(self, s: Session, task_id, by=None, previous=None):
@@ -1165,9 +1173,17 @@ class VoiceHub:
                         if self._closed.wait(ELSEWHERE_GRACE):     # tells them; if none claims it, this one
                             return           # writes it into the asking transcript (review1b R3)
                         live = self._live(s)
-                    with self.db() as db:
-                        if not tx.clear_follow(db, s.principal.name, task_id):
-                            return           # delivered by another follower, or forgotten meanwhile
+                    try:     # Wave 2 lane U: a claim that fails delivers here, as before R8, rather than never
+                        with self.db() as db:
+                            claimed = tx.clear_follow(db, s.principal.name, task_id)
+                        if not isinstance(claimed, int):
+                            raise TypeError(f"the claim returned {type(claimed).__name__}, not a count")
+                    except Exception as exc:     # noqa: BLE001 - logged; the answer still reaches the person
+                        log.warning("voice follow-up: the delivery claim of task %s failed (%s: %s); delivered "
+                                    "by this follower", task_id, type(exc).__name__, exc)
+                        claimed = 1
+                    if not claimed:
+                        return               # delivered by another follower, or forgotten meanwhile
                 target = live or s           # no open session: the answer still goes into the asking transcript
                 reply = vbridge.compose_answer(task)
                 reply.actions.append({"kind": "context", "last_task_id": task_id, "follow_task_id": None})
