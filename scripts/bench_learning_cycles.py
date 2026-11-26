@@ -139,6 +139,7 @@ def idle(a) -> int:
     for split in a.split or ("development", cycles.RATE + "development", "held_out", cycles.RATE + "held_out"):
         run = cycles.run_split(split, configs=cycles.idle_configurations())
         run["references"] = cycles.run_references(split)
+        run["commit"] = out["commit"]       # review3 LOW 6: every split names the commit it was measured on
         out["runs"][split] = run
         out["verdicts"][split] = cycles.idle_verdicts(run)
         rows = [r for c in run["configurations"].values() for w in c["worlds"].values() for r in w["per_seed"]]
