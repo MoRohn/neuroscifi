@@ -35,20 +35,20 @@
   }
  ],
  "conflicting_hints_and_adversarial": {
-  "items": 21,
+  "items": 28,
   "wrong": []
  },
  "corpus": {
   "by_basis": {
    "declared": 7,
    "signature": 83,
-   "structure": 31
+   "structure": 35
   },
   "by_family": {
    "archive": 10,
    "array": 5,
    "audio": 11,
-   "code": 13,
+   "code": 17,
    "database": 1,
    "document": 14,
    "drawing": 1,
@@ -62,9 +62,9 @@
    "unknown": 3,
    "video": 6
   },
-  "distinct_formats": 96,
-  "identified_as_constructed": 121,
-  "items": 121,
+  "distinct_formats": 99,
+  "identified_as_constructed": 125,
+  "items": 125,
   "wrong": []
  },
  "decode_chain_on_corpus": {
@@ -78,7 +78,7 @@
    "xz": 1,
    "zstd": 1
   },
-  "opaque": 102,
+  "opaque": 106,
   "opaque_formats": [
    "7z",
    "aac",
@@ -131,6 +131,7 @@
    "ogv",
    "ole",
    "opus",
+   "package-json",
    "parquet",
    "pbm",
    "pdf",
@@ -144,8 +145,10 @@
    "pptx",
    "ps",
    "psd",
+   "pyproject",
    "python",
    "rar",
+   "requirements",
    "rss",
    "rtf",
    "shapefile",
@@ -209,19 +212,19 @@
   "note": "with the size unknown, a short prefix of a binary format that happens to be printable (b'GIF8', b'PK') is called text, which those bytes are; with the size given, prefixes under 32 bytes of a longer input get no structure verdict",
   "outcomes": {
    "size_given": {
-    "exact": 654,
-    "general": 73,
-    "text": 4,
+    "exact": 673,
+    "general": 86,
+    "text": 16,
     "unknown": 600
    },
    "size_unknown": {
-    "exact": 674,
-    "general": 70,
-    "text": 337,
+    "exact": 700,
+    "general": 78,
+    "text": 347,
     "unknown": 250
    }
   },
-  "tried": 2662
+  "tried": 2750
  },
  "what": "artifact detection over lane K's hand-assembled corpus (tests/artifacts/detect_corpus.py)"
 }
