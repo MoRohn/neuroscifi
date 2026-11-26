@@ -145,7 +145,7 @@ class Run(cycles.Run):
         return {"echo": "self", "wire": "wire", "wire_copy": "wire"}.get(page["kind"], "other:" + page["host"])
 
     def _independence(self, name, look, docs, objective):
-        from ...webcortex import claims, state
+        from ...webcortex import claims, emitted, state
         if (name, self.cycle) in self.seen_looks or not docs:
             return
         self.seen_looks.add((name, self.cycle))
@@ -153,7 +153,7 @@ class Run(cycles.Run):
         found = [c for d in docs for c in claims.extract_claims(d, objective)]
         cfg = state.get_config(self.db)
         claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping,
-                             derivation=cfg.source_derivation)
+                             derivation=cfg.source_derivation, echo=emitted.derivation_hook(self.db, found, cfg))
         origin = {c.id: self._origin_of(look, by_url[c.source_url]) for c in found if c.source_url in by_url}
         groups = [{origin[i] for i in g if i in origin} for g in claims.independence_groups(found)]
         honest = {o for g in groups for o in g if o.startswith("outlet:")}

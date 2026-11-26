@@ -162,7 +162,7 @@ def _pairs(pages, same) -> dict:
 
 def investigate(db, task, docs, now, *, answer=None) -> tuple[dict, list, dict]:
     """cycles.investigate, keeping what it reads: (consolidation, scored clusters, origins). Same calls, same order."""
-    from ...webcortex import autonomy, claims, consolidate, orchestrator, state
+    from ...webcortex import autonomy, claims, consolidate, emitted, orchestrator, state
     tid = task["id"]
     freshness = consolidate._freshness(db, state.task(db, tid))
     found, source_ids = [], {}
@@ -173,7 +173,7 @@ def investigate(db, task, docs, now, *, answer=None) -> tuple[dict, list, dict]:
         found += claims.extract_claims(d, task["objective"])
     cfg = state.get_config(db)
     origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping,
-                                   derivation=cfg.source_derivation)
+                                   derivation=cfg.source_derivation, echo=emitted.derivation_hook(db, found, cfg))
     clusters = [claims.score(c, now=now, freshness_class=freshness, origins=origins)
                 for c in claims.cluster(found)] if found else []
     with store.write(db):

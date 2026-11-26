@@ -414,3 +414,22 @@ class Either:
             if verdict:
                 return verdict
         return None
+
+
+def derivation_hook(db, claims, cfg):
+    """Lane S's echo hook (claims.stamp_origins(echo=...), ADR-066) fed by this rule: with BOTH own_text_provenance and
+    source_derivation on, a callable that is True for a claim Echoes marks "emitted" (the derivation grouping then
+    counts its page for nothing); None otherwise, so stamp_origins is called exactly as without it. The lookups are
+    made here, before any write transaction; a check that cannot be built fails at its first call, which stamp_origins
+    logs (its type only), and every page then counts as without the hook."""
+    if not (getattr(cfg, "own_text_provenance", False) is True and getattr(cfg, "source_derivation", False) is True):
+        return None
+    try:
+        check = Echoes(db, claims)
+    except Exception as exc:        # noqa: BLE001 - raised again at the hook's call, where stamp_origins logs its type
+        failure = exc
+
+        def failed(claim):
+            raise failure
+        return failed
+    return lambda claim: check.of(claim) == "emitted"
