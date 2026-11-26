@@ -388,7 +388,7 @@ Settings (owner only; carried by a restore; a damaged value reads as the behavio
 |---|---|---|
 | internal-state history, information display, imagination what-if/forecast/retrospect | on | `nsf config --no-internal-state-history`, `--no-decision-information`, `--no-imagine-what-if` (and the others) |
 | salience record, answer monitoring record, hypothesis fields, premise re-check marks | on (records only) | `nsf web config --set salience_record=false` (likewise `answer_monitoring`, `hypothesis_fields`, `premise_recheck`) |
-| predictive regulation | off | `nsf config --predictive-regulation` |
+| predictive regulation | off | `nsf config --predictive-regulation`; in shadow (records, holds nothing): `--predictive-regulation-shadow` (below) |
 | executive rule | `rules-v1` | `nsf config --executive-rule information-v1` (and back with `rules-v1`) |
 | scenario records | off | `nsf config --imagine-scenarios` |
 | selective broadcast | `off` | `nsf config --broadcast log` (record only) or `on`; `--broadcast-threshold 0.5` |
@@ -408,6 +408,48 @@ and how it was admitted, the latest arbitrations between background mechanisms a
 |---|---|---|
 | arbitration record: when the re-check or a due refresh takes the subject the timer's curiosity wanted in the same pass, the winner's task records which mechanism lost and why | on (a record only) | `nsf web config --set arbitration_record=false` |
 | salience attention: of the candidates admission already admitted, the more salient is taken first (needs the salience record) | off | `nsf web config --set salience_attention=true` |
+
+### Gathering evidence on your own host (ADR-058)
+
+Two things let you decide with real numbers instead of the benchmark's simulated ones. Neither changes what the
+individual does.
+
+**A week of predictive regulation "in shadow".** Predictive regulation (off by default) would hold new background
+research when it expects memory to run short. In shadow it holds nothing: the research runs exactly as with it off,
+and each time the background gate is asked, what the forecast *would* have said is written down. Every few minutes
+the research worker checks those notes against what memory really did.
+
+```sh
+nsf config --predictive-regulation-shadow --db DB    # start: nothing is held, verdicts are recorded
+nsf internal-state --shadow-report --db DB           # any time: what it would have done, checked against memory
+nsf config --no-predictive-regulation --db DB        # stop (the notes stay until you delete them)
+```
+
+Leave it on for at least a week of normal use with the research worker running and the internal-state history on
+(the default; the notes are checked against that 6-hour history, so a worker that is stopped for longer leaves some
+"unsettled"). Then read the report:
+
+- `statement`: how many days and memory shortages ("breach episodes") the numbers rest on. Below 7 days or 5
+  episodes it says **not enough data**: do not decide on it yet.
+- `settled.hits`: times it would have held and memory did fall under the critical line within 3 minutes;
+  `settled.false_alarms`: times it would have held and nothing happened (`false_alarm_share` is their share of all
+  its holds); `settled.misses`: times it would have let work start and memory did fall short.
+- `breaches.preceded` and `lead_seconds`: of the real shortages, how many it would have seen coming, and how early.
+- `work.starts_after_a_hold`: background tasks that started while it would have held, out of `background_starts`:
+  the research it would have postponed.
+
+If the hits and warning time are worth the postponed research and the false alarms, turn it on with
+`nsf config --predictive-regulation`; that is your decision. The notes are numbers only (no questions, no text):
+`<db>.resources/forecast-shadow.jsonl` and `forecast-shadow-days.json` (120 days kept). Like the internal-state
+history they are not in checkpoints and `forget` does not need to reach them; deleting the two files removes the
+evidence and nothing else.
+
+**How close each learner is to having enough real outcomes.** Calibration, scenario records, forecast recalibration
+and strategy selection only improve from outcomes the world settles. `nsf readiness --db DB` counts what you have:
+settled predictions by kind and month, answers that later got a verdict, hypotheses settled, re-checks that found a
+change, and for each learner its minimum (read from the code), what is missing and the earliest date it could be met
+at the pace so far ("unknown" while nothing settles). It only reads: nothing is fitted or stored, no model is called.
+`nsf self` shows the same per-learner summary under `uncertain.outcomes_readiness`.
 
 ### Crashed worker
 

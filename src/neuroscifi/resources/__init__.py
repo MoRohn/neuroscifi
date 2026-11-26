@@ -58,7 +58,7 @@ def status(db_path=None, *, full: bool = True, cold_start: bool = False) -> dict
     inference server's state (/metrics, cached 15 s). `cold_start` also reads each neuroscifi-* container's last
     measured start-to-ready time (docker logs)."""
     s = monitor.sample(full=full)
-    gate = policy.background_gate(db_path, sample=s)
+    gate = policy.background_gate(db_path, sample=s, record=False)      # a display: no shadow verdict (ADR-058)
     engine_ok, engine_why = policy.engine_gate("browser rendering", sample=s)
     out = {"level": s["level"], "reasons": s["reasons"], "thresholds": s["thresholds"], "measured_at": s["at"],
            "memory": s["memory"], "load": s["load"], "gpu": s["gpu"], "containers": s["containers"],

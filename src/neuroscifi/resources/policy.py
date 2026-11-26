@@ -160,11 +160,12 @@ def _file_state(db_path):
     return tuple(out)
 
 
-def predictive_on(db_path) -> bool:
-    """The owner's predictive_regulation setting (InstanceConfig, ADR-051), read with a read-only connection; False
-    without a database or when it cannot be read (the gate then behaves as before the setting existed). The value
-    read is reused while neither the file nor its log changed, for at most PREDICTIVE_CACHE_SECONDS: two stat calls
-    instead of a connection on every gate (Wave 1 integration; the gate runs on every background start)."""
+def predictive_mode(db_path):
+    """The owner's predictive_regulation setting (InstanceConfig, ADR-051; "shadow" since ADR-058): True, "shadow" or
+    False, read with a read-only connection; False without a database, when it cannot be read, or for any other
+    saved value (the gate then behaves as before the setting existed). The value read is reused while neither the
+    file nor its log changed, for at most PREDICTIVE_CACHE_SECONDS: two stat calls instead of a connection on every
+    gate (Wave 1 integration; the gate runs on every background start)."""
     if not db_path:
         return False
     key, now = str(db_path), time.monotonic()
@@ -177,19 +178,34 @@ def predictive_on(db_path) -> bool:
     try:
         with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2)) as db:
             row = db.execute("SELECT value FROM meta WHERE key='config'").fetchone()
-        value = bool(row) and json.loads(row[0]).get("predictive_regulation") is True
+        saved = json.loads(row[0]).get("predictive_regulation") if row else False
     except (sqlite3.Error, ValueError, AttributeError):
         return False
+    value = True if saved is True else "shadow" if saved == "shadow" else False
     if len(_predictive_cache) > 64:
         _predictive_cache.clear()
     _predictive_cache[key] = (state, now, value)
     return value
 
 
-def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
+def predictive_on(db_path) -> bool:
+    """predictive_regulation is on: the forecast may add a hold (ADR-051)."""
+    return predictive_mode(db_path) is True
+
+
+def predictive_shadow(db_path) -> bool:
+    """predictive_regulation is "shadow": the forecast's verdict is recorded and the gate decides as with the setting
+    off (ADR-058, resources/shadow.py)."""
+    return predictive_mode(db_path) == "shadow"
+
+
+def background_gate(db_path=None, *, sample=None, audio=None, record=True) -> dict:
     """{"allowed", "reason", "why" ("audio" | "memory" | "forecast" | None), "level", "audio"}: may NEW background
     (autonomous) research start now? With the owner's predictive_regulation on (ADR-051), a forecast from the
-    internal-state history (resources/forecast.py) can refuse too; it can only add a refusal, never lift one."""
+    internal-state history (resources/forecast.py) can refuse too; it can only add a refusal, never lift one. With
+    it "shadow" (ADR-058) the decision is made exactly as with it off and only then, with `record` (False for the
+    status displays that read the gate), resources/shadow.py records what the forecast would have said; nothing it
+    does or fails to do reaches the decision."""
     s = sample or monitor.sample()
     if audio is None:
         try:
@@ -230,7 +246,11 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
             verdict = {"hold": False}
         if verdict.get("hold"):
             reason, why = verdict["reason"], "forecast"
-    return {"allowed": reason is None, "reason": reason, "why": why, "level": s["level"], "audio": audio}
+    decision = {"allowed": reason is None, "reason": reason, "why": why, "level": s["level"], "audio": audio}
+    if record and predictive_shadow(db_path):
+        from . import shadow
+        shadow.observe(db_path, time.time(), why)      # never raises; its result is not read
+    return decision
 
 
 def engine_gate(engine: str, *, sample=None) -> tuple[bool, str | None]:

@@ -151,6 +151,9 @@ RUNNERS = {
                                                        "queue only) on a staged temporary individual",
     "neuroscifi.acceptance.cognition.integrated:run_world": "benchmark (Wave 2 lane L): the timer pass and the idle "
                                                             "investigator on a staged individual, step by step",
+    "neuroscifi.acceptance.cognition.shadow_check:staged_run": "benchmark (Wave 3 lane H, ADR-058): two staged "
+                                                               "background tasks whose status follows an anticipation "
+                                                               "trace while the real gate decides; nothing is run",
 }
 
 # Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored

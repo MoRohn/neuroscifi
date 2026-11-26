@@ -290,6 +290,10 @@ def register(sub):
                    help="new background research also waits while memory headroom is forecast to cross the critical "
                         "line, or a regular voice session is expected, within 3 minutes; owner work is never held "
                         "(default: off)")
+    p.add_argument("--predictive-regulation-shadow", dest="predictive_regulation", action="store_const",
+                   const="shadow", help="predictive regulation in shadow: nothing is held; what the forecast would "
+                                        "have done is recorded and checked against what memory really did "
+                                        "(`nsf internal-state --shadow-report`)")
     p.add_argument("--executive-rule", choices=store.RULE_VERSIONS, default=None,
                    help="the executive's rule version: rules-v1 (the fixed rule order) or information-v1 (asks the "
                         "most informative question); default rules-v1")

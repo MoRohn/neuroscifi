@@ -3016,6 +3016,91 @@ first figures are kept in the evidence file under `before_review`.
 - Not verified: anything on the open web, a live model, a real worker process running the loop for days, or the
   real host's background gate during the loop.
 
+# ADR-058 (draft) Host evidence without behaviour change: predictive regulation in shadow, and the readiness of real outcomes. R
+
+## Context
+
+Wave 3 lane H (FINAL_EVALUATION §6, directions 2 and 3). ADR-051's forecast avoided most memory breaches on a
+SIMULATED plant with declared constants and ships off; turning it on is the owner's decision, with no host evidence.
+Calibration (ADR-054), scenario records (ADR-052), forecast recalibration (ADR-048) and strategy selection (ADR-055)
+all wait for settled real outcomes ("no fitted map has 30 items in 3 blocks"), and nothing told the owner how far
+each is. Both additions here record or read; neither changes what the individual does.
+
+## Decision
+
+1. **`predictive_regulation = "shadow"`** (a third value of the existing setting; default stays `false`;
+   `nsf config --predictive-regulation-shadow`). `policy.background_gate` makes its decision exactly as with the
+   setting off and only then, when called on a decision path (`record=True`; `internal_state.snapshot` and
+   `resources.status` pass `False`), calls `resources/shadow.observe`, whose result is not read and which never
+   raises. It computes the forecast as the gate would with the setting on (the same history read and `forecast.assess`
+   call), at most once per history sample per process (the history file's state is the key: on an unchanged history
+   the added cost is one stat call), and appends one line to `<db>.resources/forecast-shadow.jsonl`: the time, the
+   sample's time, would hold / would allow / no forecast, the reason word (`memory`, `voice`), the horizon, the
+   margin, and what the real gate did (`allowed`, `audio`, `memory`); a failure is a `{"failed": kind}` line and a
+   WARNING naming the kind only. Numbers and fixed words only; 0640 in a shared folder; a link, FIFO or another
+   account's file is refused; a file over 1 MiB takes no line; the gate never waits for the lock.
+2. **Settlement inside the existing sampler.** `internal_state.record` (the worker's heartbeat, every 30 s) calls
+   `shadow.settle_quietly`, which at most every 300 s settles each verdict whose horizon has passed against the
+   history samples: a breach is a sample under the critical line (`monitor.thresholds`); a would-hold with a breach
+   in `[t, t + horizon]` is a hit, without one a false alarm; a would-allow with one is a miss; a breach episode was
+   preceded when a would-hold at `t` had `t <= start <= t + horizon`, by `start - earliest t`; background starts after
+   a would-hold the real gate allowed are the work holding would have deferred (a proxy: net increases of running
+   tasks between samples). Counts go to a daily roll-up, `forecast-shadow-days.json` (120 days); the verdict file
+   keeps only what is unsettled. A pass that did not finish is not counted twice (`settled_until`; one verdict per
+   sample, the first). No new background activity: `background.py` is unchanged.
+3. **`nsf internal-state --shadow-report`**: the roll-up plus the verdicts due but not yet rolled up (settled in
+   memory; nothing written), with the days and breach episodes the numbers rest on, and "Not enough data" below
+   7 days or 5 episodes (`shadow.MIN_DAYS`, `MIN_EPISODES`).
+4. **`nsf readiness`** (`neuroscifi/readiness.py`), read-only (`mode=ro`, `query_only`): settled predictions by
+   kind (`evolution._KIND_SQL`) and month, open, and settled-but-forgotten; answers (completed or partial tasks)
+   with a later verdict (a prediction on knowledge the task produced, settled confirmed or error: no record pairs an
+   answer with a verdict on the answer itself); hypotheses by status; re-checks that found a change, none,
+   undecided, closed by another path, dropped, open; scenario records settled (through `scenarios.errors`, the
+   mechanism's own report: this module never touches the imagined store). Each learner with its minimum read
+   from its module at run time (`evolution.RECALIBRATION_MINIMUM` per kind, `monitoring.MIN_ITEMS` and
+   `MIN_BLOCKS` with the shipped maps' items and blocks), what is missing, the rate over the last 90 days (or since
+   the first) and the earliest date at that rate ("unknown" at rate zero, "met"); scenario records, hypothesis
+   settlement and strategy selection have no count minimum in the code and say so. The self-description's owner
+   scope (not agent, not family) carries the per-learner summary as `uncertain.outcomes_readiness`.
+
+## Evidence (`docs/quality/evidence/genesis_h.json`; simulated plant for the check, real code throughout)
+
+- **Shadow == off.** The anticipation family's development and held-out traces (8 + 8 traces x 3 seeds = 48 runs of
+  240 ticks; never the withheld family) through the product's wiring (`acceptance/cognition/shadow_check.py`: the
+  sampler, the history file, the real gate): the gate's decisions with shadow equal those with the setting off on
+  every tick of every run, and so does the plant's trace; 0 decisions changed, while the forecast would have held on
+  279 (development) and 508 (held-out) ticks. The offline research benchmark with every individual reading
+  `"shadow"` gives `68731d72…`, Wave 0's digest, but that benchmark never calls the background gate (0 calls,
+  counted), so it shows only that the setting's value changes nothing else; the staged traces are the proof.
+- **Settlement against known truth.** On every run the report's numbers equal `scoring.breach_report` (the family's
+  own scoring) on the same trace: (a) incremental (the sampler settling every 300 s of the staged clock, the
+  critical line, 180 s horizon) and (b) lazy with the family's breach line (2 GiB) and horizon (20 ticks): hits,
+  false alarms, misses, quiet allows, episodes, preceded episodes, mean lead; 48 of 48 runs without a mismatch for
+  each. Pooled, not a claim, (a): development 219 hits, 60 false alarms, 21 misses, 38 of 38 episodes preceded;
+  held-out 306, 198, 19, 37 of 37. These say the arithmetic and the wiring are right; they say nothing of the host.
+- **Cost** (aarch64 host, commit `87a3a7a`). The gate on an unchanged history (the worker's usual case: many calls
+  per 30 s sample): 3.7 µs off, 8.7–9.0 µs in shadow (means of 500 calls, 16 staged individuals). On a call right
+  after a new sample (the forecast computed, a line appended; at most once per sample per process): mean 1,041 →
+  1,751 µs (development) and 795 → 1,320 µs (held-out), p95 up to 3.3 ms; the "off" figure includes re-reading the
+  setting because the staged file changes every tick. `nsf readiness` at 10,000 knowledge items, 500,000 events,
+  20,000 predictions, 10,000 tasks, 1,000 scenario records: median 36 ms (5 runs, commit `a8de711`).
+- **Fault injection** (`tests/uat/test_uat_shadow_faults.py`): a forecast that raises, times out or returns garbage,
+  a failing history read, a FIFO in place of the record, a roll-up that cannot be written: the gate's decisions equal
+  those with the setting off on every tick, a WARNING names the kind (never the message), the report counts the
+  failed verdicts.
+
+## Consequences
+
+- Defaults unchanged: `predictive_regulation` stays `false`; the readiness report is a command. A week of shadow on
+  the host is the owner's to run (`docs/operations/RUNBOOK.md`, "Gathering evidence on your own host").
+- The shadow files are operational telemetry like the internal-state history (ADR-051): numbers only, not in
+  checkpoints, not something `forget` must reach; deleting them loses only the evidence. Nothing reads them but the
+  report: no learner, no gate, no evidence or knowledge.
+- Found on the way, not changed: `webcortex.strategies.outcomes` makes two unindexed look-ups per task; at 10,000
+  knowledge items and 20,000 predictions it takes seconds (the readiness report counts the same with one pass per
+  table, and a test checks both agree). An index would need a migration; left to the owner of ADR-055.
+- No schema change, no new dependency, no new background activity.
+
 # ADR-059 (draft) Front-door adjustment in the linear causal engine: a decline becomes a labelled answer only where the criterion holds. R
 
 ## Context
