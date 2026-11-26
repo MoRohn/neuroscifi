@@ -1603,6 +1603,60 @@ EXPECTED_WAVE3_FIX2 = {
 }
 
 
+def _fix2(case_id, observed, ok):
+    directive, expected = EXPECTED_WAVE3_FIX2[case_id]
+    return _result(case_id, directive, expected, observed, ok)
+
+
+def _fix2_look(name, pages, settings):
+    with _s_individual(name, **settings) as (db, _):
+        _s_look(db, T0, pages)
+        return [r["status"] for r in _s_rows(db, _NEW)]
+
+
+_FIX2_HONEST = [("devdesk.example", f"By now {_SN} {_NEW} is the latest {_SN} release.", T0 - DAY, None),
+                ("factline.example", f"Once again {_SN} {_NEW} is the latest {_SN} release.", T0 - DAY, None)]
+
+
+def a_page_naming_two_outlets_as_its_origins_merges_neither():
+    bridge = [("hostile.example", f"As of now, {_SN} {_NEW} is the latest {_SN} release. This story was first "
+               "published by Devdesk. It originally appeared in Factline.", T0 - DAY, "/d")]
+    groups, alone = _groups_of(_FIX2_HONEST + bridge, _NEW, False), _groups_of(_FIX2_HONEST, _NEW, False)
+    rows = _fix2_look("fix2-docbridge", _FIX2_HONEST + bridge, LANE_S_OFF)
+    return _fix2("a_page_naming_two_outlets_as_its_origins_merges_neither",
+                 f"{groups} independent group(s) with the page ({alone} without it); knowledge rows {rows}",
+                 groups >= 2 and rows == ["provisional"])
+
+
+def a_copy_naming_one_origin_still_counts_with_it():
+    pages = [_FIX2_HONEST[0], ("copydesk.example", f"This story first appeared on Devdesk.\nThese days {_SN} {_NEW} is "
+                               f"the newest {_SN} release.", T0 - DAY, "/c")]
+    groups = _groups_of(pages, _NEW, False)
+    rows = _fix2_look("fix2-copy", pages, LANE_S_OFF)
+    return _fix2("a_copy_naming_one_origin_still_counts_with_it",
+                 f"{groups} independent group(s); knowledge rows {rows}", groups == 1 and rows == [])
+
+
+def a_page_carrying_two_wire_credits_absorbs_no_honest_outlet():
+    pages = [("devdesk.example", f"According to Reuters, {_SN} {_NEW} is the latest {_SN} release.", T0 - DAY, None),
+             ("factline.example", f"According to Bloomberg, {_SN} {_NEW} is the newest {_SN} release.", T0 - DAY,
+              None),
+             ("hostile.example", f"As of now, {_SN} {_NEW} is the current {_SN} release. (Reuters) (Bloomberg)",
+              T0 - DAY, "/w")]
+    groups = _groups_of(pages, _NEW)
+    rows = _fix2_look("fix2-wires", pages, {})
+    return _fix2("a_page_carrying_two_wire_credits_absorbs_no_honest_outlet",
+                 f"{groups} independent group(s) with attribution on; knowledge rows {rows}",
+                 groups >= 2 and rows == ["provisional"])
+
+
+CASES_WAVE3_FIX2 = (a_page_naming_two_outlets_as_its_origins_merges_neither, a_copy_naming_one_origin_still_counts_with_it,
+                    a_page_carrying_two_wire_credits_absorbs_no_honest_outlet)
+assert [c.__name__ for c in CASES_WAVE3_FIX2] == list(EXPECTED_WAVE3_FIX2)
+CASES = CASES + CASES_WAVE3_FIX2
+ORIGIN["added_wave3_fix2"] = tuple(EXPECTED_WAVE3_FIX2)
+
+
 def run() -> dict:
     results = []
     for case in CASES:
