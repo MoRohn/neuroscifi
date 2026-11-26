@@ -3947,7 +3947,7 @@ whose idle runs were later found not repeatable (ADR-064, "Follow-up"). Wave 4's
 the same four configurations on the same worlds, four seeds: the references' means (0.465 / 0.286 / 0.323) and all
 six gains equal Wave 3's to three decimals. Against this look's sd of the reference (0.064 / 0.039 / 0.035):
 `idle-first` is **reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a
-small margin in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.376 against
+small margin in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.3755 against
 0.636 / 0.541 / 0.537); within the spread in W1, with one seed negative in W1 and one in W2. `shipped+idle` is within
 the spread in all three worlds. No default changes: autonomy stays opt-in and neither configuration had a held-out
 gain (above).
@@ -4326,7 +4326,7 @@ learning-cycle worlds with this fix in: the references' means (0.465 / 0.286 / 0
 +0.024), against this look's sd of the reference 0.064 / 0.039 / 0.035. So on those worlds the ties did not move the
 result, and that wording is corrected: `idle-first` is **reproduced on a repeatable run; beyond the spread by 0.003 in
 W2 and 0.017 in W3 on four seeds; a small margin in W2; it cannot be promoted and remains below the blind schedule**
-(0.478 / 0.328 / 0.376 against 0.636 / 0.541 / 0.537). `shipped+idle` is within the spread in all three. One seed is
+(0.478 / 0.328 / 0.3755 against 0.636 / 0.541 / 0.537). `shipped+idle` is within the spread in all three. One seed is
 negative in W1 and in W2. Repeatability itself was measured on 18 public worlds; the look was taken once.
 
 # ADR-065 Uncertainty shown to the owner: a caution where an answer rests on sources that cannot be shown independent
