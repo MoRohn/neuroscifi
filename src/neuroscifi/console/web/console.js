@@ -59,6 +59,31 @@ function fill(slot, ...nodes) {
   slot.removeAttribute('aria-busy');
 }
 
+// The overview's panels are drawn on every load of the view, and a second load can land while the owner is already
+// on one of their controls (Wave 3 lane P). They are replaced only when what they show changed; then an open
+// "Technical detail" stays open and focus stays on the equivalent control (same tag and label), else on the panel;
+// never on the start of the page.
+const drawn = new WeakMap();   // slot -> what redraw last put there: its markup (as drawn) and its first node
+function redraw(slot, ...nodes) {
+  const next = nodes.flat().filter((n) => n !== null && n !== undefined && n !== false);
+  const markup = h('div', {}, ...next.map((n) => n instanceof Node ? n.cloneNode(true) : n)).innerHTML;
+  const last = drawn.get(slot);
+  if (last?.markup === markup && last.first === slot.firstChild) { slot.removeAttribute('aria-busy'); return; }
+  const key = (e) => `${e.tagName}|${e.getAttribute('aria-label') ?? e.textContent}`;
+  const open = new Set([...slot.querySelectorAll('details[open] > summary')].map(key));
+  for (const summary of next.flatMap((n) => n instanceof Element ? [...n.querySelectorAll('details > summary')] : [])) {
+    if (open.has(key(summary))) summary.parentElement.open = true;
+  }
+  const active = document.activeElement;
+  const was = active && active !== slot && slot.contains(active) ? key(active) : null;
+  fill(slot, next);
+  drawn.set(slot, { markup, first: slot.firstChild });
+  if (was === null || slot.contains(document.activeElement)) return;
+  const same = [...slot.querySelectorAll(active.tagName)].find((e) => key(e) === was);
+  if (!same) slot.setAttribute('tabindex', '-1');
+  (same ?? slot).focus({ preventScroll: true });
+}
+
 function empty(text) { return h('p', { class: 'empty', text }); }
 
 // Captions are visually hidden unless they add to the card heading; screen readers always get them.
@@ -351,7 +376,7 @@ async function loadOverview() {
   const inv = await load('overview', slots, () => loadHeader(true));
   if (!inv) return;
   const b = inv.birth;
-  fill($('birth'), kv([
+  redraw($('birth'), kv([
     ['Instance id', h('code', { text: b.instance_id })],
     ['Born', fmtTime(b.created_at)],
     ['Software', `${b.software_version} (schema ${b.schema_version})`],
@@ -363,7 +388,7 @@ async function loadOverview() {
     inv.graph_rule_migration ? ['Graph rules', migrationText(inv.graph_rule_migration)] : null,
   ]), h('h3', { text: 'Priors' }), kv(Object.entries(b.priors).map(([k, v]) => [k.replaceAll('_', ' '), v])));
   const r = inv.regulation;
-  fill($('regulation'), h('p', {}, badge(r.writes_allowed ? 'Writes allowed' : 'Writes paused', r.writes_allowed ? 'ok' : 'warn'),
+  redraw($('regulation'), h('p', {}, badge(r.writes_allowed ? 'Writes allowed' : 'Writes paused', r.writes_allowed ? 'ok' : 'warn'),
     r.reason ? ` · ${r.reason}` : ''),
     r.writes_allowed ? null : h('p', { class: 'sub', text: 'New evidence, research and other writes are refused until this clears. Free disk space, forget evidence or raise the limit.' }),
     (r.warnings ?? []).map((w) => h('p', { class: 'sub', role: 'status' }, badge('Attention', 'warn'), ` ${w}`)),
@@ -386,12 +411,12 @@ async function loadOverview() {
       : `${r.config.ask_budget_per_epoch}, for the whole epoch`],
   ]));
   const mem = inv.memory;
-  fill($('inventory'), table('Memory inventory', ['Record', { label: 'Count', num: true }],
+  redraw($('inventory'), table('Memory inventory', ['Record', { label: 'Count', num: true }],
     Object.entries(mem).map(([k, v]) => [k.replaceAll('_', ' '), v])),
     inv.web ? [h('h3', { text: 'Web memory' }), table('Web memory inventory', ['Record', { label: 'Count', num: true }],
       Object.entries(inv.web).map(([k, v]) => [WEB_INVENTORY[k] ?? k.replaceAll('_', ' '), v]))] : null);
   const dev = Object.entries(inv.development);
-  fill($('development'), dev.length
+  redraw($('development'), dev.length
     ? table('Development counters', ['Counter', { label: 'Value', num: true }], dev.map(([k, v]) => [k.replaceAll('_', ' '), v]))
     : empty('No development yet: record evidence or run a graph job.'));
 }
@@ -426,7 +451,7 @@ async function loadSelf() {
 function renderSelf(rec, short, error) {
   if (!rec) {
     const why = error ? `Could not be read just now: ${error}.` : 'Not available.';
-    fill($('selfdesc'), empty(why)); fill($('recent'), empty(why)); return;
+    redraw($('selfdesc'), empty(why)); redraw($('recent'), empty(why)); return;
   }
   const tasks = fieldValue(rec, 'doing.tasks');
   const questions = fieldValue(rec, 'doing.questions');
@@ -454,7 +479,7 @@ function renderSelf(rec, short, error) {
     gate.allowed === false ? `background research waits (${gate.reason ?? ''})` : 'background research allowed',
     auto ? `${auto.remaining?.autonomous?.searches ?? 0} autonomous searches left today` : null].filter(Boolean).join('; ');
   const imaginedTotal = Object.values(imagined).reduce((a, b) => a + (Number(b) || 0), 0);
-  fill($('selfdesc'), (short ?? []).map((line) => h('p', { text: line })),
+  redraw($('selfdesc'), (short ?? []).map((line) => h('p', { text: line })),
     kv([
       ['What am I doing?', doing || '—'],
       ['What do I know?', `${plural(mem.evidence ?? 0, 'reading')} in the journal; ${plural(know.knowledge ?? 0, 'knowledge item')} (${know.accepted_knowledge ?? 0} accepted)`
@@ -466,7 +491,7 @@ function renderSelf(rec, short, error) {
     h('p', { class: 'sub', text: `Built from the records at state version ${rec.state_version}; every value names its source. A functional description, not an inner experience.` }),
     technical(table('Self-description fields', ['Field', 'Source', 'Age'], selfFields(rec))));
   const recent = fieldValue(rec, 'recent') ?? [];
-  fill($('recent'), recent.length
+  redraw($('recent'), recent.length
     ? h('ul', { class: 'plain' }, recent.map((x) => h('li', {}, `“${x.objective}” · ${x.device} · ${TASK_LABELS[x.status]?.toLowerCase() ?? x.status} · ${ago(x.at)} `,
         h('button', { type: 'button', text: 'Open', 'aria-label': `Open: ${x.objective}`,
           onclick: () => { location.hash = '#research'; openTask(x.task_id); } }))))
@@ -481,7 +506,7 @@ async function loadResources(full = false) {
   const bg = r.policy?.background_research ?? {};
   const services = Object.entries(r.policy?.idle_unload?.services ?? {});
   const mem = r.memory ?? {};
-  fill($('resources'), h('p', {}, badge(level, r.level === 'ok' ? 'neutral' : 'warn')),
+  redraw($('resources'), h('p', {}, badge(level, r.level === 'ok' ? 'neutral' : 'warn')),
     kv([
       ['Background research', bg.allowed ? 'allowed' : `waits: ${bg.reason ?? 'held'}`],
       ['Voice', r.audio_active ? 'a voice session is using audio' : 'no voice audio now'],
@@ -503,7 +528,7 @@ async function loadImagined() {
   const r = await load('imagined', [$('imagined')], () => api('GET', '/api/imagined?limit=20'));
   if (!r) return;
   const counts = Object.entries(r.counts ?? {}).map(([k, n]) => `${n} ${IMAGINED_KIND[k] ?? k}`).join(', ');
-  fill($('imagined'), h('p', { class: 'sub' }, badge('Imagined, not evidence', 'neutral'),
+  redraw($('imagined'), h('p', { class: 'sub' }, badge('Imagined, not evidence', 'neutral'),
       ' Content the system produced itself. It is never used as evidence or knowledge, and it expires. Read-only.'),
     r.items?.length
       ? table('Imagined records', ['Kind', 'Question', 'Made by', 'Made', 'Checked against what happened'],

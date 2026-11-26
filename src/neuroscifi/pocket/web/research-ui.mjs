@@ -3,7 +3,7 @@
 // Shared links prefill the question for review (never submitted for you); Read aloud uses an on-device voice only;
 // notifications are opt-in: from this open page (no push service), or per device through an empty Web Push (ADR-040);
 // see mobile/README.md.
-import {vaultOpen,findings,keepFinding,forgetFinding,vaultOutbox,changeOutbox} from "./field-ui.mjs";
+import {vaultOpen,findings,keepFinding,forgetFinding,vaultOutbox,changeOutbox,keepFocus} from "./field-ui.mjs";
 import {liveRows} from "./field-model.mjs";
 import * as nodeKey from "./node-key.mjs";
 import * as outbox from "./outbox.mjs";
@@ -15,7 +15,7 @@ const LABEL={queued:"Queued",discovering:"Discovering",reading:"Reading",evaluat
 const STATUS={corroborated:"Corroborated",single_source:"Single source",contested:"Contested",insufficient:"Insufficient evidence"};
 const VERDICT={supported:"Supported",disputed:"Disputed",contested:"Contested",insufficient:"Not enough evidence"};
 const MAX=300, MAX_BYTES=1024, MAX_SAVED_BYTES=64000, SUMMARIZE="Summarize: ";
-let research=false, paired=false, tasks=[], current=null, timer=0, generation=0, busy=false, dictation=null, savedSignature="";
+let research=false, paired=false, tasks=[], current=null, timer=0, generation=0, busy=false, dictation=null, savedSignature="", listSignature=null;
 let workerRunning=null;   // research_list worker_running: false says plainly that no research worker runs (R6 setup h)
 const NO_WORKER="Your Spark has no research worker running";
 // R6 setup (f): the list itself is refreshed every LIST_MS while the page is visible, so a question asked on another
@@ -144,7 +144,15 @@ function buttons(){
     busy?"Sending your question…":!text.trim()?"Type a question to enable Submit.":"Shorten the question to enable Submit.";
   $("dictate").disabled=!!dictation;
 }
+// Drawn again only when what it shows changed (it is polled every 3 s and listed every 10 s), keeping focus on the
+// same Open button.
 function drawList(){
+  const signature=JSON.stringify(tasks.map(t=>[t.id,t.objective,stageText(t)]));
+  if(signature===listSignature)return;
+  listSignature=signature;
+  keepFocus($("researchlist"),drawTasks);
+}
+function drawTasks(){
   const list=$("researchlist");list.replaceChildren();
   for(const t of tasks){
     const li=node("li",null,"rtask"), text=node("div",t.objective);
@@ -816,10 +824,13 @@ async function poll(){
   const g=generation;
   for(const t of tasks.filter(active).slice(0,3)){
     try{
-      const seen=t.status+t.stage+t.cancel_requested, d=await call("research_get",{id:t.id});if(g!==generation)return;
-      update(d);  // redraw the open view only on a change, so keyboard focus inside it survives polling
+      const d=await call("research_get",{id:t.id});if(g!==generation)return;
+      // the open view as last drawn from research_get, not the list's row (whose fields differ: it was redrawn after
+      // every list refresh): redraw it only on a change, so keyboard focus inside it survives polling
+      const seen=shown?.id===d.id?shown.status+shown.stage+shown.cancel_requested:null;
+      update(d);
       if(!active(d))finished(d);
-      if(current?.id===d.id&&!current.saved&&seen!==d.status+d.stage+d.cancel_requested)show(d);
+      if(current?.id===d.id&&!current.saved&&seen!==d.status+d.stage+d.cancel_requested)keepFocus($("researchbody"),()=>show(d));
     }catch(e){if(g!==generation)return;if(e.status===404){tasks=tasks.filter(x=>x.id!==t.id);drawList();}else{fail(e);return;}}
   }
   schedule();

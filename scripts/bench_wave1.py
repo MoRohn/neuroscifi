@@ -35,7 +35,8 @@ Both splits; the withheld family is run only by `final`. Usage:
   scripts/bench_wave1.py run [--split development|held_out ...] [--out FILE]
   scripts/bench_wave1.py wide [--split ...] [--out FILE]
   scripts/bench_wave1.py rescore [--split ...] [--out FILE]
-  scripts/bench_wave1.py offline [--regime all_off|defaults|wave0]    (the offline research benchmark, one run)
+  scripts/bench_wave1.py offline [--regime all_off|defaults|wave0] [--deterministic-out FILE]
+                                                                      (the offline research benchmark, one run)
   scripts/bench_wave1.py acceptance --regime all_off --out FILE       (`nsf acceptance --all` under a regime)
   scripts/bench_wave1.py final --note TEXT --out FILE                 (the withheld family; FILE outside the tree)
 """
@@ -48,6 +49,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
+import sqlite3
 import sys
 import time
 from unittest import mock
@@ -500,8 +503,29 @@ def offline(regime_name) -> dict:
     finally:
         web.stop()
     det = result["deterministic"]
-    return {"regime": regime_name, "sha256": hashlib.sha256(json.dumps(det, sort_keys=True, default=str).encode())
-            .hexdigest(), "deterministic": det, "wall_seconds": round(time.perf_counter() - started, 2)}
+    return {"regime": regime_name, "sha256": hashlib.sha256(canonical(det)).hexdigest(),
+            "portable_sha256": hashlib.sha256(canonical(portable(det))).hexdigest(), "deterministic": det,
+            "environment": {"machine": platform.machine(), "python": platform.python_version(),
+                            "sqlite": sqlite3.sqlite_version, "browser": os.environ.get("NSF_CHROMIUM") or "default"},
+            "wall_seconds": round(time.perf_counter() - started, 2)}
+
+
+def canonical(deterministic) -> bytes:
+    """The exact bytes the offline digest hashes; written by `offline --deterministic-out FILE`, whose sha256 is the
+    digest (scripts/diff_deterministic.py lists the leaves where two such files differ)."""
+    return json.dumps(deterministic, sort_keys=True, default=str).encode()
+
+
+def portable(deterministic) -> dict:
+    """The deterministic metrics without the one leaf that names the host rather than the research: the file path of
+    the browser the JS-render probe found ("chromium at /usr/bin/chromium" on the development host, Playwright's own
+    Chromium under ~/.cache on CI), kept as the kind of browser found. It alone made CI's digest differ (Wave 3 lane
+    P). `sha256` stays the digest every earlier wave recorded; `portable_sha256` is reported beside it."""
+    tree = json.loads(canonical(deterministic))
+    render = tree.get("probes", {}).get("content", {}).get("js_shell", {}).get("render", {})
+    if isinstance(render.get("availability"), str):
+        render["availability"] = render["availability"].split(" at /", 1)[0]
+    return tree
 
 
 def acceptance(regime_name, out_path) -> int:
@@ -521,6 +545,7 @@ def main(argv=None) -> int:
     o = sub.add_parser("offline")
     o.add_argument("--regime", default="all_off", choices=("all_off", "defaults", "all_on", "wave0"))
     o.add_argument("--out")
+    o.add_argument("--deterministic-out", help="also write the hashed deterministic metrics (canonical JSON) here")
     a = sub.add_parser("acceptance")
     a.add_argument("--regime", default="all_off", choices=("all_off", "defaults", "all_on", "wave0"))
     a.add_argument("--out", required=True)
@@ -545,6 +570,8 @@ def main(argv=None) -> int:
         value = final(args.note, args.out)
     else:
         value = offline(args.regime)
+        if args.deterministic_out:
+            Path(args.deterministic_out).write_bytes(canonical(value["deterministic"]))
     text = json.dumps(value, indent=1, sort_keys=False, default=str) + "\n"
     if args.out:
         Path(args.out).write_text(text)

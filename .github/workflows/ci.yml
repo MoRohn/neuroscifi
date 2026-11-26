@@ -25,6 +25,18 @@ jobs:
       - run: echo "NSF_CHROMIUM=$(.venv/bin/python -c 'from playwright.sync_api import sync_playwright as p; m = p().start(); print(m.chromium.executable_path); m.stop()')" >> "$GITHUB_ENV"
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0   # Chromium's sandbox needs user namespaces (Ubuntu 24.04 runners restrict them); NeuroSciFi never disables the sandbox
       - run: bash scripts/check.sh
+      # Diagnostic only (Wave 3 lane P): the offline research benchmark's deterministic metrics on this runner, to be
+      # compared leaf by leaf with docs/quality/evidence/offline_deterministic_aarch64.json (scripts/diff_deterministic.py).
+      - run: .venv/bin/python scripts/bench_wave1.py offline --regime defaults --deterministic-out offline_deterministic.json --out offline_run.json
+        if: always()
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-deterministic
+          path: |
+            offline_deterministic.json
+            offline_run.json
 
   acceptance:
     name: simulated first-release milestones
