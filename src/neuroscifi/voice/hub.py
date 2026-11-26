@@ -90,6 +90,17 @@ CLAIM_WAITS = (0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0, 300.0)
 _LIVE_HUBS: set[str] = set()  # the follow_by tokens of this process's hubs that are not closed
 PROGRESS_SPEAK_EVERY = 30.0
 TERMINAL = ("completed", "partial", "failed", "cancelled")
+# Said once while a finished task's delivery claim is asked again (review2b N2); the second for a task that ended
+# without an answer, cancelled or failed (review2c R1).
+CLAIM_NOTICE_ANSWER = ("Your research answer is ready. I'll give it to you as soon as I can; you can also open it on "
+                       "the console.")
+CLAIM_NOTICE_ENDED = ("Your research has ended. I'll tell you how it ended as soon as I can; you can also open it on "
+                      "the console.")
+
+
+def claim_notice(status) -> str:
+    """What the person is told once while a finished task's delivery is retried: an answer only where there is one."""
+    return CLAIM_NOTICE_ANSWER if status in ("completed", "partial") else CLAIM_NOTICE_ENDED
 STAGE_WORDS = {"discovering": "searching for sources", "reading": "reading sources", "evaluating":
                "checking the evidence", "synthesizing": "writing the answer", "queued": "waiting for the worker"}
 _SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
@@ -1246,11 +1257,9 @@ class VoiceHub:
                         pause = next(pauses)  # delivered and the follow stays; the claim is asked again later
                         log.warning("voice follow-up: the delivery claim of task %s could not be made; asked again "
                                     "in %.1f s, nothing delivered meanwhile", task_id, pause)
-                        if not told:         # review2b N2: the person hears once that the answer is coming
-                            told = True
-                            self._emit(live or s, "notice", text="Your research answer is ready. I'll give it to you "
-                                                                 "as soon as I can; you can also open it on the "
-                                                                 "console.")
+                        if not told:         # review2b N2: the person hears once that the answer is coming; a task
+                            told = True      # that was cancelled or failed has no answer to promise (review2c R1)
+                            self._emit(live or s, "notice", text=claim_notice(task["status"]))
                         if self._closed.wait(pause):
                             return
                         continue

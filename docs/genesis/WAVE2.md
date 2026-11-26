@@ -334,7 +334,38 @@ stop of a session (by design: the answer goes to the transcript; closing the hub
 
 ## 5. Validation
 
-<<WAVE2-VALIDATION>>
+Run on `18a48ae`, 2026-11-26, on this host (shared with other work; nothing below is a measurement of the DGX Spark,
+the open web or a live answer model).
+
+| Check | Result |
+|---|---|
+| Quality gate (`bash scripts/check.sh`: ruff, the non-e2e suite, the JS checks, the numerical reproduction) | 5,861 passed, 22 skipped, 35 subtests; ALL CHECKS PASSED |
+| Browser suite (`scripts/e2e.sh`) | 209 passed, 1 skipped |
+| `nsf acceptance --all` | pass |
+| Sentence guard against `307b907` (`scripts/guard_differential.py compare`) | 1,937 compared: 1,688 identical, 232 stricter, 17 loosened, 0 different |
+| Two accounts (`scripts/two_account_check.py`, real uids in a user namespace) | 55 of 55 |
+| Offline research benchmark, every Wave 1 and Wave 2 setting off, and as shipped | sha256 `68731d7235cb…` both: the digest of Wave 0 and Wave 1 |
+| Cognitive benchmark, development and held-out (`scripts/bench_cognition.py run`) | retention: all retained on both; adversarial: 28 of 28 scored cases pass on both (13 original, 4 added in Wave 1, 1 restored, 10 added in Wave 2), 5 directive items listed as not staged |
+
+A last independent reader then checked the reconciliation's fixes (`484555a..18a48ae`): all verified by fresh runs,
+probes and two mutation checks; one low finding and one note were fixed in the commit after this validation, which
+changed two product lines and their tests and nothing else in the code:
+
+| Finding | Fix | Test |
+|---|---|---|
+| R1: the notice said once while a delivery is retried read "Your research answer is ready" for a task that was cancelled or failed | the notice promises an answer only for a completed or partial task; otherwise it says the research has ended | `tests/test_failure_kind.py::test_the_retry_notice_promises_an_answer_only_where_there_is_one`; `tests/uat/test_uat_voice_follow_faults.py::test_the_person_hears_once_that_the_answer_is_coming_while_the_claim_is_retried` |
+| D3: the helper that names a failure for a log line could itself raise for an exception whose attribute raises | it falls back to the type name | `tests/test_failure_kind.py::test_it_cannot_raise_inside_a_handler_that_must_not_fail` |
+
+Noted and left: a hub closed inside a process that still runs reads as alive to another process, so its pending
+answer is cleared only after the 3-hour limit (nothing is lost compared with before); when the person's next
+session starts on another process first, the answer is written into the asking session's transcript, not spoken
+live there.
+
+**Wave 2 took no look at the withheld family:** no lane changed a mechanism behind its four interfaces. The ledger
+still holds three lines.
+
+Not run here: anything on the open web, a live answer model, real hardware, a real second account, two real
+processes for the voice follow-up, or systemd.
 
 ## 6. What stays open
 

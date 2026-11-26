@@ -386,10 +386,12 @@ def test_the_person_hears_once_that_the_answer_is_coming_while_the_claim_is_retr
         with closing(store.connect(instance)) as db:
             orchestrator.cancel(db, task_id, time.time())
         wait_for(lambda: replies(hub, sid, "research_result"), timeout=10)
-        notices = [e["text"] for e in hub.events(sid, OWNER, 0, wait=0.1)["events"] if e["type"] == "notice"
-                   and "answer is ready" in e.get("text", "")]
-        assert calls.count(1) == 5 and len(notices) == 1, (calls, notices)
+        every = [e["text"] for e in hub.events(sid, OWNER, 0, wait=0.1)["events"] if e["type"] == "notice"]
+        notices = [t for t in every if t in (vhub.CLAIM_NOTICE_ANSWER, vhub.CLAIM_NOTICE_ENDED)]
+        assert calls.count(1) == 5 and len(notices) == 1, (calls, every)
         assert "claim" not in notices[0] and "database" not in notices[0]     # plain words
+        # review2c R1: this task was cancelled, so no answer is promised
+        assert notices == [vhub.CLAIM_NOTICE_ENDED] and "answer is ready" not in " ".join(every)
     finally:
         close(hub)
 

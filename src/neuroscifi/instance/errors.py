@@ -45,10 +45,13 @@ def failure_kind(exc: BaseException) -> str:
     import errno
     import re
     kind = type(exc).__name__
-    name = getattr(exc, "sqlite_errorname", None)
-    if isinstance(name, str) and re.fullmatch(r"SQLITE_[A-Z0-9_]{1,40}", name):
-        return f"{kind} {name}"
-    code = getattr(exc, "errno", None) if isinstance(exc, OSError) else None
-    if isinstance(code, int) and not isinstance(code, bool) and code in errno.errorcode:
-        return f"{kind} {errno.errorcode[code]}"
+    try:                    # it is called inside handlers that must not fail themselves (review2c D3): an exception
+        name = getattr(exc, "sqlite_errorname", None)       # whose attribute raises is described by its type alone
+        if isinstance(name, str) and re.fullmatch(r"SQLITE_[A-Z0-9_]{1,40}", name):
+            return f"{kind} {name}"
+        code = getattr(exc, "errno", None) if isinstance(exc, OSError) else None
+        if isinstance(code, int) and not isinstance(code, bool) and code in errno.errorcode:
+            return f"{kind} {errno.errorcode[code]}"
+    except Exception:       # noqa: BLE001 - the type name is always available
+        pass
     return kind
