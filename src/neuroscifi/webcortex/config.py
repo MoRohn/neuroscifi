@@ -45,6 +45,7 @@ assert set(MODE_BUDGETS) == set(MODES)
 # Wave 3 settings whose stored value is checked when it is read (WebConfig.from_json; security review L8)
 CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognition", "supersession",
                    "supersession_min_sources", "origin_grouping")
+CHECKED_ON_LOAD += ("own_text_provenance",)          # Wave 4 lane E (ADR-067)
 
 
 # review3b N8: a damaged value of a setting that tunes an opt-in rule never loosens that rule: the rule itself reads as
@@ -251,6 +252,14 @@ class WebConfig:
     # N1 and keeps copies naming several origins one source on the staged cases (review3c F1), but no benchmark world
     # holds a page naming two origins, so neither direction is measured. Applies to claims read while it is set.
     origin_grouping: str = "transitive"
+    # ADR-067 (Wave 4 lane E), the individual's own text by what it emitted. own_text_provenance: when a model-written
+    # answer is stored (shown in the console, on Pocket, spoken, returned over MCP), the subject names and normalised
+    # values it states are recorded as salted fingerprints with the time and whether a source the individual had read
+    # stated that value then (webcortex/emitted.py; never the text); a page read later, published after that answer,
+    # stating for that subject a value the individual emitted with no source is not evidence for it (a disagreement it
+    # raises is still asked). OFF by default: with it off nothing is recorded and consolidation is as before; turning
+    # it on is the owner's decision (ADR-067 has the measurements, both directions).
+    own_text_provenance: bool = False
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

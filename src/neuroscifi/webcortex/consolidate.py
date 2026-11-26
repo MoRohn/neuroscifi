@@ -526,6 +526,19 @@ def _without_echoes(echoes, cluster, *, now, freshness, ttl_overrides):
     return cluster, gone
 
 
+def _against_held(db, cluster, echoed) -> bool:
+    """ADR-067 (own_text_provenance on): whether an echo found in `cluster` (before its removal) disagrees with the
+    held item the cluster is compared with. Such a cluster is kept whole: the echo is never evidence FOR its value (a
+    disagreement is asked and never writes knowledge; the supersession rule never counts an echo), and it counts
+    against the held value exactly as it does without the setting."""
+    item = _existing(db, cluster)
+    if item is None:
+        return False
+    gone = set(echoed)
+    return any(_compare(list(c.values or []), -1 if c.polarity < 0 else 1, item)[0] == "conflict"
+               for c in cluster.claims if c.id in gone)
+
+
 def _eligibility(db, task_id, cluster, removed=0):
     """(eligible, reasons): relevance gate before verification and memory comparison (the evidence-quality bar is
     the ADR-035 verification state, _meets_bar)."""
@@ -1726,6 +1739,13 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
             echoes = _Echoes(db, [c for cl in state.load_clusters(db, task_id) for c in cl.claims])
         except Exception as exc:          # noqa: BLE001 - logged inside the transaction below (its type only)
             echo_failed = type(exc).__name__
+    if cfg.own_text_provenance:     # ADR-067 (Wave 4 lane E): what the individual emitted, before the file is locked
+        try:
+            from . import emitted
+            own = emitted.Echoes(db, [c for cl in state.load_clusters(db, task_id) for c in cl.claims])
+            echoes = own if echoes is None else emitted.Either(echoes, own)
+        except Exception as exc:          # noqa: BLE001 - logged inside the transaction below (its type only)
+            echo_failed = type(exc).__name__
     if echoes is not None and echoes.skipped:
         summary["echo_skipped"] = list(echoes.skipped)
     with store.write(db):
@@ -1764,6 +1784,8 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                                                                     "text", "error": type(exc).__name__}, now)
                     found = (cluster, [])
                 whole, (cluster, echoed) = cluster, found
+                if echoed and cfg.own_text_provenance and _against_held(db, whole, echoed):
+                    cluster, echoed = whole, []     # ADR-067: it still counts against a held value, as today
                 if echoed:
                     summary.setdefault("echoes", []).extend(echoed)
                 if whole.claims and not cluster.claims:

@@ -85,9 +85,11 @@ CONFIGS = {
     "supersede:K2-no-independence": RULE | {"supersession_min_sources": 2},
     "supersede:K2-no-echo": RULE | {"supersession_min_sources": 2, "echo_recognition": False},
 }
+CONFIGS["fix:own"] = {"own_text_provenance": True}          # Wave 4 lane E (ADR-067): own-text provenance alone
 ABLATE = {"supersede:K2-no-recency": "recency", "supersede:K2-no-independence": "independence"}
 READ_BACK = cycles.READ_BACK + ("attribution_independence", "echo_recognition", "supersession",
                                 "supersession_min_sources")
+READ_BACK += ("own_text_provenance",)
 HONEST = ("honest", "lag", "rumour")
 DEPENDENT = ("echo", "wire", "wire_copy")
 COUNTS = ("own_admitted", "syndicated_admitted", "dependent_admitted", "wrong_admitted", "rows_written",

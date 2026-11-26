@@ -120,6 +120,10 @@ def _validate(name, value):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
+    if name == "own_text_provenance":               # Wave 4 lane E (ADR-067)
+        if not isinstance(value, bool):
+            raise ValidationError(f"{name} must be true or false")
+        return value
     if name == "tick_admission":
         from .autonomy import ADMISSION_RULES
         if value not in ADMISSION_RULES:
