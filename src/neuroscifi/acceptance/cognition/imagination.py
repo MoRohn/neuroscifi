@@ -39,7 +39,12 @@ class ImaginationAnswerer:
         if "model" in query or "graph" in query:
             if not self.use["scm"]:
                 return NONE
-            out = causal.answer({k: v for k, v in query.items() if k != "rung"}, front_door=self.use["front_door"])
+            question = {k: v for k, v in query.items() if k != "rung"}
+            if "graph" in question and "samples" not in question and "moments" not in question:
+                # The family's interface: a graph question's means and covariance are computed exactly from the
+                # generator's equations (counterfactual.scm_queries), so the answerer states that (ADR-059 follow-up)
+                question["moments"] = "population"
+            out = causal.answer(question, front_door=self.use["front_door"])
             return {"value": out["value"], "sd": out["sd"]}
         if "evidence_id" in query:
             if not self.use["what_if"]:

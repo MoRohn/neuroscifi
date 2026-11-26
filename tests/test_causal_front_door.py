@@ -13,7 +13,8 @@ import pytest
 
 import neuroscifi
 from neuroscifi import causal
-from neuroscifi.acceptance.cognition import adversarial, counterfactual, frontdoor_splits, imagination, splits
+from neuroscifi.acceptance.cognition import (adversarial, backdoor_splits, counterfactual, frontdoor_splits, imagination,
+                                             splits)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,7 +26,7 @@ def worked():
     cov = {"X": {"X": 2, "M": 4, "Y": 13}, "M": {"X": 4, "M": 9, "Y": 29}, "Y": {"X": 13, "M": 29, "Y": 95}}
     return {"graph": {"X": [], "M": ["X"], "Y": ["M"]}, "hidden_common_cause": ["X", "Y"],
             "observational_mean": {"X": 0.5, "M": 2.0, "Y": 5.0}, "observational_covariance": cov,
-            "do": {"X": 1.5}, "ask": "Y"}
+            "do": {"X": 1.5}, "ask": "Y", "moments": "population"}
 
 
 def test_front_door_matches_the_hand_worked_closed_form_and_says_so():
@@ -128,7 +129,7 @@ def test_exact_moments_every_answer_world_exact_and_no_false_answer(split):
     for kind in spec["kinds"]:
         for seed in spec["seeds"]:
             world = frontdoor_splits.generate(kind, seed, split)
-            out = causal.answer(world["query"])
+            out = causal.answer(world["query"] | {"moments": "population"})
             if world["expect"] == "decline":
                 false_answers += out["value"] is not None
                 continue
@@ -178,7 +179,7 @@ def _random_world(rng):
              "hidden_common_cause": [v for v in names if "U" in parents[v]],
              "observational_mean": {v: float(mean[idx[v]]) for v in data},
              "observational_covariance": {a: {b: float(cov[idx[a], idx[b]]) for b in data} for a in data},
-             "do": {x: value}, "ask": y}
+             "do": {x: value}, "ask": y, "moments": "population"}
     truth = float(frontdoor_splits._moments(scm, {x: value})[0][idx[y]])
     return query, truth, float(np.sqrt(cov[idx[y], idx[y]]))
 
@@ -266,3 +267,90 @@ def test_nsf_imagine_scm_answers_by_the_front_door_unless_told_not_to(tmp_path):
     off = _scm(path, tmp_path, "--no-front-door")
     assert off.returncode == 0, off.stderr
     assert json.loads(off.stdout)["value"] is None
+
+
+# ---- estimated moments (ADR-059 follow-up): a sampling interval, a bound, and a stated origin -----------------------
+
+@pytest.fixture
+def unbounded(monkeypatch):
+    """The usefulness bound lifted, so that every world's interval is seen."""
+    monkeypatch.setattr(causal, "USEFUL", 1e9)
+
+
+def test_a_front_door_question_that_does_not_say_where_its_moments_come_from_is_declined():
+    question = worked()
+    del question["moments"]
+    out = causal.answer(question)
+    assert out["value"] is None and "does not say" in out["why"] and "samples: n" in out["why"]
+
+
+def test_back_door_answers_stay_as_they_were_and_say_the_moments_were_taken_as_exact():
+    q = {"graph": {"X0": [], "X1": ["X0"]}, "hidden_common_cause": [],
+         "observational_covariance": {"X0": {"X0": 2, "X1": 4}, "X1": {"X0": 4, "X1": 9}},
+         "means": {"X0": 0.0, "X1": 1.0}, "do": {"X0": 1.5}, "ask": "X1"}
+    out = causal.answer(q)
+    assert out["value"] == pytest.approx(4.0) and out["sd"] is None and out["moments"] == {"origin": "unstated"}
+    assert "taken as exact" in out["uncertainty"]
+    exact = causal.answer(q | {"moments": "population"})
+    assert exact["value"] == out["value"] and exact["moments"] == {"origin": "population"}
+
+
+def _resampled(world, key, rng, n):
+    mean, load, idx = frontdoor_splits._moments(world["scm"])
+    data = list(world["query"][key])
+    draws = mean[:, None] + load @ rng.standard_normal((len(idx), n))
+    rows = np.array([draws[idx[v]] for v in data])
+    cov = np.cov(rows)
+    return world["query"] | {key: {v: float(rows[i].mean()) for i, v in enumerate(data)}, "samples": n,
+                             "observational_covariance": {a: {b: float(cov[i, j]) for j, b in enumerate(data)}
+                                                          for i, a in enumerate(data)}}
+
+
+def test_estimated_moments_carry_a_standard_error_that_matches_repeated_sampling(unbounded):
+    """The delta-method sd against the spread of the estimate over 400 independent samples of 500 draws, on one
+    development world of each criterion: within 15 %."""
+    for world, key in ((frontdoor_splits.generate("single", 7301), "observational_mean"),
+                       (backdoor_splits.generate("confounder", 7501), "means")):
+        rng = np.random.default_rng(1)
+        outs = [causal.answer(_resampled(world, key, rng, 500)) for _ in range(400)]
+        assert np.median([o["sd"] for o in outs]) == pytest.approx(np.std([o["value"] for o in outs], ddof=1),
+                                                                   rel=0.15)
+
+
+@pytest.mark.parametrize("n", [500, 5000])
+def test_the_sampling_interval_covers_the_truth_on_development_worlds(unbounded, n):
+    """Coverage of the stated 95 % interval on the development worlds of both criteria (180); a FALSE ANSWER in this
+    regime is the truth outside the stated interval."""
+    worlds = [(frontdoor_splits, frontdoor_splits.generate(k, s)) for k in frontdoor_splits.ANSWER_KINDS
+              for s in frontdoor_splits.FRONT_DOOR["development"]["seeds"]]
+    worlds += [(backdoor_splits, backdoor_splits.generate(k, s)) for k in backdoor_splits.KINDS
+               for s in backdoor_splits.BACK_DOOR["development"]["seeds"]]
+    inside = 0
+    for module, world in worlds:
+        out = causal.answer(module.sampled(world, n) | {"samples": n})
+        inside += abs(out["value"] - world["truth"]) <= causal.Z95 * out["sd"]
+    assert len(worlds) == 180 and 0.9 <= inside / len(worlds) <= 0.99
+
+
+def test_too_little_data_is_declined_not_answered():
+    world = frontdoor_splits.generate("single", 7301)
+    few = causal.answer(frontdoor_splits.sampled(world, 100) | {"samples": 100})
+    assert few["value"] is None and "not enough data to answer" in few["why"]
+    tiny = causal.answer(frontdoor_splits.sampled(world, 50) | {"samples": 3})
+    assert tiny["value"] is None and "not enough data to answer" in tiny["why"]
+    enough = causal.answer(frontdoor_splits.sampled(world, 50000) | {"samples": 50000})
+    assert enough["identified_by"] == "front_door" and enough["moments"] == {"origin": "sample", "samples": 50000}
+    assert causal.Z95 * enough["sd"] <= causal.USEFUL * world["scale"] * 1.01
+    assert abs(enough["value"] - world["truth"]) <= causal.Z95 * enough["sd"]
+
+
+def test_malformed_moment_origins_are_refused():
+    bare = worked()
+    del bare["moments"]
+    for change, match in (({"samples": 0}, "whole number"), ({"samples": True}, "whole number"),
+                          ({"samples": 10.5}, "whole number"), ({"moments": "guessed"}, "population"),
+                          ({"moments": "sample"}, "needs samples")):
+        with pytest.raises(ValueError, match=match):
+            causal.answer(bare | change)
+    with pytest.raises(ValueError, match="not both"):
+        causal.answer(worked() | {"samples": 100})

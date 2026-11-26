@@ -17,7 +17,12 @@ does, it is answered by front-door adjustment (Pearl 1995; ADR-059, Wave 3 lane 
 through the cause's observed children on the way to the outcome, and declined with the reason otherwise; with
 front_door=False (`nsf imagine scm --no-front-door`) it is declined as before. No other identification formula (no
 general do-calculus, no instrumental variables) is implemented, so a decline means "not identified by this engine".
-Every answer says which criterion identified it (identified_by). The engine computes; it never proposes a model.
+Every answer says which criterion identified it (identified_by). A graph question may say where its means and
+covariance come from: "moments": "population" (exact), or "samples": n (estimated from n independent draws; the
+answer then carries the standard error of the estimate, and is declined "not enough data to answer" when its 95 %
+interval is wider than USEFUL x the outcome's standard deviation). A front-door question that does not say is
+declined; a back-door answer to one that does not say is given as before, with that caveat (ADR-059 follow-up).
+The engine computes; it never proposes a model.
 Answers are true of the declared model only (provenance.SIMULATION).
 """
 from __future__ import annotations
@@ -31,6 +36,12 @@ MAX_NODES = 64
 RESOLUTION = 1e-9           # relative floor of a reported standard deviation (floating-point arithmetic)
 FRONT_DOOR = True           # the default of answer(front_door=...) and of `nsf imagine scm` (ADR-059)
 _HIDDEN = ("hidden common cause",)    # the hidden node in a graph whose nodes are JSON strings: it cannot collide
+Z95 = 1.959963984540054     # the normal's 0.975 quantile
+# A graph answer from estimated moments is given only when its 95 % interval's half-width is at most USEFUL x the
+# outcome's standard deviation, else declined "not enough data to answer". Chosen on the development worlds only,
+# committed before any held-out run of the sampling intervals (ADR-059 follow-up).
+USEFUL = 0.1                # = the benchmark tolerance: the 95 % interval stays within 0.1 x sd(outcome)
+MAX_SAMPLED_VARIABLES = 16
 
 
 class NotIdentified(Exception):
@@ -173,7 +184,12 @@ def _backdoor(query):
         raise ValueError(f"the covariance and the means must give every node the adjustment uses ({error})") from None
     beta = np.linalg.solve(sxx, sxy)
     out = centre[0] + beta[0] * (float(value) - centre[1])
-    return float(out), None
+    k = len(names)
+
+    def estimate(mu, s):                 # variables [*names, ask]: the same arithmetic on any means and covariance
+        b = np.linalg.solve(s[:k, :k], s[:k, k])
+        return mu[k] + b[0] * (float(value) - mu[0])
+    return float(out), None, ([*names, ask], estimate)
 
 
 def _ancestors(parents, nodes):
@@ -294,7 +310,100 @@ def _frontdoor(query):
                             "function of the others), so the adjustment is not defined")
     beta = np.linalg.solve(sxx, sxy)[:len(mediators)]
     slope = sxx[:len(mediators), -1] / sxx[-1, -1]
-    return float(centre[0] + beta @ slope * (float(value) - centre[1])), None, mediators
+    k = len(names)
+
+    def estimate(mu, s):                 # variables [*mediators, cause, ask]
+        b = np.linalg.solve(s[:k, :k], s[:k, k])[:k - 1]
+        return mu[k] + b @ (s[:k - 1, k - 1] / s[k - 1, k - 1]) * (float(value) - mu[k - 1])
+    return float(centre[0] + beta @ slope * (float(value) - centre[1])), None, mediators, ([*names, ask], estimate)
+
+
+def _origin(query):
+    """Where the means and covariance come from: ("population", None) when declared exact (moments: population),
+    ("sample", n) when estimated from n draws (samples: n; the covariance with the n - 1 divisor), ("unstated", None)
+    when the question does not say (the engine cannot tell)."""
+    samples, moments = query.get("samples"), query.get("moments")
+    if moments not in (None, "population", "sample"):
+        raise ValueError("moments is 'population' (the means and covariance are exact) or 'sample' (with samples)")
+    if samples is None:
+        if moments == "sample":
+            raise ValueError("moments 'sample' needs samples: the number of draws they were estimated from")
+        return ("unstated", None) if moments is None else ("population", None)
+    if moments == "population":
+        raise ValueError("give samples (estimated moments) or moments: population (exact ones), not both")
+    if isinstance(samples, bool) or not isinstance(samples, int) or not 2 <= samples <= 10 ** 12:
+        raise ValueError("samples is the whole number of draws the means and covariance were estimated from (2 or more)")
+    return "sample", samples
+
+
+def _sampling_sd(query, variables, estimate, n):
+    """The standard error of estimate(means, covariance) when both were estimated from n independent draws of a
+    multivariate normal (the engine's linear-Gaussian assumption): delta method with Var(mean) = S / n and
+    Cov(S_ij, S_kl) = (S_ik S_jl + S_il S_jk) / (n - 1), the gradient by central differences over the means and
+    the distinct covariance entries. Validated by the interval coverage of ADR-059."""
+    cov, means = query.get("observational_covariance") or {}, query.get("means") or query.get("observational_mean")
+    try:
+        s = np.array([[float(cov[a][b]) for b in variables] for a in variables])
+        mu = np.array([float(means[v]) if v in means else 0.0 for v in variables])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"estimated moments need the covariance of every node the adjustment uses ({error})") from None
+    p = len(variables)
+    if p > MAX_SAMPLED_VARIABLES:
+        raise NotIdentified(f"the sampling interval is computed for at most {MAX_SAMPLED_VARIABLES} variables, and "
+                            f"this adjustment uses {p}")
+    if n <= p + 1:
+        raise NotIdentified(f"not enough data to answer: {n} draws for {p} variables")
+    scale = np.sqrt(np.clip(np.diag(s), 1e-300, None))
+    grad_mu = np.zeros(p)
+    for i in range(p):
+        h = 1e-5 * scale[i]
+        up, down = mu.copy(), mu.copy()
+        up[i] += h
+        down[i] -= h
+        grad_mu[i] = (estimate(up, s) - estimate(down, s)) / (2 * h)
+    pairs = [(i, j) for i in range(p) for j in range(i, p)]
+    grad_s = np.zeros(len(pairs))
+    for t, (i, j) in enumerate(pairs):
+        h = 1e-5 * scale[i] * scale[j]
+        up, down = s.copy(), s.copy()
+        up[i, j] += h
+        down[i, j] -= h
+        if i != j:
+            up[j, i] += h
+            down[j, i] -= h
+        grad_s[t] = (estimate(mu, up) - estimate(mu, down)) / (2 * h)
+    a, b = np.array(pairs).T
+    v_s = (s[np.ix_(a, a)] * s[np.ix_(b, b)] + s[np.ix_(a, b)] * s[np.ix_(b, a)]) / (n - 1)
+    var = grad_mu @ (s / n) @ grad_mu + grad_s @ v_s @ grad_s
+    return float(np.sqrt(max(var, 0.0))), float(scale[-1])
+
+
+def _regime(query, value, estimator, criterion):
+    """(sd, the answer's moments record, its uncertainty sentence) for the moments the question states, or
+    NotIdentified: estimated moments answer only with a sampling interval no wider than USEFUL x sd(outcome); front-
+    door answers need the moments' origin stated (ADR-059 follow-up)."""
+    origin, n = _origin(query)
+    if origin == "sample":
+        variables, estimate = estimator
+        sd, outcome_sd = _sampling_sd(query, variables, estimate, n)
+        half = Z95 * sd
+        if not half <= USEFUL * outcome_sd:
+            raise NotIdentified(f"not enough data to answer: from {n} draws the 95 % interval is +-{half:.3g}, wider "
+                                f"than {USEFUL} x the outcome's standard deviation ({USEFUL * outcome_sd:.3g})")
+        return sd, {"origin": "sample", "samples": n}, (
+            f"sd is the standard error of the estimate from {n} draws (delta method under the linear-Gaussian "
+            f"assumption); the 95 % interval is value +- {half:.3g}")
+    if origin == "population":
+        return None, {"origin": "population"}, ("a point value, exact for the declared population means and "
+                                                 "covariance; no spread is computed from a covariance alone")
+    if criterion == "front_door":
+        raise NotIdentified("the question does not say whether the means and covariance are the population's "
+                            "(moments: population) or estimates from data (samples: n); a front-door answer from "
+                            "estimates taken as exact can be confidently wrong, so it is not given")
+    return None, {"origin": "unstated"}, (
+        "a point value: no spread is computed from a covariance alone; the question does not say whether the means "
+        "and covariance are exact or estimated (moments: population, or samples: n), so they are taken as exact, and "
+        "if they were estimated this value carries an error it does not show")
 
 
 def answer(query, *, front_door: bool = FRONT_DOOR):
@@ -331,7 +440,7 @@ def answer(query, *, front_door: bool = FRONT_DOOR):
                                           "noise (0 when the unit's noise is fully known)"}
         if "graph" in query and "do" in query:
             try:
-                value, sd = _backdoor(query)
+                value, sd, estimator = _backdoor(query)
             except NotIdentified as back:
                 cause = next(iter(query["do"]))          # _backdoor checked do, the graph and the hidden list
                 if cause not in set(query.get("hidden_common_cause") or []):
@@ -341,29 +450,29 @@ def answer(query, *, front_door: bool = FRONT_DOOR):
                                         "`--no-front-door`), and no other identification formula is "
                                         "implemented") from None
                 try:
-                    value, sd, mediators = _frontdoor(query)
+                    value, sd, mediators, estimator = _frontdoor(query)
+                    sd, moments, uncertainty = _regime(query, value, estimator, "front_door")
                 except NotIdentified as front:
                     raise NotIdentified(f"{back}; nor by front-door adjustment: {front} (no other identification "
                                         "formula is implemented)") from None
                 return base | {
                     "rung": "interventional", "value": value, "sd": sd, "identified": True, "why": None,
-                    "identified_by": "front_door", "mediators": mediators,
+                    "identified_by": "front_door", "mediators": mediators, "moments": moments,
                     "assumptions": [
                         "the declared graph is complete apart from the named hidden common causes, read as one hidden "
                         "cause acting on every node named",
                         f"linear relations; front-door adjustment through {', '.join(mediators)}: they intercept "
                         f"every directed path from {cause} to {query['ask']}, {cause} has no unblocked back-door "
                         f"path to them, and {cause} blocks every back-door path from them to {query['ask']}",
-                        "the given means and covariance are the population's (taken as exact)"],
-                    "uncertainty": "a point value: no spread is computed from a covariance alone; means and a "
-                                   "covariance estimated from data carry an error this value does not show (ADR-059: "
-                                   "from 500 draws, 20 of 200 held-out test answers missed the truth by more than a "
-                                   "tenth of the outcome's sd; from 5,000, none)"}
+                        "the means and covariance are the population's (moments: population) or estimates from the "
+                        "stated number of independent draws (samples)"],
+                    "uncertainty": uncertainty}
+            sd, moments, uncertainty = _regime(query, value, estimator, "back_door")
             return base | {"rung": "interventional", "value": value, "sd": sd, "identified": True, "why": None,
-                           "identified_by": "back_door",
+                           "identified_by": "back_door", "moments": moments,
                            "assumptions": ["the declared graph is complete apart from the named hidden common causes",
                                            "linear relations; back-door adjustment for the cause's observed parents"],
-                           "uncertainty": "a point value: no spread is computed from a covariance alone"}
+                           "uncertainty": uncertainty}
         raise ValueError("a question gives a model (with given, do, or observed and had) or a graph with do")
     except NotIdentified as why:
         return base | {"rung": query.get("rung") or "interventional", "value": None, "sd": None,
