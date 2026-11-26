@@ -476,4 +476,38 @@ Each result records every world's digest per seed (`world_digests`). Two looks m
 are equal. The settings each individual held are read back in every run (`config_read_back`).
 
 **Who looks.** Wave 3 step 0 took the unchanged system's one look (below). After that, only the main session looks,
-once, at the end of Wave 3, with the mechanisms under test beside `baseline`.
+once, at the end of Wave 3, with the mechanisms under test beside `baseline`. The evidence file of a look names the
+worlds and records their per-cycle allowance and series, so it is not development material either.
+
+### The unchanged system's one look (Wave 3 step 0)
+
+Run once, on commit `d0b6b02` (clean), ledger line 4 of `genesis_final_uses.jsonl`, written before scoring; evidence
+`docs/quality/evidence/genesis_cycles_withheld_baseline.json` (written outside the tree, then copied in; 25 s). There
+are 4 seeds; mean ± sd of `correct` (the primary: share of subjects whose newest held item states the current
+version, mean over all cycles). Worlds are numbered in file order. Nothing was tuned before or after.
+
+| | W1 | W2 | W3 |
+|---|---|---|---|
+| no loop (autonomous research off) | 0.423 ± 0.051 | 0.311 ± 0.061 | 0.311 ± 0.065 |
+| **baseline** (today's loop, every Wave 1 setting off) | **0.465 ± 0.064** | **0.286 ± 0.039** | **0.323 ± 0.035** |
+| shipped defaults | identical to baseline on every metric and seed | identical | identical |
+| baseline − no loop, paired (seeds better) | +0.042 (4 of 4) | −0.025 (1 of 4) | +0.012 (3 of 4) |
+| *reference:* perfect snapshot, never refreshed | 0.455 | 0.385 | 0.395 |
+| *reference:* blind round-robin, same allowance, majority read | 0.636 | 0.541 | 0.537 |
+| *reference:* blind round-robin, perfect reads | 0.693 | 0.656 | 0.649 |
+| *reference:* oracle, same allowance | 0.797 | 0.809 | 0.820 |
+| coverage by the owner's research | 0.883 | 0.872 | 0.815 |
+| Brier, baseline (constant reference) | 0.250 (0.248) | 0.323 (0.218) | 0.282 (0.239) |
+| baseline, over the 4 seeds: own-output versions admitted / wrong-story versions admitted / one-origin rises | 4 / 2 / 0 | 6 / 17 / 0 | 6 / 12 / 1 |
+| baseline, retention: lost / regressed (of the subject-runs in the base) | 0 / 1 (16) | 0 / 3 (9) | 0 / 3 (15) |
+
+Reading. On the held-out worlds the loop beat no loop on every seed; here it does so on every seed in one world of
+three. In the other two the paired difference is within the baseline's spread or negative. In every world the loop
+sits below the blind round-robin of the same allowance (by 0.17 to 0.26) and near or below the never-refreshed
+snapshot (coverage explains part of that, as on held-out). The adversarial counts are not zero here, while they
+were 0 in all 120 held-out runs: versions asserted only by the individual's own outputs and versions stated only by
+a wrong story were admitted as knowledge, one confidence rose after a look with one origin, and subjects held
+correctly at cycle 3 regressed. The shipped-on Wave 1 and Wave 2 records (`hypothesis_fields`, `premise_recheck`,
+`salience_record`, `arbitration_record`, `answer_monitoring`; read back in every run) changed no launch and no held
+item (0 changed cycles on every seed). The smallest gain the pre-registered rule can see with these seeds is the
+baseline's sd: 0.064, 0.039 and 0.035.
