@@ -24,16 +24,17 @@ distinct sources (domains) found stating it (`n`, at most MAX_GROUPS; a count, s
 STORAGE (no schema change): rows of web_strategies (procedural memory; primary-key lookups only; no reader of that
 table lists names, and no Pocket, family, MCP or agent surface reads it):
   "emitted:<d>"       d = digest of (subject name, value key); {"e": [[at, sourced, n, task digest], ...]}: the
-                      earliest MAX_EMISSIONS emissions, oldest first
+                      earliest MAX_EMISSIONS emissions, oldest first, of those within EMISSION_LIFETIME of the
+                      newest (an expired one is dropped, and unlisted from its task, before the list is cut)
   "emitted-task:<t>"  t = digest of the task id; {"k": [d, ...]}: the fingerprints whose emission list holds this task
 At most MAX_FINGERPRINTS "emitted:" rows: a full store records nothing more (logged with counts only; the rule then
 sees no later emission). The count is read before the write transaction (an index range), as is everything else.
 
 THE RULE (consolidate.run, with the setting on). A page's claim (not a structured record, not a primary record) is
 an echo of the individual's own output when, for one of its subject names and one of its values, the EARLIEST recorded
-emission of that pair was not sourced (0), was made before the claim was read and at most EMISSION_LIFETIME before it
-(30 days; the imagined store's bound is the precedent: an older emission no longer counts), and the page's stated
-publication is not before it (or the page states none). An echo is never evidence, for or against: it leaves its
+emission of that pair made before the claim was read and at most EMISSION_LIFETIME before it (30 days; the imagined
+store's bound is the precedent: an older emission no longer counts, and never hides a newer one; Wave 4 second fix
+round) was not sourced (0), and the page's stated publication is not before it (or the page states none). An echo is never evidence, for or against: it leaves its
 cluster (consolidate._without_echoes; Wave 4 fix, review4 H2: where it disagrees with a held value it neither
 supersedes nor weakens it, and the disagreement is asked, consolidate._echo_disagreement). A value the individual emitted with source support is not an echo: the
 sources carry it. The checks are point lookups by digest made before the write transaction: at most MAX_LOOKUPS per
@@ -324,8 +325,11 @@ def record(db, prepared) -> int:
         emissions = [e for e in (held.get(d) or {}).get("e") or [] if isinstance(e, list) and len(e) == 4]
         if any(e[3] == task for e in emissions):
             continue
-        emissions = sorted(emissions + [[at, sourced, n, task]], key=lambda e: (e[0], e[3]))
-        dropped = emissions[MAX_EMISSIONS:]
+        # expired emissions go first, then the list is cut to its maximum (review4 security second pass 2b(ii))
+        expired = [e for e in emissions if at - e[0] > EMISSION_LIFETIME]
+        emissions = sorted([e for e in emissions if at - e[0] <= EMISSION_LIFETIME] + [[at, sourced, n, task]],
+                           key=lambda e: (e[0], e[3]))
+        dropped = expired + emissions[MAX_EMISSIONS:]
         emissions = emissions[:MAX_EMISSIONS]
         db.execute("INSERT INTO web_strategies(name,state,updated_at) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET "
                    "state=excluded.state, updated_at=excluded.updated_at", (d, _dump({"e": emissions}), at))
@@ -447,12 +451,17 @@ class Echoes:
             read, published = state.finite(c.retrieved_at), state.finite(c.published_at)
             verdict = None
             for d in keys:
-                emissions = [e for e in (held.get(d) or {}).get("e") or [] if isinstance(e, list) and len(e) == 4]
-                if not emissions or read is None:
+                if read is None:
+                    continue
+                # the earliest emission within its lifetime of the read (an expired one never masks a fresh one;
+                # Wave 4 second fix round, review4 security second pass 2b(ii))
+                emissions = sorted((e for e in (held.get(d) or {}).get("e") or [] if isinstance(e, list) and
+                                    len(e) == 4 and e[0] < read and read - e[0] <= EMISSION_LIFETIME),
+                                   key=lambda e: (e[0], e[3]))
+                if not emissions:
                     continue
                 at, sourced = emissions[0][0], emissions[0][1]
-                if sourced == UNSOURCED and at < read and read - at <= EMISSION_LIFETIME and \
-                        (published is None or published >= at):
+                if sourced == UNSOURCED and (published is None or published >= at):
                     verdict = "emitted"
                     break
             self.seen[c.id] = verdict
