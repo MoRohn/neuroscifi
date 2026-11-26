@@ -1,0 +1,288 @@
+{
+ "look1": {
+  "control_keys_compared": {
+   "worlds": 2,
+   "totals_sum_keys": 18,
+   "mean_correct_keys": 5
+  },
+  "control_differences": [],
+  "void": false,
+  "seeds": [
+   8501,
+   8502,
+   8503,
+   8504
+  ],
+  "own_text_provenance": {
+   "verdict": "effective",
+   "checks": {
+    "A1": true,
+    "A2": true,
+    "S1": true,
+    "C1": true,
+    "G": true
+   },
+   "per_world": {
+    "src-wh-a": {
+     "own_admitted": [
+      0,
+      0
+     ],
+     "wrongly_admitted": [
+      54,
+      54
+     ],
+     "suppressed": [
+      56,
+      56
+     ],
+     "discarded_honest_pages": 4,
+     "discarded_echo_pages": 4,
+     "mean_correct": [
+      0.534642,
+      0.534642,
+      0.042142
+     ],
+     "grouping_same": true
+    },
+    "src-wh-b": {
+     "own_admitted": [
+      2,
+      1
+     ],
+     "wrongly_admitted": [
+      56,
+      54
+     ],
+     "suppressed": [
+      73,
+      72
+     ],
+     "discarded_honest_pages": 10,
+     "discarded_echo_pages": 8,
+     "mean_correct": [
+      0.48933,
+      0.492539,
+      0.062094
+     ],
+     "grouping_same": true
+    }
+   }
+  },
+  "echo_recognition": {
+   "verdict": "effective",
+   "checks": {
+    "A1": true,
+    "A2": true,
+    "S1": true,
+    "C1": true,
+    "G": true
+   },
+   "per_world": {
+    "src-wh-a": {
+     "own_admitted": [
+      0,
+      0
+     ],
+     "wrongly_admitted": [
+      54,
+      54
+     ],
+     "suppressed": [
+      56,
+      56
+     ],
+     "discarded_honest_pages": 4,
+     "discarded_echo_pages": 4,
+     "mean_correct": [
+      0.534642,
+      0.534642,
+      0.042142
+     ],
+     "grouping_same": true
+    },
+    "src-wh-b": {
+     "own_admitted": [
+      2,
+      0
+     ],
+     "wrongly_admitted": [
+      56,
+      53
+     ],
+     "suppressed": [
+      73,
+      72
+     ],
+     "discarded_honest_pages": 10,
+     "discarded_echo_pages": 11,
+     "mean_correct": [
+      0.48933,
+      0.492539,
+      0.062094
+     ],
+     "grouping_same": true
+    }
+   }
+  },
+  "totals": {
+   "shipped": {
+    "own_admitted": 2,
+    "wrongly_admitted": 110,
+    "suppressed": 129,
+    "discarded_honest_pages": 0,
+    "discarded_echo_pages": 0
+   },
+   "own_text_provenance": {
+    "own_admitted": 1,
+    "wrongly_admitted": 108,
+    "suppressed": 128,
+    "discarded_honest_pages": 14,
+    "discarded_echo_pages": 12
+   },
+   "echo_recognition": {
+    "own_admitted": 0,
+    "wrongly_admitted": 107,
+    "suppressed": 128,
+    "discarded_honest_pages": 14,
+    "discarded_echo_pages": 15
+   }
+  },
+  "shipped_totals_all_keys": {
+   "looks": 576,
+   "pages": 1831,
+   "pages_with_claims": 1831,
+   "admitted": 293,
+   "admitted_false": 26,
+   "wrongly_admitted": 110,
+   "wrongly_admitted_false": 26,
+   "own_admitted": 2,
+   "eligible": 356,
+   "suppressed": 129,
+   "suppressed_contested": 66,
+   "dependent_rises": 0,
+   "tp": 281,
+   "fp": 68,
+   "fn": 984,
+   "tn": 1016,
+   "discarded_echo_pages": 0,
+   "discarded_honest_pages": 0,
+   "precision": 1.593902,
+   "recall": 0.438247
+  }
+ },
+ "look2": {
+  "worlds_in_file_order": [
+   "wh-seasons",
+   "wh-relay",
+   "wh-long"
+  ],
+  "pairs": {
+   "idle-first": {
+    "wh-seasons": {
+     "gain": 0.013,
+     "per_seed": [
+      0.0348,
+      0.0014,
+      0.0412,
+      -0.0256
+     ],
+     "ref": "baseline",
+     "ref_mean": 0.4653,
+     "cfg_mean": 0.4783,
+     "sd_ref_this_look": 0.064,
+     "sd_step0": 0.064,
+     "beyond_spread": false,
+     "round_robin": 0.635648
+    },
+    "wh-relay": {
+     "gain": 0.0421,
+     "per_seed": [
+      -0.0143,
+      0.0831,
+      0.0429,
+      0.0568
+     ],
+     "ref": "baseline",
+     "ref_mean": 0.2859,
+     "cfg_mean": 0.3281,
+     "sd_ref_this_look": 0.0389,
+     "sd_step0": 0.039,
+     "beyond_spread": true,
+     "round_robin": 0.5414
+    },
+    "wh-long": {
+     "gain": 0.0521,
+     "per_seed": [
+      0.0191,
+      0.0547,
+      0.064,
+      0.0706
+     ],
+     "ref": "baseline",
+     "ref_mean": 0.3234,
+     "cfg_mean": 0.3755,
+     "sd_ref_this_look": 0.0348,
+     "sd_step0": 0.035,
+     "beyond_spread": true,
+     "round_robin": 0.536989
+    }
+   },
+   "shipped+idle": {
+    "wh-seasons": {
+     "gain": 0.0057,
+     "per_seed": [
+      0.0043,
+      0.0022,
+      0.0164,
+      0.0
+     ],
+     "ref": "shipped",
+     "ref_mean": 0.4653,
+     "cfg_mean": 0.4711,
+     "sd_ref_this_look": 0.064,
+     "sd_step0": 0.064,
+     "beyond_spread": false,
+     "round_robin": 0.635648
+    },
+    "wh-relay": {
+     "gain": 0.0351,
+     "per_seed": [
+      0.0,
+      0.038,
+      0.0357,
+      0.0665
+     ],
+     "ref": "shipped",
+     "ref_mean": 0.2859,
+     "cfg_mean": 0.321,
+     "sd_ref_this_look": 0.0389,
+     "sd_step0": 0.039,
+     "beyond_spread": false,
+     "round_robin": 0.5414
+    },
+    "wh-long": {
+     "gain": 0.0239,
+     "per_seed": [
+      0.0,
+      0.0494,
+      0.0418,
+      0.0044
+     ],
+     "ref": "shipped",
+     "ref_mean": 0.3234,
+     "cfg_mean": 0.3473,
+     "sd_ref_this_look": 0.0348,
+     "sd_step0": 0.035,
+     "beyond_spread": false,
+     "round_robin": 0.536989
+    }
+   }
+  },
+  "look_pairs": {
+   "shipped": "lane-s:fixes-off",
+   "shipped+idle": "shipped",
+   "idle-first": "baseline"
+  }
+ }
+}
