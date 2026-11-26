@@ -839,6 +839,20 @@ What the look says, by the rule written before it:
   fewer subjects lost or regressed (7 → 3) and no more wrongly admitted content (48 → 43). On held-out the same
   configuration was "revise" (beyond the spread in one world of five). How the daily allowance is divided between
   refreshing what is known and reaching what is not is the next thing to measure properly, on worlds written for it.
+  *Correction, 2026-11-26 (Wave 4 lane A, ADR-064 "Follow-up: repeatability").* Runs that use the idle investigation
+  were not repeatable at the code of this look: two choices among equal records followed the random task ids
+  (`autonomy._lineage` walked a set of task ids; `curiosity.search_terms` and `curiosity.rank` broke ties among claims
+  stored at one instant by task id). Measured afterwards on 18 public worlds, 10 repeats each, of this code:
+  `baseline` and `shipped+idle` never varied; `idle-first` varied in 4 of 18 worlds, and a world's mean paired gain
+  moved by up to 0.015 between repeats (0.007 and under 0.001 in the other three). The look's figures are single runs
+  on worlds that cannot be re-run here, so each carries that uncertainty: `idle-first` W1 +0.013 is within its spread
+  (0.064) either way; **W2 +0.042 exceeds its spread (0.039) by only 0.003, less than the largest repeat-to-repeat
+  swing measured, so "beyond the spread in W2" is not established by this single run**; W3 +0.052 exceeds its spread
+  (0.035) by 0.017, more than every swing measured, so it likely stands (not verified on those worlds). `shipped+idle`
+  (+0.006 / +0.035 / +0.024) did not vary in any measured world. The held-out figures of §3.4 (ADR-062) reproduce
+  exactly in 10 of 10 repeats. Since Wave 4 lane A both choices use a stable order (creation order) and repeated runs
+  are identical. The seed 2704 move of §3.8 is not explained by this (that run did not vary in 10 repeats); it stays
+  untraced.
 - **Every configuration stays far below a blind round-robin with the same allowance** (0.636 / 0.541 / 0.537): the
   best here reaches 0.482, 0.328 and 0.375.
 

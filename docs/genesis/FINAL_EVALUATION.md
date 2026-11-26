@@ -70,9 +70,13 @@ on. **`attribution_independence` was not exercised** (every figure identical). *
 +0.042 / +0.007 (every seed) and made 3 false replacements of 54 by the rule; all 5 false replacements in its runs
 were still wrong when the runs ended (up to 17 cycles); it stays off. **The re-check's order gives no gain.** **The
 idle investigator run before the timer's pass** gives +0.013 / +0.042 / +0.052 (beyond the spread in two worlds)
-with fewer subjects lost; the look cannot promote it, and dividing the daily allowance between refreshing and
-reaching is the next thing to measure. **The front door stays on** (12 of 12 front-door questions exact; every
-other figure equal to the run without it).
+with fewer subjects lost; the look cannot promote it, and dividing the daily allowance between refreshing and reaching
+is the next thing to measure. *Correction, 2026-11-26 (Wave 4 lane A).* The idle-first figures of the look (+0.013 /
++0.042 / +0.052) are single runs of code whose idle runs were not repeatable (a pick among equal records followed
+random task ids; fixed in Wave 4, ADR-064). On public worlds a world's mean gain moved by up to 0.015 between repeats,
+so "beyond the spread" holds for W3 (margin 0.017) but is not established for W2 (margin 0.003); the held-out figures
+of ADR-062 are exactly repeatable. **The front door stays on** (12 of 12 front-door questions exact; every other
+figure equal to the run without it).
 
 ## One page, in plain words (Wave 2)
 
