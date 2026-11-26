@@ -305,15 +305,18 @@ def digest(path: Path) -> str:
 def environment() -> dict:
     commit = dirty = None
     try:
-        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
-                                timeout=5).stdout.strip() or None
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, timeout=5)
+        commit = (head.stdout.strip() or None) if head.returncode == 0 else None
         # the ledger of final runs is a record, not code: a run's own line (appended before it scores) must not make
         # the next run of the same look read as dirty (review1c)
-        status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
-                                timeout=5).stdout.splitlines() if commit else None
-        dirty = any(line[3:].strip('"') != LEDGER_NAME for line in status if line.strip()) if commit else None
+        if commit:
+            status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
+                                    timeout=5)
+            # review3 0-1: clean only when git itself said so (a status that fails or times out is not "clean")
+            dirty = True if status.returncode != 0 else any(line[3:].strip('"') != LEDGER_NAME
+                                                            for line in status.stdout.splitlines() if line.strip())
     except (OSError, subprocess.SubprocessError):
-        pass
+        dirty = True if commit else None
     import numpy
     import sqlite3
     return {"git_commit": commit, "git_dirty": dirty, "python": sys.version.split()[0], "numpy": numpy.__version__,
@@ -352,6 +355,10 @@ def run(families=DEFAULT_FAMILIES, *, split: str = "development", mechanism: str
            "split": split, "mechanism": mechanism, "ablate": sorted(ablate), "seeds_override": seeds,
            "quick": quick, "families": {}}
     if final:
+        # review3 (Q7): a look is taken on a clean, committed tree only, as cycles.final and bench_wave1.final require
+        if env["git_dirty"] is not False or not env["git_commit"]:
+            raise Refused("a final run needs a clean, committed tree (and git must say so), so the ledger line names "
+                          "the code it measured")
         entry = {"at": out["generated_at"], "commit": env["git_commit"], "dirty": env["git_dirty"],
                  "mechanism": mechanism, "ablate": sorted(ablate), "families": families, "note": note}
         out["final_runs"] = _record_final(LEDGER, entry)

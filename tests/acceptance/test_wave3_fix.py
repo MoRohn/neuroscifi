@@ -450,3 +450,157 @@ def test_a_damaged_saved_wave3_setting_reads_as_its_default(tmp_path, name, bad)
         assert getattr(state.get_config(db), name) == getattr(WebConfig(), name)
         assert [p for p in state.setting_problems(db) if name in p]
         scheduler.tick(db, T0 + 10, None, queue=True)           # the timer's pass does not raise
+
+
+# ---- Q7: the looks' machinery (built and tested on public splits only; nothing here loads the withheld worlds) -------
+
+@pytest.fixture
+def sealed(monkeypatch, tmp_path):
+    from neuroscifi.acceptance import cognition
+    from neuroscifi.acceptance.cognition import cycles
+
+    def loader():
+        raise AssertionError("the withheld worlds were loaded")
+    monkeypatch.setattr(cycles, "_withheld", loader)
+    ledger = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(cognition, "LEDGER", ledger)
+    return ledger
+
+
+@pytest.mark.parametrize("failure", ["timeout", "exit 128", "oserror"])
+def test_a_dirty_check_that_fails_is_not_clean_and_the_look_is_refused(sealed, monkeypatch, failure):
+    import subprocess
+    from neuroscifi.acceptance import cognition
+    from neuroscifi.acceptance.cognition import cycles
+
+    real = subprocess.run
+
+    def run(argv, **kwargs):
+        if argv[:2] == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="0" * 40 + "\n", stderr="")
+        if argv[:2] != ["git", "status"]:
+            return real(argv, **kwargs)                # platform's own calls (uname) are not the check
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(argv, 5)
+        if failure == "oserror":
+            raise OSError("git is gone")
+        return subprocess.CompletedProcess(argv, 128, stdout="", stderr="fatal: index file corrupt")
+    monkeypatch.setattr(cognition.subprocess, "run", run)
+    assert cognition.environment()["git_dirty"] is True
+    with pytest.raises(cognition.Refused, match="clean"):
+        cycles.final("a test")
+    with pytest.raises(cognition.Refused, match="clean"):
+        cognition.run(["withheld"], final=True, note="a test")
+    assert not sealed.exists()
+
+
+def test_a_changed_worlds_file_is_refused_before_the_ledger_and_before_loading(sealed, monkeypatch):
+    from neuroscifi.acceptance import cognition
+    from neuroscifi.acceptance.cognition import cycles
+    assert cycles.withheld_digest() == cycles.WITHHELD_SHA256       # the file as committed (hashed, never read)
+    monkeypatch.setattr(cognition, "environment", lambda: {"git_commit": "0" * 40, "git_dirty": False})
+    monkeypatch.setattr(cycles, "WITHHELD_SHA256", "f" * 64)
+    with pytest.raises(cognition.Refused, match="SHA-256"):
+        cycles.final("a test")
+    assert not sealed.exists()
+
+
+def test_the_counterfactual_look_refuses_a_dirty_tree_and_an_output_inside_the_checkout(sealed, monkeypatch,
+                                                                                       tmp_path):
+    import importlib.util
+    from pathlib import Path
+    from neuroscifi.acceptance import cognition
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("bench_cognition_fix", root / "scripts" / "bench_cognition.py")
+    bench = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bench)
+    inside = root / "docs" / "quality" / "evidence" / "a-test-output.json"
+    look = ["run", "--family", "withheld", "--mechanism", "imagination", "--final", "--note", "a test"]
+    assert bench.main(look + ["--out", str(inside)]) == 2
+    assert bench.main(look) == 2                                   # no --out: refused as well
+    monkeypatch.setattr(cognition, "environment", lambda: {"git_commit": "0" * 40, "git_dirty": True})
+    assert bench.main(look + ["--out", str(tmp_path / "out.json")]) == 2
+    monkeypatch.setattr(cognition, "environment", lambda: {"git_commit": None, "git_dirty": None})
+    assert bench.main(look + ["--ablate", "front_door", "--out", str(tmp_path / "out.json")]) == 2
+    assert not sealed.exists() and not inside.exists() and not (tmp_path / "out.json").exists()
+
+
+def test_the_front_door_comparison_holds_on_a_held_out_pair_and_catches_a_change(tmp_path):
+    """The pair the main session runs before the look, on held-out (no --final): 0 differing leaves outside the
+    exemptions; a changed leaf outside them, a wrong ablation or a fallback is caught."""
+    import importlib.util
+    from pathlib import Path
+    from neuroscifi.acceptance import cognition
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("compare_fd", root / "scripts" / "compare_front_door_look.py")
+    compare = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(compare)
+    on = cognition.run(["counterfactual"], split="held_out", mechanism="imagination")
+    off = cognition.run(["counterfactual"], split="held_out", mechanism="imagination", ablate=["front_door"])
+    (tmp_path / "on.json").write_text(json.dumps(on))
+    (tmp_path / "off.json").write_text(json.dumps(off))
+    out = compare.compare(on, off)
+    assert out["void"] == [] and out["a_holds"] and out["b_holds"] and out["differing_leaves"] > 0
+    assert compare.main([str(tmp_path / "on.json"), str(tmp_path / "off.json")]) == 0
+    changed = json.loads(json.dumps(off))
+    changed["families"]["counterfactual"]["result"]["summary"]["mean_relative_error"]["mean"] = 0.5
+    assert not compare.compare(on, changed)["b_holds"]
+    assert compare.compare(on, on)["void"]                                      # OFF not ablated: void
+    fell = json.loads(json.dumps(off))
+    fell["families"]["counterfactual"]["mechanism"]["fell_back_to_baseline"] = True
+    assert compare.compare(on, fell)["void"]
+
+
+def test_the_look_configurations_read_back_as_named():
+    from neuroscifi.acceptance.cognition import cycles, cycles_splits
+    known = cycles.configurations() | cycles.EXTRA
+    assert set(cycles.LOOKS["wave3"]) <= set(known) and set(cycles.LOOK_PAIRS) <= set(cycles.LOOKS["wave3"])
+    spec = cycles_splits.CYCLES["development"]["worlds"][0]
+    keys = ("attribution_independence", "echo_recognition", "supersession", "recheck_order", "idle_investigation")
+    seen = {name: {k: cycles.run_world(spec, 41, known[name], cycles=1)["config"][k] for k in keys}
+            for name in ("baseline", "shipped", "lane-s:fixes-off", "lane-s:echo-only", "lane-s:attribution-only",
+                         "lane-s:both", "lane-s:supersede-K2", "shipped+idle", "idle-first")}
+    step0 = (False, False, "ask", "staleness", "not run")
+    assert tuple(seen["baseline"].values()) == step0 == tuple(seen["shipped"].values()) == \
+        tuple(seen["lane-s:fixes-off"].values())
+    assert tuple(seen["lane-s:echo-only"].values())[:2] == (False, True)
+    assert tuple(seen["lane-s:attribution-only"].values())[:2] == (True, False)
+    assert tuple(seen["lane-s:both"].values())[:2] == (True, True)
+    assert seen["lane-s:supersede-K2"]["supersession"] == "independent"
+    assert seen["shipped+idle"]["idle_investigation"] == "after the pass"
+    assert seen["idle-first"]["idle_investigation"] == "before the pass"
+
+
+def test_the_new_counters_count_on_development_worlds():
+    """On lane S's development world with both fixes off (the holes open), admitted wrong content is counted without a
+    version convention; with the rule on, replacements are classified and a false one carries its persistence."""
+    from neuroscifi.acceptance.cognition import cycles, cycles_splits_s
+    spec = cycles_splits_s.CYCLES["development"]["worlds"][1]           # sd-wrong-newer
+    known = cycles.configurations() | cycles.EXTRA
+    seen = {}
+    for seed in (241, 242, 243):
+        out = cycles.run_world(spec, seed, known["lane-s:supersede-K2"], generate=cycles_splits_s.generate)
+        for k, v in out["admitted"].items():
+            seen[k] = seen.get(k, 0) + v
+        for k in ("true", "false", "by_rule_true", "by_rule_false"):
+            seen["rep_" + k] = seen.get("rep_" + k, 0) + out["replacements"][k]
+        for f in out["replacements"]["false_list"]:
+            assert set(f) == {"subject", "cycle", "cycles", "wrong", "none", "censored"}
+            assert f["cycles"] == f["wrong"] + f["none"]
+        assert out["replacements"]["false_persistence_max"] == max(
+            (f["cycles"] for f in out["replacements"]["false_list"]), default=0)
+    assert seen["rows"] > 0 and seen["wrong"] > 0 and seen["wire_only"] + seen["own_only"] > 0
+    assert seen["rep_true"] + seen["rep_false"] > 0 and seen["rep_by_rule_true"] + seen["rep_by_rule_false"] > 0
+
+
+def test_false_persistence_counts_nothing_held_apart_and_censors_a_run_that_ends_wrong():
+    from neuroscifi.acceptance.cognition import cycles
+
+    class Fake:
+        cycle = 6
+        history = {"A": [(2, 3), (3, 3), (4, None), (5, 4), (6, 4)], "B": [(2, 3), (3, None), (4, 3), (5, 3)]}
+
+        def truth(self, name, c):
+            return 4 if name == "A" else 9
+    assert cycles.false_persistence(Fake(), "A", 2) == {"cycles": 3, "wrong": 2, "none": 1, "censored": False}
+    assert cycles.false_persistence(Fake(), "B", 2) == {"cycles": 5, "wrong": 3, "none": 2, "censored": True}
