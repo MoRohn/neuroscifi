@@ -756,7 +756,13 @@ B, C and D fail). Held-out, all shapes (shipped → rule): wrongly admitted 127 
 suppressed 142 → 207 of 612, precision 0.81 → 0.78, recall 0.20 → 0.35; `correct` −0.066 / −0.054 / −0.101 (seeds worse
 4 / 3 / 4 of 4). Development: 64 (21) → 54 (17), 39 → 65 of 233, −0.083 / −0.093. The rule ships off. Per shape, the
 evidence assessment, ablations, cost, the other worlds and the census of what it cannot see: ADR-066 and
-`docs/quality/evidence/genesis_wave4_s.json`.
+`docs/quality/evidence/genesis_wave4_s.json`. **The record after the reviews (review4 H1, M2, M3): not supported; do
+not turn on.** Its only signal, a capitalised name equal to a host's site label, is a convention of these worlds'
+generator (31 of 34 cast names, 10 of 10 outlets); 16 of its 17 extra round-up suppressions are looks with one
+first-hand page read, where the metric credits roots never read; a single page can still merge honest outlets by
+being linked (or named) by all of them. After the fix lane's hardening (held-out, `genesis_wave4_fix.json`): 127 (40)
+→ 99 (31), 142 → 207 of 612, precision 0.81 → 0.78, recall 0.20 → 0.35, `correct` −0.064 / −0.054 / −0.101; verdict
+"trade" as before.
 
 ### Wave 4 lane E: own-text provenance (ADR-067)
 
@@ -766,9 +772,16 @@ aside as echoes of the individual's own output, by what the derivation graph say
 `sources.own_verdict`, committed before the first held-out run (`34494cc`): A1 own answers admitted lower in total and
 in no world higher; A2 no world admits more below the bar; S1 no world's `suppressed` above `shipped`'s by more than
 half its number of seeds; C1 no world's `mean_correct` lower by more than `shipped`'s sd; G grouping untouched.
-Results (development, then held-out; pooled over worlds and seeds, not a claim): own answers admitted 4 → 2 and 4 → 1;
-honest pages discarded 7 of 1,091 and 9 of 2,670 read (each one repeats a value the individual had emitted, wrong and
-unsourced, that later became true); suppressed 39 → 39 and 142 → 144; verdict "effective" on both. Evidence
+Results (development, 360 looks, then held-out, 864 looks; pooled over worlds and seeds, not a claim; shipped →
+the rule): own answers admitted 4 → 2 and 4 → 1 (of the looks of the echo shape: 15 and 21); wrongly admitted 64 → 60
+and 127 → 123; suppressed 39 → 39 of 233 eligible and 142 → 144 of 612; echo pages discarded 18 of 29 and 30 of 41
+echo pages read; honest pages discarded 7 of 1,091 and 9 of 2,670 honest pages read (each one repeats a value the
+individual had emitted, wrong and unsourced, that later became true); verdict "effective" on both. After the fix lane
+(`genesis_wave4_fix.json`, review4 measurement H1): suppressed 145 of 612 on held-out, honest pages discarded 8 of
+1,091 and 14 of 2,670 (the pages that had escaped through the defect are now counted), the rest unchanged, verdict
+"effective" on both. With both rules on (`wave4:both`) the counters before the fix missed the pages lane E's hook
+marked at extraction (review4 M1): the real totals are echo 18 / 30 and honest 8 / 16 (development / held-out), which
+the fixed harness reports. Evidence
 `docs/quality/evidence/genesis_wave4_e.json` (234 kB, summaries). **For the single withheld look**: configurations
 `shipped` and `own_text_provenance` (and `echo_recognition` beside them for comparison); reported per world from
 `own_verdict`'s fields and the two new counters.

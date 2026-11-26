@@ -290,8 +290,10 @@ class WebConfig:
     # each hold a page naming no other page, only between groups stating the same values, never to a page published
     # later), on top of today's grouping, which it never splits; a page lane E's echo check marks counts for nothing.
     # OFF by default: an outlet that checked a value and still names another outlet looks exactly like a copy, so the
-    # rule trades true facts not verified for copies not counted twice (ADR-066 has both, per shape). Applies to claims
-    # read while it is set.
+    # rule trades true facts not verified for copies not counted twice (ADR-066 has both, per shape). NOT SUPPORTED: do
+    # not turn it on (review4 H1, M2, M3): its signal is a convention of the benchmark worlds, and one page that every
+    # honest outlet links or names can still merge them. Applies to claims read while it is set; off, its stored marks
+    # are not read.
     source_derivation: bool = False
     # ADR-064 (Wave 4 lane A): how the day's autonomous task count (daily_autonomous.tasks) is divided between
     # REFRESHING what is held (the timer's re-check, due refreshes and curiosity, and idle investigations of a

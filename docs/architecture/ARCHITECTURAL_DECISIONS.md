@@ -4288,8 +4288,10 @@ fails safety), mean gains over the non-covered worlds +0.008 / +0.014 / +0.014 /
 
 # ADR-065 Uncertainty shown to the owner: a caution where an answer rests on sources that cannot be shown independent
 
-Status: built, **display only** (no setting: it changes nothing but what the owner reads). Wave 4 lane D (`gen4-d`).
-No schema change; nothing stored.
+Status: built, **display only** (it changes nothing but what the owner reads). Wave 4 lane D (`gen4-d`); amended by
+the Wave 4 fix lane (`gen4-fix`, review4 measurement M4, security L2): by default only the trigger the measurement
+supports is shown (a single page); the other two are computed and shown with the display setting `caution_detail`
+(off). No schema change; nothing stored.
 
 ## Context
 
@@ -4305,14 +4307,22 @@ each fact check's verdict and each knowledge item (and so each contradiction que
 claims support the statement, how many independent sources they count as under today's rule
 (`claims.independence_groups` over the stored supporting claims, unchanged), why pages were counted together (same
 site, nearly the same wording, a named origin), and whether a supporting page repeats an earlier answer of the
-individual's own (`consolidate._Echoes`, read only, 0.5 s per view; a flag computed for display, never a rule).
+individual's own (`consolidate._Echoes`, read only, 0.5 s per view; a flag computed for display, never a rule). One
+bound per view (Wave 4 fix, security L2): the console's list of open questions computes every caution in it with one
+own-answer budget, reads the contradiction questions' records in one query (`caution.for_pending`) and gives at most
+50 statements a caution; before the fix each contradiction question had its own budget and its own unindexed scan.
 
 A caution is shown (rule written before it was measured): when the statement rests on at most one source that can be
 told apart; when some of its pages were counted together as copies (copying is present, and a reworded copy is not
 caught); or when a supporting page repeats an earlier answer of the individual's own. The words say what is known and
 what is not ("3 pages say this; some look like copies (some have nearly the same wording), so they count as 2 sources.
 A reworded copy cannot be told from an independent report, so there may be fewer."); they never say the statement is
-wrong. Where it is shown: the answer's support line and the verdict (console, `nsf web show`, Pocket), the knowledge
+wrong. **What is shown since the Wave 4 fix:** only "Only one source says this." (a single page), the one trigger the
+measurement below supports. The copy trigger and the own-answer flag are still computed and are shown only with
+`nsf web config --set caution_detail=true` (display only, off): measured, the copy trigger sat on truly independent
+pages in 79 of 264 cases on held-out worlds (22 of 102 on development) and the own-answer flag had no echo page among
+the supporting pages in 7 of 22 (3 of 16), and a caution that is wrong about three times in ten teaches the owner to
+ignore cautions (review4 M4). Where it is shown: the answer's support line and the verdict (console, `nsf web show`, Pocket), the knowledge
 view (console, `nsf web knowledge`) and the contradiction question about a knowledge item (console's questions); the
 voice reply says it once, briefly. Pocket (family scope) and the voice of a Pocket device never compute or show the
 own-answer flag: it would tell a family member about the owner's own answers. The MCP tools (agent scope) are
@@ -4335,15 +4345,20 @@ without it. About twenty items per split: a description of these items, not a cl
 | development | 21 | 3 | 8 | 3 of 8 (0.375) / 0 of 13 | 3 of 3 | 15; 3 of 15 (0.20) / 0 of 6 |
 | held-out | 20 | 0 | 11 | 0 of 11 / 0 of 9 | none to carry | 12; 0 / 0 |
 
-- **Development: it lines up** (every wrong answer carried a caution), and more selectively than the reference
-  (8 shown against 15), but on 3 wrong answers.
+- **Development: the one-source trigger lines up** on 3 wrong answers: each carried "Only one source says this."
+  (one page, one source). That is all this measurement supports. ("More selectively than the reference (8 shown
+  against 15)" is withdrawn (review4 M4): the reference also fires on 7 development items with no supporting claim,
+  where no caution can be computed.)
 - **Held-out: not exercised.** No answer is wrong, so the rule cannot see whether the caution lines up; it was shown on
   11 right answers (its cost: a caution beside a right answer). By the rule's letter "lines_up" is false; read it as
   "no evidence either way".
 - What it fired on: one page only in 16 of the 19 shown cautions; pages counted together as copies (a named origin,
-  near-identical text) in 3 (F09 and A08: 3 pages counted as 2; F22: 2 pages counted as 1). The own-answer flag is not exercised (no model
-  runs, so the individual has no answers of its own); its plumbing is tested on staged pages
-  (`tests/acceptance/test_wave4_d.py`).
+  near-identical text) in 3 (F09 and A08: 3 pages counted as 2; F22: 2 pages counted as 1), all three on right
+  answers. **The copy trigger and the own-answer flag are not measured here** (0 wrong answers carried either; the
+  own-answer flag never fired: no model runs, so the individual has no answers of its own); its plumbing is tested on
+  staged pages (`tests/acceptance/test_wave4_d.py`). On the source-independence worlds (review4 m/probe_caution_worlds,
+  shipped settings, approximating the product's view) they mislead in measured ways: the numbers above, and "Only
+  one source" is also shown on the project's own site (F07, F20), which the product treats as sufficient.
 - Not measured: the open web, where reworded copies are the case the caution is for; whether owners read it.
 
 # ADR-066 One source by evidence of derivation, not by the wording of a credit: built, measured, a TRADE, and OFF
@@ -4353,11 +4368,29 @@ change. Evidence: `docs/quality/evidence/genesis_wave4_s.json` (summary per worl
 `genesis_wave4_s_assess_development.json`; scripts named below. Every figure is from simulated worlds of fictional
 software releases read through the real modules, offline, with no model; nothing here was measured on the open web.
 
-**Verdict under the rule committed before the held-out run (`sources.verdict_derivation`, `8e46b98`): "trade" on
-development and on held-out.** The rule admits fewer values whose independent support is below the bar (held-out 127
-→ 97, of them false now 40 → 30) and pays for it with more true values not held (142 → 207 of 612) and a lower
-`correct` in every world (−0.066 / −0.054 / −0.101, beyond the spread in two of three). It ships off; this ADR does not
-recommend turning it on.
+**The record, after the Wave 4 reviews (review4 security H1, measurement M2, M3): not supported; do not turn on.**
+Three reasons, in these terms:
+- The rule's only signal (a capitalised name equal to a host's site label) is a convention of the benchmark worlds'
+  generator: 31 of the 34 named parties of the cast, and 10 of 10 outlets, have a name that read this way equals their
+  host's label (`sources_splits_dev.py`; review4 m/probe_q1_names). The rule's own comment used the generator's own
+  example ("Tech Ledger" for techledger.example; removed by the fix lane). Its measured recall and its share of copies
+  among flagged pairs are measured where, by construction, a credited name almost always equals the credited host's
+  label: an upper bound set by the generator.
+- 16 of its 17 extra round-up suppressions are looks with exactly one first-hand page read, where the metric credits
+  the round-up with the roots of outlets the individual never read (`sources.support`); a refusal to count one
+  page's word about unread outlets as two sources, which the frozen metric scores as a suppression (review4 M3). The
+  38 extra in `verified_credit` are real joins of honest outlets.
+- A single page can still merge honest outlets by being linked by all of them (when that page yields a claim; review4
+  s/p1d), and before the fix any page whose host label equalled a word the honest pages capitalise (the subject's own
+  name, a month), a page stating nothing, or a page the injection screen flagged, merged them all (H1). The fix lane
+  added cheap hardening only (below), not a rescue.
+
+Verdict under the rule committed before the held-out run (`sources.verdict_derivation`, `8e46b98`): "trade" on
+development and on held-out, before and after the fix lane. The rule admits fewer values whose independent support is
+below the bar (held-out 127 → 97, of them false now 40 → 30; after the fix lane's hardening 127 → 99, 40 → 31,
+`genesis_wave4_fix.json`) and pays for it with more true values not held (142 → 207 of 612, both) and a lower `correct`
+in every world (−0.066 / −0.054 / −0.101, beyond the spread in two of three; after the fix −0.064 / −0.054 / −0.101).
+It ships off; this ADR recommends against turning it on.
 
 ## Context
 
@@ -4406,8 +4439,15 @@ these worlds the two are the same text on different hosts.
   counts only groups whose independence is supported, i.e. it counts the joined group once. The bar is never lowered.
   (The alternative "require one more page when independence is uncertain" was not built: in these worlds a story has
   2-4 copies, so it would admit most copied stories again.)
-- `claims.derivation_joins(claims)` (display only, for lane D's caution): groups today's grouping counts, groups the
-  rule counts, and each page joined on this evidence with `"same_source": "uncertain"`. Nothing decides on it.
+- (`claims.derivation_joins`, "for lane D's caution", had no caller; removed by the fix lane, review4 L4.)
+- Hardening (Wave 4 fix, review4 H1): a page the injection screen flagged, or one that yields no claim, is never named
+  or linked (so it can never be where other groups meet); a name both pages' claims carry (the subject they are both
+  about, "Velmora" for velmora.org) and a calendar word (a host labelled like a month) are no site label
+  (`tests/acceptance/test_wave4_fix.py`). A page that yields a claim and that every honest outlet links or names is
+  still a meeting point.
+- Its stored marks count only while it is on (Wave 4 fix, review4 measurement L3): claims are loaded with the
+  settings in force (`state.claim_from_row`), so a cluster read with the rule on groups as today once it is off, and
+  `evaluate` drops a page lane E's hook marked only where every claim carries the derivation mark.
 - Lane E's hook: `stamp_origins(..., echo=callable)`; a page the callable marks counts for nothing under the rule (in
   no group; still shown). A failing callable is logged (its type only) and the page counts as without it. Lane E
   wires its own check; here it is tested with a stand-in.
@@ -4425,6 +4465,17 @@ to 120); and the offline research benchmark at the defaults and all off, with ev
 `independence_groups` and `evaluate` answered by both. On the final code (`a517b4d`): **2,052,099 comparisons, 0
 different** (13,888 of them the reviewers' scenarios); the offline research digest `68731d7235cb…` (portable
 `d87dbb4fb77f…`) at the defaults and with every setting off, unchanged.
+
+**What the proof covers, exactly (review4 measurement L3).** It compares only `claims.py`: every other module is shared
+between "old" and "new", so lane E's `consolidate.py` and `orchestrator.py` edits are outside it (they are covered by
+lane E's field-by-field run and by the offline digest). On the world corpora it calls the functions at their default
+arguments, not at the product's call sites; the call sites are exercised only in the offline-benchmark part. It omits
+the `knowledge.py`, `integrated*`, `infovalue` and adversarial corpora. It does not cover claims stored while the
+setting was on (since the fix lane such marks are dropped when the rule is off, above). And "2,052,099" counts highly
+correlated comparisons (each look × 4 setting pairs × several outputs), not independent checks. The comparison can
+fail: a default grouping that merges three groups, or the rule forced on at every call, is caught (review4
+m/probe_q4_power: 0 / 619 / 656 different on one development world; kept as
+`tests/acceptance/test_wave4_fix.py::test_the_default_path_comparison_catches_an_injected_regression_and_the_rule_turned_on`).
 
 ## Measured (held-out, 3 worlds × 4 seeds, 12 cycles, 864 looks; development in brackets, 2 worlds × 3 seeds)
 
@@ -4458,9 +4509,11 @@ Development → held-out, as rates (per look; suppressed per eligible look), rul
 −0.035, of them false −0.011 → −0.012, suppressed +0.112 → +0.106; precision −0.03 → −0.03, recall +0.16 → +0.15. The
 trade does not shrink or grow on held-out (both written by step 0's author with the same generator: weakly independent).
 
-**What it cannot see, per failure shape (held-out wrongly admitted rows still admitted):** syndicated_credit 39 of 61
+**What it cannot see, per failure shape (held-out wrongly admitted rows still admitted under the rule, over the rows
+admitted at shipped: a ratio of COUNTS, not of the same rows; review4 L4):** syndicated_credit 39 of 61
 (64 %), extra_origin 18 of 26 (69 %), syndicated_nocredit 36 of 36 (100 %: a copy that credits nobody names nothing),
-echo 4 of 4 (100 %: lane E's). Why, from the name reader's census over every (copy, origin) pair of both splits
+echo 4 of 4 (100 %: lane E's). The "seen" shares of the census below are an upper bound set by the generator (its
+credited names equal the credited hosts' labels; above). Why, from the name reader's census over every (copy, origin) pair of both splits
 (evidence `name_census`; seen / origin not read / origin read but its name not found): syndicated_credit 32 % / 53 % /
 16 %, extra_origin 35 % / 50 % / 14 %, wire_like_host 29 % / 51 % / 20 %, two_origins 86 % / 0 / 14 %, roundup 62 % /
 38 % / 0, syndicated_nocredit 4 % / 60 % / 36 %, primary_cited 0 / 48 % / 52 %. An origin not read leaves no read page
@@ -4494,9 +4547,14 @@ memory over one task's claims (it is called inside consolidation's write transac
 - One hostile page (or several) naming and linking honest outlets cannot join two groups that each hold a page
   naming nothing, in any order of the pages (H1, N1/N3 in this rule's terms).
 - One hostile page joins two honest pages only when both name the hostile page's own site label (then they count
-  with the outlet they both name, as they would with that outlet's own page); a page on a host labelled like a
-  credited outlet cannot carry an honest copy into a third group (review3c F2): property test over 300 random stagings,
-  with power (it fails when edges may end at a group that names another).
+  with the outlet they both name, as they would with that outlet's own page). **In practice the attacker chooses the
+  label** (review4 H1): before the fix lane a page on a host labelled like the subject ("velmora.hostile"), like a
+  month, or the subject's own site, stating nothing or flagged by the injection screen, merged every honest outlet
+  into one source, so a true fact was not admitted, and the lane's property test accepted it. Since the fix lane such a
+  page is never named (above); a page that yields a claim and is linked or named by every honest outlet still merges
+  them (open). A page on a host labelled like a credited outlet cannot carry an honest copy into a third group
+  (review3c F2): property test over 300 random stagings, with power (it fails when edges may end at a group that names
+  another).
 - Copies cannot look more independent than today: the rule's groups are unions of today's groups (every development
   look, and the property test).
 - Order independence: every development look in 6 random orders, and every order of the hostile stagings.
@@ -4523,7 +4581,11 @@ look may add `wave4-s:derivation` (pair: `shipped`). Neither can switch the sett
   is not in these worlds; a rule that tells them apart needs worlds where honest crediting outlets differ from copies
   in something other than their host, written by someone other than its author.
 - Copies that credit nobody, copies of an origin not read, credits whose name differs from the origin's host label,
-  and the project's own release page: unseen (above).
+  and the project's own release page: unseen (above). In these worlds almost no credit to an outlet differs from its
+  label (review4 M2); the next worlds must draw names independently of hosts, written by someone other than the rule's
+  author.
+- `roundup`'s extra suppression is mostly the metric crediting unread roots (review4 M3, above); the frozen metric is
+  not changed; a second bar counting only the roots of read pages is not computed here (open).
 - Links are not exercised by any world; neither is the publication-order condition.
 - N1 (ADR-063) at the defaults is unchanged: this rule starts from today's grouping.
 - Lane E's hook is tested with a stand-in only; the echo check itself is lane E's (ADR-067).
@@ -4537,8 +4599,9 @@ rollback test).
 
 # ADR-067 The individual's own text recognised by what it emitted: own-text provenance, built and OFF
 
-Status: built, **OFF** (`own_text_provenance`, default `false`). Wave 4 lane E (`gen4-e`). No schema change (19); one
-new web setting. Measured on the source-independence family (Wave 4 step 0) and on Wave 3's learning-cycle worlds.
+Status: built, **OFF** (`own_text_provenance`, default `false`). Wave 4 lane E (`gen4-e`); amended by the Wave 4 fix
+lane (`gen4-fix`: review4 security H2, H3, H4, L3, N1 and measurement H1, M1, L1, L2). No schema change (19); one new
+web setting. Measured on the source-independence family (Wave 4 step 0) and on Wave 3's learning-cycle worlds.
 Evidence: `docs/quality/evidence/genesis_wave4_e.json` (summaries). Expectations committed first
 (`tests/acceptance/test_own_text_provenance.py`, `6518067`), the verdict rule before the first held-out run
 (`sources.own_verdict`, `34494cc`).
@@ -4554,10 +4617,13 @@ crediting a named model. Lane E replaces wording with a record of what the indiv
 
 ## Decision
 
-**What is recorded, at emission.** When a model-written answer is stored with its task (the orchestrator's final
-write; the console, Pocket, voice and MCP all show that record; the benchmark harnesses store theirs through the same
-hook), every sentence of it (its free text and its answer sentences; a template answer quotes sources and is not
-read) is read for pairs (subject name, value): the subject names as consolidation's subject check reads them
+**What is recorded, at emission.** When a model-written answer of the OWNER's task is stored (origins `console`, `cli`,
+`voice`, `refresh-owner:`, no family; the orchestrator's final write; the benchmark harnesses store theirs as the
+console), every sentence of it (its free text and its answer sentences; a template answer quotes sources and is not
+read) is read for pairs (subject name, value), from the parts of a sentence that ASSERT a value
+(`emitted.asserted`, with the claim reader's own rules: a question, a negated, hedged or conditional part asserts
+nothing, so "No: Velmora 9.4.0 has not been released; the latest is 9.3.0" records 9.3.0 only): the subject names as
+consolidation's subject check reads them
 (`consolidate._name_set`), every value normalised with the existing normalisers (`text.value_kind`; a release number by
 its numeric parts with trailing zero parts dropped, as PEP 440 compares release segments: "2.4" = "v2.4.0"; a date by
 its day; money, percentages and quantities by group and base-unit value; a year or a whole number below 100 is not
@@ -4565,21 +4631,37 @@ read). For each pair (at most 16 per answer) it records the time and whether a c
 before then states that value about that subject: sourced, not sourced, or not known (the check's row bound or time
 budget reached; counted as sourced). The check is one bounded pass made before the write transaction (this task's
 claims first, then the earlier claims naming a subject still unsourced, narrowed by a substring every stored form of
-the value holds). Stored as salted digests (the instance id is the salt) in rows of `web_strategies` (primary-key
+the value holds). Stored as digests keyed by the instance id in rows of `web_strategies` (primary-key
 reads and writes only; no reader of that table lists its names; Pocket, the MCP surface and the self-description never
 read it): `emitted:<digest of name and value>` holds the earliest 3 emissions `[time, flag, number of distinct sources
 found, task digest]`; `emitted-task:<digest of task id>` lists the fingerprints that answer holds. Never the text,
-never a source's name or URL, never anything of the imagined store. At most 200,000 fingerprint rows (about 139 bytes
-each: some 28 MB); a full store records nothing more and says so in the log (counts only).
+never a source's name or URL, never anything of the imagined store. The instance id is not a secret
+(the owner's self-description and the agent scope's self-status show it): it keeps two individuals' digests apart and
+does not resist a brute-force guess of a (name, value) pair, a small space; nothing outside `emitted.py` reads the
+rows, and the answers they come from sit in clear text in the same file (review4 N1). At most 200,000 fingerprint rows; a full store records
+nothing more and says so in the log (counts only). **Size (review4 L2, corrected):** at the cap the rows add about
+44 MB to the file (200,000 `emitted:` rows of one emission each plus 12,500 `emitted-task:` rows: 651 kB → 45.2 MB, the
+primary-key index included; a `VACUUM INTO` copy, what a checkpoint writes, is 43.9 MB), in EVERY checkpoint; rows
+holding three emissions are larger. Task rows are not capped: each is what a forget uses to find the emissions of its
+task, and dropping one would leave emissions a forget cannot reach; they are bounded by the fingerprints (at most 3
+task references each).
 
 **The rule** (consolidation, setting on; `emitted.Echoes`, built before the write transaction): a page's claim (not a
 structured or primary record) is an echo when, for one of its subject names and one of its values, the earliest
-recorded emission of that pair was not sourced, was made before the claim was read, and the page states no
-publication date before it. An echo is never evidence for its value: it leaves the supporting side of its cluster
-(`consolidate._without_echoes`, Wave 3's removal), and the supersession rule never counts it. A value emitted with
-source support is not an echo: its sources carry it. An echo that disagrees with a HELD value stays in its cluster
-(`consolidate._against_held`): the disagreement is asked exactly as without the setting, and nothing is admitted from
-it. The checks are point lookups by digest (at most 512 per consolidation, 32 per claim, shared out claim by claim); a
+recorded emission of that pair was not sourced, was made before the claim was read and at most 30 days before it
+(`EMISSION_LIFETIME`; the imagined store's bound is the precedent; Wave 4 fix, review4 H3), and the page states no
+publication date before it. **An echo is no evidence, for or against** (Wave 4 fix, review4 H2 = measurement H1): it
+leaves its cluster (`consolidate._without_echoes`, Wave 3's removal, on the supporting side), the supersession rule
+never counts it, and where an echo disagrees with a HELD value every echo of the cluster is removed, the held item is
+neither superseded nor weakened (its confidence and its contradictions unchanged), and the disagreement is asked as a
+contradiction question (`consolidate._echo_disagreement`), with this rule alone, beside Wave 3's `echo_recognition`
+and beside `source_derivation`. **This ADR's earlier text was false** ("An echo that disagrees with a HELD value stays
+in its cluster ... nothing is admitted from it"): kept whole, the echoes counted FOR their value and superseded a
+verified one (review4 s/p4, m/probe_q7_against_held_control: two echoes of an unsourced 9.4.0 replaced the held,
+verified 1.4.0), turning the setting on removed `echo_recognition`'s protection in that case, and with both rules on no
+question was asked (H4, M1). Lane E's expectation `disagreeing_echo_still_counts_against` described the defect; it is
+renamed `disagreeing_echo_is_asked_never_evidence`. A value emitted with source support is not an echo: its sources
+carry it. The checks are point lookups by digest (at most 512 per consolidation, 32 per claim, shared out claim by claim); a
 claim past the cap is not an echo and is named in `echo_skipped` and the log (claim ids only).
 
 **Forget and restore.** Forgetting a task (research, the refresh tasks of a forgotten item, the research a forgotten
@@ -4604,6 +4686,19 @@ as one. Built before the write transaction.
 - A page that states a publication date before the answer (the date is the page's own claim; a backdated echo counts).
 - Another system's output; anything emitted while the setting was off; a subject name the reader does not find (a
   lower-case package name); a year or a whole number below 100; an emission past the caps.
+- Answers of a family device's, an agent's or an autonomous task (Wave 4 fix, review4 H3: only the owner's answers are
+  recorded; the cost: echoes of those answers are not recognised). A value the answer only denies, asks about, makes
+  conditional or hedges. A mention phrased as a plain sentence is still read as an assertion ("users ask about
+  Velmora 9.4.0", "Velmora 9.4.0 is rumoured", "is expected next month": 3 of 18 staged forms; the fix lane's
+  probe), so assertion is told from mention for the forms the review found, not for every form. An emission older than
+  30 days.
+- An adversary's echo: a small edit escapes the reader (a lower-case name, "Velmora-9.4.0", a soft hyphen in the name,
+  full-width dots, a spelled-out number; review4 L3). The rule catches accidental echoes only.
+- Two conventions of the worlds' generator (review4 L1): the reformatted numbers of the echo shape are exactly the
+  forms `value_key` undoes ("M.m" for M.m.0, "vM.m.p"), and lane E read the development generator before writing the
+  normaliser, so "every form is caught" is true by construction for that form; and every world page carries a
+  publication date while the rule treats an UNDATED page as an echo, so the false rejection of undated honest pages
+  is not measured at all ("0.34 % of honest pages" holds only for dated pages).
 - Model text that is not a stored research answer: `nsf ask`'s ungrounded reply and free voice conversation are not
   recorded (no forgettable record holds them).
 - In the product the guard makes every model sentence cite claims that hold its numbers, so most real emissions are
@@ -4621,7 +4716,7 @@ references; summed over worlds and seeds (pooled, not a claim; per world and see
 | wrongly admitted (below the bar) | 64 / 58 / 60 | 127 / 123 / 123 |
 | suppressed of eligible | 39 / 39 / 39 of 233 | 142 / 145 / 144 of 612 |
 | echo pages discarded (of those read: unsourced / sourced answers) | — / 14 of 18, 4 of 11 / 18 of 18, 0 of 11 | — / 28 of 31, 1 of 10 / 30 of 31, 0 of 10 |
-| honest pages discarded (of honest pages read) | 0 / 7 / 7 of 1,091 | 0 / 13 / 9 of 2,670 |
+| honest pages discarded (of honest pages read) | 0 / 7 / 7 of 1,091 (8 after the fix) | 0 / 13 / 9 of 2,670 (14 after the fix) |
 | grouping precision / recall | unchanged (the rule groups nothing) | unchanged |
 | references: oracle / todays_rule / every_page, own admitted | 0 / 9 / 11 | 0 / 13 / 14 |
 
@@ -4636,6 +4731,13 @@ looks) own admitted 4 / 0 / 2, honest discarded 0 / 2 / 2; syndicated_credit and
 `correct` (mean over seeds ± sd): development mixed 0.704 ± 0.064 → 0.704, copies 0.579 ± 0.050 → 0.568 (−0.011);
 held-out mixed 0.601 ± 0.064 → 0.598, copies 0.627 ± 0.064 → 0.629, origins 0.656 ± 0.073 → 0.656; every change inside
 the spread; oracle 0.762 / 0.633 and 0.713 / 0.718 / 0.709.
+
+**After the fix lane** (`genesis_wave4_fix.json`, the same worlds and seeds, commit `842ef8b`): own answers admitted
+2 / 1 (unchanged); wrongly admitted 60 / 123 (unchanged; shipped 64 / 127); suppressed 39 / 145 of 233 / 612 (held-out
++1); echo pages discarded 18 / 30; honest pages discarded 8 of 1,091 / 14 of 2,670 read. The 5 more honest pages on
+held-out (and 1 on development) are the ones that had escaped through `_against_held` while it kept a disagreeing
+cluster whole (review4 measurement H1: the "9 of 2,670" undercounted); the verdict (`own_verdict`, unchanged) stays
+"effective" on both splits. `correct` held-out mixed 0.596 (was 0.598), the others unchanged.
 
 **The false rejection, measured.** Every honest page the rule discarded on held-out (9, on 4 looks) and on development
 (7) repeats a value the individual had emitted without a source while it was WRONG, which later became true (the
@@ -4703,7 +4805,10 @@ turns it on for answers stored from then on.
 
 - At the shipped defaults nothing changed (above). With the setting on, answers stored from then on are fingerprinted;
   those stored before are not.
-- Backing out: set it false; what was recorded stays unread, and is removed by the forgets above. Reverting the lane's
-  merge removes the code; the rows are inert names in `web_strategies`.
+- Backing out: set it false; what was recorded is not read from that moment (off means off; the claim marks its hook
+  left under `source_derivation` are dropped on load too, review4 L3); `nsf web config --forget-own-text` removes every
+  fingerprint and task list (two primary-key ranges), and the forgets above remove a task's. Turning it on again
+  revives only emissions of the last 30 days. Reverting the lane's merge removes the code; the rows are inert names in
+  `web_strategies`.
 - Open: the echo of a sourced answer; the false rejection of a value first stated wrongly; backdated pages; ungrounded
   model replies outside research tasks; the real rate of unsourced answers in the product.
