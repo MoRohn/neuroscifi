@@ -6,9 +6,11 @@ A `Spec` is the editable source of a made artifact:
      "sources": [artifact ids or "request"], "made_by": {"generator": name, "version": n}}
 
 `validate(value)` returns every violation ([] = valid): the envelope's schema (checked with
-`inference/jsonschema.py`), the size bounds, the nesting bound, the "no markup, script, URL or path in any field"
-rule (every string and every key, recursively), and, when the form is registered, the form's own schemas for
-`data` and `options`. A form nobody registered is a violation: nothing is made from a spec no schema checked.
+`inference/jsonschema.py`), the size bounds, the nesting bound, the content rule (no control or bidirectional-override
+characters, no over-long string, in every string and every key, recursively), and, when the form is registered, the
+form's own schemas for `data` and `options`. No string is ever interpreted: strings may contain text that mentions
+markup, a URL or a path; generators escape every string they write and validators prove the output is inert.
+Form names are a lower-case word with at most one dot ("timeline", "chart.line"). A form nobody registered is a violation: nothing is made from a spec no schema checked.
 Lanes G1/G2 register each form with `register_form(form, data=..., options=...)`.
 """
 from __future__ import annotations
@@ -28,7 +30,7 @@ MAX_TOTAL_BYTES = 32 << 20           # the whole spec, data arrays included (eac
 MAX_DEPTH = 16                       # nesting of objects and arrays
 MAX_STRING = 4096                    # characters of any one string or key
 
-FORM_NAME = r"^[a-z][a-z0-9_]{0,47}$"
+FORM_NAME = r"^[a-z][a-z0-9_]{0,23}(\.[a-z][a-z0-9_]{0,23})?$"
 SOURCE_ID = r"^(request|[A-Za-z0-9_-]{1,128})$"
 
 ENVELOPE = {
@@ -48,13 +50,12 @@ ENVELOPE = {
     },
 }
 
-# What no field may hold. Deliberately broad: a false refusal costs a rephrased title; a false pass costs a script.
+# What no string or key may hold. Strings are never interpreted (generators escape them, validators prove the output
+# carries no active content), so text that merely mentions markup, a URL or a path is fine ("p < 0.05", "C:\\data",
+# "https://example.org/report"). Refused: C0/C1 control characters other than tab and newline, and the bidirectional
+# override and isolate characters that make displayed text differ from stored text.
 _FORBIDDEN = (
-    ("markup", re.compile(r"<\s*[A-Za-z!/?]|&#?[A-Za-z0-9]+;")),
-    ("script", re.compile(r"(?i)\b(?:javascript|vbscript)\s*:|\bon[a-z]+\s*=|\beval\s*\(|\bexpression\s*\(")),
-    ("url", re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://|\b(?:data|mailto|file|blob):\S|\bwww\.[a-z0-9-]+\.")),
-    ("path", re.compile(r"(?:^|[\s\"'(=])(?:/|~/|\.{1,2}/)[^\s/]|\\|(?:^|\s)[A-Za-z]:[\\/]|\.\./")),
-    ("control", re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f‪-‮⁦-⁩]")),
+    ("control", re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")),
 )
 
 _FORMS: dict[str, dict] = {}
@@ -63,7 +64,7 @@ _FORMS: dict[str, dict] = {}
 def register_form(form: str, *, data: dict, options: dict | None = None) -> None:
     """Register the schemas of one form's `data` and `options` (the JSON Schema subset of inference/jsonschema)."""
     if re.match(FORM_NAME, form) is None:
-        raise ValueError(f"form name {form!r} is not a lower-case word")
+        raise ValueError(f"form name {form!r} is not a lower-case word with at most one dot")
     if form in _FORMS:
         raise ValueError(f"form {form!r} is already registered")
     options = options if options is not None else {"type": "object", "additionalProperties": False}
@@ -81,7 +82,7 @@ def form_schema(form: str) -> dict | None:
 
 
 def forbidden(text: str) -> str | None:
-    """The name of the first rule `text` breaks ("markup", "script", "url", "path", "control"), or None."""
+    """The name of the rule `text` breaks ("control"), or None. Length is checked separately (MAX_STRING)."""
     for rule, pattern in _FORBIDDEN:
         if pattern.search(text):
             return rule

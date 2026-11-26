@@ -182,23 +182,18 @@ def test_valid_spec_round_trips(forms):
 
 
 @pytest.mark.parametrize("over,needle", [
-    ({"title": "<script>alert(1)</script>"}, "markup"),
-    ({"title": "Click <b>here</b>"}, "markup"),
-    ({"description": "see https://example.org"}, "url"),
-    ({"description": "see www.example.org"}, "url"),
-    ({"description": "data:text/html;base64,AAAA"}, "url"),
-    ({"title": "javascript:alert(1)"}, "script"),
-    ({"title": "x onload=go()"}, "script"),
-    ({"description": "from /etc/passwd"}, "path"),
-    ({"description": "from ~/secret"}, "path"),
-    ({"description": "from ../up"}, "path"),
-    ({"description": "C:\\Windows"}, "path"),
     ({"title": "a\u202eb"}, "control"),
-    ({"data": {"x": [1], "y": [1], "<svg>": 1}}, "markup"),
-    ({"options": {"label": "file:///x"}}, "url"),
+    ({"title": "a\u2066b"}, "control"),
+    ({"description": "bell\x07"}, "control"),
+    ({"description": "esc\x1b[31m"}, "control"),
+    ({"description": "nul\x00"}, "control"),
+    ({"data": {"x": [1], "y": [1], "k\x1b": 1}}, "control"),
+    ({"options": {"label": "x" * 5000}}, "longer than"),
+    ({"data": {"x": [1], "y": [1], "k" * 5000: 1}}, "long"),
     ({"spec": "pie"}, "no form"),
+    ({"spec": "chart.line.extra"}, "does not match"),
     ({"version": 2}, "version"),
-    ({"sources": ["../etc"]}, "path"),
+    ({"sources": ["../etc"]}, "does not match"),
     ({"sources": ["bad id!"]}, "does not match"),
     ({"made_by": {"generator": "x", "version": -1}}, "below"),
     ({"extra": 1}, "unexpected"),
@@ -212,9 +207,22 @@ def test_invalid_specs_are_named(forms, over, needle):
         forms.Spec.from_dict(_spec(**over))
 
 
-def test_plain_words_pass_the_content_rule():
-    for ok in ("Speed in km/h", "x < 5 and y > 2", "Rain: 3 mm", "Data: monthly", "A/B test", "R&D budget"):
+TEXT_THAT_MENTIONS_THINGS = ("p < 0.05", "a<b", "onset = 3 s", "C:\\data", "src/neuroscifi/cli.py",
+                             "https://example.org/report", "<script>", "Speed in km/h", "x < 5 and y > 2",
+                             "R&D budget", "javascript:alert(1)", "/etc/passwd", "line one\nline two\ttabbed")
+
+
+def test_text_that_mentions_markup_urls_or_paths_is_accepted(forms):
+    for ok in TEXT_THAT_MENTIONS_THINGS:
         assert spec.forbidden(ok) is None, ok
+    value = _spec(title="<script>", description="p < 0.05; see https://example.org/report; C:\\data")
+    assert forms.validate(value) == []
+    forms.register_form("graph.nodelink", data={"type": "object", "properties": {
+        "labels": {"type": "array", "items": {"type": "string"}}}})
+    nodelink = _spec(spec="graph.nodelink", title="a<b", description="onset = 3 s",
+                     data={"labels": list(TEXT_THAT_MENTIONS_THINGS)})
+    assert forms.validate(nodelink) == []
+    assert forms.Spec.from_dict(nodelink).data["labels"][3] == "C:\\data"
 
 
 def test_spec_bounds(forms):
@@ -235,10 +243,15 @@ def test_register_form_checks_schemas(monkeypatch):
         spec.register_form("Bad Name", data={})
     with pytest.raises(ValueError):
         spec.register_form("x", data={"oneOf": []})
+    for bad in ("chart.", ".line", "chart.line.extra", "Chart.line", "chart-line", "a" * 25):
+        with pytest.raises(ValueError):
+            spec.register_form(bad, data={})
     spec.register_form("x", data={"type": "object"})
     with pytest.raises(ValueError):
         spec.register_form("x", data={"type": "object"})
-    assert spec.forms() == ["x"]
+    for good in ("timeline", "chart.line", "graph.nodelink", "sound.sonify", "explorable.model"):
+        spec.register_form(good, data={"type": "object"})
+    assert spec.forms() == ["chart.line", "explorable.model", "graph.nodelink", "sound.sonify", "timeline", "x"]
 
 
 # --- make / check --------------------------------------------------------------------------------------------------
@@ -266,7 +279,11 @@ def test_make_registry(forms, monkeypatch):
     assert make.catalog() == [{"form": "line_chart", "generator": "csv-line", "version": 3, "available": True,
                                "reason": "ready"}]
     with pytest.raises(T.Malformed):
-        make.make(_spec(title="<b>x</b>"))
+        make.make(_spec(title="bad\x1b[31m"))
+    forms.register_form("chart.line", data=LINE)   # a dotted form name, as DESIGN writes them
+    make.register("chart.line", Gen())
+    assert make.make(_spec(spec="chart.line")).bytes == made.bytes
+    assert {r["form"] for r in make.catalog()} == {"line_chart", "chart.line"}
     with pytest.raises(T.Refused):
         make.make(_spec(), T.Limits(max_bytes=4))
 

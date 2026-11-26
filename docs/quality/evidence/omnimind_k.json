@@ -1,0 +1,230 @@
+{
+ "catalog": [
+  {
+   "available": true,
+   "formats": [
+    "text"
+   ],
+   "name": "plain-text"
+  },
+  {
+   "available": true,
+   "formats": [
+    "json",
+    "geojson",
+    "ipynb"
+   ],
+   "name": "json"
+  },
+  {
+   "available": true,
+   "formats": [
+    "gzip",
+    "zstd",
+    "bzip2",
+    "xz"
+   ],
+   "name": "compressed-stream"
+  },
+  {
+   "available": false,
+   "formats": [
+    "pickle"
+   ],
+   "name": "refuse-pickle"
+  }
+ ],
+ "conflicting_hints_and_adversarial": {
+  "items": 31,
+  "wrong": []
+ },
+ "corpus": {
+  "by_basis": {
+   "declared": 7,
+   "signature": 83,
+   "structure": 35
+  },
+  "by_family": {
+   "archive": 10,
+   "array": 5,
+   "audio": 11,
+   "code": 17,
+   "database": 1,
+   "document": 14,
+   "drawing": 1,
+   "geo": 4,
+   "image": 19,
+   "mesh": 5,
+   "notebook": 1,
+   "table": 9,
+   "text": 8,
+   "tree": 11,
+   "unknown": 3,
+   "video": 6
+  },
+  "distinct_formats": 99,
+  "identified_as_constructed": 125,
+  "items": 125,
+  "wrong": []
+ },
+ "decode_chain_on_corpus": {
+  "decoded": {
+   "bzip2": 1,
+   "geojson": 1,
+   "gzip": 1,
+   "ipynb": 1,
+   "json": 2,
+   "text": 8,
+   "xz": 1,
+   "zstd": 1
+  },
+  "opaque": 106,
+  "opaque_formats": [
+   "7z",
+   "aac",
+   "aiff",
+   "apk",
+   "arrow",
+   "atom",
+   "avi",
+   "avif",
+   "bmp",
+   "c",
+   "class",
+   "csv",
+   "dicom",
+   "doc",
+   "docx",
+   "elf",
+   "epub",
+   "feather",
+   "fits",
+   "flac",
+   "gif",
+   "glb",
+   "gpx",
+   "hdf5",
+   "heic",
+   "html",
+   "ico",
+   "ini",
+   "jar",
+   "javascript",
+   "jpeg",
+   "kml",
+   "m4a",
+   "macho",
+   "markdown",
+   "midi",
+   "mkv",
+   "mov",
+   "mp3",
+   "mp4",
+   "ndjson",
+   "nifti",
+   "npy",
+   "npz",
+   "obj",
+   "odp",
+   "ods",
+   "odt",
+   "ogv",
+   "ole",
+   "opus",
+   "package-json",
+   "parquet",
+   "pbm",
+   "pdf",
+   "pe",
+   "pgm",
+   "plist",
+   "ply",
+   "png",
+   "ppm",
+   "ppt",
+   "pptx",
+   "ps",
+   "psd",
+   "pyproject",
+   "python",
+   "rar",
+   "requirements",
+   "rss",
+   "rtf",
+   "shapefile",
+   "shell",
+   "sqlite",
+   "stl",
+   "svg",
+   "tar",
+   "tiff",
+   "toml",
+   "tsv",
+   "vorbis",
+   "wasm",
+   "wav",
+   "webm",
+   "webp",
+   "xls",
+   "xlsx",
+   "xml",
+   "yaml",
+   "zip"
+  ],
+  "refused": {
+   "pickle:refused": 3
+  }
+ },
+ "lane": "K",
+ "random_bytes": {
+  "lengths": [
+   1,
+   4095
+  ],
+  "outcomes": {
+   "text": 3,
+   "unknown": 19997
+  },
+  "seed": 20261126,
+  "text_lengths": [
+   1,
+   1,
+   2
+  ],
+  "text_note": "inputs called text are 1-2 bytes of printable ASCII, which are valid text",
+  "tried": 20000
+ },
+ "truncated_prefixes": {
+  "cuts_bytes": [
+   1,
+   2,
+   3,
+   4,
+   8,
+   16,
+   32,
+   64,
+   128,
+   512,
+   "half"
+  ],
+  "false_identifications": [],
+  "note": "with the size unknown, a short prefix of a binary format that happens to be printable (b'GIF8', b'PK') is called text, which those bytes are; with the size given, prefixes under 32 bytes of a longer input get no structure verdict",
+  "outcomes": {
+   "size_given": {
+    "exact": 673,
+    "general": 86,
+    "text": 16,
+    "unknown": 600
+   },
+   "size_unknown": {
+    "exact": 700,
+    "general": 78,
+    "text": 347,
+    "unknown": 250
+   }
+  },
+  "tried": 2750
+ },
+ "what": "artifact detection over lane K's hand-assembled corpus (tests/artifacts/detect_corpus.py)"
+}

@@ -187,6 +187,9 @@ NODE = b"#!/usr/bin/env node\nconsole.log(1)\n"
 OBJ = b"# cube\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
 STL_TEXT = b"solid t\n  facet normal 0 0 1\n    outer loop\n      vertex 0 0 0\n    endloop\n  endfacet\nendsolid t\n"
 PLY = b"ply\nformat ascii 1.0\nelement vertex 0\nend_header\n"
+REQUIREMENTS = (b"numpy==2.3.5\nzstandard>=0.25 ; python_version > '3.10'\n# pinned\n-r base.txt\n"
+                b"requests[socks]~=2.31\nwheelpkg @ https://example.org/w.whl\n")
+BIG_XML = b"<r>" + b"".join(b'<i n="%d">v%d</i>' % (i, i) for i in range(20_000)) + b"</r>"
 TEXT = "Plain words, with no structure at all.\nA second line; nothing more.\n".encode()
 
 
@@ -313,7 +316,13 @@ def corpus():
         ("python-by-name", b"import os\nprint(os.sep)\n", {"name": "tool.py"}, "python", d),
         ("c-by-name", b"int main(void) { return 0; }\n", {"name": "main.c"}, "c", d),
         ("yaml-by-name", b"key: value\nlist:\n  - a\n", {"name": "conf.yaml"}, "yaml", d),
-        ("toml-by-name", b'[tool]\nname = "x"\n', {"name": "pyproject.toml"}, "toml", d),
+        ("toml-by-name", b'[tool]\nname = "x"\n', {"name": "config.toml"}, "toml", d),
+        ("pyproject", b'[project]\nname = "x"\ndependencies = ["numpy==2.3.5"]\n', {"name": "pyproject.toml"},
+         "pyproject", st),
+        ("requirements", REQUIREMENTS, {"name": "requirements.txt"}, "requirements", st),
+        ("requirements-dev", b"pytest==9.2.0\n", {"name": "requirements-dev.txt"}, "requirements", st),
+        ("package-json", b'{"name": "x", "version": "1.0.0", "dependencies": {"a": "^1.0.0"}}',
+         {"name": "package.json"}, "package-json", st),
         ("ini-by-name", b"[section]\nkey=value\n", {"name": "setup.cfg"}, "ini", d),
         ("yaml-declared", b"key: value\n", {"declared": "application/yaml"}, "yaml", d),
     ]
@@ -344,4 +353,14 @@ def conflicts():
         ("one-line-commas", b"Hello, world\n", {}, "text", st),
         ("json-scalar", b"42\n", {}, "text", st),
         ("broken-json", b'{"a": 1,, "b"}', {}, "text", st),
+        ("pyproject-not-toml", b"[project\nname=", {"name": "pyproject.toml"}, "toml", "declared"),
+        ("requirements-prose", b"This is prose, not a list of requirements.\n", {"name": "requirements.txt"}, "text", st),
+        ("package-json-array", b"[1, 2, 3]", {"name": "package.json"}, "json", st),
+        ("package-json-elsewhere", b'{"name": "x"}', {"name": "notpackage.json"}, "json", st),
+        ("bare-tags-named-xml", b"<a>" * 1000 + b"</a>" * 1000, {"name": "deep.xml"}, "xml", st),
+        ("bare-tags", b"<b>bold</b>", {}, "xml", st),
+        ("xml-prefix-no-declaration", BIG_XML[:65536], {"name": "big.xml", "size": len(BIG_XML)}, "xml", st),
+        ("xml-prefix-unnamed", BIG_XML[:65536], {"size": len(BIG_XML)}, "xml", st),
+        ("lone-tag-prefix", b"<note> " + b"words " * 20000, {"size": 200000}, "text", st),
+        ("bare-html-tags", b"<div><p>Hi</p></div>", {}, "html", st),
     ]
