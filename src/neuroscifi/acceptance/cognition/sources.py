@@ -85,6 +85,8 @@ CONFIGS = {"shipped": {},
            "source_derivation:no-values": {"source_derivation": True, "_ablate": ["values"]},
            "source_derivation:no-whole-group": {"source_derivation": True, "_ablate": ["whole_group"]}}
 CONFIGS["own_text_provenance"] = {"own_text_provenance": True}                      # Wave 4 lane E (ADR-067)
+# Wave 4 integration: lanes S and E together (lane E's rule feeds lane S's echo hook: emitted.derivation_hook)
+CONFIGS["wave4:both"] = {"source_derivation": True, "own_text_provenance": True}
 FINAL_CONFIGS = ("shipped",)
 READ_BACK = ("enabled", "autonomous", "attribution_independence", "echo_recognition", "origin_grouping",
              "supersession", "supersession_min_sources", "auto_provisional_min_sources",
