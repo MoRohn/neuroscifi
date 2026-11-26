@@ -4,13 +4,10 @@
 it is idempotent. The main session wires this module into the registry's built-in list; until then nothing here
 runs unless called.
 
-`content_shape(representation)` is B2's one documented rule for the `ContentShape` of what its adapters return:
-- an image (Raster) is `image`, has_space 2; an animation (Frames) is `image` + `sequence` with its duration;
-- a signal is `sound` (and `series`) with `duration_s`;
-- a mesh is `solid` when it is watertight (every edge shared by exactly two triangles), else `surface`; has_space 3;
-- features are a `map` with has_space 2, and has_time when any feature carries timestamps (`times_s`);
-- a table of MIDI notes (title "notes") is a `sequence` and `timeline` with has_time and its duration;
-- anything else: the representation's own `shape()`.
+`content_shape(representation)` is the representation's own `shape()`: B2's shape rules (an image, an animation
+with its duration, a sound with its duration, a solid when watertight else a surface, a map that is also a timeline
+when features carry timestamps, a MIDI notes table as a sequence and timeline) live in `types.py` and `repr_b2.py`,
+so that every consumer (the store, `nsf form plan`, B1's `content_shapes`) gets the same shape (ADR-072, integration).
 """
 from __future__ import annotations
 
@@ -59,23 +56,6 @@ def unregister_all() -> None:
 
 
 def content_shape(rep) -> T.ContentShape:
-    if isinstance(rep, T.Mesh):
-        return T._shape(("solid",) if rep.closed() else ("surface",), n_items=len(rep.vertices), has_space=3,
-                        text_chars=len(rep.text()))
-    if isinstance(rep, T.Features):
-        has_time = any(f.properties.get("times_s") for f in rep.features)
-        kinds = ("map", "timeline") if has_time else ("map",)
-        return T._shape(kinds, n_items=len(rep.features), has_time=has_time, has_space=2,
-                        text_chars=len(rep.text()))
-    if isinstance(rep, T.Signal):
-        n, c = rep.samples.shape
-        return T._shape(("sound", "series"), n_items=n, n_series=c, has_time=True, duration_s=n / rep.rate_hz,
-                        text_chars=len(rep.text()))
-    if isinstance(rep, T.Table) and rep.title == "notes":
-        ends = [c for c in rep.columns if c.name == "end_s"]
-        duration = float(ends[0].values.max()) if ends and rep.n_rows else 0.0
-        return T._shape(("sequence", "timeline"), n_items=rep.n_rows, n_series=1, has_time=True,
-                        duration_s=duration, text_chars=len(rep.text()))
     return rep.shape()
 
 

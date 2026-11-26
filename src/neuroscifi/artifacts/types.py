@@ -588,7 +588,10 @@ class Features:
         return bounded(out)
 
     def shape(self) -> ContentShape:
-        return _shape(("map",), n_items=len(self.features), has_space=2, text_chars=len(self.text()))
+        # timestamps (`times_s`, lane B2's GPX/KML convention) make the places a timeline too
+        has_time = any(f.properties.get("times_s") for f in self.features)
+        return _shape(("map", "timeline") if has_time else ("map",), n_items=len(self.features), has_time=has_time,
+                      has_space=2, text_chars=len(self.text()))
 
     def text(self) -> str:
         return _bounded_text(v for f in self.features for v in f.properties.values() if isinstance(v, str))

@@ -198,7 +198,7 @@ class MIDIAdapter(Adapter):
         table, words, notes = decode_midi_bytes(data, limits)
         text = "\n".join(w for w in words if w)
         notes = notes + list(injection_notes(text))
-        rep = R.Table(table.columns, table.n_rows, table.title, words=text)
+        rep = R.NotesTable(table.columns, table.n_rows, table.title, words=text)
         return Decoded(detected, rep, tuple(notes), False)
 
 

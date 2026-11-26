@@ -77,17 +77,30 @@ def shapes_from_json(text: str) -> tuple[ContentShape, ...]:
 
 
 def shapes_from_files(paths, limits: Limits = Limits()) -> tuple[tuple[ContentShape, ...], list[str]]:
+    """The shapes the planner is handed for these files: each file's decoded representation's `shape()`, and for an
+    archive, workbook or database also its decoded members' shapes (`shapes_b1.content_shapes`). A file only
+    identified (nothing decodes it, or only its header is read) adds an empty shape and a note."""
     from . import adapters
+    from .safe import read_file
+    from .shapes_b1 import content_shapes
+    from .types import HeaderOnly
     shapes, notes = [], []
     for path in paths:
-        size = path.stat().st_size
-        if size > limits.max_bytes:
-            raise ValueError(f"{path.name} is {size} bytes, over the limit of {limits.max_bytes}")
-        decoded = adapters.decode(path.read_bytes(), name=path.name, limits=limits)
-        shape = decoded.representation.shape()
-        if not shape.kinds:
+        try:
+            data = read_file(path, limits.max_bytes)
+        except ArtifactError as error:           # not there, not a regular file, too large: named, as before
+            raise ValueError(f"cannot read a file ({path.name}: {error})") from None
+        try:
+            decoded = adapters.decode(data, name=path.name, limits=limits)
+        except HeaderOnly as error:
+            notes.append(f"{path.name}: only its header could be read ({error.facts.get('format', 'its format')}); "
+                         "planned as words")
+            shapes.append(ContentShape((), 0, 0, False, 0, False, 0.0, len(error.words)))
+            continue
+        found = content_shapes(decoded.representation)
+        if not found[0].kinds:
             notes.append(f"{path.name}: nothing here could decode it ({decoded.detected.format}); planned as words")
-        shapes.append(shape)
+        shapes.extend(found)
     return tuple(shapes), notes
 
 
