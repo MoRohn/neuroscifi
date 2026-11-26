@@ -1,6 +1,7 @@
 # Architecture after Project Cognitive Genesis (deliverable I)
 
-Status: 2026-11-25, on the Wave 2 integration tree `828ca8e` (branch `genesis-wave2`). Deliverable I of the
+Status: 2026-11-25, on the Wave 2 integration tree `828ca8e` (branch `genesis-wave2`); §8 added for Wave 3 on
+2026-11-26. Deliverable I of the
 directive's §13: the subsystems and information flows as the code actually runs them after Waves 0, 1 and 2: what
 produces which record, who reads it, which setting gates it, and whether it is **real** (a consumer changes behaviour
 on it), **display-only** (recorded or shown, nothing acts on it) or **absent** at the shipped defaults. The core of
@@ -168,7 +169,7 @@ mechanism learns or rewards its own weights: salience's weights are the fixed on
 | one admission rule; quiet; owner first; budgets; the timer's one-task-per-subject order | internal-state record; salience record; arbitration record; monitoring record; hypothesis fields; premise marks | predictive regulation; curiosity learning progress; salience attention; `information-v1` (opt-in) |
 | failed predictions raising a subject's importance (×1.5), futility, the calibration reading (with autonomous research on) | information gain beside decisions; the self-description; Presence's planning / predicting / simulating states; `doing.cycle` | scenario records; selective answering; verification escalation; adaptive depth; broadcast holding back |
 | the voice follow-up across a restart | the imagination commands (answers shown to the owner; kept only with `--keep`) | idle re-check; reflection; hypothesis abandon; strategy selection (gate fails closed); `pocket_recent` |
-| the 14 failure guards (act only when something fails) | | front-door adjustment; a scenario's error feeding a learner; low support → later re-check; learned policies; levels 4 and 5 |
+| the 14 failure guards (act only when something fails) | | a scenario's error feeding a learner (front-door adjustment: built in Wave 3, §8); low support → later re-check; learned policies; levels 4 and 5 |
 
 ## 6. Verification of lane L's file:line claims
 
@@ -217,3 +218,61 @@ to 20 lines. The line numbers in §4 are this tree's.
   item's id (ADR-056 row 7; lane L's report §2).
 - Lane X (Wave 2 follow-ups) may move lines in `scheduler.py`, `autonomy.py`, `reflection.py`, `strategies.py` and
   `voice/hub.py` after this was written; the function names stay the reference.
+
+## 8. After Wave 3 (2026-11-26; [WAVE3.md](WAVE3.md))
+
+Read from the merged tree `f0a1f09` and the reconciliation branch; ADR-058 to ADR-062. Where the fix lane changes a
+default or a definition, the line carries [fix lane].
+
+**What counts as an independent source.** Consolidation counts the independent groups of a cluster's claims with
+`claims.independence_groups`: claims join one group when they share a host, a near-identical sentence, an attribution
+line ("first appeared on …") or a canonical URL (`claims.stamp_origins` writes those origins into each claim's flags,
+so stored clusters keep them). That is the rule at the shipped defaults, as at step 0. With
+`attribution_independence` on (it ships off [fix lane]), `claims.attribution_keys` also reads an outlet the sentence
+credits ("According to X, …", "…, X says.", "… (X).", "… via X.", "…, the X desk reports") as that claim's origin;
+it reads only those forms, and a sentence crediting two outlets joins them (security review H1). The rule cannot see a
+copy whose wording credits its origin any other way, nor one that credits nothing: wording is not provenance.
+
+**The individual's own text.** With `echo_recognition` on (it ships off [fix lane]), consolidation removes from the
+supporting side of a cluster every claim that repeats a value only the individual's own model-written answers (stored
+with its tasks, `web_tasks.result`) had stated before any source it read did, or their wording, or that credits an
+assistant, a chatbot or an AI model (`consolidate._Echoes`, `_without_echoes`); a disagreement such a page raises is
+still asked. It never reads the imagined store (its quarantine forbids it), so own values that live only there are not
+seen. At the shipped defaults nothing removes echoes.
+
+**Supersession** (`supersession`, `"ask"` by default). With `"independent"`, in `_contested_against` the rule
+(`_rule_replacement`) may replace a held item when a newer value by its stated time is stated by at least
+`supersession_min_sources` independent groups, never contradicted by an owner's answer and never the individual's own
+text; the replacement is marked `decided_by: "rule"`, listed by `nsf web replacements` and undone by `nsf web revert
+ID`. Off, a contradicting refresh records a contradiction and asks the owner, as since ADR-026.
+
+**The shadow record.** With `predictive_regulation: "shadow"`, `resources.policy.background_gate` decides exactly as
+with the setting off and then, on decision paths only (`record=True`; the status displays pass `record=False`),
+`resources.shadow.observe` appends what the forecast would have said for the newest history sample to
+`<db>.resources/forecast-shadow.jsonl` (at most once per sample per process). The worker's sampler
+(`internal_state.record`) settles the verdicts against the history every 300 s into `forecast-shadow-days.json`;
+`nsf internal-state --shadow-report` reads both. Display-only: nothing acts on it. Its "hits" include holds the real
+gate already made [fix lane].
+
+**The front door.** `causal.answer` tries the back-door formula first; when it is declined because a hidden common
+cause acts on the cause, and `front_door` is on (`FRONT_DOOR = True`; `nsf imagine scm --no-front-door`), it checks the
+front-door criterion by d-separation (`_frontdoor`) and answers with the mediators named (`identified_by:
+"front_door"`). The question must say where its moments come from (`moments: "population"`, or `samples: n`, which
+gives an interval and a decline below the usefulness bound, `_regime`); an unstated origin is declined. Labelled
+imagined, never evidence; nothing stored; the command opens no individual.
+
+**Budget.** `autonomy.idle` refuses at the day's autonomous task count (`_tasks_spent`), as the timer does
+(`scheduler._over_cap`); the re-check's pool can be ordered by `recheck_order` (default `"staleness"`, lane K's).
+
+**The settings Wave 3 added, at the shipped defaults:**
+
+| Setting | Default | Real / display-only / absent |
+|---|---|---|
+| `attribution_independence` (web) | off [fix lane] | absent |
+| `echo_recognition` (web) | off [fix lane] | absent |
+| `supersession` (web), `supersession_min_sources` | `"ask"`, 2 | absent (contradictions asked) |
+| `recheck_order` (web) | `"staleness"` | real only with `idle_recheck` on (off) |
+| `predictive_regulation` (instance) third value `"shadow"` | `false` | absent; display-only when set |
+| front door (`nsf imagine scm`) | on | real for the owner's command (an answer shown, nothing stored) |
+| `nsf readiness`, `uncertain.outcomes_readiness` | always | display-only (read-only, owner scope) |
+| the three reconciliation guards (claims, echoes, the rule) | always | act only when a mechanism fails |

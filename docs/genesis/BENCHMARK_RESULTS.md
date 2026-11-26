@@ -8,6 +8,13 @@ scores on synthetic and fictional worlds with known answers, driven offline thro
 
 ## In plain words (the first screen)
 
+- **Wave 3 (2026-11-26, [WAVE3.md](WAVE3.md), §12 below).** On unseen learning-cycle worlds the unchanged loop
+  admitted versions only its own outputs or a copied wrong story stated (4 / 6 / 6 and 2 / 17 / 12 over 4 seeds),
+  where 120 held-out runs never had (`docs/quality/COGNITIVE_BENCHMARK.md`, step 0). The two rules built against it
+  do not close it and ship off [fix lane]; at the shipped defaults that hole is open. No order of the re-check helped;
+  the idle investigation did not close the gap to a blind schedule within the same allowance; supersession gained
+  less than the spread with false replacements. The front door now answers 12 of 12 held-out front-door questions
+  (0 before).
 - **Wave 2's three main results are negative or neutral.**
   1. **Making the mechanisms work together did not help.** With every link between them switched on, knowledge stayed
      about as correct as without them on held-out worlds (0.726 against 0.718, a paired difference below the
@@ -108,7 +115,7 @@ as the first results scored with it.
 
 | Group | Held-out, split | Held-out, wide | Withheld |
 |---|---|---|---|
-| all answerable questions (pooled, not a claim) | 0.063 → 0.875 (84 of 96; the 4 front-door questions per seed declined) | 0.057 → 0.862 (12 of 12) | 0.12 → 0.827 (sd 0.023) |
+| all answerable questions (pooled, not a claim) | 0.063 → 0.875 (84 of 96; the 4 front-door questions per seed declined in Wave 1; answered since Wave 3, 0.875 → 1.000, `genesis_frontdoor.json`) | 0.057 → 0.862 (12 of 12) | 0.12 → 0.827 (sd 0.023) |
 | handed equations (exact arithmetic) | 0 → 1.0 | 0 → 1.0 | 0 → 1.000 |
 | belief what-ifs (plumbing) | 0 → 1.0 | 0 → 1.0 | 0 → 1.000 |
 | **learned-graph forecasts and actions (the substantive part)**, within 0.1 × sd | **0.222 → 1.000** (largest error 0.092) | 0.204 → 0.954 (12 of 12; largest error 0.3665) | **0.30 → 0.967** (sd 0.058; largest error 0.135) |
@@ -117,7 +124,10 @@ as the first results scored with it.
 
 Ablations (held-out split, pooled; without the front-door questions in brackets): without the causal engine 0.375
 (0.429), without what-ifs 0.781 (0.893), without forecasts 0.656 (0.750; learned graph 0.222), without actions
-0.781 (0.893; learned graph 0.667). The engine does no front-door adjustment and declines those questions. Cost: a
+0.781 (0.893; learned graph 0.667). In Wave 1 the engine did no front-door adjustment and declined those questions;
+since Wave 3 (lane C, ADR-059) it answers them where the criterion holds and the moments are exact or their sample
+size is stated: front-door group 0 → 1.000 held-out (12 of 12), every other leaf unchanged (`genesis_frontdoor.json`;
+its withheld look is pending). Cost: a
 what-if runs on a private in-memory copy, bounded at 512 MiB and 10 s; lane B measured a 257 MiB copy under a busy
 writer at 0.07 s, on tmpfs only ([WAVE1.md](WAVE1.md) §6.2 Q2).
 
@@ -432,3 +442,20 @@ No result here demonstrates consciousness, sentience, general intelligence or su
 
 Reproduce: `scripts/bench_cognition.py`, `scripts/bench_wave1.py run|wide|rescore`, `scripts/bench_wave2_integration.py
 run`, `scripts/bench_learning_cycles.py run`; each script's docstring gives the command.
+
+## 12. Wave 3 (2026-11-26; [WAVE3.md](WAVE3.md))
+
+Every figure below is from the evidence file named; the full tables, references and spreads are in WAVE3.md §3.
+Where the fix lane after Wave 3's reviews will re-measure, the line carries [fix lane].
+
+| Category | Result | Evidence |
+|---|---|---|
+| Generalisation of the knowledge loop (new: withheld learning-cycle worlds, step 0) | the unchanged loop: baseline − no loop +0.042 / −0.025 / +0.012 (4, 1, 3 of 4 seeds better); 0.17 to 0.26 below a blind round-robin of the same allowance; own-output versions admitted 4 / 6 / 6, wrong-story versions 2 / 17 / 12, one-origin rises 0 / 0 / 1 (over 4 seeds), each 0 in 120 held-out runs | `docs/quality/COGNITIVE_BENCHMARK.md` (step 0) |
+| Knowledge accuracy: what counts as a source (lane S) | own versions 1.25 / 0.50 / 3.75 → 0.25 / 0 / 0.25 per run and syndicated 1.50 / 2.25 / 1.00 → 0 on lane S's held-out worlds, but: "unsafe" under the lane's own rule; the figures depend on the phrasings the worlds were written with (19 of 27 common credits missed; echoes crediting no model pass at 67–100 %); staged honest credits cost 0.07–0.13 `correct`; development evidence (the rule changed twice after held-out). Ship off [fix lane] | `genesis_wave3_s.json`, ADR-061, the Wave 3 measurement review |
+| Improvement across cycles: supersession (off) | gain +0.008 / +0.007 / +0.020 against sds 0.046 / 0.051 / 0.078; 3 of 33 replacements false (pooled, not a claim); longest wrong 8 and at least 10 cycles (censored) [fix lane] | `genesis_wave3_s.json`, review S-5 |
+| Improvement across cycles: the re-check's order (lane R, off) | 14 orders, all "no evidence"; paired gains −0.031 to +0.022 | `genesis_recheck_order.json`, ADR-060 |
+| Autonomy / coverage: the idle investigation (lane V) | timer first: +0.000 to +0.049, "no evidence"; allowance first: +0.012 to +0.086, "revise", below the blind round-robin in every world | `genesis_idle_coverage.json`, ADR-062 |
+| Counterfactual validity: front door (lane C, on) | front-door group 0 → 1.000 held-out (12 of 12); every other leaf unchanged; 0 false answers with exact moments; withheld look pending | `genesis_frontdoor.json`, ADR-059 |
+| Anticipation on the host (lane H) | shadow decides as off on every tick of 48 staged runs; no host week run; its report counts holds the gate already made as hits [fix lane] | `genesis_h.json`, ADR-058 |
+| Reliability | 7 Wave 3 entry points × 3 failure modes + a marked message: 12 of 28 failed on `f0a1f09`, 28 of 28 with three guards; the lanes' benchmarks re-run together: no verdict changed (before the fix lane) | `tests/uat/test_uat_fault_injection.py`, `genesis_wave3_combined_*.json` |
+| Reliability: adversarial cases, by origin | 54 cases, 49 scored: original 13, Wave 1 4, restored 1, Wave 2 10, lane C 5, lane S 16, all pass on both splits on `f0a1f09` | `genesis_wave3_combined_checks.json` |

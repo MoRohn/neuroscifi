@@ -1,6 +1,6 @@
 # Project Cognitive Genesis
 
-Status: 2026-11-25. Phase I (discovery and research) is done and Wave 0 is integrated on branch `cognitive-genesis`
+Status: 2026-11-26. Phase I (discovery and research) is done and Wave 0 is integrated on branch `cognitive-genesis`
 (`76a478e`), reviewed twice and fixed; its final validation is in [WAVE0.md](WAVE0.md). Wave 1 is **integrated
 (`3c2a3bc`), reviewed three times, fixed and reconciled** (`gen-rec1`): its record, the shipped defaults and the
 benchmark on the reconciled tree are in [WAVE1.md](WAVE1.md). As shipped it changes no research outcome: what is on
@@ -14,8 +14,13 @@ injection found real failures, now guarded. Two independent reviews corrected th
 defects in Wave 2's additions (the false arbitration record, a voice delivery after a forget); both are fixed, and a
 third check of the fixes found six low issues, also fixed (WAVE2.md §4). No default changed; one older behaviour
 changed (a timer pass with a task limit now counts a queued refresh, WAVE2.md). Wave 2 took no look at the withheld
-family. All ten deliverables (A–J) are written; the final account for the owner is
-[FINAL_EVALUATION.md](FINAL_EVALUATION.md).
+family. **Wave 3 is merged on `genesis-wave3` (`f0a1f09`)**, reviewed twice; a fix lane follows; its record is
+[WAVE3.md](WAVE3.md). Its most important finding is negative: on new withheld learning-cycle worlds the unchanged
+loop took versions only its own outputs or a copied wrong story stated as knowledge, and the two rules built against
+it do not close that hole and ship off [fix lane], so it is open at the shipped defaults. No order of the re-check
+helped; the idle investigation did not close the gap to a blind schedule within the same allowance; supersession
+gained less than the spread. The front door now answers causal questions the engine used to decline. All ten
+deliverables (A–J) are written; the final account for the owner is [FINAL_EVALUATION.md](FINAL_EVALUATION.md).
 
 Project Cognitive Genesis is the owner's programme to add measurable cognitive mechanisms to NeuroSciFi on top of the
 system that exists, without replacing any of it. Each mechanism is a function with a name that says what it does
@@ -55,6 +60,7 @@ outcome.
 | 1 | I instinct; M imagination; W workspace, self-model and continuity; C metacognition; K knowledge evolution | integrated on `genesis-wave1` (`3c2a3bc`); three reviews; fix lanes A, B, C; reconciled on `gen-rec1`; record in [WAVE1.md](WAVE1.md) |
 | 1, closing | re-review of the fix round, fix lanes D and E, a second check, final validation, the one withheld look | done: [WAVE1.md](WAVE1.md) §6.5, §7, §8; then PR into `main` |
 | 2 | U regression and cognitive UAT; F the recursive knowledge assessment; L the integration loop; X follow-ups; D deliverables E, G, I, J | U, F, L integrated on `genesis-wave2` (`828ca8e`); X and D from it; record in [WAVE2.md](WAVE2.md) |
+| 3 | 0 withheld learning-cycle worlds and one look; P the digest across hosts and the redraw; C the front door; H shadow and readiness; R the re-check's order; S source independence and supersession; V coverage; REC the reconciliation | merged on `genesis-wave3` (`f0a1f09`); two reviews; a fix lane; record in [WAVE3.md](WAVE3.md) |
 
 ## Documents
 
@@ -73,8 +79,9 @@ outcome.
 | [WAVE0.md](WAVE0.md) | record | What Wave 0 delivered, the baseline, both reviews' findings and fixes, validation, what stays open, how to back each piece out |
 | [WAVE1.md](WAVE1.md) | record | What each Wave 1 lane built, the shipped defaults, the benchmark (split and wide seeds), the three reviews' findings and fixes, what stays open, how to back each piece out |
 | [WAVE2.md](WAVE2.md) | record | What each Wave 2 lane built, the two new settings, the integration, learning-cycles and regression results, what stays open, how to back each piece out |
+| [WAVE3.md](WAVE3.md) | record | Step 0's look and its safety counts, what each Wave 3 lane built and its default, results with references, spreads and costs, the reviews' corrections, the disclosures, what stays open, how to back each piece out |
 | [COGNITIVE_BENCHMARK.md](../quality/COGNITIVE_BENCHMARK.md) | instrument | The cognitive benchmark: families, rules for a lane, how to register a mechanism, the baseline |
-| [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md) | decisions | ADR-049 (provenance kinds and the imagined store), ADR-050 (the quiet switch and one admission rule), ADR-051 to ADR-055 (Wave 1), ADR-056 (the integration loop, Wave 2) |
+| [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md) | decisions | ADR-049 (provenance kinds and the imagined store), ADR-050 (the quiet switch and one admission rule), ADR-051 to ADR-055 (Wave 1), ADR-056 (the integration loop, Wave 2), ADR-058 to ADR-062 (Wave 3) |
 
 ## Evidence
 
@@ -91,8 +98,11 @@ outcome.
 | `docs/quality/evidence/genesis_learning_cycles.json` | Wave 2 lane F: the learning-cycles experiment, both splits, every configuration, the verdicts, development probes, the cognitive benchmark's retention and adversarial families with lane K on (`scripts/bench_learning_cycles.py`) |
 | `docs/quality/evidence/genesis_integration.json` | Wave 2 lane L: the integrated family on both splits (baseline, defaults, each link alone, integrated, integrated minus one link), the baseline's spread, the paired comparisons, retention, adversarial and self-description, and the same runner before any link (`scripts/bench_wave2_integration.py`) |
 | [REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) | Wave 2 lane U: no evidence file; the counts of the fault-injection, rollback and equivalence tests and the `added_wave2` adversarial results are in the document, the tests in `tests/uat/` |
+| `docs/quality/evidence/genesis_cycles_withheld_baseline.json` | Wave 3 step 0: the unchanged system's one look at the withheld learning-cycle worlds (names the worlds: not development material; its aggregate numbers are in COGNITIVE_BENCHMARK.md) |
+| `docs/quality/evidence/genesis_{frontdoor,h,recheck_order,wave3_s,idle_coverage}.json`, `offline_deterministic_aarch64.json` | Wave 3 lanes C, H, R, S, V and P |
+| `docs/quality/evidence/genesis_wave3_combined_{idle,orders,cycles,s,checks}.json` | Wave 3 reconciliation: the lanes' commands re-run together on `f0a1f09`, compared value by value with each lane's file (before the fix lane) |
 
-The ledger was not extended in Wave 2: no withheld run.
+The ledger was not extended in Wave 2: no withheld run. Wave 3 step 0 added line 4 (the learning-cycle worlds).
 
 Reproduce with `scripts/bench_cognition.py`, `scripts/bench_wave1.py`, `scripts/bench_wave2_integration.py`,
 `scripts/bench_learning_cycles.py`, `scripts/genesis_provenance.py` and `scripts/bench_genesis_safety.py`;

@@ -54,6 +54,24 @@ def test_every_added_switch_is_rolled_back_by_a_test_that_names_it():
         assert f'"{name}"' in inspect.getsource(test) or f'"{name}"' in inspect.getsource(rollback), name
 
 
+# Wave 3 reconciliation: what Wave 3 added that is not a new field of the config classes, so _added() cannot see it: the
+# third value of predictive_regulation (ADR-058) and the front door, a flag of `nsf imagine scm` (ADR-059); and the
+# fields it added (ADR-060, ADR-061), which must also be made to fail by the fault-injection test.
+WAVE3_OTHER = {"predictive_regulation_shadow", "front_door"}
+WAVE3_FIELDS = {"recheck_order", "attribution_independence", "echo_recognition", "supersession",
+                "supersession_min_sources"}
+
+
+def test_every_wave3_setting_is_rolled_back_and_made_to_fail():
+    import uat.test_uat_fault_injection as faults
+    from neuroscifi.instance import store
+    assert WAVE3_FIELDS <= {f.name for f in dataclasses.fields(WebConfig)}
+    assert store._SETTABLE["predictive_regulation"]("shadow")
+    switches = (WAVE3_FIELDS - BOUNDS) | WAVE3_OTHER
+    assert switches - set(rollback.SWITCHES) == set(), "add a rollback test and a SWITCHES entry"
+    assert switches - {m for m, *_ in faults.WAVE3_ENTRIES} == set(), "add it to WAVE3_ENTRIES"
+
+
 def test_the_wave0_settings_are_the_ones_wave0_had():
     """The frozen Wave 0 lists above are not allowed to grow: a setting added later must be classified."""
     assert WAVE0_INSTANCE <= {f.name for f in dataclasses.fields(InstanceConfig)}

@@ -1,6 +1,6 @@
 # Implemented enhancements (deliverable E)
 
-Status: 2026-11-25, on the Wave 2 integration tree `828ca8e` (branch `genesis-wave2`). Deliverable E of the
+Status: 2026-11-26; Waves 0–2 on `828ca8e`, Wave 3 (§5) on `f0a1f09` (branch `genesis-wave3`). Deliverable E of the
 directive's §13: an index of what Project Cognitive Genesis actually built in Waves 0, 1 and 2, one row per mechanism,
 with where the code is, the setting and the value a new individual gets, the decision record, the tests, the evidence
 and how to take it back out. Nothing here is a claim of consciousness, awareness or general intelligence; every name
@@ -18,6 +18,11 @@ describes a function.
   restart.
 - **Everything that would change behaviour ships off**, because no benchmark showed a held-out gain larger than the
   baseline's spread without a cost (see [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md)).
+- **Wave 3** (§5) adds the front door in `nsf imagine scm` (on), the idle investigation's daily task count (a
+  budget fix), Pocket and console panels redrawn only on change, predictive regulation "in shadow" and
+  `nsf readiness` (opt-in / read-only), and three settings built off: `recheck_order`, `supersession` and the two
+  source rules (`attribution_independence`, `echo_recognition`, merged on at `f0a1f09`, shipping off [fix lane]).
+  At Wave 3's shipped defaults the individual treats sources exactly as before Wave 3.
 - **Wave 2 built almost no mechanism.** It added one record (arbitration, on), one ordering rule (salience attention,
   off), one display field, and 14 small guards that keep the product working when a Wave 1 mechanism fails.
 
@@ -129,4 +134,27 @@ From [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) §6 and the Wave 2 l
 | Feeding a scenario's or forecast's error to curiosity, the re-check marks or learning progress | assessed by lane L: the real settlement already reaches every allowed learner; the scenario's error adds no information about the subject (ADR-056 Decision 4) |
 | A low-support monitoring verdict asking for a later re-check | assessed by lane L: not measurable on any frozen world (ADR-056 Decision 4) |
 | Abstraction, concept hierarchies, causal extraction from text, learned retrieval / routing / verification policies, adaptive forgetting | not built ([RECURSIVE_KNOWLEDGE_ASSESSMENT.md](RECURSIVE_KNOWLEDGE_ASSESSMENT.md) §1); forgetting is the owner's act by design |
-| Front-door adjustment in the causal engine | not built; those questions are declined ([WAVE1.md](WAVE1.md) §9) |
+| Front-door adjustment in the causal engine | built in Wave 3 (§5 below, ADR-059); until then those questions were declined ([WAVE1.md](WAVE1.md) §9) |
+| A source-independence rule that decides by origin (publication order, derivation) or by the owner's confirmation | not built; Wave 3's phrase-reading rules did not close the hole the withheld look found and ship off ([WAVE3.md](WAVE3.md)) |
+
+## 5. Wave 3: sources, the re-check's order, coverage, the front door, host evidence (lanes P, C, H, R, S, V)
+
+Record: [WAVE3.md](WAVE3.md). Defaults read from the code on `gen3-rec` (merged tree `f0a1f09`): `WebConfig` in
+`src/neuroscifi/webcortex/config.py`, `InstanceConfig` in `src/neuroscifi/instance/store.py`, `FRONT_DOOR` in
+`src/neuroscifi/causal.py`. Where the fix lane changes a default the row says so with [fix lane]. No schema change.
+
+| Mechanism | Module(s) | Setting: default | ADR | Tests | Evidence | How to back it out |
+|---|---|---|---|---|---|---|
+| Front-door adjustment; a stated origin of the moments (`moments: population` or `samples: n`), an interval from n, a usefulness bound (`USEFUL` 0.1) | `causal.py`, `instance/cli_imagine.py` | `FRONT_DOOR = True`; `nsf imagine scm --no-front-door` (a flag of an owner's command, nothing stored) | ADR-059 | `tests/test_causal_front_door.py`, `tests/uat/test_uat_rollback.py::test_front_door` | `genesis_frontdoor.json` | `--no-front-door`; revert `5701bbe` |
+| Predictive regulation in shadow: the gate decides as off, the forecast's verdict is recorded and settled against the host's memory; `nsf internal-state --shadow-report` | `resources/shadow.py`, `resources/policy.py` | `predictive_regulation` `false`; `"shadow"` is opt-in (instance) | ADR-058 | `tests/test_forecast_shadow.py`, `tests/uat/test_uat_shadow_faults.py`, `tests/uat/test_uat_rollback.py::test_predictive_regulation_shadow` | `genesis_h.json` | `nsf config --no-predictive-regulation`; delete `<db>.resources/forecast-shadow*` |
+| `nsf readiness`: each learner of real outcomes against its minimum; `uncertain.outcomes_readiness` (owner scope) | `readiness.py`, `self_description.py` | always (read-only) | ADR-058 | `tests/test_readiness.py` | `genesis_h.json` | revert `4807813` |
+| The re-check's order by change rate, a newer version seen, rotation | `webcortex/recheck.py` | `recheck_order` `"staleness"` (web) | ADR-060 | `tests/webcortex/test_recheck_order.py`, `tests/uat/test_uat_rollback.py::test_recheck_order` | `genesis_recheck_order.json` | leave at `"staleness"` |
+| A sentence crediting an outlet counts with that outlet | `webcortex/claims.py` (`attribution_keys`) | `attribution_independence`: `true` at `f0a1f09`, ships `false` [fix lane] (web) | ADR-061 | `tests/acceptance/test_wave3_s.py`, rollback and fault-injection tests | `genesis_wave3_s.json`; review S-1, S-3, S-4, security H1 | `nsf web config --set attribution_independence=false` |
+| A page repeating the individual's own text, or crediting a model, is no evidence for it | `webcortex/consolidate.py` (`_Echoes`, `_without_echoes`) | `echo_recognition`: `true` at `f0a1f09`, ships `false` [fix lane] (web) | ADR-061 | as above | `genesis_wave3_s.json`; review S-2, S-8, security M2–M5 | `nsf web config --set echo_recognition=false` |
+| Supersession of a stale item by enough independent sources; `nsf web replacements`, `nsf web revert ID` | `webcortex/consolidate.py`, `webcortex/knowledge.py` | `supersession` `"ask"` (off), `supersession_min_sources` 2 (web) | ADR-061 | `tests/acceptance/test_wave3_s.py`, `tests/uat/test_uat_rollback.py::test_supersession_and_its_records` | `genesis_wave3_s.json` | leave at `"ask"`; revert each replacement |
+| `autonomy.idle` honours the day's autonomous task count | `webcortex/autonomy.py` (`_tasks_spent`) | always (a budget fix) | ADR-062 | `tests/webcortex/test_autonomy.py::test_idle_shares_the_days_autonomous_task_count_with_the_timer` | `genesis_idle_coverage.json` | revert `41198b3` |
+| Panels redrawn only on change, focus kept (console overview, Pocket lists) | `console/web/console.js`, `pocket/web/field-ui.mjs`, `research-ui.mjs` | always (a fix) | — | `tests/e2e/test_focus_kept.py` | lane P's report | revert `81edd00` |
+| The offline digest across hosts: `portable_sha256`, `--deterministic-out`, `scripts/diff_deterministic.py`, a CI artifact | `scripts/bench_wave1.py`, `.github/workflows/ci.yml` | — (benchmark) | — | `tests/test_offline_digest_hosts.py` | `offline_deterministic_aarch64.json` | revert `abb493f` |
+| Three guards (reconciliation): a failing attribution read, echo check or supersession rule leaves the claim, the cluster or the question as with the setting off; the failure is a WARNING or the task's "error" event, its type only | `webcortex/claims.py`, `webcortex/consolidate.py` | always (act only on failure) | — | `tests/uat/test_uat_fault_injection.py` (28 Wave 3 cases; 12 fail without the guards) | WAVE3.md §3.9 | revert `ce5a432` |
+| Withheld learning-cycle worlds and their guard (step 0); lanes R, S, V's worlds and harnesses | `acceptance/cognition/cycles.py`, `cycles_rate_splits.py`, `cycles_splits_s.py`, `cycles_s.py`, `scripts/bench_wave3_s.py` | — (benchmark) | — | `tests/acceptance/test_learning_cycles_*.py` | the evidence files above | revert the commits |
+

@@ -1282,14 +1282,28 @@ def stamp_origins(claims, documents, *, attribution: bool = False) -> dict[str, 
     go to flags["credited"], kept apart from the origins: a reworded copy that names the story's origin inside the
     sentence counts with that origin, and a credit never joins two other groups (independence_groups)."""
     origins = document_origins(documents)
+    failed = None
     for c in claims:
         extra = list(origins.get(c.source_url) or ())
         if extra:
             c.flags = dict(c.flags or {}, origin=list(dict.fromkeys([*((c.flags or {}).get("origin") or ()), *extra])))
-        credited = attribution_keys(c.text) if attribution else []
+        credited = []
+        if attribution:
+            try:        # Wave 3 reconciliation (lane U's pattern): a failing read is logged, never the task's end
+                credited = attribution_keys(c.text)
+                if not (isinstance(credited, list) and all(isinstance(k, str) for k in credited)):
+                    raise TypeError(f"the credited outlets are {type(credited).__name__}, not a list of keys")
+            except Exception as exc:        # noqa: BLE001 - logged below (its type only), never silent
+                from ..instance.errors import failure_kind
+                failed = failed or failure_kind(exc)
+                credited = []
         if credited:
             c.flags = dict(c.flags or {}, credited=list(dict.fromkeys([*((c.flags or {}).get("credited") or ()),
                                                                        *credited])))
+    if failed is not None:
+        import logging
+        logging.getLogger(__name__).warning("the outlets sentences credit could not be read (%s); those claims count "
+                                            "as with attribution_independence off", failed)
     return origins
 
 

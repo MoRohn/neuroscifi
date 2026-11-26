@@ -370,6 +370,12 @@ the recorded value only on the architecture it was recorded on. Why the two envi
 investigated**; every "same digest as Wave 0" in these documents is a statement about runs on the development
 host.
 
+**Added in Wave 3.** CI's second run on the Wave 2 pull request failed
+`tests/e2e/test_console.py::test_keyboard_reaches_every_enabled_button[overview]` once of two runs: the overview
+loads twice in quick succession and the test's settled check could pass in between; the test was hardened in
+`08cced0` and the cause was found in Wave 3 by lane P ([WAVE3.md](WAVE3.md) §3.7). The digest difference between the
+two hosts is the browser's file path inside the hashed metrics (lane P), not a difference in behaviour.
+
 **Wave 2 took no look at the withheld family:** no lane changed a mechanism behind its four interfaces. The ledger
 still holds three lines.
 
