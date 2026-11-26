@@ -2778,6 +2778,23 @@ Simulated worlds driven through the real modules, offline.
   numbers did not move with the rework (on the split's seeds the re-check alone gives the everything-on numbers;
   `genesis_wave1.json`, `genesis_wave1_wide.json`). The idle re-check stays off: no gain on
   retention under change (above).
+- *The draw, after the Wave 2 benchmark-integrity review (lane Y, H3):* this harness draws the truth changes, the
+  arrivals and every research outcome from one random stream (strategy selection: the offers and the outcomes), so
+  two policies that investigate different subjects can meet different worlds and different outcomes. The numbers
+  above are kept as recorded (`genesis_knowledge.json` unchanged; its default draw re-run on the integrated tree
+  reproduces it: 0 of 635 held-out and 633 development values differ). The decoupled draw (`--decoupled`: truth
+  changes keyed by world, seed and step, outcomes by world, seed, step and subject; strategy offers by step and
+  outcomes by candidate) is the one documented for paired comparisons; its held-out run, beside the recorded one in
+  `genesis_knowledge_decoupled.json`: **retention under change** due order 0.673, re-check 0.682 (random 0.665,
+  oracle 0.765); per world sparse budget 0.609 vs 0.612 (paired +0.003, sd 0.021; 3 seeds higher, 1 lower), busy
+  0.738 vs 0.752 (paired +0.014, sd 0.036; 2 higher, 2 lower), against a baseline sd of 0.054 and 0.075: **still
+  within noise of the due order**, so the idle re-check stays off. **Strategy selection** Thompson 0.348 against the
+  incumbent's 0.268 verified items per investigation (paired per world +0.135, sd 0.105, 3 higher / 1 lower; and
+  +0.025, sd 0.076, 2 higher / 1 lower), share on the self-reporting arm 0.088 against 0.233 (lower on 8 of 8
+  paired seeds): the gain shrinks from +0.130 to +0.080 and stays positive; the gate's decision is unchanged
+  (revise: off; the withheld check is missing). What moved is the size of the strategy gain and both levels (the
+  decoupled draw is another sample of the same worlds: the due order 0.693 → 0.673, the oracle 0.803 → 0.765); no
+  verdict and no default.
 - **Cost** (aarch64, while other lanes' suites ran): consolidation 1.35 -> 1.38 ms median per one-cluster task
   with premises; re-check rank 82 ms and admission 168 ms per pass over 200 items; a reflection report 2 ms; a
   Thompson ranking 1.5 ms. 0 model calls in every benchmark.
@@ -2835,13 +2852,19 @@ link: **REAL** (a consumer changes behaviour on it), **DISPLAY-ONLY** (recorded 
 | 5 | metacognition → reasoning quality | `monitoring.assess` (`webcortex/monitoring.py:313`) in `orchestrator._monitor` (`webcortex/orchestrator.py:2724`); `selective_answering` (`apply_note`, `:2729`), `verification_escalation` (`:2542`, `:1967-1977`), `adaptive_depth` (`:1630`) | `report["monitoring"]` | `answer_monitoring` (on), the other three off | **DISPLAY-ONLY** | REAL inside the task (escalation reads one more source; selective answering opens with a plain line; depth stops early). From a low-support verdict to a later re-check: **MISSING**, assessed and not built (Decision 4) |
 | 6 | memory → continuity | premises and marks (`webcortex/premises.py:207`, called by `consolidate.py:1534`); the re-check ranks a marked item higher (`webcortex/recheck.py:92`); voice `resume_follow` (`voice/hub.py:307-328`); `self_description.recent` | `web_premises`, `web_rechecks`; `voice_sessions.context` | `premise_recheck` (on, records), `idle_recheck` (off), voice `resume_follow` (on) | **REAL** (the follow-up across a restart; every step reads the stored knowledge, hypotheses and predictions); marks DISPLAY-ONLY | REAL (marks order the re-check) |
 | 7 | verified outcomes → future improvements | `predictions.check` (`webcortex/predictions.py:108`) → re-check marks (`premises.failed_prediction`, `:127`; `premises.py:182`), the error analysis's link chain (`:130`, `evolution.py:639`), the calibration record (`:142`) read by `autonomy.candidates` through `evolution.recalibrations` (`autonomy.py:529`); `curiosity.rank` raises the importance of an item whose prediction failed (`curiosity.py:260`, `:283`); salience's prediction discrepancy; `web_feedback` → futility (`curiosity.py:95`); strategy selection (`strategies.rank`, `webcortex/strategies.py:106`) behind its gate | `web_predictions`, `web_rechecks`, `web_claim_links`, `web_feedback`, `improvement_ledger` | `calibrated_forecasts` (on), `premise_recheck` (on), `strategy_selection` (`"gate"`: inactive) | **REAL** (futility; the calibration reading orders admitted candidates; the ×1.5 importance); marks DISPLAY-ONLY; strategy selection inactive | REAL (marks order the re-check; learning progress). Finding: the ×1.5 importance is keyed by the failed item's id, so it reaches the subject only when the item stayed live (contradicted); a superseded item's successor is freshly verified and not a candidate anyway, so nothing measurable is lost |
-| 8 | executive control → arbitration of conflicts and permissions | `background.allowed` (`background.py:200`) at every entry point; `autonomy.admission` for the idle, timer and re-check paths; the daily caps and the resource gate (`scheduler._over_cap`, `:398`); owner work claimed first (`scheduler.claim_next`, `:626`); the timer's fixed order (re-check `:505-521`, due refreshes `:522-549`, curiosity `:550-597`) with the cooldown (`autonomy._recent`, `:442`) and one task per subject (`REFRESHED_THIS_TICK`) | the tick's returned report only (`skipped`); **new**: a decision event `$.arbitration` on the winner's task (`scheduler._arbitrated`, `:419`) | `quiet`, budgets, `tick_admission`; `arbitration_record` (**new, on: a record**) | **REAL** (the decision); the loser was recorded nowhere that persists (**MISSING** record before this ADR) | REAL, with the record |
+| 8 | executive control → arbitration of conflicts and permissions | `background.allowed` (`background.py:200`) at every entry point; `autonomy.admission` for the idle, timer and re-check paths; the daily caps and the resource gate (`scheduler._over_cap`, `:398`); owner work claimed first (`scheduler.claim_next`, `:626`); the timer's fixed order (re-check `:505-521`, due refreshes `:522-549`, curiosity `:550-597`) with the cooldown (`autonomy._recent`, `:442`) and one task per subject (`REFRESHED_THIS_TICK`) | the tick's returned report only (`skipped`); **new**: a decision event `$.arbitration` on the winner's task (`scheduler._arbitrated`, `:419`), for a real conflict only (Wave 2 lane Y: the subject was in the timer's curiosity pool and budget was left) | `quiet`, budgets, `tick_admission`; `arbitration_record` (**new, on: a record**) | **REAL** (the decision); the loser was recorded nowhere that persists (**MISSING** record before this ADR) | REAL, with the record |
 
 ## Decision
 
 1. **The arbitration record** (`arbitration_record`, web, **on**: a record only). When the knowledge re-check or a due
-   refresh takes the subject the timer's curiosity wanted in the same pass, the tick's existing order decides, as
-   before (one task per subject), and `scheduler._arbitrated` writes a decision event on the **winner's** task:
+   refresh takes a subject the timer's curiosity could have launched in the same pass, the tick's existing order
+   decides, as before (one task per subject), and `scheduler._arbitrated` writes a decision event on the **winner's**
+   task. "Could have launched" (corrected by Wave 2 lane Y after the benchmark-integrity review, H1): for the
+   re-check, the subject is in that pass's curiosity pool (`autonomy.admission` returns it as `pool`), as the kind
+   curiosity launches, and budget is left (`budget_left > 0`, no cap reached); for a due refresh, curiosity admitted
+   the subject. As first built, the re-check record fired on any subject curiosity's cooldown refused after the
+   re-check queued it, which in lane L's benchmark was never a subject curiosity could take (every one of the 14 and
+   11 recorded arbitrations per world was of that kind); the decision event:
    `{"arbitration": {"slot": "one investigation per subject per timer pass", "winner": "recheck"|"refresh",
    "loser": "curiosity", "rule": ...}}`. It names mechanisms and the rule, never the subject (the subject is the
    winner task's own), so forgetting the task removes it (`governance`: a task's events go with it) and forgetting the
@@ -2855,6 +2878,9 @@ link: **REAL** (a consumer changes behaviour on it), **DISPLAY-ONLY** (recorded 
    candidate records `priority_rank`, its place in admission's own order, and the decision's `admission.order`: when
    salience and priority disagree (§12 "conflicting cognitive subsystem outputs") one rule decides and the record
    keeps both, the losing candidate named by its place, never by its words. The re-check path keeps its own order.
+   The priority order stands, recorded as `"priority"`, unless every admitted candidate carries a finite numeric
+   salience score (lane Y, M2: a record that could not be made, `{"error": ...}`, was ordered as score 0 and recorded
+   "by salience").
 3. **The loop in the self-description** (display, no switch, like the rest of the record). `doing.cycle`: the latest
    background investigation (task id, origin, status, how it was admitted: path, rule, order, the salience score it
    carried, its priority rank), the latest arbitrations, and the predictions settled so far by outcome. Ids, numbers
@@ -2886,41 +2912,75 @@ link: **REAL** (a consumer changes behaviour on it), **DISPLAY-ONLY** (recorded 
 
 `docs/quality/evidence/genesis_integration.json` (`scripts/bench_wave2_integration.py run`). The family "integrated"
 (`acceptance/cognition/integrated.py`) runs the real timer pass and idle investigator step by step on staged Web
-Cortex individuals, worlds frozen in `integrated_splits.py` (committed alone first, `a625b96`; development seeds 61-63,
-held-out 601-604; the withheld family is not used). Simulated worlds, offline, 0 model calls; the host's background
-gate is read as allowed in every configuration. Configurations: baseline (every Wave 1 and 2 setting off), defaults,
-each link alone, integrated (re-check, marks, learning progress, scenario records, salience attention, the
-arbitration record), integrated minus one link. Nothing was chosen on held-out (salience attention has no parameter).
+Cortex individuals, worlds frozen in `integrated_splits.py` (committed alone first: `a625b96` on lane L's branch,
+`72d7a59` on `genesis-wave2`; development seeds 61-63, held-out 601-604; the withheld family is not used).
+Simulated worlds, offline, 0 model calls; the host's background gate is read as allowed in every configuration.
+Configurations: baseline (every Wave 1 and 2 setting off), defaults, each link alone, integrated (re-check, marks,
+learning progress, scenario records, salience attention, the arbitration record), integrated minus one link. Nothing
+was chosen on held-out (salience attention has no parameter).
+
+**Re-measured after the benchmark-integrity review (Wave 2 lane Y, branch `gen2-y`; the numbers below).** The first
+measurement had three harness defects and one product defect: one random stream drew the world's truth changes and
+the research outcomes, so configurations that investigated other subjects met other worlds (H3; the draw is now
+decoupled: truth changes keyed by world, seed and step, outcomes by world, seed, step and subject; the worlds file is
+unchanged); the "integrated" mechanism of the retention and adversarial families forced every Wave 1 setting off
+inside each case (H2; it now forces only the links' settings); the staging ran at the shipped defaults (L1); and the
+arbitration record fired on subjects curiosity could not have taken (H1, Decision 1). Held-out was re-run because the
+harness changed; the worlds and seeds did not change; no default changed. Check: with the old one-stream draw and the
+L1 and H1 fixes in place, every held-out per-seed value of baseline, defaults, the re-check alone and integrated
+equals the first measurement except the arbitration count (14 → 0), so every move below comes from the draw. The
+first figures are kept in the evidence file under `before_review`.
 
 - **Knowledge correctness under change** (share of item subjects whose live knowledge states the world's truth, mean
-  over steps). Held-out (2 worlds x 4 seeds): baseline 0.713 (per world sd 0.033 and 0.042), integrated 0.710; paired
-  difference -0.003 (sd 0.028; 4 seeds higher, 4 lower). Each link alone: the re-check 0.707, every other link 0.713
-  (no change). Ablations: without the re-check 0.714, without learning progress or without salience attention
-  0.707, without marks, scenarios or the arbitration record 0.710. Final step 0.589 against 0.584; stale facts caught
-  per investigation 0.263 against 0.263. Development (2 x 3): baseline 0.741, integrated 0.738 (paired -0.003, sd
-  0.012; 2 higher, 4 lower); salience attention alone 0.744 (final 0.621 against 0.596). **The integrated
-  configuration shows no gain over the baseline or over the best single link on either split; every difference is
-  inside the baseline's spread.**
+  over steps). Held-out (2 worlds x 4 seeds): baseline 0.718 (per world sd 0.047 and 0.071), integrated 0.726; paired
+  difference +0.008 (sd 0.015; 6 seeds higher, 2 lower). The re-check alone 0.726 (paired +0.008, sd 0.015; 6
+  higher, 2 lower); every other link alone equals the baseline on every seed. Against the best single link, chosen
+  on development (the re-check): +0.0001 (sd 0.0009; 1 higher, 1 lower, 6 equal). Ablations: without the re-check
+  0.719; without any other one link 0.726. Final step 0.634 against 0.632; stale facts caught per investigation 0.227
+  against 0.232. Development (2 x 3): baseline 0.789 (sd 0.028 and 0.068), integrated 0.797 (paired +0.008, sd 0.011;
+  5 higher, 1 lower), the re-check alone 0.796, salience attention alone 0.791 (+0.002; 1 higher, 5 equal). **The
+  integrated configuration shows no gain beyond the baseline's spread and none over the re-check alone; the small
+  positive paired difference is the re-check's.** With these seeds the rule (a gain larger than the baseline's
+  per-world sd) cannot see a held-out gain below 0.047 / 0.071; "no gain beyond the spread" does not exclude a
+  smaller one (the paired noise is 0.015). Before the review: baseline 0.713, integrated 0.710, paired −0.003 (sd
+  0.028; 4 higher, 4 lower), not paired on the same worlds.
+- **What each link did** (held-out, per run; `splits.held_out.activity`). A link that acted but never changed what
+  was investigated or held is **not exercised by this world**, not "no evidence of gain":
+  - `salience_attention`: the timer's curiosity pool held at most one subject in every run (so the timer had nothing
+    to order); on the idle path 14 admissions per run had two or more candidates, salience ordered them, and it
+    never took another first candidate than the priority order (0 times; launches identical to the baseline's).
+    Not exercised by this world. With the other links on it took another first candidate 8.5 times per run, and
+    removing it moves correctness by 0.0001.
+  - `learning_progress`: 287 factors other than 1 per run; it changed which noise subject the idle path looked at in
+    12 of 14 steps but never what was held and not the noise share. Not exercised for correctness by this world.
+  - marks (`premise_recheck` alone): no mark opened and nothing reads one without the re-check (no consumer here).
+  - scenario records: 76.5 per run, quarantined by design: no consumer; no launch changed.
+  - the arbitration record: 0 real conflicts, so 0 records, in every configuration of both splits.
+  - the re-check: changed what was investigated in 11 of 14 steps and what was held in 9.
 - **Information value** (share of investigations on noise subjects that never settle; the idle path's noisy-TV
-  trap): held-out 0.406 baseline, 0.408 integrated, 0.406 with salience attention alone; development 0.421, 0.413,
-  0.402. Learning progress alone changes nothing in these worlds (each noise subject is looked at once or twice).
+  trap): held-out 0.415 baseline, 0.408 integrated, 0.415 salience attention alone; development 0.420, 0.410, 0.401.
 - **Anticipation / prospective validity** (the scenario records' three-way Brier once settled; reference: three
-  equal futures, 2/3): development 0.638 (scenarios alone), 0.655 (integrated); held-out **0.712 and 0.698: worse than
-  the equal-futures reference**. The template's futures do not anticipate these settlements; scenario records stay off.
+  equal futures, 2/3): **not better than three equal futures**: held-out 0.681 (scenarios alone; per seed
+  0.555-0.801) and 0.689 (integrated); development 0.640 and 0.630. Scenario records stay off.
 - **Arbitration and conflicts**: 0 timer passes with two tasks on one subject and 0 investigations of a subject
-  already covered in the same step, in every configuration; with the record on, 11 (development) and 14 (held-out)
-  arbitrations per world on average, all "re-check over curiosity" (the record changes no launch: results identical
-  with it off). 0 belief writes in every run.
+  already covered in the same step, in every configuration; 0 arbitrations recorded (the first measurement's 11 and
+  14 per world were all spurious, H1). 0 belief writes in every run.
 - **Self-description** (four probes on the loop against the world's bookkeeping, **plumbing checks**): 1 of 4 before
-  this ADR (no field answered the last investigation or the settlements), 4 of 4 after, in every configuration. The
-  self-description family is unchanged: 30 of 30 under the current key, 29 of 30 under the original, 1 surface.
-- **Retention**: 4 of 4 scenarios, every offline metric retained, baseline and integrated, both splits.
-  **Adversarial**: 18 cases pass (original 13, added in Wave 1 4, restored 1), baseline and integrated, both splits.
+  this ADR, 4 of 4 after, in every configuration. The self-description family: 30 of 30 under the current key, 29 of
+  30 under the original, 1 surface.
+- **Retention**: 4 of 4 scenarios, every offline metric retained, baseline and integrated, both splits; no value
+  differs between the plain run, the first forcing and the corrected one. **Adversarial** (on `genesis-wave2`: 28
+  scored cases, original 13, Wave 1 4, restored 1, Wave 2 lane U 10): 27 pass, baseline and integrated alike, both
+  splits; the one failure is lane U's measured gap (`reflection_bounded_when_everything_asks`: 21 lines against
+  MAX_LINES 20). Under the first forcing "integrated" scored 28 of 28, but two passes were vacuous: with reflection
+  forced off, `recheck_and_reflection_stay_bounded` ran 0 reflections instead of 2 and
+  `reflection_bounded_when_everything_asks` ran none, which masked the gap. The first record's "18 cases pass" was
+  lane L's branch, before lane U's cases.
 - **The shipped defaults**: the offline research benchmark's digest is `68731d72…` (unchanged); the "defaults"
-  configuration equals the baseline leaf by leaf (the arbitration record fires only with the re-check on).
-- **Cost**: wall seconds per world run, held-out: baseline 0.319, integrated 0.550 (the re-check alone 0.458; the
-  arbitration record alone 0.330); development 0.216 and 0.361. The whole command's peak resident set 367.7 MiB
-  (the retention family's offline corpus; 48.6 MiB before the first run). 0 model calls, no connection outside
+  configuration equals the baseline on every knowledge metric (it writes premise rows, `premise_recheck` being on).
+- **Cost**: wall seconds per world run, held-out: baseline 0.318, integrated 0.551 (+73 %; the re-check alone 0.463;
+  the arbitration record alone 0.333); development 0.219 and 0.357. The whole command's peak resident set 369.4 MiB
+  (the retention family's offline corpus; 48.0 MiB before the first run). 0 model calls, no connection outside
   loopback.
 
 ## Alternatives rejected
@@ -2934,15 +2994,24 @@ arbitration record), integrated minus one link. Nothing was chosen on held-out (
 
 ## Consequences
 
-- Defaults: `arbitration_record` on (a record); `salience_attention` off (no held-out gain: 0.713 alone, as the
-  baseline); every Wave 1 default unchanged. The integrated configuration is not recommended: it shows no gain and
-  costs about 70 % more wall time per pass, mostly the re-check's.
+- Defaults: `arbitration_record` on (a record, now written only for a real conflict); `salience_attention` off: it
+  is not exercised by this world (the timer's curiosity pool never held more than one subject, and on the idle path
+  it never took another first candidate than the priority order, so it changed nothing investigated); every Wave 1
+  default unchanged. The integrated configuration is not recommended: it shows no gain beyond the spread and none
+  over the re-check alone, and costs about 73 % more wall time per pass, mostly the re-check's.
 - Changed code: `scheduler.tick` (the two arbitration points, `_arbitrated`), `autonomy.admission` and
-  `decision_inputs` (the salience order and `priority_rank`), `salience.attention`/`order`, `self_description._cycle`
-  and `short`, `WebConfig` and its validation (two booleans). No schema change, no new background activity.
+  `decision_inputs` (the salience order and `priority_rank`; after the review also the tick's `pool` in the
+  admission result), `salience.attention`/`order` (after the review: the priority order unless every score is
+  finite), `self_description._cycle` and `short`, `WebConfig` and its validation (two booleans). No schema change,
+  no new background activity.
 - Tests: `tests/webcortex/test_integration_loop.py` (the staged end-to-end cycle on one individual, each hand-over
   and the forbidden paths), `tests/webcortex/test_integration_arbitration.py` (salience order, conflicting priorities
-  and outputs, competing objectives, quiet and a spent budget), `tests/acceptance/test_genesis_integration_bench.py`;
-  the quarantine allow-list gains the benchmark as a display; `background.RUNNERS` gains the benchmark runner.
+  and outputs, competing objectives, quiet and a spent budget; after the review: a subject outside the pool, no
+  budget left and a real conflict, for both arbitration points; the salience order's fallback and permutation
+  stability), `tests/acceptance/test_genesis_integration_bench.py` (after the review: the decoupled draw, the
+  settings before the staging, the forcing of the links only, the activity counts); the quarantine allow-list gains
+  the benchmark as a display; `background.RUNNERS` gains the benchmark runner.
+- Commits: lane L's branch hashes and their `genesis-wave2` commits: `a625b96` → `72d7a59` (worlds), `440c705` →
+  `a7981e0` (links), `5463dfc` → `f97411e` (family and script), `7218e0f` → `828ca8e` (this ADR, evidence).
 - Not verified: anything on the open web, a live model, a real worker process running the loop for days, or the
   real host's background gate during the loop.

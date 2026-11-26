@@ -1,19 +1,34 @@
 # Recursive knowledge engine assessment (deliverable F)
 
-Status: 2026-11-25, Wave 2 lane F, branch `gen2-f` from `main` at `3559069`. Directive §7 ("recursive knowledge
-evolution") and §13 F. Evidence: `docs/quality/evidence/genesis_learning_cycles.json`. Nothing here is a claim of
+Status: 2026-11-25, Wave 2 lane F, branch `gen2-f` from `main` at `3559069`; integrated on `genesis-wave2`
+(`4d8a60c`); revised by Wave 2 lane Y (branch `gen2-y`) after the benchmark-integrity review: references for the
+decay (§3), what each mechanism did (§4), the smallest gain the rule can see (§4), the loop's scope (§2, §8), the
+commits on the integrated tree (§2) and the cognitive benchmark on that tree (§6). Directive §7 ("recursive knowledge
+evolution") and §13 F. Evidence: `docs/quality/evidence/genesis_learning_cycles.json` (regenerated on `gen2-y`: both
+splits re-run, 0 of 3,600 held-out and 2,700 development recorded per-seed values differ). Nothing here is a claim of
 consciousness, awareness or general intelligence; the names describe functions.
 
 **Result.** In a simulated world of fictional software releases, run through the real extraction, clustering,
-consolidation, prediction and timer code for 14 daily cycles, the knowledge loop as it exists (refreshes of due
-"still holds" predictions and the timer's curiosity, every Wave 1 setting off) keeps the individual's knowledge more
-correct than no loop at all: held-out, the share of subjects whose newest held item states the current version is
-0.574 → 0.631 and 0.497 → 0.571 in the two worlds, better on 8 of 8 paired seeds, at about twice the pages and wall
-time. **But knowledge still decays over the cycles in every configuration** (0.88 → 0.44 and 0.85 → 0.46 from
-cycle 0 to cycle 14 with the loop; 0.38 and 0.33 without it), so this is slower decay, not persistent improvement.
-**None of lane K's six mechanisms shows a held-out gain beyond the baseline's spread: the verdict is "no evidence"
-for each** (the pre-registered rule, §4). Five change nothing on any knowledge metric; the idle re-check moves the
-primary metric −0.019 and −0.004 (spread 0.105 and 0.057; better on 2 of 8 paired seeds). In 120 held-out runs nothing
+consolidation, prediction and timer code for 14 daily cycles, the knowledge loop as it exists (the timer's pass
+only: refreshes of due "still holds" predictions and the timer's curiosity, every Wave 1 setting off; the worker's
+idle investigation was not run) keeps the individual's knowledge more correct than no loop at all: held-out, the
+share of subjects whose newest held item states the current version is 0.574 → 0.631 and 0.497 → 0.571 in the two
+worlds, better on 8 of 8 paired seeds, at about twice the pages and wall time. **Knowledge still decays over the
+cycles in every configuration** (0.88 → 0.44 and 0.85 → 0.46 from cycle 0 to cycle 14 with the loop; 0.38 and 0.33
+without it), so this is slower decay, not persistent improvement. **Part of the decay is the world's design:** the
+truth changes 1.75 and 3.3 times per cycle against a budget of 2 and 3 tasks, and 14 % and 17 % of subjects are never
+covered by the owner's research in any configuration, so no budget-bound loop can hold its cycle-0 level. For
+reference, from the same worlds: a blind round-robin of the same budget that reads each look's majority value holds
+0.79 and 0.71 on average (0.67 and 0.54 at cycle 14); an oracle that refreshes exactly the changed subjects holds 0.96
+and 0.93; a perfect snapshot never refreshed 0.67 and 0.57. The loop's gain over no loop (+0.057, +0.073) is about
+half of what the blind schedule gains over the snapshot (+0.115, +0.134). **The rest is the product's, not the
+world's:** contested refreshes that never revise, and the due order (§5). **None of lane K's six mechanisms shows a
+held-out gain beyond the baseline's spread** (the pre-registered rule, §4; with 4 seeds a gain below 0.105 and 0.057
+cannot pass it, and "no evidence" does not exclude a gain of that size). Five of them are **not exercised by this
+world**: each acted (detail rows, premise rows and marks, abandonments, 14 reflections, 14 strategy rankings per run)
+but none ever changed what was investigated or what was held, because nothing here consumes what it wrote or there
+was one research mode to rank. Only the idle re-check changed what the loop did (every cycle); it moves the primary
+metric −0.019 and −0.004 (better on 2 of 8 paired seeds; paired noise 0.026 and 0.033). In 120 held-out runs nothing
 the individual's own outputs asserted and no version only a syndicated wrong story stated became knowledge, no
 confidence rose from copies of one source, and nothing learned and still true was lost. **No default and no product
 behaviour changed** (the only product file touched is `background.py`, where one entry names the harness as a
@@ -58,15 +73,25 @@ given).
 `scripts/bench_learning_cycles.py` (harness `src/neuroscifi/acceptance/cognition/cycles.py`, worlds
 `src/neuroscifi/acceptance/cognition/cycles_splits.py`). Offline, deterministic per seed, no model call, no connection.
 
-**Order (pre-registration).** The worlds and their development and held-out seeds were committed first (`b3de5d2`);
-four outlet wordings that consolidation reads as not self-contained (a pronoun or "this ...") were replaced after one
-development run (`7df0136`), before the harness existed in the history; the harness with its verdict rule (§4) was
-committed next (`35845f8`), then the held-out split was run once. No mechanism, setting default or product file
-changed at any point. Two harness corrections followed, both disclosed: the no-loop reference had recorded the owner's
-autonomy enable, which turns autonomous research on, so it equalled the baseline (fixed in `e24f4d0`, test added);
-and the per-seed rows lacked the counts behind their shares (`8f429ec`). Both splits were re-run on `8f429ec`: 0 of
-10,363 held-out values and 0 of 9,073 development values differ from the earlier runs apart from wall time and file
-size (an SQLite file's size varies by a page or two between identical runs). Those re-runs are the numbers below.
+**Order (pre-registration).** Commits are named as on `genesis-wave2`, with lane F's branch hash in brackets. The
+worlds and their development and held-out seeds were committed first (`22f1add` [`b3de5d2`]); four outlet wordings
+that consolidation reads as not self-contained (a pronoun or "this ...") were replaced after one development run
+(`4ac4c98` [`7df0136`]), before the harness existed in the history; the harness with its verdict rule (§4) was
+committed next (`fd70c27` [`35845f8`]), then the held-out split was run once. No mechanism, setting default or
+product file changed at any point. Two harness corrections followed, both disclosed: the no-loop reference had
+recorded the owner's autonomy enable, which turns autonomous research on, so it equalled the baseline (fixed in
+`79140ac` [`e24f4d0`], test added); and the per-seed rows lacked the counts behind their shares (`840b4ca`
+[`8f429ec`]). Both splits were re-run on that commit: 0 of 10,363 held-out values and 0 of 9,073 development values
+differ from the earlier runs apart from wall time and file size (an SQLite file's size varies by a page or two
+between identical runs). After the review (lane Y, `f15bef1`), the harness gained the references (§3) and the
+activity counts (§4); both splits were re-run on that commit, which the evidence records: 0 of 3,600 held-out and
+2,700 development recorded per-seed values differ (wall time and file size excepted). This held-out re-run is
+disclosed: the harness gained counts and references; the worlds, seeds, rule and product did not change. The numbers
+below are that run's.
+
+**Seeds** (review L5): the development seeds 41 and 42 are numerically equal to two of `splits.py`'s development
+seeds; nothing leaks, because every stream here is keyed by the world's name (`cycles:{name}:{seed}`). The held-out
+seeds (141-144) are disjoint from `splits.py`, `knowledge_splits.py`, the wide seeds and lane L's seeds.
 
 **The world** (written by `generate(spec, seed)` before the individual runs; nothing the individual produces is ever
 truth). Fictional projects each have a "latest release" 1.<minor>.0 that changes with a fixed probability per cycle;
@@ -90,6 +115,8 @@ through `autonomy.admission`, inside `daily_autonomous.tasks` = the budget); eve
 pages through `claims.extract_claims`, `claims.stamp_origins`, `claims.cluster`, `claims.score`, `consolidate.run`,
 `orchestrator._predict` and the after-run hooks; predictions settle at the next timer pass. **Substituted:** search,
 fetching and answer synthesis (the world hands a task its pages), the host's resource gate (held open), the owner.
+**Not run:** the worker's idle investigation (`autonomy.idle`), which in the product shares the daily allowance with
+the timer: "the loop" in this document is the timer's pass only.
 
 **Measured per cycle against the world's truth:** accuracy (share of held items true now), coverage, correct (share
 of subjects whose newest held item states the current version; the primary metric, averaged over cycles 1..N),
@@ -122,7 +149,8 @@ metric of every seed; they differ only in their own records and cost (below).
 | accuracy of held items | 0.660 ± 0.054 | 0.727 ± 0.059 | 0.706 ± 0.035 | 0.723 ± 0.026 |
 | coverage | 0.861 | 0.861 | 0.861 | 0.861 |
 | changes caught (of 98 over the seeds) | 0 | 18 (0.191 ± 0.051) | 21 (0.218 ± 0.113) | 18 (0.188 ± 0.101) |
-| error persistence, cycles | 7.56 ± 1.07 | 5.72 ± 0.97 | 6.44 ± 0.92 | 6.12 ± 1.02 |
+| error persistence, cycles (censored at cycle 14) | 7.56 ± 1.07 | 5.72 ± 0.97 | 6.44 ± 0.92 | 6.12 ± 1.02 |
+| error episodes still open at cycle 14, of all episodes | 15.0 of 15.0 | 13.0 of 16.0 | 12.25 of 15.25 | 12.25 of 15.25 |
 | Brier (constant reference) | 0.242 (0.224) | 0.186 (0.199) | 0.204 (0.209) | 0.184 (0.203) |
 | pages / wall s / file MB at the end | 106 / 0.20 / 1.01 | 208 / 0.42 / 1.38 | 213 / 0.54 / 1.39 | 213 / 0.57 / 1.53 |
 
@@ -132,14 +160,45 @@ metric of every seed; they differ only in their own records and cost (below).
 | accuracy of held items | 0.593 ± 0.080 | 0.683 ± 0.050 | 0.677 ± 0.087 | 0.693 ± 0.081 |
 | coverage | 0.831 | 0.831 | 0.831 | 0.831 |
 | changes caught (of 185) | 0 | 56 (0.295 ± 0.145) | 49 (0.262 ± 0.100) | 55 (0.294 ± 0.088) |
-| error persistence, cycles | 7.10 ± 1.07 | 4.60 ± 0.42 | 4.85 ± 1.04 | 4.52 ± 0.75 |
+| error persistence, cycles (censored at cycle 14) | 7.10 ± 1.07 | 4.60 ± 0.42 | 4.85 ± 1.04 | 4.52 ± 0.75 |
+| error episodes still open at cycle 14, of all episodes | 19.5 of 19.5 | 14.25 of 23.0 | 15.75 of 22.5 | 15.5 of 23.0 |
 | Brier (constant reference) | 0.269 (0.240) | 0.208 (0.219) | 0.213 (0.219) | 0.208 (0.215) |
 | pages / wall s / file MB | 102 / 0.17 / 1.01 | 191 / 0.39 / 1.40 | 196 / 0.50 / 1.41 | 194 / 0.54 / 1.54 |
 
-**The loop against no loop** (paired, held-out): correct +0.057 and +0.074, accuracy +0.067 and +0.090, error
-persistence −1.8 and −2.5 cycles, Brier −0.056 and −0.061, every one on 4 of 4 seeds in both worlds; cost +102 and
-+90 pages, +0.22 s and +0.37 / +0.38 MB per run. Development agrees (+0.048, +0.086; 3 of 3 seeds each). Without the loop the
-stated confidence is worse than a constant (Brier above its reference); with it, slightly better.
+Error persistence is the mean length of an episode in which the newest held item is wrong, cut off at cycle 14.
+Without the loop every episode is still open at cycle 14, so the difference to the loop (−1.8 and −2.5 cycles) mixes
+the censoring with the effect; the count of episodes still open at the end (row below it) is the plainer measure.
+
+**The loop against no loop** (paired, held-out): correct +0.057 and +0.073, accuracy +0.067 and +0.090, error
+persistence −1.8 and −2.5 cycles (censored, above), episodes open at the end −2.0 and −5.25, Brier −0.056 and −0.061,
+correct, accuracy and Brier on 4 of 4 seeds in both worlds; cost +102 and +90 pages, +0.22 s and +0.37 / +0.38 MB per
+run. Development agrees (+0.048, +0.086; 3 of 3 seeds each). Without the loop the stated confidence is worse than a
+constant (Brier above its reference); with it, slightly better.
+
+**References from the same worlds** (review H4; `cycles.references`, computed from `cycles_splits.generate` alone
+with the run's budget, no product code; held-out, mean over the 4 seeds). Each reference holds one value per subject
+and starts from what the owner's research would give it at birth; scored like `correct`:
+
+| Held-out | ho-sparse: mean over cycles 1-14 (at cycle 14) | ho-busy: mean (at cycle 14) |
+|---|---|---|
+| the world: truth changes per cycle, against the budget | 1.75 against 2 tasks | 3.30 against 3 tasks |
+| subjects the owner's research never covers (every configuration) | 14 % (coverage 0.861) | 17 % (coverage 0.831) |
+| perfect snapshot at birth, never refreshed | 0.670 (0.44) | 0.574 (0.38) |
+| blind round-robin, same budget, each look's majority value (a tie teaches nothing) | 0.786 (0.67) | 0.708 (0.54) |
+| blind round-robin, same budget, perfect reads | 0.801 (0.71) | 0.754 (0.62) |
+| oracle: refreshes, perfectly, up to the budget of the subjects that changed | 0.957 (0.91) | 0.928 (0.80) |
+| **product, no loop** (measured) | 0.574 (0.38) | 0.497 (0.33) |
+| **product, the loop** (measured) | 0.631 (0.44) | 0.571 (0.46) |
+
+Reading (the review's): even a blind schedule with perfect reads decays, so the decay is partly the world's design.
+The loop gains +0.057 and +0.073 over no loop; the blind round-robin gains +0.115 and +0.134 over the snapshot; so
+the loop recovers about half (0.49 and 0.55) of what a blind schedule of the same budget recovers. The rest is the
+product's: contested refreshes that never revise without the owner's answer, and the due order (§5). The product's
+no-loop level is below the snapshot because 14 % and 17 % of subjects are never covered and the owner's research is
+read through the real extraction, not perfectly. The reviewer's own probe gave 0.724 for the majority-reading
+round-robin in ho-busy, taking the first value of a tie; here a tie (one honest outlet against one lagging one, the
+common case with two outlets per look) teaches nothing, which gives 0.708. Development: snapshot 0.738 and 0.611,
+majority round-robin 0.866 and 0.777, oracle 0.993 and 0.982 (dev-steady, dev-churn; evidence `references`).
 
 **Over the cycles** (correct, mean over seeds, at cycles 0 / 1 / 4 / 7 / 10 / 14):
 
@@ -148,9 +207,14 @@ stated confidence is worse than a constant (Brier above its reference); with it,
 | no loop | 0.875 / 0.868 / 0.705 / 0.550 / 0.455 / 0.375 | 0.854 / 0.732 / 0.588 / 0.510 / 0.391 / 0.331 |
 | baseline | 0.875 / 0.882 / 0.727 / 0.610 / 0.554 / 0.438 | 0.854 / 0.732 / 0.625 / 0.587 / 0.508 / 0.463 |
 | all six | 0.875 / 0.882 / 0.727 / 0.600 / 0.536 / 0.461 | 0.854 / 0.750 / 0.662 / 0.625 / 0.484 / 0.431 |
+| *reference:* snapshot, never refreshed | 1.000 / 0.987 / 0.841 / 0.640 / 0.518 / 0.438 | 1.000 / 0.857 / 0.650 / 0.577 / 0.484 / 0.381 |
+| *reference:* blind round-robin, majority | 1.000 / 0.987 / 0.864 / 0.760 / 0.679 / 0.672 | 1.000 / 0.875 / 0.750 / 0.731 / 0.656 / 0.544 |
+| *reference:* oracle, same budget | 1.000 / 1.000 / 0.977 / 0.930 / 0.929 / 0.906 | 1.000 / 1.000 / 0.938 / 0.981 / 0.898 / 0.800 |
 
-The loop does not improve knowledge cycle over cycle; it slows its decay. On 60-cycle development runs (one seed per
-world) correct falls to 0.26 and 0.12 with the loop, 0.18 and 0.09 without it.
+The loop does not improve knowledge cycle over cycle; it slows its decay, and so does every reference except the
+oracle, which also decays when more subjects change in a cycle than its budget covers. On 60-cycle development runs
+(one seed per world) correct falls to 0.26 and 0.12 with the loop, 0.18 and 0.09 without it (no reference was
+computed for those runs).
 
 **Cost of the mechanisms** (held-out, both worlds): the idle re-check adds ~0.11 s per run and turns 14 of the
 ~28–36 autonomous tasks per run from due refreshes and curiosity into re-checks; all six add ~0.16 s and 0.14 MB per
@@ -167,18 +231,31 @@ beyond the baseline's, (d) no self-generated or syndicated-wrong version admitte
 **revise** = (c) and (d) with a positive gain on at least 3 of 4 paired seeds in every world, or (a) in some world;
 else **no evidence**.
 
-| Mechanism (default) | Held-out gain in correct (baseline sd), paired seeds better / worse | (a) | (b) | (c) | (d) | Verdict |
-|---|---|---|---|---|---|---|
-| `hypothesis_fields` (on, record) | 0, 0 (identical) | no | n.a. | yes | yes | **no evidence** (display-only) |
-| `premise_recheck` (on, record) | 0, 0 (identical); in `all` its marks add +0.013, +0.014 to the re-check (better on 2, worse on 1 of 4 seeds in ho-sparse; better on 4 of 4 in ho-busy; within the sd) | no | n.a. | yes | yes | **no evidence** |
-| `idle_recheck` (off) | −0.019 (0.105), −0.004 (0.057); 1/3 and 1/3 | no | n.a. | yes | yes | **no evidence** |
-| `hypothesis_abandon` (off) | 0, 0 (identical); 4.5 and 4.25 hypotheses abandoned per run | no | n.a. | yes | yes | **no evidence** |
-| `reflection` (off) | 0, 0 (identical); 14 reflections per run | no | n.a. | yes | yes | **no evidence** |
-| `strategy_selection` ("gate", inactive) | 0, 0 (identical): one research mode here, nothing to rank | no | n.a. | yes | yes | **no evidence** (not measurable in this world) |
-| all six | −0.006 (0.105), +0.010 (0.057); 1/3 and 2/2 | — | — | yes | yes | — |
+The rule's output is "no evidence" for all six. That word is right only for a mechanism that changed what the loop
+did; a mechanism that acted but never changed what was investigated or what was held is **not exercised by this
+world** (review M1). Each run therefore counts what the mechanism did (its own records; strategy selection's
+rankings) and the cycles in which what was investigated, or what was held, differs from the baseline's run of the
+same world and seed (the world is written whole before the run, so both met the same pages). Held-out, per run, in
+ho-sparse and ho-busy:
+
+| Mechanism (default) | Held-out gain in correct (baseline sd), paired seeds better / worse | (a) | (b) | (c) | (d) | What it did; cycles in which it changed what was investigated / held | Reading |
+|---|---|---|---|---|---|---|---|
+| `hypothesis_fields` (on, record) | 0, 0 (identical) | no | n.a. | yes | yes | 18.25 and 20 detail rows; 0 / 0 | **not exercised by this world** (no consumer of the rows) |
+| `premise_recheck` (on, record) | 0, 0 (identical); in `all` its marks add +0.013, +0.014 to the re-check (better on 2, worse on 1 of 4 seeds in ho-sparse; better on 4 of 4 in ho-busy; within the sd) | no | n.a. | yes | yes | 149 and 154 premise rows, 16.25 and 13 marks; 0 / 0 alone | **not exercised alone** (nothing reads a mark without the idle re-check); with it, within the sd |
+| `idle_recheck` (off) | −0.019 (0.105), −0.004 (0.057); 1/3 and 1/3 | no | n.a. | yes | yes | 14 re-check tasks; 14 / 9.25 and 14 / 8.75 | **no evidence of a gain** (it changed what the loop did, every cycle) |
+| `hypothesis_abandon` (off) | 0, 0 (identical) | no | n.a. | yes | yes | 4.5 and 4.25 hypotheses abandoned; 0 / 0 | **not exercised by this world** (no knowledge consumer) |
+| `reflection` (off) | 0, 0 (identical) | no | n.a. | yes | yes | 14 reports; 0 / 0 | **not exercised by this world** (no consumer) |
+| `strategy_selection` ("gate", inactive) | 0, 0 (identical) | no | n.a. | yes | yes | 14 rankings, 0 of which changed the order; 0 / 0 | **cannot affect this metric by construction** (one research mode, nothing to rank) |
+| all six | −0.006 (0.105), +0.010 (0.057); 1/3 and 2/2 | — | — | yes | yes | 14 / 10 and 14 / 10.5 | — |
 
 (b) is "n.a." because `all` itself does not beat the baseline. On development the idle re-check gave +0.022 (3 of 3
 seeds) and −0.009: the development gain did not transfer to held-out.
+
+**What the rule can see** (review M3). Rule (a) needs a paired gain larger than the baseline's between-seed sd in
+every world: 0.105 (ho-sparse) and 0.057 (ho-busy). With 4 seeds a gain below that cannot pass it; "no evidence"
+does not exclude a gain of that size. The paired noise is much smaller: the sd of the idle re-check's paired
+differences is 0.026 and 0.033, of the loop's against no loop 0.014 and 0.026 (evidence `verdict_resolution`). The
+rule was committed before the held-out run (`fd70c27`) and is applied as written.
 
 What the owner could turn on, and the evidence: nothing here argues for turning anything on for knowledge quality.
 `idle_recheck` costs ~25 % more wall time per cycle and spends half the autonomous budget on re-checks for no measured
@@ -213,9 +290,10 @@ held and 23 confirmed an unchanged item.
 ## 6. Forgetting and overconfidence (brief §4)
 
 - **Nothing learned and still true is lost.** Held-out, over every configuration and seed (120 runs), every subject
-  held correctly at cycle 3 whose truth never changed after it was still held correctly at cycle 14: 22–23
-  subject-runs in ho-sparse and 14 in ho-busy per configuration (the base is small: a subject needs a right item at cycle 3 and no
-  change for 11 cycles), 0 lost, 0 regressed, 0 removed by the owner's forget of one honest outlet and the wire's site
+  held correctly at cycle 3 whose truth never changed after it was still held correctly at cycle 14: the retention
+  base is 22 subject-runs in ho-sparse (23 in two configurations) and 14 in ho-busy per configuration, over the 4
+  seeds (the base is small: a subject needs a right item at cycle 3 and no change for 11 cycles; this bounds what
+  "nothing lost" can show), 0 lost, 0 regressed, 0 removed by the owner's forget of one honest outlet and the wire's site
   (the items rested on other outlets). Re-checks, marks, reflections and abandonment changed none of them. Test:
   `tests/acceptance/test_learning_cycles_bench.py::test_nothing_learned_and_still_true_is_lost_over_the_cycles` (8
   cycles through the forget, baseline and all six on).
@@ -227,8 +305,12 @@ held and 23 confirmed an unchanged item.
   `::test_confidence_never_rises_from_own_outputs_or_from_copies_of_one_source`: ten rounds of stored model answers
   and imagined inferences, ten rounds of one outlet plus three copies on new hosts, ten rounds of the wrong wire story
   with four copies; it fails when copies are counted as independent (checked by patching the grouping).
-- **The cognitive benchmark with lane K's mechanisms on** (held-out, this tree): retention family all scenarios pass,
-  all retained; adversarial 18 of 18 scored cases pass (the 13 original, 4 added in Wave 1, 1 restored; 0 model calls).
+- **The cognitive benchmark with lane K's mechanisms on** (held-out; re-run on `gen2-y` from `genesis-wave2`):
+  retention family all scenarios pass, all retained; adversarial **27 of 28** scored cases pass (the 13 original, 4
+  added in Wave 1, 1 restored, 10 added by Wave 2 lane U; 0 model calls). The one failure,
+  `reflection_bounded_when_everything_asks` (a reflection section of 21 lines against `MAX_LINES` 20), is lane U's
+  measured gap and fails with lane K's mechanisms off as well. Lane F's first record, "18 of 18", was lane F's
+  branch, before lane U's cases were on the tree.
 - **Not covered:** the individual cannot recognise its own earlier text republished on the web; one echo page is one
   source and is never enough alone, but two independent echo pages would be read as corroboration (not built; not
   staged here).
@@ -237,7 +319,9 @@ held and 23 confirmed an unchanged item.
 
 - In the product: none fixed. The cycles exposed no defect in lane K's mechanisms against their stated contracts; the
   limits in §5 are design choices or open items.
-- In this lane's harness: the no-loop reference ran the loop (§2; fixed with a test).
+- In this lane's harness: the no-loop reference ran the loop (§2; fixed with a test). After the benchmark-integrity
+  review (lane Y): no defect in what was measured (every recorded per-seed value reproduces); added the references
+  for the decay (§3), the activity counts (§4) and the statement of the loop's scope (§2), each with a test.
 - Open, for the owner or a later wave (not changed here): a contested refresh never revises a stale item without the
   owner's answer (§5); reflections are kept without a cap (§5); the individual cannot recognise its own text
   republished on the web (§6).
@@ -247,9 +331,11 @@ held and 23 confirmed an unchanged item.
 - **Unverified:** everything outside these simulated worlds: the open web, real search and fetching, answer synthesis,
   a real answer model, real outlets' lag and syndication rates, a real owner, real hardware. The stub reflection model
   stands for a model; nothing called one.
-- **Not run:** the withheld family (it has no knowledge-loop world); held-out horizons beyond 14 cycles; an owner who
-  answers contradiction questions; strategy selection with more than one research mode in this world; two independent
-  echo pages; the browser suite (no page touched).
+- **Not run:** the worker's idle investigation (`autonomy.idle`; the loop measured here is the timer's pass only, and
+  in the product the idle investigator shares the daily allowance with it); the withheld family (it has no
+  knowledge-loop world); held-out horizons beyond 14 cycles; an owner who answers contradiction questions; strategy
+  selection with more than one research mode in this world; two independent echo pages; the browser suite (no page
+  touched); references for the 60-cycle development runs.
 - Development settings: none chosen; the reflection interval (1 day) and the strategy ledger row were set before any
   run, as stated in `cycles.py`.
 
@@ -260,5 +346,6 @@ PYTHONPATH=src python scripts/bench_learning_cycles.py run --split held_out --ou
 PYTHONPATH=src python scripts/bench_learning_cycles.py verdict held.json
 PYTHONPATH=src python scripts/bench_learning_cycles.py run --split development --out dev.json
 ```
-Deterministic per seed apart from wall time and file size; `tests/acceptance/test_learning_cycles_bench.py` (7 tests,
-~4 s) runs in the normal suite; the full run is opt-in.
+Deterministic per seed apart from wall time and file size; a full run also writes the references (`references`,
+from the world generator alone) and, per configuration, the activity counts. `tests/acceptance/test_learning_cycles_bench.py`
+(10 tests, ~5 s) runs in the normal suite; the full run is opt-in.
