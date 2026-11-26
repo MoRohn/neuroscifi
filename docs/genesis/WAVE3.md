@@ -859,7 +859,7 @@ What the look says, by the rule written before it:
   above equal this look's figures to three decimals (`idle-first` +0.013 / +0.042 / +0.052, `shipped+idle` +0.006 /
   +0.035 / +0.024), so on these worlds the ties that followed random ids did not move the result and these figures
   stand. `idle-first` is **reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four
-  seeds; a small margin in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.376
+  seeds; a small margin in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.3755
   against 0.636 / 0.541 / 0.537). `shipped+idle` is within the spread in all three. Lane A's "not established" for W2
   and the later "not shown to fail, not established" for W3 are superseded by this look; "likely stands" for W3 is
   borne out by it. [WAVE4.md](WAVE4.md), "The withheld looks"; `genesis_wave4_look_analysis.json`.
