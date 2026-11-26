@@ -515,7 +515,7 @@ rule is not shown better than the older one; the owner's question load is not re
 three withheld worlds, 4 seeds, repeatable code): `idle-first` − `baseline` +0.013 / +0.042 / +0.052 against this
 look's spread 0.064 / 0.039 / 0.035 (within; beyond by 0.003; beyond by 0.017); `shipped+idle` − `shipped` +0.006 /
 +0.035 / +0.024 (within in all three); the references' means 0.465 / 0.286 / 0.323 and all six gains equal Wave 3's to
-three decimals; blind round-robin 0.636 / 0.541 / 0.537 against `idle-first`'s 0.478 / 0.328 / 0.376. Nothing changes.
+three decimals; blind round-robin 0.636 / 0.541 / 0.537 against `idle-first`'s 0.478 / 0.328 / 0.3755. Nothing changes.
 
 | Category | Result | Evidence |
 |---|---|---|
