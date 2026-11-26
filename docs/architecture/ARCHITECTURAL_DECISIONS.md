@@ -4178,11 +4178,22 @@ traversal, untrusted executable content, prompt injection in documents, and exce
      that does not parse keeps a column as text.
 9. **Specifications** (`artifacts/spec.py`): the envelope of DESIGN §6, validated with `inference/jsonschema.py` and
    a form's registered schemas before anything is made. Bounds: 256 KiB without data arrays, 32 MiB total, depth 16,
-   4096 characters per string. A content rule refuses markup, script, URLs, paths and control or direction-override
-   characters in every string and key. The rule is deliberately broad: a refused title costs a rephrasing, while a
-   passed script costs much more. Generator and validator registries (`artifacts/make`, `artifacts/check`) are empty
-   here. `make` validates first and records the generator that really made the bytes. `check` decides `ok` from
-   technical findings only, and bytes no validator covers are not ok.
+   4096 characters per string. Form names are a lower-case word with at most one dot ("timeline", "chart.line").
+
+   No string is ever interpreted. Generators escape every string they write, and validators prove the output carries
+   no active content. A string may therefore contain text that mentions markup, a URL or a path: "p < 0.05",
+   "src/neuroscifi/cli.py" as a node label, a source's address listed as text, "<script>" in a code lesson. The
+   content rule refuses only three things, in every string and key:
+   - control characters other than tab, carriage return and newline;
+   - bidirectional override and isolate characters, which make displayed text differ from stored text;
+   - over-long strings and keys.
+
+   This was the main session's ruling after the first contract commit. The broader first rule refused ordinary
+   content.
+
+   Generator and validator registries (`artifacts/make`, `artifacts/check`) are empty here. `make` validates first
+   and records the generator that really made the bytes. `check` decides `ok` from technical findings only, and bytes
+   no validator covers are not ok.
 10. **Three pattern adapters** for the other lanes to copy:
     - Plain text → Document (encoding by BOM or validity; no guessed code page).
     - JSON → Tree, plus `as_table()` for an array of flat records.
