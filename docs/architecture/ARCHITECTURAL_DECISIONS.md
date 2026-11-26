@@ -4216,3 +4216,38 @@ and are therefore optimistic; the held-out run (the main session's) is the measu
   picture word names a picture only with "a".
 
 Monotonicity still holds by measurement: 0 returns to words in 22,220 checks on 3 x 2000 seeded shapes.
+
+## ADR-073, addendum 2: after the held-out run (final)
+
+The main session's one held-out run of `c5d3230` (138 cases): good 0.659, good-or-fine 0.920, bad 0.080 including
+ONE hard-constraint violation; development had been 0.850, so the last round overfitted (a gap of 0.19); request
+pairs 3/18 (the shape-only table 8/18): reading the words did not help. This round, strictly limited:
+
+- **Hard constraints by construction.** Every form declares a cost floor (seconds, bytes, bytes per value of the
+  content: `COST_FLOORS`, public facts about what any generator of it needs; speech is audio, a table holds every
+  value, a moving picture has frames). Estimates never fall below the floor, admission checks it, and a final gate
+  (`fits`) re-checks every answer, whatever rule chose it, against the media shown and the summed floors; when it
+  fails, the best admitted candidate that fits, else no form. A table is no longer cut down to fit (it would break
+  its floor). A surface view needs interaction (it is turned). Budgets of 0 are accepted. A random search of the
+  benchmark's own rule through the driver found the first violation of `c5d3230` after 11 views (1,140 in 5,000:
+  mostly a spoken summary over a small budget, its cost counted as text instead of audio); after the change 0 in
+  20,000 views on 4 seeds.
+- **Unknown purposes** are any word: one not in PURPOSES is noted and not used (no error).
+- **Rules kept or deleted** (development good 112 -> 107 of 133 after the deletions; bad 0):
+  general and kept: the answer size from the question's grammar; words carry only measurements of pictures and
+  sounds; tones only when hearing is a purpose; a named chart of a few values is honoured; preferences followed;
+  charts cut to fit a budget; screen-reader companions and long tables; only words add carried information to a
+  picture; the map form, decide/understand, no_sound; code is read to learn, stepped only when it runs in steps;
+  characters fall back to items; agents keep data; prepositions before a determiner name content; a picture may
+  render a solid; the cost floors and the gate. Kept, numbers chosen while reading the cases: a sentence's worth of
+  4 items and 6 values, accessibility x3, substitute weight 0.3, stepping/flow/node-link fits for code, a table's
+  fit for places 0.4.
+  deleted as suspected fitting or as word reading that cannot separate request pairs: all topic purpose cues
+  (only hearing and keeping a copy remain, which name a sense or an outcome); the richness wish ("show me");
+  the caption rule (adopted from the development sets' statistics, and against this ADR's own combination rule);
+  the "full picture" idiom rule (one case); the process exclusion from a sentence's worth (one case, no effect);
+  the document-outline rule (one case, no effect).
+- **Still words-driven, and a known risk on request pairs:** the answer-size rule reads only the words, so when the
+  shared words of a pair trigger it, both members get words and at most one can be right. It is kept because it is
+  grammar, not topic, and removing it on development turned 14 good cases into too-much or fine; the held-out pair
+  result may be partly its doing, and nothing here can show whether.

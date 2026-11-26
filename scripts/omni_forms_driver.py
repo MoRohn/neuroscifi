@@ -48,8 +48,7 @@ def choose(view):
             UNMAPPED.append(("explicit", explicit)); explicit = None
         else:
             explicit = "+".join(parts)
-    purpose = view["purpose"] if view["purpose"] in P.PURPOSES else None
-    if view["purpose"] and purpose is None: UNMAPPED.append(("purpose", view["purpose"]))
+    purpose = view["purpose"]                    # any word: the planner uses the ones it knows, ignores the rest
     try:
         req = P.Request(text=view["request"], explicit_form=explicit, purpose=purpose)
     except Exception:                            # e.g. a combination the planner's Request does not take

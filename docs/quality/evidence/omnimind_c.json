@@ -34,44 +34,44 @@
    {
     "seed": 101,
     "shapes": 2000,
-    "monotonicity_checks_after_leaving_words": 7370,
+    "monotonicity_checks_after_leaving_words": 7467,
     "returned_to_words": 0,
     "hard_constraint_or_determinism_violations": 0,
     "decided_by_share": {
      "explicit": 0.0,
-     "content": 0.1335,
-     "words": 0.0645,
-     "context": 0.802
+     "content": 0.1385,
+     "words": 0.052,
+     "context": 0.8095
     },
-    "mean_ms_per_plan": 2.88
+    "mean_ms_per_plan": 2.9
    },
    {
     "seed": 202,
     "shapes": 2000,
-    "monotonicity_checks_after_leaving_words": 7417,
+    "monotonicity_checks_after_leaving_words": 7534,
     "returned_to_words": 0,
     "hard_constraint_or_determinism_violations": 0,
     "decided_by_share": {
      "explicit": 0.0,
-     "content": 0.138,
-     "words": 0.0625,
-     "context": 0.7995
+     "content": 0.14,
+     "words": 0.0485,
+     "context": 0.8115
     },
-    "mean_ms_per_plan": 2.89
+    "mean_ms_per_plan": 2.88
    },
    {
     "seed": 303,
     "shapes": 2000,
-    "monotonicity_checks_after_leaving_words": 7433,
+    "monotonicity_checks_after_leaving_words": 7540,
     "returned_to_words": 0,
     "hard_constraint_or_determinism_violations": 0,
     "decided_by_share": {
      "explicit": 0.0,
-     "content": 0.1375,
-     "words": 0.055,
-     "context": 0.8075
+     "content": 0.1425,
+     "words": 0.044,
+     "context": 0.8135
     },
-    "mean_ms_per_plan": 2.9
+    "mean_ms_per_plan": 2.86
    }
   ],
   "note": "decided_by shares are over random contexts (random generator subsets, budgets and accessibility needs), so 'context' dominates by construction; they describe the sample, not real use. Timing on the shared aarch64 host, under load from other lanes."
@@ -145,7 +145,69 @@
     "bad": 121
    }
   },
-  "caution": "every rule change was made after reading these cases; the development numbers are therefore optimistic. The held-out run is the main session's and is the number that counts."
+  "caution": "every rule change was made after reading these cases; the development numbers are therefore optimistic. The held-out run is the main session's and is the number that counts.",
+  "held_out_c5d3230_main_session": {
+   "good_share": 0.659,
+   "good_or_fine_share": 0.92,
+   "bad_share": 0.08,
+   "too_poor": 4,
+   "too_much": 5,
+   "unfit": 1,
+   "violation": 1,
+   "pairs_both_good": "3/18",
+   "twins_both_good": "2/10",
+   "words_good": "16/34",
+   "note": "the one held-out run, taken by the main session; aggregate only"
+  },
+  "final_after_deletions": {
+   "good": 107.0,
+   "good_or_fine": 133.0,
+   "bad": 0,
+   "explicit_feasible_honoured": 10.0,
+   "explicit_infeasible_handled": 4.0,
+   "pairs_both_good": 13.0,
+   "twins_both_good": 9.0,
+   "cue:content (n=77) good": 63.0,
+   "cue:words (n=36) good": 27.0,
+   "cue:conflict (n=5) good": 3.0,
+   "cue:explicit (n=15) good": 14.0
+  },
+  "deleted_rules": [
+   "topic purpose cues (all but hear and keep)",
+   "the richness wish ('show me', 'in detail')",
+   "the caption rule",
+   "the 'full picture' idiom rule",
+   "the process exclusion from a sentence's worth",
+   "the document-outline rule",
+   "table cut-down to fit the budget (conflicts with a table's cost floor)"
+  ]
  },
- "size_note": "summary only; this file is under 8 KiB"
+ "size_note": "summary only; this file is under 8 KiB",
+ "hard_constraint_search": {
+  "command": "python scripts/omni_forms_violation_check.py 5000 SEED (benchmark violation() through the driver)",
+  "at_c5d3230": {
+   "views": 5000,
+   "violations": 1140,
+   "first_at_view": 11,
+   "classes": {
+    "spoken over a small budget (speech costed as text, not audio)": 1034,
+    "table bytes per value": 83,
+    "data_file bytes per value": 13,
+    "surface view shown without interaction": 3,
+    "animation seconds": 2,
+    "solid viewer budget": 2,
+    "picture with spoken over budget": 3
+   }
+  },
+  "final": {
+   "views": 20000,
+   "seeds": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "violations": 0
+  }
+ }
 }

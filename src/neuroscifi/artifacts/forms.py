@@ -9,8 +9,8 @@ a non-technical person can read.
 
 How a choice is made, in order:
 1. Read the request without a model (`read_request`): an explicit form named in strict phrases ("as a table", "plot
-   ...", "read it aloud"), forms refused in words ("no chart"), purposes by cue words (weak: weight 0.5 each; 1.5
-   for hearing, which names a sense), wishes for a short, a full or an exact answer, and the size of the answer from
+   ...", "read it aloud"), forms refused in words ("no chart"), two purposes that name a sense or an outcome
+   (hearing it: 1.5; keeping a copy: 1.0; no topic cues), wishes for a short or an exact answer, the size of the answer from
    the question's grammar (`answer_class`: a yes-or-no question, an extreme, a count, one time/person/place, one
    measurement, a typical value: a few values picked out of the content). Purposes the content cannot serve are
    dropped (a question "how did it change" about content with no order has no change to show).
@@ -18,8 +18,8 @@ How a choice is made, in order:
 3. Every registered form is a candidate; so is every combination of a non-text form with a second form that may
    follow one. Hard constraints remove candidates first: the device must show the form's media; accessibility needs
    (voice only, a screen reader needs the text that goes with a picture, reduced motion); feasibility (no generator
-   here, or the form cannot carry this content at all); budget (estimated seconds and bytes; a chart or a table over
-   the byte budget is cut down to fit instead, carrying less); forms refused in words or by a preference of -1; the
+   here, or the form cannot carry this content at all); budget (estimated seconds and bytes, never below the form's
+   cost floor; a chart over the byte budget is cut down to fit instead, carrying less); forms refused in words or by a preference of -1; the
    pre-production check (`foresee`) rejecting a form when the form it would switch to is here; a data file only when
    keeping a copy is a purpose, the device is an agent, or it is named; data heard as tones only when hearing is.
 4. Each remaining candidate scores in [0, 1] on CRITERIA by the rules stated beside each function below; the total is
@@ -28,16 +28,16 @@ How a choice is made, in order:
    counted in carried information (a scoring penalty that grew with the content could move the choice back to words).
 5. Rules over the totals, in order: an explicit form wins when feasible (else the substitute with the best total
    less NEAREST_WEIGHT x its difference in kind, explained); a sentence's worth (at most 4 items and 6 values; never
-   a picture, sound, solid, surface or process) stays words (except hearing a value, which words cannot do); a wish
+   a picture, sound, solid or surface) stays words (except hearing a value, which words cannot do); a wish
    for a short answer, or a question picking a few values out of the content, is words; a stated preference is
    followed; when hearing is the main purpose, the best form that is heard; words that cover less than half of a
    kind of the content are not chosen while another form is admitted; the simplest form within SIMPLE_MARGIN of the
-   best wins; a non-text form is chosen unasked only when the best beats words by MATERIAL (MATERIAL_RICH after "show
-   me"); a picture, sound or model chosen unasked comes with a sentence on what it shows (the caption). A
-   combination exists only when its second form adds what the first lacks (words: carried information on kinds the
+   best wins; a non-text form is chosen unasked only when the best beats words by MATERIAL. A combination exists only when its second form adds what the first lacks (words: carried information on kinds the
    first shows poorly; rows: precision), the first carries at least half on its own, and adds something to the
    second; a screen reader's companion is any text form.
-6. `decided_by` compares three runs: content alone, content and words, everything. The first evidence that changed
+6. A final gate (`fits`) checks the answer, whatever rule chose it, against the media shown and the summed cost
+   floors; if it fails, the best admitted candidate that fits, else no form.
+7. `decided_by` compares three runs: content alone, content and words, everything. The first evidence that changed
    the choice decided it.
 
 The planner decides FORM only. It never decides or checks truth, and what it returns is a plan for an output, not
@@ -74,7 +74,6 @@ WEIGHTS = MappingProxyType({"clarity": 0.30, "carried": 0.26, "precision": 0.10,
 
 SIMPLE_MARGIN = 0.03        # the simplest form within this of the best total wins
 MATERIAL = 0.08             # a non-text form unasked must beat words by at least this
-MATERIAL_RICH = 0.03        # ... when the person asked to be shown ("show me", "in detail")
 COMBO_CARRIED_GAIN = 0.10   # a second form must add at least this share of carried information ...
 COMBO_PRECISION_NEED = 0.5  # ... or, where precise values are needed at least this much,
 COMBO_PRECISION_GAIN = 0.3  # ... add at least this much precision
@@ -113,8 +112,8 @@ DIST_UNITS = 40             # a distribution's information saturates at about 40
 @dataclass(frozen=True)
 class Request:
     """What was asked. `explicit_form`: a form name from FORMS or a plain alias ("chart", "table", "sound", ...)
-    when the caller already knows the person named one; otherwise the words are read for one. `purpose`: one of
-    PURPOSES when the caller knows it (it counts as words, stronger than a cue)."""
+    when the caller already knows the person named one; otherwise the words are read for one. `purpose`: any word;
+    one of PURPOSES counts as words, stronger than a cue; any other word is noted and not used."""
 
     text: str = ""
     explicit_form: str | None = None
@@ -125,8 +124,10 @@ class Request:
             raise Malformed("the request's text must be a string")
         if len(self.text) > 20_000:
             object.__setattr__(self, "text", self.text[:20_000])
-        if self.purpose is not None and self.purpose not in PURPOSES:
-            raise Malformed(f"unknown purpose {self.purpose!r}")
+        if self.purpose is not None and not isinstance(self.purpose, str):
+            raise Malformed("a purpose is a word")
+        if self.purpose is not None:      # any word: one not in PURPOSES is read as no evidence, never an error
+            object.__setattr__(self, "purpose", self.purpose.strip().lower()[:40] or None)
         if self.explicit_form is not None and _explicit_set(self.explicit_form) is None:
             raise Malformed(f"unknown form {self.explicit_form!r}")
 
@@ -164,8 +165,8 @@ class Context:
                 raise Malformed("a preference is a name and a finite number")
             prefs[key] = max(-1.0, min(1.0, float(value)))
         object.__setattr__(self, "preferences", MappingProxyType(dict(sorted(prefs.items()))))
-        if not (math.isfinite(self.budget_s) and self.budget_s > 0) or self.budget_bytes <= 0:
-            raise Malformed("the budget must be positive")
+        if not (math.isfinite(self.budget_s) and self.budget_s >= 0) or self.budget_bytes < 0:
+            raise Malformed("the budget must be a finite number >= 0")     # 0: nothing that costs anything fits
         if self.width_px is not None and not 120 <= int(self.width_px) <= 10_000:
             raise Malformed("width_px must be between 120 and 10000")
         if self.generators is not None:
@@ -300,6 +301,7 @@ class Form:
     min_items: int = 0                  # fewer items than this: the form carries nothing
     second_for: tuple[str, ...] = ()    # only when one of these purposes is present (alone or second), unless
     #                                     named (a data file is also always admitted for an agent: a program reads it)
+    cost_floor: tuple = (0.0, 0, 0)     # (seconds, bytes, bytes per value): the least any generator of it needs
 
     @property
     def devices(self) -> tuple[str, ...]:
@@ -464,12 +466,6 @@ def _cover_sonify(kind, shape, display):
         return 0.0      # a recording is already a sound: it is not turned into tones
     voices = min(1.0, SOUND_VOICES / max(1, shape.n_series))
     return voices * _within(_count(kind, shape), ATTENTION_S * 4, 0.3)
-
-
-def _cover_document(kind, shape, display):
-    if kind == "hierarchy" and "prose" not in shape.kinds:
-        return 0.5 * _within(max(1, shape.n_items), 2000, 0.5)    # an outline of names, not headings over text
-    return None
 
 
 def _cover_map(kind, shape, display):
@@ -696,13 +692,26 @@ def _check_document(shape, display):
     return []
 
 
+# Cost floors (seconds, bytes, bytes per value of the content): the least any generator of the form needs, stated as
+# public facts about each form (speech is synthesised audio; a table or a file holds every value; a moving picture
+# has frames). Estimates are never below them, admission checks them, and a final gate checks every answer with them.
+COST_FLOORS = {
+    "prose": (0.0, 300, 0), "document": (0.0, 300, 0), "spoken": (0.5, 8192, 0), "table": (0.0, 200, 8),
+    "data_file": (0.0, 100, 6), "sound_view": (0.3, 6144, 0), "step_through": (0.3, 8192, 0),
+    "animation": (1.0, 30720, 0), "image_sequence": (1.0, 30720, 0), "explorable": (0.5, 20480, 0),
+    "sonification": (0.3, 16384, 0), "tone": (0.3, 16384, 0), "solid_view": (0.5, 20480, 0),
+    "surface_view": (0.5, 20480, 0),
+}
+PICTURE_FLOOR = (0.2, 3072, 0)  # any other drawn form
+
 def _form(name, label, family, encoding, media, kinds, *, capacity=None, floor=0.0, rule, generator, precision,
           interactivity, effort, complexity, cost_class, fallback, bytes_per_unit=0.0, base_bytes=0.0,
           secondary=False, text_like=False, cover=None, check=None, min_items=0, second_for=()):
     return register_form(Form(name, label, family, encoding, tuple(media), MappingProxyType(dict(kinds)),
                               MappingProxyType(dict(capacity or {})), floor, rule, generator, precision,
                               interactivity, effort, complexity, cost_class, fallback, bytes_per_unit, base_bytes,
-                              secondary, text_like, cover, check, min_items, tuple(second_for)))
+                              secondary, text_like, cover, check, min_items, tuple(second_for),
+                              COST_FLOORS.get(name, (0.0, 0, 0) if text_like else PICTURE_FLOOR)))
 
 
 _form("prose", "a sentence or two", "words", "words", ("text",),
@@ -739,8 +748,7 @@ _form("document", "a structured document", "document", "words", ("text",),
       capacity={"values": 5000, "dist": 5000, "items": 2000, "chars": 500_000, "samples": 0}, floor=0.5,
       rule="headings, paragraphs and tables: 500,000 characters, 5,000 table cells, 2,000 items",
       generator="document.html", precision=0.9, interactivity=0.0, effort=0.2, complexity=2, cost_class="low",
-      fallback=None, bytes_per_unit=1.2, base_bytes=4000, text_like=True, check=_check_document,
-      cover=_cover_document)
+      fallback=None, bytes_per_unit=1.2, base_bytes=4000, text_like=True, check=_check_document)
 _form("data_file", "a data file", "file", "file", ("file",),
       {"scalar": 1, "series": 1, "categories": 1, "distribution": 1, "relation": 1, "records": 1, "surface": 1,
        "timeline": 1, "network": 0.9, "hierarchy": 0.6, "sequence": 0.8, "map": 0.9, "process": 0.3},
@@ -853,7 +861,7 @@ _form("solid_view", "a 3D viewer", "spatial", "space", ("3d", "interactive"),
       rule="every vertex up to 2,000,000; beyond that simplified (0.5 plus the share)",
       generator="solid.view", precision=0.4, interactivity=0.6, effort=0.35, complexity=5, cost_class="medium",
       fallback="table", bytes_per_unit=50, base_bytes=60_000, check=_check_solid)
-_form("surface_view", "a surface view", "spatial", "space", ("3d",),
+_form("surface_view", "a surface view", "spatial", "space", ("3d", "interactive"),
       {"surface": 1, "solid": 0.5, "records": 0.3, "map": 0.4},
       capacity={"samples": 1_000_000, "values": 1_000_000, "items": 1_000_000}, floor=0.5,
       rule="every grid point up to 1,000,000; beyond that 0.5 plus the share",
@@ -1023,7 +1031,6 @@ _FORM_VERBS = (
 _CLAUSE_START = r"(?:^|[.;:!?,]\s*|\b(?:please|can you|could you|would you|will you|and|then|now|also|just)\s+)"
 _VERB_RE = [(re.compile(_CLAUSE_START + r"(?:" + pattern + r")\b"), forms) for pattern, forms in _FORM_VERBS]
 _ALOUD = re.compile(r"\b(?:out loud|aloud)\b")
-_INDEFINITE_BEFORE = re.compile(r"\b(?:an?|some)\s+(?:[a-z0-9-]+\s+){0,2}$")
 _NEGATION = re.compile(r"\b(?:no|not|without|don't|do not|never|skip|avoid|rather than|instead of|nothing like)\s+"
                        r"(?:[a-z0-9'-]+\s+){0,3}$")
 
@@ -1032,39 +1039,18 @@ _SIMPLE = re.compile(r"\b(?:just (?:tell|say|give)|briefly|in brief|in (?:a|one)
                      r"the gist|bottom line|in short|one-liner|in a nutshell)\b")
 _PRECISE = re.compile(r"\b(?:exact(?:ly)?|precise(?:ly)?|to the (?:cent|digit|decimal)|the (?:actual|exact) "
                       r"(?:figures|numbers|values)|decimal places)\b")
-_RICH = re.compile(r"\b(?:in detail|detailed|show me|let me (?:see|explore|play|try)|walk me through|explore|"
-                   r"everything|all (?:the|of the) (?:values|data|numbers|points|rows)|in full|full picture|"
-                   r"deep dive|visuali[sz]e|interactive)\b")
 
+# Purposes read from words: only the two that name a sense or an outcome, not a topic (hearing it; keeping a copy).
+# Topic cues ("compare", "trend", "why" ...) were deleted after the held-out run: words shared by requests whose right
+# forms differ cannot decide between them, and the content's own purposes already say what it can show.
 PURPOSE_CUES = {
-    "look_up": r"\b(?:what (?:is|was|are|were)|how (?:many|much|tall|long|big|old|far|high|deep)|who|"
-               r"when (?:did|was|is|will)|value of|look up|find|which one)\b",
-    "compare": r"\b(?:compar\w*|versus|vs\.?|differ\w*|bigger|smaller|larger|higher|lower|better|worse|rank\w*|"
-               r"more than|less than|against each other|side by side)\b",
-    "change_over_time": r"\b(?:chang\w*|trend\w*|over time|over the (?:years?|months?|weeks?|days?|decades?)|grow\w*|"
-                        r"grew|ris(?:e|en|ing)|rose|f[ae]ll(?:ing)?|declin\w*|increas\w*|decreas\w*|evolv\w*|since|"
-                        r"history|per (?:day|week|month|year)|daily|weekly|monthly|yearly|annual\w*|each year)\b",
-    "distribution": r"\b(?:distribut\w*|spread|how often|frequenc\w*|typical|outliers?|range of|variab\w*|"
-                    r"vary|skew\w*)\b",
-    "relation": r"\b(?:relat\w*|correlat\w*|depend\w*|connect\w*|links?|linked|associat\w*|influenc\w*|network|"
-                r"who knows|structure|organi[sz]ed|hierarch\w*|parts? of)\b",
-    "follow_process": r"\b(?:how (?:does|do|did|is) .{0,40}\b(?:work|happen|made|done)|steps?|process|procedure|"
-                      r"how (?:do|can|should) (?:i|we)|algorithm|stages?|in order|walk me through|step by step|"
-                      r"instructions?|recipe)\b",
-    "what_if": r"\b(?:what if|what happens (?:if|when)|suppose|imagine if|if (?:i|we) (?:change|increase|decrease|"
-               r"double|halve|raise|lower)|try (?:different|other)|scenarios?|sensitiv\w*|play with)\b",
-    "locate": r"\b(?:where|locat\w*|positions?|nearest|how far|coordinates?)\b",
     "hear": r"\b(?:hear|listen|sounds? like|audible|pitch)\b",
     "keep": r"\b(?:export|download|save|keep a copy|csv|spreadsheet|excel|reuse|import (?:it )?into|for my records)\b",
-    "learn": r"\b(?:explain\w*|teach|learn|why|intuition|what does .{0,40} mean)\b",
-    "understand": r"\b(?:understand\w*|make sense of|get my head around|grasp)\b",
-    "decide": r"\b(?:decide|decision|choose|should (?:i|we)|which (?:option|one) should|worth it|go with)\b",
-    "look_at": r"\b(?:looks? like|see (?:it|the|what)|view|shape of|appearance)\b",
 }
 _PURPOSE_RE = {purpose: re.compile(pattern) for purpose, pattern in PURPOSE_CUES.items()}
 WORD_WEIGHT = 0.5           # a cue word's weight for its purpose (weak) ...
 # ... except cues that name a sense or an outcome rather than a topic: hearing, keeping a copy, varying inputs.
-WORD_WEIGHTS = {"hear": 1.5, "keep": 1.0, "what_if": 0.75}
+WORD_WEIGHTS = {"hear": 1.5, "keep": 1.0}
 GENERIC_PURPOSE_WEIGHT = 0.5   # a scalar, records or text say little about purpose: their look-up counts half
 DECLARED_WEIGHT = 1.5       # Request.purpose (the caller knows it)
 CONTENT_WEIGHT = 1.0        # the content's own purposes (strong), shared among its kinds
@@ -1079,7 +1065,6 @@ class Reading:
     refused: tuple[str, ...]
     purposes: Mapping[str, float]
     simple: bool
-    rich: bool
     evidence: tuple[str, ...]
     precise: bool = False
     selective: str | None = None     # the question asks for a few values picked out of the content (its class)
@@ -1126,10 +1111,6 @@ def read_request(request: Request) -> Reading:
             if _DEFINITE_BEFORE.search(before) or low[span[1]:span[1] + 12].startswith(" of contents"):
                 taken.append(span)
                 continue        # names content ("in the table"), not an output
-            if forms is None and not _INDEFINITE_BEFORE.search(before):
-                taken.append(span)
-                continue        # "the full picture", "the big picture": a general word for a picture names one
-                #                 only with "a" ("draw me a picture")
             if _PREP_CUE.search(before) or _VERB_CUE.search(before):
                 taken.append(span)
                 if explicit is None:
@@ -1152,22 +1133,22 @@ def read_request(request: Request) -> Reading:
         if match:
             purposes[purpose] = WORD_WEIGHTS.get(purpose, WORD_WEIGHT)
             evidence.append(f"purpose from words: {purpose} ({match.group(0)[:30]})")
-    if request.purpose:
+    if request.purpose in PURPOSES:
         purposes[request.purpose] = DECLARED_WEIGHT
         evidence.append(f"purpose given: {request.purpose}")
-    simple, rich = bool(_SIMPLE.search(low)), bool(_RICH.search(low))
+    elif request.purpose:
+        evidence.append("a purpose was given that the planner does not know; it is not used")
+    simple = bool(_SIMPLE.search(low))
     if simple:
         evidence.append("asked for a short answer")
-    if rich:
-        evidence.append("asked to be shown in full")
     precise = bool(_PRECISE.search(low))
     if precise:
         evidence.append("asked for exact values")
     selective = answer_class(low)
     if selective:
         evidence.append(f"the question picks out {SELECTIVE_PHRASE[selective]}")
-    return Reading(explicit, explicit_cue, tuple(refused), MappingProxyType(purposes), simple and not rich,
-                   rich and not simple, tuple(evidence), precise, selective)
+    return Reading(explicit, explicit_cue, tuple(refused), MappingProxyType(purposes), simple, tuple(evidence),
+                   precise, selective)
 
 
 # The size of the answer, read from the question's grammar (not from topic words): a yes-or-no question, an extreme
@@ -1312,12 +1293,11 @@ def serves(purpose: str, shape: ContentShape | None, n_pieces: int = 1) -> bool:
 
 def _sentence_worth(shape: ContentShape | None) -> bool:
     """A scalar or a sentence's worth: at most SMALL_ITEMS items and SMALL_VALUES values, or a short text. Never a
-    picture, a sound, a solid or a surface (words cannot show them), nor a process (states that change are seen
-    changing), whatever their counts."""
+    picture, a sound, a solid or a surface (words cannot show them), whatever their counts."""
     if shape is None or not shape.kinds:
         return True
     kinds = set(_specific_kinds(shape))
-    if kinds & {"image", "sound", "solid", "surface", "process"}:
+    if kinds & {"image", "sound", "solid", "surface"}:
         return False
     if kinds <= {"prose"}:
         return shape.text_chars <= SMALL_CHARS
@@ -1394,6 +1374,10 @@ def foresee(form: str | Form, shape: ContentShape, context: Context | None = Non
         size = form.base_bytes + form.bytes_per_unit * shown
         seconds_long = 0.0
     seconds = _COST_SECONDS[form.cost_class] + size / _BYTES_PER_SECOND
+    # never below the form's cost floor: what any generator of it needs at least (speech is audio, not text)
+    floor_s, floor_b, per_value = form.cost_floor
+    seconds = max(seconds, floor_s)
+    size = max(size, floor_b + per_value * _values(shape))
     estimates = {"seconds": round(seconds, 4), "bytes": float(round(size)), "units": float(units)}
     if form.name in ("sonification", "tone"):
         estimates["duration_s"] = round(seconds_long, 2)
@@ -1501,7 +1485,9 @@ def _accessibility(forms, needs, shape=None, display=None) -> float:
 
 def _cost(seconds, size, context) -> float:
     """1 - half the share of the time budget used - half the share of the byte budget used."""
-    return max(0.0, 1.0 - 0.5 * min(1.0, seconds / context.budget_s) - 0.5 * min(1.0, size / context.budget_bytes))
+    share_s = min(1.0, seconds / context.budget_s) if context.budget_s > 0 else float(seconds > 0)
+    share_b = min(1.0, size / context.budget_bytes) if context.budget_bytes > 0 else float(size > 0)
+    return max(0.0, 1.0 - 0.5 * share_s - 0.5 * share_b)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1615,7 +1601,11 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
                 keep = DOWNSAMPLED[name]
                 carried *= keep + (1.0 - keep) * min(1.0, fit / shown)
                 budget_fit = True
-                est["bytes"] = float(min(seen.estimates["bytes"], int(form.base_bytes + fit * form.bytes_per_unit)))
+                floor_s, floor_b, per_value = form.cost_floor
+                est["bytes"] = float(max(floor_b + per_value * _values(shape_),
+                                         min(seen.estimates["bytes"], int(form.base_bytes + fit * form.bytes_per_unit))))
+                if est["bytes"] > context.budget_bytes:
+                    excluded = f"{form.label} would take more than the budget allows"
             else:
                 excluded = f"{form.label} would take more than the budget allows"
         scores = {
@@ -1768,21 +1758,10 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
     choice = min(close, key=lambda c: (_complexity(c.forms), -c.total, c.forms))
     rule = "best" if choice is best else "simplest"
     # Rule 6: a non-text form unasked only when its margin over words is material.
-    material = MATERIAL_RICH if (use_words and reading.rich) else MATERIAL
+    material = MATERIAL
     if not lost and not _is_text(choice.forms[0]) and words_total is not None and \
             best.total - words_total < material:
         choice, rule = next(c for c in by_total if _is_text(c.forms[0])), "words"
-    # Rule 7: a picture, sound or model chosen unasked comes with a sentence that says what it shows (the directive's
-    # "a diagram plus two sentences"; text supports the experience): the pair, when words are admitted and the two
-    # together fit the budget.
-    if len(choice.forms) == 1 and not _is_text(choice.forms[0]) and words_cands:
-        captioned = next((c for c in candidates if c.forms == (choice.forms[0], words_form)), None)
-        if captioned is not None and (captioned.excluded is None or
-                                      any(w in captioned.excluded for w in CAPTION_EXEMPT)):
-            if captioned.excluded is not None:
-                captioned = _replace(captioned, excluded=None)
-                candidates = [captioned if c.forms == captioned.forms else c for c in candidates]
-            return _Run(captioned.forms, ranked(), None, "caption")
     return _Run(choice.forms, ranked(), None, rule)
 
 
@@ -1809,6 +1788,45 @@ def _words_lost(words_form: str, carried_kinds: Mapping[str, dict], admitted) ->
         if fit and carried / fit < WORDS_SHARE:
             lost.append(kind)
     return tuple(lost)
+
+
+def fits(forms, shape: ContentShape | None, context: Context, display: Display | None = None,
+         generators: frozenset | None = None) -> bool:
+    """The final feasibility gate, independent of every scoring rule: each part's media shown here (after the access
+    needs), made by an available generator, no moving part under reduced motion, a text part beside any picture for
+    a screen reader, and the parts' summed cost floors (and estimates) within the budget."""
+    display = display or resolve_display(context)
+    shape_ = shape or ContentShape((), 0, 0, False, 0, False, 0.0, 0)
+    seconds = size = 0.0
+    for name in forms:
+        form = FORMS[name]
+        if not set(form.media) <= display.shows:
+            return False
+        if generators is not None and not feasible_here(form, generators):
+            return False
+        if "reduced_motion" in context.accessibility and "motion" in form.media:
+            return False
+        seen = foresee(form, shape_, Context(device=display.device, width_px=display.width_px))
+        floor_s, floor_b, per_value = form.cost_floor
+        seconds += max(floor_s, seen.estimates["seconds"] if name not in DOWNSAMPLED else floor_s)
+        size += max(floor_b + per_value * _values(shape_), seen.estimates["bytes"] if name not in DOWNSAMPLED
+                    else floor_b)
+    if "screen_reader" in context.accessibility and any(not FORMS[f].text_like and "sound" not in FORMS[f].media
+                                                         and "speech" not in FORMS[f].media for f in forms) \
+            and not any(FORMS[f].text_like and f != "data_file" for f in forms):
+        return False
+    return seconds <= context.budget_s and size <= context.budget_bytes
+
+
+def _gate(run: _Run, shape, context, display, generators) -> _Run:
+    """Apply `fits` to the answer whatever rule chose it; if it fails, the best admitted candidate that fits, else no
+    form. (A rule that overrides scoring, such as a named form, cannot then break a hard constraint.)"""
+    if not run.chosen or fits(run.chosen, shape, context, display, generators):
+        return run
+    for cand in run.candidates:
+        if cand.excluded is None and fits(cand.forms, shape, context, display, generators):
+            return _Run(cand.forms, run.candidates, False if run.explicit_ok else run.explicit_ok, "gate")
+    return _Run((), run.candidates, False if run.explicit_ok else run.explicit_ok, "gate")
 
 
 def _fallback_text(form: Form) -> str:
@@ -1857,9 +1875,9 @@ MIN_FIT_UNITS = 50          # a downsampled form must still show at least this m
 
 
 # Forms that can be made smaller to fit a byte budget, and what they still carry when cut down: a chart drawn from an
-# envelope of fewer points keeps the shape (0.6); a table cut to the rows that fit keeps a summary (0.3).
+# envelope of fewer points keeps the shape (0.6). A table is not cut: it holds every value (its cost floor).
 DOWNSAMPLED = {"line_chart": 0.6, "scatter_chart": 0.6, "heatmap": 0.6, "small_multiples": 0.6,
-               "sonification": 0.6, "table": 0.3}
+               "sonification": 0.6}
 
 
 def _units_within_budget(form: Form, context: Context) -> float | None:
@@ -1869,10 +1887,6 @@ def _units_within_budget(form: Form, context: Context) -> float | None:
     fit = (context.budget_bytes - form.base_bytes) / form.bytes_per_unit
     return fit if fit >= MIN_FIT_UNITS else None
 
-
-# Exclusions of a (picture, words) pair that the caption rule overrides: the gain rules judge words as carriers;
-# as a caption they state what the picture shows.
-CAPTION_EXEMPT = ("would add nothing", "carries too little of this content to lead")
 
 AGENT_KEEP = 0.5            # the weight an agent device adds to keeping a copy (before renormalising)
 ACCESS_FACTOR = 3.0         # the accessibility weight's multiple when the person has stated needs
@@ -1922,13 +1936,14 @@ def plan(request: Request, content: tuple[ContentShape, ...] = (), context: Cont
     mix_words, dropped = _purpose_mix(shape, len(content), reading)
     main = max(mix_words, key=lambda p: (mix_words[p], p))
     weights = _weights(adjustments, primary_kind(shape), main, context.device)
-    no_words = Reading(None, None, (), MappingProxyType({}), False, False, ())
+    no_words = Reading(None, None, (), MappingProxyType({}), False, ())
     run0 = _score_run(shape, len(content), no_words, context, relaxed_display, generators, mix_content, weights,
                       use_words=False, relaxed=True)
     run1 = _score_run(shape, len(content), reading, context, relaxed_display, generators, mix_words, weights,
                       use_words=True, relaxed=True)
     run2 = _score_run(shape, len(content), reading, context, display, generators, mix_words, weights,
                       use_words=True, relaxed=False)
+    run2 = _gate(run2, shape, context, display, generators)
     if reading.explicit:
         decided_by = "explicit"
     elif run2.chosen != run1.chosen:
@@ -1968,10 +1983,6 @@ def label_of(forms) -> str:
     if len(forms) == 1:
         return FORMS[forms[0]].label
     first, second = FORMS[forms[0]].label, FORMS[forms[1]]
-    if second.name == "prose":
-        return f"{first} with a sentence on what it shows"
-    if second.name == "spoken":
-        return f"{first} with a spoken sentence on what it shows"
     return f"{first} with {second.label}"
 
 
@@ -2045,8 +2056,6 @@ def _reason(run2: _Run, run1: _Run, run0: _Run, decided_by, reading: Reading, sh
             return f"{label}, because you said you did not want {label_of(run0.chosen[:1])}; {content_phrase(shape)}."
         if reading.precise and len(run2.chosen) == 2:
             return f"{label}, because {content_phrase(shape)} and you asked for the exact values as well."
-        if reading.rich:
-            return f"{label}, because {content_phrase(shape)} and you asked to be shown in full."
         return f"{label}, because {content_phrase(shape)} and you asked about {PURPOSE_PHRASE[main]}."
     # decided by the content
     phrase = content_phrase(shape)
