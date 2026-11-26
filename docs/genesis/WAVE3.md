@@ -853,6 +853,16 @@ What the look says, by the rule written before it:
   exactly in 10 of 10 repeats. Since Wave 4 lane A both choices use a stable order (creation order) and repeated runs
   are identical. The seed 2704 move of §3.8 is not explained by this (that run did not vary in 10 repeats); it stays
   untraced.
+  *Correction, 2026-11-26 (Wave 4 record lane, after Wave 4's withheld look; the correction above is kept as it was).*
+  Wave 4 took one more look at these worlds (ledger line 10, on `e812a8e`) with `baseline`, `idle-first`, `shipped`
+  and `shipped+idle` on the fixed, repeatable code. The references' means (0.465 / 0.286 / 0.323) and all six gains
+  above equal this look's figures to three decimals (`idle-first` +0.013 / +0.042 / +0.052, `shipped+idle` +0.006 /
+  +0.035 / +0.024), so on these worlds the ties that followed random ids did not move the result and these figures
+  stand. `idle-first` is **reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four
+  seeds; a small margin in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.376
+  against 0.636 / 0.541 / 0.537). `shipped+idle` is within the spread in all three. Lane A's "not established" for W2
+  and the later "not shown to fail, not established" for W3 are superseded by this look; "likely stands" for W3 is
+  borne out by it. [WAVE4.md](WAVE4.md), "The withheld looks"; `genesis_wave4_look_analysis.json`.
 - **Every configuration stays far below a blind round-robin with the same allowance** (0.636 / 0.541 / 0.537): the
   best here reaches 0.482, 0.328 and 0.375.
 
