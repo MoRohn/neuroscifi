@@ -4332,7 +4332,12 @@ measurement below supports. The copy trigger and the own-answer flag are still c
 `nsf web config --set caution_detail=true` (display only, off): measured, the copy trigger sat on truly independent
 pages in 79 of 264 cases on held-out worlds (22 of 102 on development) and the own-answer flag had no echo page among
 the supporting pages in 7 of 22 (3 of 16), and a caution that is wrong about three times in ten teaches the owner to
-ignore cautions (review4 M4). Where it is shown: the answer's support line and the verdict (console, `nsf web show`, Pocket), the knowledge
+ignore cautions (review4 M4). **A restore does not carry `caution_detail`** (review4 security, second pass 2c; the
+rule is not changed here): by the older rule for web settings (`checkpoints._replay`), a restored copy keeps the
+archive's web settings except `tick_admission`, the one web setting carried as the owner's current choice, so a copy
+restored from an archive taken before the owner changed `caution_detail` shows the cautions as the archive had them
+until it is set again; it is display only, so this changes what is shown, never what is decided. Where it is shown:
+the answer's support line and the verdict (console, `nsf web show`, Pocket), the knowledge
 view (console, `nsf web knowledge`) and the contradiction question about a knowledge item (console's questions); the
 voice reply says it once, briefly. Pocket (family scope) and the voice of a Pocket device never compute or show the
 own-answer flag: it would tell a family member about the owner's own answers. The MCP tools (agent scope) are

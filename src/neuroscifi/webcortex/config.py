@@ -277,12 +277,15 @@ class WebConfig:
     # holds a page naming two origins, so neither direction is measured. Applies to claims read while it is set.
     origin_grouping: str = "transitive"
     # ADR-067 (Wave 4 lane E), the individual's own text by what it emitted. own_text_provenance: when a model-written
-    # answer is stored (shown in the console, on Pocket, spoken, returned over MCP), the subject names and normalised
-    # values it states are recorded as salted fingerprints with the time and whether a source the individual had read
-    # stated that value then (webcortex/emitted.py; never the text); a page read later, published after that answer,
-    # stating for that subject a value the individual emitted with no source is not evidence for it (a disagreement it
-    # raises is still asked). OFF by default: with it off nothing is recorded and consolidation is as before; turning
-    # it on is the owner's decision (ADR-067 has the measurements, both directions).
+    # answer of the OWNER's task is stored (console, command line, the owner's voice, the owner's refresh; since the
+    # Wave 4 fix lane a family device's, an agent's or an autonomous task's answer records nothing), the subject names
+    # and normalised values its asserting parts state (no question, negated, hedged or conditional part) are recorded as
+    # salted fingerprints with the time and whether a source the individual had read stated that value then
+    # (webcortex/emitted.py; never the text); a page read later, published after that answer and within 30 days of
+    # it, stating for that subject a value the individual emitted with no source is not evidence for or against it (a
+    # disagreement it raises is still asked). OFF by default: with it off nothing is recorded or read and consolidation
+    # is as before; turning it on is the owner's decision (ADR-067 has the measurements, both directions, and its
+    # limits; `nsf web config` repeats them when it is set on).
     own_text_provenance: bool = False
     # ADR-066 (Wave 4 lane S): what counts as one source by evidence of derivation, not by the wording of a credit. On,
     # a page that names another page read in the same task (capitalised words equal to that page's site label,
@@ -293,7 +296,7 @@ class WebConfig:
     # rule trades true facts not verified for copies not counted twice (ADR-066 has both, per shape). NOT SUPPORTED: do
     # not turn it on (review4 H1, M2, M3): its signal is a convention of the benchmark worlds, and one page that every
     # honest outlet links or names can still merge them. Applies to claims read while it is set; off, its stored marks
-    # are not read.
+    # are not read. `nsf web config` says so when it is set on (and still obeys the owner).
     source_derivation: bool = False
     # ADR-064 (Wave 4 lane A): how the day's autonomous task count (daily_autonomous.tasks) is divided between
     # REFRESHING what is held (the timer's re-check, due refreshes and curiosity, and idle investigations of a
@@ -309,7 +312,8 @@ class WebConfig:
     # ADR-065 (Wave 4 fix, review4 M4): the caution shown to the owner says "only one source" (a single page) by default, the
     # one trigger its measurement supports. On, it also says when pages were counted together as copies and when a page
     # repeats an earlier answer of the individual's own (computed either way; wrong about 3 times in 10 on held-out
-    # worlds). Display only: nothing reads it to decide anything.
+    # worlds). Display only: nothing reads it to decide anything. Not carried by a restore: as every web setting but
+    # tick_admission, a restored copy keeps the archive's value (checkpoints._replay; review4 security second pass 2c).
     caution_detail: bool = False
 
     @classmethod
