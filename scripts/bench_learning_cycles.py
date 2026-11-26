@@ -12,6 +12,11 @@ Wave 3 lane R (ADR-060), the re-check orders on lane R's worlds (cycles_rate_spl
   python scripts/bench_learning_cycles.py run --split rate:held_out --orders --out rate_held.json
   python scripts/bench_learning_cycles.py verdict --orders rate_held.json
 
+Wave 3 lane V (ADR-062), the worker's idle investigation in the same daily allowance as the timer:
+  python scripts/bench_learning_cycles.py run --split rate:held_out --idle --out idle_rate_held.json
+  python scripts/bench_learning_cycles.py verdict --idle idle_rate_held.json
+  python scripts/bench_learning_cycles.py idle --out idle.json        # every public split, references and verdicts
+
 Offline and deterministic per seed (apart from wall seconds); no model is called and no connection is made. The worlds
 are frozen in src/neuroscifi/acceptance/cognition/cycles_splits.py (committed before this harness); what is measured,
 and the verdict rule, are in src/neuroscifi/acceptance/cognition/cycles.py. The cognitive benchmark's withheld family
@@ -64,6 +69,8 @@ def main(argv=None) -> int:
                    help="rate:<split>: Wave 3 lane R's worlds (cycles_rate_splits.py)")
     r.add_argument("--orders", action="store_true",
                    help="lane R's configurations (cycles.order_configurations) instead of lane K's")
+    r.add_argument("--idle", action="store_true",
+                   help="lane V's configurations (cycles.idle_configurations): the worker's idle investigation")
     r.add_argument("--config", action="append", help="repeatable; default every configuration")
     r.add_argument("--cycles", type=int, help="shorten every world to this many cycles")
     r.add_argument("--out")
@@ -71,19 +78,26 @@ def main(argv=None) -> int:
     v.add_argument("result")
     v.add_argument("--out")
     v.add_argument("--orders", action="store_true", help="lane R's rule (cycles.order_verdicts)")
+    v.add_argument("--idle", action="store_true", help="lane V's rule (cycles.idle_verdicts)")
     f = sub.add_parser("final")
     f.add_argument("--note", required=True)
     f.add_argument("--out", required=True, help="a path OUTSIDE this checkout; copy it in afterwards")
     f.add_argument("--config", action="append", help=f"repeatable; default {', '.join(cycles.FINAL_CONFIGS)}")
     f.add_argument("--mechanism", default="baseline", help="the name the ledger line records")
+    i = sub.add_parser("idle", help="lane V's measurement in one command: every public split with "
+                                    "cycles.idle_configurations(), its references and cycles.idle_verdicts")
+    i.add_argument("--out", required=True)
+    i.add_argument("--split", action="append", choices=cycles.SPLITS, help="repeatable; default every public split")
     a = ap.parse_args(argv)
+    if a.command == "idle":
+        return idle(a)
     if a.command == "verdict":
-        rule = cycles.order_verdicts if a.orders else cycles.verdicts
+        rule = cycles.order_verdicts if a.orders else cycles.idle_verdicts if a.idle else cycles.verdicts
         _write(rule(json.loads(Path(a.result).read_text(encoding="utf-8"))), a.out)
         return 0
     known = cycles.configurations() | cycles.EXTRA
-    configs = ((cycles.order_configurations() if a.orders else cycles.configurations()) if a.command == "run" else
-               {k: known[k] for k in cycles.FINAL_CONFIGS})
+    configs = ((cycles.order_configurations() if a.orders else cycles.idle_configurations() if a.idle else
+                cycles.configurations()) if a.command == "run" else {k: known[k] for k in cycles.FINAL_CONFIGS})
     if a.config:
         unknown = sorted(set(a.config) - set(known))
         if unknown:
@@ -99,6 +113,27 @@ def main(argv=None) -> int:
     out |= cycles.run_split(a.split, configs=configs, cycles=a.cycles)
     if a.cycles is None:        # lane Y (H4): the references, from the world generator alone (no product code)
         out["references"] = cycles.run_references(a.split)
+    out["wall_seconds"] = time.perf_counter() - started
+    _write(out, a.out)
+    return 0
+
+
+def idle(a) -> int:
+    """Wave 3 lane V (ADR-062): the idle investigation on every public split (development first), each with its
+    references and the verdict rule; the safety counts of every run summed per split."""
+    started = time.perf_counter()
+    out = {"label": "Wave 3 lane V: the worker's idle investigation in the learning cycles, inside the timer's daily "
+                    "allowance; simulated worlds through the real modules; offline; no model",
+           "commit": _commit(), "environment": {"python": platform.python_version(), "machine": platform.machine()},
+           "runs": {}, "verdicts": {}, "safety_all_runs": {}}
+    for split in a.split or ("development", cycles.RATE + "development", "held_out", cycles.RATE + "held_out"):
+        run = cycles.run_split(split, configs=cycles.idle_configurations())
+        run["references"] = cycles.run_references(split)
+        out["runs"][split] = run
+        out["verdicts"][split] = cycles.idle_verdicts(run)
+        rows = [r for c in run["configurations"].values() for w in c["worlds"].values() for r in w["per_seed"]]
+        out["safety_all_runs"][split] = {"runs": len(rows)} | {k: sum(r[k] or 0 for r in rows)
+                                                               for k in cycles.SAFETY + cycles.LOSSES}
     out["wall_seconds"] = time.perf_counter() - started
     _write(out, a.out)
     return 0

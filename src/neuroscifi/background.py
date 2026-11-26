@@ -156,6 +156,10 @@ RUNNERS = {
                                                                "trace while the real gate decides; nothing is run",
     "neuroscifi.acceptance.cognition.adversarial:rule_runs_only_inside_admitted_consolidation":
         "benchmark (Wave 3 lane S): two timer passes (quiet on, then off) on a staged temporary individual",
+    "neuroscifi.acceptance.cognition.cycles:Run.idle_investigations": "benchmark (Wave 3 lane V, ADR-062): the "
+                                                                      "worker's idle investigation on a staged "
+                                                                      "temporary individual, inside the day's "
+                                                                      "allowance",
 }
 
 # Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored
