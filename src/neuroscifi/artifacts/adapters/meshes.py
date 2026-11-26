@@ -52,8 +52,10 @@ def merge_exact(tri_vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """(3m, 3) corner coordinates -> unique vertices and (m, 3) faces, merging exactly equal coordinates."""
     if not len(tri_vertices):
         return np.zeros((0, 3)), np.zeros((0, 3), np.int64)
-    uniq, inverse = np.unique(tri_vertices, axis=0, return_inverse=True)
-    return uniq, inverse.reshape(-1, 3).astype(np.int64)
+    rows = np.ascontiguousarray(tri_vertices)
+    keys = rows.view(np.dtype((np.void, rows.dtype.itemsize * 3))).ravel()     # one fixed-size key per corner
+    _, first, inverse = np.unique(keys, return_index=True, return_inverse=True)
+    return rows[first].astype(np.float64), inverse.reshape(-1, 3).astype(np.int64)
 
 
 # ---------------------------------------------------------------------------------------------------------------- OBJ
@@ -71,7 +73,7 @@ def decode_obj(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     for lineno, raw in enumerate(data.splitlines()):
         if lineno % 20000 == 0:
             deadline.check("reading OBJ lines")
-        line = raw.split(b"#", 1)[0].strip()
+        line = (raw.split(b"#", 1)[0] if b"#" in raw else raw).strip()
         if not line:
             continue
         parts = line.split()
@@ -89,11 +91,12 @@ def decode_obj(data: bytes, detected: Detected, limits: Limits) -> Decoded:
             if len(parts) < 4:
                 raise Malformed(f"OBJ line {lineno + 1}: a face needs at least three vertices")
             poly = []
-            for ref in parts[1:]:
-                try:
-                    i = int(ref.split(b"/", 1)[0])
-                except ValueError:
-                    raise Malformed(f"OBJ line {lineno + 1}: a face index is not an integer") from None
+            try:
+                refs = [int(x) for x in parts[1:]] if b"/" not in line else \
+                    [int(x.split(b"/", 1)[0]) for x in parts[1:]]
+            except ValueError:
+                raise Malformed(f"OBJ line {lineno + 1}: a face index is not an integer") from None
+            for i in refs:
                 if i == 0:
                     raise Malformed(f"OBJ line {lineno + 1}: face index 0 does not exist (indices start at 1)")
                 i = i - 1 if i > 0 else len(verts) + i
@@ -153,7 +156,7 @@ def _stl_binary(data, n, detected, limits, trailing=0):
     count(n, limits, "STL triangles")
     need(n * 50 + n * 9 * 8 * 2, limits, "the STL triangles")
     rec = np.frombuffer(data, STL_DTYPE, count=n, offset=84)
-    corners = rec["v"].reshape(-1, 3).astype(np.float64)
+    corners = np.ascontiguousarray(rec["v"].reshape(-1, 3)) + np.float32(0.0)     # -0.0 becomes 0.0
     if not np.isfinite(corners).all():
         raise Malformed("an STL vertex coordinate is not a finite number")
     v, f = merge_exact(corners)
@@ -180,7 +183,7 @@ def _stl_ascii(data, detected, limits):
         raise Malformed("an ASCII STL 'vertex' line does not hold three numbers")
     if len(found) % 3:
         raise Malformed("ASCII STL vertices are not a multiple of three")
-    corners = np.array(found, dtype=np.float64).reshape(-1, 3) if found else np.zeros((0, 3))
+    corners = (np.array(found, dtype=np.float64).reshape(-1, 3) if found else np.zeros((0, 3))) + 0.0
     names = [m.decode("utf-8", "replace").strip() for m in re.findall(rb"^\s*solid[ \t]*([^\r\n]*)", data, re.M)]
     v, f = merge_exact(corners)
     return _mesh(v, f, names, ["ASCII STL", "vertices with exactly equal coordinates were merged"], detected, limits)
@@ -235,6 +238,9 @@ def _ply_binary(data, at, elements, endian, limits, deadline):
     out = {}
     for el in elements:
         props = el["props"]
+        if not props:
+            out[el["name"]] = {}
+            continue
         if all(p[2] is None for p in props):
             dt = np.dtype([(f"p{i}", endian + p[1]) for i, p in enumerate(props)])
             need(el["n"] * dt.itemsize * 2, limits, f"the PLY {el['name']} elements")

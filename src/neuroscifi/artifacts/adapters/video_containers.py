@@ -195,14 +195,17 @@ def read_iso(data: bytes, limits: Limits) -> dict:
     if ftyp:
         facts["major_brand"] = data[ftyp[2]:ftyp[2] + 4].decode("latin-1")
         facts["compatible_brands"] = [data[i:i + 4].decode("latin-1") for i in range(ftyp[2] + 8, ftyp[3], 4)][:16]
-    mvhd = _first(boxes, [b"moov", b"mvhd"])
-    if mvhd:
-        scale, dur = _mvhd(data, mvhd)
-        if scale:
-            facts["duration_s"] = dur / scale
     traks = _find(boxes, [b"moov", b"trak"])
     members(len(traks), limits, "tracks")
-    tracks = [_track(data, t, notes) for t in traks]
+    try:
+        mvhd = _first(boxes, [b"moov", b"mvhd"])
+        if mvhd:
+            scale, dur = _mvhd(data, mvhd)
+            if scale:
+                facts["duration_s"] = dur / scale
+        tracks = [_track(data, t, notes) for t in traks]
+    except (struct.error, IndexError):
+        raise Malformed("a movie or track header box is cut short") from None
     if _first(boxes, [b"moof"]):
         notes.append("fragmented file (moof boxes): sample counts cover the initial movie box only")
     if not _first(boxes, [b"moov"]):

@@ -71,6 +71,8 @@ def _track_events(body: bytes, limits, deadline, counter):
             status = None
             continue
         if b & 0x80:
+            if b >= 0xF0:
+                raise Malformed("a MIDI track holds a system message that a file may not contain")
             status = b
             first = r.u8()
         else:

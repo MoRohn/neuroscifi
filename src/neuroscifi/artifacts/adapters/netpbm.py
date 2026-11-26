@@ -182,44 +182,50 @@ def decode_qoi(data: bytes, detected: Detected, limits: Limits) -> Decoded:
         raise Malformed("the QOI header names invalid channels, colour space or size")
     n = w * h
     need(n * 4 * 3, limits, "the QOI image")
-    out = bytearray(n * 4)
+    out = bytearray()
     index = [(0, 0, 0, 0)] * 64
     r, g, b, a = 0, 0, 0, 255
+    px = (0, 0, 0, 255)
     p, i, end = 14, 0, len(data) - 8
-    run = 0
     while i < n:
-        if run:
-            run -= 1
-        else:
-            if p >= end:
-                raise Malformed("the QOI stream ends before the last pixel")
-            b1 = data[p]
+        if p >= end:
+            raise Malformed("the QOI stream ends before the last pixel")
+        b1 = data[p]
+        p += 1
+        tag = b1 >> 6
+        if b1 == 0xFE:
+            if p + 3 > end:
+                raise Malformed("the QOI stream ends inside a pixel")
+            r, g, b = data[p], data[p + 1], data[p + 2]
+            p += 3
+        elif b1 == 0xFF:
+            if p + 4 > end:
+                raise Malformed("the QOI stream ends inside a pixel")
+            r, g, b, a = data[p], data[p + 1], data[p + 2], data[p + 3]
+            p += 4
+        elif tag == 0:
+            r, g, b, a = index[b1]
+        elif tag == 1:
+            r = (r + ((b1 >> 4) & 3) - 2) & 0xFF
+            g = (g + ((b1 >> 2) & 3) - 2) & 0xFF
+            b = (b + (b1 & 3) - 2) & 0xFF
+        elif tag == 2:
+            b2 = data[p]
             p += 1
-            if b1 == 0xFE:
-                r, g, b = data[p], data[p + 1], data[p + 2]
-                p += 3
-            elif b1 == 0xFF:
-                r, g, b, a = data[p], data[p + 1], data[p + 2], data[p + 3]
-                p += 4
-            elif b1 >> 6 == 0:
-                r, g, b, a = index[b1]
-            elif b1 >> 6 == 1:
-                r = (r + ((b1 >> 4) & 3) - 2) & 0xFF
-                g = (g + ((b1 >> 2) & 3) - 2) & 0xFF
-                b = (b + (b1 & 3) - 2) & 0xFF
-            elif b1 >> 6 == 2:
-                b2 = data[p]
-                p += 1
-                dg = (b1 & 0x3F) - 32
-                r = (r + dg - 8 + ((b2 >> 4) & 0xF)) & 0xFF
-                g = (g + dg) & 0xFF
-                b = (b + dg - 8 + (b2 & 0xF)) & 0xFF
-            else:
-                run = b1 & 0x3F
-            index[(r * 3 + g * 5 + b * 7 + a * 11) % 64] = (r, g, b, a)
-        out[i * 4:i * 4 + 4] = bytes((r, g, b, a))
+            dg = (b1 & 0x3F) - 32
+            r = (r + dg - 8 + ((b2 >> 4) & 0xF)) & 0xFF
+            g = (g + dg) & 0xFF
+            b = (b + dg - 8 + (b2 & 0xF)) & 0xFF
+        else:
+            run = min((b1 & 0x3F) + 1, n - i)
+            out += bytes(px) * run
+            i += run
+            continue
+        px = (r, g, b, a)
+        index[(r * 3 + g * 5 + b * 7 + a * 11) % 64] = px
+        out += bytes(px)
         i += 1
-        if i % 65536 == 0:
+        if i & 0xFFFF == 0:
             deadline.check("decoding QOI")
     if data[end:] != b"\x00" * 7 + b"\x01" or p != end:
         raise Malformed("the QOI end marker is missing or misplaced")

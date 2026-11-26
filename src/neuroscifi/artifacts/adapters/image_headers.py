@@ -613,7 +613,10 @@ class HEIFAdapter(Adapter):
     families = ("image",)
 
     def decode(self, data, detected, limits):
-        facts = read_heif(data, limits, detected.format)
+        try:
+            facts = read_heif(data, limits, detected.format)
+        except (struct.error, IndexError):
+            raise Malformed(f"a {detected.format.upper()} property box is cut short") from None
         _header_only(detected.format, facts,
                      ("an AV1 image decoder",) if detected.format == "avif" else ("an HEVC image decoder",), data)
 

@@ -71,30 +71,34 @@ def to_float(raw: bytes, *, encoding: str, bits: int, channels: int, endian: str
         table = ULAW if encoding == "mulaw" else ALAW
         out = table[np.frombuffer(raw, np.uint8)]
     elif encoding == "pcm_u8":
-        out = (np.frombuffer(raw, np.uint8).astype(np.float32) - 128.0) / 128.0
+        out = np.frombuffer(raw, np.uint8).astype(np.float32)
+        out -= 128.0
+        out *= 1.0 / 128.0
     elif encoding == "float":
-        vals = np.frombuffer(raw, np.dtype(f"{endian}f{width}")).astype(np.float64)
+        vals = np.frombuffer(raw, np.dtype(f"{endian}f{width}"))
         bad = ~np.isfinite(vals)
-        if bad.any():
-            notes.append(f"{int(bad.sum())} non-finite float sample(s) were set to 0")
-            vals = np.where(bad, 0.0, vals)
-        over = np.abs(vals) > 1.0
-        if over.any():
-            notes.append(f"{int(over.sum())} float sample(s) outside [-1, 1] were clipped")
-            vals = np.clip(vals, -1.0, 1.0)
-        out = vals.astype(np.float32)
+        n_bad = int(bad.sum())
+        out = np.empty(len(vals), np.float32)
+        np.clip(vals, -1.0, 1.0, out=out, casting="same_kind")
+        if n_bad:
+            notes.append(f"{n_bad} non-finite float sample(s) were set to 0")
+            out[bad] = 0.0
+        n_over = int((np.abs(vals[~bad]) > 1.0).sum()) if n_bad else int((np.abs(vals) > 1.0).sum())
+        if n_over:
+            notes.append(f"{n_over} float sample(s) outside [-1, 1] were clipped")
     elif width == 3:
-        b = np.frombuffer(raw, np.uint8).reshape(-1, 3).astype(np.int32)
-        if endian == "<":
-            v = b[:, 0] | (b[:, 1] << 8) | (b[:, 2] << 16)
-        else:
-            v = b[:, 2] | (b[:, 1] << 8) | (b[:, 0] << 16)
+        b = np.frombuffer(raw, np.uint8).reshape(-1, 3)
+        v = np.zeros(len(b), np.int32)
+        order = (0, 1, 2) if endian == "<" else (2, 1, 0)
+        for shift, col in zip((0, 8, 16), order):
+            v |= b[:, col].astype(np.int32) << shift
         v = np.where(v & 0x800000, v - (1 << 24), v)
-        out = (v / float(1 << 23)).astype(np.float32)
+        out = v.astype(np.float32)
+        out *= 1.0 / float(1 << 23)
     else:
-        v = np.frombuffer(raw, np.dtype(f"{endian}i{width}")).astype(np.float64)
-        out = (v / float(1 << (8 * width - 1))).astype(np.float32)
-    out = np.clip(out, -1.0, 1.0)      # -32768/32768 is exactly -1; nothing exceeds 1 except float handled above
+        out = np.frombuffer(raw, np.dtype(f"{endian}i{width}")).astype(np.float32)
+        out *= 1.0 / float(1 << (8 * width - 1))
+    np.clip(out, -1.0, 1.0, out=out)   # -32768/32768 is exactly -1; nothing exceeds 1 except float handled above
     return out.reshape(n, channels)
 
 
@@ -226,7 +230,10 @@ def extended80(b: bytes) -> float:
         return 0.0
     if exp == 0x7FFF:
         return math.inf
-    return sign * mant * 2.0 ** (exp - 16383 - 63)
+    try:
+        return sign * math.ldexp(float(mant), exp - 16383 - 63)
+    except OverflowError:
+        return math.inf
 
 
 AIFC_CODES = {b"NONE": ("pcm", ">"), b"twos": ("pcm", ">"), b"sowt": ("pcm", "<"), b"fl32": ("float", ">"),
