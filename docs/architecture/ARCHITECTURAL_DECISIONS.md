@@ -4158,8 +4158,9 @@ all claims of an input, each value's side, reversed) and `cluster`/`score` (the 
 the source-independence worlds (development and held-out, never the withheld), lanes F, S (and every variant) and R,
 development and held-out; the reviewers' literal scenarios (`tests/webcortex/test_origin_grouping.py`, every order up
 to 120); and the offline research benchmark at the defaults and all off, with every call of `stamp_origins`,
-`independence_groups` and `evaluate` answered by both. The result (inputs compared, 0 different, the offline digests)
-is in the evidence file and the lane report.
+`independence_groups` and `evaluate` answered by both. On the final code (`a517b4d`): **2,052,099 comparisons, 0
+different** (13,888 of them the reviewers' scenarios); the offline research digest `68731d7235cb…` (portable
+`d87dbb4fb77f…`) at the defaults and with every setting off, unchanged.
 
 ## Measured (held-out, 3 worlds × 4 seeds, 12 cycles, 864 looks; development in brackets, 2 worlds × 3 seeds)
 
