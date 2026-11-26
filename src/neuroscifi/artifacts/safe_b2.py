@@ -30,6 +30,7 @@ from xml.etree import ElementTree
 from .types import Limits, Malformed, Opaque, Refused, Unsupported
 
 XML_MAX_DEPTH = 256
+XML_OBJECT_FACTOR = 11      # measured 9.1-9.9: ElementTree bytes per byte of element-dense XML (SVG, GPX)
 
 
 class Deadline:
@@ -171,11 +172,13 @@ class _XMLRefused(Exception):
 
 def parse_xml(data: bytes, limits: Limits, what: str = "the XML document") -> ElementTree.Element:
     """ElementTree root of an untrusted XML document. Refused: DOCTYPE, entity declarations, external entities,
-    more than `limits.max_elements` elements, nesting deeper than XML_MAX_DEPTH. Malformed: syntax errors.
+    more than `limits.max_elements` elements, nesting deeper than XML_MAX_DEPTH, a document whose parsed tree
+    would need more than `max_decoded_bytes` (XML_OBJECT_FACTOR x its size). Malformed: syntax errors.
     Namespaced tags are '{uri}local'."""
     data = bytes(data)
     if not data.strip():
         raise Malformed(f"{what} is empty")
+    need(len(data) * XML_OBJECT_FACTOR, limits, f"{what} parsed into elements")
     builder = ElementTree.TreeBuilder()
     parser = expat.ParserCreate(namespace_separator="}")
     state = {"n": 0, "depth": 0}
@@ -320,5 +323,5 @@ def screen_words(text: str) -> tuple[str, ...]:
     return ()
 
 
-__all__ = ["Deadline", "HeaderOnly", "Reader", "XML_MAX_DEPTH", "ZipMember", "count", "inflate", "local", "members",
+__all__ = ["Deadline", "HeaderOnly", "Reader", "XML_MAX_DEPTH", "XML_OBJECT_FACTOR", "ZipMember", "count", "inflate", "local", "members",
            "need", "parse_xml", "screen_words", "zip_directory", "zip_read"]

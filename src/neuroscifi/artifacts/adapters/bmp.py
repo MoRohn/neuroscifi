@@ -46,12 +46,14 @@ def _rle(data: bytes, w: int, h: int, four: bool, deadline: Deadline) -> tuple[n
             deadline.check("decoding BMP RLE")
         n, c = r.u8(), r.u8()
         if n:
-            vals = [(c >> 4, c & 0xF)[i % 2] for i in range(n)] if four else [c] * n
-            for v in vals:
-                if x < w and y < h:
-                    idx[y, x] = v
-                    written[y, x] = True
-                x += 1
+            if y < h and x < w:
+                k = min(n, w - x)
+                if four:
+                    idx[y, x:x + k] = np.where(np.arange(k) % 2 == 0, c >> 4, c & 0xF)
+                else:
+                    idx[y, x:x + k] = c
+                written[y, x:x + k] = True
+            x += n
         elif c == 0:
             x, y = 0, y + 1
         elif c == 1:
@@ -64,12 +66,14 @@ def _rle(data: bytes, w: int, h: int, four: bool, deadline: Deadline) -> tuple[n
             raw = r.take(nbytes)
             if nbytes % 2:
                 r.skip(1)
-            vals = [(b >> s) & 0xF for b in raw for s in (4, 0)][:c] if four else list(raw)
-            for v in vals:
-                if x < w and y < h:
-                    idx[y, x] = v
-                    written[y, x] = True
-                x += 1
+            vals = np.frombuffer(raw, np.uint8)
+            if four:
+                vals = np.stack([vals >> 4, vals & 0xF], axis=1).reshape(-1)[:c]
+            if y < h and x < w:
+                k = min(c, w - x)
+                idx[y, x:x + k] = vals[:k]
+                written[y, x:x + k] = True
+            x += c
         if y > h:
             break
     return idx, written

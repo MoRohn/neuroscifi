@@ -6,8 +6,9 @@ when there is one; the drawing's width and height are then the viewBox's). Shape
 ellipse (centre and the 4 extreme points), line, polyline, polygon, path (move/line/curve/arc commands; Bézier
 curves and arcs flattened to 8 points per segment), text and tspan (anchor point and words), image (corners; an
 embedded `data:` image is not decoded), `use` of an element of the same file (copied with its offset, at most
-USE_DEPTH levels). Each shape keeps a few presentation attributes (id, class, fill, stroke, stroke-width, opacity,
-font-size, text-anchor), cut to 120 characters.
+USE_DEPTH levels, at most
+USE_COPIES copies in all). Each shape keeps a few presentation attributes (id, class, fill, stroke,
+stroke-width, opacity, font-size, text-anchor), cut to 120 characters.
 
 Refused content, recorded in the notes and never kept: script, foreignObject, iframe, embedded HTML, event
 attributes (on...), references to anything outside the file (an image, a `use` or a link's address); a style
@@ -21,7 +22,7 @@ import re
 import numpy as np
 
 from ..safe_b2 import Deadline, count, local, parse_xml, screen_words
-from ..types import Decoded, Drawing, Malformed, Shape
+from ..types import Decoded, Drawing, Malformed, Refused, Shape
 from . import Adapter
 
 KEEP = ("id", "class", "fill", "stroke", "stroke-width", "opacity", "font-size", "text-anchor")
@@ -30,6 +31,7 @@ HIDDEN = {"defs", "symbol", "clipPath", "mask", "pattern", "marker", "linearGrad
 REFUSED = {"script", "foreignObject", "iframe", "embed", "object", "audio", "video", "handler", "listener"}
 UNITS = {"": 1.0, "px": 1.0, "pt": 4 / 3, "pc": 16.0, "mm": 96 / 25.4, "cm": 96 / 2.54, "in": 96.0}
 USE_DEPTH = 8
+USE_COPIES = 100_000         # instantiations of `use` per drawing
 CURVE_STEPS = 8
 _NUM = re.compile(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
 _CMD = re.compile(r"([MmLlHhVvCcSsQqTtAaZz])|([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)")
@@ -240,6 +242,7 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
     notes: list[str] = []
     n_points = [0]
     visits = [0]
+    uses = [0]
 
     def refuse(what):
         refused[what] = refused.get(what, 0) + 1
@@ -331,6 +334,10 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
                 if target is not None:
                     notes.append(f"a use chain deeper than {USE_DEPTH} was cut")
                 return
+            uses[0] += 1
+            if uses[0] > USE_COPIES:
+                raise Refused(f"the drawing instantiates more than {USE_COPIES} use copies", rule="svg_use",
+                              reason="too_large")
             t = np.eye(3)
             t[0, 2], t[1, 2] = num(el, "x"), num(el, "y")
             inner = target if local(target.tag) != "symbol" else None

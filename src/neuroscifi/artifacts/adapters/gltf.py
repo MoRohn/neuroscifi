@@ -26,7 +26,7 @@ WIDTH = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT2": 4, "MAT3": 9, "MA
 MAX_NODES_VISITED = 100_000
 
 
-def split_glb(data: bytes) -> tuple[dict, bytes | None]:
+def split_glb(data: bytes, limits=None) -> tuple[dict, bytes | None]:
     r = Reader(data, "<", 0, "the GLB file")
     magic, version, length = r.unpack("4sII")
     if magic != b"glTF":
@@ -40,7 +40,7 @@ def split_glb(data: bytes) -> tuple[dict, bytes | None]:
         clen, ctype = r.unpack("II")
         body = r.take(clen)
         if ctype == 0x4E4F534A and gltf is None:
-            gltf = _json(body)
+            gltf = _json(body, limits)
         elif ctype == 0x004E4942 and binary is None:
             binary = body
     if gltf is None:
@@ -48,7 +48,9 @@ def split_glb(data: bytes) -> tuple[dict, bytes | None]:
     return gltf, binary
 
 
-def _json(raw: bytes) -> dict:
+def _json(raw: bytes, limits=None) -> dict:
+    if limits is not None:
+        need(len(raw) * 3, limits, "the glTF JSON parsed into objects")
     try:
         doc = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
@@ -311,9 +313,9 @@ class GLTFAdapter(Adapter):
 
     def decode(self, data, detected, limits):
         if data[:4] == b"glTF":
-            doc, binary = split_glb(data)
+            doc, binary = split_glb(data, limits)
         else:
-            doc, binary = _json(data), None
+            doc, binary = _json(data, limits), None
         return decode_gltf_doc(doc, binary, detected, limits)
 
 

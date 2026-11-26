@@ -90,6 +90,11 @@ def test_svg_hostile_xml():
     deep = _svg("<g>" * 300 + "</g>" * 300)
     with pytest.raises(T.Refused):
         adapters.decode(deep)
+    bomb = ['<defs><g id="l0"><rect width="1" height="1"/></g>']
+    bomb += [f'<g id="l{i}">' + f'<use href="#l{i - 1}"/>' * 10 + "</g>" for i in range(1, 9)]
+    with pytest.raises(T.Refused) as err:                  # 10^8 copies requested
+        adapters.decode(_svg("".join(bomb) + '</defs><use href="#l8"/>'))
+    assert err.value.rule == "svg_use"
     loop = _svg('<g id="a"><use href="#a"/><use href="#a"/><rect width="1" height="1"/></g>')
     out = adapters.decode(loop)                   # a self-referencing use is cut at the depth limit
     assert len(out.representation.shapes) < 1000

@@ -12,7 +12,9 @@ GPX and KML are WGS 84 by their specifications ("OGC:CRS84"); WKT has none unles
 "EPSG:n". KML NetworkLinks and every other reference are recorded and never fetched.
 
 Bounds: coordinates counted against `max_elements`, features against `max_elements`, nesting of GeometryCollections
-to 8; XML through the safe parser; KMZ through the bounded zip reader.
+to 8; the memory Python's JSON and XML parsers need (measured factors x the input size) is checked against
+`max_decoded_bytes` before parsing; XML through the safe parser; KMZ through the bounded zip reader. A GeoJSON
+coordinate given as true/false is read as 1/0 (numpy's conversion), not refused.
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from ..safe_b2 import Deadline, count, local, parse_xml, screen_words, zip_directory, zip_read
+from ..safe_b2 import Deadline, count, local, need, parse_xml, screen_words, zip_directory, zip_read
 from ..types import Decoded, Feature, Features, Malformed, Refused
 from . import Adapter
 
@@ -76,6 +78,32 @@ def _pos(p) -> list[float]:
     return [float(v) for v in p[:3]]
 
 
+def _positions(seq) -> np.ndarray:
+    """(n, 2|3) float64 from a list of GeoJSON positions: vectorised when the list is regular, else checked one by
+    one (which names the first bad position)."""
+    try:
+        arr = np.asarray(seq, dtype=np.float64)
+    except (ValueError, TypeError):
+        arr = None
+    if arr is None or arr.ndim != 2 or arr.shape[1] < 2:
+        if not isinstance(seq, list):
+            raise Malformed("GeoJSON coordinates are not a list of positions")
+        return _array([_pos(p) for p in seq])
+    arr = arr[:, :3]
+    if not np.isfinite(arr[:, :2]).all():
+        raise Malformed("a coordinate is not a finite number")
+    return arr
+
+
+def _stack(parts: list) -> np.ndarray:
+    if not parts:
+        return np.zeros((0, 2))
+    dims = max(p.shape[1] for p in parts)
+    if dims == 3:
+        parts = [p if p.shape[1] == 3 else np.column_stack([p, np.full(len(p), np.nan)]) for p in parts]
+    return np.concatenate(parts)
+
+
 def _geometry(g, props: dict, budget: _Budget, out: list, depth: int = 0):
     if not isinstance(g, dict):
         if g is None:
@@ -86,16 +114,17 @@ def _geometry(g, props: dict, budget: _Budget, out: list, depth: int = 0):
     coords = g.get("coordinates")
     try:
         if kind == "Point":
-            pts, extra = [_pos(coords)], {}
+            arr, extra = _array([_pos(coords)]), {}
         elif kind in ("MultiPoint", "LineString"):
-            pts, extra = [_pos(p) for p in coords], {}
+            arr, extra = _positions(coords), {}
         elif kind in ("MultiLineString", "Polygon"):
-            pts = [_pos(p) for part in coords for p in part]
-            extra = {"_parts": tuple(len(part) for part in coords)}
+            parts = [_positions(part) for part in coords]
+            arr, extra = _stack(parts), {"_parts": tuple(len(p) for p in parts)}
         elif kind == "MultiPolygon":
-            pts = [_pos(p) for poly in coords for ring in poly for p in ring]
-            extra = {"_parts": tuple(len(r) for poly in coords for r in poly),
-                     "_polygons": tuple(len(poly) for poly in coords)}
+            rings = [[_positions(r) for r in poly] for poly in coords]
+            arr = _stack([r for poly in rings for r in poly])
+            extra = {"_parts": tuple(len(r) for poly in rings for r in poly),
+                     "_polygons": tuple(len(poly) for poly in rings)}
         elif kind == "GeometryCollection":
             if depth >= MAX_COLLECTION_DEPTH:
                 raise Refused("GeometryCollections nest too deeply", rule="max_depth")
@@ -106,11 +135,15 @@ def _geometry(g, props: dict, budget: _Budget, out: list, depth: int = 0):
             raise Malformed("a GeoJSON geometry has an unknown type")
     except TypeError:
         raise Malformed(f"the coordinates of a GeoJSON {kind} are not nested as its type requires") from None
-    budget.add(len(pts))
-    out.append(Feature(kind, _array(pts), {**props, **extra}))
+    budget.add(len(arr))
+    out.append(Feature(kind, arr, {**props, **extra}))
+
+
+JSON_OBJECT_FACTOR = 3      # measured: json.loads needs 1.4-2.6 bytes per byte of coordinate-heavy GeoJSON
 
 
 def decode_geojson(data: bytes, limits) -> tuple[list[Feature], str, list[str]]:
+    need(len(data) * JSON_OBJECT_FACTOR, limits, "the GeoJSON parsed into objects")
     try:
         doc = json.loads(data.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError):
@@ -430,7 +463,11 @@ class _WKTParser:
         raise Malformed("the WKT text names an unknown geometry")
 
 
+WKT_OBJECT_FACTOR = 16      # measured 15.4: tokens and positions per byte of coordinate-dense WKT
+
+
 def decode_wkt(data: bytes, limits):
+    need(len(data) * WKT_OBJECT_FACTOR, limits, "the WKT text parsed into tokens")
     text = data.decode("utf-8", "replace")
     budget, out, notes, crs = _Budget(limits), [], [], None
     for line in split_wkt(text):

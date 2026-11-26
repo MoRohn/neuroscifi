@@ -19,6 +19,8 @@ from ..safe_b2 import Deadline, Reader, members, need, screen_words
 from ..types import Decoded, Detected, Limits, Malformed, Raster
 from . import Adapter
 
+GIF_FRAME_TEMP = 8          # bytes per frame pixel of temporaries (codes, indices, colour lookup)
+
 
 def lzw_decode(data: bytes, min_size: int, max_out: int) -> bytes:
     """GIF LZW (variable code width, LSB first, clear and end codes) -> at most `max_out` index bytes."""
@@ -137,27 +139,32 @@ def decode_gif(data: bytes, detected: Detected, limits: Limits) -> Decoded:
             raise Malformed("a GIF frame has no colour table")
         min_size = r.u8()
         members(len(frames) + 1, limits, "GIF frames")
-        need(sw * sh * 4 * (len(frames) + 2) + w * h, limits, "the GIF frames")
+        need(sw * sh * 4 * (len(frames) + 2) + w * h * GIF_FRAME_TEMP, limits, "the GIF frames")
         idx = np.frombuffer(lzw_decode(_sub_blocks(r), min_size, w * h), np.uint8)
-        if len(idx) < w * h:
+        complete = len(idx) == w * h
+        if not complete:
             notes.append(f"frame {len(frames)} holds {len(idx)} of {w * h} pixels; the rest are transparent")
-        full = np.zeros(w * h, np.int64)
-        full[:len(idx)] = idx
-        present = np.zeros(w * h, bool)
-        present[:len(idx)] = True
-        full, present = full.reshape(h, w), present.reshape(h, w)
+            full = np.zeros(w * h, np.uint8)
+            full[:len(idx)] = idx
+            present = np.zeros(w * h, bool)
+            present[:len(idx)] = True
+            full, present = full.reshape(h, w), present.reshape(h, w)
+        else:
+            full, present = idx.reshape(h, w), None
         if fpacked & 0x40:
-            full, present = _deinterlace(full), _deinterlace(present)
-        over = full >= len(table)
-        if over.any():
+            full = _deinterlace(full)
+            present = _deinterlace(present) if present is not None else None
+        if full.size and int(full.max()) >= len(table):
+            over = full >= len(table)
             bad_index += int(over.sum())
-        rgb = table[np.where(over, 0, full)]
-        rgb[over] = 0
-        visible = present.copy()
-        if gce and gce["transparent"] is not None:
-            visible &= full != gce["transparent"]
+            table = np.concatenate([table, np.zeros((256 - len(table), 3), np.uint8)])   # beyond: black
+        visible = present
+        transparent = gce["transparent"] if gce else None
+        if transparent is not None:
+            keep = full != transparent
+            visible = keep if visible is None else (visible & keep)
             any_transparent = True
-        if not present.all():
+        if present is not None:
             any_transparent = True
         dispose = gce["dispose"] if gce else 0
         x1, y1 = min(sw, x + w), min(sh, y + h)
@@ -165,9 +172,14 @@ def decode_gif(data: bytes, detected: Detected, limits: Limits) -> Decoded:
         before = canvas.copy() if dispose == 3 else None
         if vw and vh:
             area = canvas[y:y1, x:x1]
-            m = visible[:vh, :vw]
-            area[m, :3] = rgb[:vh, :vw][m]
-            area[m, 3] = 255
+            sub = full[:vh, :vw]
+            if visible is None:
+                area[:, :, :3] = table[sub]
+                area[:, :, 3] = 255
+            else:
+                m = visible[:vh, :vw]
+                area[m, :3] = table[sub[m]]
+                area[m, 3] = 255
         if (x1 - x, y1 - y) != (w, h):
             notes.append(f"frame {len(frames)} extends past the logical screen; the outside part is cut")
         frames.append(Raster(canvas.copy(), "rgba", 8))

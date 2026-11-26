@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe_b2 import Deadline, Reader, count, members, screen_words
+from ..safe_b2 import Deadline, Reader, count, members, need, screen_words
 from ..types import Column, Decoded, Malformed, Table
 from . import Adapter
 
@@ -40,8 +40,13 @@ def _vlq(r: Reader) -> int:
     raise Malformed("a MIDI variable-length number is longer than 4 bytes")
 
 
+EVENT_BYTES = 128            # measured cost of one kept event (a tuple and its contents) in Python
+WORDS_MAX = 1 << 20
+
+
 def _track_events(body: bytes, limits, deadline, counter):
-    """(tick, kind, data) events of one track; kind 'on', 'off', 'tempo', 'word', 'other'."""
+    """(tick, kind, data) events of one track; kind 'on', 'off', 'tempo', 'word', 'other' (others are counted in
+    counter[2], not kept). counter: [events read, events kept, others, word characters]."""
     r = Reader(body, ">", 0, "a MIDI track")
     tick, status, out = 0, None, []
     while r.remaining:
@@ -51,23 +56,27 @@ def _track_events(body: bytes, limits, deadline, counter):
             count(counter[0], limits, "MIDI events")
         if counter[0] % 65536 == 0:
             deadline.check("reading MIDI events")
+            need((counter[1] + len(out)) * EVENT_BYTES, limits, "the MIDI events kept")
         b = r.u8()
         if b == 0xFF:
             kind, length = r.u8(), _vlq(r)
             payload = r.take(length)
             if kind == 0x2F:
                 out.append((tick, "end", None))
+                counter[1] += len(out)
                 return out
             if kind == 0x51 and length == 3:
                 out.append((tick, "tempo", int.from_bytes(payload, "big")))
-            elif kind in WORD_META:
-                out.append((tick, "word", f"{WORD_META[kind]}: {payload.decode('latin-1').strip()}"))
+            elif kind in WORD_META and payload.strip() and counter[3] < WORDS_MAX:
+                text = f"{WORD_META[kind]}: {payload.decode('latin-1').strip()}"
+                counter[3] += len(text)
+                out.append((tick, "word", text))
             else:
-                out.append((tick, "other", None))
+                counter[2] += 1
             continue
         if b in (0xF0, 0xF7):
             r.skip(_vlq(r))
-            out.append((tick, "other", None))
+            counter[2] += 1
             status = None
             continue
         if b & 0x80:
@@ -86,7 +95,7 @@ def _track_events(body: bytes, limits, deadline, counter):
         elif hi == 0x80 or (hi == 0x90 and second == 0):
             out.append((tick, "off", (ch, first, 0)))
         else:
-            out.append((tick, "other", None))
+            counter[2] += 1
     out.append((tick, "end", None))
     return out
 
@@ -105,7 +114,7 @@ def decode_midi_bytes(data: bytes, limits) -> tuple[Table, list[str], list[str]]
     if fmt > 2:
         raise Malformed(f"MIDI file format {fmt} does not exist")
     notes_out: list[str] = []
-    tracks, counter = [], [0]
+    tracks, counter = [], [0, 0, 0, 0]
     while r.remaining >= 8 and len(tracks) < ntracks:
         cid, size = r.take(4), r.u32()
         body = r.take(min(size, r.remaining))
@@ -139,7 +148,7 @@ def decode_midi_bytes(data: bytes, limits) -> tuple[Table, list[str], list[str]]
             return s0 + (t - t0) * us0 / 1e6 / division
         if fmt == 2:
             notes_out.append("format 2 (independent sequences): the tempo map is applied to all tracks alike")
-    rows, words, open_at_end, other = [], [], 0, 0
+    rows, words, open_at_end, other = [], [], 0, counter[2]
     for ti, events in enumerate(tracks):
         pending: dict[tuple[int, int], list[tuple[int, int]]] = {}
         end_tick = events[-1][0] if events else 0
@@ -155,8 +164,6 @@ def decode_midi_bytes(data: bytes, limits) -> tuple[Table, list[str], list[str]]
                     rows.append((to_s(t0), to_s(tick), pitch, vel, ch + 1, ti))
             elif kind == "word":
                 words.append(val)
-            elif kind == "other":
-                other += 1
         for (ch, pitch), starts in pending.items():
             for t0, vel in starts:
                 rows.append((to_s(t0), to_s(end_tick), pitch, vel, ch + 1, ti))

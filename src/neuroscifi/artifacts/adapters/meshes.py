@@ -13,7 +13,9 @@ Bounds: vertex and face counts are checked against `max_elements` before arrays 
 """
 from __future__ import annotations
 
+import io
 import re
+from array import array
 
 import numpy as np
 
@@ -63,16 +65,18 @@ def merge_exact(tri_vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 def decode_obj(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     deadline = Deadline(limits)
-    verts: list[list[float]] = []
-    polys: list[list[int]] = []
+    verts = array("d")              # x, y, z of each vertex, flat
+    tris = array("q")               # fan-triangulated corners, flat
+    n_verts = 0
+    big_polys = False
     words: list[str] = []
     notes: list[str] = []
     skipped = {"l": 0, "p": 0, "vt": 0, "vn": 0, "curves": 0}
     libs = 0
-    n_poly = 0
-    for lineno, raw in enumerate(data.splitlines()):
+    for lineno, raw in enumerate(io.BytesIO(data)):          # one line at a time, never a list of all lines
         if lineno % 20000 == 0:
             deadline.check("reading OBJ lines")
+            need(len(verts) * 8 + len(tris) * 8 + len(words) * 64, limits, "the OBJ arrays")
         line = (raw.split(b"#", 1)[0] if b"#" in raw else raw).strip()
         if not line:
             continue
@@ -82,31 +86,34 @@ def decode_obj(data: bytes, detected: Detected, limits: Limits) -> Decoded:
             if len(parts) < 4:
                 raise Malformed(f"OBJ line {lineno + 1}: a vertex needs three coordinates")
             try:
-                verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                verts.extend((float(parts[1]), float(parts[2]), float(parts[3])))
             except ValueError:
                 raise Malformed(f"OBJ line {lineno + 1}: a vertex coordinate is not a number") from None
-            if len(verts) > limits.max_elements:
-                count(len(verts), limits, "OBJ vertices")
+            n_verts += 1
+            if n_verts > limits.max_elements:
+                count(n_verts, limits, "OBJ vertices")
         elif key == b"f":
             if len(parts) < 4:
                 raise Malformed(f"OBJ line {lineno + 1}: a face needs at least three vertices")
-            poly = []
             try:
                 refs = [int(x) for x in parts[1:]] if b"/" not in line else \
                     [int(x.split(b"/", 1)[0]) for x in parts[1:]]
             except ValueError:
                 raise Malformed(f"OBJ line {lineno + 1}: a face index is not an integer") from None
+            poly = []
             for i in refs:
                 if i == 0:
                     raise Malformed(f"OBJ line {lineno + 1}: face index 0 does not exist (indices start at 1)")
-                i = i - 1 if i > 0 else len(verts) + i
-                if not 0 <= i < len(verts):
+                i = i - 1 if i > 0 else n_verts + i
+                if not 0 <= i < n_verts:
                     raise Malformed(f"OBJ line {lineno + 1}: a face refers to a vertex not yet defined")
                 poly.append(i)
-            polys.append(poly)
-            n_poly += len(poly) - 2
-            if n_poly > limits.max_elements:
-                count(n_poly, limits, "OBJ triangles")
+            if len(poly) > 3:
+                big_polys = True
+            for k in range(1, len(poly) - 1):
+                tris.extend((poly[0], poly[k], poly[k + 1]))
+            if len(tris) > 3 * limits.max_elements:
+                count(len(tris) // 3, limits, "OBJ triangles")
         elif key in (b"g", b"o", b"usemtl"):
             words.append(raw.split(None, 1)[1].decode("utf-8", "replace").strip() if len(parts) > 1 else "")
         elif key == b"mtllib":
@@ -126,9 +133,10 @@ def decode_obj(data: bytes, detected: Detected, limits: Limits) -> Decoded:
         notes.append(f"{skipped['curves']} free-form curve/surface statement(s) not evaluated")
     if groups:
         notes.append(f"{groups} group/object/material name(s) kept as words")
-    if any(len(p) > 3 for p in polys):
+    if big_polys:
         notes.append("polygons with more than three vertices were triangulated as fans")
-    return _mesh(verts, fan(polys), words, notes, detected, limits)
+    return _mesh(np.frombuffer(verts, np.float64).reshape(-1, 3), np.frombuffer(tris, np.int64).reshape(-1, 3),
+                 words, notes, detected, limits)
 
 
 # ---------------------------------------------------------------------------------------------------------------- STL
@@ -177,7 +185,7 @@ def _stl_ascii(data, detected, limits):
     deadline = Deadline(limits)
     n_vertex = data.count(b"vertex")
     count(n_vertex, limits, "STL vertices")
-    need(n_vertex * 24 * 3, limits, "the STL triangles")
+    need(len(data) * STL_OBJECT_FACTOR, limits, "the ASCII STL parsed into numbers")
     found = _VERTEX.findall(data)
     deadline.check("reading ASCII STL")
     if len(found) != n_vertex:
@@ -276,8 +284,14 @@ def _ply_binary(data, at, elements, endian, limits, deadline):
     return out
 
 
+PLY_OBJECT_FACTOR = 5       # measured 4.0: Python lists of numbers per byte of ASCII PLY
+OFF_OBJECT_FACTOR = 1       # lines are read one at a time into preallocated arrays
+STL_OBJECT_FACTOR = 6       # measured 5.4: matched vertex tuples per byte of ASCII STL
+
+
 def _ply_ascii(data, at, elements, limits, deadline):
-    lines = iter(data[at:].splitlines())
+    need((len(data) - at) * PLY_OBJECT_FACTOR, limits, "the PLY text parsed into numbers")
+    lines = iter(io.BytesIO(memoryview(data)[at:]))
     out = {}
     for el in elements:
         rows = {p[0]: [] for p in el["props"]}
@@ -348,45 +362,49 @@ def decode_ply(data: bytes, detected: Detected, limits: Limits) -> Decoded:
 
 def decode_off(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     deadline = Deadline(limits)
-    lines = [ln.split(b"#", 1)[0].split() for ln in data.splitlines()]
-    lines = [ln for ln in lines if ln]
-    if not lines or not lines[0][0].endswith(b"OFF"):
+    need(len(data) * OFF_OBJECT_FACTOR, limits, "the OFF text split into lines")
+    lines = (ln.split(b"#", 1)[0].split() for ln in io.BytesIO(data))
+    lines = (ln for ln in lines if ln)
+    head = next(lines, None)
+    if not head or not head[0].endswith(b"OFF"):
         raise Malformed("the OFF header is missing")
-    head = lines[0]
     if b"BINARY" in head:
         raise Unsupported("binary OFF is not read here", needs=("a binary OFF reader",))
-    rest = head[1:]
-    idx = 1
-    if not rest:
-        if len(lines) < 2:
-            raise Malformed("the OFF counts are missing")
-        rest, idx = lines[1], 2
+    rest = head[1:] or next(lines, None)
     try:
         nv, nf = int(rest[0]), int(rest[1])
-    except (ValueError, IndexError):
-        raise Malformed("the OFF counts are not integers") from None
+    except (TypeError, ValueError, IndexError):
+        raise Malformed("the OFF counts are missing or not integers") from None
     count(nv, limits, "OFF vertices")
     count(nf, limits, "OFF faces")
-    if idx + nv + nf > len(lines):
-        raise Malformed("the OFF file ends before its declared vertices and faces")
+    need(nv * 24, limits, "the OFF vertices")
+    verts = np.empty((nv, 3))
+    tris = array("q")
     try:
-        verts = [[float(x) for x in ln[:3]] for ln in lines[idx:idx + nv]]
-        deadline.check("reading OFF")
-        polys = []
-        for ln in lines[idx + nv:idx + nv + nf]:
+        for i in range(nv):
+            ln = next(lines)
+            verts[i] = (float(ln[0]), float(ln[1]), float(ln[2]))
+            if i % 65536 == 0:
+                deadline.check("reading OFF")
+        for j in range(nf):
+            ln = next(lines)
             k = int(ln[0])
             poly = [int(x) for x in ln[1:1 + k]]
             if len(poly) != k or k < 3:
                 raise Malformed("an OFF face is shorter than its count or has fewer than three vertices")
-            polys.append(poly)
+            for t in range(1, k - 1):
+                tris.extend((poly[0], poly[t], poly[t + 1]))
+            if j % 65536 == 0:
+                deadline.check("reading OFF")
+                need(nv * 24 + len(tris) * 8, limits, "the OFF arrays")
+    except StopIteration:
+        raise Malformed("the OFF file ends before its declared vertices and faces") from None
     except (ValueError, IndexError):
         raise Malformed("an OFF line is malformed") from None
-    if any(len(v) != 3 for v in verts):
-        raise Malformed("an OFF vertex has fewer than three coordinates")
     notes = [f"OFF ({head[0].decode('latin-1')})"]
     if head[0] != b"OFF":
         notes.append("colours, normals or texture coordinates in the file are not kept")
-    return _mesh(verts, fan(polys), [], notes, detected, limits)
+    return _mesh(verts, np.frombuffer(tris, np.int64).reshape(-1, 3), [], notes, detected, limits)
 
 
 class _MeshAdapter(Adapter):
