@@ -4287,6 +4287,25 @@ text. C13 labels: decision 3. C14 the memory envelope: not exposed through `memo
   with `nsf artifact forget`; the schema stays (forward-only), and software before schema 20 refuses the file (a
   restore of the pre-upgrade checkpoint is the rollback, as for every schema change).
 
+## ADR-071, integration: the store with the real adapters and generators
+
+- A made artifact keeps the media type its generator declared (detection cannot tell lane G2's explorable document,
+  `application/vnd.neuroscifi.explorable+html` with its one pinned script, from a plain HTML page, whose validator
+  refuses every script).
+- `export` to a folder writes `<id><ext>`; a name without an extension gets its media type's (`store.extension_for`;
+  the explorable type exports as .html, APNG as .png).
+- A decode a SIZE bound stopped (`Refused` with reason "too_large": an honest 60 MiB stereo WAV needs more than the
+  256 MiB decode budget in lane B2's accounting) is kept with the bound that stopped it; every other refusal (pickle,
+  a polyglot, a DTD, nesting, resources) still keeps nothing. Header-only files keep their facts in the index and
+  their words in the text layer (ADR-072, integration).
+- Measured: `add` per family at the size limits, one fresh process each (`scripts/omnimind_int_add_cost.py`,
+  `docs/quality/evidence/omnimind_int.json`): at most 3.2 s; peak RSS above the RSS before the add at most 345 MiB (a
+  1.2 M-row CSV, partial at the element bound) and 340 MiB (a 400k-element XML), above the 256 MiB decode budget
+  because lane B1's per-cell and per-element charges are below the real cost of Python's objects (stated, not
+  changed). Two peaks found outside any decoder were cut: `Raster.describe()` and `facts_of` no longer copy every
+  sample to float64 (a 16 MP picture: 427 -> 198 MiB) and `Mesh.closed()` keys edges as one int64 each (1.2 M
+  triangles: 397 -> 285 MiB).
+
 # ADR-072 Artifact detection, the adapter registry and the native representations (OMNIMIND kernel)
 
 Status: built. OMNIMIND Wave O-0, lane K. No schema change, no setting. Nothing existing imports
@@ -4526,6 +4545,19 @@ Status: built by the integration lane. No setting, no schema change.
      `nsf inspect` says "Read as: its header only (the content is not decoded here)", lists width, height,
      compression and mode, and "What would be needed: a TIFF LZW decoder". Slides made without title placeholders
      are headed "Slide 1", "Slide 2" (the files hold no title, and none is invented).
+7. **Defects the benchmark's development run found** (the run itself: `docs/quality/evidence/
+   omnimind_int_development.json`; each fix has a test in `tests/artifacts/test_integration_fixes.py` unless named):
+   - a polyglot (bytes identified as one format that are also a readable ZIP archive: a PDF or PNG with a ZIP
+     directory) is `Refused(rule="polyglot")` before any adapter reads it one way; ZIP-based formats and archives
+     are exempt;
+   - a member nested past `max_depth` is refused by the chain's own rule (B1 said "not decoded");
+   - an animated GIF is RGB unless a composed pixel is transparent (it claimed an alpha channel its file lacks);
+   - a Python `import` node states the module its statement names (`attrs["module"]`).
+8. **One rule for a representation's shape.** Lane B2's `content_shape` held rules that consumers calling `shape()`
+   never saw; they now live in `shape()`: a track with timestamps is a map and a timeline (`Features.shape`), a MIDI
+   file's notes are `repr_b2.NotesTable` (a sequence and timeline), word-carrying representations count their words.
+   `nsf form plan --content` hands the planner each file's shape and an archive's members' shapes
+   (`shapes_b1.content_shapes`); feasibility is `make.catalog()`.
 
 # ADR-073 The form planner: deciding the form of a result before anything is made, and saying why
 
@@ -4697,6 +4729,42 @@ pairs 3/18 (the shape-only table 8/18): reading the words did not help. This rou
   grammar, not topic, and removing it on development turned 14 good cases into too-much or fine; the held-out pair
   result may be partly its doing, and nothing here can show whether.
 
+## ADR-073, record: the planner's one held-out run and its verdict (as the main session's handoff states them)
+
+The rule, written BEFORE the run (2026-11-26 16:05 EST; fields of `forms.score(..., "held_out")`). References on
+held-out: shape_only good 0.500 / good-or-fine 0.804; always-prose good 0.442 / good-or-fine 0.739; the second
+reader's first choice good 0.877.
+1. "Beats the references" iff planner good.share >= 0.600 (shape_only + 0.10) AND bad.share <= shape_only's
+   bad.share AND bad.too_much.k <= shape_only's too_much.k AND hard_constraints_violated.k == 0.
+2. "Overfit to development" iff development good.share - held-out good.share > 0.15; reported whatever (1) says.
+3. "Learned from the words" iff on the slice cue == "words" the planner's good_share exceeds shape_only's by >= 0.15
+   AND the pairs and twins both-good shares exceed shape_only's.
+One run, by the main session, at c5d3230 + omni-zf's cases; no retuning on held-out after it; a later planner version
+gets a NEW held-out only from the withheld lane.
+
+THE ONE HELD-OUT RUN (16:10; c5d3230, in a throwaway worktree omni-blind = c5d3230 + omni-zf):
+- held-out (138): planner good 91 (0.659), good-or-fine 0.920, bad 0.080 (too poor 4, too much 5, unfit 1,
+  violation 1); explicit feasible honoured 10/11, infeasible handled 4/5; cue slices good: content 57/81, words
+  16/34, conflict 4/7, explicit 14/16; pairs both good 3/18, twins 2/10.
+- shape_only: good 0.500, good-or-fine 0.804, bad 0.196 (too much 20), explicit 3/11; words 14/34; pairs 8/18,
+  twins 0/10. Today (always prose): good 0.442, good-or-fine 0.739, bad 0.261 (too poor 28).
+- development (133): planner good 0.850, good-or-fine 1.000, bad 0.
+
+Verdict by the rule written before the run: (1) "beats the references": NO: good >= 0.600 yes, bad <= reference
+yes, too much <= reference yes, BUT hard_constraints_violated = 1 (must be 0). (2) "overfit to development": YES
+(0.850 - 0.659 = 0.190 > 0.15). (3) "learned from the words": NO (words slice 0.471 vs 0.412: +0.059 < 0.15;
+request pairs 3/18 against the shape table's 8/18).
+Honest reading: better than always-prose and the shape table on good (+0.22, +0.16) and on wrong choices (0.08 vs
+0.26 / 0.20; "too much" 5 vs 20), honours explicit requests; but one hard-constraint violation, a development-to-
+held-out gap of 0.19, and no evidence that it reads the request's words (pairs worse than the table). Unmapped
+held-out purposes: 3 names the planner does not know (passed as None).
+After the run (addendum 2 above), the frozen planner 4388f4d is judged once more only on the WITHHELD forms cases
+(lane ZW). On the integrated tree it is a subject of the forms family (`neuroscifi.acceptance.omni.subject:
+choose_form`, the main session's name mapping); its development score there is good 107/133, good-or-fine 133,
+bad 0, hard-constraint violations 0 (`docs/quality/evidence/omnimind_int_development.json`). The second reader's
+labels and agreement are `docs/quality/evidence/omnimind_forms_second_reader.json` (both readers are models of one
+family, not people).
+
 # ADR-075 The OMNIMIND benchmark: an examination written before the mechanisms (lane Z's section)
 
 Status: built and recorded (lane Z, from `omnimind` = main `8f68beb`). No schema change, no setting, no product code
@@ -4756,3 +4824,61 @@ shape the examination to its answers.
   (`subject._spec`, `FORM_NAMES`), which is the one place a generator lane adjusts the driver.
 - A numpy upgrade that changed `default_rng` streams would fail the freeze test; that is to be reported, not
   re-pinned silently.
+
+## ADR-075, lane ZF's section: the forms, cross and learn families
+
+The OMNIMIND benchmark's second half (lane ZF) examines three capabilities before they exist.
+
+**forms.** Is the chosen form of a result right? It has 271 hand-written cases in frozen development and held-out
+splits. Each case has the examiner's good, fine, too-poor, too-much and unfit sets with a reason for each. Hard
+constraints are decided from the context and must be violated zero times. Prose is the right answer in at least
+40% of cases. To stop rules over request wording from passing, the tables hold 36 cue pairs and 19 twins, and the
+words-only and words-blind statistics are stated.
+
+**cross.** It asks questions that need two artifacts of different kinds. There are 72 generated pairs. In each pair,
+the matching and non-matching twins differ in one value, so always "consistent" scores exactly 0.5, and today's
+system scores "cannot".
+
+**learn.** SIMULATED people with hidden preferences react to choices, and the share of choices they keep is measured
+against a non-learner, a per-key majority learner and an oracle. It is reported with the gain needed to be visible
+above the spread of seeds.
+
+**Decisions.**
+- The benchmark keeps its own form vocabulary and readers, and imports nothing from product code.
+- Each table is committed and SHA-256-pinned before its scorer.
+- A planner counts as learning from the words only if it beats "content shape only" on held-out. A learner counts
+  as better only if it beats the per-key majority by the visible gain.
+
+**Rejected alternatives.**
+- Generating requests from templates or verb lists: the planner's author would learn the generator.
+- A single blended score.
+- Judging a chart by its embedded data.
+- Calling the simulated learning results evidence of benefit to people.
+
+**At integration.** The planner is the forms family's product subject (`choose_form` in the thin driver). No `relate`
+subject exists for the cross family: no mechanism relates two artifacts yet, so the cross family's answer stays
+"cannot". No learner exists for the learn family (learning form choices from outcomes is a later wave).
+
+## ADR-075, lane ZW's section: the withheld examination (counts only)
+
+Written by a lane that read no product code and no lane report of B1, B2, C, G1 or G2; nothing here reveals a case.
+- Forms: 150 cases; prose or spoken good in 78 (52%), prose alone in 66 (44%); 40 cue pairs (80 cases) and 25 twins
+  (50 cases); 51 budget or access cases, 42 of them where the shape-only reference's pick is a hard violation; 17
+  cases with a purpose word in no earlier case (16 distinct words); 12 explicit requests (7 feasible, 5 infeasible,
+  3 asking for less); all 18 content kinds; devices console 72, pocket 62, voice 5, cli 7, agent 4. About 30 close
+  calls by the author's own count. Words per request: mean 11.29; cue-word purity at most 0.833; a words-only chooser
+  is good on 48/150 (0.32), below always-prose (0.44).
+- Lane Z's seven families: 172 cases (seeds 9101-9581), 652 tasks: intake 358, honest 55, unknown 111, compound 66,
+  hostile 35 (27 new constructions of earlier classes and 8 of 7 classes neither earlier split has), made 16,
+  transform 11. Abstention floor: honest 20, unknown 21, hostile 35.
+- Cross: 39 pairs (78 cases), 4 pairs of each of the six earlier kinds and 5 of each of 3 new kinds of pairing.
+  Learn: 6 SIMULATED people (seeds 9590-9599), none with an earlier person's full preference map.
+- The look machinery: `scripts/bench_omni.py final` and `scripts/bench_omni_forms.py final` refuse a missing or blank
+  note, an output inside the checkout, a dirty tree and a changed withheld file (SHA-256 pinned); the ledger line
+  (`docs/quality/evidence/omnimind_final_uses.jsonl`) is written BEFORE anything is loaded or scored; output is
+  summaries only; `run --split withheld` is refused; only `acceptance/omni/final.py` imports a withheld module.
+- Machinery checks (references only; no product subject has looked): today on lane Z's families: intake 29 / 358
+  right, 0 wrong; honest 20 / 55; unknown 21 / 111; compound 0 / 66; hostile 2 right, 28 abstained, 2 wrong, 3 failed
+  of 35; made 0 / 16; transform 0 / 11. Forms: today good 66 (0.44), shape_only good 72 (0.48), richest 13 (0.087),
+  random 20.8 (0.139); 0 hard-constraint violations for all four. Cross: today 0 / 78 answered. Learn: today late kept
+  0.384 (sd 0.028).
