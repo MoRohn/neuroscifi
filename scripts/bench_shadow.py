@@ -116,7 +116,13 @@ def check() -> dict:
                        "gate_refusals": sum(1 for t in off["ticks"] if not t["gate"]["allowed"]),
                        "product": {"report": shadow_check.settled(product), "reference": ref_product,
                                    "mismatches": shadow_check.mismatches(product, ref_product),
-                                   "work": product["work"], "problems": product["problems"]},
+                                   "work": product["work"], "problems": product["problems"],
+                                   # review3 H-1: what the forecast adds where the real gate allowed
+                                   "added": product["settled"]["added"],
+                                   "holds_gate_refused": product["settled"]["holds_gate_refused"],
+                                   "preceded_before_start": product["breaches"]["preceded_before_start"],
+                                   "lead_seconds_distribution": product["breaches"]["lead_seconds_distribution"],
+                                   "guide": product["guide"]["supports_on"]},
                        "family": {"report": shadow_check.settled(family), "reference": ref_family,
                                   "mismatches": shadow_check.mismatches(family, ref_family)}}
                 if cost is not None:

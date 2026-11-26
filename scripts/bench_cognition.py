@@ -4,7 +4,8 @@ self-description, selective answering, retention, adversarial cases, and a withh
 
   python scripts/bench_cognition.py run --split held_out --out held.json             # the baseline, held-out split
   python scripts/bench_cognition.py run --family anticipation --mechanism predictive --ablate trend
-  python scripts/bench_cognition.py run --family withheld --final --note "lane I, final"   # recorded in the ledger
+  python scripts/bench_cognition.py run --family withheld --final --note "lane I, final" --out /outside/x.json
+                                                        # recorded in the ledger; a clean, committed tree only
   python scripts/bench_cognition.py baseline --out docs/quality/evidence/genesis_baseline.json
   python scripts/bench_cognition.py list                                              # families and mechanisms
   python scripts/bench_cognition.py compare before.json after.json                    # headline metrics side by side
@@ -95,6 +96,12 @@ def main(argv=None) -> int:
         out["withheld"] = cognition.run(["withheld"], final=True, note=a.note)
         _write(out, a.out)
         return 0
+    if a.final:     # review3 (Q7): a look is written outside the checkout (a new file there would make it dirty)
+        root = Path(__file__).resolve().parents[1]
+        if not a.out or Path(a.out).resolve().is_relative_to(root.resolve()):
+            print("refused: a --final run writes --out to a path OUTSIDE this checkout (copy it in afterwards)",
+                  file=sys.stderr)
+            return 2
     cognition.load_plugins(a.plugin)
     families = a.family or list(cognition.DEFAULT_FAMILIES)
     try:

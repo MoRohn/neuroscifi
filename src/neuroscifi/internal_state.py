@@ -296,7 +296,11 @@ def append(db_path, item: dict) -> None:
     path = where / HISTORY_FILE
     lock = shared.open_file(where / LOCK_FILE, os.O_RDWR)
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:        # security review L4: the heartbeat thread never waits on a lock another account can hold
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise BlockingIOError("the internal-state history is locked by another process; this sample is "
+                                  "skipped") from None
         fd = shared.open_file(path, os.O_WRONLY | os.O_APPEND, group_write=False)   # the worker's alone (R2)
         with os.fdopen(fd, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(item, sort_keys=True) + "\n")

@@ -105,7 +105,12 @@ def reference(run: dict, *, floor_gib: float, horizon_ticks: int) -> dict:
     end = len(holds) - horizon_ticks
     counted = range(forecast.MIN_POINTS - 1, end)
     ahead = [any(flags[t:t + horizon_ticks + 1]) for t in range(len(flags))]
+    # review3 H-2: breach_report's own false alarms over the counted ticks (its holds outside them masked), compared
+    # too; hits, misses and quiet have no breach_report counterpart and come from this check's own count
+    inside = scoring.breach_report(flags, flags, [h and t in counted for t, h in enumerate(holds)],
+                                   horizon=horizon_ticks)
     return {"hold_ticks_all": rep["hold_ticks"], "false_alarm_ticks_all": rep["false_alarm_ticks"],
+            "false_alarm_ticks": inside["false_alarm_ticks"],
             "hits": sum(1 for t in counted if holds[t] and ahead[t]),
             "false_alarms": sum(1 for t in counted if holds[t] and not ahead[t]),
             "misses": sum(1 for t in counted if not holds[t] and ahead[t]),
@@ -120,6 +125,7 @@ def settled(report: dict) -> dict:
     """The same quantities from a shadow report."""
     lead = report["breaches"]["lead_seconds"]
     return {"hits": report["settled"]["hits"], "false_alarms": report["settled"]["false_alarms"],
+            "false_alarm_ticks": report["settled"]["false_alarms"],
             "misses": report["settled"]["misses"], "quiet": report["settled"]["quiet"],
             "episodes": report["breaches"]["episodes"], "preceded": report["breaches"]["preceded"],
             "mean_lead_seconds": None if lead is None else lead["mean"], "pending": report["pending"]}

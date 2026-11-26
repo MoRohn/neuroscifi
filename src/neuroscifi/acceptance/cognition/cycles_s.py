@@ -56,6 +56,18 @@ from ...instance import store
 from . import cycles, cycles_splits, cycles_splits_s, scoring
 
 FAMILIES = {"lane-s": cycles_splits_s, "lane-f": cycles_splits}
+
+
+def _variant_families() -> dict:
+    """Wave 3 fix lane (review3 S-2..S-4): each variant of cycles_splits_s_variants.py as a family "variant:<name>"
+    (its own splits and seeds; the variant's generator)."""
+    from types import SimpleNamespace
+    from . import cycles_splits_s_variants as variants
+    return {f"variant:{v}": SimpleNamespace(CYCLES=variants.CYCLES, generate=variants.generator(v))
+            for v in variants.VARIANTS}
+
+
+FAMILIES |= _variant_families()
 BASE = dict(cycles.WAVE1_OFF_WEB) | {"attribution_independence": False, "echo_recognition": False,
                                      "supersession": "ask"}
 FIXES = {"attribution_independence": True, "echo_recognition": True}
@@ -202,19 +214,17 @@ class Run(cycles.Run):
 
     def summary(self) -> dict:
         out = super().summary()
-        persistence = []
-        for name, c in self.false_at:
-            hist = dict(self.history.get(name, []))
-            run = 0
-            for d in range(c, self.cycle + 1):
-                if hist.get(d) is not None and hist[d] != self.truth(name, d):
-                    run += 1
-                else:
-                    break
-            persistence.append(run)
+        # review3 S-5: each false replacement's stretch runs until the subject is held right again (a cycle with
+        # nothing held no longer ends it; such cycles are counted apart), and a stretch the run ended inside is
+        # censored: its length is a lower bound. The per-seed maximum is what is reported, never a mean of maxima.
+        stretches = [{"subject": name, "cycle": c} | cycles.false_persistence(self, name, c)
+                     for name, c in self.false_at]
+        persistence = [s["cycles"] for s in stretches]
         out["s"] = dict(self.counts) | {
             "false_persistence_mean": scoring.spread(persistence)["mean"] if persistence else None,
-            "false_persistence_max": max(persistence) if persistence else 0}
+            "false_persistence_max": max(persistence) if persistence else 0,
+            "false_censored": sum(1 for s in stretches if s["censored"]),
+            "false_stretches": stretches}
         out["config"] = dict(self.config)
         return out
 
@@ -265,8 +275,9 @@ def run_world(spec, seed, name, *, generate, cycles_=None) -> dict:
     return out
 
 
-SCALARS = cycles.SCALARS[:-2] + tuple(f"s.{k}" for k in COUNTS) + ("s.false_persistence_mean",
-                                                                     "s.false_persistence_max")
+SCALARS = tuple(k for k in cycles.SCALARS if k not in ("changed_launch_cycles", "changed_held_cycles",
+                                                       "order_changed_launch_cycles", "order_changed_held_cycles")) + \
+    tuple(f"s.{k}" for k in COUNTS) + ("s.false_persistence_mean", "s.false_persistence_max", "s.false_censored")
 
 
 def census(family, split, *, seeds=None) -> dict:
@@ -354,8 +365,8 @@ def run_split(family, split, *, configs=None, seeds=None, cycles_=None) -> dict:
             per_world[world["name"]] = {
                 "seeds": list(seeds),
                 "per_seed": [{k: cycles._get(r, k) for k in SCALARS} | {
-                    "changed_vs_baseline": r["changed_vs_baseline"], "changed_vs_fixes": r["changed_vs_fixes"]}
-                    for r in rows],
+                    "changed_vs_baseline": r["changed_vs_baseline"], "changed_vs_fixes": r["changed_vs_fixes"],
+                    "false_stretches": r["s"]["false_stretches"]} for r in rows],
                 "spread": {k: scoring.spread([cycles._get(r, k) for r in rows]) for k in SCALARS},
                 "config_read_back": rows[0]["config"],
                 "config_same_every_seed": all(r["config"] == rows[0]["config"] for r in rows),
@@ -363,8 +374,40 @@ def run_split(family, split, *, configs=None, seeds=None, cycles_=None) -> dict:
         out[name] = {"settings": CONFIGS[name], "ablation": ABLATE.get(name), "worlds": per_world}
     refs = cycles._run_references(split, spec, module.generate, seeds=seeds)
     digests = {w["name"]: {str(s): cycles.world_digest(module.generate(w, s)) for s in seeds} for w in spec["worlds"]}
+    changes = {}
+    for name in (n for n in ITEM_DIFF if n in configs and "baseline" in configs):
+        changes[name] = {w["name"]: [item_changes(module.generate(w, s), b["history"], r["history"])
+                                     for s, b, r in zip(seeds, raw[("baseline", w["name"])], raw[(name, w["name"])])]
+                         for w in spec["worlds"]}
     return {"family": family, "split": split, "seeds": list(seeds), "configurations": out, "references": refs,
-            "world_digests": digests}
+            "world_digests": digests, "item_changes_vs_baseline": changes}
+
+
+# review3 S-6: every (subject, cycle) whose newest held version differs from the baseline's run of the same world and
+# seed, with the truth, both values and the class (true / wrong / none on each side), per configuration
+ITEM_DIFF = ("fix:attribution", "fix:echo", "fixes")
+
+
+def _state(value, truth):
+    return "none" if value is None else "true" if value == truth else "wrong"
+
+
+def item_changes(world, base_history, history) -> dict:
+    """{"items": [{subject, cycle, truth, baseline, value, class}], "classes": {class: count}} (see ITEM_DIFF)."""
+    truth = {s["name"]: s["truth"] for s in world["subjects"]}
+    base = {(n, c): v for n, h in base_history.items() for c, v in h}
+    mine = {(n, c): v for n, h in history.items() for c, v in h}
+    items = []
+    for key in sorted(set(base) | set(mine)):
+        if base.get(key) != mine.get(key):
+            name, c = key
+            t = truth[name].get(c)
+            items.append({"subject": name, "cycle": c, "truth": t, "baseline": base.get(key), "value": mine.get(key),
+                          "class": f"{_state(base.get(key), t)}->{_state(mine.get(key), t)}"})
+    classes = {}
+    for it in items:
+        classes[it["class"]] = classes.get(it["class"], 0) + 1
+    return {"items": items, "classes": classes}
 
 
 # ---- the verdicts, written before the held-out run --------------------------------------------------------------------
@@ -422,6 +465,32 @@ def verdict(result, config, reference) -> dict:
     word = "unsafe" if not (safe and retention) else "gain" if gain else "no gain"
     return {"config": config, "reference": reference, "verdict": word, "safety": safe, "retention": retention,
             "any_world_loses": any(per_world[w]["loses"] for w in worlds), "per_world": per_world}
+
+
+def roadmap_verdict(result, config, reference) -> dict:
+    """The roadmap's rule for a default (IMPLEMENTATION_ROADMAP §2, as Wave 2's COMMON states it), applied to one
+    configuration against its reference on one split: ON only with a gain beyond the reference's spread in every
+    world, retention (lost + regressed) not above the reference's in any world and seed, and no adversarial count
+    (own, syndicated, dependent admitted, one-origin rises) above it in any world and seed. The ablation is the
+    reference itself (the fix off). "on" or "off"."""
+    worlds = list(result["configurations"][reference]["worlds"])
+    per_world, gain_all, retention, safety = {}, True, True, True
+    keys = ("s.own_admitted", "s.syndicated_admitted", "s.dependent_admitted", "one_origin_rises")
+    for w in worlds:
+        diffs = paired(result, config, reference, w)
+        sd = result["configurations"][reference]["worlds"][w]["spread"][PRIMARY]["sd"] or 0.0
+        gain = sum(diffs) / len(diffs)
+        mine = result["configurations"][config]["worlds"][w]["per_seed"]
+        ref = result["configurations"][reference]["worlds"][w]["per_seed"]
+        gain_all &= gain > sd
+        retention &= all((r["retention.lost"] or 0) + (r["retention.regressed"] or 0) <=
+                         (b["retention.lost"] or 0) + (b["retention.regressed"] or 0) for r, b in zip(mine, ref))
+        safety &= all((r[k] or 0) <= (b[k] or 0) for r, b in zip(mine, ref) for k in keys)
+        per_world[w] = {"gain": gain, "reference_sd": sd, "beats": gain > sd, "loses": gain < -sd}
+    return {"config": config, "reference": reference,
+            "verdict": "on" if gain_all and retention and safety else "off",
+            "checks": {"gain_beyond_spread_every_world": gain_all, "retention": retention, "no_safety_regression":
+                       safety}, "per_world": per_world}
 
 
 def dumps(value) -> str:

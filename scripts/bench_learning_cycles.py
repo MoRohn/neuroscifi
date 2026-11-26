@@ -72,6 +72,8 @@ def main(argv=None) -> int:
     r.add_argument("--idle", action="store_true",
                    help="lane V's configurations (cycles.idle_configurations): the worker's idle investigation")
     r.add_argument("--config", action="append", help="repeatable; default every configuration")
+    r.add_argument("--look", choices=sorted(cycles.LOOKS),
+                   help="the configurations of a withheld look (cycles.LOOKS), on a public split: a dry run of it")
     r.add_argument("--cycles", type=int, help="shorten every world to this many cycles")
     r.add_argument("--out")
     v = sub.add_parser("verdict")
@@ -83,6 +85,8 @@ def main(argv=None) -> int:
     f.add_argument("--note", required=True)
     f.add_argument("--out", required=True, help="a path OUTSIDE this checkout; copy it in afterwards")
     f.add_argument("--config", action="append", help=f"repeatable; default {', '.join(cycles.FINAL_CONFIGS)}")
+    f.add_argument("--look", choices=sorted(cycles.LOOKS),
+                   help="every configuration of a named look (cycles.LOOKS), instead of --config")
     f.add_argument("--mechanism", default="baseline", help="the name the ledger line records")
     i = sub.add_parser("idle", help="lane V's measurement in one command: every public split with "
                                     "cycles.idle_configurations(), its references and cycles.idle_verdicts")
@@ -98,11 +102,15 @@ def main(argv=None) -> int:
     known = cycles.configurations() | cycles.EXTRA
     configs = ((cycles.order_configurations() if a.orders else cycles.idle_configurations() if a.idle else
                 cycles.configurations()) if a.command == "run" else {k: known[k] for k in cycles.FINAL_CONFIGS})
+    if a.config and getattr(a, "look", None):
+        ap.error("--look names the configurations itself; give it without --config")
     if a.config:
         unknown = sorted(set(a.config) - set(known))
         if unknown:
             ap.error(f"unknown configuration(s): {', '.join(unknown)}; known: {', '.join(known)}")
         configs = {k: known[k] for k in a.config}
+    if getattr(a, "look", None):
+        configs = {k: known[k] for k in cycles.LOOKS[a.look]}
     if a.command == "final":
         return final(a, configs)
     started = time.perf_counter()
@@ -113,6 +121,8 @@ def main(argv=None) -> int:
     out |= cycles.run_split(a.split, configs=configs, cycles=a.cycles)
     if a.cycles is None:        # lane Y (H4): the references, from the world generator alone (no product code)
         out["references"] = cycles.run_references(a.split)
+    if a.look:                  # the look's report fields, as final() writes them
+        out |= cycles.look_view(out) | {"look_name": a.look}
     out["wall_seconds"] = time.perf_counter() - started
     _write(out, a.out)
     return 0
@@ -129,6 +139,7 @@ def idle(a) -> int:
     for split in a.split or ("development", cycles.RATE + "development", "held_out", cycles.RATE + "held_out"):
         run = cycles.run_split(split, configs=cycles.idle_configurations())
         run["references"] = cycles.run_references(split)
+        run["commit"] = out["commit"]       # review3 LOW 6: every split names the commit it was measured on
         out["runs"][split] = run
         out["verdicts"][split] = cycles.idle_verdicts(run)
         rows = [r for c in run["configurations"].values() for w in c["worlds"].values() for r in w["per_seed"]]

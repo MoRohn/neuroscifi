@@ -430,11 +430,22 @@ Leave it on for at least a week of normal use with the research worker running a
 "unsettled"). Then read the report:
 
 - `statement`: how many days and memory shortages ("breach episodes") the numbers rest on. Below 7 days or 5
-  episodes it says **not enough data**: do not decide on it yet.
-- `settled.hits`: times it would have held and memory did fall under the critical line within 3 minutes;
-  `settled.false_alarms`: times it would have held and nothing happened (`false_alarm_share` is their share of all
-  its holds); `settled.misses`: times it would have let work start and memory did fall short.
-- `breaches.preceded` and `lead_seconds`: of the real shortages, how many it would have seen coming, and how early.
+  episodes it says **not enough data**: do not decide on it yet. That minimum only gates reading, not deciding.
+- `settled.added`: **read this first.** Only the notes made where the real gate let work start and memory was not
+  yet short: `hits` (it would have held and memory did fall under the critical line within 3 minutes),
+  `false_alarms` (it would have held and nothing happened), `misses` (it would have let work start and memory did fall
+  short). These are the holds that would have changed something.
+- `settled.hits`: would-hold notes with memory under the critical line at that moment or within 3 minutes (a note
+  made while memory is already short counts; `settled.holds_gate_refused` says how many holds the real gate was
+  already making).
+- `breaches.preceded_before_start`: how many shortages had a would-hold note strictly before their first sample
+  (`preceded` also counts a note at that sample). The warning time cannot exceed 3 minutes, so it is shown as a
+  distribution (`lead_seconds_distribution`), not only as a mean.
+- `guide`: the rule, written down before any host data, under which the evidence would support turning it on: enough
+  data, at least 4 in 5 shortages seen before they started, and no more added false alarms than added hits. It
+  decides nothing; the decision is yours.
+- Verdicts exist only while the worker asks the gate; shortages are counted from every sample. Keep the worker
+  running **with web research enabled**, or the shortages of that time count as unseen.
 - `work.starts_after_a_hold`: background tasks that started while it would have held, out of `background_starts`:
   the research it would have postponed.
 
@@ -450,6 +461,59 @@ settled predictions by kind and month, answers that later got a verdict, hypothe
 change, and for each learner its minimum (read from the code), what is missing and the earliest date it could be met
 at the pace so far ("unknown" while nothing settles). It only reads: nothing is fitted or stored, no model is called.
 `nsf self` shows the same per-learner summary under `uncertain.outcomes_readiness`.
+
+**Read the shadow report with care (Wave 3 review).** A would-hold note made while memory is *already* under the
+line counts as a hit, and the warning time cannot exceed 3 minutes, so `settled.hits` and the mean warning time look
+good by construction (in the review's staged runs 73 % of the hits were holds the real gate was already making).
+Since the fix lane the report counts separately what the forecast adds (`settled.added`). On the staged test traces
+the added false alarms outnumbered the added hits on held-out (198 against 78): do not turn predictive regulation on
+from `settled.hits` alone.
+
+### Which pages count as separate sources, and replacing out-of-date facts (ADR-061)
+
+**In plain words.** When several web pages say the same thing, NeuroSciFi counts how many *independent* sources they
+are. Pages on the same site, near-identical copies, and copies that carry a "first appeared on" line count as one.
+Wave 3 built two extra rules and found they are not good enough yet, so **both are off** (the fix lane's decision
+after the reviews; you can turn either on):
+
+- `attribution_independence`: a page that says "according to X" counts with X. It only understands a few wordings
+  (a copy that says "X notes" or "per a X report" still looks independent), and honest outlets that mention who
+  reported first are counted as one source, so it can cost correct knowledge. The fix lane removed the worst defect:
+  one page crediting two honest outlets no longer merges them.
+- `echo_recognition`: a page that repeats what NeuroSciFi itself answered, or says "an assistant reported", is not
+  taken as proof. It only catches repeats that name a model or copy a number NeuroSciFi said first. The fix lane made
+  it safe to turn on: it no longer throws away honest pages on a large individual, a forgotten source no longer
+  blocks a subject for ever, it no longer slows writes, and "the AI Act" is no longer read as AI text.
+
+To check or change them (`DB` is the individual's file):
+
+```sh
+nsf web config --db DB                                         # shows both, off unless you turned them on
+nsf web config --db DB --set attribution_independence=false --set echo_recognition=false   # turn both off
+```
+
+Turning them on is not recommended on the present evidence. What they write: nothing of their own; they only change
+which pages count.
+
+**Replacing an out-of-date fact without asking you (`supersession`, off).** Today, when a refresh finds a newer
+version that disagrees with what NeuroSciFi holds, it asks you and changes nothing until you answer. With
+`supersession` set to `"independent"`, a newer version stated by at least `supersession_min_sources` (2) independent
+sources replaces the held fact without asking, and the replacement is listed for you to check:
+
+```sh
+nsf web config --db DB --set 'supersession="independent"'   # turn it on (your decision)
+nsf web replacements --db DB                                  # every replacement the rule made, newest first
+nsf web revert --db DB ID                                     # undo one: the replaced version comes back exactly
+nsf web config --db DB --set 'supersession="ask"'            # back to asking you (the default)
+```
+
+Measured in Wave 3 on simulated worlds, it asked fewer questions but did not make knowledge measurably more correct,
+and about one replacement in eleven was wrong (two outlets repeating the same rumour); some wrong replacements stayed
+wrong for over a week of simulated days, until the test ended. Two outlets repeating the same rumour can still
+replace a correct fact in your own research or a refresh. Since the fix lane only your own research and refreshes
+can let it decide (a question asked from Pocket or by an agent is always asked of you), forgetting a source also
+removes it from the rule's record and an undo never brings back something you forgot, and an undo reopens the
+questions the replacement had closed. Keep it off unless you accept the rumour risk.
 
 ### Crashed worker
 

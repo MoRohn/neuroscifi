@@ -982,18 +982,25 @@ def _front_door_formula(query):
     return float(mean[y] + beta @ slope * (query["do"][x] - mean[x]))
 
 
+MOMENTS_UNSTATED = "the question does not say whether the means and covariance"   # causal._regime's decline
+
+
 def _front_door_trap(case_id, kind):
     from ... import causal
     from . import frontdoor_splits
     declined, seen = 0, []
     for seed in FRONT_DOOR_SEEDS:
         world = frontdoor_splits.generate(kind, seed)
+        # review3 (C): staged with the moments declared exact, so the decline is the criterion's; a question that
+        # does not say where its moments come from is declined whatever the graph (the moments rule), and a decline
+        # for that reason does not count here
         try:
-            out = causal.answer(world["query"])
+            out = causal.answer(world["query"] | {"moments": "population"})
         except Exception as error:        # an error is not a decline
             seen.append(f"seed {seed}: {type(error).__name__}")
             continue
-        ok = out["value"] is None and out["identified"] is False and bool(out["why"])
+        ok = out["value"] is None and out["identified"] is False and bool(out["why"]) and \
+            not out["why"].startswith(MOMENTS_UNSTATED)
         declined += ok
         naive = _front_door_formula(world["query"])
         miss = "no data for M" if naive is None else f"{abs(naive - world['truth']) / world['scale']:.3f} x sd(Y)"
@@ -1142,17 +1149,21 @@ _TEMPLATES = {"relnotes.example": "{N} {v} is the latest {N} release.",
               "weekly-builds.example": "As of now, {N} {v} is the latest {N} release."}
 _WIRE_TEXT = "{N} {v} is the latest {N} release, the Syndiwire desk reports."
 LANE_S_OFF = {"attribution_independence": False, "echo_recognition": False, "supersession": "ask"}
+# The expectations above were written with the two fixes ON ("the fixes keep their shipped values" meant ON when they
+# were written). Since the fix lane both ship OFF (ADR-061), so the cases switch them on themselves: what each case
+# stages and expects is unchanged.
+LANE_S_ON = {"attribution_independence": True, "echo_recognition": True}
 RULE_ON = {"supersession": "independent", "supersession_min_sources": 2}
 
 
 @contextmanager
 def _s_individual(name, **settings):
     """A temporary individual for lane S's cases, its resource gate held open and no model called (cycles'
-    environment); `settings` over the defaults."""
+    environment); the two fixes on (LANE_S_ON), then `settings`."""
     from ...webcortex import state
     from . import cycles
     with _individual(name) as (db, path):
-        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0} | settings, T0 - 30 * DAY)
+        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0} | LANE_S_ON | settings, T0 - 30 * DAY)
         with cycles._environment([None]):
             yield db, path
 

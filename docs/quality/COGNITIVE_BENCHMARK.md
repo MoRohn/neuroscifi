@@ -178,7 +178,8 @@ Scores (after the Wave 1 review, B3, corrected at its re-review; `scoring.answer
   (exact arithmetic on the equations the question hands over), `belief_what_if` (the truth is the same posterior
   function recomputed on a copy: a plumbing check), `learned_graph` (forecasts and pushes on a graph the individual
   learned: **the substantive group**). The front-door questions are a fourth line, `front_door`: the declines are
-  counted (`front_door_declined`; the engine does no front-door adjustment) and an answer is scored for tolerance.
+  counted (`front_door_declined`; until Wave 3 the engine did no front-door adjustment; since ADR-059 it answers them,
+  0 → 1.000 held-out, `genesis_frontdoor.json`) and an answer is scored for tolerance.
   `summary` pools the groups and is marked so in every result (`summary_is`: "pooled ... reported, not a claim").
 - Kept for comparison with the recorded files under names that cannot be mistaken for the headline:
   `answered_share` (was `coverage`: any answer counts, however wrong), `mean_relative_error`, `interval_coverage`
@@ -243,7 +244,15 @@ Results are reported by origin (`by_origin`, `adversarial.ORIGIN`), never added 
 with every Wave 1 setting off as well) and `restored` (`system_made_content_never_enters_the_journal`: the original
 concern of the redefined case, staged where it applies — a quarantined what-if record's id offered as a reading's
 id, root and sample, and readings labelled inference, simulation or speculation, all refused with the belief, the
-journal and the state version unchanged; it guards lane P's Wave 0 mechanism, so it passes in every regime).
+journal and the state version unchanged; it guards lane P's Wave 0 mechanism, so it passes in every regime),
+`added_wave2` (10), and in Wave 3 `added_wave3_c` (5, lane C's front-door traps) and `added_wave3_s` (16, lane S's
+sources, own text and supersession). On the merged Wave 3 tree `f0a1f09`: 54 cases, 49 scored (5 directive items not
+staged), 49 of 49 pass on both splits (13 / 4 / 1 / 10 / 5 / 16 by origin; `genesis_wave3_combined_checks.json`).
+Lane C's 5 cases were declined by the moments rule before the criterion was reached, so they passed even with the
+criterion broken; since the fix lane (`8a8fce7`) they are staged with `moments: population`, a decline for unstated
+moments does not count, and a test shows them failing with the separation check removed (the expectation text is
+unchanged). Lane S's 16 pass with its two source rules switched on by the cases themselves (`LANE_S_ON`), as their
+expectations were written; at the shipped defaults those rules are off since the fix lane (ADR-061).
 **Cannot show:** behaviour under real adversaries; it is a regression set, not a tuning set (no split).
 
 ## Baseline (unchanged system)
@@ -369,7 +378,8 @@ these numbers measures "intelligence". They are task scores on synthetic worlds 
   handed equations 1.0 / 1.0, belief what-ifs 1.0 / 1.0 (plumbing), learned graph forecasts and actions 0.889 /
   1.000 within 0.1 × sd (largest error 0.147 / 0.092; within 0.05: 0.815 / 0.778; the tolerance was set in the same
   commit as the results; baseline 0.259 / 0.222; "answer 0" 0.111 / 0.407 at 0.1 and 0.037 / 0.148 at 0.05; 12 seeds
-  0.954 against 0.204). The engine does no front-door adjustment: it declines those questions. Ablations, held-out,
+  0.954 against 0.204). The engine did no front-door adjustment then: it declined those questions (answered since
+  Wave 3, ADR-059). Ablations, held-out,
   over all answerable (without the front-door ones in brackets): without the causal engine 0.375 (0.429), without the
   what-if 0.781 (0.893), without forecasts 0.656 (0.750), without pushes 0.781 (0.893). The splits are unchanged.
 
@@ -467,11 +477,20 @@ forbidden), and nothing may be tuned on them.
 **The guard.** Only `cycles.final()` loads the worlds; `scripts/bench_learning_cycles.py final --note TEXT --out FILE`
 is its command line. `run --split` does not accept them, and `cycles.run_split` / `run_references` refuse them. A final
 run refuses a missing note and a tree that is dirty or not committed (the ledger of final runs is excluded from the
-dirty check, as `cognition.environment()` does). It appends its line to
+dirty check, as `cognition.environment()` does); since the fix lane a dirty check that fails or times out counts as
+dirty, and `final()` compares the worlds file's bytes with the SHA-256 pinned in `cycles.WITHHELD_SHA256` before it
+records or loads anything (the digest goes into the ledger line). It appends its line to
 `docs/quality/evidence/genesis_final_uses.jsonl` (commit, clean flag, mechanism, `"ablate": []`, the family
 `learning_cycles_withheld`, the configurations, the note) **before** it loads or scores anything, so a crash still
 counts as a look. The script also refuses another tree's source and an `--out` inside the checkout. The file's SHA-256
-is pinned by `tests/acceptance/test_learning_cycles_withheld.py`, which tests each refusal without loading the worlds.
+is pinned in `cycles.py` (checked by `final()`) and by `tests/acceptance/test_learning_cycles_withheld.py`; the tests
+check each refusal without loading the worlds. A `--final` run of `scripts/bench_cognition.py` (the counterfactual
+withheld interface) likewise refuses a dirty or uncommitted tree and an `--out` inside the checkout (fix lane).
+`baseline` is Step 0's behaviour made explicit since the fix lane (every Wave 1–3 setting off, lane S's two rules off,
+supersession "ask", lane K's re-check order, no idle investigation); the Wave 3 look's configurations, their reference
+pairings and report fields are `cycles.LOOKS["wave3"]`, `LOOK_PAIRS`, `LOOK_FIELDS` and `COUNTERS` (what each
+admitted-content counter can see: `self_admitted` and `wire_admitted` see only 9.x and 7.x versions;
+`admitted.wrong`, `admitted.own_only` and `admitted.wire_only` need no version convention).
 Each result records every world's digest per seed (`world_digests`). Two looks met the same worlds when their digests
 are equal. The settings each individual held are read back in every run (`config_read_back`).
 

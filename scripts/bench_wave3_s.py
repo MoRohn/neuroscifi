@@ -58,6 +58,8 @@ def run(families, splits, configs) -> dict:
             for config in have:
                 if config.startswith("fix") or config == "shipped":
                     verdicts[config] = cycles_s.verdict(result, config, "baseline") if "baseline" in have else None
+                    if "baseline" in have:      # Wave 3 fix lane: the roadmap's rule beside the lane's own
+                        verdicts[config + ":roadmap"] = cycles_s.roadmap_verdict(result, config, "baseline")
                 elif config.startswith("supersede"):
                     verdicts[config] = cycles_s.verdict(result, config, "fixes") if "fixes" in have else None
             out["verdicts"][name] = verdicts
@@ -74,7 +76,7 @@ def main(argv=None) -> int:
     r.add_argument("--config", action="append", choices=tuple(cycles_s.CONFIGS))
     r.add_argument("--out")
     a = ap.parse_args(argv)
-    result = run(a.family or list(cycles_s.FAMILIES), a.split or ["development", "held_out"], a.config)
+    result = run(a.family or ["lane-s", "lane-f"], a.split or ["development", "held_out"], a.config)
     text = json.dumps(scoring.rounded(result), indent=1)
     if a.out:
         Path(a.out).write_text(text + "\n", encoding="utf-8")

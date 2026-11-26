@@ -1,0 +1,222 @@
+{
+ "lane": "Wave 3 fix lane (gen3-fix)",
+ "after_the_fix_lane": true,
+ "withheld": "not read, not imported by name, not run; no --final, no final subcommand",
+ "host": "aarch64, shared; runs made while the read-ahead stress (16 busy loops) ran: wall times are not costs",
+ "label": "the cognitive benchmark's retention and adversarial families on both splits, the offline research digest at the shipped defaults and all off, and the fix lane's timing and stress checks",
+ "measured_on": "102e72b",
+ "cognition:development": {
+  "environment": {
+   "git_commit": "102e72b4d68caa8838c94add2fa2bfd20953b4f5",
+   "git_dirty": true,
+   "python": "3.12.16",
+   "numpy": "2.3.5",
+   "sqlite": "3.53.1",
+   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+   "machine": "aarch64",
+   "cpu_count": 20,
+   "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39",
+   "withheld_sha256": "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
+  },
+  "adversarial": {
+   "passed": 49,
+   "scored": 49,
+   "failed": [],
+   "by_origin": {
+    "original": {
+     "passed": 13,
+     "scored": 13,
+     "failed": [],
+     "redefined": {
+      "imagined_reading_moves_no_belief": "ADR-052 \u00a76: was simulated_reading_moves_no_belief (a reading labelled provenance='simulated' still moves the belief, as an observation of a simulated environment should)"
+     }
+    },
+    "added_wave1": {
+     "passed": 4,
+     "scored": 4,
+     "failed": []
+    },
+    "restored": {
+     "passed": 1,
+     "scored": 1,
+     "failed": []
+    },
+    "added_wave2": {
+     "passed": 10,
+     "scored": 10,
+     "failed": []
+    },
+    "added_wave3_c": {
+     "passed": 5,
+     "scored": 5,
+     "failed": []
+    },
+    "added_wave3_s": {
+     "passed": 16,
+     "scored": 16,
+     "failed": []
+    }
+   },
+   "cases": 54
+  },
+  "retention": {
+   "all_retained": true,
+   "scenarios": {
+    "birth": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "grounding": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "lifelong_correction": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "graph_development": {
+     "pass": true,
+     "failed_checks": []
+    }
+   }
+  }
+ },
+ "cognition:held_out": {
+  "environment": {
+   "git_commit": "102e72b4d68caa8838c94add2fa2bfd20953b4f5",
+   "git_dirty": true,
+   "python": "3.12.16",
+   "numpy": "2.3.5",
+   "sqlite": "3.53.1",
+   "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+   "machine": "aarch64",
+   "cpu_count": 20,
+   "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39",
+   "withheld_sha256": "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
+  },
+  "adversarial": {
+   "passed": 49,
+   "scored": 49,
+   "failed": [],
+   "by_origin": {
+    "original": {
+     "passed": 13,
+     "scored": 13,
+     "failed": [],
+     "redefined": {
+      "imagined_reading_moves_no_belief": "ADR-052 \u00a76: was simulated_reading_moves_no_belief (a reading labelled provenance='simulated' still moves the belief, as an observation of a simulated environment should)"
+     }
+    },
+    "added_wave1": {
+     "passed": 4,
+     "scored": 4,
+     "failed": []
+    },
+    "restored": {
+     "passed": 1,
+     "scored": 1,
+     "failed": []
+    },
+    "added_wave2": {
+     "passed": 10,
+     "scored": 10,
+     "failed": []
+    },
+    "added_wave3_c": {
+     "passed": 5,
+     "scored": 5,
+     "failed": []
+    },
+    "added_wave3_s": {
+     "passed": 16,
+     "scored": 16,
+     "failed": []
+    }
+   },
+   "cases": 54
+  },
+  "retention": {
+   "all_retained": true,
+   "scenarios": {
+    "birth": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "grounding": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "lifelong_correction": {
+     "pass": true,
+     "failed_checks": []
+    },
+    "graph_development": {
+     "pass": true,
+     "failed_checks": []
+    }
+   }
+  }
+ },
+ "offline:defaults": {
+  "sha256": "68731d7235cbae9fca289124ea59bed99c1aa5b578ecaf8784d2e3df54cdf9d5",
+  "portable_sha256": "d87dbb4fb77f03e251662e744e5c745a0b5bd3d603773b93c074144c1e945f30",
+  "environment": {
+   "machine": "aarch64",
+   "python": "3.12.16",
+   "sqlite": "3.53.1",
+   "browser": "default"
+  }
+ },
+ "offline:all_off": {
+  "sha256": "68731d7235cbae9fca289124ea59bed99c1aa5b578ecaf8784d2e3df54cdf9d5",
+  "portable_sha256": "d87dbb4fb77f03e251662e744e5c745a0b5bd3d603773b93c074144c1e945f30",
+  "environment": {
+   "machine": "aarch64",
+   "python": "3.12.16",
+   "sqlite": "3.53.1",
+   "browser": "default"
+  }
+ },
+ "webcortex_bench_json_sha256": {
+  "before": "16f9a2e799f19778fd40f1025e371dfe1186a2b5695f46be2bbf5df94023b4a0",
+  "after": "16f9a2e799f19778fd40f1025e371dfe1186a2b5695f46be2bbf5df94023b4a0"
+ },
+ "echo_check_cost": {
+  "what": "security review M4's probe (one claim of 80 words with 78 distinct numbers; 20 kB model-written result per task) against the fixed _Echoes(db, claims), before the write transaction",
+  "script": "scratchpad fix/p5_new.py (the review's p5_echo_cost.py adapted to the new constructor)",
+  "commit": "98109d7 (code of the measured path)",
+  "tasks_2000_db_50MB_seconds": 0.19,
+  "tasks_10000_db_247MB_seconds": 0.94,
+  "one_or_eight_claims": "the same time (one scan per consolidation)",
+  "before_the_fix_review_measured": {
+   "tasks_2000_seconds": 1.83,
+   "tasks_10000_seconds": 9.82,
+   "held": "inside the write lock, per claim"
+  }
+ },
+ "strategy_outcomes_cost": {
+  "what": "strategies.outcomes on a staged individual of 10,000 tasks, 10,000 knowledge items and 20,000 predictions (tests/webcortex/test_strategy_outcomes_fast.py's staging), 3 runs each, host under CPU load",
+  "after_seconds": [
+   0.036,
+   0.035,
+   0.035
+  ],
+  "before_per_task_query_seconds": [
+   41.897,
+   55.27,
+   49.937
+  ],
+  "same_counts": "tested at 2,000 tasks (test_outcomes_count_as_the_per_task_query_did)"
+ },
+ "read_ahead_stress": {
+  "what": "tests/webcortex/test_read_ahead.py (36 tests, the max_bytes=200 budget edge and the new abandon-between-reads test included) run 50 times with 16 busy loops on the 20-core host, after the fix (82b7fd9, test 102e72b)",
+  "result": "50 passed, 0 failed of 50 (73.8-76.6 s per run)",
+  "first_attempt": "4 runs of an earlier version of the new test failed under load because it abandoned before any body byte arrived (no second take); the test was changed (102e72b) and the 50 runs restarted"
+ },
+ "h1_probe": {
+  "what": "security review p2b_suppression.py after the fix (attribution on)",
+  "two_honest_plus_one_sentence_crediting_both": "admitted (provisional, confidence 0.722; 0.773 with attribution off)",
+  "four_honest_plus_one_sentence_crediting_all_four": "admitted (0.808; 0.833 off)",
+  "three_honest_plus_two_crediting_sentences_on_one_host": "admitted (0.773, as off)"
+ }
+}

@@ -33,6 +33,15 @@ Settlement (one definition, checked against scoring.breach_report on the anticip
   work          background starts (net increases of running background tasks from one sample to the next) after a
                 would-hold verdict the real gate allowed: what holding would have deferred. A proxy: a task that ended
                 while another started between two samples is not seen
+What the forecast ADDS (review3 H-1): a hit counts a would-hold made while memory is already under the line, where
+the real gate already refuses. `added` counts only the verdicts at which the real gate allowed and memory was not
+under the line at the verdict's own sample: the holds that would have changed something (added hits, added false
+alarms), and the allows that let a breach come (added misses). `preceded_before_start` counts episodes with a
+would-hold strictly before their first breach sample (`preceded` includes one AT it, lead 0). The lead cannot exceed
+the verdict's horizon, so it is reported as a distribution (0 s, up to 60, 120, 180 s, beyond), never only as a mean.
+`holds_gate_refused`: would-holds made where the real gate already refused (audio or memory).
+A limit no counting removes: verdicts exist only when the worker asks the gate (it claims or checks caps), while
+breach episodes are counted from every history sample, also when research is disabled or writes are paused.
 A verdict with no forecast (too little or stale history) is counted apart; one whose horizon holds no sample (the
 worker stopped) is "unsettled". The history keeps 6 hours: a verdict not settled within that is unsettled too.
 
@@ -74,11 +83,15 @@ GATES = ("allowed", "audio", "memory")
 WHYS = ("memory", "voice")
 VERDICT_KEYS = ("verdicts", "holds", "allows", "no_forecast", "failed", "hits", "false_alarms", "misses", "quiet",
                 "unsettled", "memory_holds", "memory_hits", "voice_holds", "voice_followed", "holds_gate_allowed",
-                "starts_under_hold")
+                "starts_under_hold",
+                # review3 H-1: what the forecast adds where the real gate allowed (see the module doc)
+                "added_hits", "added_false_alarms", "added_misses", "added_quiet", "holds_gate_refused")
 POINT_KEYS = ("samples", "breach_samples", "starts")
-EPISODE_KEYS = ("episodes", "preceded")
+LEAD_BUCKETS = (("0", 0.0), ("1-60", 60.0), ("61-120", 120.0), ("121-180", 180.0), ("over 180", math.inf))
+EPISODE_KEYS = ("episodes", "preceded", "preceded_before_start") + tuple(f"lead {name}" for name, _ in LEAD_BUCKETS)
 LEAD_KEYS = ("lead_seconds_sum", "lead_seconds_min", "lead_seconds_max")
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+DAY_SECONDS = 86_400.0
 
 _seen: dict = {}              # db_path -> the history file's state when its verdict was taken (this process)
 _settled_at: dict = {}        # db_path -> when this process's sampler last settled
@@ -171,6 +184,8 @@ def _observe(db_path, now, gate_why):
             return None                               # being settled now: the next gate call records it
         fd = shared.open_file(where / FILE, os.O_WRONLY | os.O_APPEND, group_write=False)
         try:
+            if os.fstat(fd).st_uid not in shared.writers(db_path):    # security review L5: as every read checks
+                raise shared.NotOwned("the shadow record belongs to another account; nothing is appended to it")
             if os.fstat(fd).st_size >= MAX_BYTES:
                 raise OSError("the shadow record is full; the sampler has not settled it")
             os.write(fd, (json.dumps(item, sort_keys=True) + "\n").encode("ascii"))
@@ -281,9 +296,12 @@ def _empty_day() -> dict:
                                                                         "lead_seconds_max": None}
 
 
-def _read_days(where, db_path) -> tuple[dict, str | None]:
+def _read_days(where, db_path, now) -> tuple[dict, str | None]:
     """The roll-up ({"settled_until", "samples_until", "days"}), checked; a missing file is an empty one. A problem
-    (another account's file, one that cannot be read) is returned with an empty roll-up."""
+    (another account's file, one that cannot be read) is returned with an empty roll-up. A day later than tomorrow
+    (by `now`) and a lead time beyond MAX_HORIZON are not taken (security review L5: forged future days would push
+    the real ones out of the KEPT_DAYS kept, and a lead of 1e300 would be the report's mean)."""
+    latest = _day(now + DAY_SECONDS)
     empty = {"settled_until": None, "samples_until": None, "days": {}}
     try:
         raw = shared.read_json(where / DAYS_FILE, limit=1 << 20, owners=shared.writers(db_path))
@@ -298,7 +316,7 @@ def _read_days(where, db_path) -> tuple[dict, str | None]:
     out = {"settled_until": _number(raw.get("settled_until")), "samples_until": _number(raw.get("samples_until")),
            "days": {}}
     for day, counts in raw["days"].items():
-        if not isinstance(day, str) or not DAY.fullmatch(day) or not isinstance(counts, dict):
+        if not isinstance(day, str) or not DAY.fullmatch(day) or day > latest or not isinstance(counts, dict):
             continue
         row = _empty_day()
         for k in VERDICT_KEYS + POINT_KEYS + EPISODE_KEYS:
@@ -306,7 +324,8 @@ def _read_days(where, db_path) -> tuple[dict, str | None]:
             row[k] = v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
         for k in LEAD_KEYS:
             v = _number(counts.get(k))
-            if v is not None and v >= 0:
+            bound = MAX_HORIZON * row["preceded"] if k == "lead_seconds_sum" else MAX_HORIZON
+            if v is not None and 0 <= v <= bound:
                 row[k] = float(v)
         out["days"][day] = row
     return out, None
@@ -375,6 +394,13 @@ def _settle(verdicts, points, *, since, until, samples_until, window=None, floor
             bump(t, "unsettled")
             continue
         breach = any(p["breach"] for p in seen)
+        i = bisect.bisect_left(times, v["sample_at"])
+        own_breach = i < len(points) and points[i]["at"] == v["sample_at"] and points[i]["breach"]
+        if v["gate"] == "allowed" and not own_breach:          # where holding would have changed something
+            bump(t, ("added_hits" if breach else "added_false_alarms") if v["hold"] else
+                 ("added_misses" if breach else "added_quiet"))
+        if v["hold"] and v["gate"] != "allowed":
+            bump(t, "holds_gate_refused")
         if v["hold"]:
             bump(t, "hits" if breach else "false_alarms")
             if v["why"] == "memory":
@@ -410,6 +436,8 @@ def _settle(verdicts, points, *, since, until, samples_until, window=None, floor
                     lead = s - min(early)
                     row = days[_day(s)]
                     row["preceded"] += 1
+                    row["preceded_before_start"] += lead > 0
+                    row["lead " + next(name for name, top in LEAD_BUCKETS if lead <= top)] += 1
                     row["lead_seconds_sum"] += lead
                     row["lead_seconds_min"] = lead if row["lead_seconds_min"] is None else min(row["lead_seconds_min"],
                                                                                                  lead)
@@ -445,8 +473,12 @@ def settle_due(db_path, now=None) -> dict | None:
         _settled_at.clear()
     _settled_at[key] = now
     from .. import internal_state
-    with _locked(where, wait=True):
-        rollup, problem = _read_days(where, db_path)
+    # security review L4: never wait (this runs on the worker's heartbeat thread, and any account of the folder's
+    # group can hold the lock): a held lock skips this pass, logged by settle_quietly; the next pass settles it
+    with _locked(where, wait=False) as got:
+        if not got:
+            raise BlockingIOError("the shadow files are locked by another process; this settlement is skipped")
+        rollup, problem = _read_days(where, db_path, now)
         if problem is not None:
             raise OSError(problem)
         verdicts, _, problem = _read_verdicts(where, db_path, now)
@@ -496,6 +528,23 @@ def _share(a, b):
     return round(a / b, 4) if b else None
 
 
+# Written before any host data exists (review3 H-4; ADR-058): what a host's shadow evidence would have to show to
+# support the owner turning predictive regulation on. It decides nothing; the owner does.
+GUIDE = ("supports turning it on only with enough data (MIN_DAYS days and MIN_EPISODES breach episodes), at least 4 "
+         "in 5 breach episodes preceded by a would-hold strictly before their first breach sample "
+         "(preceded_before_start), and no more added false alarms than added hits (settled.added: holds where the "
+         "real gate allowed and memory was not yet under the line)")
+
+
+def guide(total, enough) -> dict:
+    """GUIDE applied to the totals: supports_on True / False, or None without enough data."""
+    if not enough:
+        return {"supports_on": None, "rule": GUIDE}
+    ok = total["preceded_before_start"] * 5 >= 4 * total["episodes"] and \
+        total["added_false_alarms"] <= total["added_hits"]
+    return {"supports_on": ok, "rule": GUIDE}
+
+
 def report(db_path, now=None, *, setting=None, window=None, floor_bytes=None) -> dict:
     """The shadow evidence (see the module doc), read only: the roll-up and, settled in memory, the verdicts whose
     horizon has passed. `setting`: the owner's predictive_regulation, shown as given. window / floor_bytes: the
@@ -504,7 +553,7 @@ def report(db_path, now=None, *, setting=None, window=None, floor_bytes=None) ->
     now = time.time() if now is None else now
     where = _folder(db_path)
     problems = []
-    rollup, problem = _read_days(where, db_path) if where else ({"settled_until": None, "samples_until": None,
+    rollup, problem = _read_days(where, db_path, now) if where else ({"settled_until": None, "samples_until": None,
                                                                  "days": {}}, None)
     problems += [problem] if problem else []
     verdicts, ignored, problem = _read_verdicts(where, db_path, now) if where else ([], 0, None)
@@ -530,7 +579,10 @@ def report(db_path, now=None, *, setting=None, window=None, floor_bytes=None) ->
     statement = (f"These numbers rest on {len(with_verdicts)} day(s) with verdicts and {total['episodes']} memory "
                  f"breach episode(s) on this host. ")
     statement += ("That is enough to read them (at least " if enough else "Not enough data yet (at least ") + \
-        f"{MIN_DAYS} days and {MIN_EPISODES} breach episodes are needed)."
+        f"{MIN_DAYS} days and {MIN_EPISODES} breach episodes are needed); that minimum only gates reading, it is " \
+        "not a decision rule. What the forecast adds is under settled.added (only where the real gate allowed). " \
+        "Verdicts exist only while the worker asks the gate; breach episodes are counted from every sample, also " \
+        "when web research is disabled or writes are paused."
     return {"schema": SCHEMA, "at": now, "setting": setting,
             "enough_data": enough, "statement": statement,
             "rests_on": {"days_with_verdicts": len(with_verdicts), "first_day": with_verdicts[0] if with_verdicts
@@ -542,18 +594,30 @@ def report(db_path, now=None, *, setting=None, window=None, floor_bytes=None) ->
                         "quiet": total["quiet"], "total": settled,
                         "false_alarm_share": _share(total["false_alarms"], total["hits"] + total["false_alarms"]),
                         "by_reason": {"memory_holds": total["memory_holds"], "memory_hits": total["memory_hits"],
-                                      "voice_holds": total["voice_holds"], "voice_followed": total["voice_followed"]}},
+                                      "voice_holds": total["voice_holds"], "voice_followed": total["voice_followed"]},
+                        "holds_gate_refused": total["holds_gate_refused"],
+                        "added": {"hits": total["added_hits"], "false_alarms": total["added_false_alarms"],
+                                  "misses": total["added_misses"], "quiet": total["added_quiet"],
+                                  "false_alarm_share": _share(total["added_false_alarms"],
+                                                              total["added_hits"] + total["added_false_alarms"])}},
             "breaches": {"samples": total["samples"], "breach_samples": total["breach_samples"],
                          "episodes": total["episodes"], "preceded": total["preceded"],
-                         "preceded_share": _share(total["preceded"], total["episodes"]), "lead_seconds": lead},
+                         "preceded_before_start": total["preceded_before_start"],
+                         "preceded_share": _share(total["preceded"], total["episodes"]), "lead_seconds": lead,
+                         "lead_seconds_distribution": {name: total["lead " + name] for name, _ in LEAD_BUCKETS},
+                         "lead_note": "a lead cannot exceed the verdict's horizon (180 s): a mean equal to it means "
+                                      "every preceded episode was seen as early as the horizon allows"},
             "work": {"holds_the_gate_allowed": total["holds_gate_allowed"], "background_starts": total["starts"],
                      "starts_after_a_hold": total["starts_under_hold"],
                      "share_of_starts": _share(total["starts_under_hold"], total["starts"])},
+            "guide": guide(total, enough),
             "pending": len(pending), "ignored_lines": ignored, "problems": problems,
             "definitions": {"breach": "a history sample with available memory under the critical line "
                                       "(resources.monitor.thresholds)" if floor_bytes is None else
                             f"a history sample with available memory under {floor_bytes} bytes",
-                            "hit": "a would-hold verdict followed by a breach within its horizon",
+                            "hit": "a would-hold verdict with a breach at its own sample or within its horizon (a "
+                                   "note made while memory is already short counts; settled.added counts only the "
+                                   "verdicts where the real gate allowed and memory was not under the line)",
                             "false_alarm": "a would-hold verdict with no breach within its horizon",
                             "miss": "a would-allow verdict followed by a breach within its horizon",
                             "work": "background starts after a would-hold verdict that the real gate allowed "

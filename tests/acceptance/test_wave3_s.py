@@ -121,7 +121,8 @@ def test_an_echo_that_only_disagrees_is_still_asked_never_decided():
 
 def test_supersession_ships_off_and_its_values_are_checked():
     assert WebConfig().supersession == "ask" and WebConfig().supersession_min_sources == 2
-    assert WebConfig().attribution_independence is True and WebConfig().echo_recognition is True
+    # ADR-061 (fix lane, decisions D1 and D2): both lane S fixes ship OFF; the owner may turn either on
+    assert WebConfig().attribution_independence is False and WebConfig().echo_recognition is False
     with adv._s_individual("settings") as (db, _):
         for bad in ({"supersession": "auto"}, {"supersession_min_sources": 1}, {"supersession_min_sources": 11},
                     {"echo_recognition": "yes"}):
@@ -196,8 +197,9 @@ def test_the_withheld_look_configurations_read_back_as_named():
     off = cycles.run_world(spec, 41, known["lane-s:fixes-off"], cycles=1)["config"]
     rule = cycles.run_world(spec, 41, known["lane-s:supersede-K2"], cycles=1)["config"]
     assert (off["attribution_independence"], off["echo_recognition"], off["supersession"]) == (False, False, "ask")
-    assert (rule["attribution_independence"], rule["supersession"], rule["supersession_min_sources"]) == \
-        (True, "independent", 2)
+    # supersede-K2 is on top of the shipped defaults, in which both lane S fixes are off since the fix lane (ADR-061)
+    assert (rule["attribution_independence"], rule["echo_recognition"], rule["supersession"],
+            rule["supersession_min_sources"]) == (False, False, "independent", 2)
 
 
 def test_the_census_sees_the_syndication_shapes_only_with_the_rule():

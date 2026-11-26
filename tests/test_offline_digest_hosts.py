@@ -12,7 +12,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "docs" / "quality" / "evidence" / "offline_deterministic_aarch64.json"
 RECORDED = "68731d7235cbae9fca289124ea59bed99c1aa5b578ecaf8784d2e3df54cdf9d5"   # development host (aarch64)
-CI_PREFIX = "426abca5d803"          # CI's x86_64 runner, the Wave 2 pull request's first run (12 hex digits quoted)
+# CI's x86_64 runner: the whole digest, read (read-only `gh run view --log-failed`) from the Wave 2 pull request's
+# run 45759723830 in the fix lane; the 12 characters quoted before (426abca5d803) are its start
+CI_PREFIX = "426abca5d803349df0953045bd233495d2c23363a3107aea16de66151de46f6c"
 CI_BROWSER = "/home/runner/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome"   # ci.yml's NSF_CHROMIUM
 
 

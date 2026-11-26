@@ -131,6 +131,51 @@ EXTRA.update({"lane-s:fixes-off": frozenset({SHIPPED, LANE_S_FIXES_OFF}),
               "lane-s:supersede-K2": frozenset({SHIPPED, LANE_S_SUPERSEDE})})
 READ_BACK = READ_BACK + ("attribution_independence", "echo_recognition", "supersession", "supersession_min_sources")
 
+# Wave 3 fix lane (review3 Q7-2, Q7-8): each lane S fix is decided on its own, so each has its configuration on top of
+# the shipped defaults (in which both are OFF since the fix lane, ADR-061); `baseline` is Step 0's behaviour made
+# explicit: every Wave 1-3 setting off, both lane S fixes off, supersession "ask", lane K's re-check order (the idle
+# investigation is not run in it: no IDLE marker). On the integrated tree before the fix lane, `baseline` left the
+# lane S switches at their default, which was ON.
+LANE_S_ECHO, LANE_S_ATTRIBUTION = "+lane-s-echo", "+lane-s-attribution"
+ON.update({LANE_S_ECHO: {"echo_recognition": True}, LANE_S_ATTRIBUTION: {"attribution_independence": True}})
+EXTRA.update({"lane-s:echo-only": frozenset({SHIPPED, LANE_S_FIXES_OFF, LANE_S_ECHO}),
+              "lane-s:attribution-only": frozenset({SHIPPED, LANE_S_FIXES_OFF, LANE_S_ATTRIBUTION}),
+              "lane-s:both": frozenset({SHIPPED, LANE_S_FIXES_OFF, LANE_S_ECHO, LANE_S_ATTRIBUTION})})
+STEP0_BASELINE = {"attribution_independence": False, "echo_recognition": False, "supersession": "ask",
+                  "recheck_order": "staleness"}
+# The one command of the main session's Wave 3 look (scripts/bench_learning_cycles.py final --look wave3): every
+# configuration below on the same worlds and seeds. Reference pairings (stated so the report cannot mix them up):
+# the lane S configurations against `lane-s:fixes-off` (each fix, then both); `lane-s:supersede-K2` against
+# `shipped`; `shipped+idle` against `shipped`; `recheck:*` and `idle-first` against `baseline`.
+LOOKS = {"wave3": ("reference:no-loop", "baseline", "shipped", "lane-s:fixes-off", "lane-s:echo-only",
+                   "lane-s:attribution-only", "lane-s:both", "lane-s:supersede-K2",
+                   "recheck:rate+seen+rotation/all", "recheck:rotation/all", "shipped+idle", "idle-first")}
+LOOK_PAIRS = {"lane-s:echo-only": "lane-s:fixes-off", "lane-s:attribution-only": "lane-s:fixes-off",
+              "lane-s:both": "lane-s:fixes-off", "shipped": "lane-s:fixes-off", "lane-s:supersede-K2": "shipped",
+              "shipped+idle": "shipped", "recheck:rate+seen+rotation/all": "baseline",
+              "recheck:rotation/all": "baseline", "idle-first": "baseline", "lane-s:fixes-off": "baseline"}
+# What every look reports per world and seed (run_split's per_seed rows), and what the admitted-content counters see
+LOOK_FIELDS = ("mean.correct", "mean.coverage", "self_admitted", "wire_admitted", "one_origin_rises",
+               "retention.lost", "retention.regressed", "admitted.wrong", "admitted.own_only", "admitted.wire_only",
+               "replacements.true", "replacements.false", "replacements.by_rule_false",
+               "replacements.false_persistence_max", "replacements.false_censored")
+COUNTERS = {
+    "self_admitted": "knowledge rows ever written whose version has major 9 (the worlds' convention for the "
+                     "individual's own outputs): blind to an own output stated as a 1.x value",
+    "wire_admitted": "knowledge rows ever written whose version has major 7 (the implausible wire story): blind to a "
+                     "plausible syndicated error (1.<minor+1>.0)",
+    "admitted.wrong": "knowledge rows written stating a version that was not the truth in the cycle they were "
+                      "written (any major; the truth as `correct` reads it): no version convention",
+    "admitted.own_only": "knowledge rows written whose every source page was an echo of the individual's own output "
+                         "(the world's page kind 'echo')",
+    "admitted.wire_only": "knowledge rows written whose every source page was the wire story or a copy of it (page "
+                          "kinds 'wire', 'wire_copy'), whatever version they state",
+    "replacements": "every supersession consolidation reported, classified against the truth of its cycle: true (the "
+                    "new value is true, the old was not), false (the old was true, the new is not), other; "
+                    "by_rule_* when the supersession rule made it; per false one: the cycles until the subject was "
+                    "held right again (wrong and nothing-held cycles counted apart) and whether the run ended first "
+                    "(censored)"}
+
 # Wave 3 lane V (ADR-062): the worker's idle investigation (autonomy.idle) as the product runs it, inside the SAME daily
 # allowance as the timer (Run.idle_investigations). Not settings: what the harness's simulated worker does each cycle.
 #   IDLE        after the timer's pass and its tasks: the idle decisions take what the pass left of the allowance
@@ -175,9 +220,9 @@ def budget_at(spec, cycle) -> int:
 
 
 def _settings(mechanisms, budget) -> dict:
-    base = {} if SHIPPED in mechanisms else dict(WAVE1_OFF_WEB)
+    base = {} if SHIPPED in mechanisms else dict(WAVE1_OFF_WEB) | STEP0_BASELINE
     cfg = base | {"enabled": True, "autonomous": NO_LOOP not in mechanisms, "daily_autonomous": _allowance(budget)}
-    for m in set(mechanisms) - WORKER:
+    for m in sorted(set(mechanisms) - WORKER, key=lambda m: (not m.startswith("-"), m)):   # "-..." (off) first
         cfg |= ON[m]
     return cfg
 
@@ -277,6 +322,11 @@ class Run:
         self.config = {}                  # READ_BACK as the individual holds them after start()
         self.allowance = []               # the daily autonomous tasks the individual held in each cycle 1..N
         self.looks = []                   # Wave 3 lane R: every autonomous look, what it met and what it changed
+        # Wave 3 fix lane (review3 Q7): admitted content by the world's truth and page kinds (COUNTERS), and every
+        # supersession classified against the truth, with each false one's (subject, cycle)
+        self.admitted = {"rows": 0, "wrong": 0, "own_only": 0, "wire_only": 0}
+        self.replaced = {"true": 0, "false": 0, "other": 0, "by_rule_true": 0, "by_rule_false": 0, "by_rule_other": 0}
+        self.false_replaced = []
 
     # ---- the world ----------------------------------------------------------------------------------------------
     def subject_in(self, text):
@@ -354,6 +404,8 @@ class Run:
                 for kid, _mm, conf, _v in rows:
                     if kid in before and conf > max(before[kid], single) + 1e-9:
                         self.rises += 1
+        if name:
+            self._count_admitted(name, look, out)
         if name and kind != "owner":      # Wave 3 lane R: what each autonomous look met and did (the diagnosis)
             self.looks.append({"cycle": self.cycle, "kind": kind, "subject": name, "before": prior,
                                "truth": self.truth(name), "read": _look_majority(self.world, name, self.cycle),
@@ -363,6 +415,32 @@ class Run:
                                                                              "held")}}
                               | ({"candidate": self._idle_pick(tid)} if kind == "idle" else {}))
         return out
+
+    def _version_of(self, kid):
+        row = self.db.execute("SELECT claim_values, sources FROM web_knowledge WHERE id=?", (kid,)).fetchone()
+        return (_major_minor(json.loads(row[0] or "[]")), json.loads(row[1] or "[]")) if row else (None, [])
+
+    def _count_admitted(self, name, look, out):
+        """Wave 3 fix lane: the rows this consolidation wrote and the supersessions it made, against the world's truth
+        and its page kinds (COUNTERS); read-only."""
+        truth = (1, self.truth(name))
+        kinds = {f"http://{p['host']}{p['path']}": p.get("kind") for p in look["pages"]}
+        for kid in out.get("provisional") or ():
+            value, sources = self._version_of(kid)
+            pages = [kinds.get(s.get("url")) for s in sources if isinstance(s, dict)]
+            self.admitted["rows"] += 1
+            self.admitted["wrong"] += value != truth
+            self.admitted["own_only"] += bool(pages) and all(k == "echo" for k in pages)
+            self.admitted["wire_only"] += bool(pages) and all(k in ("wire", "wire_copy") for k in pages)
+        for entry in out.get("superseded") or ():
+            old, new = self._version_of(entry["old"])[0], self._version_of(entry["new"])[0]
+            kind = ("true" if new == truth and old != truth else "false" if old == truth and new != truth else
+                    "other")
+            self.replaced[kind] += 1
+            if entry.get("by") == "rule":
+                self.replaced["by_rule_" + kind] += 1
+            if kind == "false":
+                self.false_replaced.append((name, self.cycle))
 
     def _idle_pick(self, tid):
         """The candidate kind autonomy.idle queued this task as (its decision event, admission path 'idle'), else
@@ -577,6 +655,8 @@ class Run:
         kept = [n for n in base if end[n] == self.truth(n, last)]
         rows = db.execute("SELECT claim_values FROM web_knowledge").fetchall()
         majors = [(_major_minor(json.loads(v or "[]")) or (None, None))[0] for (v,) in rows]
+        false_list = [{"subject": name, "cycle": c} | false_persistence(self, name, c)
+                      for name, c in self.false_replaced]
         n = len(self.calibration)
         rate = sum(1 for _, t in self.calibration if t) / n if n else None
         counts = {t: db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in
@@ -598,6 +678,11 @@ class Run:
                             "constant_reference": rate * (1 - rate) if rate is not None else None,
                             "true_rate": rate},
             "self_admitted": sum(1 for m in majors if m == 9), "wire_admitted": sum(1 for m in majors if m == 7),
+            "admitted": dict(self.admitted),
+            "replacements": dict(self.replaced) | {
+                "false_list": false_list,
+                "false_persistence_max": max((f["cycles"] for f in false_list), default=0),
+                "false_censored": sum(1 for f in false_list if f["censored"])},
             "one_origin_looks": self.one_origin_looks, "one_origin_rises": self.rises,
             "tasks": dict(self.tasks), "pages": self.pages,
             "open_marks_max": max(s["open_marks"] for s in self.series),
@@ -618,6 +703,21 @@ class Run:
             "launches": list(self.launches), "history": {n: list(h) for n, h in self.history.items()},
             "config": dict(self.config), "allowance": list(self.allowance), "looks": list(self.looks),
         }
+
+
+def false_persistence(run, name, cycle) -> dict:
+    """How long a false replacement (of `name`, in `cycle`) stayed wrong (review3 S-5): the cycles from it until the
+    subject's newest held item states the truth again, split into cycles held wrong and cycles with nothing held, and
+    whether the run ended first (censored: the true persistence is at least `cycles`)."""
+    hist = dict(run.history.get(name, []))
+    wrong = none = 0
+    for d in range(cycle, run.cycle + 1):
+        v = hist.get(d)
+        if v is not None and v == run.truth(name, d):
+            return {"cycles": wrong + none, "wrong": wrong, "none": none, "censored": False}
+        none += v is None
+        wrong += v is not None
+    return {"cycles": wrong + none, "wrong": wrong, "none": none, "censored": True}
 
 
 @contextmanager
@@ -682,7 +782,11 @@ SCALARS = ("mean.accuracy", "mean.coverage", "mean.correct", "final.correct", "c
            "order_changed_launch_cycles", "order_changed_held_cycles",
            # Wave 3 lane V (ADR-062): what the idle investigation did
            "activity.idle_tasks", "activity.idle_decisions", "activity.idle_uncovered_looks", "activity.idle_covered",
-           "activity.idle_covered_true", "activity.idle_stopped_by_allowance")
+           "activity.idle_covered_true", "activity.idle_stopped_by_allowance",
+           # Wave 3 fix lane (review3 Q7, S-5): admitted content without a version convention, and replacements
+           "admitted.rows", "admitted.wrong", "admitted.own_only", "admitted.wire_only",
+           "replacements.true", "replacements.false", "replacements.other", "replacements.by_rule_true",
+           "replacements.by_rule_false", "replacements.false_persistence_max", "replacements.false_censored")
 
 
 def _get(d, dotted):
@@ -758,8 +862,8 @@ def _run_split(split, spec, generate, *, configs=None, cycles=None, seeds=None) 
         for world in spec["worlds"]:
             rows = raw[(name, world["name"])]
             per_world[world["name"]] = {
-                "seeds": list(seeds), "per_seed": [{k: _get(r, k) for k in SCALARS} | {"tasks": r["tasks"]}
-                                                   for r in rows],
+                "seeds": list(seeds), "per_seed": [{k: _get(r, k) for k in SCALARS} | {
+                    "tasks": r["tasks"], "false_replacements": r["replacements"]["false_list"]} for r in rows],
                 "spread": {k: scoring.spread([_get(r, k) for r in rows]) for k in SCALARS},
                 "series_mean": [{k: scoring.spread([r["series"][i][k] for r in rows])["mean"]
                                  for k in ("accuracy", "coverage", "correct", "held_items", "open_marks")}
@@ -983,6 +1087,18 @@ FINAL_FAMILY = "learning_cycles_withheld"
 FINAL_CONFIGS = ("reference:no-loop", "baseline", "shipped")      # the unchanged system's look (step 0)
 
 
+WITHHELD_FILE = Path(__file__).resolve().parent / "cycles_withheld.py"
+# The withheld worlds' SHA-256, pinned when they were committed (26409bc; the pin first in a test, d0b6b02). final()
+# compares the file's bytes with it BEFORE loading them (review3 0-2): a changed worlds file is never scored.
+WITHHELD_SHA256 = "0a4831aa07e30cd31a2f4e3270e59ef20338ed2ebb229b22c77f1448628ebc0d"
+
+
+def withheld_digest() -> str:
+    """sha256 of the withheld worlds file's bytes (nothing is decoded or loaded)."""
+    import hashlib
+    return hashlib.sha256(WITHHELD_FILE.read_bytes()).hexdigest()
+
+
 def _withheld():
     """(the withheld split, its generator): loaded here only, and only by final()."""
     from . import cycles_withheld
@@ -1010,12 +1126,17 @@ def final(note, *, configs=None, mechanism="baseline") -> dict:
     known = configurations() | EXTRA
     configs = configs or {k: known[k] for k in FINAL_CONFIGS}
     env = cognition.environment()
-    if env["git_dirty"] or not env["git_commit"]:
-        raise cognition.Refused("final: the tree must be clean and committed, so the ledger line names the code it "
-                                "measured")
+    if env["git_dirty"] is not False or not env["git_commit"]:      # review3 0-1: unknown is not clean
+        raise cognition.Refused("final: the tree must be clean and committed (and git must say so), so the ledger "
+                                "line names the code it measured")
+    digest = withheld_digest()
+    if digest != WITHHELD_SHA256:
+        raise cognition.Refused(f"final: the withheld worlds file's SHA-256 is {digest[:12]}..., not the pinned "
+                                f"{WITHHELD_SHA256[:12]}...: it was changed and is not scored")
     at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entry = {"at": at, "commit": env["git_commit"], "dirty": env["git_dirty"], "mechanism": mechanism, "ablate": [],
-             "families": [FINAL_FAMILY], "configurations": sorted(configs), "note": note}
+             "families": [FINAL_FAMILY], "configurations": sorted(configs), "note": note,
+             "withheld_sha256": digest}
     lines = cognition._record_final(cognition.LEDGER, entry)
     spec, generate = _withheld()
     out = {"generated_at": at, "environment": env, "ledger_line": len(lines), "ledger_entry": entry}
@@ -1025,7 +1146,22 @@ def final(note, *, configs=None, mechanism="baseline") -> dict:
                 "generator alone; no product code)"}
     out["world_digests"] = {w["name"]: {str(seed): world_digest(generate(w, seed)) for seed in spec["seeds"]}
                             for w in spec["worlds"]}
+    out |= look_view(out)
     return out
+
+
+def look_view(result) -> dict:
+    """The look's report fields (LOOK_FIELDS) per configuration, world and seed, the false replacements with their
+    persistence and censoring, the reference each configuration is compared with (LOOK_PAIRS) and what each
+    admitted-content counter can see (COUNTERS). A view of run_split's result: nothing is recomputed."""
+    table = {}
+    for name, conf in result["configurations"].items():
+        table[name] = {w: [{"seed": s} | {k: row.get(k) for k in LOOK_FIELDS} |
+                           {"false_replacements": row.get("false_replacements") or []}
+                           for s, row in zip(entry["seeds"], entry["per_seed"])]
+                       for w, entry in conf["worlds"].items()}
+    return {"look": table, "look_pairs": {k: v for k, v in LOOK_PAIRS.items() if k in result["configurations"]},
+            "counters": COUNTERS}
 
 
 # ---- the verdict, written before the held-out run (roadmap §2 applied to this experiment) -----------------------------

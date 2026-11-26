@@ -163,6 +163,9 @@ def test_every_final_run_is_recorded(tmp_path, monkeypatch):
     ledger = tmp_path / "ledger.jsonl"
     monkeypatch.setattr(cognition, "LEDGER", ledger)      # a test's ledger: the repository's stays untouched
     monkeypatch.setattr(withheld, "WITHHELD", _small_withheld())
+    # a final run needs a clean, committed tree (review3 Q7); this test is about the ledger, not the tree
+    real = cognition.environment
+    monkeypatch.setattr(cognition, "environment", lambda: real() | {"git_commit": "0" * 40, "git_dirty": False})
     first = cognition.run(["withheld"], final=True, seeds=(9001,), note="first")
     again = cognition.run(["withheld"], final=True, seeds=(9001,), note="again")
     assert [r["note"] for r in first["final_runs"]] == ["first"]

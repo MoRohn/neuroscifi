@@ -273,6 +273,9 @@ def _config(db, a, now):
         from . import autonomy
         autonomy.record_switch(db, bool(changes["autonomous"]), now, by="owner:cli")
     out = {"config": cfg.to_json(), "changed": sorted(changes)}
+    problems = state.setting_problems(db)
+    if problems:                            # a damaged saved value, read as its default (security review L8)
+        out["problems"] = problems
     if changes.get("pocket_research"):     # R6 setup (e): the switch alone shows nothing on Pocket
         steps = []
         if not cfg.enabled:
