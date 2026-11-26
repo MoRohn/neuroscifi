@@ -550,23 +550,59 @@ figure is not established either, only not shown to fail. Neither second pass fo
 
 ## The rule for the withheld look
 
-*Placeholder: this section is written by the main session and committed before the look. It will state which
-configurations the source-independence look (`scripts/bench_sources.py final`) runs (`shipped`, and for the record
-`own_text_provenance`, `echo_recognition`, `source_derivation`, `wave4:both` if chosen) and the learning-cycles look
-(`LOOKS["wave4-a"]`: references only), the output fields read, the read-back conditions, and that no look can switch
-any setting on.*
+Written by the main session and committed before either look (2026-11-26, on `385e3a9`; the conditions are the
+second measurement pass's, `review4/findings-measure-2.md`, adopted here). Two looks are taken, each once, on a clean
+committed tree, with the output outside the tree and one ledger line each in
+`docs/quality/evidence/genesis_final_uses.jsonl`. **Whatever either look shows, no setting changes: every Wave 4
+rule stays OFF, and turning one on is the owner's decision.**
 
-*For the main session, not the rule: the second measurement pass proposes conditions. Run on a clean tree at or after
-the documentation pass; `shipped` is the control and must reproduce step 0's withheld baseline (ledger line 8) field
-by field apart from timings and file sizes, else the look is void. `own_text_provenance` (with `echo_recognition`
-beside it) may be looked at under `own_verdict`, read knowing S1 holds at zero margin on held-out, reporting the
-echo-disagreement questions and `discarded_honest_pages` beside the verdict; it cannot establish mention-form rates,
-undated pages, adversarial echoes, non-owner answers or the 30-day lifetime. `source_derivation`: the record already
-says "do not turn on"; look only to test the record (M2), else leave it out. `wave4:both`: not without a verdict rule
-committed before the look. Lane A: `LOOKS["wave4-a"]` (references only) is now repeatable and is the only way to
-replace the single W2 figure. The security second pass adds that no "effective" claim for the own-text rule at the
-look is supported while the expiry defect and the mention forms stand (the expiry defect is fixed in the second fix
-round; the mention forms stand).*
+**Look 1: source independence** (`scripts/bench_sources.py final --config shipped --config own_text_provenance
+--config echo_recognition`).
+
+- *Control.* `shipped` must reproduce step 0's withheld baseline (the look of ledger line 8) field by field in
+  `configurations.shipped.worlds.<w>.totals_sum` and `.mean_correct`, apart from timings and file sizes. If it does
+  not, the look is void and says so; nothing else in it is read. `shipped` itself establishes nothing new.
+- *The own-text rule* (`own_text_provenance`, against `shipped`), judged by `sources.own_verdict`, whose text and
+  body are unchanged since `34494cc`, before its held-out run: A1 (`own_admitted` lower in total and in no world
+  higher), A2 (`wrongly_admitted` in no world higher), S1 (`suppressed` rises by at most half the number of seeds
+  in every world), C1 (`mean_correct` in no world below `shipped` by more than `shipped`'s sd), G (`tp`, `fp`,
+  `fn` of the grouping unchanged). The record states the verdict word the function returns and, beside it, per
+  world: `discarded_honest_pages`, `discarded_echo_pages`, and the number of contradiction questions an echo opened
+  (`contested` with `echo: true`), because the fix changed what the rule does with a disagreeing echo and the
+  verdict function does not see that.
+- *What an "effective" here would and would not mean.* It would mean: on worlds with proportions and surface forms
+  the rule was not built on, fewer of the individual's own answers came back as knowledge, without more true facts
+  left unheld. It would NOT mean the rule is safe to turn on. Not exercised by these worlds, and so not established
+  by any verdict: answers that only mention or deny a value (9 of 18 further owner phrasings still record),
+  undated pages, a page author who edits the echo to escape or to suppress, answers given to a family device or
+  an agent, and the 30-day lifetime (a cycle is 24 hours). On held-out S1 held at zero margin in one world: one
+  more true fact left unheld there would have read "trade". The record repeats these limits next to the verdict.
+- *The older echo rule* (`echo_recognition`, against `shipped`) is run beside it for comparison under the same
+  function, as on held-out.
+- *Not looked at:* `source_derivation` (its record already says "not supported; do not turn on", which no look can
+  change; the worlds are kept fresh for a rule worth judging) and `wave4:both` (no verdict rule was written for the
+  pair before any run; it inherits "do not turn on").
+
+**Look 2: learning cycles, for the record of Wave 3** (`scripts/bench_learning_cycles.py final --look wave4-a`:
+`reference:no-loop`, `shipped`, `shipped+idle`, `shipped+idle-first`). It names no allowance division: nothing was
+chosen on development (ADR-064), so nothing can be promoted.
+
+- *Why it is taken.* Wave 3's three `idle-first` figures (+0.013 / +0.042 / +0.052) are single runs made while two
+  tie-breaks followed random task ids; they cannot be repeated. With the tie-breaks fixed the same worlds now give
+  the same result on every run, so one new look replaces them.
+- *What is read* (from `look.<configuration>.<world>[i]`, same world and seed): per world, the mean over the four
+  seeds of the paired difference of `mean.correct`, for `shipped+idle-first` minus `shipped` and for `shipped+idle`
+  minus `shipped`, beside the sd of `mean.correct` in step 0's `baseline` run on that world (W1 0.064, W2 0.039,
+  W3 0.035, in file order) and beside the references computed from the worlds alone
+  (`references.worlds.<w>.round_robin`). A gain is called "beyond the spread" for a world only if it exceeds that
+  world's sd; otherwise "within the spread".
+- *Precondition, reported whatever it shows.* `shipped` here is not Wave 3's `baseline` run: the defaults changed
+  (the two tie-breaks, the requeue's daily count). Every difference between this look's `shipped` and Wave 3's
+  figures for the unchanged loop is listed, and the gains above are computed against the NEW `shipped`, never
+  against Wave 3's file.
+- *What it settles.* Whether running the idle investigation before the timer's pass gains anything on unseen
+  worlds once the result is repeatable. It still cannot make `idle-first` a default: no held-out gain was shown for
+  it (ADR-062), and the look rule of Wave 3 already said the look cannot promote it.
 
 ## Validation
 
