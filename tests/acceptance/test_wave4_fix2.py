@@ -125,3 +125,60 @@ def test_the_repair_says_the_creation_value_is_recorded_nowhere_and_leaves_an_au
             "SELECT effects FROM deletion_log WHERE target_kind='setting' AND target_id='max_evidence_rows'")]
         assert len(rows) == 1 and rows[0]["repair"] is True and rows[0]["to"] == 5000 and rows[0]["from"] == 5000.0
         assert rows[0]["creation_value_recorded"] is False
+
+
+# ---- item 4 (security, second pass, 2a note): an agent is told only that the individual is paused for repair --------
+
+def _damaged(tmp_path, where, name, bad):
+    from neuroscifi.instance import store
+    from neuroscifi.webcortex import config as wconfig, state
+    path = tmp_path / f"agent-{name}.sqlite"
+    db = store.create(path, T0, note="wave 4 second fix round")
+    state.set_config(db, {"enabled": True}, T0)
+    key = "config" if where == "instance" else wconfig.META_KEY
+    raw = json.loads(db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()[0])
+    with store.write(db):
+        db.execute("UPDATE meta SET value=? WHERE key=?", (json.dumps(raw | {name: bad}), key))
+    db.close()
+    return path
+
+
+def _agent_text(result):
+    assert result["isError"] is True
+    return result["content"][0]["text"]
+
+
+def test_an_agents_refused_call_does_not_name_the_damaged_setting_the_owner_still_sees_it(tmp_path):
+    import pytest
+    from neuroscifi import self_description
+    from neuroscifi.instance import store
+    from neuroscifi.instance.errors import Conflict, WritesPaused
+    from neuroscifi.webcortex import mcp, orchestrator, state
+    paused = f"Error: {store.PAUSED_FOR_REPAIR}"
+    path = _damaged(tmp_path, "instance", "max_thermal_celsius", "70")
+    server = mcp.Server(path, clock=lambda: T0)
+    said = _agent_text(server.call("web_research", {"objective": "What is the latest Velmora release?"}))
+    assert said == paused and "thermal" not in said
+    record = json.dumps(server.call("self_status", {}))
+    assert "max_thermal_celsius" not in record and store.PAUSED_FOR_REPAIR in record
+    db = store.open_existing(path)
+    try:                                                  # the owner's surfaces keep the full message
+        with pytest.raises(WritesPaused, match="saved max_thermal_celsius is damaged"):
+            orchestrator.submit(db, "What is the latest Velmora release?", T0, origin="cli")
+        owner = json.dumps(self_description.build(db, path, T0, scope="owner"))
+        assert "saved max_thermal_celsius is damaged" in owner
+    finally:
+        db.close()
+    path = _damaged(tmp_path, "web", "deny_domains", "evil.example")
+    server = mcp.Server(path, clock=lambda: T0)
+    for tool, args in (("web_search", {"query": "velmora release"}),
+                       ("web_research", {"objective": "What is the latest Velmora release?"})):
+        said = _agent_text(server.call(tool, args))
+        assert said == paused and "deny_domains" not in said, tool
+    db = store.open_existing(path)
+    try:
+        with pytest.raises(Conflict, match="saved deny_domains is damaged"):
+            state.require_enabled(db)
+    finally:
+        db.close()
+

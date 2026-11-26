@@ -424,7 +424,10 @@ def closed_settings(db) -> list:
 def require_enabled(db) -> wconfig.WebConfig:
     cfg = get_config(db)
     if not cfg.enabled:
-        raise Conflict(disabled_message(closed_settings(db)))
+        closed = closed_settings(db)
+        exc = Conflict(disabled_message(closed))
+        exc.for_repair = bool(closed)             # an agent is told store.PAUSED_FOR_REPAIR only
+        raise exc
     return cfg
 
 
@@ -438,7 +441,9 @@ def require_writable(db, path=None):
     """WritesPaused unless regulation allows new writes (web research, consolidation, monitors, proposals)."""
     allowed, reason = write_allowed(db, path)
     if not allowed:
-        raise WritesPaused(f"web memory writes are paused: {reason}")
+        exc = WritesPaused(f"web memory writes are paused: {reason}")
+        exc.for_repair = bool(store.fixed_damage(db))     # an agent is told store.PAUSED_FOR_REPAIR only
+        raise exc
 
 
 def family_digest(db, fingerprint: str) -> str:

@@ -472,6 +472,12 @@ def fixed_damage(db, text=None):
     return sorted(name for name, check in _FIXED.items() if name in raw and not check(raw[name]))
 
 
+# What an agent (the MCP scope) is told instead of a refusal that names damaged settings: the owner's surfaces keep
+# the full sentence (Wave 4 second fix round, review4 security second pass 2a). An exception carrying it is marked
+# `for_repair` where it is raised.
+PAUSED_FOR_REPAIR = "the individual is paused for repair by its owner"
+
+
 def fixed_damage_reason(names):
     """The owner's sentence for damaged fixed settings: which, what happens, how to repair."""
     return "; ".join(f"the saved {name} is damaged, so {_fixed_remedy(name)}" for name in names)
@@ -720,7 +726,9 @@ def write_allowed(db, path=None):
 def require_write_allowed(db, path=None):
     allowed, reason = write_allowed(db, path)
     if not allowed:
-        raise WritesPaused(reason)
+        exc = WritesPaused(reason)
+        exc.for_repair = bool(fixed_damage(db))     # an agent is told PAUSED_FOR_REPAIR only
+        raise exc
 
 
 def database_path(db):

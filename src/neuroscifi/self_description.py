@@ -703,6 +703,34 @@ def _goals(db, now, own_only) -> list[str]:
     return out
 
 
+def _for_agent(value, sentences):
+    """`value` with every string that holds one of `sentences` (a refusal naming damaged settings) replaced by
+    store.PAUSED_FOR_REPAIR (scope agent; Wave 4 second fix round, review4 security second pass 2a)."""
+    from .instance import store
+    if isinstance(value, dict):
+        return {k: _for_agent(v, sentences) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_for_agent(v, sentences) for v in value]
+    if isinstance(value, str) and any(s in value for s in sentences):
+        return store.PAUSED_FOR_REPAIR
+    return value
+
+
+def _repair_sentences(db) -> list:
+    """The sentences that name damaged settings (fixed instance settings, web settings that closed web access)."""
+    from .instance import store
+    from .webcortex import state as wstate
+    out = []
+    damaged = store.fixed_damage(db)
+    if damaged:
+        out.append(store.fixed_damage_reason(damaged))
+    if _web(db):
+        closed = wstate.closed_settings(db)
+        if closed:
+            out.append(wstate.disabled_message(closed))
+    return out
+
+
 def _build(db, path, now, scope, family) -> dict:
     from . import __version__, resources as res
     from .instance import store
@@ -803,6 +831,9 @@ def _build(db, path, now, scope, family) -> dict:
         record["recent"] = g("web_tasks asked for by a person", recent_field)
     if agent:
         _agent_view(record)
+        sentences = _repair_sentences(db)
+        if sentences:                       # the owner's to read; the agent is told it is paused for repair
+            record = _for_agent(record, sentences)
     return record
 
 
