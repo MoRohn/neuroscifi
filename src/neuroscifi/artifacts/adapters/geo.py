@@ -25,8 +25,8 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from ..safe import Deadline, SafeZip
-from ..safe_b2 import count, local, need, parse_xml, screen_words
+from ..safe import Deadline
+from ..safe_b2 import count, local, need, open_zip, parse_xml, screen_words
 from ..types import Decoded, Feature, Features, Malformed, Refused
 from . import Adapter
 
@@ -344,7 +344,7 @@ def decode_kml(data: bytes, limits):
 
 
 def decode_kmz(data: bytes, limits):
-    archive = SafeZip(data, limits)
+    archive = open_zip(data, limits)
     kml = [e for e in archive.entries if e.name.lower().endswith(".kml") and not e.is_dir]
     if not kml:
         raise Malformed("the KMZ archive holds no .kml document")

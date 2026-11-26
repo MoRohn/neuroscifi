@@ -18,8 +18,7 @@ import re
 
 import numpy as np
 
-from ..safe import SafeZip
-from ..safe_b2 import need
+from ..safe_b2 import need, open_zip
 from ..types import Bundle, Column, Decoded, Detected, Limits, Malformed, Member, Opaque, Refused, Table, Unsupported
 from . import Adapter
 
@@ -148,7 +147,7 @@ class NPZAdapter(Adapter):
     families = ("array",)
 
     def decode(self, data, detected, limits):
-        archive = SafeZip(data, limits)            # bounded: members, sizes, ratio, CRC, the shared budget
+        archive = open_zip(data, limits)            # bounded: members, sizes, ratio, CRC, the shared budget
         out, notes = [], []
         for entry in archive.entries:
             archive.deadline.check("reading .npz members")

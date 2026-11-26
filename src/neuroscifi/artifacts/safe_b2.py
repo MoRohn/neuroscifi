@@ -10,6 +10,7 @@ Kept here, and why:
   allocation (`safe.Budget` is a running total; both are used).
 - `parse_xml(data, limits)`: `safe.parse_xml` preceded by a check of the memory ElementTree will need
   (XML_OBJECT_FACTOR x the input, measured) against `max_decoded_bytes`.
+- `open_zip`: `safe.SafeZip`, naming the multi-disk case (zipfile raises NotImplementedError) as Unsupported.
 - `HeaderOnly`: the `Unsupported` raised when a format was identified and its header read but its content cannot
   be decoded here; it carries the facts (`facts`), the plain-text metadata (`words`) and an `Opaque` stating them.
 - `screen_words(text)`: a note when an artifact's own words hold phrases addressed to an AI agent
@@ -156,6 +157,15 @@ def parse_xml(data: bytes, limits: Limits, what: str = "the XML document") -> El
     return _parse_xml(data, limits)
 
 
+def open_zip(data: bytes, limits: Limits):
+    """`safe.SafeZip`, with zipfile's NotImplementedError (a multi-disk archive) named as Unsupported."""
+    from .safe import SafeZip
+    try:
+        return SafeZip(data, limits)
+    except NotImplementedError:
+        raise Unsupported("multi-disk zip archives are not read here", needs=("a multi-disk zip reader",)) from None
+
+
 def local(tag: str) -> str:
     """The local part of an ElementTree tag ('{uri}svg' -> 'svg')."""
     return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
@@ -188,4 +198,4 @@ def screen_words(text: str) -> tuple[str, ...]:
 
 
 __all__ = ["HeaderOnly", "Reader", "XML_OBJECT_FACTOR", "count", "inflate", "local", "members", "need",
-           "parse_xml", "screen_words"]
+           "open_zip", "parse_xml", "screen_words"]
