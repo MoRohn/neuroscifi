@@ -18,8 +18,27 @@ import omni_reference_maker as reference
 # The frozen identity of every family's tasks per split, and of the case tables, as committed with the baseline.
 # A change here means the tasks changed: every earlier number stops being comparable. Do not update these to make a
 # run pass; add new tasks in a new file instead.
-CASES_SHA256 = "PENDING"
-FROZEN = {}
+CASES_SHA256 = "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c"
+FROZEN = {
+    "development": {
+        "intake": {"n": 337, "sha256": "54afb377ea0e01f6bda0153949bb867f32c48a7265eb333ba10948720d67b1aa"},
+        "honest": {"n": 55, "sha256": "d34412d16c276237eff32346c59c811c06bdb3b68cc3d8141d8105a93aa7bbd9"},
+        "unknown": {"n": 51, "sha256": "289e924e5d4534c255fa4d688a9f535e915c82a38054d7ebcda41d0d3620d6d7"},
+        "compound": {"n": 36, "sha256": "d62e94fc4d355bb0503d081cd8c93047a2a0fa3ff18863387112cc64760a3af1"},
+        "hostile": {"n": 23, "sha256": "25adf483319ab3fd15ff6adc9f06fb8ebf6daa9def96a2b5a504ea64334abc09"},
+        "made": {"n": 14, "sha256": "d7d00304c4d3b2dc9dfce5a9a389e08b752de2ef1d5ab142c7e6d798f53dcddf"},
+        "transform": {"n": 8, "sha256": "aa79bb0a676c3be36b7832bda16463414bd8c97485a2ae4ea20081075a32b8f4"},
+    },
+    "held_out": {
+        "intake": {"n": 339, "sha256": "16e00749adc16c4923f0715a22f18e04228001ef443b2a416d2fe8ad1f268929"},
+        "honest": {"n": 55, "sha256": "dea2244011afef86c6eb0b4e30baa9a0b380abd02b273a9700d29679486ec0a8"},
+        "unknown": {"n": 49, "sha256": "472ea985b5eca67a430f009d66c05504f5c959ad9ab865e1cf5792e3537c9bb9"},
+        "compound": {"n": 40, "sha256": "fc48a744a7febd4fa40d4e699b79281074dde4903d574980f404019462bf3d3e"},
+        "hostile": {"n": 23, "sha256": "3dd144a27f44f8421bad5211d82f9bb8dfc2d5b86202c079a55abb48d140f6a2"},
+        "made": {"n": 14, "sha256": "f3fdfccfcf9ec7b07bd7c719a1156bd57130adfca2548e362b6039ac9d9b8b61"},
+        "transform": {"n": 8, "sha256": "6d415d1e2ae4bbcde21d4c35ccad2015782962f739a4d881e07fd611c9642686"},
+    },
+}
 
 
 # ---- comparison and outcomes ----------------------------------------------------------------------------------------
@@ -110,8 +129,6 @@ def test_tasks_are_deterministic():
 
 
 def test_task_definitions_are_frozen():
-    if CASES_SHA256 == "PENDING":
-        pytest.skip("pins are written with the baseline commit")
     assert hashlib.sha256(Path(cases.__file__).read_bytes()).hexdigest() == CASES_SHA256
     for split in omni.SPLITS:
         assert omni.digests(split) == FROZEN[split], split
