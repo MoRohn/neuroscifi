@@ -4082,6 +4082,88 @@ counted as a pass: the family scores every staged case as a pass or failure of a
   cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
   it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).
 
+# ADR-070 Gaps closed before artifacts
+
+Status: OMNIMIND lane S, branch `omni-s` from `8f68beb`. No schema change, no new setting. Each item below is a defect
+in code that existed before richer inputs or outputs flow (audits A1, A2 and A4 of Phase I), reproduced by a test that
+fails on `8f68beb`, fixed minimally, with honest inputs shown to behave exactly as before. Evidence
+`docs/quality/evidence/omnimind_s.json` (the cost of the forget scan).
+
+## Decisions
+
+**1. The inference gateway refuses content it cannot count and screen.** The context estimate and the off-host
+privacy screen read only the `text` of list content, while the wire kept every part: an image part was estimated at a
+few tokens, skipped the screen and was sent as given. `gateway.check_content` now refuses, as `unsupported_content`
+and before anything is sent or logged, any message whose content list holds a part other than exactly
+`{"type": "text", "text": str}`; strings and text-only lists pass unchanged. A multimodal provider must first teach
+`estimate_messages` and `screen()` to count and screen its parts, then relax the check.
+
+**2. A NumPy file is checked before NumPy reads it.** `nsf epoch stream` loaded an `.npz` and validated afterwards: a
+crafted header was an uncaught `MemoryError`, a compressed zero-fill was decompressed in full. `inputfiles.check_npz`
+reads the zip end record, the central directory and each member's `.npy` header from a bounded prefix first: a
+directory of at most 64 KiB and 64 members and no ZIP64 record (np.savez writes none below 4 GiB); members stored or
+deflated only (what np.savez and np.savez_compressed write), a stored size within the file, a declared size of at most
+16 bytes times `datasets.MAX_ELEMENTS` (62,499,744: both float64 arrays fit the 1e9-byte blob limit) plus framing, and
+at most 200 times its stored size once it declares over 1 MiB (population data compresses by a small factor; a
+constant fill is not a stream); headers of version 1.0 or 2.0, at most numpy's 10,000-byte header, a numeric
+non-object dtype of at most 16 bytes, and data really present. zipfile stops a member's decompression at its declared
+size, so nothing larger is ever decompressed. `datasets.decode` runs the same check, since a hash recorded beside a
+crafted blob was its only defence. `graph_store.py` decodes its own bounded format (no NumPy loader) and needed nothing;
+`nsf graphfile pack` reads `.npy` through `inputfiles.check_npy` (at most `graph_store.MAX_ELEMENTS` elements).
+
+**3. Files named on the command line are plain files, read within their format's size.** `nsf graphfile`,
+`nsf archive`, `nsf init --founding-graph`, `nsf graph rules add FILE` and `nsf epoch stream` blocked forever on a FIFO
+and read anything whole. `inputfiles.open_regular` opens without blocking and refuses a FIFO, device, socket or folder
+(a link to a plain file is followed, as before); an NSG1 snapshot is read up to `graph_store.MAX_BYTES` (a dense float32
+snapshot of 16,777,216 elements: 67,108,907 bytes) and a rule file up to 1 MiB (a dozen named fields). `nsf archive`
+and `nsf graphfile` report malformed input as `nsf: <reason>` with exit 2, like every other command, instead of a
+traceback; failures writing the output (an existing file, a link) are raised as before. NSFA archives stream in
+bounded blocks and have no natural size bound, so none was added.
+
+**4. Forget reaches imagined records that name a forgotten root.** A record is never rewritten, so one whose text
+names a forgotten camera or partner survived the forget until lineage or expiry removed it. In the forget's own
+transaction (`governance._imagined_cascade`, after `purge_orphans`), `imagined.remove_naming` removes, with the
+store's tombstones, every record whose text columns hold the root (scoped forget: `<kind>:<root>`, as `scrub_roots`
+treats a name the other channel still holds), as stored or inside an encoded value: every string that looks like
+base64 (data: URLs included) is decoded, and the bytes, a zlib or gzip stream among them and a PNG's zTXt/iTXt chunks
+are searched for the name in UTF-8 (plain and JSON-escaped) and UTF-16. Bounds per record: 4 nested decodings and
+8 MiB produced; a value that needs more counts as naming it (what cannot be inspected is not kept). Archives written
+since the oldest removed record become stale. A restore applies the same removal after its tombstone replay
+(`checkpoints._replay`), so it holds even where the live tombstones are gone. Not covered: raw deflate without a header,
+bzip2/xz/zstd, hex, base32, base85 or percent-encoding, a name split across values or in another case, and anything
+rendered rather than encoded (text in an image's pixels or in audio) or encrypted. A short root also matches longer
+words that contain it; for this store that errs towards removal. Measured inside the write transaction: 0.12 s for
+10,000 ordinary records, 0.52 s for 10,000 records each holding a 4 KiB base64 PNG.
+
+**5. The speech engines get the gateway's protections.** They read replies with no bound and sent the voice key and
+the audio to whoever held the loopback port. Before every request the owner of the socket that would accept the
+connection is read (`resources.monitor.stranger`): root, this account and the key file's owner are the service, any
+other account's process gets nothing (`NSF_LISTENER_CHECK=0` as the gateway's way out). Every port an engine is
+configured for is a speech service of this deployment, so the check is not narrowed to managed ports as the gateway's
+is. Replies are bounded on `Content-Length` and while reading: 1 MiB for JSON (Whisper decodes at most 448 tokens per
+30 s window and the hub sends at most 30 s), and 48,000,044 bytes for speech: 1,000 input characters, at most one second
+each at the slowest speed (ordinary speech is about 0.07 s a character), 24 kHz 16-bit mono, plus the WAV header.
+
+**6. Two guards that were weaker than they looked.** (a) `checkpoints.CARRIED_SETTINGS` equalled `store._SETTABLE`
+only by hand; a test now enforces the rule its comment states (exactly the settings the owner may change) and proves
+the carry with a non-default value of each. (b) The background scanner knew only the research entry points.
+`tests/test_launch_sites.py` finds every thread, timer, process, executor, `serve_forever` and waiting loop in product
+code and requires each in one list, as registered (naming its `background.py` activity or runner), request-scoped or
+owner-started, with a reason. A new unclassified site fails.
+
+**7. A web setting change leaves an audit row.** `webcortex.state.set_config` now writes, in its transaction, one
+`deletion_log` row per changed key (`web_setting`, the key, effects `{"by", "state_version"}`), never the value
+(`private_terms` is private). A checkpoint racing such a change is not marked stale (it deletes nothing), and the
+console's memory log shows the row without a value.
+
+## Consequences
+
+- With honest inputs every existing output is byte-identical; refusals are new only for inputs the code could not
+  handle safely. There is nothing to switch off: rolling back is reverting the lane's commits.
+- A multimodal model input path cannot be added by sending parts through the gateway: it must extend the estimate and
+  the screen first (decision 1).
+- An artifact store that keeps encoded media must join the forget the same way, or forget will not reach inside it.
+
 # ADR-072 Artifact detection, the adapter registry and the native representations (OMNIMIND kernel)
 
 Status: built. OMNIMIND Wave O-0, lane K. No schema change, no setting. Nothing existing imports

@@ -3,6 +3,7 @@ from contextlib import closing
 import http.client
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import threading
@@ -401,3 +402,82 @@ def test_tts_container_tmp_allows_loading_espeak(tmp_path):
                          timeout=30)
     options = re.search(r"--tmpfs /tmp:(\S+)", run.stdout.replace("\\,", ",")).group(1).split(",")
     assert "exec" in options and "noexec" not in options and {"nosuid", "nodev"} <= set(options), run.stdout
+
+
+# ---- the gateway's protections for the speech engines (OMNIMIND lane S, audit H2) ---------------------------------
+
+class _Sized(BaseHTTPRequestHandler):
+    """A fake engine whose reply is `size` bytes (WAV for speech, JSON for transcription and health)."""
+    def log_message(self, *a):
+        pass
+
+    def _reply(self, body, mime, length=None):
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(body) if length is None else length))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except OSError:
+            pass
+
+    def do_GET(self):
+        self._reply(b"{" + b" " * self.server.size + b"}", "application/json")
+
+    def do_POST(self):
+        self.server.posts += 1
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if self.path == "/v1/audio/transcriptions":
+            return self._reply(b'{"text": "hi"' + b" " * self.server.size + b"}", "application/json")
+        self._reply(b"RIFF" + b"\0" * self.server.size, "audio/wav", length=self.server.length)
+
+
+@pytest.fixture
+def sized_server():
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _Sized)
+    srv.size, srv.length, srv.posts = 100, None, 0
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield srv
+    srv.shutdown()
+    srv.server_close()
+
+
+def test_a_reply_larger_than_the_engine_can_send_is_refused_by_name(sized_server):
+    url = f"http://127.0.0.1:{sized_server.server_port}"
+    tts, asr = vengines.KokoroTTS(url, "k"), vengines.WhisperASR(url, "k", "m")
+    assert len(tts.synthesize("hi", "af_heart")["wav"]) == 104           # an ordinary reply is read whole
+    assert asr.transcribe(pcm(0.1))["text"] == "hi"
+    sized_server.size = vengines.TTS_MAX_REPLY                           # 4 bytes over the bound with "RIFF"
+    with pytest.raises(vengines.EngineError) as err:
+        tts.synthesize("hi", "af_heart")
+    assert err.value.code == "bad_response" and str(vengines.TTS_MAX_REPLY) in str(err.value)
+    sized_server.size, sized_server.length = 100, vengines.TTS_MAX_REPLY + 1  # declared too large: not read at all
+    with pytest.raises(vengines.EngineError, match="larger than"):
+        tts.synthesize("hi", "af_heart")
+    sized_server.size, sized_server.length = vengines.MAX_REPLY, None
+    with pytest.raises(vengines.EngineError, match="larger than"):
+        asr.transcribe(pcm(0.1))
+    assert asr.health()["state"] == "bad_response"
+
+
+def test_the_tts_bound_holds_the_longest_speech_the_input_limit_allows():
+    """1,000 characters at most (MAX_TTS_INPUT), at most one second of speech each at the slowest speed, 24 kHz 16-bit
+    mono (deploy/voice/tts_server.py SAMPLE_RATE), plus the WAV header."""
+    assert vengines.TTS_MAX_REPLY == vengines.MAX_TTS_INPUT * 1 * 24000 * 2 + 44
+
+
+def test_nothing_is_sent_to_a_speech_port_held_by_another_accounts_process(sized_server):
+    """Whoever binds the engine's loopback port while its container is down would get the voice key and the audio."""
+    url = f"http://127.0.0.1:{sized_server.server_port}"
+    stranger = os.getuid() + 4242
+    for engine, call in ((vengines.KokoroTTS(url, "k"), lambda e: e.synthesize("hi", "af_heart")),
+                         (vengines.WhisperASR(url, "k", "m"), lambda e: e.transcribe(pcm(0.1)))):
+        engine.listeners = lambda port: [("127.0.0.1", stranger)]
+        with pytest.raises(vengines.EngineError) as err:
+            call(engine)
+        assert err.value.code == "unavailable" and f"uid {stranger}" in str(err.value)
+        assert "NSF_LISTENER_CHECK=0" in str(err.value)
+        assert engine.health()["state"] == "unavailable"
+        engine.listeners = lambda port: [("127.0.0.1", os.getuid())]     # this account's own server: used as before
+        call(engine)
+    assert sized_server.posts == 2                                       # only the two trusted calls arrived

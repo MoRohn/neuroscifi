@@ -8,8 +8,18 @@ States reported by health() (never guessed):
   unavailable    connection refused, timeout, 5xx, or in the cool-down after repeated failures
   not_configured no key file / endpoint not loopback
   disabled       an opt-in engine (PersonaPlex) that is switched off
+  bad_response   the engine answered with more than it can send (a reply over its size bound, see below)
 Reconnect: after FAILS_TO_COOL consecutive failures calls fail fast for COOLDOWN seconds, then the next call tries
 again (one probe); a success resets the counter.
+
+The inference gateway's protections, for the voice key and the audio (OMNIMIND lane S, audit H2):
+  - Who holds the port: before anything is sent, the owner of the loopback socket that would accept the connection
+    is read (resources.monitor.stranger, the check behind the gateway's listener_refusal). Root (Docker's port
+    proxy), this account and the key file's owner are the service; a process of any other account gets neither the
+    key nor the audio ('unavailable'; NSF_LISTENER_CHECK=0 if that account runs the engine on purpose). Every port
+    an engine is configured for is one of this deployment's speech services, so every one is checked.
+  - Reply size: at most MAX_REPLY bytes for JSON (transcription, health, lists) and TTS_MAX_REPLY for speech, checked
+    against Content-Length before reading and enforced while reading ('bad_response').
 """
 from __future__ import annotations
 
@@ -31,6 +41,10 @@ FAILS_TO_COOL = 3
 COOLDOWN = 10.0
 RETRIES = 1                 # one retry for a connection error (not for a timeout, not after bytes were sent back)
 RETRY_BACKOFF = 0.25
+# A transcription of one utterance (the hub sends at most 30 s) is a few hundred bytes of JSON; Whisper decodes at
+# most 448 tokens per 30 s window, so 1 MiB holds several minutes even at 12 bytes of escaped JSON per character of a
+# long token. Health and model lists are smaller still.
+MAX_REPLY = 1 << 20
 
 
 class EngineError(Exception):
@@ -86,8 +100,10 @@ class HttpEngine:
     """Shared plumbing: one HTTP request with timeouts, a retry for connection errors and the cool-down."""
     kind = "engine"
 
-    def __init__(self, url, key, *, read_timeout=30.0):
+    def __init__(self, url, key, *, read_timeout=30.0, key_file=None):
         self.url, self.key, self.read_timeout = url.rstrip("/"), key, read_timeout
+        self.key_file = key_file     # its owner is trusted to run the engine (stranger)
+        self.listeners = None        # port -> [(address, uid)] of its listening sockets (resources.monitor.listeners)
         self.metrics = Metrics()
         parts = urlsplit(self.url)
         self.host, self.port, self.https = parts.hostname, parts.port or (443 if parts.scheme == "https" else 80), \
@@ -98,11 +114,30 @@ class HttpEngine:
         cls = http.client.HTTPSConnection if self.https else http.client.HTTPConnection
         return cls(self.host, self.port, timeout=timeout)
 
-    def request(self, method, path, body=None, headers=None, *, timeout=None, auth=True, record=True):
+    def stranger(self) -> str | None:
+        """Why nothing may be sent to this engine's port, or None (resources.monitor.stranger: a process of another
+        account holds the loopback socket the connection would reach). Never a refusal when the check itself fails."""
+        from ..inference import config as iconfig
+        from ..resources import monitor
+        try:
+            where, _, addresses = iconfig.resolve(self.url)
+            if where != "loopback":
+                return None
+            return monitor.stranger(addresses, self.port, key_file=self.key_file, table=self.listeners,
+                                    what=f"the {self.name} service")
+        except Exception:                      # the check must never be the reason a call fails
+            return None
+
+    def request(self, method, path, body=None, headers=None, *, timeout=None, auth=True, record=True,
+                limit=MAX_REPLY):
         if not self.configured:
             raise EngineError("not_configured", "no key file or endpoint is not loopback")
         if self.metrics.cooling():
             raise EngineError("unavailable", f"cooling down after repeated failures ({self.metrics.last_error})")
+        refused = self.stranger()
+        if refused:
+            self.metrics.fail("unavailable", refused) if record else None
+            raise EngineError("unavailable", refused)
         sent = dict(headers or {})
         if auth:
             sent["Authorization"] = f"Bearer {self.key}"
@@ -114,7 +149,11 @@ class HttpEngine:
                 conn.sock.settimeout(timeout or self.read_timeout)
                 conn.request(method, path, body=body, headers=sent)
                 resp = conn.getresponse()
-                data = resp.read()
+                declared = resp.getheader("Content-Length")
+                if declared is not None and declared.strip().isdigit() and int(declared) > limit:
+                    data = None
+                else:
+                    data = resp.read(limit + 1)
                 status, rheaders = resp.status, dict(resp.getheaders())
                 break
             except (ConnectionError, socket.gaierror) as exc:
@@ -131,6 +170,9 @@ class HttpEngine:
                 raise EngineError("unavailable", str(exc)) from None
             finally:
                 conn.close()
+        if data is None or len(data) > limit:
+            self.metrics.fail("bad_response", f"reply larger than {limit} bytes") if record else None
+            raise EngineError("bad_response", f"the engine's reply is larger than {limit} bytes; it was not read")
         if status in (401, 403):
             self.metrics.fail("unauthorised", str(status)) if record else None
             raise EngineError("unauthorised", f"HTTP {status}: wrong or missing key")
@@ -155,8 +197,8 @@ class WhisperASR(HttpEngine):
     kind = "asr"
     name = "whisper-large-v3-turbo (vLLM)"
 
-    def __init__(self, url, key, model, *, read_timeout=20.0):
-        super().__init__(url, key, read_timeout=read_timeout)
+    def __init__(self, url, key, model, *, read_timeout=20.0, key_file=None):
+        super().__init__(url, key, read_timeout=read_timeout, key_file=key_file)
         self.model = model
 
     def transcribe(self, pcm: bytes, rate=16000, *, language="en") -> dict:
@@ -217,6 +259,11 @@ _DOMAIN = re.compile(r"\b((?:[a-z0-9-]+\.)+(?:com|org|net|io|ai|dev|edu|gov|co|u
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*")
 _MARKUP = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 MAX_TTS_INPUT = 1000
+# The longest WAV a 1,000-character input can honestly be: at most one second of speech per input character at the
+# slowest speed the owner may choose (0.5; ordinary speech is about 0.07 s a character at speed 1), 24 kHz 16-bit mono
+# (deploy/voice/tts_server.py SAMPLE_RATE), plus the 44-byte header: 48,000,044 bytes.
+TTS_SAMPLE_RATE = 24000
+TTS_MAX_REPLY = MAX_TTS_INPUT * 1 * TTS_SAMPLE_RATE * 2 + 44
 
 
 def _say_word(m):
@@ -250,8 +297,8 @@ class KokoroTTS(HttpEngine):
     kind = "tts"
     name = "Kokoro-82M"
 
-    def __init__(self, url, key, *, read_timeout=20.0):
-        super().__init__(url, key, read_timeout=read_timeout)
+    def __init__(self, url, key, *, read_timeout=20.0, key_file=None):
+        super().__init__(url, key, read_timeout=read_timeout, key_file=key_file)
 
     def synthesize(self, text: str, voice: str, speed: float = 1.0) -> dict:
         if voice not in vconfig.VOICES:
@@ -259,7 +306,8 @@ class KokoroTTS(HttpEngine):
         body = json.dumps({"input": speakable(text), "voice": voice, "speed": speed,
                            "response_format": "wav"}).encode()
         started = time.perf_counter()
-        _, headers, data = self.request("POST", "/v1/audio/speech", body, {"Content-Type": "application/json"})
+        _, headers, data = self.request("POST", "/v1/audio/speech", body, {"Content-Type": "application/json"},
+                                        limit=TTS_MAX_REPLY)
         if not data.startswith(b"RIFF"):
             raise EngineError("bad_response", "speech reply is not WAV audio")
         lower = {k.lower(): v for k, v in headers.items()}
@@ -331,8 +379,9 @@ class Engines:
         except Exception:      # a world-readable key file: treat as not configured (health says why)
             key = None
         self.cfg = cfg
-        self.asr = WhisperASR(cfg["asr_url"], key, cfg["asr_model"])
-        self.tts = KokoroTTS(cfg["tts_url"], key)
+        key_file = vconfig.key_path(cfg)
+        self.asr = WhisperASR(cfg["asr_url"], key, cfg["asr_model"], key_file=key_file)
+        self.tts = KokoroTTS(cfg["tts_url"], key, key_file=key_file)
         self.duplex = PersonaPlexEngine(cfg["personaplex_url"], cfg["personaplex"], cfg["personaplex_voice"])
         self.signature = (cfg["asr_url"], cfg["asr_model"], cfg["tts_url"], cfg["personaplex"],
                           cfg["personaplex_url"], cfg["personaplex_voice"], key)

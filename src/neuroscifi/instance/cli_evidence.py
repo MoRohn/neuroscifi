@@ -4,8 +4,21 @@ import zipfile
 
 import numpy as np
 
-from . import beliefs, evidence, executive, legacy, store
+from .. import inputfiles
+from . import beliefs, datasets, evidence, executive, legacy, store
 from .errors import ValidationError
+
+
+def _arrays(args, archive):
+    if not isinstance(archive, np.lib.npyio.NpzFile):
+        raise ValidationError(f"{args.file} is not an .npz archive")
+    with archive:
+        if set(archive.files) != {"states", "targets"}:
+            raise ValidationError(f"{args.file} must hold exactly the arrays states and targets")
+        try:
+            return archive["states"], archive["targets"]
+        except (ValueError, zipfile.BadZipFile) as error:
+            raise ValidationError(f"Cannot read {args.file}: {error}") from None
 
 
 def _observe(db, args, now):
@@ -25,20 +38,14 @@ def _observe(db, args, now):
 
 
 def _stream(db, args, now):
-    """`nsf epoch stream NAME FILE.npz`: arrays `states` and `targets`, read with allow_pickle=False."""
+    """`nsf epoch stream NAME FILE.npz`: arrays `states` and `targets`, read with allow_pickle=False, from a plain
+    file whose zip directory and array headers were checked first (datasets.check_npz)."""
     try:
-        archive = np.load(args.file, allow_pickle=False)
-    except (ValueError, EOFError, zipfile.BadZipFile) as error:
+        with inputfiles.open_regular(args.file) as fp:
+            datasets.check_npz(fp)
+            states, targets = _arrays(args, np.load(fp, allow_pickle=False))
+    except (ValueError, EOFError, zipfile.BadZipFile) as error:       # inputfiles.InputRefused is a ValueError
         raise ValidationError(f"Cannot read {args.file} as an .npz archive: {error}") from None
-    if not isinstance(archive, np.lib.npyio.NpzFile):
-        raise ValidationError(f"{args.file} is not an .npz archive")
-    with archive:
-        if set(archive.files) != {"states", "targets"}:
-            raise ValidationError(f"{args.file} must hold exactly the arrays states and targets")
-        try:
-            states, targets = archive["states"], archive["targets"]
-        except (ValueError, zipfile.BadZipFile) as error:
-            raise ValidationError(f"Cannot read {args.file}: {error}") from None
     return evidence.attach_stream(db, args.name, states, targets, now,
                                   provenance="simulated" if args.simulated else "observed", path=store.resolve_db(args))
 

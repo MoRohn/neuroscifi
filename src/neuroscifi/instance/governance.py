@@ -263,11 +263,17 @@ def drop_consolidated(db, where, params, now, reason):
     return rows
 
 
+def naming_forms(roots, *, scoped=False):
+    """What an imagined record that names these forgotten roots holds (imagined.remove_naming): the root, or for a
+    scoped forget (scrub_roots scoped) only `<kind>:<root>`, since the bare name may be the other kind's."""
+    return [f"{roots[root][0]}:{root}" if scoped else root for root in sorted(roots)]
+
+
 def _forget_roots(db, rows, now):
     """Scrub each camera/word root of the removed rows that has no evidence left, raw or consolidated; and, for a
     root the other channel still holds, the kind that has none left (scrub_roots scoped, recorded in
     forgotten_scopes so a restore does the same). Caller owns the txn. Returns (roots forgotten, scopes forgotten,
-    rows rewritten)."""
+    rows rewritten, the forms an imagined record naming them holds: naming_forms)."""
     instance_id = store.birth(db)["instance_id"]
     roots, scopes = {}, {"camera": {}, "partner": {}}   # a root may lose both kinds and still be a reference root
     held = {}       # each root is looked up once, however many of its rows went (a sweep removes thousands)
@@ -287,7 +293,8 @@ def _forget_roots(db, rows, now):
     db.executemany("INSERT OR IGNORE INTO forgotten_scopes(digest,kind,forgotten_at) VALUES(?,?,?)",
                    [(digest, kind, now) for part in scopes.values() for kind, digest in part.values()])
     scrubbed = scrub_roots(db, roots) + sum(scrub_roots(db, part, scoped=True) for part in scopes.values() if part)
-    return len(roots), sum(map(len, scopes.values())), scrubbed
+    forms = naming_forms(roots) + [f for part in scopes.values() for f in naming_forms(part, scoped=True)]
+    return len(roots), sum(map(len, scopes.values())), scrubbed, forms
 
 
 def drop_epoch_rows(db, epoch, now=None):
@@ -396,7 +403,7 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
         db.execute("INSERT INTO belief_revisions(epoch,state_version,created_at,cause,summary) VALUES(?,?,?,?,?)",
                    (epoch, version, now, cause, _dump(summary)))
     causes = _forget_causes(db, [r[1] for r in rows if r[1] is not None])
-    forgotten, scoped, scrubbed = _forget_roots(db, rows, now)
+    forgotten, scoped, scrubbed, forms = _forget_roots(db, rows, now)
     effects = {"deleted": len(rows) - len(folded_rows), "epochs": epochs, "checkpoints_stale": stale,
                "state_version": version, "roots_forgotten": forgotten, "derived_rows_scrubbed": scrubbed + causes}
     if scoped:
@@ -414,15 +421,21 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
     logged = db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
                         (kind, target, now, json.dumps(effects, sort_keys=True))).lastrowid
     # after the log row: an epoch's row outlives its forget, so that row is what says the epoch is gone
-    if _imagined_cascade(db, effects, now).get("imagined_removed"):
+    if _imagined_cascade(db, effects, now, forms).get("imagined_removed"):
         db.execute("UPDATE deletion_log SET effects=? WHERE id=?", (json.dumps(effects, sort_keys=True), logged))
     return effects
 
 
-def _imagined_cascade(db, effects, now):
-    """Remove the imagined records (ADR-049) derived from anything this forget removed; effects["imagined_removed"]
-    counts them (absent while zero). Caller owns the transaction."""
+def _imagined_cascade(db, effects, now, forms=()):
+    """Remove the imagined records (ADR-049) derived from anything this forget removed and then, a record being
+    never rewritten, those whose text holds a forgotten root (`forms`: naming_forms), as stored or inside a base64,
+    zlib or gzip value (imagined.remove_naming, which states its bounds; archives written since the oldest of those
+    become stale too). effects["imagined_removed"] counts both (absent while zero). Caller owns the transaction."""
     removed = imagined.purge_orphans(db, now)
+    named, stale = imagined.remove_naming(db, forms, now)
+    if named:
+        removed += named
+        effects["checkpoints_stale"] = sorted({*effects.get("checkpoints_stale", ()), *stale})
     if removed:
         effects["imagined_removed"] = removed
     return effects

@@ -924,3 +924,34 @@ def test_a_forget_during_a_long_restore_leaves_no_frame_in_the_wal(instance, tmp
     assert seen["forget"] == "busy" and seen["wal_during"] > 0      # the forget could not truncate while it ran
     assert not wal.exists() or wal.stat().st_size == 0
     assert b"zz-secret-root" not in path.read_bytes()
+
+
+# ---- the settings a restore carries (OMNIMIND lane S, audit-cognition hazard 6) -----------------------------------
+# The rule (checkpoints.CARRIED_SETTINGS' comment): every setting the owner may change with `nsf config` - exactly
+# store._SETTABLE - is the owner's current choice and is carried into a restored copy; the settings fixed at `nsf init`
+# are not settable and stay as the archive has them. A value other than the default for each, to prove the carry.
+CHANGED = {"ask_budget_per_epoch": 7, "ask_budget_window_seconds": 3600, "consolidation": False,
+           "max_consolidated_rows": 500, "graph_rule_migration": False, "max_imagined_rows": 50,
+           "imagined_lifetime_seconds": 7200, "quiet": True, "internal_state_history": False,
+           "predictive_regulation": "shadow", "executive_rule": "information-v1", "decision_information": False,
+           "imagine_what_if": False, "imagine_forecast": False, "imagine_retrospect": False, "imagine_scenarios": True,
+           "imagine_max_seconds": 5.0, "imagine_max_bytes": 2 << 20, "broadcast": "log", "broadcast_threshold": 0.25}
+
+
+def test_a_restore_carries_exactly_the_settings_the_owner_may_change(instance, tmp_path):
+    db, path = instance
+    assert len(set(checkpoints.CARRIED_SETTINGS)) == len(checkpoints.CARRIED_SETTINGS)
+    assert set(checkpoints.CARRIED_SETTINGS) == set(store._SETTABLE), (
+        "a setting the owner may change must be carried by a restore (or this rule changes, with its reason)")
+    assert set(CHANGED) == set(store._SETTABLE), "give the new setting a non-default value here"
+    defaults = store.InstanceConfig()
+    assert all(getattr(defaults, name) != value for name, value in CHANGED.items())
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 1)
+    store.set_config(db, dict(CHANGED), T0 + 2)
+    checkpoints.restore(db, cp["id"], tmp_path / "restored.sqlite", T0 + 3)
+    copy = store.open_existing(tmp_path / "restored.sqlite")
+    try:
+        restored = store.config(copy)
+    finally:
+        copy.close()
+    assert {name: getattr(restored, name) for name in CHANGED} == CHANGED

@@ -70,8 +70,9 @@ def default_dir(db_path):
     return path.parent / f"{path.stem}.checkpoints"
 
 
-# Deletions of payload (not the checkpoint bookkeeping that rebuild and prune log).
-_LAST_DELETION = "SELECT COALESCE(MAX(id),0) FROM deletion_log WHERE target_kind!='checkpoint'"
+# Deletions of payload (not the checkpoint bookkeeping that rebuild and prune log, nor a web setting's change:
+# webcortex.state.SETTING_KIND, which deletes nothing).
+_LAST_DELETION = "SELECT COALESCE(MAX(id),0) FROM deletion_log WHERE target_kind NOT IN ('checkpoint','web_setting')"
 
 
 def create(db, db_path, out_dir, now, *, policy="cold"):
@@ -439,6 +440,7 @@ def _replay(copy, forgets, now):
     retired = forgets["retired"] if forgets else []
     nonces = forgets["nonces"] if forgets else []
     removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = epoch_rows = effects = 0
+    named = []          # forgotten roots as an imagined record would name them (governance.naming_forms)
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
     copy.execute("PRAGMA secure_delete=ON")
@@ -541,7 +543,7 @@ def _replay(copy, forgets, now):
         effects += graphs.erase_learned_from(copy, dataset_id, now)["effects_deleted"]
     if roots:
         copy.executemany("INSERT OR IGNORE INTO forgotten_roots(digest,kind,forgotten_at) VALUES(?,?,?)", roots)
-        scrubbed += _scrub_copy(copy, candidates, {digest for digest, _, _ in roots})
+        scrubbed += _scrub_copy(copy, candidates, {digest for digest, _, _ in roots}, named)
     if live_streams is not None:
         for stream in copy.execute("SELECT id,sha256 FROM epoch_streams").fetchall():
             if stream not in live_streams:
@@ -553,7 +555,8 @@ def _replay(copy, forgets, now):
     if kind_scopes:     # after the changepoints of a camera or partner forgotten by name (counted there)
         copy.executemany("INSERT OR IGNORE INTO forgotten_scopes(digest,kind,forgotten_at) VALUES(?,?,?)",
                          kind_scopes)
-        scrubbed += _scrub_copy_scopes(copy, candidates, {(digest, kind) for digest, kind, _ in kind_scopes})
+        scrubbed += _scrub_copy_scopes(copy, candidates, {(digest, kind) for digest, kind, _ in kind_scopes},
+                                        named)
     for epoch, forgotten_at_version, requested_at, effects_json in epochs:
         if version < forgotten_at_version:
             epoch_rows += sum(governance.drop_epoch_rows(copy, epoch).values())
@@ -605,6 +608,9 @@ def _replay(copy, forgets, now):
     # Last, after every other replay: imagined records the live file removed since, those past their lifetime, and
     # those derived from anything the replay above removed (ADR-049).
     imagined_removed = imagined.replay(copy, forgets.get("imagined", []) if forgets else [], now)
+    # Then, as the live forget did, those whose text holds a root forgotten above (governance._imagined_cascade):
+    # what the live tombstones already removed is gone, so this finds only what they do not name.
+    imagined_removed += imagined.remove_naming(copy, named, now)[0]
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
@@ -862,18 +868,20 @@ def _root_candidates(copy):
     return found
 
 
-def _scrub_copy(copy, candidates, digests):
-    """Scrub, in a restore's staged copy, every candidate root that the live instance has forgotten."""
+def _scrub_copy(copy, candidates, digests, named):
+    """Scrub, in a restore's staged copy, every candidate root that the live instance has forgotten; their
+    governance.naming_forms are added to `named` (the imagined records holding them go after imagined.replay)."""
     instance_id = store.birth(copy)["instance_id"]
     roots = {}
     for kind, root in sorted(candidates):
         digest = governance.root_digest(instance_id, root)
         if digest in digests and root not in roots and not governance.root_held(copy, root):
             roots[root] = (kind, digest)
+    named.extend(governance.naming_forms(roots))
     return governance.scrub_roots(copy, roots)
 
 
-def _scrub_copy_scopes(copy, candidates, forgotten):
+def _scrub_copy_scopes(copy, candidates, forgotten, named):
     """In a restore's staged copy: scrub the kind of every candidate name that the live instance forgot as that kind
     while the other channel kept the name (forgotten: {(digest, kind)}), unless the copy still holds evidence of that
     kind (a newer camera or partner of the same name). A name with no evidence left at all in the copy is scrubbed
@@ -885,6 +893,7 @@ def _scrub_copy_scopes(copy, candidates, forgotten):
         channel = "camera" if kind == "camera" else "word"
         if (digest, kind) in forgotten and not governance.root_held(copy, root, channel):
             parts[kind][root] = (kind, digest)
+    named.extend(f for part in parts.values() for f in governance.naming_forms(part, scoped=True))
     return sum(governance.scrub_roots(copy, part, scoped=True) for part in parts.values() if part)
 
 

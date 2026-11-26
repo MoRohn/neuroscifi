@@ -153,9 +153,14 @@ def public(cfg: dict) -> dict:
     return out
 
 
+def key_path(cfg: dict) -> Path:
+    """Where the speech API key is read from: key_file, else NSF_VOICE_KEY_FILE, else DEFAULT_KEY_FILE."""
+    return Path(cfg.get("key_file") or os.environ.get("NSF_VOICE_KEY_FILE") or DEFAULT_KEY_FILE).expanduser()
+
+
 def read_key(cfg: dict) -> str | None:
     """The speech API key, or None. A key file readable by group/others is refused (as the inference key is)."""
-    path = Path(cfg.get("key_file") or os.environ.get("NSF_VOICE_KEY_FILE") or DEFAULT_KEY_FILE).expanduser()
+    path = key_path(cfg)
     try:
         info = path.stat()
     except OSError:
