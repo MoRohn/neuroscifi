@@ -451,6 +451,53 @@ change, and for each learner its minimum (read from the code), what is missing a
 at the pace so far ("unknown" while nothing settles). It only reads: nothing is fitted or stored, no model is called.
 `nsf self` shows the same per-learner summary under `uncertain.outcomes_readiness`.
 
+**Read the shadow report with care (Wave 3 review).** As the report is written today, a would-hold note made while
+memory is *already* under the line counts as a hit, and the warning time cannot exceed 3 minutes, so the hits and the
+warning time look good by construction (in the staged runs 73 % of the hits were holds the real gate was already
+making). The fix lane changes the report to count separately only the holds that would have stopped work the gate
+allowed [fix lane]. Until then, weigh `work.holds_the_gate_allowed` and the false alarms more than `settled.hits`, keep
+the worker running with web research enabled, and do not turn predictive regulation on from `settled.hits` alone.
+
+### Which pages count as separate sources, and replacing out-of-date facts (ADR-061)
+
+**In plain words.** When several web pages say the same thing, NeuroSciFi counts how many *independent* sources they
+are. Pages on the same site, near-identical copies, and copies that carry a "first appeared on" line count as one.
+Wave 3 built two extra rules and found they are not good enough yet, so **both are off** [fix lane]:
+
+- `attribution_independence`: a page that says "according to X" counts with X. It only understands a few wordings,
+  and a page that credits two honest outlets can merge them so a true fact is never confirmed.
+- `echo_recognition`: a page that repeats what NeuroSciFi itself answered, or says "an assistant reported", is not
+  taken as proof. It can throw away honest pages on a large individual and treats phrases such as "the AI Act" as AI
+  text.
+
+To check or change them (`DB` is the individual's file):
+
+```sh
+nsf web config --db DB                                         # shows both, off unless you turned them on
+nsf web config --db DB --set attribution_independence=false --set echo_recognition=false   # turn both off
+```
+
+Turning them on is not recommended on the present evidence. What they write: nothing of their own; they only change
+which pages count.
+
+**Replacing an out-of-date fact without asking you (`supersession`, off).** Today, when a refresh finds a newer
+version that disagrees with what NeuroSciFi holds, it asks you and changes nothing until you answer. With
+`supersession` set to `"independent"`, a newer version stated by at least `supersession_min_sources` (2) independent
+sources replaces the held fact without asking, and the replacement is listed for you to check:
+
+```sh
+nsf web config --db DB --set 'supersession="independent"'   # turn it on (your decision)
+nsf web replacements --db DB                                  # every replacement the rule made, newest first
+nsf web revert --db DB ID                                     # undo one: the replaced version comes back exactly
+nsf web config --db DB --set 'supersession="ask"'            # back to asking you (the default)
+```
+
+Measured in Wave 3 on simulated worlds, it asked fewer questions but did not make knowledge measurably more correct,
+and about one replacement in eleven was wrong (two outlets repeating the same rumour); some wrong replacements stayed
+wrong for over a week of simulated days, until the test ended. With it on, a research task asked from Pocket or by an
+agent can also replace a fact, and forgetting a source does not yet remove it from the rule's record [fix lane].
+Keep it off unless you accept that.
+
 ### Crashed worker
 
 Each lease records the worker's host digest, pid and process start time. On the same host a dead worker is detected at once: `cancel`, `resume` and `requeue` act immediately and the worker service picks the task up from its checkpoint without waiting for the 600 s lease to expire. Task JSON carries `worker_alive` (`true`, `false`, or `null` when no worker holds it or it runs on another host).

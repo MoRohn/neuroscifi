@@ -1,6 +1,6 @@
 # Regression verification and cognitive UAT (deliverable H)
 
-Status: 2026-11-25. Wave 2, lane U, branch `gen2-u` from `main` at `3559069` (Wave 1 merged). Deliverable H of the
+Status: 2026-11-25 (§10, Wave 3's settings, added 2026-11-26). Wave 2, lane U, branch `gen2-u` from `main` at `3559069` (Wave 1 merged). Deliverable H of the
 directive's §13 for its §12 ("Phase X"): evidence that the original and the enhanced functionality both work end to
 end, and that the system "must remain controllable and functionally reliable even when new cognitive mechanisms
 fail". Everything here was run offline on this host (aarch64, Python 3.12) with no model, GPU, phone, second account
@@ -269,3 +269,41 @@ committed when these ran. Offline, this host (aarch64, Python 3.12).
 | Documentation tests (`-k "doc or readme or links"`) | 50 passed |
 | e2e: `tests/e2e/test_voice_e2e.py`, `test_voice_check_e2e.py`, `test_presence.py` | 27 passed, 1 skipped (335 s; `node_modules` linked from the main checkout and removed afterwards) |
 | Withheld family | not read, not run; no `--final` |
+
+## 10. Wave 3: the new settings in the regression suite (the reconciliation, `gen3-rec`)
+
+Record: [WAVE3.md](WAVE3.md) §3.9. Commit `ce5a432` on the merged Wave 3 tree `f0a1f09`.
+
+**Setting lists.** `test_every_wave3_setting_is_rolled_back_and_made_to_fail`: the fields Wave 3 added
+(`recheck_order`, `attribution_independence`, `echo_recognition`, `supersession`; `supersession_min_sources` is a
+bound) and the two settings that are not fields (`predictive_regulation: "shadow"`, the front door of
+`nsf imagine scm`) each need a rollback test and a fault-injection entry. The Wave 0 equivalence test switches the
+four fields off (lanes R and S added them).
+
+**Rollback.** Two new: `test_predictive_regulation_shadow` (off: the gate decides, nothing recorded; shadow: the same
+decision and a verdict recorded; off again: as before, the recorded file kept) and `test_front_door` (`--no-front-door`
+declines, the default answers, `--no-front-door` declines exactly as the first time). Lanes R and S had added
+`recheck_order`, `attribution_independence`, `echo_recognition` and `supersession`.
+
+**Fault injection.** 7 Wave 3 entry points, with every Wave 1 setting and every Wave 3 setting on
+(`recheck_order` `rate+seen+rotation`, both source rules on, `supersession` `"independent"`,
+`predictive_regulation` `"shadow"`): `recheck._ordered`, `claims.attribution_keys`, `consolidate._without_echoes`,
+`consolidate._rule_replacement` (reached through a staged refresh whose sources disagree with a held item),
+`shadow._verdict`, `readiness.report`, `causal._frontdoor` (reached through the owner's own `nsf imagine scm`
+question), each × raise / time out / garbage, and each with a failure message naming a subject: 28 cases, the same
+checks as §4.1. **12 of 28 failed on `f0a1f09`** (attribution and echoes: the owner's question ended "partial"; garbage
+credits were taken silently; the supersession rule: the refresh's consolidation failed). Three guards, in lane U's
+pattern, fix them: 28 of 28 pass.
+
+| Count (`tests/uat/`, collected on `gen3-rec`) | Cases |
+|---|---|
+| fault injection | 144 (Wave 1 and 2: 29 entry points × 3 modes + 29 marked = 116; Wave 3: 7 × 3 + 7 = 28) |
+| shadow faults (lane H) | 9 |
+| voice follow-up | 19 |
+| rollback | 34 |
+| Wave 0 equivalence | 6 |
+| setting lists | 5 |
+| **all** | **217** |
+
+Note: Wave 3's two source rules were on by default on `f0a1f09` and ship off [fix lane]; the fault-injection cases turn
+them on explicitly, so the count and the result do not depend on that default.

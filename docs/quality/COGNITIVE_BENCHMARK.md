@@ -178,7 +178,8 @@ Scores (after the Wave 1 review, B3, corrected at its re-review; `scoring.answer
   (exact arithmetic on the equations the question hands over), `belief_what_if` (the truth is the same posterior
   function recomputed on a copy: a plumbing check), `learned_graph` (forecasts and pushes on a graph the individual
   learned: **the substantive group**). The front-door questions are a fourth line, `front_door`: the declines are
-  counted (`front_door_declined`; the engine does no front-door adjustment) and an answer is scored for tolerance.
+  counted (`front_door_declined`; until Wave 3 the engine did no front-door adjustment; since ADR-059 it answers them,
+  0 → 1.000 held-out, `genesis_frontdoor.json`) and an answer is scored for tolerance.
   `summary` pools the groups and is marked so in every result (`summary_is`: "pooled ... reported, not a claim").
 - Kept for comparison with the recorded files under names that cannot be mistaken for the headline:
   `answered_share` (was `coverage`: any answer counts, however wrong), `mean_relative_error`, `interval_coverage`
@@ -243,7 +244,13 @@ Results are reported by origin (`by_origin`, `adversarial.ORIGIN`), never added 
 with every Wave 1 setting off as well) and `restored` (`system_made_content_never_enters_the_journal`: the original
 concern of the redefined case, staged where it applies — a quarantined what-if record's id offered as a reading's
 id, root and sample, and readings labelled inference, simulation or speculation, all refused with the belief, the
-journal and the state version unchanged; it guards lane P's Wave 0 mechanism, so it passes in every regime).
+journal and the state version unchanged; it guards lane P's Wave 0 mechanism, so it passes in every regime),
+`added_wave2` (10), and in Wave 3 `added_wave3_c` (5, lane C's front-door traps) and `added_wave3_s` (16, lane S's
+sources, own text and supersession). On the merged Wave 3 tree `f0a1f09`: 54 cases, 49 scored (5 directive items not
+staged), 49 of 49 pass on both splits (13 / 4 / 1 / 10 / 5 / 16 by origin; `genesis_wave3_combined_checks.json`).
+Lane C's 5 cases are declined by the moments rule before the criterion is reached, so they pass even with the
+criterion broken until they are staged with population moments [fix lane]. Lane S's 16 pass with its two source rules
+on, the default at `f0a1f09`; those rules ship off [fix lane].
 **Cannot show:** behaviour under real adversaries; it is a regression set, not a tuning set (no split).
 
 ## Baseline (unchanged system)
@@ -369,7 +376,8 @@ these numbers measures "intelligence". They are task scores on synthetic worlds 
   handed equations 1.0 / 1.0, belief what-ifs 1.0 / 1.0 (plumbing), learned graph forecasts and actions 0.889 /
   1.000 within 0.1 × sd (largest error 0.147 / 0.092; within 0.05: 0.815 / 0.778; the tolerance was set in the same
   commit as the results; baseline 0.259 / 0.222; "answer 0" 0.111 / 0.407 at 0.1 and 0.037 / 0.148 at 0.05; 12 seeds
-  0.954 against 0.204). The engine does no front-door adjustment: it declines those questions. Ablations, held-out,
+  0.954 against 0.204). The engine did no front-door adjustment then: it declined those questions (answered since
+  Wave 3, ADR-059). Ablations, held-out,
   over all answerable (without the front-door ones in brackets): without the causal engine 0.375 (0.429), without the
   what-if 0.781 (0.893), without forecasts 0.656 (0.750), without pushes 0.781 (0.893). The splits are unchanged.
 
