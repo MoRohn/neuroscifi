@@ -606,7 +606,8 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         if admitted["rule"] == "unified" and (pick.get("knowledge_id") in refreshed or pick["key"] in refreshed_keys):
             report["skipped"].append({"target": target, "reason": REFRESHED_THIS_TICK})
             winner = refreshes.get(pick.get("knowledge_id")) or refreshed_keys.get(pick["key"])
-            _arbitrated(db, report, now, winner, "refresh", "curiosity", REFRESHED_THIS_TICK)
+            if budget_left > 0 and _over_cap(db, now, cfg) is None:     # lane Y (H1): curiosity could have taken it
+                _arbitrated(db, report, now, winner, "refresh", "curiosity", REFRESHED_THIS_TICK)
             continue
         cap = _over_cap(db, now, cfg)
         if cap or budget_left <= 0:

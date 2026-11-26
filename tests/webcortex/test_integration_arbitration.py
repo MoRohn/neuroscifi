@@ -112,6 +112,19 @@ def test_conflicting_internal_priorities_one_task_per_subject_and_the_loser_name
     assert cycle["arbitration"][0]["loser"] == "curiosity" and cycle["arbitration"][0]["winner"] == "refresh"
 
 
+def test_a_refresh_that_takes_a_subject_when_no_budget_is_left_records_no_arbitration(individual, monkeypatch):
+    """Lane Y (H1): with no budget left for curiosity, the refresh's subject is no conflict: one task, no record."""
+    db, _ = individual
+    monkeypatch.setattr(curiosity, "rank", ranked(GOOD))
+    refresh = [{"prediction_id": 1, "action": "refresh_submitted", "task_id": "refresh-task", "knowledge_id": GOOD[0]}]
+    monkeypatch.setattr(predictions, "check_due", lambda *a, **k: refresh)
+    autonomy.enable(db, T0)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=0)
+    assert {"target": {"key": GOOD[1], "knowledge_id": GOOD[0]}, "reason": scheduler.REFRESHED_THIS_TICK} \
+        in report["skipped"]
+    assert "arbitration" not in report and _arbitrations(db) == []
+
+
 def test_the_arbitration_record_is_attached_to_the_winners_task_and_launches_nothing(individual):
     db, _ = individual
     before = db.execute("SELECT count(*) FROM web_tasks").fetchone()[0]
