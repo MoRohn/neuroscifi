@@ -74,12 +74,19 @@ _REWARD = ("(EXISTS (SELECT 1 FROM web_knowledge k WHERE k.task_id=t.id AND k.pr
 def outcomes(db, *, window=WINDOW) -> dict:
     """{mode: {"tasks", "rewarded", "self_reported": the mode's own web_strategies record (shown, never rewarded)}}
     over the last `window` finished tasks of each mode."""
+    # Wave 3 fix lane (lane H's measurement: 5.8 s at 10,000 knowledge items and 20,000 predictions): the rewarded
+    # tasks are read in one pass per table, not by two unindexed look-ups per task; the same counts as _REWARD gives
+    # (tests/webcortex/test_strategy_outcomes_fast.py checks both), no index and no schema change
+    rewarded = {r[0] for r in db.execute(
+        "SELECT DISTINCT task_id FROM web_knowledge WHERE task_id IS NOT NULL AND provenance='verified_conclusion' AND "
+        "json_extract(verification,'$.state')='supported'")} | {r[0] for r in db.execute(
+            "SELECT DISTINCT task_id FROM web_predictions WHERE task_id IS NOT NULL AND outcome IN ('confirmed','error')")}
     out = {}
     for mode in MODES:
-        rows = db.execute(f"SELECT {_REWARD} FROM web_tasks t WHERE t.mode=? AND t.status IN ('completed','partial') "
+        rows = db.execute("SELECT t.id FROM web_tasks t WHERE t.mode=? AND t.status IN ('completed','partial') "
                           "ORDER BY coalesce(t.finished_at, t.updated_at) DESC, t.rowid DESC LIMIT ?",
                           (mode, int(window))).fetchall()
-        out[mode] = {"tasks": len(rows), "rewarded": sum(1 for (r,) in rows if r),
+        out[mode] = {"tasks": len(rows), "rewarded": sum(1 for (tid,) in rows if tid in rewarded),
                      "self_reported": state.load_strategies(db, f"mode:{mode}")}
     return out
 
