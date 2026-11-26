@@ -227,18 +227,16 @@ def readiness_cost(knowledge=10_000, events=500_000, tasks=10_000, predictions=2
                                    ("done", "superseded by new evidence"), ("done", "confirmed by new evidence"),
                                    ("done", "no evidence about it"), ("marked", None), ("dropped", "x")))
                                    for _ in range(rechecks))])
+                # the payload scenarios.compare reads (three futures and the forecast used), as scenarios writes it
+                payload = json.dumps({"prediction_id": 1, "futures": {"confirmed": {"p": 0.5}, "error": {"p": 0.3},
+                                                                      "inconclusive": {"p": 0.2}},
+                                      "forecast": {"used": 0.6}})
                 db.executemany("INSERT INTO imagined(id, kind, payload, assumptions, uncertainty, mechanism, "
                                "mechanism_version, question, created_at, expires_at, outcome, observed_at) "
-                               "VALUES(?, 'simulation', '{}', '[]', 'u', ?, '1', 'q', ?, ?, ?, ?)",
-                               [(f"imagined:{i:032x}", scenarios.MECHANISM, t0, t0 + 10 ** 9,
+                               "VALUES(?, 'simulation', ?, '[]', 'u', ?, '1', 'q', ?, ?, ?, ?)",
+                               [(f"imagined:{i:032x}", payload, scenarios.MECHANISM, t0, t0 + 10 ** 9,
                                  '{"observed": {"futures": 0}, "evidence": []}' if i % 2 else None,
                                  t0 + 1 if i % 2 else None) for i in range(scenario_records)])
-                # the payload scenarios.compare reads (three futures and the forecast used), as scenarios.imagine
-                # writes it
-                db.execute("UPDATE imagined SET payload=json_object('prediction_id', 1, 'futures', json_object("
-                           "'confirmed', json_object('p', 0.5), 'error', json_object('p', 0.3), 'inconclusive', "
-                           "json_object('p', 0.2)), 'forecast', json_object('used', 0.6)) WHERE mechanism=?",
-                           (scenarios.MECHANISM,))
         times, strategy_times = [], []
         with shared.read_database(path) as db:
             for _ in range(5):
