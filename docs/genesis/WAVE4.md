@@ -181,7 +181,8 @@ held-out): **"trade"** on both splits, before and after the fix (A fewer false v
 not higher, C `correct` within the spread, D precision within 0.02: fail).
 
 **What it cannot see** (held-out rows still admitted over rows admitted at shipped, a ratio of counts, not of the same
-rows): credited copies 64 %, extra contributor 69 %, uncredited copies 100 %, echoes 100 %. The name census's "seen"
+rows; lane S's run): credited copies 64 % (67 % after the fix lane's hardening, 41 of 61), extra contributor 69 %,
+uncredited copies 100 %, echoes 100 %. The name census's "seen"
 shares (credited copies 32 %) are an upper bound set by the generator.
 
 **The record after the reviews: not supported; do not turn on.** (1) The signal is the generator's convention
