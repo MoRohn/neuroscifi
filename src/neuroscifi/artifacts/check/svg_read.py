@@ -345,8 +345,9 @@ def _fit(px, vals):
     return a, b, res, span
 
 
-def read_axis(group: Elem, which: str) -> Axis:
-    """Fit an axis group (`<g class="axis x|y|z">`) from its ticks. `which` picks the pixel coordinate."""
+def read_axis(group: Elem, which: str, *, band: bool = False) -> Axis:
+    """Fit an axis group (`<g class="axis x|y|z">`) from its ticks. `which` picks the pixel coordinate. With `band`
+    the labels are categories even when they look like numbers ("08" as an hour of the day)."""
     ticks = []
     for t in group.find("g", "tick"):
         x, y = apply(ctm(t), 0, 0)
@@ -361,7 +362,7 @@ def read_axis(group: Elem, which: str) -> Axis:
         axis.domain = (min(coords), max(coords))
     pix = [t.x if which == "x" else t.y for t in ticks]
     labels = [t.full for t in ticks]
-    if len(ticks) >= 2 and all(_DECIMAL.match(s) for s in labels):
+    if not band and len(ticks) >= 2 and all(_DECIMAL.match(s) for s in labels):
         vals = [float(s) for s in labels]
         lin = _fit(pix, vals)
         best = ("linear", lin) if lin else None
@@ -372,7 +373,7 @@ def read_axis(group: Elem, which: str) -> Axis:
         if best:
             axis.kind, (axis.a, axis.b, axis.residual, axis.span) = best[0], best[1]
             return axis
-    if len(ticks) >= 2 and all(iso_seconds(s) is not None for s in labels):
+    if not band and len(ticks) >= 2 and all(iso_seconds(s) is not None for s in labels):
         fit = _fit(pix, [iso_seconds(s) for s in labels])
         if fit:
             axis.kind = "time"
@@ -383,13 +384,14 @@ def read_axis(group: Elem, which: str) -> Axis:
     return axis
 
 
-def axes_of(scope: Elem) -> dict[str, Axis]:
+def axes_of(scope: Elem, bands: tuple[str, ...] = ()) -> dict[str, Axis]:
+    """The axes of a picture or panel; axes named in `bands` are read as categories (the form says so)."""
     out = {}
     for g in scope.iter():
         if g.tag == "g" and "axis" in g.classes():
             for which in ("x", "y", "z"):
                 if which in g.classes() and which not in out:
-                    out[which] = read_axis(g, which if which != "z" else "y")
+                    out[which] = read_axis(g, which if which != "z" else "y", band=which in bands)
     return out
 
 
@@ -542,7 +544,7 @@ def carried_xy(scope: Elem, data: dict, options: dict, *, line: bool) -> list:
 
 
 def carried_bar(scope: Elem, data: dict, options: dict) -> list:
-    axes = axes_of(scope)
+    axes = axes_of(scope, bands=("x",))
     out = _axes_ok(axes)
     ax, ay = axes.get("x"), axes.get("y")
     if ax is None or ay is None or ax.kind != "band" or ay.kind not in ("linear",):
@@ -645,7 +647,7 @@ def _gray(fill: str | None):
 
 
 def carried_heat(scope: Elem, data: dict, options: dict) -> list:
-    axes = axes_of(scope)
+    axes = axes_of(scope, bands=("x", "y"))
     ax, ay = axes.get("x"), axes.get("y")
     zgroup = next((g for g in scope.iter() if g.tag == "g" and g.has("axis", "z")), None)
     if ax is None or ay is None or zgroup is None:

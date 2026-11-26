@@ -21,8 +21,8 @@ import math
 from decimal import Decimal
 
 from .scales import Fit, Scale, band, decimals_of, linear_ticks, log_ticks, ticks_for, to_datetime
-from .svg_base import (AXIS, GRID, MUTED, SERIES_STYLES, abbreviate, bar_fill, el, flag_color, gray_hex, head,
-                       marker, num, patterns, scope_id, text_el, text_width)
+from .svg_base import (AXIS, GRID, MUTED, SERIES_STYLES, abbreviate, bar_fill, contrast, el, flag_color, gray_hex,
+                       head, marker, num, patterns, scope_id, text_el, text_width)
 
 W_DEFAULT, H_DEFAULT = 640, 400
 TITLE_SIZE, LEGEND_SIZE, TICK_SIZE, LABEL_SIZE = 16, 12, 11, 12
@@ -240,11 +240,11 @@ class XAxis:
         return el("g", (("class", "axis x"),), dom + "".join(ticks) + lab)
 
 
-def plan_x_continuous(kind, lo, hi, x0, x1, opts, *, nice=True):
+def plan_x_continuous(kind, lo, hi, x0, x1, opts, *, nice=True, per_tick=90):
     """Ticks for a continuous x axis that fit horizontally (fewer ticks first), else rotated (unless pinned)."""
     mode = opts.get("x_labels", "auto")
     every = int(opts.get("x_tick_every", 1))
-    target = max(2, round((x1 - x0) / 90))
+    target = max(2, round((x1 - x0) / per_tick))
     ticks = None
     for t in range(target, 1, -1):
         ticks = ticks_for(kind, lo, hi, t, nice=nice)
@@ -566,8 +566,6 @@ def make_bar(spec):
     else:
         values = [v for s in series for v in s["values"] if v is not None]
     from_zero = bool(o.get("y_from_zero", True))
-    if not from_zero:
-        notes.append("the value axis does not start at zero: bar lengths are not proportional to the values")
     ylo, yhi, n2 = _y_domain(values, o, from_zero=from_zero)
     notes += n2
     sid = scope_id("chart_bar", spec.to_json())
@@ -595,6 +593,9 @@ def make_bar(spec):
     yt = _y_ticks("linear", ylo, yhi, y0, y1)
     xa = plan_x_band(cats, x0, x1, o)
     sy = Scale(yt.lo, yt.hi, y1, y0)
+    truncated = yt.lo > 0 or yt.hi < 0
+    if truncated:
+        notes.append("the value axis does not start at zero: bar lengths are not proportional to the values")
     centres, bw = band(len(cats), x0, x1)
     grid, yaxis = y_axis_svg(yt, sy, x0, x1, y0, y1, ylab, 18)
     xaxis = xa.svg(y1, x0, x1, xlab, frame.H - 12, domain=False)
@@ -625,7 +626,7 @@ def make_bar(spec):
             top, h = min(ya, yb), abs(ya - yb)
             rects.append(el("rect", (("class", "mark" + (f" {pflag}" if pflag else "")), ("x", num(x)), ("y", num(top)),
                                      ("width", num(sub)), ("height", num(h)), ("fill", fill), ("fill-opacity", opacity),
-                                     ("stroke", c), ("stroke-width", "1.25" if pflag else "1"))))
+                                     ("stroke", c), ("stroke-width", "2" if pflag else "1"))))
         groups.append(el("g", (("class", "series" + (f" {flag}" if flag else "")), ("data-name", s["name"])),
                          "".join(rects)))
     plot = el("g", (("class", "plot"),), "".join(groups))
@@ -636,8 +637,9 @@ def make_bar(spec):
              + (f". Values range from {plain(min(allv))} to {plain(max(allv))}." if allv else "."))
     if stacked:
         words += " Each bar's segments are stacked from zero in series order."
-    if not from_zero:
-        words += f" The value axis starts at {plain(yt.lo)}, not zero."
+    if truncated:
+        words += (f" The value axis runs from {plain(yt.lo)} to {plain(yt.hi)}, not from zero: bar lengths are not "
+                  "proportional to the values.")
     if n > len(SERIES_STYLES):
         notes.append(f"{n} series share {len(SERIES_STYLES)} fill styles: some look alike")
     body = frame.title_svg + frame.legend_svg + grid + yaxis + xaxis + plot
@@ -658,7 +660,7 @@ def histogram_edges(values, opts):
         return [float(f"{k * w:.{places}f}") for k in range(k0, k1 + 1)]
     # Sturges' rule (ceil(log2 n) + 1 bins, 5 to 50) unless the spec names a count; edges on nice numbers.
     target = int(opts.get("bins", min(50, max(5, math.ceil(math.log2(len(values))) + 1))))
-    return list(linear_ticks(lo, hi, target).values)
+    return list(linear_ticks(lo, hi, max(2, round(target * 1.5))).values)   # nice steps at or above the count
 
 
 def make_histogram(spec):
@@ -729,7 +731,7 @@ def make_heatmap(spec):
     xlab, ylab, zlab = axis_label(d["x"]), axis_label(d["y"]), axis_label(d["z"])
     ylabels = [abbreviate(c, 140, TICK_SIZE) for c in yc]
     left = 16 + 18 + max(text_width(s, TICK_SIZE) for s, _ in ylabels) + 12
-    right = 24 + 16 + max(text_width(t, TICK_SIZE) for t in zt.labels) + 20
+    right = 24 + max(20 + max(text_width(t, TICK_SIZE) for t in zt.labels), text_width(zlab, LABEL_SIZE)) + 16
     bottom = 50.0
     for _ in range(3):
         x0, x1, y0, y1 = frame.plot_box(left, bottom, right)
@@ -766,7 +768,7 @@ def make_heatmap(spec):
                                      ("height", num(ch)), ("fill", gray_hex(g)), ("stroke", "var(--nsf-paper)"),
                                      ("stroke-width", "1"))))
             if printed:
-                ink = "#000000" if g >= 140 else "#ffffff"
+                ink = "#000000" if contrast((g, g, g), (0, 0, 0)) >= contrast((g, g, g), (255, 255, 255)) else "#ffffff"
                 texts.append(text_el(x + cw / 2, y + ch / 2 + TICK_SIZE * 0.35, labels[r][c], size=TICK_SIZE,
                                      anchor="middle", cls="value", fill=ink))
         rows.append(el("g", (("class", "series"), ("data-name", yc[r])), "".join(cells)))
@@ -784,7 +786,7 @@ def make_heatmap(spec):
     xaxis = xa.svg(y1, x0, x1, xlab, frame.H - 12, domain=False)
     # z ramp: swatches with their values
     zx = x1 + 24
-    zs = Scale(zt.lo, zt.hi, y1, y0)
+    zs = Scale(zt.lo, zt.hi, y1, y0 + 14)
     zticks = []
     for v, t in zip(zt.values, zt.labels):
         zticks.append(el("g", (("class", "tick"), ("transform", f"translate({num(zx)},{num(zs(v))})")),
@@ -792,7 +794,7 @@ def make_heatmap(spec):
                                      ("fill", gray_hex(level(v))), ("stroke", "currentColor"),
                                      ("stroke-opacity", num(AXIS))))
                          + text_el(20, TICK_SIZE * 0.35, t, size=TICK_SIZE, opacity=MUTED)))
-    zaxis = el("g", (("class", "axis z"),), "".join(zticks) + text_el(zx, y0 - 8, zlab, size=LABEL_SIZE,
+    zaxis = el("g", (("class", "axis z"),), "".join(zticks) + text_el(zx, y0, zlab, size=LABEL_SIZE,
                                                                          cls="label", opacity=MUTED))
     words = (f"Heatmap of {zlab} for {len(yc)} rows of {d['y']['label']} by {len(xc)} columns of "
              f"{d['x']['label']}. Darker cells hold larger values: gray level runs linearly from light at "
@@ -835,8 +837,7 @@ def make_small_multiples(spec):
         x0, x1, y0, y1 = left, px + pw - 14, py + 28, py + ph - 40
         if x1 - x0 < 60 or y1 - y0 < 40:
             raise Fit("the panels are too small: make the picture larger or use more columns")
-        xt, xa = plan_x_continuous(xk, xlo, xhi, x0, x1, {**o, "x_labels": o.get("x_labels", "auto")},
-                                   nice=(xk != "time"))
+        xt, xa = plan_x_continuous(xk, xlo, xhi, x0, x1, o, nice=(xk != "time"), per_tick=60)
         sx = Scale(xt.lo, xt.hi, x0, x1, log=(xk == "log"))
         sy = Scale(yt.lo, yt.hi, y1, y0, log=(yk == "log"))
         grid, yaxis = y_axis_svg(yt, sy, x0, x1, y0, y1, "", px + 4)
