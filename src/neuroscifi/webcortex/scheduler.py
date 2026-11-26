@@ -427,16 +427,25 @@ def _arbitrated(db, report, now, winner_task, winner, loser, rule):
         return
     detail = {"arbitration": {"slot": "one investigation per subject per timer pass", "winner": winner,
                               "loser": loser, "rule": rule}}
-    try:        # Wave 2 lane X (review2 Info 3): a record that cannot be written never costs the rest of the pass
-        with store.write(db):
-            state.log_event(db, winner_task, "decision", detail, now)
+    with store.write(db):
+        state.log_event(db, winner_task, "decision", detail, now)
+    report.setdefault("arbitration", []).append({"task_id": winner_task, **detail["arbitration"]})
+
+
+def _arbitrate(db, report, now, winner_task, winner, loser, rule):
+    """_arbitrated, guarded (Wave 2 lane X: review2 Info 3, and lane U's fault injection extended to lane L): the
+    record is a record only, so when it cannot be made (an error, or a result where it returns nothing) the pass
+    goes on to curiosity's launches and the cache retention; the failure is a report line and a log warning (the
+    error's type and the task id only)."""
+    try:
+        out = _arbitrated(db, report, now, winner_task, winner, loser, rule)
+        if out is not None:
+            raise TypeError(f"the arbitration record returned {type(out).__name__}; it returns nothing")
     except Exception as exc:              # noqa: BLE001 - reported in the pass and logged, never silent
-        log.warning("the arbitration record of task %s could not be written (%s); the pass goes on", winner_task,
+        log.warning("the arbitration record of task %s could not be made (%s); the pass goes on", winner_task,
                     type(exc).__name__)
         report["skipped"].append({"what": "arbitration record", "task_id": winner_task,
                                   "reason": f"failed: {type(exc).__name__}"})
-        return
-    report.setdefault("arbitration", []).append({"task_id": winner_task, **detail["arbitration"]})
 
 
 def _rechecks_queued(db, now) -> list[dict]:
@@ -604,7 +613,7 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
                                                                         "knowledge_id": refused.get("knowledge_id")},
                                   "reason": refused["reason"]})
         if refused.get("key") in taken_keys and str(refused.get("reason", "")).startswith("investigated autonomously"):
-            _arbitrated(db, report, now, taken_keys[refused["key"]], "recheck", "curiosity", TAKEN_BY_RECHECK)
+            _arbitrate(db, report, now, taken_keys[refused["key"]], "recheck", "curiosity", TAKEN_BY_RECHECK)
     refreshes = {a["knowledge_id"]: a["task_id"] for a in report["predictions"]
                  if a["action"] == "refresh_submitted" and a.get("knowledge_id") is not None}
     refreshed = set(refreshes)
@@ -616,7 +625,7 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         if admitted["rule"] == "unified" and (pick.get("knowledge_id") in refreshed or pick["key"] in refreshed_keys):
             report["skipped"].append({"target": target, "reason": REFRESHED_THIS_TICK})
             winner = refreshes.get(pick.get("knowledge_id")) or refreshed_keys.get(pick["key"])
-            _arbitrated(db, report, now, winner, "refresh", "curiosity", REFRESHED_THIS_TICK)
+            _arbitrate(db, report, now, winner, "refresh", "curiosity", REFRESHED_THIS_TICK)
             continue
         cap = _over_cap(db, now, cfg)
         if cap or budget_left <= 0:

@@ -53,7 +53,7 @@ WEB_ON = {"enabled": True, "pocket_research": True, "min_domain_interval": 0.0, 
           "curiosity_learning_progress": True, "answer_monitoring": True, "selective_answering": True,
           "verification_escalation": True, "adaptive_depth": True, "hypothesis_fields": True, "premise_recheck": True,
           "idle_recheck": True, "hypothesis_abandon": True, "reflection": True, "reflection_interval_days": 1.0,
-          "pocket_recent": True}
+          "pocket_recent": True, "salience_attention": True, "arbitration_record": True}
 
 # (mechanism, module, attribute): every entry point the product calls
 ENTRIES = (
@@ -82,6 +82,12 @@ ENTRIES = (
     ("reflection", "neuroscifi.webcortex.reflection", "scheduled"),
     ("strategies", "neuroscifi.webcortex.strategies", "active"),
     ("curiosity_progress", "neuroscifi.webcortex.curiosity", "progress"),
+    # Wave 2 lane L (ADR-056), added by lane X: salience orders what admission admitted (salience_attention), the
+    # arbitration record (arbitration_record), the background loop in the self-description (doing.cycle)
+    ("salience_attention", "neuroscifi.webcortex.salience", "attention"),
+    ("salience_attention", "neuroscifi.webcortex.salience", "order"),
+    ("arbitration_record", "neuroscifi.webcortex.scheduler", "_arbitrated"),
+    ("self_description_cycle", "neuroscifi.self_description", "_cycle"),
 )
 
 
@@ -124,6 +130,10 @@ class Rig:
                                       "bit": (i % 2) ^ action if i >= 12 else action, "provenance": "simulated",
                                       "actor": "simulator"}, now - 200 + i)
             autonomy.enable(db, now - 100)
+            # Wave 2 lane X: an item verified 30 days ago, which the knowledge re-check and the timer's curiosity
+            # both want in the timer's pass, so lane L's arbitration (scheduler._arbitrated) is reached
+            from neuroscifi.acceptance.cognition import adversarial
+            adversarial._k_item(db, now - 30 * 86_400.0)
         self.console = console_server.ConsoleServer(self.path, 0, token=TOKEN)
         threading.Thread(target=self.console.serve_forever, daemon=True).start()
         status, phone = self.spark.req("pair", {"code": "invite"})

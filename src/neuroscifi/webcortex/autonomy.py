@@ -780,8 +780,20 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
             continue
         out["chosen"].append(item)
     from . import salience
-    if salience.attention(db):      # ADR-056: salience orders what admission admitted; it admits nothing itself
-        out["chosen"], out["order"] = salience.order(out["chosen"])
+    try:                # Wave 2 lane X: an ordering that fails leaves admission's own order, said and logged
+        attend = salience.attention(db)
+        if not isinstance(attend, bool):
+            raise TypeError(f"salience_attention read as {type(attend).__name__}, not true or false")
+        if attend:      # ADR-056: salience orders what admission admitted; it admits nothing itself
+            ordered = salience.order(out["chosen"])
+            if not (isinstance(ordered, tuple) and len(ordered) == 2 and isinstance(ordered[0], list)
+                    and isinstance(ordered[1], dict) and sorted(str(c.get("key")) for c in ordered[0])
+                    == sorted(str(c.get("key")) for c in out["chosen"])):
+                raise TypeError("the salience order is not a reordering of the admitted candidates")
+            out["chosen"], out["order"] = ordered
+    except Exception as exc:              # noqa: BLE001 - recorded with the admission and logged, never silent
+        log.warning("the salience order could not be applied (%s); the admitted order stands", type(exc).__name__)
+        out["order"] = {"by": "priority", "error": f"the salience order could not be applied ({type(exc).__name__})"}
     from . import strategies
     try:                # Wave 2 lane U: a gate that cannot be read is closed (the admitted order), said and logged
         active = strategies.active(db)
