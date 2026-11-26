@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from . import register
 from .meshes import check_mesh
+from .png import check_png
 from .wav import check_wav
 
 VALIDATORS = (
@@ -11,6 +12,8 @@ VALIDATORS = (
     ("audio/x-wav", check_wav, "g2.wav"),
     ("model/stl", check_mesh, "g2.mesh"),
     ("model/obj", check_mesh, "g2.mesh"),
+    ("image/png", check_png, "g2.png"),
+    ("image/apng", check_png, "g2.png"),
 )
 
 for _media, _validator, _name in VALIDATORS:
