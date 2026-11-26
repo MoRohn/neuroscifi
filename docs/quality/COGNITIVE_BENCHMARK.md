@@ -715,5 +715,6 @@ line (on its first name only); to none of the MOS:SAID verb forms, "Read the ful
 this report", "HT: X", "via X", round-ups or reworded copies. The attribution reader (`claims.attribution_keys`) reads
 "according to X", "X wrote / stated / confirmed that", "(via X)", "..., X said." and round-ups' "According to X and
 Y", not "claimed", "commented", "noted", "observed", "explained", "pointed out", "remarked", "Read the full article
-on", "contributed", "HT", "said" lists or datelines; it reads the model credits "According to ChatGPT" and "ChatGPT
+on", "contributed", "HT", "said" lists or datelines, and no credit to the project itself ("According to the X
+release notes", "the X project said": 80 of 80 such pages of the development worlds give no key, so release-page citation is unseen); it reads the model credits "According to ChatGPT" and "ChatGPT
 said" as an outlet named ChatGPT. Every page of every form yielded a claim through the real extractor.
