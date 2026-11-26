@@ -1973,8 +1973,15 @@ class _Run:
         from . import monitoring, safety
         from .claims import site_label
         from .extract import canonical_url
-        record = monitoring.assess(report, documents=self.documents, clusters=self.clusters)
-        plan = monitoring.escalation(record, usage=self.usage, budget=self.budget, elapsed=self.elapsed())
+        try:            # Wave 2 lane U: a monitoring failure never costs the owner the answer (as _monitor)
+            record = monitoring.assess(report, documents=self.documents, clusters=self.clusters)
+            plan = monitoring.escalation(record, usage=self.usage, budget=self.budget, elapsed=self.elapsed())
+            if plan is not None and not isinstance(plan, dict):
+                raise TypeError(f"the escalation plan is {type(plan).__name__}, not a record")
+        except Exception as exc:  # noqa: BLE001 - the task's "error" event; the report stays as it was
+            self.event("error", {"stage": "escalating", "error": type(exc).__name__, "detail": str(exc)[:300]},
+                       "synthesizing")
+            plan = None
         self.done("escalating")
         if plan is None:
             return report

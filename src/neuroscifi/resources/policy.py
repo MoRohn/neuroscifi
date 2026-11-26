@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import json
+import logging
 import os
 from pathlib import Path
 import threading
@@ -31,7 +32,10 @@ import time
 
 from . import monitor, shared
 
-BACKGROUND_MODEL_SLOTS = 2          # background model calls at a time (= the default concurrent autonomy cap)
+log = logging.getLogger(__name__)
+_FORECAST_FAILURES: set = set()     # forecast failures already logged by this process (background_gate)
+
+BACKGROUND_MODEL_SLOTS = 2         # background model calls at a time (= the default concurrent autonomy cap)
 BACKGROUND_MODEL_SLOTS_AUDIO = 1    # ... while a voice session is capturing or speaking
 SLOT_POLL = 0.25
 SLOT_WAIT = 30.0                    # longest wait for a background model slot (bounded further by the deadline)
@@ -203,10 +207,23 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
         from . import forecast
         try:
             now = time.time()          # one clock for reading the history (future samples ignored) and the forecast
-            verdict = forecast.assess(internal_state.history(db_path, now=now), now=now)
-        except Exception:          # noqa: BLE001 - fail open: a forecast may only add a hold, a broken one adds none
+            samples = internal_state.history(db_path, now=now)
+            if not isinstance(samples, list):
+                raise TypeError(f"the history is {type(samples).__name__}, not a list of samples")
+            verdict = forecast.assess(samples, now=now)
+            if not isinstance(verdict, dict):
+                raise TypeError(f"the forecast is {type(verdict).__name__}, not a verdict")
+        except Exception as exc:   # noqa: BLE001 - fail open: a forecast may only add a hold, a broken one adds none
+            # Wave 2 lane U: never silent; logged once per kind of failure in this process (the gate runs often)
+            seen = f"{type(exc).__name__}: {exc}"[:200]
+            if seen not in _FORECAST_FAILURES:
+                if len(_FORECAST_FAILURES) > 64:
+                    _FORECAST_FAILURES.clear()
+                _FORECAST_FAILURES.add(seen)
+                log.warning("predictive regulation: the forecast failed (%s: %s); it adds no hold",
+                            type(exc).__name__, exc)
             verdict = {"hold": False}
-        if verdict["hold"]:
+        if verdict.get("hold"):
             reason, why = verdict["reason"], "forecast"
     return {"allowed": reason is None, "reason": reason, "why": why, "level": s["level"], "audio": audio}
 

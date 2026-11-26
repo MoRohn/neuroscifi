@@ -45,6 +45,7 @@ the one rule above (ADR-050); and the owner's quiet (background.py) holds both.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 import math
 import re
 
@@ -52,6 +53,8 @@ from ..instance import store
 from ..instance.errors import ValidationError
 from . import state
 from .types import TERMINAL_STATES
+
+log = logging.getLogger(__name__)
 
 META_KEY = "webcortex.autonomy"
 LIMIT_KEYS = ("searches", "pages", "seconds", "spend_usd")
@@ -592,7 +595,12 @@ def candidates(db, now, *, limit=10, offered=()) -> dict:
         p = evolution.recalibrate(stated, read["owner" if h["origin"] == "owner" else "hypothesis"])
         gain, gain_as_read, lp = curiosity.info_gain(stated), curiosity.info_gain(p), {}
         if lp_on and h["origin"] != "owner":     # ADR-051: learning progress, never on the owner's own records
-            factor, _, record = curiosity.progress(db, h["key"], gain, now)
+            try:        # Wave 2 lane U: a failing read leaves the gain as with the setting off, said and logged
+                factor, _, record = curiosity.progress(db, h["key"], gain, now)
+                factor = float(factor)
+            except Exception as exc:      # noqa: BLE001 - recorded with the candidate and logged, never silent
+                log.warning("learning progress of %r could not be read (%s: %s)", h["key"], type(exc).__name__, exc)
+                factor, record = 1.0, {"error": f"could not be read ({type(exc).__name__})"}
             gain, gain_as_read, lp = gain * factor, gain_as_read * factor, {"learning_progress": record}
         add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", gain,
             {"hypothesis": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6),
@@ -619,7 +627,12 @@ def candidates(db, now, *, limit=10, offered=()) -> dict:
     salient = salience.enabled(db)
     for item in by_key.values():
         if salient:             # ADR-051: one explainable score per candidate, recorded; it changes no decision
-            item["salience"] = salience.score(db, item, now)
+            try:        # Wave 2 lane U: a record that cannot be made is said in the record and logged
+                item["salience"] = salience.score(db, item, now)
+            except Exception as exc:      # noqa: BLE001 - recorded with the candidate and logged, never silent
+                log.warning("the salience record of %r could not be made (%s: %s)", item.get("key"),
+                            type(exc).__name__, exc)
+                item["salience"] = {"error": f"could not be made ({type(exc).__name__})"}
         mode_cost = curiosity.cost(item["mode"])
         budget = MODE_BUDGETS.get(item["mode"], MODE_BUDGETS["fact_verification"])
         est = budget.max_queries * float(prices.get("search", 0)) + budget.max_pages * float(prices.get("page", 0))
@@ -766,7 +779,13 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
             continue
         out["chosen"].append(item)
     from . import strategies
-    if strategies.active(db):       # lane K: ranks the admitted candidates only, once promoted through its gate
+    try:                # Wave 2 lane U: a gate that cannot be read is closed (the admitted order), said and logged
+        active = strategies.active(db)
+    except Exception as exc:              # noqa: BLE001 - recorded with the admission and logged, never silent
+        log.warning("strategy selection's gate could not be read (%s: %s); the admitted order stands",
+                    type(exc).__name__, exc)
+        active, out["strategy"] = False, {"error": f"the gate could not be read ({type(exc).__name__})"}
+    if active:          # lane K: ranks the admitted candidates only, once promoted through its gate
         out["chosen"], out["strategy"] = strategies.rank(db, now, out["chosen"])
     out["chosen"] = out["chosen"][:limit]
     return out

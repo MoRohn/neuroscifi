@@ -1530,8 +1530,23 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                                                            knowledge_by_key=ids_by_key)
         # lane K (ADR-055): premises of the new items, re-check marks of what rested on a changed one (no belief moves)
         from . import premises
-        evolution.refresh_counter_evidence(db, summary["hypotheses"])
-        rechecked = premises.after_consolidation(db, task_id, summary, now)
+        # Wave 2 lane U: lane K's records are kept apart (a savepoint): when they fail, they are rolled back alone,
+        # the task gets an "error" event, and what the sources verified is still consolidated
+        db.execute("SAVEPOINT lane_k_records")
+        try:
+            if evolution.refresh_counter_evidence(db, summary["hypotheses"]) is not None:
+                raise TypeError("refreshing the counter-evidence returned a value; it returns nothing")
+            rechecked = premises.after_consolidation(db, task_id, summary, now)
+            if not (isinstance(rechecked, dict) and isinstance(rechecked.get("marked"), list)
+                    and isinstance(rechecked.get("closed"), list)):
+                raise TypeError(f"the re-check marks are {type(rechecked).__name__}, not a record")
+            db.execute("RELEASE lane_k_records")
+        except Exception as exc:          # noqa: BLE001 - the task's "error" event, never silent
+            db.execute("ROLLBACK TO lane_k_records")
+            db.execute("RELEASE lane_k_records")
+            state.log_event(db, task_id, "error", {"stage": "consolidating: premises and hypothesis fields",
+                                                   "error": type(exc).__name__, "detail": str(exc)[:300]}, now)
+            rechecked = {"marked": [], "closed": []}
         if rechecked["marked"] or rechecked["closed"]:
             summary["rechecks"] = {"marked": rechecked["marked"], "closed": rechecked["closed"]}
         summary["feedback"] = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0] - feedback_before

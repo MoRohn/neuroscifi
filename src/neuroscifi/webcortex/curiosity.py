@@ -27,11 +27,14 @@ error x1.5. Cost: max_requests of the mode budget the investigation would use, r
 """
 from __future__ import annotations
 
+import logging
 import math
 import re
 
 from . import config as wconfig
 from . import state
+
+log = logging.getLogger(__name__)
 
 RELIABILITY = 0.8
 MIN_GAIN = 0.02
@@ -271,7 +274,12 @@ def rank(db, now, *, limit=10) -> list[dict]:
         if not lp_on:
             return factor, futile, {}
         factor, futile = _futility(db, key, refresh_is_progress=True)
-        lp, note, record = progress(db, key, gain, now)
+        try:            # Wave 2 lane U: a failing learning-progress read leaves the futility rule alone, said and logged
+            lp, note, record = progress(db, key, gain, now)
+            lp = float(lp)
+        except Exception as exc:          # noqa: BLE001 - recorded with the candidate and logged, never silent
+            log.warning("learning progress of %r could not be read (%s: %s)", key, type(exc).__name__, exc)
+            return factor, futile, {"learning_progress": {"error": f"could not be read ({type(exc).__name__})"}}
         if lp >= factor:
             return factor, futile, {"learning_progress": record}
         return lp, note, {"learning_progress": record}

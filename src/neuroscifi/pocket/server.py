@@ -641,8 +641,15 @@ def research(server, token, route, data, raw=b"", headers=None):
                 if data:
                     raise ValueError()
                 from .. import self_description
-                record = self_description.build(db, server.instance_db, time.time(), scope="family", family=digest)
-                return 200, {"record": record, "short": self_description.short(record)}
+                try:    # Wave 2 lane U: as the console's GET /api/self, a record that cannot be built is a message
+                    record = self_description.build(db, server.instance_db, time.time(), scope="family",
+                                                    family=digest)
+                    return 200, {"record": record, "short": self_description.short(record)}
+                except Exception as exc:  # noqa: BLE001 - said in the reply and logged, never a dropped request
+                    print(f"nsf-pocket: self_status: the self-description could not be built "
+                          f"({type(exc).__name__})", file=sys.stderr, flush=True)
+                    return 200, {"record": None, "short": ["What I am doing cannot be read right now."],
+                                 "error": f"the self-description could not be built ({type(exc).__name__})"}
             if route == "research_list":
                 if data:
                     raise ValueError()

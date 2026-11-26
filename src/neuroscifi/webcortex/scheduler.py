@@ -39,6 +39,7 @@ web:finding:<monitor>:<task> within the web question budget.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -49,6 +50,8 @@ from ..instance import store
 from ..instance.errors import Conflict, LeaseHeld, NotFound, ValidationError, WritesPaused
 from . import state
 from .types import MODES, TERMINAL_STATES
+
+log = logging.getLogger(__name__)
 
 MIN_INTERVAL = 3600.0
 DAY = 86400.0
@@ -413,6 +416,21 @@ def _over_cap(db, now, cfg, *, ignore_tasks=False):
 REFRESHED_THIS_TICK = "its due prediction's refresh was queued in this tick"
 
 
+def _wave1_step(report, what, step, fallback=None):
+    """Wave 2 lane U: one Wave 1 step of the timer's pass (scenario records, reflection, knowledge re-check). Its
+    failure (an error, or a result that is not a record) is a line in the pass's report and a log warning; the pass
+    goes on to the work it did before Wave 1 (prediction refreshes, curiosity, cache retention)."""
+    try:
+        out = step()
+        if out is not None and not isinstance(out, dict):
+            raise TypeError(f"{what} returned {type(out).__name__}, not a record")
+        return out if out is not None or fallback is None else fallback
+    except Exception as exc:              # noqa: BLE001 - reported in the pass and logged, never silent
+        log.warning("the timer's %s failed (%s: %s); the pass goes on", what, type(exc).__name__, exc)
+        report["skipped"].append({"what": what, "reason": f"failed: {type(exc).__name__}: {exc}"[:300]})
+        return fallback
+
+
 def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     """One timer pass: due monitors, then (autonomous only) predictions and curiosity. Returns what happened."""
     from . import orchestrator, predictions
@@ -470,11 +488,12 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
                 changes = (state.loads(detail, {}) or {}).get("changes") or {}
                 report["findings"].append({"monitor_id": mid, "task_id": task["id"], "changes": changes})
     from . import scenarios     # ADR-052: scenario records, imagined store only; None while imagine_scenarios is off
-    imagined_report = scenarios.tick(db, now)
+    imagined_report = _wave1_step(report, "scenario records", lambda: scenarios.tick(db, now))
     if imagined_report is not None:
         report["scenarios"] = imagined_report
     from . import recheck, reflection
-    reflected = reflection.scheduled(db, now)    # lane K: the bounded reflection (setting `reflection`, off)
+    # lane K: the bounded reflection (setting `reflection`, off)
+    reflected = _wave1_step(report, "reflection", lambda: reflection.scheduled(db, now))
     if reflected is not None:
         if "skipped" in reflected:
             report["skipped"].append({"what": "reflection", "reason": reflected["skipped"]})
@@ -487,8 +506,9 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     # lane K: the re-check of the knowledge most at risk of being stale, before the due-order refreshes (setting
     # `idle_recheck`, off by default; its own share of the daily allowance; recheck.run asks the owner's quiet)
     if recheck.enabled(db) and budget_left > 0:
-        rechecked = recheck.run(db, now, limit=min(cfg.recheck_per_tick, budget_left),
-                                over_cap=lambda: _over_cap(db, now, cfg))
+        rechecked = _wave1_step(report, "knowledge re-check", lambda: recheck.run(
+            db, now, limit=min(cfg.recheck_per_tick, budget_left), over_cap=lambda: _over_cap(db, now, cfg)),
+            fallback={"skipped": [], "submitted": []})
         report["skipped"] += rechecked["skipped"]
         for item in rechecked["submitted"]:
             budget_left -= 1

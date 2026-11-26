@@ -34,11 +34,14 @@ webcortex.knowledge.apply_review inside the same transaction (accept/reject a kn
 decline a monitor or research proposal).
 """
 import json
+import logging
 import math
 import re
 
 from . import beliefs, store
 from .errors import Conflict, NotFound, ValidationError
+
+log = logging.getLogger(__name__)
 
 MIN_PARTNER_WORDS = 4
 QUESTION_TTL_SECONDS = 7 * 86400
@@ -172,7 +175,16 @@ def _policy(db, epoch, allowed, why, horizon, rule="rules-v1", seen=None):
                 f"This looks like {best}{where}; continue with that calibration?{through}")
     if rule == "information-v1":
         from .information import information_policy
-        return information_policy(db, epoch, result, assessed, horizon, _answered)
+        try:            # Wave 2 lane U: a failing opt-in rule decides by rules-v1, said in the decision (rule_error)
+            chosen = information_policy(db, epoch, result, assessed, horizon, _answered)
+            if not (isinstance(chosen, tuple) and len(chosen) == 5):
+                raise TypeError(f"information-v1 returned {type(chosen).__name__}, not a decision")
+            return chosen
+        except Exception as exc:          # noqa: BLE001 - shown with the decision and logged, never silent
+            log.warning("executive rule information-v1 failed (%s: %s); this decision is made by rules-v1",
+                        type(exc).__name__, exc)
+            if seen is not None:
+                seen["rule_error"] = f"information-v1 failed ({type(exc).__name__}); decided by rules-v1"
     p = result["mechanism"]["p_inverted"]
     if not result["mechanism"]["identifiable"]:
         return ("test_reference", "test_reference", "mechanism",
@@ -273,15 +285,23 @@ def _decide(db, epoch, now, record, path):
            "closed_pending": closed, "expired_pending": expired}
     if rule != "rules-v1":      # review1 CL9: the decision of the default rule is exactly as before ADR-051
         out["rule"] = rule
+    if "rule_error" in seen:
+        out["rule_error"] = seen["rule_error"]
     if "assessed" in seen and cfg.decision_information:
         # ADR-051, shown beside the decision and never changing it: the exact expected information gain of each
         # question it could ask, and whether it rests on a matched earlier setup (habitual) or its own evidence
         from . import information
         assessed = seen["assessed"]
-        if assessed[0]["evidence"]["learning"]:
-            out["information"] = {"readings_per_question": information.READINGS,
-                                  "candidates": information.assessed_gains(assessed)}
-        out["processing"] = information.processing(db, epoch, assessed[0].get("change"))
+        try:            # Wave 2 lane U: a display that fails never takes the decision down
+            shown = {}
+            if assessed[0]["evidence"]["learning"]:
+                shown["information"] = {"readings_per_question": information.READINGS,
+                                        "candidates": information.assessed_gains(assessed)}
+            shown["processing"] = information.processing(db, epoch, assessed[0].get("change"))
+            out |= shown
+        except Exception as exc:          # noqa: BLE001 - shown with the decision and logged, never silent
+            log.warning("the decision's information display failed (%s: %s)", type(exc).__name__, exc)
+            out["information_error"] = f"the information display could not be computed ({type(exc).__name__})"
     if window_warning:      # absent unless the saved window was unusable
         out["warnings"] = [window_warning]
     return out
