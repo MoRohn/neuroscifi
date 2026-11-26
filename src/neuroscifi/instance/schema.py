@@ -80,6 +80,42 @@ def _no_imagined_triggers():
 
 
 NO_IMAGINED_TRIGGERS = _no_imagined_triggers()
+
+# Version 20 (the artifact store, ADR-071): an artifact's id is 'artifact-' and 32 lowercase hex digits (a form the
+# specification envelope accepts as a source id). No reference column of an evidence-side table may name one either:
+# the same columns as _NO_IMAGINED, tested the same way (whole ids lower-cased and trimmed, causes that contain one,
+# JSON id lists read with json_each). A given artifact is what the owner handed over and a made one what the system
+# produced; neither is a reading, a claim or a knowledge item, and nothing on the evidence side may rest on one.
+_ARTIFACT_ID = "artifact-" + "[0-9a-f]" * 32
+
+
+def _names_artifact(expr):
+    return f"lower(trim(coalesce({expr},''),char(32,9,10,11,12,13))) GLOB '{_ARTIFACT_ID}'"
+
+
+def _no_artifact_triggers():
+    """The version-20 triggers that refuse an artifact id in a reference column of an evidence-side table."""
+    out = {}
+    for table, (whole, inside, lists) in _NO_IMAGINED.items():
+        tests = ([_names_artifact(f"NEW.{c}") for c in (*whole, *lists)]
+                 + [f"lower(coalesce(NEW.{c},'')) GLOB '*{_ARTIFACT_ID}*'" for c in inside])
+        for c, keys in lists.items():
+            element = " OR ".join([f"(j.type='text' AND {_names_artifact('j.value')})"]
+                                  + [f"(j.type='object' AND {_names_artifact(f'json_extract(j.value,{k!r})')})"
+                                     for k in (f"$.{key}" for key in keys)])
+            tests.append(f"EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(NEW.{c}) THEN NEW.{c} END) j "
+                         f"WHERE {element})")
+        when = " OR ".join(tests)
+        columns = ", ".join((*whole, *inside, *lists))
+        body = "BEGIN SELECT RAISE(ABORT,'an artifact is never evidence'); END"
+        out[f"{table}_no_artifact_i"] = (f"CREATE TRIGGER IF NOT EXISTS {table}_no_artifact_i BEFORE INSERT ON "
+                                         f"{table} WHEN {when} {body}")
+        out[f"{table}_no_artifact_u"] = (f"CREATE TRIGGER IF NOT EXISTS {table}_no_artifact_u BEFORE UPDATE OF "
+                                         f"{columns} ON {table} WHEN {when} {body}")
+    return out
+
+
+NO_ARTIFACT_TRIGGERS = _no_artifact_triggers()
 # The imagined store's own triggers (version 17): a record is never rewritten (not by UPDATE, nor by an INSERT OR
 # REPLACE of its id, whose implicit delete would also take its lineage and leave no tombstone), its lifetime may only
 # be shortened (store.set_config applies a shorter imagined_lifetime_seconds to the records held), and its outcome
@@ -791,6 +827,81 @@ MIGRATIONS = [
     -- scanned the whole episode log (500,000 events: about 40 ms per Presence poll). Additive, no data changes.
     CREATE INDEX IF NOT EXISTS web_events_kind_time ON web_events(kind, created_at);
     """,
+    # ---- version 20 (OMNIMIND: the artifact store's index; ADR-071, artifacts/store.py) --------------------------
+    """
+    -- artifacts/store.py: the index of the files the owner handed over (origin 'given') and of what the system made
+    -- (origin 'made': never evidence, labelled so wherever listed; ADR-071). The bytes, the text layer and a made
+    -- artifact's specification live OUTSIDE this file, in <stem>.artifacts.sqlite (content-addressed by sha256,
+    -- never in a checkpoint). A row holds ids, the hash, the size, what was detected, the owner's label and a bounded
+    -- JSON index (describe() of the representation, at most 32 KiB). Its identity is never rewritten; only its
+    -- state (bytes missing or corrupt) and the injection flag change. IF NOT EXISTS throughout, as version 17.
+    CREATE TABLE IF NOT EXISTS artifacts(
+      seq INTEGER PRIMARY KEY AUTOINCREMENT,
+      id TEXT UNIQUE NOT NULL CHECK(id GLOB '""" + _ARTIFACT_ID + """'),
+      sha256 TEXT NOT NULL CHECK(length(sha256)=64 AND sha256 NOT GLOB '*[^0-9a-f]*'),
+      size INTEGER NOT NULL CHECK(size >= 0),
+      family TEXT NOT NULL CHECK(length(family) BETWEEN 1 AND 32),
+      format TEXT NOT NULL CHECK(length(format) BETWEEN 1 AND 64),
+      media_type TEXT NOT NULL CHECK(length(media_type) BETWEEN 1 AND 128),
+      origin TEXT NOT NULL CHECK(origin IN ('given','fetched','made')),
+      maker TEXT CHECK(maker IS NULL OR length(maker) BETWEEN 1 AND 80),
+      label TEXT NOT NULL CHECK(length(label) BETWEEN 1 AND 255),
+      index_json TEXT NOT NULL CHECK(json_valid(index_json) AND length(CAST(index_json AS BLOB)) <= 32768),
+      scope TEXT NOT NULL DEFAULT 'owner' CHECK(scope IN ('owner','family','agent')),
+      flagged INTEGER NOT NULL DEFAULT 0 CHECK(flagged IN (0,1)),
+      created_at REAL NOT NULL,
+      state TEXT NOT NULL DEFAULT 'stored' CHECK(state IN ('stored','missing','corrupt')),
+      CHECK((origin='made') = (maker IS NOT NULL)));
+    CREATE INDEX IF NOT EXISTS artifacts_sha ON artifacts(sha256);
+    CREATE TRIGGER IF NOT EXISTS artifacts_never_rewritten BEFORE UPDATE OF seq, id, sha256, size, family, format,
+      media_type, origin, maker, label, index_json, scope, created_at ON artifacts
+      BEGIN SELECT RAISE(ABORT,'an artifact is never rewritten'); END;
+    -- Links between artifacts (derivation, bundle membership, cross-modal relations), on the artifact side only:
+    -- no evidence-side table names an artifact (the triggers below). `how` is a short machine-readable statement of
+    -- the basis, never text taken from an artifact.
+    CREATE TABLE IF NOT EXISTS artifact_links(
+      src TEXT NOT NULL CHECK(src GLOB '""" + _ARTIFACT_ID + """'),
+      relation TEXT NOT NULL CHECK(relation IN ('derived_from','contains','describes','same_subject','same_time',
+        'consistent_with','contradicts')),
+      dst_kind TEXT NOT NULL CHECK(dst_kind IN ('artifact')),
+      dst_id TEXT NOT NULL CHECK(dst_id GLOB '""" + _ARTIFACT_ID + """' AND dst_id != src),
+      how TEXT NOT NULL CHECK(length(how) BETWEEN 1 AND 200 AND how NOT GLOB '*[^a-z0-9_.:=,;/+-]*'),
+      confidence REAL NOT NULL CHECK(confidence BETWEEN 0 AND 1),
+      created_at REAL NOT NULL,
+      PRIMARY KEY(src, relation, dst_kind, dst_id));
+    CREATE INDEX IF NOT EXISTS artifact_links_dst ON artifact_links(dst_kind, dst_id);
+    -- What was done to which artifact: ids, hashes, sizes, kinds and times, never a name or content. Append-only:
+    -- never updated, and a row is deleted only once its artifact is gone (the forget path).
+    CREATE TABLE IF NOT EXISTS artifact_events(
+      id INTEGER PRIMARY KEY,
+      artifact_id TEXT NOT NULL CHECK(artifact_id GLOB '""" + _ARTIFACT_ID + """'),
+      action TEXT NOT NULL CHECK(action IN ('added','made','linked','exported','marked_missing','marked_corrupt')),
+      sha256 TEXT CHECK(sha256 IS NULL OR length(sha256)=64),
+      size INTEGER,
+      kind TEXT CHECK(kind IS NULL OR length(kind) BETWEEN 1 AND 64),
+      at REAL NOT NULL);
+    CREATE INDEX IF NOT EXISTS artifact_events_artifact ON artifact_events(artifact_id);
+    CREATE TRIGGER IF NOT EXISTS artifact_events_append_only BEFORE UPDATE ON artifact_events
+      BEGIN SELECT RAISE(ABORT,'artifact events are append-only'); END;
+    CREATE TRIGGER IF NOT EXISTS artifact_events_kept_while_held BEFORE DELETE ON artifact_events
+      WHEN EXISTS (SELECT 1 FROM artifacts WHERE id=OLD.artifact_id)
+      BEGIN SELECT RAISE(ABORT,'artifact events are append-only'); END;
+    -- Payload-free tombstones of forgotten artifacts (digest = the instance-salted digest of the id, as
+    -- imagined_forgotten), which a restore replays (checkpoints._replay).
+    CREATE TABLE IF NOT EXISTS artifact_forgotten(
+      digest TEXT PRIMARY KEY,
+      reason TEXT NOT NULL CHECK(reason IN ('forgotten','root_forgotten','source_forgotten')),
+      forgotten_at REAL NOT NULL);
+    -- How often a format ended undecoded (DESIGN §3: the evidence for which formats are missing most). The format is
+    -- a name from detect's own table, never from the input.
+    CREATE TABLE IF NOT EXISTS artifact_gaps(
+      format TEXT NOT NULL CHECK(length(format) BETWEEN 1 AND 64),
+      outcome TEXT NOT NULL CHECK(outcome IN ('opaque','unsupported')),
+      count INTEGER NOT NULL CHECK(count >= 0),
+      first_at REAL NOT NULL, last_at REAL NOT NULL,
+      PRIMARY KEY(format, outcome));
+    -- No reference column of an evidence-side table may name an artifact (schema._NO_IMAGINED's columns).
+    """ + ";\n".join(NO_ARTIFACT_TRIGGERS.values()) + ";\n",
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
