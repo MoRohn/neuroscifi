@@ -92,3 +92,36 @@ def test_forget_own_text_survives_a_restore_of_an_archive_taken_before_it(tmp_pa
         checkpoints.restore(db, newer["id"], copy2, T0 - DAY)
         with closing(store.connect(copy2)) as restored:
             assert emitted.stored(restored) == 1
+
+
+# ---- item 3 (security, second pass, 2a): `nsf config --repair-fixed` ----------------------------------------------
+
+def test_the_repair_says_the_creation_value_is_recorded_nowhere_and_leaves_an_audit_row(tmp_path, capsys):
+    """review4 s/r2/m1_pause: the refusal and the help asked for "the value chosen when the individual was created",
+    which the file records nowhere. The repair takes only what the setting's own check accepts, says so when it
+    refuses, says plainly that the creation value is not recorded, and leaves a deletion_log row."""
+    from contextlib import closing
+    import pytest
+    from neuroscifi.cli import main
+    from neuroscifi.instance import store
+    from neuroscifi.instance.errors import ValidationError
+    path = tmp_path / "repair2.sqlite"
+    db = store.create(path, T0, note="wave 4 second fix round", config=store.InstanceConfig(max_evidence_rows=5000))
+    with closing(db):
+        raw = json.loads(db.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0])
+        with store.write(db):
+            db.execute("UPDATE meta SET value=? WHERE key='config'", (json.dumps(raw | {"max_evidence_rows": 5e3}),))
+        reason = store.write_allowed(db, path)[1]
+        assert "recorded nowhere" in reason and "a whole number from 0 to" in reason
+        for bad in (5000.0, -1, True, "5000", store.MAX_ROW_LIMIT + 1):
+            with pytest.raises(ValidationError, match="a whole number from 0 to"):
+                store.repair_fixed(db, "max_evidence_rows", bad)
+    main(["config", "--db", str(path), "--repair-fixed", "max_evidence_rows=5000"])
+    out = json.loads(capsys.readouterr().out)
+    assert out["changed"] == ["max_evidence_rows"] and any("recorded nowhere" in n for n in out["notes"])
+    db = store.open_existing(path)
+    with closing(db):
+        rows = [json.loads(e) for (e,) in db.execute(
+            "SELECT effects FROM deletion_log WHERE target_kind='setting' AND target_id='max_evidence_rows'")]
+        assert len(rows) == 1 and rows[0]["repair"] is True and rows[0]["to"] == 5000 and rows[0]["from"] == 5000.0
+        assert rows[0]["creation_value_recorded"] is False

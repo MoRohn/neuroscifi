@@ -440,10 +440,23 @@ def setting_problems(db):
             for name in sorted(checks) if name in raw and not checks[name](raw[name])]
 
 
+# What each fixed setting's check (_FIXED) accepts, in words (the repair refuses anything else and says this).
+_FIXED_ACCEPTS = {"evidence_ttl_seconds": "a finite number of seconds from 0",
+                  "max_evidence_rows": f"a whole number from 0 to {MAX_ROW_LIMIT}",
+                  "min_free_bytes": "a whole number of bytes from 0",
+                  "max_thermal_celsius": "a finite number of degrees Celsius, or null for no limit"}
+# The value a fixed setting had at creation is kept only in the settings row itself (the birth record holds no
+# settings and `nsf init` logs none), so once that row is damaged this file no longer says what it was (Wave 4 second
+# fix round, review4 security second pass 2a). An archive keeps the row as it was when the archive was written.
+CREATION_VALUE_NOTE = ("the value chosen when the individual was created is recorded nowhere in this file; a checkpoint "
+                       "archive taken before the damage holds the value then in force (`nsf checkpoint restore ID "
+                       "NEW_FILE`, then `nsf config --db NEW_FILE`)")
+
+
 def _fixed_remedy(name):
     default = getattr(InstanceConfig, name)
-    return (f"writes are paused until it is repaired with `nsf config --repair-fixed {name}=VALUE` (the value chosen "
-            f"when the individual was created; the default is {json.dumps(default)})")
+    return (f"writes are paused until it is repaired with `nsf config --repair-fixed {name}=VALUE` (VALUE: "
+            f"{_FIXED_ACCEPTS[name]}; {CREATION_VALUE_NOTE}; the default is {json.dumps(default)})")
 
 
 def fixed_damage(db, text=None):
@@ -466,11 +479,13 @@ def fixed_damage_reason(names):
 
 def repair_fixed(db, name, value, now=None):
     """Repair ONE damaged setting fixed at `nsf init` (`nsf config --repair-fixed NAME=VALUE`). Only a damaged one
-    can be written this way: a sound fixed setting stays fixed (ValidationError). Logged like set_config's changes."""
+    can be written this way: a sound fixed setting stays fixed (ValidationError), and only a value the setting's own
+    check accepts (_FIXED). Logged like set_config's changes, with the note that the value at creation is not recorded
+    (CREATION_VALUE_NOTE): the repair cannot be checked against it."""
     if name not in _FIXED:
         raise ValidationError(f"{name!r} is not a setting fixed at creation ({', '.join(sorted(_FIXED))})")
     if not _FIXED[name](value):
-        raise ValidationError(f"{name}: value {value!r} is out of range")
+        raise ValidationError(f"{name}: {value!r} is not {_FIXED_ACCEPTS[name]}")
     with write(db):
         raw = json.loads(_meta(db, "config"))
         if name not in fixed_damage(db, json.dumps(raw)):
@@ -481,9 +496,11 @@ def repair_fixed(db, name, value, now=None):
         version = bump_state_version(db)
         db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
                    (SETTING_KIND, name, time.time() if now is None else now,
-                    json.dumps({"from": before, "to": value, "state_version": version, "repair": True},
-                               sort_keys=True)))
-    return {"config": asdict(config(db)), "changed": [name]}
+                    json.dumps({"from": before, "to": value, "state_version": version, "repair": True,
+                                "creation_value_recorded": False}, sort_keys=True)))
+    return {"config": asdict(config(db)), "changed": [name],
+            "notes": [f"{name} is now {json.dumps(value)} (the damaged value was {json.dumps(before)}); "
+                      f"{CREATION_VALUE_NOTE}, so this repair could not be checked against it"]}
 
 
 def consolidation_room(db, cfg=None):
