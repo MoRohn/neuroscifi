@@ -4179,3 +4179,40 @@ ADR-071).
 - Monotonicity (more data never moves the choice toward words) is tested on seeded random shapes at 8 sizes; the
   rules above were chosen so that it holds by construction for the words-lost rule, and measured elsewhere
   (`docs/quality/evidence/omnimind_c.json`). It is a measured property, not a proof.
+
+## ADR-073, addendum: rule changes after the development cases
+
+The main session scored commit `8d84f29` blind on the 133 development cases (good 65, good-or-fine 107, bad 26:
+too poor 6, too much 15, unfit 5), then gave lane C the development kit (never the held-out cases). Each failure was
+read as a statement about a rule; no rule names a case's words. Development after the changes: good 113,
+good-or-fine 133, bad 0 (the shape-only reference: good 61, bad 26). These numbers were made by reading the cases
+and are therefore optimistic; the held-out run (the main session's) is the measure.
+
+- **The size of the answer** is read from the question's grammar (`answer_class`): a yes-or-no question (not a polite
+  "can you ..." request), an extreme ("the most", "-est" adjectives), a count ("how many"), one time, person or
+  place ("when did", "who", "where is"), one measurement ("how long is"), or a typical value is answered by a few
+  values picked out of the content, so in words, however large the content, unless the words ask for the whole
+  ("each", "over time", "show me", "how did ... change"). The largest single cause of "too much" was a big content
+  behind a small question.
+- **A sentence's worth** is at most 4 items and 6 values, never a picture, sound, solid, surface or process.
+- **Words and rows carry only measurements** (0.3) of a picture, sound, solid or surface, whatever the counts.
+- **Data heard as tones** (sonification, tone) only when hearing is a purpose or it is named: on a voice device a
+  series is spoken. (This reverses the judgment call above: pitch without values or dates is too poor.)
+- **Cues removed**: "summarise" asks for no less, "figures" for no extra precision.
+- **Explicit forms**: a chart of a few values, named, is honoured ("one bar, their call"); an infeasible one is
+  replaced by the admitted form with the best total less 0.3 x its difference in kind.
+- **Preferences** are followed when the preferred form is admitted.
+- **Budget**: a chart (envelope, keeps 0.6) or a table (rows that fit, keeps 0.3) over the byte budget is cut down
+  instead of removed, when at least 50 points or cells fit.
+- **Screen reader**: any text form may accompany a picture; a table beyond one screen scores 0.3 on accessibility
+  (read cell by cell); with stated needs accessibility weighs three times as much.
+- **Combinations**: only words add carried information to a picture (on kinds it shows poorly); rows add precision.
+- **The caption rule**: a picture, sound or model chosen unasked comes with a sentence on what it shows. It moved 6
+  cases up and 2 down (an explorable model and a 3D viewer the examiner preferred alone).
+- **New capability**: a map form (`map.points`, not built: infeasible on today's catalog, plannable), purposes
+  "decide" and "understand", the accessibility need "no_sound"; code is read to learn how it works and is stepped
+  through only when it runs in steps; a bare hierarchy is outlined by a document at half; an agent keeps data (a
+  file costs it no effort); a picture may be a rendered view of a solid; "the full picture" is an idiom, so a general
+  picture word names a picture only with "a".
+
+Monotonicity still holds by measurement: 0 returns to words in 22,220 checks on 3 x 2000 seeded shapes.

@@ -10,26 +10,33 @@ a non-technical person can read.
 How a choice is made, in order:
 1. Read the request without a model (`read_request`): an explicit form named in strict phrases ("as a table", "plot
    ...", "read it aloud"), forms refused in words ("no chart"), purposes by cue words (weak: weight 0.5 each; 1.5
-   for hearing, which names a sense), and wishes for a short, a full or an exact answer. Purposes the content cannot
-   serve are dropped (a question "how did it change" about content with no order has no change to show).
+   for hearing, which names a sense), wishes for a short, a full or an exact answer, and the size of the answer from
+   the question's grammar (`answer_class`: a yes-or-no question, an extreme, a count, one time/person/place, one
+   measurement, a typical value: a few values picked out of the content). Purposes the content cannot serve are
+   dropped (a question "how did it change" about content with no order has no change to show).
 2. The content's own purposes (strong: weight 1.0 shared among its kinds), e.g. a series in time -> change over time.
 3. Every registered form is a candidate; so is every combination of a non-text form with a second form that may
    follow one. Hard constraints remove candidates first: the device must show the form's media; accessibility needs
    (voice only, a screen reader needs the text that goes with a picture, reduced motion); feasibility (no generator
-   here, or the form cannot carry this content at all); budget (estimated seconds and bytes); forms refused in words
-   or by a preference of -1; the pre-production check (`foresee`) rejecting a form when the form it would switch to
-   is here; a data file only when keeping a copy is a purpose or it is named.
+   here, or the form cannot carry this content at all); budget (estimated seconds and bytes; a chart or a table over
+   the byte budget is cut down to fit instead, carrying less); forms refused in words or by a preference of -1; the
+   pre-production check (`foresee`) rejecting a form when the form it would switch to is here; a data file only when
+   keeping a copy is a purpose, the device is an agent, or it is named; data heard as tones only when hearing is.
 4. Each remaining candidate scores in [0, 1] on CRITERIA by the rules stated beside each function below; the total is
    the weighted mean (WEIGHTS, optionally shifted within clamps by `adjustments`), plus a stated preference. A
    problem the pre-production check predicts is listed with its fix and costs no score: what it loses is already
    counted in carried information (a scoring penalty that grew with the content could move the choice back to words).
-5. Rules over the totals, in order: an explicit form wins when feasible (else the nearest in kind, explained); a
-   scalar or a sentence's worth stays words (except hearing a value, which words cannot do); a wish for a short
-   answer is words; when hearing is the main purpose, the best form that is heard; words that cover less than half
-   of a kind of the content are not chosen while another form is admitted; the simplest form within SIMPLE_MARGIN of
-   the best wins; a non-text form is chosen unasked only when the best beats words by MATERIAL (MATERIAL_RICH after
-   "show me"). A combination exists only when its second form adds carried information or precision the first
-   lacks, the first carries at least half on its own, and the first adds something to the second.
+5. Rules over the totals, in order: an explicit form wins when feasible (else the substitute with the best total
+   less NEAREST_WEIGHT x its difference in kind, explained); a sentence's worth (at most 4 items and 6 values; never
+   a picture, sound, solid, surface or process) stays words (except hearing a value, which words cannot do); a wish
+   for a short answer, or a question picking a few values out of the content, is words; a stated preference is
+   followed; when hearing is the main purpose, the best form that is heard; words that cover less than half of a
+   kind of the content are not chosen while another form is admitted; the simplest form within SIMPLE_MARGIN of the
+   best wins; a non-text form is chosen unasked only when the best beats words by MATERIAL (MATERIAL_RICH after "show
+   me"); a picture, sound or model chosen unasked comes with a sentence on what it shows (the caption). A
+   combination exists only when its second form adds what the first lacks (words: carried information on kinds the
+   first shows poorly; rows: precision), the first carries at least half on its own, and adds something to the
+   second; a screen reader's companion is any text form.
 6. `decided_by` compares three runs: content alone, content and words, everything. The first evidence that changed
    the choice decided it.
 

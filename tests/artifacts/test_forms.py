@@ -591,3 +591,58 @@ def test_nothing_shown_when_nothing_can_be_shown():
                     F.Context(device="cli", accessibility=("voice_only",), generators=ALL))
     assert result.chosen == () and result.reason.startswith("No form can be given")
     assert "No form" in F.describe(result)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# After the development cases: the answer's size, the map form, new purposes and needs, captions
+
+
+def test_the_size_of_the_answer_is_read_from_the_question_grammar():
+    cls = F.answer_class
+    assert cls("is the river higher than last spring?") == "yes_or_no"
+    assert cls("can you show me how it changed?") is None, "a polite request is not a yes-or-no question"
+    assert cls("which week was the wettest?") == "extreme"
+    assert cls("how many visitors came?") == "count"
+    assert cls("when did the pump stop?") == "one_of"
+    assert cls("how heavy is the parcel?") == "measure"
+    assert cls("what is the usual wait?") == "typical"
+    assert cls("what was the wettest week each year?") is None, "the words ask for the whole"
+    assert cls("what happened to the river levels?") is None
+    assert cls("i have an interest in the forest") is None, "not every -est word is a superlative"
+
+
+def test_a_question_picking_a_few_values_is_answered_in_words_however_large_the_content():
+    rng = random.Random(12)
+    for _ in range(200):
+        content = (random_shape(rng),)
+        context = F.Context(generators=ALL, budget_s=1e9, budget_bytes=1 << 60)
+        result = F.plan(F.Request(rng.choice(("Is it getting worse?", "When did it peak?", "How many are there?",
+                                              "Which one is the largest?"))), content, context)
+        assert result.chosen == ("prose",), (content, result.chosen)
+    whole = F.plan(F.Request("How did it change over the year?"), (shape(["series"], 365, 1, True),),
+                   F.Context(generators=ALL))
+    assert whole.chosen[0] == "line_chart"
+
+
+def test_a_map_is_plannable_but_infeasible_until_its_generator_exists():
+    places = (shape(["map"], 85, 1, space=2),)
+    assert F.plan(F.Request(""), places, F.Context(generators=ALL)).chosen[0] == "map"
+    without = F.plan(F.Request(""), places, F.Context(generators=tuple(g for g in ALL if g != "map.points")))
+    assert without.chosen[0] != "map" and "nothing here can make a map yet" in without.candidate(("map",)).excluded
+    assert F.FORMS["map"].carried(shape(["records"], 40, 2)) == 0.0, "values without places are not mapped"
+
+
+def test_no_sound_removes_everything_heard_and_new_purposes_are_accepted():
+    series = (shape(["series"], 365, 1, True),)
+    result = F.plan(F.Request("What does it sound like?"), series,
+                    F.Context(accessibility=("no_sound",), generators=ALL))
+    assert not any({"sound", "speech"} & set(F.FORMS[f].media) for f in result.chosen)
+    for purpose in ("decide", "understand"):
+        assert F.plan(F.Request("", purpose=purpose), series, F.Context(generators=ALL)).purpose in F.PURPOSES
+
+
+def test_a_picture_chosen_unasked_comes_with_a_sentence_and_one_named_alone_does_not():
+    series = (shape(["series"], 365, 1, True),)
+    assert F.plan(F.Request(""), series, F.Context(generators=ALL)).chosen == ("line_chart", "prose")
+    named = F.plan(F.Request("as a line chart"), series, F.Context(generators=ALL))
+    assert named.chosen == ("line_chart",)

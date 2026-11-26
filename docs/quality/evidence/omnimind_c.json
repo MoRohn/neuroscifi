@@ -2,7 +2,7 @@
  "lane": "C (form planner, ADR-073)",
  "what": "Properties of forms.plan measured by running it; nothing here judges whether a choice is good. Development and held-out case scores are added when the main session provides the development cases (the held-out run is the main session's).",
  "unit_tests": {
-  "file": "tests/artifacts/test_forms.py (30 tests) and tests/artifacts/test_forms_cli.py (12 tests)",
+  "file": "tests/artifacts/test_forms.py (35 tests) and tests/artifacts/test_forms_cli.py (12 tests)",
   "seeded_random_plans_per_property": {
    "hard_constraints_never_violated": 600,
    "deterministic_and_complete_score_sheet": 200,
@@ -16,7 +16,7 @@
    "adjustments_default_equality": 100,
    "adjustments_random_tables": 200
   },
-  "result": "42 passed"
+  "result": "47 passed"
  },
  "wider_sample": {
   "command": "PYTHONPATH=src python scripts/forms_evidence.py --shapes 2000 --seed {101,202,303}",
@@ -34,48 +34,118 @@
    {
     "seed": 101,
     "shapes": 2000,
-    "monotonicity_checks_after_leaving_words": 7058,
+    "monotonicity_checks_after_leaving_words": 7370,
     "returned_to_words": 0,
     "hard_constraint_or_determinism_violations": 0,
     "decided_by_share": {
      "explicit": 0.0,
-     "content": 0.139,
-     "words": 0.0095,
-     "context": 0.8515
+     "content": 0.1335,
+     "words": 0.0645,
+     "context": 0.802
     },
-    "mean_ms_per_plan": 3.36
+    "mean_ms_per_plan": 2.88
    },
    {
     "seed": 202,
     "shapes": 2000,
-    "monotonicity_checks_after_leaving_words": 7111,
+    "monotonicity_checks_after_leaving_words": 7417,
     "returned_to_words": 0,
     "hard_constraint_or_determinism_violations": 0,
     "decided_by_share": {
      "explicit": 0.0,
-     "content": 0.128,
-     "words": 0.0125,
-     "context": 0.8595
+     "content": 0.138,
+     "words": 0.0625,
+     "context": 0.7995
     },
-    "mean_ms_per_plan": 3.43
+    "mean_ms_per_plan": 2.89
    },
    {
     "seed": 303,
     "shapes": 2000,
-    "monotonicity_checks_after_leaving_words": 7145,
+    "monotonicity_checks_after_leaving_words": 7433,
     "returned_to_words": 0,
     "hard_constraint_or_determinism_violations": 0,
     "decided_by_share": {
      "explicit": 0.0,
-     "content": 0.136,
-     "words": 0.0115,
-     "context": 0.8525
+     "content": 0.1375,
+     "words": 0.055,
+     "context": 0.8075
     },
-    "mean_ms_per_plan": 3.45
+    "mean_ms_per_plan": 2.9
    }
   ],
   "note": "decided_by shares are over random contexts (random generator subsets, budgets and accessibility needs), so 'context' dominates by construction; they describe the sample, not real use. Timing on the shared aarch64 host, under load from other lanes."
  },
- "development_cases": null,
- "size_note": "summary only; this file is under 4 KiB"
+ "development_cases": {
+  "kit": "the main session's development-only kit (133 cases, held-out removed) and driver scripts/omni_forms_driver.py",
+  "blind_8d84f29": {
+   "good": 65.0,
+   "good_or_fine": 107.0,
+   "bad": 26.0,
+   "too_poor": 6.0,
+   "too_much": 15.0,
+   "unfit": 5.0,
+   "violation": 0,
+   "explicit_feasible_honoured": 9.0,
+   "explicit_infeasible_handled": 3.0,
+   "pairs_both_good": 6.0,
+   "twins_both_good": 0.0,
+   "cue:content (n=77) good": 40.0,
+   "cue:words (n=36) good": 10.0,
+   "cue:conflict (n=5) good": 3.0,
+   "cue:explicit (n=15) good": 12.0,
+   "tag:less (n=3) good": 3.0,
+   "tag:access (n=11) good": 4.0,
+   "tag:budget (n=4) good": 1.0,
+   "tag:prefs (n=2) good": 0,
+   "tag:ex72 (n=7) good": 1.0,
+   "tag:counter72 (n=7) good": 5.0,
+   "prose_is_right good": 35.0,
+   "prose_is_not_right good": 30.0
+  },
+  "after_rule_changes": {
+   "good": 113.0,
+   "good_or_fine": 133.0,
+   "bad": 0,
+   "too_poor": 0,
+   "too_much": 0,
+   "unfit": 0,
+   "violation": 0,
+   "explicit_feasible_honoured": 10.0,
+   "explicit_infeasible_handled": 5.0,
+   "pairs_both_good": 14.0,
+   "twins_both_good": 8.0,
+   "cue:content (n=77) good": 65.0,
+   "cue:words (n=36) good": 28.0,
+   "cue:conflict (n=5) good": 5.0,
+   "cue:explicit (n=15) good": 15.0,
+   "tag:less (n=3) good": 3.0,
+   "tag:access (n=11) good": 8.0,
+   "tag:budget (n=4) good": 4.0,
+   "tag:prefs (n=2) good": 2.0,
+   "tag:ex72 (n=7) good": 6.0,
+   "tag:counter72 (n=7) good": 7.0,
+   "prose_is_right good": 59.0,
+   "prose_is_not_right good": 54.0
+  },
+  "references_on_development": {
+   "today_always_prose": {
+    "good": 53,
+    "good_or_fine": 97,
+    "bad": 36
+   },
+   "shape_only": {
+    "good": 61,
+    "good_or_fine": 107,
+    "bad": 26
+   },
+   "richest": {
+    "good": 9,
+    "good_or_fine": 12,
+    "bad": 121
+   }
+  },
+  "caution": "every rule change was made after reading these cases; the development numbers are therefore optimistic. The held-out run is the main session's and is the number that counts."
+ },
+ "size_note": "summary only; this file is under 8 KiB"
 }
