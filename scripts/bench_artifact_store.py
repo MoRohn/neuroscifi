@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
-import os
 from pathlib import Path
 import platform
 import statistics
