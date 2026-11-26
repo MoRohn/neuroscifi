@@ -62,7 +62,7 @@ COGNITIVE_BENCHMARK.md).
   withheld look re-ran Wave 3's four configurations with the tie-breaks fixed: all six of Wave 3's figures reproduce
   to three decimals (`idle-first` +0.013 / +0.042 / +0.052, `shipped+idle` +0.006 / +0.035 / +0.024). So `idle-first`
   is **reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a small margin
-  in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.376 against 0.636 / 0.541 /
+  in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.3755 against 0.636 / 0.541 /
   0.537). `shipped+idle` is within the spread in all three worlds.
 
 **What ships and changes behaviour at the shipped defaults:**
@@ -763,7 +763,7 @@ the reference over this look's own four seeds on that world.
 | **`shipped+idle` − `shipped`** | **+0.006**: within | **+0.035**: within | **+0.024**: within |
 | per seed | +0.0043, +0.0022, +0.0164, 0 | 0, +0.0380, +0.0357, +0.0665 | 0, +0.0494, +0.0418, +0.0044 |
 | Wave 3's single runs (`idle-first`; `shipped+idle`) | +0.013; +0.006 | +0.042; +0.035 | +0.052; +0.024 |
-| `idle-first`'s mean `correct` | 0.478 | 0.328 | 0.376 (0.3755) |
+| `idle-first`'s mean `correct` | 0.478 | 0.328 | 0.3755 |
 | blind round-robin, same allowance (from the world alone) | 0.636 | 0.541 | 0.537 |
 
 **What it means.**
@@ -774,7 +774,7 @@ the reference over this look's own four seeds on that world.
   small margin in W2; it cannot be promoted and remains below the blind schedule.** One seed is negative in W1 and
   one in W2; W1 is within its spread.
 - **`shipped+idle`**: within the spread in all three worlds.
-- **Still far below the blind schedule**: `idle-first` reaches 0.478 / 0.328 / 0.376 against 0.636 / 0.541 / 0.537.
+- **Still far below the blind schedule**: `idle-first` reaches 0.478 / 0.328 / 0.3755 against 0.636 / 0.541 / 0.537.
 - This replaces lane A's correction (W2 "not established", W3 "not shown to fail, not established"), which rested on
   the swing measured on public worlds; those sentences are kept, with a dated correction, in WAVE3.md,
   FINAL_EVALUATION.md, COGNITIVE_BENCHMARK.md, RECURSIVE_KNOWLEDGE_ASSESSMENT.md, ADR-064 and §1.4 above.
