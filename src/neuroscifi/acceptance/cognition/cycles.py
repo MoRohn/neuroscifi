@@ -254,7 +254,8 @@ def investigate(db, task, docs, now, *, answer=None) -> dict:
             source_ids[d.canonical_url] = state.save_source(db, tid, d, now)
     for d in docs:
         found += claims.extract_claims(d, task["objective"])
-    origins = claims.stamp_origins(found, docs, attribution=state.get_config(db).attribution_independence)
+    cfg = state.get_config(db)
+    origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping)
     clusters = [claims.score(c, now=now, freshness_class=freshness, origins=origins)
                 for c in claims.cluster(found)] if found else []
     with store.write(db):
@@ -1125,7 +1126,7 @@ def final(note, *, configs=None, mechanism="baseline") -> dict:
     references from the generator alone and each world's digest per seed."""
     from datetime import datetime, timezone
     from .. import cognition
-    if not note:
+    if not (note or "").strip():         # review3c F5: a note of only spaces is no reason either
         raise cognition.Refused("final: a note is required (it is the ledger line's reason)")
     known = configurations() | EXTRA
     configs = configs or {k: known[k] for k in FINAL_CONFIGS}

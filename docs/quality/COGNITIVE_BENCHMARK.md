@@ -27,7 +27,8 @@ $PY scripts/bench_cognition.py run --family anticipation --split held_out --mech
 $PY scripts/bench_cognition.py run --family anticipation --split held_out --mechanism NAME --ablate trend
 $PY scripts/bench_cognition.py compare docs/quality/evidence/genesis_baseline.json a.json
 $PY scripts/bench_cognition.py run --family withheld --final --mechanism NAME --note "lane I, final"
-$PY scripts/bench_cognition.py baseline --out docs/quality/evidence/genesis_baseline.json   # what was recorded
+$PY scripts/bench_cognition.py baseline --out /outside/genesis_baseline.json   # what was recorded (a withheld look:
+                                                  # since the third fix lane --out must be outside the checkout)
 ```
 
 `compare BEFORE AFTER` prints the headline metrics of each family side by side with which direction is better (a
@@ -252,7 +253,13 @@ Lane C's 5 cases were declined by the moments rule before the criterion was reac
 criterion broken; since the fix lane (`8a8fce7`) they are staged with `moments: population`, a decline for unstated
 moments does not count, and a test shows them failing with the separation check removed (the expectation text is
 unchanged). Lane S's 16 pass with its two source rules switched on by the cases themselves (`LANE_S_ON`), as their
-expectations were written; at the shipped defaults those rules are off since the fix lane (ADR-061).
+expectations were written; at the shipped defaults those rules are off since the fix lane (ADR-061). The second fix
+lane added `added_wave3_fix2` (3: a page naming two outlets as its origins, a copy naming one origin, a page carrying
+two wire credits) and the third fix lane `added_wave3_fix3` (3: copies naming several origins count once); all six
+switch `origin_grouping` "one_way" on themselves (ADR-063, off by default). At the shipped default the defect the
+first three guard against (review3b N1) is open; the family lists it as a "not staged" line marked KNOWN OPEN
+(`known_open_wave3`), never as a pass. On `860db86`: 61 lines, 55 scored cases, 55 of 55 pass on both splits
+(13 / 4 / 1 / 10 / 5 / 16 / 3 / 3 by origin), 6 "not staged" lines.
 **Cannot show:** behaviour under real adversaries; it is a regression set, not a tuning set (no split).
 
 ## Baseline (unchanged system)
@@ -489,7 +496,9 @@ check each refusal without loading the worlds. A `--final` run of `scripts/bench
 withheld interface) likewise refuses a dirty or uncommitted tree and an `--out` inside the checkout (fix lane); since
 the second fix lane it also refuses, before its ledger line, an `--out` it cannot write, an empty note, a mechanism
 that no selected family has (every family would fall back to the baseline), an unknown ablation, and a `withheld.py`
-whose bytes do not hash to the SHA-256 pinned in `cognition.WITHHELD_SHA256`.
+whose bytes do not hash to the SHA-256 pinned in `cognition.WITHHELD_SHA256`. Since the third fix lane
+`bench_cognition.py baseline`, which also takes a withheld look, refuses the same `--out` paths before it runs any
+family (review3c F4), and `cycles.final` refuses a note of only spaces as `cognition.run` does (F5).
 `baseline` is Step 0's behaviour made explicit since the fix lane (the Wave 1 web settings of `WAVE1_OFF_WEB` off,
 lane S's two rules off, supersession "ask", lane K's re-check order, no idle investigation; every other setting at
 its default, as at Step 0, among them `calibrated_forecasts`, `tick_admission` "unified" and `arbitration_record`,

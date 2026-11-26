@@ -147,7 +147,8 @@ class Run(cycles.Run):
         self.seen_looks.add((name, self.cycle))
         by_url = {f"http://{p['host']}{p['path']}": p for p in look["pages"]}
         found = [c for d in docs for c in claims.extract_claims(d, objective)]
-        claims.stamp_origins(found, docs, attribution=state.get_config(self.db).attribution_independence)
+        cfg = state.get_config(self.db)
+        claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping)
         origin = {c.id: self._origin_of(look, by_url[c.source_url]) for c in found if c.source_url in by_url}
         groups = [{origin[i] for i in g if i in origin} for g in claims.independence_groups(found)]
         honest = {o for g in groups for o in g if o.startswith("outlet:")}

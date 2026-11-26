@@ -44,7 +44,7 @@ assert set(MODE_BUDGETS) == set(MODES)
 
 # Wave 3 settings whose stored value is checked when it is read (WebConfig.from_json; security review L8)
 CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognition", "supersession",
-                   "supersession_min_sources")
+                   "supersession_min_sources", "origin_grouping")
 
 
 # review3b N8: a damaged value of a setting that tunes an opt-in rule never loosens that rule: the rule itself reads as
@@ -243,6 +243,14 @@ class WebConfig:
     # the owner has not decided to change the standing rule (ADR-061 has the gains and the false replacements).
     supersession: str = "ask"
     supersession_min_sources: int = 2
+    # ADR-063 (Wave 3, third fix lane): how a page that NAMES its origin (an attribution line, a wire credit, a
+    # canonical URL on another host) counts. "transitive" (the default): it joins every group that origin names or
+    # owns, exactly as before ADR-063 (the grouping of 3ce4ae3), so copies naming several origins stay one source, but a
+    # page naming two honest outlets as its origins joins them into one source (review3b N1: their fact is then not
+    # verified; open at this default). "one_way": each such page attaches to ONE origin (claims._one_way), which closes
+    # N1 and keeps copies naming several origins one source on the staged cases (review3c F1), but no benchmark world
+    # holds a page naming two origins, so neither direction is measured. Applies to claims read while it is set.
+    origin_grouping: str = "transitive"
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

@@ -6,7 +6,7 @@ self-description, selective answering, retention, adversarial cases, and a withh
   python scripts/bench_cognition.py run --family anticipation --mechanism predictive --ablate trend
   python scripts/bench_cognition.py run --family withheld --final --note "lane I, final" --out /outside/x.json
                                                         # recorded in the ledger; a clean, committed tree only
-  python scripts/bench_cognition.py baseline --out docs/quality/evidence/genesis_baseline.json
+  python scripts/bench_cognition.py baseline --out /outside/genesis_baseline.json  # a withheld look: --out outside
   python scripts/bench_cognition.py list                                              # families and mechanisms
   python scripts/bench_cognition.py compare before.json after.json                    # headline metrics side by side
 
@@ -39,6 +39,20 @@ def _write(value, out):
         print(f"wrote {out}")
     else:
         print(text)
+
+
+def _refused_out(out):
+    """Why a look's --out is refused (review3 Q7, review3b M-1), checked before anything is run: a look is written
+    OUTSIDE this checkout (a new file there would make it dirty) to a file that can be written (a failed write after
+    the ledger line would spend the look for nothing). None when it is fine."""
+    root = Path(__file__).resolve().parents[1]
+    if not out or Path(out).resolve().is_relative_to(root.resolve()):
+        return "a look writes --out to a path OUTSIDE this checkout (copy it in afterwards)"
+    path = Path(out)
+    if not path.parent.is_dir() or not os.access(path.parent, os.W_OK) or path.is_dir() or (
+            path.exists() and not os.access(path, os.W_OK)):
+        return f"--out {out} cannot be written (its directory must exist and be writable)"
+    return None
 
 
 def _baseline_output(path):
@@ -85,7 +99,11 @@ def main(argv=None) -> int:
         after = json.loads(Path(a.after).read_text(encoding="utf-8"))
         _write(cognition.compare(before, after), None)
         return 0
-    if a.command == "baseline":
+    if a.command == "baseline":       # review3c F4: it takes a withheld look, so it is refused as a --final run is
+        problem = _refused_out(a.out)
+        if problem:
+            print(f"refused: {problem}", file=sys.stderr)
+            return 2
         out = {"benchmark": "cognition-baseline", "what": "the unchanged system (start commit of the genesis lanes) "
                "on both splits of every family, the reference policies, and the withheld family once"}
         for split in ("development", "held_out"):
@@ -94,20 +112,17 @@ def main(argv=None) -> int:
                 name: cognition.run([fam], split=split, mechanism=name)["families"][fam]
                 for fam, name in (("info_value", "oracle"), ("info_value", "random"), ("info_value", "autonomy"),
                                   ("anticipation", "open"))}
-        out["withheld"] = cognition.run(["withheld"], final=True, note=a.note)
+        try:
+            out["withheld"] = cognition.run(["withheld"], final=True, note=a.note)
+        except cognition.Refused as error:
+            print(f"refused: {error}", file=sys.stderr)
+            return 2
         _write(out, a.out)
         return 0
-    if a.final:     # review3 (Q7): a look is written outside the checkout (a new file there would make it dirty)
-        root = Path(__file__).resolve().parents[1]
-        if not a.out or Path(a.out).resolve().is_relative_to(root.resolve()):
-            print("refused: a --final run writes --out to a path OUTSIDE this checkout (copy it in afterwards)",
-                  file=sys.stderr)
-            return 2
-        out = Path(a.out)       # review3b M-1: a failed write after the ledger line would spend the look for nothing
-        if not out.parent.is_dir() or not os.access(out.parent, os.W_OK) or out.is_dir() or (
-                out.exists() and not os.access(out, os.W_OK)):
-            print(f"refused: --out {a.out} cannot be written (its directory must exist and be writable)",
-                  file=sys.stderr)
+    if a.final:
+        problem = _refused_out(a.out)
+        if problem:
+            print(f"refused: {problem}", file=sys.stderr)
             return 2
     cognition.load_plugins(a.plugin)
     families = a.family or list(cognition.DEFAULT_FAMILIES)

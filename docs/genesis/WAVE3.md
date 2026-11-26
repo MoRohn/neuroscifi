@@ -4,8 +4,9 @@ Status: 2026-11-26. Wave 3 of Project Cognitive Genesis. Step 0 (`gen3-0`) took 
 learning-cycle worlds with the unchanged system; six lanes (P, C, H, R, S, V) were then built in parallel and merged
 on `genesis-wave3` (`f0a1f09`). Two independent reviews read the merged tree (measurement, security); a fix lane
 (`gen3-fix`) acts on their findings, and this reconciliation lane (`gen3-rec`) wrote the record. The fix lane's
-final defaults and numbers are written in (its evidence: `genesis_wave3_fix_*.json`). Sources: ADR-058 to
-ADR-062 in [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md), the evidence files named beside
+final defaults and numbers are written in (its evidence: `genesis_wave3_fix_*.json`); a second and a third fix lane
+(`gen3-fix2`, `gen3-fix3`) acted on the security checks that followed (review3b, review3c). Sources: ADR-058 to
+ADR-063 in [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md), the evidence files named beside
 each number, the lanes' reports and the two reviews. Nothing here is a claim of consciousness, awareness or general
 intelligence; the names describe functions.
 
@@ -25,6 +26,12 @@ still count as an independent source, and a page repeating the individual's own 
 corroboration, whether or not it credits a model (that check is part of `echo_recognition`, off). Reading the wording of a sentence does not decide where a fact came from; what would is a
 different kind of rule (which page published a value first and which pages derive from it, or the owner's
 confirmation). It is not built. It is the first of the next directions (FINAL_EVALUATION.md §6).
+**Also open at the shipped defaults, older than Wave 3:** one page that says a story was first published by one
+honest outlet and originally appeared in another joins the two into one source, so a true fact they both report is
+not confirmed (review3b N1). A rule that attaches such a page to only one of them was built by the second fix lane
+and is **off**: the last check found that it made some copies of one story count as several sources where they had
+counted as one (review3c F1), the more dangerous error, and no test world holds such pages, so neither way is
+measured. It is the setting `origin_grouping` (default `"transitive"`, the grouping as before; ADR-063).
 
 **What Wave 3 changes at the shipped defaults:**
 - `nsf imagine scm` answers causal questions that only front-door adjustment can answer, saying so, where before it
@@ -35,7 +42,8 @@ confirmation). It is not built. It is the first of the next directions (FINAL_EV
 - two things the owner can use and that change nothing by themselves: predictive regulation "in shadow", which only
   writes down what the forecast would have done, and `nsf readiness`, which counts real outcomes (lane H);
 - built and off: another order for the knowledge re-check (lane R), automatic replacement of an out-of-date fact
-  (supersession, lane S), and the two source rules (lane S), off since the fix lane.
+  (supersession, lane S), the two source rules (lane S), off since the fix lane, and the one-way origin rule
+  (`origin_grouping`, off since the third fix lane; ADR-063).
 
 **Negative results, as plainly as the rest:**
 - No order of the knowledge re-check helps: every one of 14 orders gets "no evidence" on held-out; the order is not
@@ -106,6 +114,7 @@ No schema change (version 19). No new background activity beyond benchmark runne
 | `attribution_independence` | **off** (fix lane) | under lane S's own pre-registered rule the verdict was "unsafe" on development and held-out; it costs −0.114 `correct` in one development world against a spread of 0.066; 19 of 27 common credit phrasings give no key or a wrong key; staged with honest outlets crediting each other it merges them and `correct` falls 0.07–0.13, beyond the spread (review S-1, S-3, S-4); one sentence crediting two honest outlets merges them so a true fact is never verified (security H1) |
 | `echo_recognition` | **off** (fix lane) | its fall in own versions comes from a phrase list added after held-out runs; echoes that credit no model pass at 67–100 % of the baseline's rate (review S-2, S-8); on a large individual it discards honest pages, a forgotten source blocks corroboration of that subject, its scan can hold the write lock for seconds per claim, and "the AI Act" reads as model text (security M2–M5) |
 | `supersession` (`supersession_min_sources` 2) | `"ask"` (off) | gains less than the spread; false replacements; the owner's decision (it changes the rule that contradictions are asked, never decided); with it on, forget does not reach its record and a family or agent task could replace the owner's item (security M1, M6: fixed by the fix lane; two colluding pages can still replace a true item in the owner's research or a refresh) |
+| `origin_grouping` | `"transitive"` (third fix lane) | the grouping of `3ce4ae3`, unchanged (0 of 614,988 world inputs and 0 of 8,437 offline-benchmark groupings differ). `"one_way"` closes N1 (a page naming two honest outlets as its origins joins them) on staged pages, but as first shipped it made copies of one story count as 2–3 sources (review3c F1); with the reviewer's edge choice it counts them once on every staged case, yet no benchmark world holds a page naming two origins, so neither direction is measured (ADR-063) |
 | `recheck_order` | `"staleness"` (lane K's order) | no held-out gain: every order "no evidence" (ADR-060) |
 | `predictive_regulation` | `false` (the third value `"shadow"` is the owner's opt-in) | the forecast has no host evidence yet; shadow lets the owner gather it without any change in behaviour (ADR-058) |
 | front door in `nsf imagine scm` | on | its pre-registered rule held: the front-door group 0 → 1.000 held-out (12 of 12), every other leaf unchanged (ADR-059); its withheld look is pending |
@@ -376,12 +385,25 @@ of 40 were over the bound. The test is right; making it deterministic needs that
 - The read-ahead accounting race (§3.9): fixed by the fix lane.
 - The shadow report's definitions (H-1, H-2): changed by the fix lane; a host week is still to be run by the owner.
 - Lane C's adversarial front-door cases and the sampled-trap test: staged with stated moments by the fix lane.
-- The security check of the fix round (review3b) found ten more items; the second fix lane (`gen3-fix2`) fixed each
-  with a test: one page naming two honest outlets as its origins no longer joins them into one source at the shipped
-  defaults (N1, older than Wave 3; ADR-063: the offline digest, lane F's cycles and lane S's family unchanged); a
+- **One page naming two honest outlets as its origins joins them into one source** at the shipped defaults, so their
+  true fact is not confirmed (review3b N1, since `10339b8`, older than Wave 3): OPEN. The second fix lane closed it by
+  changing the shipped grouping; the final check (review3c) found that change made copies of one story count as
+  several sources (F1: copies naming the origin and each other, copies of an unread origin each adding a different
+  second origin, "first appeared in the Regional Times. (AP)" beside a plain copy), so the third fix lane
+  (`gen3-fix3`) restored the grouping of `3ce4ae3` as the default and put the one-way rule behind `origin_grouping`
+  (off; ADR-063). Also open: a page on a host named like an outlet that an honest copy credits, naming another
+  outlet, joins two honest outlets (F2; with the setting on only for names other than the news wires'); with the
+  setting on, a page copying one honest outlet's sentence word for word and naming another outlet joins the two (as
+  under the second fix lane; the default keeps them apart there); "Originally
+  published by X" at the start of a sentence gives no origin (F3, the pattern is case-sensitive; not changed, it
+  would change the shipped grouping); no benchmark world holds a page naming several origins, so a sound rule needs
+  new worlds first (ADR-063 lists them).
+- The security check of the fix round (review3b) found ten more items; the second fix lane (`gen3-fix2`) fixed nine
+  with a test (N1 above is undone at the defaults): a
   forget no longer scans every answer inside its write transaction (N2: 0.15–0.25 s held at 10,000 answers of 20 kB,
   against 6.9–39.6 s) and marks only answers about the forgotten subject (N9); the re-check checks the day's task
-  count inside its own transaction (N5); attribution's credits attach one way and in an order-free way (N3, N10); echo
+  count inside its own transaction (N5); with `origin_grouping` "one_way", attribution's credits attach one way and
+  in an order-free way (N3, N10; at the default they are as at `3ce4ae3`, open with `attribution_independence` on); echo
   recognition shares its value cap per claim and names and logs every claim it did not check (N4); a forget replaces
   the forgotten sentence in contradiction questions (N6); verdicts the shadow record could not take are counted and
   reported (N7); a damaged bar of an opt-in rule turns the rule off instead of loosening it, logged once, and the
@@ -401,6 +423,7 @@ of 40 were over the bound. The test is right; making it deterministic needs that
 | the two source rules (already off) | `nsf web config --db DB --set attribution_independence=false --set echo_recognition=false` | nothing stored by them |
 | supersession (off) | `nsf web config --db DB --set 'supersession="ask"'`; each replacement: `nsf web revert ID` | its replacements stay listed |
 | `recheck_order` (default) | `nsf web config --db DB --set 'recheck_order="staleness"'` | none |
+| `origin_grouping` (default) | `nsf web config --db DB --set 'origin_grouping="transitive"'` (applies to the next task) | claims read while it was `"one_way"` keep a mark in their flags: a grouping made only of such claims (an older stored cluster on its own) still uses the one-way rule; one claim read after the switch makes it the default |
 | shadow | `nsf config --no-predictive-regulation --db DB`; delete `<db>.resources/forecast-shadow*` to discard | numbers only |
 | the front door | `nsf imagine scm FILE --no-front-door`; revert lane C's merge `5701bbe` | nothing stored |
 | the idle task-count fix | revert `41198b3` (lane V) | none |
