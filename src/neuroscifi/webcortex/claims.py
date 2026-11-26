@@ -1279,14 +1279,17 @@ def stamp_origins(claims, documents, *, attribution: bool = False) -> dict[str, 
     of one story then form one independence group wherever the claims go next (scoring, the report verdict,
     per-claim states, consolidation from stored clusters), not only where the documents are at hand. With
     `attribution` (WebConfig.attribution_independence, ADR-061) the outlets a sentence credits (attribution_keys)
-    are added too: a reworded copy that names the story's origin inside the sentence is that origin."""
+    go to flags["credited"], kept apart from the origins: a reworded copy that names the story's origin inside the
+    sentence counts with that origin, and a credit never joins two other groups (independence_groups)."""
     origins = document_origins(documents)
     for c in claims:
         extra = list(origins.get(c.source_url) or ())
-        if attribution:
-            extra += attribution_keys(c.text)
         if extra:
             c.flags = dict(c.flags or {}, origin=list(dict.fromkeys([*((c.flags or {}).get("origin") or ()), *extra])))
+        credited = attribution_keys(c.text) if attribution else []
+        if credited:
+            c.flags = dict(c.flags or {}, credited=list(dict.fromkeys([*((c.flags or {}).get("credited") or ()),
+                                                                       *credited])))
     return origins
 
 
@@ -1324,6 +1327,8 @@ def attribution_keys(text: str) -> list[str]:
     for pattern in _CREDITS:
         for m in pattern.finditer(text):
             words = m.group("name").split()
+            if words:           # a possessive credit ("Syndiwire's desk says") names Syndiwire, not "Syndiwires"
+                words[-1] = re.sub(r"['’]s$", "", words[-1]) or words[-1]
             if words and words[0].lower() == "the":
                 words = words[1:]
             while words and words[-1].lower() in _OUTLET_SUFFIX:
@@ -1372,8 +1377,17 @@ def independence_groups(claims, *, origins: dict | None = None) -> list[list[str
     """Claim ids grouped into independent sources: claims from the same host, with near-duplicate texts (shingle
     Jaccard >= DUPLICATE_SHINGLE: syndication or copying), or sharing an origin (origin_keys in
     flags["origin"], or `origins` {source url: keys} such as document_origins) collapse into one group. Groups
-    are in order of first appearance; ids keep input order."""
+    are in order of first appearance; ids keep input order.
+
+    A claim whose sentence credits an outlet (flags["credited"], attribution_independence; ADR-061) never joins two
+    groups (security review H1: one sentence crediting two honest outlets merged them, so a true fact was never
+    verified). The groups are formed from the claims that credit no one; each crediting claim then counts with ONE
+    group: the first group of an outlet it credits, else the first group it is otherwise tied to (same host,
+    near-duplicate, shared origin). Crediting claims tied to no group form groups among themselves (by the same
+    ties, and by crediting the same outlet), so copies crediting an outlet that was not read are still one source."""
     claims = list(claims)
+    if any((c.flags or {}).get("credited") for c in claims):
+        return _groups_with_credits(claims, origins)
     parent = list(range(len(claims)))
 
     def find(i: int) -> int:
@@ -1401,6 +1415,57 @@ def independence_groups(claims, *, origins: dict | None = None) -> list[list[str
         if c.id not in ids:
             ids.append(c.id)
     return [groups[k] for k in sorted(groups)]
+
+
+def _groups_with_credits(claims, origins) -> list[list[str]]:
+    """independence_groups when some claim credits an outlet (see there)."""
+    plain = [c for c in claims if not (c.flags or {}).get("credited")]
+    crediting = [c for c in claims if (c.flags or {}).get("credited")]
+    groups = [[c for c in plain if c.id in ids] for ids in independence_groups(plain, origins=origins)]
+    sh = {id(c): T.shingles(c.text, SHINGLE_K) for c in claims}
+    ident = {id(c): _identity_keys(c) for c in claims}
+    orig = {id(c): _origin_of(c, origins) for c in claims}
+
+    def tied(a, b) -> bool:
+        return _domain(a) == _domain(b) or T.jaccard(sh[id(a)], sh[id(b)]) >= DUPLICATE_SHINGLE or \
+            bool(orig[id(a)] & (orig[id(b)] | ident[id(b)]) or orig[id(b)] & ident[id(a)])
+    loose = []
+    for c in crediting:
+        credited = set(c.flags["credited"])
+        target = next((g for g in groups if any(credited & (ident[id(m)] | orig[id(m)]) for m in g)), None) or \
+            next((g for g in groups if any(tied(c, m) for m in g)), None)
+        if target is not None:
+            target.append(c)
+        else:
+            loose.append(c)
+    # the crediting claims tied to no group: among themselves only (a group made here joins no group made above)
+    parent = list(range(len(loose)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for i in range(len(loose)):
+        for j in range(i + 1, len(loose)):
+            a, b = loose[i], loose[j]
+            if tied(a, b) or set(a.flags["credited"]) & set(b.flags["credited"]):
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[max(ri, rj)] = min(ri, rj)
+    extra: dict[int, list] = {}
+    for i, c in enumerate(loose):
+        extra.setdefault(find(i), []).append(c)
+    groups += [extra[k] for k in sorted(extra)]
+    order = {c.id: n for n, c in enumerate(claims)}
+    out = []
+    for g in groups:
+        ids = []
+        for c in sorted(g, key=lambda c: order[c.id]):
+            if c.id not in ids:
+                ids.append(c.id)
+        out.append(ids)
+    return sorted(out, key=lambda ids: order[ids[0]])
 
 
 def dependence(claims, documents=(), *, origins: dict | None = None) -> dict:
