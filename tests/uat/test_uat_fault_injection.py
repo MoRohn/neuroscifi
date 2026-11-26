@@ -133,7 +133,14 @@ class Rig:
             # Wave 2 lane X: an item verified 30 days ago, which the knowledge re-check and the timer's curiosity
             # both want in the timer's pass, so lane L's arbitration (scheduler._arbitrated) is reached
             from neuroscifi.acceptance.cognition import adversarial
-            adversarial._k_item(db, now - 30 * 86_400.0)
+            kid = adversarial._k_item(db, now - 30 * 86_400.0)["provisional"][0]
+            # Wave 2 reconciliation: since lane Y (H1) the record is written for a real conflict only, the subject in
+            # the timer's curiosity pool as the kind curiosity launches. With its "still holds" prediction due, the
+            # subject is left to the due refresh (kind 'prediction', never in that pool); not yet due, curiosity
+            # ranks it as stale knowledge, so the re-check's pick takes a subject curiosity could have launched
+            with store.write(db):
+                db.execute("UPDATE web_predictions SET check_after=? WHERE knowledge_id=? AND outcome IS NULL",
+                           (now + 86_400.0, kid))
         self.console = console_server.ConsoleServer(self.path, 0, token=TOKEN)
         threading.Thread(target=self.console.serve_forever, daemon=True).start()
         status, phone = self.spark.req("pair", {"code": "invite"})

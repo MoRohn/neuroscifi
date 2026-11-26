@@ -219,6 +219,64 @@ def test_no_budget_left_for_curiosity_records_no_arbitration(individual, monkeyp
     assert _arbitrations(db) == [] and "arbitration" not in report
 
 
+# ---- where the Wave 2 fix lanes meet: lane X's guards (review2 L4, lane U's salience guard extended to lane L) and
+# lane Y's conditions (benchmark review H1, M2)
+
+def test_a_recheck_that_failed_after_queuing_a_subject_in_curiositys_pool_still_records_the_arbitration(individual,
+                                                                                                     monkeypatch):
+    """Lane X (review2 L4) reads back what a failed re-check queued, so it still counts in the pass; lane Y (H1)
+    records the arbitration for a real conflict only. Together: the subject the re-check queued before it failed was
+    in the timer's curiosity pool and budget was left, so exactly one arbitration names the queued task, and curiosity
+    launches the other subject."""
+    from neuroscifi.webcortex import recheck
+    db, _ = individual
+    stage(db, monkeypatch)
+    state.set_config(db, {"autonomous": True, "idle_recheck": True, "premise_recheck": True}, T0)
+    real_select, real_submit, queued = recheck.select, recheck.submit, []
+
+    def run(db, now, *, limit=None, over_cap=None):
+        chosen = real_select(db, now, limit=1)
+        queued.append(real_submit(db, chosen["picks"][0], chosen["admitted"], now))
+        raise RuntimeError("staged: the re-check failed after queuing one task")
+    monkeypatch.setattr(recheck, "run", run)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=3)
+    assert len(queued) == 1 and any(s.get("what") == "knowledge re-check" for s in report["skipped"])
+    assert report["arbitration"] == [{"task_id": queued[0]["id"], "slot": "one investigation per subject per timer "
+                                      "pass", "winner": "recheck", "loser": "curiosity",
+                                      "rule": scheduler.TAKEN_BY_RECHECK}]
+    assert _arbitrations(db) == ["recheck"]
+    assert [q["origin"] for q in report["queued"]] == ["recheck", "curiosity"]
+
+
+def _admitted_order(db):
+    admitted = autonomy.admission(db, T0, path="tick", limit=10)
+    return keys(admitted["chosen"]), admitted.get("order")
+
+
+@pytest.mark.parametrize("where", ["score", "order-raises", "order-garbage"])
+def test_a_failed_salience_record_or_order_leaves_the_priority_order_with_attention_on(individual, monkeypatch,
+                                                                                       where):
+    """With salience_attention on, B is taken first (the salience order). When the salience record of A cannot be made
+    (lane U's guard stores {"error": ...}), lane Y's fallback (M2) keeps the priority order instead of ranking A as
+    score 0; when the order itself raises or returns something that is not a reordering, lane X's guard keeps it.
+    Either way A (the priority order's first) stays first and the admission says it was not ordered by salience."""
+    db, _ = individual
+    stage(db, monkeypatch)
+    state.set_config(db, {"salience_attention": True}, T0)
+    assert _admitted_order(db)[0] == [B[1], A[1]]
+    if where == "score":
+        real = salience.score
+        monkeypatch.setattr(salience, "score", lambda db, item, now: (_ for _ in ()).throw(RuntimeError("staged"))
+                            if item["key"] == A[1] else real(db, item, now))
+    else:
+        monkeypatch.setattr(salience, "order", (lambda chosen: (_ for _ in ()).throw(RuntimeError("staged")))
+                            if where == "order-raises" else (lambda chosen: (chosen[:1], {"by": "salience"})))
+    chosen, order = _admitted_order(db)
+    assert chosen == [A[1], B[1]]
+    assert order["by"] == "priority"
+    assert ("error" in order) == (where != "score")
+
+
 # ---- competing objectives (directive §8: "prevent any subsystem from creating uncontrolled competing objectives") ----
 
 def test_every_background_activity_passes_the_one_check_with_the_whole_loop_on(individual):
