@@ -1399,12 +1399,12 @@ def independence_groups(claims, *, origins: dict | None = None) -> list[list[str
     flags["origin"], or `origins` {source url: keys} such as document_origins) collapse into one group. Groups
     are in order of first appearance; ids keep input order.
 
-    A claim whose sentence credits an outlet (flags["credited"], attribution_independence; ADR-061) never joins two
-    groups (security review H1: one sentence crediting two honest outlets merged them, so a true fact was never
-    verified). The groups are formed from the claims that credit no one; each crediting claim then counts with ONE
-    group: the first group of an outlet it credits, else the first group it is otherwise tied to (same host,
-    near-duplicate, shared origin). Crediting claims tied to no group form groups among themselves (by the same
-    ties, and by crediting the same outlet), so copies crediting an outlet that was not read are still one source."""
+    A credit (flags["credited"], attribution_independence; ADR-061) never joins two groups (security review H1: one
+    sentence crediting two honest outlets merged them, so a true fact was never verified). The groups are formed as
+    without credits; then a group made only of crediting claims counts with the first group (one with a claim that
+    credits no one) of an outlet it credits, and the remaining groups made only of crediting claims are one group per
+    outlet they credit (copies crediting an outlet that was not read are one source). A group that holds a claim
+    crediting no one is never moved, so a credit cannot carry a union between two such groups."""
     claims = list(claims)
     if any((c.flags or {}).get("credited") for c in claims):
         return _groups_with_credits(claims, origins)
@@ -1439,52 +1439,35 @@ def independence_groups(claims, *, origins: dict | None = None) -> list[list[str
 
 def _groups_with_credits(claims, origins) -> list[list[str]]:
     """independence_groups when some claim credits an outlet (see there)."""
-    plain = [c for c in claims if not (c.flags or {}).get("credited")]
-    crediting = [c for c in claims if (c.flags or {}).get("credited")]
-    groups = [[c for c in plain if c.id in ids] for ids in independence_groups(plain, origins=origins)]
-    sh = {id(c): T.shingles(c.text, SHINGLE_K) for c in claims}
-    ident = {id(c): _identity_keys(c) for c in claims}
-    orig = {id(c): _origin_of(c, origins) for c in claims}
-
-    def tied(a, b) -> bool:
-        return _domain(a) == _domain(b) or T.jaccard(sh[id(a)], sh[id(b)]) >= DUPLICATE_SHINGLE or \
-            bool(orig[id(a)] & (orig[id(b)] | ident[id(b)]) or orig[id(b)] & ident[id(a)])
-    loose = []
-    for c in crediting:
-        credited = set(c.flags["credited"])
-        target = next((g for g in groups if any(credited & (ident[id(m)] | orig[id(m)]) for m in g)), None) or \
-            next((g for g in groups if any(tied(c, m) for m in g)), None)
+    from dataclasses import replace
+    plain = [dict.fromkeys(ids) for ids in independence_groups(
+        [replace(c, flags={k: v for k, v in (c.flags or {}).items() if k != "credited"}) for c in claims],
+        origins=origins)]
+    by_id = {c.id: c for c in claims}
+    keys = [set().union(*(_identity_keys(by_id[i]) | _origin_of(by_id[i], origins) for i in g)) for g in plain]
+    credits = [set().union(*(set((by_id[i].flags or {}).get("credited") or ()) for i in g)) for g in plain]
+    movable = [all((by_id[i].flags or {}).get("credited") for i in g) for g in plain]
+    groups = [list(g) for g in plain]
+    alive = [True] * len(groups)
+    # a group of crediting claims only counts with the first other group an outlet it credits belongs to
+    for n, g in enumerate(plain):
+        if not movable[n]:
+            continue
+        target = next((m for m in range(len(plain)) if m != n and alive[m] and not movable[m]
+                       and credits[n] & keys[m]), None)
         if target is not None:
-            target.append(c)
-        else:
-            loose.append(c)
-    # the crediting claims tied to no group: among themselves only (a group made here joins no group made above)
-    parent = list(range(len(loose)))
-
-    def find(i: int) -> int:
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-    for i in range(len(loose)):
-        for j in range(i + 1, len(loose)):
-            a, b = loose[i], loose[j]
-            if tied(a, b) or set(a.flags["credited"]) & set(b.flags["credited"]):
-                ri, rj = find(i), find(j)
-                if ri != rj:
-                    parent[max(ri, rj)] = min(ri, rj)
-    extra: dict[int, list] = {}
-    for i, c in enumerate(loose):
-        extra.setdefault(find(i), []).append(c)
-    groups += [extra[k] for k in sorted(extra)]
+            groups[target] += groups[n]
+            alive[n] = False
+    # what is left of them: one group per outlet credited (crediting groups that share a credit are one source)
+    loose = [n for n in range(len(plain)) if alive[n] and movable[n]]
+    for a_i, a in enumerate(loose):
+        for b in loose[a_i + 1:]:
+            if alive[a] and alive[b] and credits[a] & credits[b]:
+                groups[a] += groups[b]
+                credits[a] |= credits[b]
+                alive[b] = False
     order = {c.id: n for n, c in enumerate(claims)}
-    out = []
-    for g in groups:
-        ids = []
-        for c in sorted(g, key=lambda c: order[c.id]):
-            if c.id not in ids:
-                ids.append(c.id)
-        out.append(ids)
+    out = [sorted(dict.fromkeys(groups[n]), key=order.get) for n in range(len(groups)) if alive[n]]
     return sorted(out, key=lambda ids: order[ids[0]])
 
 
