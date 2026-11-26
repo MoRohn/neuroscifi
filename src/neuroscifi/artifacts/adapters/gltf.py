@@ -142,7 +142,8 @@ class _Resolver:
         if n == 0:
             return np.zeros((0, width))
         rows = np.lib.stride_tricks.as_strided(raw, shape=(n, elem), strides=(stride, 1))
-        return np.ascontiguousarray(rows).view(dtype).reshape(n, width).astype(np.float64)
+        with np.errstate(invalid="ignore", over="ignore"):
+            return np.ascontiguousarray(rows).view(dtype).reshape(n, width).astype(np.float64)
 
 
 def _local_matrix(node: dict) -> np.ndarray:

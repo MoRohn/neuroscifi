@@ -156,7 +156,8 @@ def _stl_binary(data, n, detected, limits, trailing=0):
     count(n, limits, "STL triangles")
     need(n * 50 + n * 9 * 8 * 2, limits, "the STL triangles")
     rec = np.frombuffer(data, STL_DTYPE, count=n, offset=84)
-    corners = np.ascontiguousarray(rec["v"].reshape(-1, 3)) + np.float32(0.0)     # -0.0 becomes 0.0
+    with np.errstate(invalid="ignore"):
+        corners = np.ascontiguousarray(rec["v"].reshape(-1, 3)) + np.float32(0.0)     # -0.0 becomes 0.0
     if not np.isfinite(corners).all():
         raise Malformed("an STL vertex coordinate is not a finite number")
     v, f = merge_exact(corners)
@@ -218,8 +219,8 @@ def _ply_header(data: bytes, limits: Limits):
             elements.append({"name": parts[1], "n": count(int(parts[2]), limits, f"PLY {parts[1]} elements"),
                              "props": []})
         elif parts[0] == "property":
-            if not elements:
-                raise Malformed("a PLY property comes before any element")
+            if not elements or len(parts) < 3:
+                raise Malformed("a PLY property comes before any element or is incomplete")
             if parts[1] == "list":
                 if len(parts) != 5 or parts[2] not in PLY_TYPES or parts[3] not in PLY_TYPES:
                     raise Malformed("a PLY list property is malformed")

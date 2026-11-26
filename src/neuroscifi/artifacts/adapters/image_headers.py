@@ -463,7 +463,7 @@ def decode_dicom(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     if data[128:132] != b"DICM":
         raise Malformed("the DICOM prefix is missing")
     pos, syntax = 132, None
-    while pos + 8 <= len(data):                  # group 0002: always explicit VR little endian
+    while pos + 12 <= len(data):                 # group 0002: always explicit VR little endian
         group, elem = struct.unpack("<HH", data[pos:pos + 4])
         if group != 0x0002:
             break
@@ -480,7 +480,10 @@ def decode_dicom(data: bytes, detected: Detected, limits: Limits) -> Decoded:
         _header_only("dicom", facts, ("a decoder for DICOM transfer syntax " + str(syntax),), data)
     endian, explicit = UNCOMPRESSED[syntax]
     out: dict = {}
-    _dicom_elements(data, pos, len(data), endian, explicit, out, 0, deadline, [0])
+    try:
+        _dicom_elements(data, pos, len(data), endian, explicit, out, 0, deadline, [0])
+    except (struct.error, IndexError):
+        raise Malformed("a DICOM element header is cut short") from None
     facts.update({k: v for k, v in out.items() if k != "pixel_data"})
     rows, cols = out.get("rows"), out.get("columns")
     alloc, stored = out.get("bits_allocated"), out.get("bits_stored", out.get("bits_allocated"))
