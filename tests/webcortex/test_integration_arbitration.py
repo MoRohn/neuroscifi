@@ -124,6 +124,63 @@ def test_the_arbitration_record_is_attached_to_the_winners_task_and_launches_not
     assert autonomy._recent(db, T0 + 1, 86400.0) == set()
 
 
+def _recheck_takes(db, monkeypatch, item, *, task="recheck-task"):
+    """The knowledge re-check queues `item` in this pass (its decision event names the subject, so curiosity's
+    cooldown refuses it afterwards), as recheck.run does."""
+    from neuroscifi.webcortex import recheck
+
+    def run(db, now, *, limit, over_cap):
+        with store.write(db):
+            state.log_event(db, task, "decision", {"autonomy": {"key": item[1], "admission": {"path": "recheck"}}},
+                            now)
+        return {"skipped": [], "submitted": [{"knowledge_id": item[0], "task_id": task}]}
+    monkeypatch.setattr(recheck, "enabled", lambda db: True)
+    monkeypatch.setattr(recheck, "run", run)
+
+
+def _arbitrations(db):
+    return [json for (json,) in db.execute("SELECT json_extract(detail,'$.arbitration.winner') FROM web_events "
+                                           "WHERE kind='decision' AND json_extract(detail,'$.arbitration') IS NOT "
+                                           "NULL")]
+
+
+def test_a_real_conflict_between_the_recheck_and_curiosity_records_exactly_one_arbitration(individual, monkeypatch):
+    """Lane Y (H1): the re-check took a subject in the timer's curiosity pool while budget was left for it."""
+    db, _ = individual
+    stage(db, monkeypatch)
+    _recheck_takes(db, monkeypatch, A)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=3)
+    assert _arbitrations(db) == ["recheck"]
+    assert report["arbitration"] == [{"task_id": "recheck-task", "slot": "one investigation per subject per timer "
+                                      "pass", "winner": "recheck", "loser": "curiosity",
+                                      "rule": scheduler.TAKEN_BY_RECHECK}]
+
+
+def test_a_subject_outside_the_timers_curiosity_pool_records_no_arbitration(individual, monkeypatch):
+    """Lane Y (H1): curiosity refuses the re-checked subject by cooldown, but it was never among the timer's ten
+    best (curiosity.rank limit 10), so curiosity could not have taken it: no conflict, no record."""
+    db, _ = individual
+    stage(db, monkeypatch)
+    both, timer = ranked(B, A), ranked(B)
+    monkeypatch.setattr(curiosity, "rank", lambda db, now, limit=10: (timer if limit == 10 else both)(db, now))
+    _recheck_takes(db, monkeypatch, A)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=3)
+    assert any(s.get("target", {}).get("key") == A[1] and str(s["reason"]).startswith("investigated autonomously")
+               for s in report["skipped"])          # the cooldown refusal the old record fired on
+    assert _arbitrations(db) == [] and "arbitration" not in report
+
+
+def test_no_budget_left_for_curiosity_records_no_arbitration(individual, monkeypatch):
+    """Lane Y (H1): the re-check spent the pass's whole budget, so curiosity could not have taken the subject."""
+    db, _ = individual
+    stage(db, monkeypatch)
+    _recheck_takes(db, monkeypatch, A)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=1)
+    assert any(s.get("target", {}).get("key") == A[1] and str(s["reason"]).startswith("investigated autonomously")
+               for s in report["skipped"])
+    assert _arbitrations(db) == [] and "arbitration" not in report
+
+
 # ---- competing objectives (directive §8: "prevent any subsystem from creating uncontrolled competing objectives") ----
 
 def test_every_background_activity_passes_the_one_check_with_the_whole_loop_on(individual):

@@ -489,8 +489,9 @@ ARBITRATION_ITEMS = 3
 def _cycle(db, now) -> dict:
     """The background loop as the records hold it (ADR-056): the latest background investigation and how it was
     admitted (path, rule, order, the salience score it carried, its place in the priority order), the latest
-    arbitrations between background mechanisms (who took a subject, which mechanism lost, by what rule), and the
-    predictions settled so far and how. Ids, numbers and fixed words only: no objective, key or statement, so nothing
+    arbitrations between background mechanisms (who took a subject, which mechanism lost, by what rule: recorded
+    only for a real conflict, a subject the losing mechanism could have launched in that pass with budget left for
+    it), and the predictions settled so far and how. Ids, numbers and fixed words only: no objective, key or statement, so nothing
     a forget removes stays here."""
     from .background import ORIGIN_SQL
     row = db.execute(f"SELECT id, origin, status, created_at FROM web_tasks WHERE {ORIGIN_SQL} AND "

@@ -581,12 +581,20 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         report["skipped"].append({"what": "curiosity", "reason": admitted["gate"]})
     taken_keys = {k: taken[kid] for kid, k in db.execute(f"SELECT id, key FROM web_knowledge WHERE id IN "
                                                          f"({','.join('?' * len(taken))})", tuple(taken))}
+    pool = admitted.get("pool") or {}
+    room = None         # Wave 2 lane Y (H1): could curiosity have launched anything in this pass? read once, if asked
     for refused in admitted["refused"]:
         report["skipped"].append({"target": refused.get("target") or {"key": refused.get("key"),
                                                                         "knowledge_id": refused.get("knowledge_id")},
                                   "reason": refused["reason"]})
-        if refused.get("key") in taken_keys and str(refused.get("reason", "")).startswith("investigated autonomously"):
-            _arbitrated(db, report, now, taken_keys[refused["key"]], "recheck", "curiosity", TAKEN_BY_RECHECK)
+        # a real conflict only: the re-check took a subject the timer's curiosity could launch in this pass (in its
+        # pool, as the kind it launches) while budget was left for it; a cooldown refusal alone is not one
+        if refused.get("key") in taken_keys and str(refused.get("reason", "")).startswith("investigated autonomously") \
+                and pool.get(refused["key"]) == refused.get("kind"):
+            if room is None:
+                room = budget_left > 0 and _over_cap(db, now, cfg) is None
+            if room:
+                _arbitrated(db, report, now, taken_keys[refused["key"]], "recheck", "curiosity", TAKEN_BY_RECHECK)
     refreshes = {a["knowledge_id"]: a["task_id"] for a in report["predictions"]
                  if a["action"] == "refresh_submitted" and a.get("knowledge_id") is not None}
     refreshed = set(refreshes)
