@@ -5,6 +5,7 @@ the knowledge re-check (and its ablations), and strategy selection from external
   python scripts/bench_genesis_knowledge.py --split development                 # choose settings here
   python scripts/bench_genesis_knowledge.py --split held_out --out held.json   # report here, once
   python scripts/bench_genesis_knowledge.py --split held_out --part strategy
+  python scripts/bench_genesis_knowledge.py --split held_out --decoupled --out d.json   # paired comparisons
 
 Offline and deterministic per seed (apart from wall seconds). The worlds are frozen in
 src/neuroscifi/acceptance/cognition/knowledge_splits.py; what each measures is in
@@ -27,15 +28,18 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--split", choices=("development", "held_out"), required=True)
     p.add_argument("--part", choices=("recheck", "strategy", "both"), default="both")
+    p.add_argument("--decoupled", action="store_true",
+                   help="the decoupled draw (Wave 2 lane Y): the world's changes and the research outcomes from "
+                        "separate keyed streams, for paired comparisons; the default is the recorded draw")
     p.add_argument("--out")
     a = p.parse_args(argv)
     started = time.perf_counter()
     out = {"label": "lane K benchmark: simulated worlds driven through the real modules; offline; no answer model",
            "split": a.split}
     if a.part in ("recheck", "both"):
-        out["recheck"] = knowledge.run_recheck(a.split)
+        out["recheck"] = knowledge.run_recheck(a.split, decoupled=a.decoupled)
     if a.part in ("strategy", "both"):
-        out["strategy"] = knowledge.run_strategy(a.split)
+        out["strategy"] = knowledge.run_strategy(a.split, decoupled=a.decoupled)
     out["wall_seconds"] = time.perf_counter() - started
     text = json.dumps(scoring.rounded(out), indent=1)
     if a.out:

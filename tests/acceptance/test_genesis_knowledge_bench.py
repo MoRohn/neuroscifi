@@ -35,6 +35,40 @@ def test_the_strategy_world_scores_external_outcomes_only():
     assert mech["inflator_share"] <= inc["inflator_share"]
 
 
+def test_the_decoupled_draw_keys_each_outcome_by_step_and_subject_and_leaves_the_recorded_draw_alone(tmp_path):
+    """Lane Y (H3): under the decoupled draw an outcome about a subject in a step is the same whatever was drawn
+    before it (common random numbers across policies); the recorded (default) draw is unchanged."""
+    from neuroscifi.instance import store
+    dbs = [store.create(tmp_path / f"k{i}.sqlite", knowledge.T0, note="test") for i in range(2)]
+    try:
+        world = knowledge._World(TINY, 5, dbs[0], "baseline", decoupled=True)
+        world.step = 2
+        first = world.outcome_rng("item000").random()
+        world.rng.random(), world.outcome_rng("item001").random()
+        assert world.outcome_rng("item000").random() == first
+        world.step = 3
+        assert world.outcome_rng("item000").random() != first
+        recorded = knowledge._World(TINY, 5, dbs[1], "baseline")   # the default: the one stream, as recorded
+        assert recorded.outcome_rng("item000") is recorded.rng
+    finally:
+        for db in dbs:
+            db.close()
+
+
+def test_the_decoupled_strategy_draw_offers_both_policies_the_same_candidates():
+    """Lane Y (H3): under the recorded draw the offers shift once the two policies choose differently (one stream
+    draws the offers and the outcomes); decoupled, both policies are offered the same candidates at every step."""
+    from neuroscifi.acceptance.cognition import knowledge_splits as ks
+    spec = next(w for w in ks.STRATEGY["development"]["worlds"] if w["name"] == "dev-close")
+    offers = {}
+    for decoupled in (False, True):
+        for policy in ("incumbent", "thompson"):
+            offers[decoupled, policy] = []
+            knowledge.strategy_world(spec, 22, policy, decoupled=decoupled, offers=offers[decoupled, policy])
+    assert offers[False, "incumbent"] != offers[False, "thompson"]
+    assert offers[True, "incumbent"] == offers[True, "thompson"]
+
+
 def test_lane_k_registers_for_retention_adversarial_and_information_value():
     cognition.load_plugins()
     names = {(m.family, m.name) for m in cognition.mechanisms()}

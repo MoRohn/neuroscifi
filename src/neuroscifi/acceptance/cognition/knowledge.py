@@ -57,9 +57,21 @@ def _name(sid):
 
 
 class _World:
-    def __init__(self, spec, seed, db, policy):
+    """The staged individual and its world.
+
+    The draw (Wave 2 lane Y, after the benchmark-integrity review, H3). `decoupled=False` (the default, the draw
+    every recorded lane K number was made with): one stream (`rng`) draws the staging, the truth changes, the
+    arrivals AND every research outcome, so two policies that investigate different subjects see different later
+    truth changes. `decoupled=True` (the one for paired comparisons): the truth changes of each step draw from a
+    stream keyed by (world, seed, step), each research outcome from a stream keyed by (world, seed, step, subject),
+    and `rng` is left to the staging and the arrivals; the world's trajectory is then the same under every policy.
+    The worlds file is the same either way; only how the harness draws from it differs.
+    `web` / `inst`: settings applied BEFORE the staging (lane Y, L1), on top of this world's own."""
+
+    def __init__(self, spec, seed, db, policy, *, web=None, inst=None, decoupled=False):
         from ...webcortex import autonomy, state
         self.spec, self.db, self.policy = spec, db, policy
+        self.seed, self.decoupled, self.step = seed, decoupled, 0
         self.rng = random.Random(f"recheck:{spec['name']}:{seed}")
         self.pick_rng = random.Random(f"recheck-pick:{spec['name']}:{seed}")
         self.truth, self.vol, self.subjects, self.old = {}, {}, {}, set()
@@ -67,7 +79,9 @@ class _World:
         self.now = T0
         state.set_config(db, {"enabled": True, "min_domain_interval": 0.0, "autonomous": True,
                               "idle_recheck": policy.startswith("recheck"),
-                              "recheck_per_tick": spec["budget"], "recheck_daily": 100}, T0)
+                              "recheck_per_tick": spec["budget"], "recheck_daily": 100} | dict(web or {}), T0)
+        if inst:
+            store.set_config(db, inst, T0)
         autonomy.enable(db, T0)
         autonomy.set_policy(db, {"cooldown": 3600.0}, T0)
         lo, hi = spec["age_days"]
@@ -177,11 +191,18 @@ class _World:
         key = self.db.execute("SELECT key FROM web_knowledge WHERE id=?", (kid,)).fetchone()
         return key[0].removesuffix(" latest version") if key else None
 
+    # -- the draws (see the class doc) --
+    def outcome_rng(self, sid):
+        """The stream one research outcome about `sid` draws from in this step."""
+        if not self.decoupled:
+            return self.rng
+        return random.Random(f"recheck-outcome:{self.spec['name']}:{self.seed}:{self.step}:{sid}")
+
     # -- the investigation --
     def investigate(self, sid):
         from ...webcortex import predictions
         before = self.stored_version(sid)
-        reported = self.truth[sid] if self.rng.random() < self.spec["reliability"] else before
+        reported = self.truth[sid] if self.outcome_rng(sid).random() < self.spec["reliability"] else before
         out = self._consolidate([self._agree(sid, reported if reported is not None else self.truth[sid],
                                              self.now)], self.now, origin="curiosity", sid=sid)
         row = self.live(sid)
@@ -193,8 +214,10 @@ class _World:
         return {"caught": caught, "live": row is not None}
 
     def step_world(self):
+        rng = random.Random(f"recheck-world:{self.spec['name']}:{self.seed}:{self.step}") if self.decoupled \
+            else self.rng
         for sid in list(self.truth):
-            if self.rng.random() < self.vol[sid]:
+            if rng.random() < self.vol[sid]:
                 self.truth[sid] += 1
 
     def score(self):
@@ -264,17 +287,18 @@ def _ablated(ablate):
         yield
 
 
-def recheck_world(spec, seed, policy, ablate=frozenset()) -> dict:
+def recheck_world(spec, seed, policy, ablate=frozenset(), *, decoupled=False) -> dict:
     started = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="nsf-genesis-k-") as directory:
         db = store.create(Path(directory) / "k.sqlite", T0, note="lane K benchmark: retention under change")
         with closing(db):
-            world = _World(spec, seed, db, policy)
+            world = _World(spec, seed, db, policy, decoupled=decoupled)
             beliefs_before = db.execute("SELECT count(*) FROM belief_revisions").fetchone()[0]
             series, investigations, caught = [], 0, 0
             arrivals = 0
             with _ablated(ablate):
                 for step in range(spec["steps"]):
+                    world.step = step
                     world.now += spec["step_hours"] * 3600.0
                     world.step_world()
                     for _ in range(spec["arrivals"]):
@@ -298,7 +322,7 @@ def recheck_world(spec, seed, policy, ablate=frozenset()) -> dict:
 POLICIES = ("baseline", "recheck", "random", "oracle")
 
 
-def run_recheck(split, *, policies=POLICIES, ablations=COMPONENTS) -> dict:
+def run_recheck(split, *, policies=POLICIES, ablations=COMPONENTS, decoupled=False) -> dict:
     spec = splits.RECHECK[split]
     out = {}
     runs = [(p, frozenset()) for p in policies] + [(f"recheck-no-{a}", frozenset({a})) for a in ablations]
@@ -308,7 +332,7 @@ def run_recheck(split, *, policies=POLICIES, ablations=COMPONENTS) -> dict:
         policy = "recheck" if name.startswith("recheck") else name
         worlds = {}
         for world in spec["worlds"]:
-            rows = [recheck_world(world, seed, policy, ablate) for seed in spec["seeds"]]
+            rows = [recheck_world(world, seed, policy, ablate, decoupled=decoupled) for seed in spec["seeds"]]
             worlds[world["name"]] = {
                 "mean_correct": scoring.spread([r["mean"]["all"] for r in rows]),
                 "mean_correct_weighted": scoring.spread([r["mean"]["weighted"] for r in rows]),
@@ -320,11 +344,23 @@ def run_recheck(split, *, policies=POLICIES, ablations=COMPONENTS) -> dict:
                 "lost": max(r["lost"] for r in rows), "belief_writes": max(r["belief_writes"] for r in rows),
                 "investigations": scoring.spread([r["investigations"] for r in rows])["mean"],
                 "wall_seconds": scoring.spread([r["wall_seconds"] for r in rows])["mean"]}
+            if decoupled:       # per seed, for paired differences (same world trajectory under every policy)
+                worlds[world["name"]]["per_seed"] = {
+                    "mean_correct": [r["mean"]["all"] for r in rows], "final_correct": [r["final"]["all"] for r in rows],
+                    "caught_per_investigation": [r["caught_per_investigation"] for r in rows]}
         out[name] = {"worlds": worlds, "mean": {
             m: scoring.spread([w[m]["mean"] for w in worlds.values()])["mean"]
             for m in ("mean_correct", "mean_correct_weighted", "mean_correct_old", "mean_correct_old_weighted",
                       "mean_correct_new", "final_correct", "caught_per_investigation")}}
-    return {"split": split, "seeds": list(spec["seeds"]), "policies": out}
+    result = {"split": split, "seeds": list(spec["seeds"]), "policies": out}
+    return result | {"draw": DRAW[True]} if decoupled else result
+
+
+DRAW = {False: "coupled: one stream draws the truth changes, the arrivals and the research outcomes (the recorded "
+               "lane K draw)",
+        True: "decoupled (Wave 2 lane Y, after the benchmark-integrity review): truth changes keyed by (world, seed, "
+              "step), research outcomes by (world, seed, step, subject); the same world trajectory under every "
+              "policy"}
 
 
 # ---- strategy selection -----------------------------------------------------------------------------------------------
@@ -332,12 +368,18 @@ def run_recheck(split, *, policies=POLICIES, ablations=COMPONENTS) -> dict:
 INFLATOR_MODE = "continuous"
 
 
-def strategy_world(spec, seed, policy) -> dict:
+def strategy_world(spec, seed, policy, *, decoupled=False, offers=None) -> dict:
+    """`decoupled` (lane Y, H3): the offered candidates of each step draw from a stream keyed by (world, seed, step)
+    and the external outcome from one keyed by (world, seed, step, candidate), so both policies are offered the same
+    candidates and a candidate chosen by both meets the same outcome; the default is the recorded draw (one stream
+    for both, so the offers shift once the policies choose differently). `offers`: a list that receives each step's
+    offered arms (tests)."""
     from ...webcortex import orchestrator, strategies
     rng = random.Random(f"strategy:{spec['name']}:{seed}")
     arms = {m: m for m in spec["success"] if m != "inflator"} | {"inflator": INFLATOR_MODE}
     names = sorted(arms)
     verified = inflator = picks = 0
+    offers = [] if offers is None else offers
     with tempfile.TemporaryDirectory(prefix="nsf-genesis-k-") as directory:
         db = store.create(Path(directory) / "s.sqlite", T0, note="lane K benchmark: strategy selection")
         with closing(db):
@@ -346,15 +388,19 @@ def strategy_world(spec, seed, policy) -> dict:
             now = T0
             for step in range(spec["steps"]):
                 now += 3600.0
+                offer_rng = random.Random(f"strategy-offer:{spec['name']}:{seed}:{step}") if decoupled else rng
                 offered = [{"key": f"c{step}-{i}", "mode": arms[a], "arm": a, "priority": 1.0}
-                           for i, a in enumerate(rng.choice(names) for _ in range(spec["candidates"]))]
+                           for i, a in enumerate(offer_rng.choice(names) for _ in range(spec["candidates"]))]
+                offers.append([c["arm"] for c in offered])
                 if policy == "thompson":
                     ordered, _ = strategies.rank(db, now, offered, seed=f"{spec['name']}:{seed}:{step}")
                 else:
                     ordered = offered
                 choice = ordered[0]
                 picks += 1
-                success = choice["arm"] != "inflator" and rng.random() < spec["success"][choice["arm"]]
+                outcome_rng = random.Random(f"strategy-outcome:{spec['name']}:{seed}:{step}:{choice['key']}") \
+                    if decoupled else rng
+                success = choice["arm"] != "inflator" and outcome_rng.random() < spec["success"][choice["arm"]]
                 inflator += choice["arm"] == "inflator"
                 verified += success
                 prepared = orchestrator.prepare(db, f"What is the {choice['key']} figure?", now, mode=choice["mode"],
@@ -379,18 +425,21 @@ def strategy_world(spec, seed, policy) -> dict:
     return {"verified_per_investigation": verified / picks, "inflator_share": inflator / picks}
 
 
-def run_strategy(split) -> dict:
+def run_strategy(split, *, decoupled=False) -> dict:
     spec = splits.STRATEGY[split]
     out = {}
     for policy in ("incumbent", "thompson"):
         worlds = {}
         for world in spec["worlds"]:
-            rows = [strategy_world(world, seed, policy) for seed in spec["seeds"]]
+            rows = [strategy_world(world, seed, policy, decoupled=decoupled) for seed in spec["seeds"]]
             worlds[world["name"]] = {k: scoring.spread([r[k] for r in rows]) for k in rows[0]}
+            if decoupled:
+                worlds[world["name"]]["per_seed"] = {k: [r[k] for r in rows] for k in rows[0]}
         out[policy] = {"worlds": worlds, "verified_per_investigation":
                        scoring.spread([w["verified_per_investigation"]["mean"] for w in worlds.values()])["mean"],
                        "inflator_share": scoring.spread([w["inflator_share"]["mean"] for w in worlds.values()])["mean"]}
-    return {"split": split, "seeds": list(spec["seeds"]), "mechanism": out["thompson"], "incumbent": out["incumbent"]}
+    result = {"split": split, "seeds": list(spec["seeds"]), "mechanism": out["thompson"], "incumbent": out["incumbent"]}
+    return result | {"draw": DRAW[True]} if decoupled else result
 
 
 # ---- registration in the cognitive benchmark (scripts/bench_cognition.py --plugin / PLUGINS) ---------------------------
