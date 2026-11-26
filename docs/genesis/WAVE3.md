@@ -3,8 +3,8 @@
 Status: 2026-11-26. Wave 3 of Project Cognitive Genesis. Step 0 (`gen3-0`) took one look at new withheld
 learning-cycle worlds with the unchanged system; six lanes (P, C, H, R, S, V) were then built in parallel and merged
 on `genesis-wave3` (`f0a1f09`). Two independent reviews read the merged tree (measurement, security); a fix lane
-(`gen3-fix`) acts on their findings, and this reconciliation lane (`gen3-rec`) wrote the record. Where the fix lane will
-supply a final number, wording or default, the text carries the marker [fix lane] on that line. Sources: ADR-058 to
+(`gen3-fix`) acts on their findings, and this reconciliation lane (`gen3-rec`) wrote the record. The fix lane's
+final defaults and numbers are written in (its evidence: `genesis_wave3_fix_*.json`). Sources: ADR-058 to
 ADR-062 in [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md), the evidence files named beside
 each number, the lanes' reports and the two reviews. Nothing here is a claim of consciousness, awareness or general
 intelligence; the names describe functions.
@@ -18,7 +18,8 @@ rose on a single source; and some subjects held correctly early were later wrong
 (`docs/quality/COGNITIVE_BENCHMARK.md`, "The unchanged system's one look"). Lane S built two rules against this. The
 reviews showed that they do not close the hole: they read the exact phrasings lane S's own test worlds were written
 with, and miss others; one of them merges honest outlets that credit each other; the other throws away honest pages on
-a large individual and treats ordinary sentences about "the AI Act" as model text. **Both rules ship OFF** [fix lane].
+a large individual and treats ordinary sentences about "the AI Act" as model text. **Both rules ship OFF** (fix lane, decisions D1 and D2; the settings stay, the defects the security review found in
+them are fixed, and the owner may turn either on).
 At Wave 3's shipped defaults the individual treats sources exactly as it did at step 0: a reworded copy of a story can
 still count as an independent source, and a page repeating the individual's own answer without crediting a model can
 still read as corroboration. Reading the wording of a sentence does not decide where a fact came from; what would is a
@@ -34,7 +35,7 @@ confirmation). It is not built. It is the first of the next directions (FINAL_EV
 - two things the owner can use and that change nothing by themselves: predictive regulation "in shadow", which only
   writes down what the forecast would have done, and `nsf readiness`, which counts real outcomes (lane H);
 - built and off: another order for the knowledge re-check (lane R), automatic replacement of an out-of-date fact
-  (supersession, lane S), and the two source rules (lane S) [fix lane].
+  (supersession, lane S), and the two source rules (lane S), off since the fix lane.
 
 **Negative results, as plainly as the rest:**
 - No order of the knowledge re-check helps: every one of 14 orders gets "no evidence" on held-out; the order is not
@@ -43,7 +44,7 @@ confirmation). It is not built. It is the first of the next directions (FINAL_EV
   allowance first it reaches more subjects, but it stays below the blind schedule in every world (lane V, ADR-062).
 - Supersession gains less than the spread, and on lane S's held-out worlds about one replacement in eleven was wrong;
   a wrong one stayed wrong for 8 cycles in one world and at least 10 in another, still wrong when the run ended
-  (review S-5; [fix lane]).
+  (review S-5; re-measured by the fix lane with the censoring recorded).
 - Lane S's held-out numbers are development evidence: its echo rule was changed twice after held-out runs.
 
 ## Why Wave 3 exists
@@ -92,7 +93,7 @@ The shipped defaults of step 0's tree were identical to the baseline on every me
 | C | front-door adjustment in the linear causal engine; a stated origin of the moments (`population` or `samples: n`), an interval from the sample size, a usefulness bound | on in `nsf imagine scm` (`--no-front-door`) | ADR-059 | `genesis_frontdoor.json` |
 | H | `predictive_regulation: "shadow"` (verdicts recorded, the gate decides as off), `nsf internal-state --shadow-report`, `nsf readiness` and its owner-scope field in the self-description | shadow: opt-in; readiness: read-only | ADR-058 | `genesis_h.json` |
 | R | `recheck_order`: the re-check's pool ordered by observed change rate, a newer version seen, and rotation; the decomposition of the loop's shortfall | `"staleness"` (unchanged) | ADR-060 | `genesis_recheck_order.json` |
-| S | `attribution_independence` (a sentence crediting an outlet counts with it), `echo_recognition` (a page repeating the individual's own text is no evidence for it), `supersession` with `supersession_min_sources`, `nsf web replacements` / `nsf web revert` | merged ON / ON / `"ask"`; ship OFF / OFF / `"ask"` [fix lane] | ADR-061 | `genesis_wave3_s.json` |
+| S | `attribution_independence` (a sentence crediting an outlet counts with it), `echo_recognition` (a page repeating the individual's own text is no evidence for it), `supersession` with `supersession_min_sources`, `nsf web replacements` / `nsf web revert` | merged ON / ON / `"ask"`; ship OFF / OFF / `"ask"` (fix lane) | ADR-061 | `genesis_wave3_s.json` |
 | V | the worker's idle investigation measured inside the timer's allowance; `autonomy.idle` now honours the day's task count | the fix on; no setting | ADR-062 | `genesis_idle_coverage.json` |
 
 No schema change (version 19). No new background activity beyond benchmark runners registered in
@@ -102,9 +103,9 @@ No schema change (version 19). No new background activity beyond benchmark runne
 
 | Setting | Default | Why |
 |---|---|---|
-| `attribution_independence` | **off** [fix lane] | under lane S's own pre-registered rule the verdict was "unsafe" on development and held-out; it costs −0.114 `correct` in one development world against a spread of 0.066; 19 of 27 common credit phrasings give no key or a wrong key; staged with honest outlets crediting each other it merges them and `correct` falls 0.07–0.13, beyond the spread (review S-1, S-3, S-4); one sentence crediting two honest outlets merges them so a true fact is never verified (security H1) |
-| `echo_recognition` | **off** [fix lane] | its fall in own versions comes from a phrase list added after held-out runs; echoes that credit no model pass at 67–100 % of the baseline's rate (review S-2, S-8); on a large individual it discards honest pages, a forgotten source blocks corroboration of that subject, its scan can hold the write lock for seconds per claim, and "the AI Act" reads as model text (security M2–M5) |
-| `supersession` (`supersession_min_sources` 2) | `"ask"` (off) | gains less than the spread; false replacements; the owner's decision (it changes the rule that contradictions are asked, never decided); with it on, forget does not reach its record and a family or agent task can replace the owner's item (security M1, M6) [fix lane] |
+| `attribution_independence` | **off** (fix lane) | under lane S's own pre-registered rule the verdict was "unsafe" on development and held-out; it costs −0.114 `correct` in one development world against a spread of 0.066; 19 of 27 common credit phrasings give no key or a wrong key; staged with honest outlets crediting each other it merges them and `correct` falls 0.07–0.13, beyond the spread (review S-1, S-3, S-4); one sentence crediting two honest outlets merges them so a true fact is never verified (security H1) |
+| `echo_recognition` | **off** (fix lane) | its fall in own versions comes from a phrase list added after held-out runs; echoes that credit no model pass at 67–100 % of the baseline's rate (review S-2, S-8); on a large individual it discards honest pages, a forgotten source blocks corroboration of that subject, its scan can hold the write lock for seconds per claim, and "the AI Act" reads as model text (security M2–M5) |
+| `supersession` (`supersession_min_sources` 2) | `"ask"` (off) | gains less than the spread; false replacements; the owner's decision (it changes the rule that contradictions are asked, never decided); with it on, forget does not reach its record and a family or agent task could replace the owner's item (security M1, M6: fixed by the fix lane; two colluding pages can still replace a true item in the owner's research or a refresh) |
 | `recheck_order` | `"staleness"` (lane K's order) | no held-out gain: every order "no evidence" (ADR-060) |
 | `predictive_regulation` | `false` (the third value `"shadow"` is the owner's opt-in) | the forecast has no host evidence yet; shadow lets the owner gather it without any change in behaviour (ADR-058) |
 | front door in `nsf imagine scm` | on | its pre-registered rule held: the front-door group 0 → 1.000 held-out (12 of 12), every other leaf unchanged (ADR-059); its withheld look is pending |
@@ -169,7 +170,8 @@ held item without asking. Gain against the fixes, held-out (reference sd in brac
 any world; retention worse in one (s-wrong-newer 0.50 → 0.75 regressed per run). Rule replacements on lane S
 held-out: 3 of 33 false (9 %, pooled, not a claim; per world 1 of 13, 2 of 12, 0 of 8) (`genesis_wave3_s.json`).
 The longest a false replacement stayed wrong: 8 cycles in s-mixed; at least 10 cycles in s-wrong-newer, still wrong
-when the run ended (review S-5, per-seed maxima; the lane reported the mean of the maxima, 2 and 5) [fix lane].
+when the run ended (review S-5, per-seed maxima; the lane reported the mean of the maxima, 2 and 5; the fix lane's re-measurement records
+per seed s-mixed 0, 0, 0, 8 and s-wrong-newer 10 (3 censored), 0, 10 (1 censored), 0).
 `fixes` itself, with supersession "ask", made false replacements on s-wrong-newer through the path that existed
 before Wave 3 (per seed 1, 0, 1, 0, persisting 9 and 10 cycles; review S-5). All of these are development evidence
 (S-8). The owner's commands: `nsf web replacements`, `nsf web revert ID`
@@ -230,8 +232,9 @@ worlds with exact moments: 0 false answers, 0 traps answered. With moments estim
 answer carries an interval (held-out coverage 0.930–0.945 with the usefulness bound lifted); an unstated origin is
 declined. Back-door answers keep their old behaviour with a caveat; under the usefulness bound their coverage at
 n = 100 is 0.916 on a reviewer's re-run, against 0.953 without the bound (review, lane C LOW). The 5 adversarial
-front-door cases currently pass even with the criterion broken, because they are declined by the moments rule first;
-the fix lane stages them with population moments [fix lane]. Cost: about 0.1 ms per answer.
+front-door cases passed even with the criterion broken, because they were declined by the moments rule first;
+since the fix lane (`8a8fce7`) they are staged with population moments and a test shows them failing with the
+separation check removed. Cost: about 0.1 ms per answer.
 
 ### 3.6 Lane H: evidence from the host without changing behaviour (ADR-058; `genesis_h.json`)
 
@@ -240,12 +243,16 @@ while the forecast would have held on 279 (development) and 508 (held-out) ticks
 off, 8.7–9.0 µs in shadow (review H-5). Two cautions from the review, for the owner who gathers a week:
 - **The host report will look good by construction** until the fix lane changes it: 73 % of the shadow's hits in the
   staged runs fall on ticks where the real gate already refused, and the mean lead equals the 180 s horizon, its cap
-  (review H-1). The fix lane makes the report count only what the forecast adds [fix lane].
+  (review H-1). Since the fix lane the report counts what the forecast adds (`settled.added`), separates holds the
+  gate already made, reports the lead as a distribution and states, before any host data, what would support turning
+  it on (`guide`); re-run on the 48 staged runs: development 62 added hits against 60 added false alarms, held-out 78
+  against 198 (ADR-058).
 - "Equals the family's scoring" holds for 3 of 7 quantities (episodes, preceded, lead); hits, false alarms, misses
   and quiet equal a reference counter written for the check (review H-2).
 
 `nsf readiness` at 10,000 knowledge items and 500,000 events: median 36 ms (read-only). The existing
-`strategies.outcomes` takes 5.8 s on the same individual (two unindexed look-ups per task; reported, not fixed).
+`strategies.outcomes` took 5.8 s on the same individual (two unindexed look-ups per task); the fix lane rewrote it
+over one pass per table without an index (same counts; 0.035 s against 42–55 s on a staged individual of that size).
 
 ### 3.7 Lane P: what CI showed
 
@@ -270,7 +277,7 @@ after, lane P's report). `tests/e2e/test_focus_kept.py`: 3 tests, which fail on 
 Lanes R and V measured without lane S's rules, and lane S without lane V's budget fix and lane R's order. The
 reconciliation re-ran each lane's command on the merged tree `f0a1f09`, where lane S's rules were still on, and wrote
 the results to new files; the lanes' own files are unchanged. **These figures are before the fix lane**: the fix
-lane re-measures after the default change [fix lane].
+lane re-measured after the default change (ADR-061 "Fix lane", ADR-060, ADR-062; `genesis_wave3_fix_*.json`).
 
 | Lane, command | Values compared | Values that differ | `correct` values that differ | Verdicts changed | File |
 |---|---|---|---|---|---|
@@ -322,8 +329,8 @@ abandon lands between two reads of the fetch's thread, the rest of a small page 
 read and counted as unused, beyond the task's byte budget. A probe (reconciliation, not committed) recorded every
 `take()` made after an abandon: every run over the bound had such takes (2 of 40 with a 0.3 s delay before the
 shutdown; 1 of 10 without any delay on the loaded host), and with `take()` granting 0 bytes to an abandoned fetch, 0
-of 40 were over the bound. The test is right; making it deterministic needs that one-line product change, listed for
-the fix lane, not made here [fix lane].
+of 40 were over the bound. The test is right; making it deterministic needs that one-line product change, made by the fix lane
+(`82b7fd9`): `take()` grants 0 bytes to an abandoned fetch, and a deterministic test forces the interleaving.
 
 ## 4. Disclosures
 
@@ -353,13 +360,13 @@ the fix lane, not made here [fix lane].
 - **Source independence and the individual's own text** (the hole of step 0): open at shipped defaults. A rule that
   decides where a value came from by publication order and derivation, or by the owner's confirmation, is not built.
 - Supersession's soundness when the owner turns it on: forget and revert (security M1), which tasks may trigger it
-  (M6), revert not reopening closed questions (L1) [fix lane].
+  (M6), revert not reopening closed questions (L1): fixed by the fix lane; the false-replacement risk from colluding
+  pages stays.
 - The withheld looks of Wave 3 (below): the front door, each source rule for the record, the re-check orders and the
   idle investigation for the record.
-- The read-ahead accounting race (§3.9) [fix lane].
-- The shadow report's definitions (H-1, H-2) before an owner decides on predictive regulation [fix lane].
-- Lane C's adversarial front-door cases and the sampled-trap test staged with stated moments [fix lane].
-- `strategies.outcomes` is slow at scale (5.8 s, two unindexed look-ups per task; an index is a migration).
+- The read-ahead accounting race (§3.9): fixed by the fix lane.
+- The shadow report's definitions (H-1, H-2): changed by the fix lane; a host week is still to be run by the owner.
+- Lane C's adversarial front-door cases and the sampled-trap test: staged with stated moments by the fix lane.
 - Coverage is limited by the allowance: a share of the allowance for reaching uncovered subjects would have to be
   chosen on development and tested on worlds no lane has seen. Not built.
 - Everything above is offline and simulated: nothing here was measured on the open web, with a live answer model, or
@@ -369,7 +376,7 @@ the fix lane, not made here [fix lane].
 
 | Piece | How | Data |
 |---|---|---|
-| the two source rules (already off [fix lane]) | `nsf web config --db DB --set attribution_independence=false --set echo_recognition=false` | nothing stored by them |
+| the two source rules (already off) | `nsf web config --db DB --set attribution_independence=false --set echo_recognition=false` | nothing stored by them |
 | supersession (off) | `nsf web config --db DB --set 'supersession="ask"'`; each replacement: `nsf web revert ID` | its replacements stay listed |
 | `recheck_order` (default) | `nsf web config --db DB --set 'recheck_order="staleness"'` | none |
 | shadow | `nsf config --no-predictive-regulation --db DB`; delete `<db>.resources/forecast-shadow*` to discard | numbers only |

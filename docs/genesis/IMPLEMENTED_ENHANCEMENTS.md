@@ -21,7 +21,7 @@ describes a function.
 - **Wave 3** (§5) adds the front door in `nsf imagine scm` (on), the idle investigation's daily task count (a
   budget fix), Pocket and console panels redrawn only on change, predictive regulation "in shadow" and
   `nsf readiness` (opt-in / read-only), and three settings built off: `recheck_order`, `supersession` and the two
-  source rules (`attribution_independence`, `echo_recognition`, merged on at `f0a1f09`, shipping off [fix lane]).
+  source rules (`attribution_independence`, `echo_recognition`, merged on at `f0a1f09`, shipping off since the fix lane).
   At Wave 3's shipped defaults the individual treats sources exactly as before Wave 3.
 - **Wave 2 built almost no mechanism.** It added one record (arbitration, on), one ordering rule (salience attention,
   off), one display field, and 14 small guards that keep the product working when a Wave 1 mechanism fails.
@@ -141,7 +141,7 @@ From [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) §6 and the Wave 2 l
 
 Record: [WAVE3.md](WAVE3.md). Defaults read from the code on `gen3-rec` (merged tree `f0a1f09`): `WebConfig` in
 `src/neuroscifi/webcortex/config.py`, `InstanceConfig` in `src/neuroscifi/instance/store.py`, `FRONT_DOOR` in
-`src/neuroscifi/causal.py`. Where the fix lane changes a default the row says so with [fix lane]. No schema change.
+`src/neuroscifi/causal.py`. Where the fix lane changed a default the row says so. No schema change.
 
 | Mechanism | Module(s) | Setting: default | ADR | Tests | Evidence | How to back it out |
 |---|---|---|---|---|---|---|
@@ -149,8 +149,8 @@ Record: [WAVE3.md](WAVE3.md). Defaults read from the code on `gen3-rec` (merged 
 | Predictive regulation in shadow: the gate decides as off, the forecast's verdict is recorded and settled against the host's memory; `nsf internal-state --shadow-report` | `resources/shadow.py`, `resources/policy.py` | `predictive_regulation` `false`; `"shadow"` is opt-in (instance) | ADR-058 | `tests/test_forecast_shadow.py`, `tests/uat/test_uat_shadow_faults.py`, `tests/uat/test_uat_rollback.py::test_predictive_regulation_shadow` | `genesis_h.json` | `nsf config --no-predictive-regulation`; delete `<db>.resources/forecast-shadow*` |
 | `nsf readiness`: each learner of real outcomes against its minimum; `uncertain.outcomes_readiness` (owner scope) | `readiness.py`, `self_description.py` | always (read-only) | ADR-058 | `tests/test_readiness.py` | `genesis_h.json` | revert `4807813` |
 | The re-check's order by change rate, a newer version seen, rotation | `webcortex/recheck.py` | `recheck_order` `"staleness"` (web) | ADR-060 | `tests/webcortex/test_recheck_order.py`, `tests/uat/test_uat_rollback.py::test_recheck_order` | `genesis_recheck_order.json` | leave at `"staleness"` |
-| A sentence crediting an outlet counts with that outlet | `webcortex/claims.py` (`attribution_keys`) | `attribution_independence`: `true` at `f0a1f09`, ships `false` [fix lane] (web) | ADR-061 | `tests/acceptance/test_wave3_s.py`, rollback and fault-injection tests | `genesis_wave3_s.json`; review S-1, S-3, S-4, security H1 | `nsf web config --set attribution_independence=false` |
-| A page repeating the individual's own text, or crediting a model, is no evidence for it | `webcortex/consolidate.py` (`_Echoes`, `_without_echoes`) | `echo_recognition`: `true` at `f0a1f09`, ships `false` [fix lane] (web) | ADR-061 | as above | `genesis_wave3_s.json`; review S-2, S-8, security M2–M5 | `nsf web config --set echo_recognition=false` |
+| A sentence crediting an outlet counts with that outlet | `webcortex/claims.py` (`attribution_keys`) | `attribution_independence`: `true` at `f0a1f09`, ships `false` (fix lane) (web) | ADR-061 | `tests/acceptance/test_wave3_s.py`, rollback and fault-injection tests | `genesis_wave3_s.json`; review S-1, S-3, S-4, security H1 | `nsf web config --set attribution_independence=false` |
+| A page repeating the individual's own text, or crediting a model, is no evidence for it | `webcortex/consolidate.py` (`_Echoes`, `_without_echoes`) | `echo_recognition`: `true` at `f0a1f09`, ships `false` (fix lane) (web) | ADR-061 | as above | `genesis_wave3_s.json`; review S-2, S-8, security M2–M5 | `nsf web config --set echo_recognition=false` |
 | Supersession of a stale item by enough independent sources; `nsf web replacements`, `nsf web revert ID` | `webcortex/consolidate.py`, `webcortex/knowledge.py` | `supersession` `"ask"` (off), `supersession_min_sources` 2 (web) | ADR-061 | `tests/acceptance/test_wave3_s.py`, `tests/uat/test_uat_rollback.py::test_supersession_and_its_records` | `genesis_wave3_s.json` | leave at `"ask"`; revert each replacement |
 | `autonomy.idle` honours the day's autonomous task count | `webcortex/autonomy.py` (`_tasks_spent`) | always (a budget fix) | ADR-062 | `tests/webcortex/test_autonomy.py::test_idle_shares_the_days_autonomous_task_count_with_the_timer` | `genesis_idle_coverage.json` | revert `41198b3` |
 | Panels redrawn only on change, focus kept (console overview, Pocket lists) | `console/web/console.js`, `pocket/web/field-ui.mjs`, `research-ui.mjs` | always (a fix) | — | `tests/e2e/test_focus_kept.py` | lane P's report | revert `81edd00` |

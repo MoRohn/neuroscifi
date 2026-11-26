@@ -305,5 +305,5 @@ pattern, fix them: 28 of 28 pass.
 | setting lists | 5 |
 | **all** | **217** |
 
-Note: Wave 3's two source rules were on by default on `f0a1f09` and ship off [fix lane]; the fault-injection cases turn
+Note: Wave 3's two source rules were on by default on `f0a1f09` and ship off since the fix lane; the fault-injection cases turn
 them on explicitly, so the count and the result do not depend on that default.

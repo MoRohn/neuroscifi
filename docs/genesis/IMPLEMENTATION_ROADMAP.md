@@ -107,8 +107,8 @@ Results (held-out; the evidence files named):
 ### Wave 3 (merged on `genesis-wave3`, `f0a1f09`; record in [WAVE3.md](WAVE3.md))
 
 Wave 3 went only where a measurement pointed at a limit. Step 0 first took one look at new withheld learning-cycle
-worlds with the unchanged system (`docs/quality/COGNITIVE_BENCHMARK.md`, step 0). Where the fix lane after the
-reviews supplies the final default or number, the line carries [fix lane].
+worlds with the unchanged system (`docs/quality/COGNITIVE_BENCHMARK.md`, step 0). Defaults and numbers are final
+after the fix lane (`gen3-fix`).
 
 | Lane | Scope | Result (held-out unless said) | Settings (default) | Rollback |
 |---|---|---|---|---|
@@ -117,7 +117,7 @@ reviews supplies the final default or number, the line carries [fix lane].
 | C | front-door adjustment | front-door group 0 → 1.000 (12 of 12), other leaves unchanged; withheld look pending | on (`--no-front-door`) | revert `5701bbe` |
 | H | predictive regulation in shadow; `nsf readiness` | decisions equal off on every tick of 48 staged runs; no host week run | `predictive_regulation` false, `"shadow"` opt-in | `nsf config --no-predictive-regulation` |
 | R | the re-check's order | 14 orders, all "no evidence"; the shortfall is mostly coverage | `recheck_order` `"staleness"` | — |
-| S | source independence, the individual's own text, supersession | "unsafe" under its own rule; phrase-dependent; staged honest credits cost 0.07–0.13; supersession below the spread with false replacements | `attribution_independence`, `echo_recognition` off [fix lane]; `supersession` `"ask"` | `nsf web config --set …` |
+| S | source independence, the individual's own text, supersession | "unsafe" under its own rule; phrase-dependent; staged honest credits cost 0.07–0.13; supersession below the spread with false replacements | `attribution_independence`, `echo_recognition` off (fix lane); `supersession` `"ask"` | `nsf web config --set …` |
 | V | coverage: the idle investigation inside the allowance | timer first "no evidence"; allowance first "revise", still below the blind round-robin; `autonomy.idle` now honours the day's task count | always (a budget fix) | revert `41198b3` |
 
 ## 5. Integration work already known

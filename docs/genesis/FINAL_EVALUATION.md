@@ -6,8 +6,7 @@ directive's §13: what improved, what did not, what remains limited, what is unv
 owner, and the research directions worth the most next. Every number is copied from the evidence file or document
 named beside it. Nothing here claims or implies consciousness, sentience, awareness, general intelligence or
 superintelligence; the mechanisms are functions with names that say what they do, and the measurements are task
-scores on synthetic worlds. Where a fix lane after Wave 3's reviews will supply a final number or default, the line
-carries [fix lane].
+scores on synthetic worlds. Wave 3's defaults and numbers are final after the fix lane (`gen3-fix`).
 
 ## Wave 3 in plain words (read this first)
 
@@ -21,7 +20,7 @@ most important thing Wave 3 learned.
 repeats as that outlet, the other refuses pages that repeat NeuroSciFi's own answer. Two independent reviews showed
 that they only recognise the exact wordings the test worlds were written with, that one of them can merge honest
 sources and stop a true fact from ever being confirmed, and that the other can throw away honest pages and slow the
-system down on a large individual. **Both are off** [fix lane]. So, today, **the problem is still there**: copies of a
+system down on a large individual. **Both are off** (the fix lane's decision; you can turn either on, and their defects found in review are fixed). So, today, **the problem is still there**: copies of a
 story that are reworded can still count as separate confirmations, and pages repeating NeuroSciFi's own answer can
 still count as proof unless they say an AI wrote it. Reading the wording of a sentence cannot tell where a fact came
 from; a sound rule would look at which page published a value first and which pages copied it, or ask you. That rule
@@ -43,7 +42,7 @@ out-of-date fact gained less than the normal spread and about one replacement in
 for over a week of simulated days until the test ended ([WAVE3.md](WAVE3.md) §3).
 
 **What you can decide now, and with what evidence:** whether to gather a week of shadow evidence on your machine
-(RUNBOOK, "Gathering evidence on your own host"; read the caution about its report first [fix lane]); whether to
+(RUNBOOK, "Gathering evidence on your own host"; read its `settled.added` and `guide` first, not `settled.hits`); whether to
 turn on automatic replacement (not recommended on this evidence); nothing else needs your decision to stay safe.
 
 ## One page, in plain words (Wave 2)
@@ -126,8 +125,8 @@ Nothing lost: the offline research benchmark's digest at the shipped defaults is
 | Efficiency | no mechanism improved quality per unit of cost; adaptive depth reads fewer pages (581 → 559) at equal quality but not faster | [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) §8 |
 | Wave 3: the re-check's order | every one of 14 orders "no evidence" on held-out; paired gains −0.031 to +0.022 against baseline sds 0.057–0.105 | `genesis_recheck_order.json`, ADR-060, WAVE3.md §3.3 |
 | Wave 3: the idle investigation (coverage) | timer first: "no evidence"; allowance first: "revise" (beyond the sd in one world of five), and still below the blind round-robin in every world (gap 0.065–0.120) | `genesis_idle_coverage.json`, ADR-062, WAVE3.md §3.4 |
-| Wave 3: the two source rules | "unsafe" under their own pre-registered rule; they read only the phrasings of their worlds; staged honest credits cost 0.07–0.13 `correct`; ship off [fix lane] | `genesis_wave3_s.json`, ADR-061, the Wave 3 reviews, WAVE3.md §3.1 |
-| Wave 3: supersession | gain below the spread in every world; 3 of 33 replacements false (pooled, not a claim); a false one wrong for 8 and at least 10 cycles [fix lane]; development evidence | `genesis_wave3_s.json`, WAVE3.md §3.2 |
+| Wave 3: the two source rules | "unsafe" under their own pre-registered rule; they read only the phrasings of their worlds; staged honest credits cost 0.07–0.13 `correct` (0.04–0.08 after the fix lane's H1 fix, 30 % credits, new seeds); ship off | `genesis_wave3_s.json`, ADR-061, the Wave 3 reviews, WAVE3.md §3.1 |
+| Wave 3: supersession | gain below the spread in every world; 3 of 33 replacements false (pooled, not a claim); a false one wrong for 8 and at least 10 cycles (censored), re-measured; development evidence | `genesis_wave3_s.json`, WAVE3.md §3.2 |
 
 ## 3. What remains limited
 
@@ -175,9 +174,9 @@ Each with the command an owner would run (from [REGRESSION_VERIFICATION.md](REGR
 
 | Decision | Today | Evidence for | Evidence against | What would settle it |
 |---|---|---|---|---|
-| **Automatic supersession of a stale item** (`supersession`, built in Wave 3, off: a newer version stated by at least two independent sources replaces the older one without asking) | `"ask"`: contradictions are asked, never decided (ADR-026, ADR-038) | it asks fewer questions and catches stale items sooner (lane S) | gain below the spread in every world; 3 of 33 replacements false on lane S's held-out, one wrong for at least 10 cycles [fix lane]; development evidence only; forget and revert, and family or agent tasks triggering it, are being fixed [fix lane] | its withheld look (reported, cannot switch it on); a sound source-independence rule first (§6, rank 1) |
-| the two source rules (`attribution_independence`, `echo_recognition`) | off [fix lane] | none that survived review | read only their worlds' phrasings; merge honest outlets; discard honest pages (WAVE3.md §3.1) | a different kind of rule (§6, rank 1) |
-| `predictive_regulation` | off; `"shadow"` gathers evidence without acting (Wave 3) | simulated plant: 0.80 of memory breaches avoided held-out, 0.83 withheld | costs work given up (0.044 → 0.106) and false alarms (0.009 → 0.043); the plant's constants are declared; the shadow report counts holds the gate already made as hits until fixed [fix lane] | a week of shadow on the host: `nsf config --predictive-regulation-shadow`, then `nsf internal-state --shadow-report` |
+| **Automatic supersession of a stale item** (`supersession`, built in Wave 3, off: a newer version stated by at least two independent sources replaces the older one without asking) | `"ask"`: contradictions are asked, never decided (ADR-026, ADR-038) | it asks fewer questions and catches stale items sooner (lane S) | gain below the spread in every world; 3 of 33 replacements false on lane S's held-out, one wrong for at least 10 cycles (censored); development evidence only; forget and revert, and family or agent tasks triggering it, fixed by the fix lane; two colluding pages can still replace a true item | its withheld look (reported, cannot switch it on); a sound source-independence rule first (§6, rank 1) |
+| the two source rules (`attribution_independence`, `echo_recognition`) | off (fix lane) | none that survived review | read only their worlds' phrasings; merge honest outlets; discard honest pages (WAVE3.md §3.1) | a different kind of rule (§6, rank 1) |
+| `predictive_regulation` | off; `"shadow"` gathers evidence without acting (Wave 3) | simulated plant: 0.80 of memory breaches avoided held-out, 0.83 withheld | costs work given up (0.044 → 0.106) and false alarms (0.009 → 0.043); the plant's constants are declared; the shadow report counts what the forecast adds separately since the fix lane (staged held-out: 198 added false alarms against 78 added hits) | a week of shadow on the host: `nsf config --predictive-regulation-shadow`, then `nsf internal-state --shadow-report` |
 | `recheck_order` | `"staleness"` | none on held-out | every order "no evidence" (ADR-060) | none planned |
 | `idle_recheck` | off | Wave 1 information value 0.093 → 0.124 bits per budget (held-out, split) | Wave 2: knowledge correctness −0.019 / −0.004 (lane F), 0.726 against 0.718 (lane L, paired +0.008, below the spread); ~25 % more wall time | a re-check ranked by observed change rather than age (§6, direction 4) |
 | `adaptive_depth` | off | equal quality, 581 → 559 pages | wall time not lower | measurement with the live model, where pages cost model time |
@@ -202,7 +201,7 @@ withheld world for the knowledge loop (step 0), re-checking by observed change (
 | 1 | **A sound rule for source independence and for the individual's own text** | the withheld look (step 0) admitted own-text and copied-story versions and raised a confidence on one source, where 120 held-out runs never had; lane S's phrase-parsing rules did not close it: they read only the five credit forms and two model credits their worlds were written with (19 of 27 common credits missed; echoes that credit no model pass at 67–100 %), and merged honest outlets that credit each other (review S-1 to S-4, security H1, M2–M5). What Wave 3 learned: the wording of a sentence does not say where its value came from | decide dependence by derivation, not wording: which page stated a value first (publication order, the individual's own answers by time) and which pages share its text or value afterwards; or ask the owner. New worlds written by someone other than the rule's author, with honest outlets that credit each other and copies in many phrasings, committed first; false rejections counted as carefully as false admissions; then one withheld look |
 | 2 | **A share of the allowance for never-covered subjects** | coverage is limited by the allowance, not by candidates: with the timer first the idle path gets 0.25–5.75 looks per run against tens of admitted, unreached subject-cycles; taking the allowance first removes 51–83 % of the uncovered part but displaces due refreshes (ADR-062) | choose the share on development; test on worlds no lane has seen |
 | 3 | **Gather real settled outcomes**, with the owner's consent | every learner of real outcomes is starved; `nsf readiness` now counts how far each is from its minimum (ADR-058) | weeks of normal use; fit and test only on a split written before the fit |
-| 4 | **Measure the one instinct gain on the host** | predictive regulation's 0.80 is from a plant with declared constants | a week of shadow (ADR-058), once the report counts only what the forecast adds [fix lane] |
+| 4 | **Measure the one instinct gain on the host** | predictive regulation's 0.80 is from a plant with declared constants | a week of shadow (ADR-058), read by `settled.added` and the `guide` committed before any host data |
 | 5 | **Resolve contested refreshes** (the owner's ruling on supersession) | "found, not revised" is 20 % of the loop's shortfall (50 of 70 such looks contested, development); supersession as built gains less than the spread with false replacements | only after rank 1: a replacement rule is only as good as its count of independent sources |
 | 6 | **Strategy selection's withheld world** | its gate still cannot pass: no withheld world has strategy selection (step 0, stretch not done) | a harness change in the main session's `final` command, proposed in step 0 |
 

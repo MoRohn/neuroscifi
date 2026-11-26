@@ -17,7 +17,7 @@ changed (a timer pass with a task limit now counts a queued refresh, WAVE2.md). 
 family. **Wave 3 is merged on `genesis-wave3` (`f0a1f09`)**, reviewed twice; a fix lane follows; its record is
 [WAVE3.md](WAVE3.md). Its most important finding is negative: on new withheld learning-cycle worlds the unchanged
 loop took versions only its own outputs or a copied wrong story stated as knowledge, and the two rules built against
-it do not close that hole and ship off [fix lane], so it is open at the shipped defaults. No order of the re-check
+it do not close that hole and ship off (fix lane), so it is open at the shipped defaults. No order of the re-check
 helped; the idle investigation did not close the gap to a blind schedule within the same allowance; supersession
 gained less than the spread. The front door now answers causal questions the engine used to decline. All ten
 deliverables (A–J) are written; the final account for the owner is [FINAL_EVALUATION.md](FINAL_EVALUATION.md).

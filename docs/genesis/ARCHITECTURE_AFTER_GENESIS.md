@@ -221,19 +221,18 @@ to 20 lines. The line numbers in §4 are this tree's.
 
 ## 8. After Wave 3 (2026-11-26; [WAVE3.md](WAVE3.md))
 
-Read from the merged tree `f0a1f09` and the reconciliation branch; ADR-058 to ADR-062. Where the fix lane changes a
-default or a definition, the line carries [fix lane].
+Read from the merged tree `f0a1f09`, the reconciliation branch and the fix lane (`gen3-fix`); ADR-058 to ADR-062.
 
 **What counts as an independent source.** Consolidation counts the independent groups of a cluster's claims with
 `claims.independence_groups`: claims join one group when they share a host, a near-identical sentence, an attribution
 line ("first appeared on …") or a canonical URL (`claims.stamp_origins` writes those origins into each claim's flags,
 so stored clusters keep them). That is the rule at the shipped defaults, as at step 0. With
-`attribution_independence` on (it ships off [fix lane]), `claims.attribution_keys` also reads an outlet the sentence
+`attribution_independence` on (it ships off since the fix lane; the owner may turn it on), `claims.attribution_keys` also reads an outlet the sentence
 credits ("According to X, …", "…, X says.", "… (X).", "… via X.", "…, the X desk reports") as that claim's origin;
 it reads only those forms, and a sentence crediting two outlets joins them (security review H1). The rule cannot see a
 copy whose wording credits its origin any other way, nor one that credits nothing: wording is not provenance.
 
-**The individual's own text.** With `echo_recognition` on (it ships off [fix lane]), consolidation removes from the
+**The individual's own text.** With `echo_recognition` on (it ships off since the fix lane; the owner may turn it on), consolidation removes from the
 supporting side of a cluster every claim that repeats a value only the individual's own model-written answers (stored
 with its tasks, `web_tasks.result`) had stated before any source it read did, or their wording, or that credits an
 assistant, a chatbot or an AI model (`consolidate._Echoes`, `_without_echoes`); a disagreement such a page raises is
@@ -252,7 +251,8 @@ with the setting off and then, on decision paths only (`record=True`; the status
 `<db>.resources/forecast-shadow.jsonl` (at most once per sample per process). The worker's sampler
 (`internal_state.record`) settles the verdicts against the history every 300 s into `forecast-shadow-days.json`;
 `nsf internal-state --shadow-report` reads both. Display-only: nothing acts on it. Its "hits" include holds the real
-gate already made [fix lane].
+gate already made; since the fix lane `settled.added` counts only what the forecast adds where the gate
+allowed, and `guide` states, written before any host data, what would support turning it on.
 
 **The front door.** `causal.answer` tries the back-door formula first; when it is declined because a hidden common
 cause acts on the cause, and `front_door` is on (`FRONT_DOOR = True`; `nsf imagine scm --no-front-door`), it checks the
@@ -268,8 +268,8 @@ imagined, never evidence; nothing stored; the command opens no individual.
 
 | Setting | Default | Real / display-only / absent |
 |---|---|---|
-| `attribution_independence` (web) | off [fix lane] | absent |
-| `echo_recognition` (web) | off [fix lane] | absent |
+| `attribution_independence` (web) | off (fix lane) | absent |
+| `echo_recognition` (web) | off (fix lane) | absent |
 | `supersession` (web), `supersession_min_sources` | `"ask"`, 2 | absent (contradictions asked) |
 | `recheck_order` (web) | `"staleness"` | real only with `idle_recheck` on (off) |
 | `predictive_regulation` (instance) third value `"shadow"` | `false` | absent; display-only when set |

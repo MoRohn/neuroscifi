@@ -360,8 +360,7 @@ from the world generator alone) and, per configuration, the activity counts. `te
 
 ## 10. Wave 3 (2026-11-26): the withheld baseline, the decomposition, the fixes
 
-Record: [WAVE3.md](WAVE3.md). Where the fix lane after Wave 3's reviews will supply the final number or default, the
-line carries [fix lane].
+Record: [WAVE3.md](WAVE3.md); the fix lane's re-measurement in ADR-061 (section "Fix lane").
 
 **The withheld baseline (step 0).** Three learning-cycle worlds of kinds neither split has, four seeds each, were
 committed alone and looked at once with the unchanged system (`d0b6b02`, ledger line 4;
@@ -387,11 +386,11 @@ limited by the allowance, not by candidates.**
 - Lane S's two source rules (`attribution_independence`, `echo_recognition`) removed the step-0 categories on lane
   S's own worlds, but only for the phrasings those worlds were written with; they returned "unsafe" under their own
   pre-registered rule, merged honest outlets that credit each other, and discarded honest pages; their held-out
-  figures are development evidence (WAVE3.md §3.1). They ship off [fix lane]. **At the shipped defaults the loop
+  figures are development evidence (WAVE3.md §3.1). They ship off (fix lane). **At the shipped defaults the loop
   admits own-text echoes that credit no model and reworded syndicated copies exactly as at step 0.** A rule that
   decides dependence by publication order and derivation, or by the owner's confirmation, is not built.
 - Supersession (off): gains below the spread; 3 of 33 replacements false on lane S's held-out (pooled, not a
-  claim); a false one stayed wrong 8 and at least 10 cycles [fix lane] (WAVE3.md §3.2).
+  claim); a false one stayed wrong 8 and at least 10 cycles, still wrong when the run ended (censored; WAVE3.md §3.2).
 
 **Unverified**, as in §8: the open web, a live model, an owner who answers, real change rates. The withheld looks of
 Wave 3's mechanisms are recorded in WAVE3.md, "The withheld looks".
