@@ -1,0 +1,513 @@
+{
+ "label": "Wave 4 lane D: the owner's caution (display only) against wrong answers; the offline research corpus (fictional, loopback, no model), the selective family's items",
+ "commit": "cfc1511",
+ "environment": {
+  "python": "3.12.16",
+  "machine": "aarch64"
+ },
+ "rule": "lines up on a split when the wrong share with a caution is higher than without one (written before the run; about twenty items per split: a description, not a claim)",
+ "splits": {
+  "development": {
+   "items": 21,
+   "scored": 21,
+   "wrong": 3,
+   "caution": {
+    "shown": {
+     "n": 8,
+     "wrong": 3,
+     "wrong_share": 0.375
+    },
+    "not_shown": {
+     "n": 13,
+     "wrong": 0,
+     "wrong_share": 0.0
+    },
+    "wrong_answers_with_it": "3 of 3",
+    "lines_up": true
+   },
+   "reference": {
+    "shown": {
+     "n": 15,
+     "wrong": 3,
+     "wrong_share": 0.2
+    },
+    "not_shown": {
+     "n": 6,
+     "wrong": 0,
+     "wrong_share": 0.0
+    },
+    "wrong_answers_with_it": "3 of 3",
+    "lines_up": true
+   },
+   "rows": [
+    {
+     "id": "F01",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "F03",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F05",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F07",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F09",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 3,
+      "groups": 2,
+      "joined": [
+       "named_origin",
+       "near_duplicate"
+      ],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "F11",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F13",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F15",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F17",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "F19",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F21",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "F23",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F25",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F27",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F29",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "A01",
+     "scored": true,
+     "wrong": true,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "A03",
+     "scored": true,
+     "wrong": true,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "A05",
+     "scored": true,
+     "wrong": true,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "A07",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "A09",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "A11",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    }
+   ]
+  },
+  "held_out": {
+   "items": 20,
+   "scored": 20,
+   "wrong": 0,
+   "caution": {
+    "shown": {
+     "n": 11,
+     "wrong": 0,
+     "wrong_share": 0.0
+    },
+    "not_shown": {
+     "n": 9,
+     "wrong": 0,
+     "wrong_share": 0.0
+    },
+    "wrong_answers_with_it": "0 of 0",
+    "lines_up": false
+   },
+   "reference": {
+    "shown": {
+     "n": 12,
+     "wrong": 0,
+     "wrong_share": 0.0
+    },
+    "not_shown": {
+     "n": 8,
+     "wrong": 0,
+     "wrong_share": 0.0
+    },
+    "wrong_answers_with_it": "0 of 0",
+    "lines_up": false
+   },
+   "rows": [
+    {
+     "id": "F02",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F04",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F06",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F08",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "F10",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F12",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "F14",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "F16",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F18",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "F20",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F22",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 2,
+      "groups": 1,
+      "joined": [
+       "named_origin"
+      ],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F24",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F26",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "F28",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "A02",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "A04",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "A06",
+     "scored": true,
+     "wrong": false,
+     "caution": false,
+     "facts": null,
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "A08",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 3,
+      "groups": 2,
+      "joined": [
+       "named_origin",
+       "near_duplicate"
+      ],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": false
+    },
+    {
+     "id": "A10",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    },
+    {
+     "id": "A12",
+     "scored": true,
+     "wrong": false,
+     "caution": true,
+     "facts": {
+      "pages": 1,
+      "groups": 1,
+      "joined": [],
+      "own_answer": false
+     },
+     "reference_fewer_than_two_sources": true
+    }
+   ]
+  }
+ },
+ "wall_seconds": 16.9
+}

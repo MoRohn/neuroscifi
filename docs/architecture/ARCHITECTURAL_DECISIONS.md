@@ -4118,6 +4118,26 @@ unchanged.
 answer, knowledge item, question, budget or research step); only the views import the module (a test scans `src`).
 The offline research benchmark's digest is unchanged by it (the caution is not part of a report).
 
-## Measured (scripts/bench_caution.py; the rule in its docstring, committed before the run)
+## Measured (scripts/bench_caution.py; the rule in its docstring, committed before the run in `cfc1511`)
 
-Filled in after the run: see `docs/quality/evidence/genesis_wave4_d_caution.json` and the section below.
+The offline research corpus (fictional, loopback, no model), the cognitive benchmark's selective family, one run at
+the shipped defaults (`docs/quality/evidence/genesis_wave4_d_caution.json`, 10 kB). The run's first attempt stopped on
+a report without a verdict (`None.get`); the one-line guard was the only change before the recorded run and is
+committed with the evidence. Rule: the caution "lines up" on a split when the wrong share with it is higher than
+without it. About twenty items per split: a description of these items, not a claim.
+
+| split | items | wrong | caution shown | wrong with / without it | wrong answers that carried it | reference (fewer than two sources): shown, wrong with / without |
+|---|---|---|---|---|---|---|
+| development | 21 | 3 | 8 | 3 of 8 (0.375) / 0 of 13 | 3 of 3 | 15; 3 of 15 (0.20) / 0 of 6 |
+| held-out | 20 | 0 | 11 | 0 of 11 / 0 of 9 | none to carry | 12; 0 / 0 |
+
+- **Development: it lines up** (every wrong answer carried a caution), and more selectively than the reference
+  (8 shown against 15), but on 3 wrong answers.
+- **Held-out: not exercised.** No answer is wrong, so the rule cannot see whether the caution lines up; it was shown on
+  11 right answers (its cost: a caution beside a right answer). By the rule's letter "lines_up" is false; read it as
+  "no evidence either way".
+- What it fired on: one page only in 16 of the 19 shown cautions; pages counted together as copies (a named origin,
+  near-identical text) in 3 (F09 and A08: 3 pages counted as 2; F22: 2 pages counted as 1). The own-answer flag is not exercised (no model
+  runs, so the individual has no answers of its own); its plumbing is tested on staged pages
+  (`tests/acceptance/test_wave4_d.py`).
+- Not measured: the open web, where reworded copies are the case the caution is for; whether owners read it.

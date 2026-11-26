@@ -55,7 +55,7 @@ def run() -> dict:
             for qid, rec in recs.items():
                 report = rec["report"] or {}
                 view = caution.for_report(rec["db"], rec["task_id"], report)
-                if report.get("verdict", {}).get("state"):
+                if (report.get("verdict") or {}).get("state"):
                     c = view["verdict"]
                     groups = (report["verdict"].get("independent_groups") or {}).get("supporting")
                 else:
