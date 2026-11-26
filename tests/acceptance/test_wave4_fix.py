@@ -287,7 +287,11 @@ def test_the_default_path_comparison_catches_an_injected_regression_and_the_rule
     spec = importlib.util.spec_from_file_location("compare_sd_fix", path)
     compare = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(compare)
-    old = compare.old_claims()
+    import subprocess
+    try:
+        old = compare.old_claims()
+    except subprocess.CalledProcessError:     # a shallow clone (a source archive, a depth-1 checkout) lacks the commit
+        pytest.skip(f"needs commit {compare.BEFORE} from this repository's history; this checkout does not have it")
     split, generate = sources._public("development")
     world = split["worlds"][0]
     looks = sorted(generate(world, split["seeds"][0])["looks"].items())[:40]
