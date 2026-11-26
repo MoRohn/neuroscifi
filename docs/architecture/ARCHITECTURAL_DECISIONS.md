@@ -3043,9 +3043,8 @@ from the equations), `do: {X0: x}` and `ask: Y`. The truth is E[Y | do(X0 = x)] 
    directed path, a cycle, cause = outcome, more than 64 nodes, a singular covariance of M and X. No general
    do-calculus, no conditional front door, no instrumental variables.
 3. **The estimate.** Linear: E[Y | do(X = x)] = E[Y] + b(Y ~ M | X) . b(M ~ X) (x - E[X]), from the given moments
-   (`means`, or `observational_mean` as the family names them; both and different is an error). A point value, as
-   for back-door answers; its uncertainty sentence says that moments estimated from data carry an error the value
-   does not show (measured below).
+   (`means`, or `observational_mean` as the family names them; both and different is an error). Its uncertainty
+   depends on where the moments come from (Decision 6).
 4. **Every answer says which criterion identified it**: `identified_by` is `declared_model`, `back_door` or
    `front_door` (with `mediators`), None on a decline. An answer is labelled "imagined, not evidence", kind
    `simulation`, as before; nothing is stored. Engine version 2.
@@ -3053,13 +3052,41 @@ from the equations), `do: {X0: x}` and `ask: Y`. The truth is E[Y | do(X0 = x)] 
    decline (with a reason that says it is switched off). Not a stored setting: `nsf imagine scm` reads no individual
    (ADR-052's other imagine commands are per-individual switches; this one has no individual to hold it). The
    benchmark's imagination answerer gains the ablation component `front_door`.
+6. **Where the moments come from (the review follow-up).** What the product path receives: the engine is reached only
+   by `nsf imagine scm FILE` (a JSON question the owner writes) and the library; `instance/imagine.py` does not call
+   it. ADR-052's format for a graph question names a graph, the means and covariance and the hidden common cause;
+   nothing in it said whether those moments are a declared population's or estimates from data, and no field carried
+   a sample size, so the engine could not know (the counterfactual family's are exact: computed from its equations).
+   A graph question may now say: `"moments": "population"` (exact) or `"samples": n` (estimated from n independent
+   draws, covariance with the n - 1 divisor). Then:
+   - **population**: a point value, exact for those moments (as before).
+   - **samples n**: the answer carries the standard error of the estimate (delta method under the engine's
+     linear-Gaussian assumption: Var(mean) = S/n, Cov(S_ij, S_kl) = (S_ik S_jl + S_il S_jk)/(n - 1), gradient by
+     central differences; validated by coverage below and against repeated sampling in the tests) and states its
+     95 % interval. It is declined "not enough data to answer" when the interval's half-width exceeds
+     `USEFUL` = 0.1 x the outcome's sd (the benchmark's tolerance, so a given answer's interval stays within it),
+     when n <= variables + 1, or with more than 16 variables. `USEFUL` was chosen on the development worlds and
+     committed (`021a3d7`) before any held-out run of the intervals; the held-out point errors from 500 draws had
+     been seen before (first evidence run), the intervals had not.
+   - **not stated, front door**: declined ("does not say whether the means and covariance are the population's ...").
+     By the standard that a confident wrong answer is worse than a decline: in the first evidence run, estimates
+     taken as exact gave 20 false answers in 200 held-out worlds at 500 draws, and the engine cannot tell estimates
+     from population values; stating the origin is one field. The family's answerer states `population` for graph
+     questions, as its interface computes them exactly (`acceptance/cognition/imagination.py`).
+   - **not stated, back door**: answered as before (value and sd unchanged; it is the engine's existing behaviour),
+     with `moments: {origin: unstated}` and an uncertainty sentence saying the moments were taken as exact. The
+     measurements below show the same limit as the front door's; whether to decline these too changes existing
+     answers and is left to the main session.
 
 **Default: on.** The rule written before the mechanism (`frontdoor_splits.py`, committed alone first) held on every
 point: 0 false answers and every answer world exact on the property worlds with exact moments, both splits; on the
 held-out counterfactual split every front-door question within tolerance and every other leaf identical with the
-front door on and off; adversarial not regressing; retention unchanged.
+front door on and off; adversarial not regressing; retention unchanged. With estimated moments (the follow-up): a
+front-door answer is given only with its sample size, its interval covers the truth at 0.93 to 0.95 on held-out
+worlds (near the stated 0.95), too little data is declined, and an unstated origin is declined; no trap world is
+answered in any regime.
 
-## Evidence (`docs/quality/evidence/genesis_frontdoor.json`, `scripts/genesis_frontdoor.py`, measured at `80be57a`)
+## Evidence (`docs/quality/evidence/genesis_frontdoor.json`, `scripts/genesis_frontdoor.py`, measured at `14d8d55`)
 
 Counterfactual family, each split's three seeds (development 31-33, held-out 1031-1033), answered within 0.1 x scale:
 
@@ -3080,18 +3107,31 @@ Counterfactual family, each split's three seeds (development 31-33, held-out 103
   outside the front-door group, the `scm:confounded` kind and the pooled figures: 0 of 257 and 0 of 276 differ.
 - Property worlds (12 kinds, 5 where the criterion holds, 7 traps; development 20 seeds, held-out 40):
 
-  | moments | answer worlds within 0.1 x sd(Y) (0.05) | trap worlds answered | false answers |
-  |---|---|---|---|
-  | exact, development | 100 of 100 (100), all within 1e-9 | 0 of 140 | **0** |
-  | exact, held-out | 200 of 200 (200), all within 1e-9 | 0 of 280 | **0** |
-  | 500 draws, development / held-out | 97 of 100 (66) / 180 of 200 (128) | 0 / 0 | **3 / 20** |
-  | 5,000 draws | 100 of 100 (100) / 200 of 200 (193) | 0 / 0 | 0 / 0 |
-  | 50,000 draws | 100 of 100 (100) / 200 of 200 (200) | 0 / 0 | 0 / 0 |
+  Exact moments (`moments: population`): development 100 of 100 answer worlds within 1e-9, 0 of 140 trap worlds
+  answered, **0 false answers**; held-out 200 of 200 within 1e-9, 0 of 280 traps answered, **0 false answers**. The
+  traps are real: a front-door formula through M would have missed by more than 0.1 x sd(Y) on 20 to 33 of the 40
+  held-out worlds of each trap kind with data for M (median error 0.10 to 0.32 x sd(Y), up to 2.6).
 
-  The traps are real: a front-door formula through M would have missed by more than 0.1 x sd(Y) on 20 to 33 of the
-  40 held-out worlds of each trap kind with data for M (median error 0.10 to 0.32 x sd(Y), up to 2.6). The false
-  answers at 500 draws are the cost of a point value from estimated moments (the engine takes them as exact): they
-  are counted, and the answer's uncertainty sentence says so.
+  Estimated moments, **held-out** answer worlds (200 front door, 160 back door; development in the evidence file).
+  "Coverage" is the share of given answers whose stated 95 % interval holds the truth; in this regime a FALSE ANSWER
+  is the truth outside the stated interval (a calibrated 95 % interval has about 5 % of them by construction), and
+  "> 0.1 sd" counts given answers farther than 0.1 x sd(Y) from the truth. No trap world was answered in any regime.
+
+  | criterion, draws n | with `samples: n`: answered / declined "not enough data" | coverage (false answers) | > 0.1 sd | coverage with the bound lifted (every world) | not stated | estimates declared `population` (> 0.1 sd) |
+  |---|---|---|---|---|---|---|
+  | front door, 100 | 11 / 189 | 1.000 (0) | 0 | 0.930 | 0 of 200 answered | 84 of 200 |
+  | front door, 500 | 104 / 96 | 0.933 (7) | 1 (0.103) | 0.935 | 0 answered | 20 of 200 |
+  | front door, 5,000 | 199 / 1 | 0.945 (11) | 0 | 0.945 | 0 answered | 0 |
+  | front door, 50,000 | 200 / 0 | 0.940 (12) | 0 | 0.940 | 0 answered | 0 |
+  | back door, 100 | 8 / 152 | 0.750 (2) | 1 (0.102) | 0.956 | 160 answered, **49 > 0.1 sd** | 49 of 160 |
+  | back door, 500 | 106 / 54 | 0.934 (7) | 2 (up to 0.157) | 0.938 | 160 answered, **16 > 0.1 sd** | 16 of 160 |
+  | back door, 5,000 | 160 / 0 | 0.944 (9) | 0 | 0.944 | 160 answered, 0 | 0 |
+  | back door, 50,000 | 160 / 0 | 0.950 (8) | 0 | 0.950 | 160 answered, 0 | 0 |
+
+  Development, with the bound lifted, coverage 0.94 to 0.98 (front door) and 0.95 to 1.00 (back door). The
+  back-door "not stated" column is a **pre-existing limit** of ADR-052's engine: a point answer from estimated
+  moments taken as exact misses by more than 0.1 x sd(Y) in 49 of 160 held-out worlds at 100 draws and 16 of 160 at
+  500 (33 and 5 of 80 on development). Its value is unchanged here; the caveat is added.
 - Random graphs (`tests/test_causal_front_door.py`): 6,000 random DAGs of 3 to 7 observed nodes with a hidden cause
   on X, Y and at random others, some nodes without data: 2,234 answered, 0 false answers (exact moments); the same
   graphs produce false answers when the separation checks or the direct-edge check are removed (the test's power).
@@ -3106,13 +3146,26 @@ Counterfactual family, each split's three seeds (development 31-33, held-out 103
 
 The front-door group is exact arithmetic on a declared graph and given population moments, like the handed-equations
 group: it says nothing about real-world causal questions, about a graph declared wrongly (a hidden cause not named is
-an unchecked assumption, stated in every answer), or about moments estimated from small samples (above). The
-withheld counterfactual family has front-door questions; it has not been run (the main session's single look).
+an unchecked assumption, stated in every answer), or about data that are not independent draws of a multivariate
+normal (the interval's assumption). The interval is slightly narrow on the front door at small n (held-out 0.930 at
+100 draws, 0.935 at 500, bound lifted). The withheld counterfactual family has front-door questions; it has not been
+run (the main session's single look).
+
+**Disclosure.** Early in the lane, a broad `grep -rn` over `src` for "causal" matched
+`src/neuroscifi/acceptance/cognition/withheld.py` and printed two of its lines: a docstring line (line 6: "noise than signal,
+causal structures with longer paths and actions on hidden routes, and staged states of other") and line 54, the start of the withheld
+counterfactual `scm` spec: `"scm": ({"structure": "chain", "nodes": 5, "queries": 8}, {"structure": "confounded",
+"nodes": 5,` (cut off there). Nothing was tuned on it: the mechanism is a general criterion check with no parameter
+for the number of nodes, the worlds, `USEFUL` and the verdict rule were written from the development and held-out
+splits and the brief, and every later search excluded `*withheld*`.
 
 ## Rejected
 
 - A stored per-individual setting: `nsf imagine scm` reads no individual.
-- A sampling spread from a stated sample size: back-door answers have none either; left open (above).
+- Answering a front-door question with unstated moments under a caveat: the engine cannot tell estimates from
+  population values, and estimates taken as exact were confidently wrong (above); a decline costs one field.
+- Declining back-door questions with unstated moments: it changes existing answers; left to the main session.
+- A bootstrap for the interval: the delta method is closed-form, cheap and validated by coverage.
 - Searching every subset of observed nodes for a front-door set, conditional front doors, general do-calculus:
   larger than the smallest sound extension; a decline there is "not identified by this engine".
 
@@ -3120,7 +3173,9 @@ withheld counterfactual family has front-door questions; it has not been run (th
 
 - Changed: `causal.py` (version 2, `answer(front_door=)`, `identified_by`), `cli_imagine.py` (`--front-door`),
   `acceptance/cognition/imagination.py` (component `front_door`), `acceptance/cognition/adversarial.py` (5 cases,
-  origin `added_wave3_c`). New: `acceptance/cognition/frontdoor_splits.py`, `scripts/genesis_frontdoor.py`,
-  `tests/test_causal_front_door.py`. No schema change, no migration, no background activity, no dependency.
+  origin `added_wave3_c`). New: `acceptance/cognition/frontdoor_splits.py`, `acceptance/cognition/backdoor_splits.py`
+  (committed alone before the intervals), `scripts/genesis_frontdoor.py`, `tests/test_causal_front_door.py`. The
+  question format gains `moments` and `samples`; answers to graph questions gain `moments` (origin, samples). No
+  schema change, no migration, no background activity, no dependency.
 - The counterfactual family's recorded imagination figures move only in the front-door group and the pooled figures
   (held-out 0.875 -> 1.000, development 0.844 -> 0.969); earlier evidence files are not rewritten.
