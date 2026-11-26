@@ -2811,3 +2811,138 @@ Simulated worlds driven through the real modules, offline.
   --revert]`, `ledger`, `compete KEY` (JSON, for the console and Pocket lanes).
 - Tests: `tests/webcortex/test_knowledge_evolution.py`, `tests/acceptance/test_genesis_knowledge_bench.py`, two new
   drivers in `tests/webcortex/test_background.py`, the table list in `tests/webcortex/test_state.py`.
+
+# ADR-056 (draft) The integration loop: how instinct, imagination, the workspace, monitoring and knowledge evolution hand over to each other, one arbitration record, and salience ordering the admitted. R
+
+## Context
+
+Cognitive Genesis directive §8 (Phase VI): "the system must not become four unrelated modules"; eight special
+integration requirements; "prevent any subsystem from creating uncontrolled competing objectives". Wave 1 built the
+pieces (ADR-051 to ADR-055) and shipped most of them off or display-only. Wave 2 lane L read the code at `3559069`
+(Wave 1 merged) for each requirement, at the shipped defaults and with every Wave 1 setting on, and classified each
+link: **REAL** (a consumer changes behaviour on it), **DISPLAY-ONLY** (recorded or shown, no consumer acts on it) or
+**MISSING**.
+
+## The link map (code at `3559069`; line numbers after this ADR's changes)
+
+| # | Requirement | Producer → consumer (file:line) | Record that carries it | Setting that gates it | Shipped defaults | Everything on |
+|---|---|---|---|---|---|---|
+| 1 | curiosity → knowledge discovery | `curiosity.rank` (`webcortex/curiosity.py:252`) → `autonomy.candidates` (`webcortex/autonomy.py:557`) → `autonomy.admission` (`:688`) → the timer's launch (`webcortex/scheduler.py:557-597`) or the idle investigator's `orchestrator.submit` (`autonomy.py:852`) → research → `consolidate.run` → `web_knowledge` | `web_tasks` (origin `curiosity`), decision event `$.autonomy`, `web_feedback` | `autonomous` and the recorded enable (the owner's opt-in), `quiet`, the daily budgets; `curiosity_learning_progress` (off) damps the gain (`curiosity.py:265-277`) | **REAL** once the owner opts in (off on a new individual) | REAL |
+| 2 | salience → attention | `salience.score` (`webcortex/salience.py:71`) attached to every candidate (`autonomy.py:622`); consumers: selective broadcast (`autonomy.after_task`, `autonomy.py:927-943` → `broadcast.offer`, `broadcast.py:113`); the order of the admitted candidates (**new**, `autonomy.py:769`, `salience.order`) | decision event `$.autonomy.salience`; `$.broadcast` | `salience_record` (on), `broadcast` (`off`), `salience_attention` (**new, off**) | **DISPLAY-ONLY** (recorded with every decision; changes nothing) | REAL: what reaches the owner (broadcast `on` holds back findings below the threshold) and, with `salience_attention`, which admitted candidate is taken first; before this ADR the candidate order was **MISSING** |
+| 3a | imagination → planning | `instance/information.py` (the exact expected gain the what-ifs share, `:121`, `:161`) → `executive.decide` rule `information-v1` (`instance/executive.py:173-175`); display beside rules-v1 (`:276-284`) | `decisions` | `executive_rule` (`rules-v1`; `information-v1` opt-in), `decision_information` (on) | **DISPLAY-ONLY** | REAL in the core world (the rule chooses by expected gain); no web-side planning reads a scenario (by ruling: a scenario reaches curiosity, autonomy and the orchestrator only as a settled prediction error) |
+| 3b | imagination → learning | `scenarios.tick` (`webcortex/scenarios.py:215`) imagines three futures per open prediction; `settle` (`:170`) fills the outcome slot from the real settlement; `errors` (`:188`) computes the error on read → consumer: `nsf imagine scenarios` only (`instance/cli_imagine.py:100-102`). The template itself learns from the **real** settlements (`decisive_rate`, `:56`; the forecast as `evolution.recalibrations` reads it) | `imagined` (kind simulation), its outcome slot | `imagine_scenarios` (off) | **DISPLAY-ONLY** (off) | DISPLAY-ONLY: the scenario's error reaches no learner. **MISSING by design**, assessed and not built (Decision 4) |
+| 4 | the workspace → coordinated access | `broadcast.offer` (`broadcast.py:113`): the one function that decides which event reaches the owner's channels; `self_description.build` (`self_description.py:661`): one record for console, CLI, Pocket, voice and MCP; `presence.aggregator.derive` (`presence/aggregator.py:373`) | `$.broadcast` decision events; the record is built on read | `broadcast` (`off`: deliver as before; `log`: record; `on`: hold back) | **DISPLAY-ONLY** | REAL for delivery to the owner (`on`); no subsystem reads the self-description to decide (by design: it must not become a control path). Subsystems coordinate through the stored records and the one admission rule (row 8) |
+| 5 | metacognition → reasoning quality | `monitoring.assess` (`webcortex/monitoring.py:313`) in `orchestrator._monitor` (`webcortex/orchestrator.py:2724`); `selective_answering` (`apply_note`, `:2729`), `verification_escalation` (`:2542`, `:1967-1977`), `adaptive_depth` (`:1630`) | `report["monitoring"]` | `answer_monitoring` (on), the other three off | **DISPLAY-ONLY** | REAL inside the task (escalation reads one more source; selective answering opens with a plain line; depth stops early). From a low-support verdict to a later re-check: **MISSING**, assessed and not built (Decision 4) |
+| 6 | memory → continuity | premises and marks (`webcortex/premises.py:207`, called by `consolidate.py:1534`); the re-check ranks a marked item higher (`webcortex/recheck.py:92`); voice `resume_follow` (`voice/hub.py:307-328`); `self_description.recent` | `web_premises`, `web_rechecks`; `voice_sessions.context` | `premise_recheck` (on, records), `idle_recheck` (off), voice `resume_follow` (on) | **REAL** (the follow-up across a restart; every step reads the stored knowledge, hypotheses and predictions); marks DISPLAY-ONLY | REAL (marks order the re-check) |
+| 7 | verified outcomes → future improvements | `predictions.check` (`webcortex/predictions.py:108`) → re-check marks (`premises.failed_prediction`, `:127`; `premises.py:182`), the error analysis's link chain (`:130`, `evolution.py:639`), the calibration record (`:142`) read by `autonomy.candidates` through `evolution.recalibrations` (`autonomy.py:529`); `curiosity.rank` raises the importance of an item whose prediction failed (`curiosity.py:260`, `:283`); salience's prediction discrepancy; `web_feedback` → futility (`curiosity.py:95`); strategy selection (`strategies.rank`, `webcortex/strategies.py:106`) behind its gate | `web_predictions`, `web_rechecks`, `web_claim_links`, `web_feedback`, `improvement_ledger` | `calibrated_forecasts` (on), `premise_recheck` (on), `strategy_selection` (`"gate"`: inactive) | **REAL** (futility; the calibration reading orders admitted candidates; the ×1.5 importance); marks DISPLAY-ONLY; strategy selection inactive | REAL (marks order the re-check; learning progress). Finding: the ×1.5 importance is keyed by the failed item's id, so it reaches the subject only when the item stayed live (contradicted); a superseded item's successor is freshly verified and not a candidate anyway, so nothing measurable is lost |
+| 8 | executive control → arbitration of conflicts and permissions | `background.allowed` (`background.py:200`) at every entry point; `autonomy.admission` for the idle, timer and re-check paths; the daily caps and the resource gate (`scheduler._over_cap`, `:398`); owner work claimed first (`scheduler.claim_next`, `:626`); the timer's fixed order (re-check `:505-521`, due refreshes `:522-549`, curiosity `:550-597`) with the cooldown (`autonomy._recent`, `:442`) and one task per subject (`REFRESHED_THIS_TICK`) | the tick's returned report only (`skipped`); **new**: a decision event `$.arbitration` on the winner's task (`scheduler._arbitrated`, `:419`) | `quiet`, budgets, `tick_admission`; `arbitration_record` (**new, on: a record**) | **REAL** (the decision); the loser was recorded nowhere that persists (**MISSING** record before this ADR) | REAL, with the record |
+
+## Decision
+
+1. **The arbitration record** (`arbitration_record`, web, **on**: a record only). When the knowledge re-check or a due
+   refresh takes the subject the timer's curiosity wanted in the same pass, the tick's existing order decides, as
+   before (one task per subject), and `scheduler._arbitrated` writes a decision event on the **winner's** task:
+   `{"arbitration": {"slot": "one investigation per subject per timer pass", "winner": "recheck"|"refresh",
+   "loser": "curiosity", "rule": ...}}`. It names mechanisms and the rule, never the subject (the subject is the
+   winner task's own), so forgetting the task removes it (`governance`: a task's events go with it) and forgetting the
+   subject leaves nothing in it; it never feeds the cooldown or the lineage (they read `$.autonomy.key`). It
+   launches, admits and refuses nothing.
+2. **Salience orders the attention admission already gave** (`salience_attention`, web, **off**). With it on (and
+   the salience record on), `autonomy.admission` on the idle and timer paths takes the admitted candidates in
+   salience order (`salience.order`: the owner's records first as before, then the higher salience, then the higher
+   priority). The same candidates are admitted and refused with the same reasons; caps, budgets, cooldown, quiet and
+   min_gain are read as before; the weights are the fixed ones of ADR-051 (nothing learned or rewarded). Each taken
+   candidate records `priority_rank`, its place in admission's own order, and the decision's `admission.order`: when
+   salience and priority disagree (§12 "conflicting cognitive subsystem outputs") one rule decides and the record
+   keeps both, the losing candidate named by its place, never by its words. The re-check path keeps its own order.
+3. **The loop in the self-description** (display, no switch, like the rest of the record). `doing.cycle`: the latest
+   background investigation (task id, origin, status, how it was admitted: path, rule, order, the salience score it
+   carried, its priority rank), the latest arbitrations, and the predictions settled so far by outcome. Ids, numbers
+   and fixed words only. `short()` adds one plain sentence ("My last background look was a re-check of something
+   that may be out of date (completed); 12 predictions checked so far, 3 turned out wrong."). It answers "what am I
+   doing" and "what evidence supports that decision".
+4. **Assessed and not built**:
+   - *(a) a scenario's or forecast's settled error feeding learning progress or the re-check marks.* The settled
+     **real** outcome already reaches every learner the ruling allows: the marks (`predictions.py:127`), curiosity's
+     importance (`curiosity.py:283`), salience (prediction discrepancy), the calibration reading (`autonomy.py:529`)
+     and learning progress through the refresh's own feedback (`curiosity.py:137-165`). A scenario record's error is
+     a function of that outcome, the prediction's own stated probability and the base rate of decisive settlements
+     (`scenarios.py:83-86`), so routing it on would add no information about the subject and would make curiosity
+     depend on the imagined store being switched on. Core forecasts (`nsf imagine forecast --keep`) are never
+     compared with what followed (nothing calls `imagined.observe` for them): that compare step is missing, and no
+     consumer would act on it (the graph gate already learns from held-out real readings).
+   - *(c) a low-support monitoring verdict requesting verification through the re-check path.* The in-task path
+     exists (`verification_escalation`, off: no metric change, +2 pages, ADR-054). A later re-check cannot be
+     measured on any frozen world: the selective family's held-out split has no wrong answer, and no family stages a
+     weak answer followed by a later re-verification.
+   - *Broadcast ordering (the second half of b)*: owner questions are listed by each surface in its own order and
+     Presence ranks live events (`presence.aggregator.arbitrate`); with broadcast `on`, salience already decides what
+     is held back. Nothing further was built.
+5. **No new background activity, no schema change.** Both links run inside existing registered entry points
+   (`tick.*`, `worker.idle_investigation`); the benchmark runner is registered in `background.RUNNERS` and, as a
+   display (`imagined.counts` only), in the quarantine allow-list.
+
+## Measured
+
+`docs/quality/evidence/genesis_integration.json` (`scripts/bench_wave2_integration.py run`). The family "integrated"
+(`acceptance/cognition/integrated.py`) runs the real timer pass and idle investigator step by step on staged Web
+Cortex individuals, worlds frozen in `integrated_splits.py` (committed alone first, `a625b96`; development seeds 61-63,
+held-out 601-604; the withheld family is not used). Simulated worlds, offline, 0 model calls; the host's background
+gate is read as allowed in every configuration. Configurations: baseline (every Wave 1 and 2 setting off), defaults,
+each link alone, integrated (re-check, marks, learning progress, scenario records, salience attention, the
+arbitration record), integrated minus one link. Nothing was chosen on held-out (salience attention has no parameter).
+
+- **Knowledge correctness under change** (share of item subjects whose live knowledge states the world's truth, mean
+  over steps). Held-out (2 worlds x 4 seeds): baseline 0.713 (per world sd 0.033 and 0.042), integrated 0.710; paired
+  difference -0.003 (sd 0.028; 4 seeds higher, 4 lower). Each link alone: the re-check 0.707, every other link 0.713
+  (no change). Ablations: without the re-check 0.714, without learning progress or without salience attention
+  0.707, without marks, scenarios or the arbitration record 0.710. Final step 0.589 against 0.584; stale facts caught
+  per investigation 0.263 against 0.263. Development (2 x 3): baseline 0.741, integrated 0.738 (paired -0.003, sd
+  0.012; 2 higher, 4 lower); salience attention alone 0.744 (final 0.621 against 0.596). **The integrated
+  configuration shows no gain over the baseline or over the best single link on either split; every difference is
+  inside the baseline's spread.**
+- **Information value** (share of investigations on noise subjects that never settle; the idle path's noisy-TV
+  trap): held-out 0.406 baseline, 0.408 integrated, 0.406 with salience attention alone; development 0.421, 0.413,
+  0.402. Learning progress alone changes nothing in these worlds (each noise subject is looked at once or twice).
+- **Anticipation / prospective validity** (the scenario records' three-way Brier once settled; reference: three
+  equal futures, 2/3): development 0.638 (scenarios alone), 0.655 (integrated); held-out **0.712 and 0.698: worse than
+  the equal-futures reference**. The template's futures do not anticipate these settlements; scenario records stay off.
+- **Arbitration and conflicts**: 0 timer passes with two tasks on one subject and 0 investigations of a subject
+  already covered in the same step, in every configuration; with the record on, 11 (development) and 14 (held-out)
+  arbitrations per world on average, all "re-check over curiosity" (the record changes no launch: results identical
+  with it off). 0 belief writes in every run.
+- **Self-description** (four probes on the loop against the world's bookkeeping, **plumbing checks**): 1 of 4 before
+  this ADR (no field answered the last investigation or the settlements), 4 of 4 after, in every configuration. The
+  self-description family is unchanged: 30 of 30 under the current key, 29 of 30 under the original, 1 surface.
+- **Retention**: 4 of 4 scenarios, every offline metric retained, baseline and integrated, both splits.
+  **Adversarial**: 18 cases pass (original 13, added in Wave 1 4, restored 1), baseline and integrated, both splits.
+- **The shipped defaults**: the offline research benchmark's digest is `68731d72…` (unchanged); the "defaults"
+  configuration equals the baseline leaf by leaf (the arbitration record fires only with the re-check on).
+- **Cost**: wall seconds per world run, held-out: baseline 0.319, integrated 0.550 (the re-check alone 0.458; the
+  arbitration record alone 0.330); development 0.216 and 0.361. The whole command's peak resident set 367.7 MiB
+  (the retention family's offline corpus; 48.6 MiB before the first run). 0 model calls, no connection outside
+  loopback.
+
+## Alternatives rejected
+
+- Feeding a scenario record's error, or its content, to curiosity, autonomy or the orchestrator (Decision 4): no
+  information the real settlement does not carry, and the ruling allows only the settled error.
+- Ordering by salience inside admission (letting salience admit or refuse): a new objective with its own priority.
+- Recording the losing subject's key or statement in the arbitration event: a forgotten subject would stay in
+  another task's record.
+- A new "integration" background activity or daemon: every hand-over already runs inside a registered entry point.
+
+## Consequences
+
+- Defaults: `arbitration_record` on (a record); `salience_attention` off (no held-out gain: 0.713 alone, as the
+  baseline); every Wave 1 default unchanged. The integrated configuration is not recommended: it shows no gain and
+  costs about 70 % more wall time per pass, mostly the re-check's.
+- Changed code: `scheduler.tick` (the two arbitration points, `_arbitrated`), `autonomy.admission` and
+  `decision_inputs` (the salience order and `priority_rank`), `salience.attention`/`order`, `self_description._cycle`
+  and `short`, `WebConfig` and its validation (two booleans). No schema change, no new background activity.
+- Tests: `tests/webcortex/test_integration_loop.py` (the staged end-to-end cycle on one individual, each hand-over
+  and the forbidden paths), `tests/webcortex/test_integration_arbitration.py` (salience order, conflicting priorities
+  and outputs, competing objectives, quiet and a spent budget), `tests/acceptance/test_genesis_integration_bench.py`;
+  the quarantine allow-list gains the benchmark as a display; `background.RUNNERS` gains the benchmark runner.
+- Not verified: anything on the open web, a live model, a real worker process running the loop for days, or the
+  real host's background gate during the loop.

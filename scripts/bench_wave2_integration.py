@@ -84,6 +84,7 @@ def families(split) -> dict:
 def run(splits, *, with_families=True) -> dict:
     from neuroscifi.acceptance import cognition
     from neuroscifi.acceptance.cognition import integrated
+    cognition.load_plugins()            # the Wave 1 mechanisms (self_description among them), as bench_wave1.py does
     peak_before = _peak_mib()
     out = {"benchmark": "cognition, Wave 2 lane L: the integration loop", "environment": cognition.environment(),
            "label": cognition.LABEL, "links": {k: {"web": v[0], "instance": v[1]} for k, v in integrated.LINKS.items()},
