@@ -22,7 +22,7 @@ that they only recognise the exact wordings the test worlds were written with, t
 sources and stop a true fact from ever being confirmed, and that the other can throw away honest pages and slow the
 system down on a large individual. **Both are off** (the fix lane's decision; you can turn either on, and their defects found in review are fixed). So, today, **the problem is still there**: copies of a
 story that are reworded can still count as separate confirmations, and pages repeating NeuroSciFi's own answer can
-still count as proof unless they say an AI wrote it. Reading the wording of a sentence cannot tell where a fact came
+still count as proof, also when they say an AI wrote it (that check belongs to the echo rule, which is off). Reading the wording of a sentence cannot tell where a fact came
 from; a sound rule would look at which page published a value first and which pages copied it, or ask you. That rule
 is not built; it is the first next step (§6).
 
@@ -38,7 +38,7 @@ is not built; it is the first next step (§6).
 **What did not help (measured):** no order of the re-check of known facts did better; letting the idle worker look
 up never-covered subjects reached more of them but still did not catch up with a simple round-robin schedule on the
 same budget, because the budget, not the list of candidates, is what limits it; automatic replacement of an
-out-of-date fact gained less than the normal spread and about one replacement in eleven was wrong, some staying wrong
+out-of-date fact gained less than the normal spread and about one replacement in eight was wrong, some staying wrong
 for over a week of simulated days until the test ended ([WAVE3.md](WAVE3.md) §3).
 
 **What you can decide now, and with what evidence:** whether to gather a week of shadow evidence on your machine
@@ -126,7 +126,7 @@ Nothing lost: the offline research benchmark's digest at the shipped defaults is
 | Wave 3: the re-check's order | every one of 14 orders "no evidence" on held-out; paired gains −0.031 to +0.022 against baseline sds 0.057–0.105 | `genesis_recheck_order.json`, ADR-060, WAVE3.md §3.3 |
 | Wave 3: the idle investigation (coverage) | timer first: "no evidence"; allowance first: "revise" (beyond the sd in one world of five), and still below the blind round-robin in every world (gap 0.065–0.120) | `genesis_idle_coverage.json`, ADR-062, WAVE3.md §3.4 |
 | Wave 3: the two source rules | "unsafe" under their own pre-registered rule; they read only the phrasings of their worlds; staged honest credits cost 0.07–0.13 `correct` (0.04–0.08 after the fix lane's H1 fix, 30 % credits, new seeds); ship off | `genesis_wave3_s.json`, ADR-061, the Wave 3 reviews, WAVE3.md §3.1 |
-| Wave 3: supersession | gain below the spread in every world; 3 of 33 replacements false (pooled, not a claim); a false one wrong for 8 and at least 10 cycles (censored), re-measured; development evidence | `genesis_wave3_s.json`, WAVE3.md §3.2 |
+| Wave 3: supersession | gain below the spread in every world; 3 of 23 rule replacements false (pooled, not a claim); a false one wrong for 8 and at least 10 cycles (censored), re-measured; development evidence | `genesis_wave3_fix_s.json`, WAVE3.md §3.2 |
 
 ## 3. What remains limited
 
@@ -174,11 +174,11 @@ Each with the command an owner would run (from [REGRESSION_VERIFICATION.md](REGR
 
 | Decision | Today | Evidence for | Evidence against | What would settle it |
 |---|---|---|---|---|
-| **Automatic supersession of a stale item** (`supersession`, built in Wave 3, off: a newer version stated by at least two independent sources replaces the older one without asking) | `"ask"`: contradictions are asked, never decided (ADR-026, ADR-038) | it asks fewer questions and catches stale items sooner (lane S) | gain below the spread in every world; 3 of 33 replacements false on lane S's held-out, one wrong for at least 10 cycles (censored); development evidence only; forget and revert, and family or agent tasks triggering it, fixed by the fix lane; two colluding pages can still replace a true item | its withheld look (reported, cannot switch it on); a sound source-independence rule first (§6, rank 1) |
+| **Automatic supersession of a stale item** (`supersession`, built in Wave 3, off: a newer version stated by at least two independent sources replaces the older one without asking) | `"ask"`: contradictions are asked, never decided (ADR-026, ADR-038) | it asks fewer questions and catches stale items sooner (lane S) | gain below the spread in every world; 3 of 23 rule replacements false on lane S's held-out; of the 5 false replacements in those runs (3 by the rule, 2 by the path that existed before), 4 still wrong when the run ended, the longest at least 10 cycles (`genesis_wave3_fix_s.json`); development evidence only; forget and revert, and family or agent tasks triggering it, fixed by the fix lane; two colluding pages can still replace a true item | its withheld look (supersession on the shipped defaults, both source rules off: not the configuration measured here; reported, cannot switch it on); a sound source-independence rule first (§6, rank 1) |
 | the two source rules (`attribution_independence`, `echo_recognition`) | off (fix lane) | none that survived review | read only their worlds' phrasings; merge honest outlets; discard honest pages (WAVE3.md §3.1) | a different kind of rule (§6, rank 1) |
 | `predictive_regulation` | off; `"shadow"` gathers evidence without acting (Wave 3) | simulated plant: 0.80 of memory breaches avoided held-out, 0.83 withheld | costs work given up (0.044 → 0.106) and false alarms (0.009 → 0.043); the plant's constants are declared; the shadow report counts what the forecast adds separately since the fix lane (staged held-out: 198 added false alarms against 78 added hits) | a week of shadow on the host: `nsf config --predictive-regulation-shadow`, then `nsf internal-state --shadow-report` |
 | `recheck_order` | `"staleness"` | none on held-out | every order "no evidence" (ADR-060) | none planned |
-| `idle_recheck` | off | Wave 1 information value 0.093 → 0.124 bits per budget (held-out, split) | Wave 2: knowledge correctness −0.019 / −0.004 (lane F), 0.726 against 0.718 (lane L, paired +0.008, below the spread); ~25 % more wall time | a re-check ranked by observed change rather than age (§6, direction 4) |
+| `idle_recheck` | off | Wave 1 information value 0.093 → 0.124 bits per budget (held-out, split) | Wave 2: knowledge correctness −0.019 / −0.004 (lane F), 0.726 against 0.718 (lane L, paired +0.008, below the spread); ~25 % more wall time | none planned (lane R: no order helps, ADR-060) |
 | `adaptive_depth` | off | equal quality, 581 → 559 pages | wall time not lower | measurement with the live model, where pages cost model time |
 | `executive_rule information-v1` | `rules-v1` (opt-in) | held-out core 0.092 → 0.105 bits per budget; passes retention | the withheld core world gave the same choices | a further withheld world (one look) |
 | `curiosity_learning_progress` | off | idle path 0.094 → 0.144 (12 seeds, 11 better) | timer path 0.139 → 0.126 (12 seeds); no gain on the withheld world | none planned: the rule was that neither path may lose |

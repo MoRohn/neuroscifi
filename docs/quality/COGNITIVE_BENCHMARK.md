@@ -482,12 +482,18 @@ dirty, and `final()` compares the worlds file's bytes with the SHA-256 pinned in
 records or loads anything (the digest goes into the ledger line). It appends its line to
 `docs/quality/evidence/genesis_final_uses.jsonl` (commit, clean flag, mechanism, `"ablate": []`, the family
 `learning_cycles_withheld`, the configurations, the note) **before** it loads or scores anything, so a crash still
-counts as a look. The script also refuses another tree's source and an `--out` inside the checkout. The file's SHA-256
+counts as a look. The script also refuses another tree's source, an `--out` inside the checkout and (since the second
+fix lane) an `--out` whose directory is missing or not writable. The file's SHA-256
 is pinned in `cycles.py` (checked by `final()`) and by `tests/acceptance/test_learning_cycles_withheld.py`; the tests
 check each refusal without loading the worlds. A `--final` run of `scripts/bench_cognition.py` (the counterfactual
-withheld interface) likewise refuses a dirty or uncommitted tree and an `--out` inside the checkout (fix lane).
-`baseline` is Step 0's behaviour made explicit since the fix lane (every Wave 1–3 setting off, lane S's two rules off,
-supersession "ask", lane K's re-check order, no idle investigation); the Wave 3 look's configurations, their reference
+withheld interface) likewise refuses a dirty or uncommitted tree and an `--out` inside the checkout (fix lane); since
+the second fix lane it also refuses, before its ledger line, an `--out` it cannot write, an empty note, a mechanism
+that no selected family has (every family would fall back to the baseline), an unknown ablation, and a `withheld.py`
+whose bytes do not hash to the SHA-256 pinned in `cognition.WITHHELD_SHA256`.
+`baseline` is Step 0's behaviour made explicit since the fix lane (the Wave 1 web settings of `WAVE1_OFF_WEB` off,
+lane S's two rules off, supersession "ask", lane K's re-check order, no idle investigation; every other setting at
+its default, as at Step 0, among them `calibrated_forecasts`, `tick_admission` "unified" and `arbitration_record`,
+which are on); the Wave 3 look's configurations, their reference
 pairings and report fields are `cycles.LOOKS["wave3"]`, `LOOK_PAIRS`, `LOOK_FIELDS` and `COUNTERS` (what each
 admitted-content counter can see: `self_admitted` and `wire_admitted` see only 9.x and 7.x versions;
 `admitted.wrong`, `admitted.own_only` and `admitted.wire_only` need no version convention).

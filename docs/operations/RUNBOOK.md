@@ -483,7 +483,9 @@ after the reviews; you can turn either on):
 - `echo_recognition`: a page that repeats what NeuroSciFi itself answered, or says "an assistant reported", is not
   taken as proof. It only catches repeats that name a model or copy a number NeuroSciFi said first. The fix lane made
   it safe to turn on: it no longer throws away honest pages on a large individual, a forgotten source no longer
-  blocks a subject for ever, it no longer slows writes, and "the AI Act" is no longer read as AI text.
+  blocks a subject for ever, it no longer slows writes, and "the AI Act" is no longer read as AI text. While it is off
+  (the default), such a page counts like any other page, also when it says an assistant or an AI wrote it: that check
+  is part of this rule.
 
 To check or change them (`DB` is the individual's file):
 
@@ -508,7 +510,7 @@ nsf web config --db DB --set 'supersession="ask"'            # back to asking yo
 ```
 
 Measured in Wave 3 on simulated worlds, it asked fewer questions but did not make knowledge measurably more correct,
-and about one replacement in eleven was wrong (two outlets repeating the same rumour); some wrong replacements stayed
+and about one replacement in eight was wrong (two outlets repeating the same rumour); some wrong replacements stayed
 wrong for over a week of simulated days, until the test ended. Two outlets repeating the same rumour can still
 replace a correct fact in your own research or a refresh. Since the fix lane only your own research and refreshes
 can let it decide (a question asked from Pocket or by an agent is always asked of you), forgetting a source also
