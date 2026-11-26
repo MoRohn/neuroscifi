@@ -1,8 +1,9 @@
 """Lane M's mechanisms in the cognitive benchmark (ADR-052): the counterfactual family's answerer, built from the
 product's imagination modules, with one component per mechanism so each can be ablated.
 
-  scm       causal.answer: the linear-Gaussian engine (rungs 1-3 on a declared model; declines what back-door
-            adjustment cannot identify)
+  scm       causal.answer: the linear-Gaussian engine (rungs 1-3 on a declared model; back-door adjustment on a graph)
+  front_door  causal.answer's front-door adjustment (ADR-059, Wave 3 lane C): with it off, a graph question whose
+            cause a hidden common cause touches is declined, as before Wave 3
   what_if   instance/imagine.what_if: the exact posterior with one reading flipped, on a sandbox copy
   forecast  instance/forecast.forecast: multi-step rollouts from the active graph (horizon 1 stays the graph's own
             one-step prediction, as the baseline answers it)
@@ -22,7 +23,7 @@ from ...instance import forecast, imagine
 from ...instance.errors import InstanceError
 from . import counterfactual, register
 
-COMPONENTS = ("scm", "what_if", "forecast", "action")
+COMPONENTS = ("scm", "what_if", "forecast", "action", "front_door")
 NONE = {"value": None, "sd": None}
 
 
@@ -38,7 +39,7 @@ class ImaginationAnswerer:
         if "model" in query or "graph" in query:
             if not self.use["scm"]:
                 return NONE
-            out = causal.answer({k: v for k, v in query.items() if k != "rung"})
+            out = causal.answer({k: v for k, v in query.items() if k != "rung"}, front_door=self.use["front_door"])
             return {"value": out["value"], "sd": out["sd"]}
         if "evidence_id" in query:
             if not self.use["what_if"]:
