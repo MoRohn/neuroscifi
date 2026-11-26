@@ -1214,6 +1214,7 @@ def _forget_research_core(db, task_id, now, marks=None):
     db.execute("UPDATE web_knowledge SET task_id=NULL WHERE task_id=?", (task_id,))
     _unlink_ledger(db, task_id)
     _scrub_voice_context(db, task_id)
+    _forget_emissions(db, task_id)
     db.execute("DELETE FROM web_tasks WHERE id=?", (task_id,))
     _web_tombstones(db, "task", [task_id], now)
     effects = _web_cascade(db, claim_ids, now)
@@ -1222,6 +1223,21 @@ def _forget_research_core(db, task_id, now, marks=None):
     effects["deleted"] = deleted
     urls, shas = _unreferenced(db, {u for r in sources for u in r[:3] if u}, {r[3] for r in sources if r[3]})
     return effects, {"urls": urls, "sha256": shas}
+
+
+def _forget_emissions(db, task_id):
+    """ADR-067: the fingerprints of what the task's answer emitted (webcortex/emitted.py), removed with the task in the
+    live forget and in every checkpoint replay (primary-key lookups only; rows exist only while own_text_provenance
+    was on)."""
+    from ..webcortex import emitted
+    emitted.forget_task(db, task_id)
+
+
+def _forget_emitted_knowledge(db, ids):
+    """ADR-067: the fingerprints of a forgotten knowledge item's subject names and values (read before the rows go),
+    in the live forget and in every checkpoint replay."""
+    from ..webcortex import emitted
+    emitted.forget_knowledge(db, ids)
 
 
 def _unlink_ledger(db, task_id):
@@ -1346,6 +1362,7 @@ def _forget_knowledge_core(db, knowledge_id, now, marks=None):
             refreshes.append(task_id)
             cache = {k: sorted(set(cache[k]) | set(out[1].get(k) or [])) for k in cache}
     chain = [kid for kid in chain if db.execute("SELECT 1 FROM web_knowledge WHERE id=?", (kid,)).fetchone()]
+    _forget_emitted_knowledge(db, chain)
     effects = _drop_knowledge(db, chain, now)
     db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
     effects["refresh_tasks_forgotten"] = refreshes
@@ -1586,6 +1603,7 @@ def replay_web_forgets(db, forgotten, now, marks=None):
     doomed = [kid for kid, key in db.execute("SELECT id, key FROM web_knowledge").fetchall()
               if wanted("knowledge", _knowledge_subject(kid, key))]
     if doomed:
+        _forget_emitted_knowledge(db, doomed)
         _drop_knowledge(db, doomed, now)
         db.execute("DELETE FROM web_entities WHERE id NOT IN (SELECT entity_id FROM web_mentions)")
         out["knowledge"] = len(doomed)

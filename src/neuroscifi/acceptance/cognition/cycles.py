@@ -269,7 +269,9 @@ def investigate(db, task, docs, now, *, answer=None) -> dict:
     usage = {"pages": len(docs), "requests": len(docs), "bytes": sum(len(d.text) for d in docs), "queries": 1}
     checkpoint = state.task(db, tid).get("checkpoint") or {}
     checkpoint["predictions_settled"] = list(out.get("predictions_settled") or [])[:50]
-    with store.write(db):
+    emission = orchestrator._emission(db, tid, report, "completed", now)     # ADR-067, as the orchestrator stores
+    with store.write(db):                                                    # an answer (nothing with it off)
+        orchestrator._record_emission(db, tid, emission, now)
         db.execute("UPDATE web_tasks SET status='completed', finished_at=?, updated_at=?, result=?, usage=?, "
                    "checkpoint=? WHERE id=?", (now, now, state.dumps(report), state.dumps(usage),
                                                state.dumps(checkpoint), tid))

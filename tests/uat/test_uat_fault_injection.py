@@ -399,6 +399,7 @@ def test_a_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record(
 # the owner's own front-door question (the front door).
 WAVE3_WEB_ON = {"recheck_order": "rate+seen+rotation", "attribution_independence": True, "echo_recognition": True,
                 "supersession": "independent", "origin_grouping": "one_way"}
+WAVE3_WEB_ON["own_text_provenance"] = True        # Wave 4 lane E (ADR-067), failed by the same checks
 WAVE3_INSTANCE_ON = {"predictive_regulation": "shadow"}
 
 
@@ -454,6 +455,8 @@ WAVE3_ENTRIES = (
     ("predictive_regulation_shadow", "neuroscifi.resources.shadow", "_verdict", None),
     ("readiness", "neuroscifi.readiness", "report", None),
     ("front_door", "neuroscifi.causal", "_frontdoor", _front_door_question),
+    ("own_text_provenance", "neuroscifi.webcortex.emitted", "prepare", None),      # Wave 4 lane E (ADR-067)
+    ("own_text_provenance", "neuroscifi.webcortex.emitted", "Echoes", None),
 )
 WAVE3_IDS = [f"{m}:{n}" for m, _, n, _ in WAVE3_ENTRIES]
 

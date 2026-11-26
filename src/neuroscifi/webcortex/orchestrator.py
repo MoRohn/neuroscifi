@@ -2664,8 +2664,10 @@ def _execute(db, task_id, services, *, resume):
                                                                       run.cfg.selective_answering):
         _monitor(run, report)
     run.usage.seconds = round(run.elapsed(), 3)
+    emission = _emission(db, task_id, report, status, now)     # ADR-067: read before the file is locked
     try:
         with store.write(db):
+            _record_emission(db, task_id, emission, now)
             state.update_task(db, task_id, now, holder=run.holder, status=status, stage=None, result=report,
                               error=error, usage=run.usage.to_json(), finished_at=now, lease_holder=None,
                               lease_expires_at=None,
@@ -2684,6 +2686,45 @@ def _execute(db, task_id, services, *, resume):
     _prune_cache(db, task_id, services, now)
     _after_run(db, task_id, now)
     return get(db, task_id)
+
+
+def _emission(db, task_id, report, status, now):
+    """ADR-067 (own_text_provenance, off by default): what the stored model-written answer emits (emitted.prepare,
+    read only, before the write transaction); None when off or nothing to record. A failure costs nothing but the
+    record: {"failed": its type}, logged as the task's error event inside the transaction (_record_emission)."""
+    if report is None or status not in ("completed", "partial"):
+        return None
+    try:
+        from . import emitted
+        out = emitted.prepare(db, task_id, report, now)
+    except Exception as exc:          # noqa: BLE001 - the answer must survive any defect of the record
+        return {"failed": type(exc).__name__}
+    if out is not None and not (isinstance(out, dict) and isinstance(out.get("rows"), list)):
+        return {"failed": "TypeError"}     # whatever came back is not a record: nothing is written
+    return out
+
+
+def _record_emission(db, task_id, emission, now):
+    """Inside the task's final write transaction: emitted.record (primary-key writes only), never failing the task."""
+    if not emission:
+        return
+    failed = emission.get("failed")
+    if failed is None:
+        try:
+            from . import emitted
+            db.execute("SAVEPOINT emitted_record")
+            try:
+                emitted.record(db, emission)
+            except Exception:
+                db.execute("ROLLBACK TO emitted_record")
+                raise
+            finally:
+                db.execute("RELEASE emitted_record")
+        except Exception as exc:      # noqa: BLE001 - the answer must survive any defect of the record
+            failed = type(exc).__name__
+    if failed is not None:
+        state.log_event(db, task_id, "error", {"stage": "recording the individual's own claims", "error": failed},
+                        now)
 
 
 def _reason(db, run, report):

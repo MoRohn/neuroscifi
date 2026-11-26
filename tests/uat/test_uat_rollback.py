@@ -703,6 +703,27 @@ def test_echo_recognition(individual):
     assert_rolls_back(reference, on_, again)
 
 
+def test_own_text_provenance(individual):
+    """Wave 4 lane E (ADR-067). Off: two outside pages repeating a version only the individual's own stored answer had
+    stated make it knowledge; on: the answer's fingerprint marks them as its echoes, held; off again: knowledge again,
+    on the next task (what was recorded while on is not read with the setting off)."""
+    db, _ = individual
+    n = iter(range(1, 100))
+
+    def probe():
+        k = next(n)
+        name, value = f"Morvel{k}", f"8.{k}.0"
+        _s_look(db, T0 + k * DAY, name, [], answer=f"{name} {value} is the latest {name} release.")
+        _s_look(db, T0 + k * DAY + 7200, name, [
+            ("devdesk.example", f"By now {name} {value} is the latest {name} release."),
+            ("factline.example", f"Once again {name} {value} is the latest {name} release.")])
+        return _s_rows(db, value)
+    on, off = web_switch(db, "own_text_provenance")
+    reference, on_, again = cycle(on, off, probe)
+    assert (reference, on_) == (1, 0)
+    assert_rolls_back(reference, on_, again)
+
+
 def test_supersession_and_its_records(individual, tmp_path):
     """Off ("ask"): a newer version from three independent outlets beside a lagging one is asked, the item stays;
     on ("independent"): it replaces the item, marked as decided by the rule; off again: asked, on the next refresh.
@@ -840,4 +861,5 @@ SWITCHES = {
     "attribution_independence": test_attribution_independence, "echo_recognition": test_echo_recognition,
     "supersession": test_supersession_and_its_records, "origin_grouping": test_origin_grouping,
     "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
+    "own_text_provenance": test_own_text_provenance,
 }

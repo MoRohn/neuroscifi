@@ -76,14 +76,20 @@ CONFIGS = {"shipped": {},
            "attribution_independence": {"attribution_independence": True},
            "echo_recognition": {"echo_recognition": True},
            "origin_grouping:one_way": {"origin_grouping": "one_way"}}
+CONFIGS["own_text_provenance"] = {"own_text_provenance": True}                      # Wave 4 lane E (ADR-067)
 FINAL_CONFIGS = ("shipped",)
 READ_BACK = ("enabled", "autonomous", "attribution_independence", "echo_recognition", "origin_grouping",
              "supersession", "supersession_min_sources", "auto_provisional_min_sources",
              "auto_provisional_min_confidence")
+READ_BACK += ("own_text_provenance",)
 REFERENCES = ("oracle", "every_page", "same_value", "todays_rule")
 COUNTS = ("looks", "pages", "pages_with_claims", "admitted", "admitted_false", "wrongly_admitted",
           "wrongly_admitted_false", "own_admitted", "eligible", "suppressed", "suppressed_contested",
           "dependent_rises", "tp", "fp", "fn", "tn")
+# Wave 4 lane E (added before its rule was run): read pages a rule set aside as echoes of the individual's own output
+# (consolidation's summary["echoes"]), by what the derivation graph says they are: an echo, or an honest page (first-hand
+# or derived from an outlet) wrongly discarded
+COUNTS += ("discarded_echo_pages", "discarded_honest_pages")
 SPLITS = ("development", "held_out")
 WITHHELD = "withheld"
 
@@ -174,7 +180,9 @@ def investigate(db, task, docs, now, *, answer=None) -> tuple[dict, list, dict]:
     usage = {"pages": len(docs), "requests": len(docs), "bytes": sum(len(d.text) for d in docs), "queries": 1}
     checkpoint = state.task(db, tid).get("checkpoint") or {}
     checkpoint["predictions_settled"] = list(out.get("predictions_settled") or [])[:50]
-    with store.write(db):
+    emission = orchestrator._emission(db, tid, report, "completed", now)     # ADR-067, as the orchestrator stores
+    with store.write(db):                                                    # an answer (nothing with it off)
+        orchestrator._record_emission(db, tid, emission, now)
         db.execute("UPDATE web_tasks SET status='completed', finished_at=?, updated_at=?, result=?, usage=?, "
                    "checkpoint=? WHERE id=?", (now, now, state.dumps(report), state.dumps(usage),
                                                state.dumps(checkpoint), tid))
@@ -287,6 +295,11 @@ class Run:
         self.prints.append(json.dumps([sorted(together), sorted(map(str, admitted)), sorted(out.get("contested") and
                                        [str(x.get("key")) for x in out["contested"]] or [])]))
         self._count(shape, pages_with_claims=len(read), **pairs)
+        gone = set(out.get("echoes") or [])
+        discarded = [page_of[u] for u in sorted({c.source_url for cl in clusters for c in cl.claims if c.id in gone})
+                     if u in page_of]
+        self._count(shape, discarded_echo_pages=sum(1 for p in discarded if p["basis"] == "echo"),
+                    discarded_honest_pages=sum(1 for p in discarded if p["basis"] != "echo"))
         self.cost["investigations"] += 1
         self.cost["pages"] += len(pages)
         self.cost["pages_with_claims"] += len(read)
@@ -510,6 +523,51 @@ def _run_split(split, spec, generate, *, configs=None, seeds=None) -> dict:
         rows = [references(g) for g in gs]
         out["references"][n] = {ref: _summarise([r[ref] for r in rows], seeds) for ref in REFERENCES}
     return out
+
+
+# ---- Wave 4 lane E's verdict rule (ADR-067), written and committed BEFORE its first held-out run --------------------------
+# For `own_text_provenance` against `shipped` on one split's result (run_split), per world summed over its seeds (the
+# fields named are those of totals_sum and mean_correct):
+#   A1 own answers: own_admitted summed over the worlds is lower than shipped's, and no world's is higher;
+#   A2 nothing else admitted: no world's wrongly_admitted is higher than shipped's;
+#   S1 suppression: no world's suppressed exceeds shipped's by more than half its number of seeds (2 on 4 seeds);
+#   C1 correctness: no world's mean_correct mean is lower than shipped's by more than shipped's sd in that world;
+#   G  grouping untouched: tp, fp and fn equal shipped's in every world (the rule groups nothing).
+# "effective" when all hold; "trade" when A1 holds and S1 or C1 fails (reported with its numbers, never as a gain);
+# "no effect" when A1 fails and S1, C1 hold; "unsafe" when A2 or G fails, or A1 fails with S1 or C1. Whatever the
+# verdict, the setting ships OFF: turning it on is the owner's decision. discarded_honest_pages (the false rejections
+# this rule causes) is reported beside it per world.
+def own_verdict(result, config="own_text_provenance", base="shipped") -> dict:
+    worlds = result["configurations"][config]["worlds"]
+    ref = result["configurations"][base]["worlds"]
+    seeds = len(result["seeds"])
+    per = {}
+    for w, e in worlds.items():
+        t, b = e["totals_sum"], ref[w]["totals_sum"]
+        per[w] = {"own_admitted": (b["own_admitted"], t["own_admitted"]),
+                  "wrongly_admitted": (b["wrongly_admitted"], t["wrongly_admitted"]),
+                  "suppressed": (b["suppressed"], t["suppressed"]),
+                  "discarded_honest_pages": t["discarded_honest_pages"],
+                  "discarded_echo_pages": t["discarded_echo_pages"],
+                  "mean_correct": (ref[w]["mean_correct"]["mean"], e["mean_correct"]["mean"],
+                                   ref[w]["mean_correct"]["sd"]),
+                  "grouping_same": all(t[k] == b[k] for k in ("tp", "fp", "fn"))}
+    a1 = sum(v["own_admitted"][1] for v in per.values()) < sum(v["own_admitted"][0] for v in per.values()) and \
+        all(v["own_admitted"][1] <= v["own_admitted"][0] for v in per.values())
+    a2 = all(v["wrongly_admitted"][1] <= v["wrongly_admitted"][0] for v in per.values())
+    s1 = all(v["suppressed"][1] - v["suppressed"][0] <= seeds / 2 for v in per.values())
+    c1 = all(v["mean_correct"][0] - v["mean_correct"][1] <= v["mean_correct"][2] for v in per.values())
+    g = all(v["grouping_same"] for v in per.values())
+    if not (a2 and g) or (not a1 and not (s1 and c1)):
+        verdict = "unsafe"
+    elif a1 and s1 and c1:
+        verdict = "effective"
+    elif a1:
+        verdict = "trade"
+    else:
+        verdict = "no effect"
+    return {"config": config, "reference": base, "verdict": verdict,
+            "checks": {"A1": a1, "A2": a2, "S1": s1, "C1": c1, "G": g}, "per_world": per}
 
 
 # ---- the withheld worlds: one look each, recorded before it scores --------------------------------------------------------
