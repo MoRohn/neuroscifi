@@ -85,7 +85,9 @@ VERDICT_KEYS = ("verdicts", "holds", "allows", "no_forecast", "failed", "hits", 
                 "unsettled", "memory_holds", "memory_hits", "voice_holds", "voice_followed", "holds_gate_allowed",
                 "starts_under_hold",
                 # review3 H-1: what the forecast adds where the real gate allowed (see the module doc)
-                "added_hits", "added_false_alarms", "added_misses", "added_quiet", "holds_gate_refused")
+                "added_hits", "added_false_alarms", "added_misses", "added_quiet", "holds_gate_refused",
+                # review3b N7: verdicts the gate's process could not record because another process held the record
+                "not_recorded_busy")
 POINT_KEYS = ("samples", "breach_samples", "starts")
 LEAD_BUCKETS = (("0", 0.0), ("1-60", 60.0), ("61-120", 120.0), ("121-180", 180.0), ("over 180", math.inf))
 EPISODE_KEYS = ("episodes", "preceded", "preceded_before_start") + tuple(f"lead {name}" for name, _ in LEAD_BUCKETS)
@@ -96,6 +98,9 @@ DAY_SECONDS = 86_400.0
 _seen: dict = {}              # db_path -> the history file's state when its verdict was taken (this process)
 _settled_at: dict = {}        # db_path -> when this process's sampler last settled
 _failures: dict = {}          # kind -> count, this process (logged at 1, 10, 100, ...)
+_busy: dict = {}              # db_path -> verdicts not recorded since the last one recorded (the record was locked)
+_busy_total: dict = {}        # db_path -> the same, all this process (logged at 1, 10, 100, ...)
+MAX_BUSY = 10 ** 6            # a busy count on a line above this is not one this version wrote
 
 
 def _folder(db_path):
@@ -180,8 +185,15 @@ def _observe(db_path, now, gate_why):
         item["failed"] = _note_failure("the shadow forecast", exc)
     shared.ensure_folder(where)
     with _locked(where, wait=False) as got:
-        if not got:
-            return None                               # being settled now: the next gate call records it
+        if not got:         # being settled now, or held by another process: counted, carried by the next verdict
+            _busy[key] = _busy.get(key, 0) + 1
+            total = _busy_total[key] = _busy_total.get(key, 0) + 1
+            if total == 10 ** (len(str(total)) - 1):
+                log.warning("predictive regulation in shadow: %d verdict(s) not recorded in this process because the "
+                            "record was busy; the gate is unchanged", total)
+            return None
+        if _busy.get(key):
+            item["busy_before"] = _busy[key]
         fd = shared.open_file(where / FILE, os.O_WRONLY | os.O_APPEND, group_write=False)
         try:
             if os.fstat(fd).st_uid not in shared.writers(db_path):    # security review L5: as every read checks
@@ -191,8 +203,10 @@ def _observe(db_path, now, gate_why):
             os.write(fd, (json.dumps(item, sort_keys=True) + "\n").encode("ascii"))
         finally:
             os.close(fd)
+    _busy.pop(key, None)
     if len(_seen) > 64:
         _seen.clear()
+        _busy_total.clear()
     _seen[key] = state
     return item
 
@@ -254,6 +268,12 @@ def _checked(raw, now) -> dict:
     gate = raw.get("gate")
     if gate not in GATES:
         raise ValueError("no gate")
+    busy = raw.get("busy_before", 0)
+    busy = {"busy": busy} if isinstance(busy, int) and not isinstance(busy, bool) and 0 < busy <= MAX_BUSY else {}
+    return _checked_verdict(raw, at, gate) | busy
+
+
+def _checked_verdict(raw, at, gate) -> dict:
     if "failed" in raw:
         return {"at": float(at), "failed": True, "gate": gate}
     hold = raw.get("hold")
@@ -363,6 +383,8 @@ def _settle(verdicts, points, *, since, until, samples_until, window=None, floor
         sample = v.get("sample_at")
         if sample is not None:
             if sample in first or sample <= samples_until:
+                if v.get("busy") and v["at"] > since:          # its count of dropped verdicts still counts (N7)
+                    bump(v["at"], "not_recorded_busy", v["busy"])
                 continue
             first.add(sample)
         kept.append(v)
@@ -381,6 +403,8 @@ def _settle(verdicts, points, *, since, until, samples_until, window=None, floor
             pending.append(v)
             continue
         bump(t, "verdicts")
+        if v.get("busy"):
+            bump(t, "not_recorded_busy", v["busy"])
         if v.get("failed"):
             bump(t, "failed")
             continue
@@ -514,6 +538,10 @@ def settle_quietly(db_path, now=None) -> None:
 
 def _line(v) -> dict:
     """A checked verdict as the line _observe writes."""
+    return _line_verdict(v) | ({"busy_before": v["busy"]} if v.get("busy") else {})
+
+
+def _line_verdict(v) -> dict:
     if v.get("failed"):
         return {"v": 1, "at": v["at"], "gate": v["gate"], "failed": "earlier"}
     if v.get("hold") is None:
@@ -576,6 +604,7 @@ def report(db_path, now=None, *, setting=None, window=None, floor_bytes=None) ->
     if total["preceded"]:
         lead = {"mean": round(total["lead_seconds_sum"] / total["preceded"], 1),
                 "min": total["lead_seconds_min"], "max": total["lead_seconds_max"]}
+    busy = total["not_recorded_busy"] + sum(v.get("busy", 0) for v in pending)
     statement = (f"These numbers rest on {len(with_verdicts)} day(s) with verdicts and {total['episodes']} memory "
                  f"breach episode(s) on this host. ")
     statement += ("That is enough to read them (at least " if enough else "Not enough data yet (at least ") + \
@@ -583,13 +612,17 @@ def report(db_path, now=None, *, setting=None, window=None, floor_bytes=None) ->
         "not a decision rule. What the forecast adds is under settled.added (only where the real gate allowed). " \
         "Verdicts exist only while the worker asks the gate; breach episodes are counted from every sample, also " \
         "when web research is disabled or writes are paused."
+    if busy:
+        statement += (f" {busy} verdict(s) were not recorded because the record was busy (another process held its "
+                      "lock); the gate decided as usual for them.")
     return {"schema": SCHEMA, "at": now, "setting": setting,
             "enough_data": enough, "statement": statement,
             "rests_on": {"days_with_verdicts": len(with_verdicts), "first_day": with_verdicts[0] if with_verdicts
                          else None, "last_day": with_verdicts[-1] if with_verdicts else None,
                          "breach_episodes": total["episodes"], "minimum_days": MIN_DAYS,
                          "minimum_breach_episodes": MIN_EPISODES},
-            "verdicts": {k: total[k] for k in ("verdicts", "holds", "allows", "no_forecast", "failed", "unsettled")},
+            "verdicts": {k: total[k] for k in ("verdicts", "holds", "allows", "no_forecast", "failed", "unsettled")}
+            | {"not_recorded_busy": busy},
             "settled": {"hits": total["hits"], "false_alarms": total["false_alarms"], "misses": total["misses"],
                         "quiet": total["quiet"], "total": settled,
                         "false_alarm_share": _share(total["false_alarms"], total["hits"] + total["false_alarms"]),
