@@ -95,3 +95,9 @@ def test_random_corruption_ends_only_in_named_errors(name):
         except T.ArtifactError:
             pass
         assert time.monotonic() - t < 6.0
+
+
+@pytest.mark.parametrize("text", [b"P2 2023 results were good\n", b"Solid state drives have many facets.\n",
+                                  b"OFF topic: the meeting moved\n", b"P6 is the sixth paragraph\n"])
+def test_ordinary_text_is_not_claimed_by_a_b2_format(text):
+    assert detect.detect(text, size=len(text)).format == "text"

@@ -211,7 +211,9 @@ def _netpbm(head):
     kind = int(m.group(1))
     if kind == 7:
         return _hit("pam", "the first bytes are the NetPBM 'P7' (PAM) magic") if b"WIDTH" in head[:512] else None
-    if not re.match(rb"P[1-6](\s|#[^\n]*\n)+\d", head[:256]):
+    sep = rb"(?:\s|#[^\n]*\n)+"
+    fields = 2 if kind in (1, 4) else 3
+    if not re.match(rb"P[1-6]" + (sep + rb"\d+") * fields + rb"\s", head[:512]):
         return None
     fmt = {1: "pbm", 4: "pbm", 2: "pgm", 5: "pgm", 3: "ppm", 6: "ppm"}[kind]
     return _hit(fmt, f"the first bytes are the NetPBM 'P{kind}' magic followed by a size")
@@ -304,9 +306,10 @@ def detect_b2(head: bytes, size: int | None = None):
     if hit:
         return hit
     stripped = raw.lstrip()
-    if stripped[:5].lower() == b"solid" and (b"facet" in raw or b"endsolid" in raw):
-        return _hit("stl", "text that starts with 'solid' and holds 'facet' (ASCII STL)", "structure")
-    if re.match(rb"\s*[CN4]{0,3}OFF\s", raw[:16]):
+    if re.match(rb"solid\b[^\n]*\n\s*(facet\s+normal\s|endsolid\b)", stripped[:1024]):
+        return _hit("stl", "text whose first line is 'solid ...' and whose next is 'facet normal' (ASCII STL)",
+                    "structure")
+    if re.match(rb"\s*(?:ST)?C?N?4?n?OFF(?:[ \t]+BINARY)?(?:\s|#[^\n]*\n)+\d+\s+\d+(?:\s+\d+)?\s", raw[:1024]):
         return _hit("off", "the first line is 'OFF' (Object File Format)", "structure")
     if _WKT.match(raw[:256]):
         return _hit("wkt", "text that starts with a WKT geometry keyword and '('", "structure")
