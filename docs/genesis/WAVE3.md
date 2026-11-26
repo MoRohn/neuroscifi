@@ -35,7 +35,7 @@ measured. It is the setting `origin_grouping` (default `"transitive"`, the group
 
 **What Wave 3 changes at the shipped defaults:**
 - `nsf imagine scm` answers causal questions that only front-door adjustment can answer, saying so, where before it
-  declined them (lane C; on; its withheld look is pending);
+  declined them (lane C; on; its withheld look, taken at the end of Wave 3, kept it on (12 of 12 front-door questions answered exactly; every other figure equal to the run without it; WAVE3.md, "The withheld looks"));
 - the worker's idle investigation now stops at the day's task count, as the timer always did (lane V; a budget fix);
   the count is checked again inside the submission's write transaction, so two deciders cannot both take the last
   place (security L6), and the knowledge re-check, when the owner turns it on, checks it inside its own (review3b N5);
@@ -695,7 +695,7 @@ found: they read the phrasings lane S's worlds were written with (S-2, S-3), one
 other discarded honest pages and held the write lock (M2–M5); both ship OFF, and at the shipped defaults sources are
 treated as at step 0, so the hole is open. Supersession ships OFF ("ask"), and so does the one-way grouping; the
 shipped grouping is unchanged, so N1, older than Wave 3, stays open by decision. What changes at the defaults is
-small: the front door (pending its look), the task count honoured by the idle investigation and checked inside the
+small: the front door (kept on by its look), the task count honoured by the idle investigation and checked inside the
 submission, the read-ahead byte bound, a forget that holds the lock briefly and reaches contradiction questions, the
 redraw fix and the look guards. The figures the reviews corrected: lane S's held-out numbers are development evidence
 (S-8); supersession's false replacements are 3 of 23 (about one in eight; lane S reported 3 of 33) and the longest
@@ -750,7 +750,97 @@ re-check helps; the idle investigator does not close the gap to a blind schedule
 
 ## The withheld looks
 
-<<WAVE3-LOOKS>>
+Taken once each, on 2026-11-26, on the clean tree `0bdc41a`, after the rule above was committed (`49bf81a`) and after
+the validation below. Nothing was committed between the runs and nothing was tuned afterwards. The ledger
+`docs/quality/evidence/genesis_final_uses.jsonl` gained three lines (5: the cycles look; 6 and 7: the front-door pair),
+all `"dirty": false` at `0bdc41a`. Evidence: `docs/quality/evidence/genesis_wave3_look_cycles.json`,
+`genesis_wave3_look_fd_on.json`, `genesis_wave3_look_fd_off.json`, `genesis_wave3_look_fd_compare.txt`.
+
+### The front door stays on
+
+The read-back holds (`ablate` `[]` and `["front_door"]`; `imagination` used, no fall-back), so the look is not void.
+
+- **(a) holds.** `summary_by_group.front_door.max_relative_error.max` is 0.0 with `n` = 3: all 12 front-door
+  questions (4 per seed) were answered, each exactly.
+- **(b) holds.** `scripts/compare_front_door_look.py`: 47 leaves differ between the two runs, 0 outside the
+  exemptions.
+- Reported: `front_door_declined` 0, 0, 0 (with the front door off: 4, 4, 4); `front_door_within_tolerance` 1.0 in
+  every seed; pooled (not a claim) `answered_within_tolerance` 0.827 → 0.987 and within the stricter 0.05,
+  0.76 → 0.92.
+
+By the rule, the front door ships ON. What this look is worth is limited as disclosed above: two lines of that
+file's question spec had been printed by a lane's search, and the mechanism is exact arithmetic on a declared graph.
+
+### The learning cycles: three worlds of kinds no split has, four seeds each
+
+The look's `world_digests` equal Step 0's. Of the 5,217 per-seed figures Step 0 recorded for `reference:no-loop`,
+`baseline` and `shipped`, the look reproduces all but 102, and those 102 are database file sizes
+(`file_bytes_end`, `file_bytes_growth_per_cycle`): what the individual did on these worlds is what it did at Step 0.
+Every read-back is as the rule allows and `config_same_every_seed` is true in every world. `shipped` equals
+`lane-s:fixes-off` and `baseline` in every reported figure.
+
+Share of subjects whose newest held item is true now (`mean.correct`), mean over 4 seeds (sd); worlds in file order.
+
+| | W1 | W2 | W3 |
+|---|---|---|---|
+| no loop | 0.423 (0.051) | 0.311 (0.061) | 0.311 (0.065) |
+| **as shipped** (= `baseline`, `lane-s:fixes-off`) | **0.465 (0.064)** | **0.286 (0.039)** | **0.323 (0.035)** |
+| *reference:* never refreshed | 0.455 | 0.385 | 0.395 |
+| *reference:* blind round-robin, same allowance | 0.636 | 0.541 | 0.537 |
+| *reference:* oracle, same allowance | 0.797 | 0.809 | 0.820 |
+
+Each rule or mechanism against its reference configuration, same world and seed: the mean paired difference of
+`mean.correct` (seeds better of 4), then the counts the rule names, summed over the four seeds per world.
+
+| Configuration (against) | W1 | W2 | W3 | own-output / wrong-story versions admitted, one-origin rises (W1; W2; W3) | subjects lost or regressed (W1, W2, W3) |
+|---|---|---|---|---|---|
+| as shipped | | | | 4 / 2 / 0; 6 / 17 / 0; 6 / 12 / 1 (48 in all) | 1, 3, 3 |
+| `lane-s:echo-only` (`lane-s:fixes-off`) | +0.017 (1) | +0.013 (3) | +0.007 (1) | 0 / 4 / 0; 0 / 18 / 0; 0 / 15 / 1 (38) | 0, 2, 2 |
+| `lane-s:attribution-only` (`lane-s:fixes-off`) | 0 (0) | 0 (0) | 0 (0) | identical to as shipped (48) | 1, 3, 3 |
+| `lane-s:both` (`lane-s:fixes-off`) | +0.017 (1) | +0.013 (3) | +0.007 (1) | as `lane-s:echo-only` (38) | 0, 2, 2 |
+| `lane-s:supersede-K2` (`shipped`) | +0.011 (4) | +0.042 (4) | +0.007 (4) | 3 / 7 / 0; 6 / 21 / 0; 7 / 13 / 1 (58) | 1, 4, 4 |
+| `recheck:rate+seen+rotation/all` (`baseline`) | −0.005 (2) | −0.007 (1) | −0.006 (2) | 51 | 2, 4, 4 |
+| `recheck:rotation/all` (`baseline`) | +0.008 (3) | −0.002 (1) | −0.015 (2) | 47 | 0, 4, 3 |
+| `shipped+idle` (`shipped`) | +0.006 (3) | +0.035 (3) | +0.024 (3) | 50 | 1, 2, 3 |
+| `idle-first` (`baseline`) | +0.013 (3) | +0.042 (3) | +0.052 (4) | 2 / 1 / 0; 7 / 13 / 0; 7 / 13 / 0 (43) | 1, 1, 1 |
+
+The admitted-content counters see only the version ranges the worlds mark as the individual's own outputs and as
+the wrong story (the output's `counters`). Beside them, deciding nothing: `admitted.wrong` 49 as shipped, 38 with
+the echo rule, 66 with supersession; `admitted.own_only` 16 as shipped, 0 with the echo rule.
+
+What the look says, by the rule written before it:
+
+- **`echo_recognition`: supported on unseen worlds; it stays OFF.** (a) 48 → 38 in total and lower in every world
+  (6 → 4, 23 → 18, 19 → 16); (b) no world below minus its spread (all three paired differences are positive, each
+  smaller than the spread); (c) in no world and seed more subjects lost or regressed. Versions only the individual
+  itself had asserted that became knowledge: 16 → 0. Versions only the wrong story stated: 31 → 37, six MORE: with
+  the own-output versions gone, the wrong story's took some of their places. This is the rule's only clean test,
+  it is one look at three worlds, and the rule's known limits stand (it catches what credits a model or repeats a
+  stored answer's value and wording; one page can exhaust its time budget on a large individual). Whether to turn
+  it on is the owner's decision: `nsf web config --set 'echo_recognition=true'`.
+- **`attribution_independence`: not exercised by these worlds; "not supported"; it stays OFF.** Every figure equals
+  the run without it: no copy in these worlds credits its origin in a phrasing the rule reads. The look says
+  nothing for or against it beyond that.
+- **The hole Step 0 found is open at the shipped defaults, on the same worlds, in the same counts:** 16 own-output
+  and 31 wrong-story versions became knowledge, one confidence rose from a single origin, 7 subjects held correctly
+  went wrong.
+- **`supersession` (K = 2, both source rules off): it stays OFF.** Its paired gain is positive in every seed of
+  every world and beyond the spread in one (W2 +0.042 against 0.039). It made 54 replacements by the rule, 51 to the
+  true newer version and 3 to a wrong one; with the 2 made by the path that exists without it, 5 false replacements,
+  and every one was still wrong when its run ended (3, 9, 15, 3 and 17 cycles: lower bounds). As shipped, the same
+  worlds have 1 (9 cycles, still wrong at the end). It admits more wrong-story versions (31 → 41) and loses or
+  regresses more subjects (7 → 9). The trade is now measured on unseen worlds: more subjects correct on average,
+  and wrong beliefs that nothing corrected before the run ended.
+- **The re-check's order: no gain** (paired differences from −0.015 to +0.008 per world, never beyond the spread),
+  as on held-out.
+- **The idle investigator: the one mechanism here that helped on unseen worlds, and the look cannot promote it.**
+  Run after the timer's pass (`shipped+idle`) it adds +0.006, +0.035, +0.024; run before it (`idle-first`) +0.013,
+  +0.042, +0.052, beyond the spread in W2 and W3, with coverage 0.883 / 0.872 / 0.815 → 0.972 / 0.938 / 0.941,
+  fewer subjects lost or regressed (7 → 3) and no more wrongly admitted content (48 → 43). On held-out the same
+  configuration was "revise" (beyond the spread in one world of five). How the daily allowance is divided between
+  refreshing what is known and reaching what is not is the next thing to measure properly, on worlds written for it.
+- **Every configuration stays far below a blind round-robin with the same allowance** (0.636 / 0.541 / 0.537): the
+  best here reaches 0.482, 0.328 and 0.375.
 
 ## Validation
 

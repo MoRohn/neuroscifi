@@ -1,0 +1,80 @@
+exempt   counterfactual.by_query_kind.scm:confounded.answered_within_strict_tolerance: on 1.0  off 0.0
+exempt   counterfactual.by_query_kind.scm:confounded.answered_within_tolerance: on 1.0  off 0.0
+exempt   counterfactual.by_query_kind.scm:confounded.declined_confounded_share: on 0.0  off 1.0
+exempt   counterfactual.by_query_kind.scm:confounded.front_door_declined: on 0  off 12
+exempt   counterfactual.by_query_kind.scm:confounded.front_door_within_tolerance: on 1.0  off 0.0
+exempt   counterfactual.by_query_kind.scm:confounded.max_relative_error: on 0.0  off None
+exempt   counterfactual.per_seed.0.answered_within_strict_tolerance: on 0.96  off 0.8
+exempt   counterfactual.per_seed.0.answered_within_tolerance: on 1.0  off 0.84
+exempt   counterfactual.per_seed.0.declined_confounded_share: on 0.0  off 1.0
+exempt   counterfactual.per_seed.0.front_door_declined: on 0  off 4
+exempt   counterfactual.per_seed.0.front_door_within_tolerance: on 1.0  off 0.0
+exempt   counterfactual.per_seed.1.answered_within_strict_tolerance: on 0.96  off 0.8
+exempt   counterfactual.per_seed.1.answered_within_tolerance: on 0.96  off 0.8
+exempt   counterfactual.per_seed.1.declined_confounded_share: on 0.0  off 1.0
+exempt   counterfactual.per_seed.1.front_door_declined: on 0  off 4
+exempt   counterfactual.per_seed.1.front_door_within_tolerance: on 1.0  off 0.0
+exempt   counterfactual.per_seed.2.answered_within_strict_tolerance: on 0.84  off 0.68
+exempt   counterfactual.per_seed.2.answered_within_tolerance: on 1.0  off 0.84
+exempt   counterfactual.per_seed.2.declined_confounded_share: on 0.0  off 1.0
+exempt   counterfactual.per_seed.2.front_door_declined: on 0  off 4
+exempt   counterfactual.per_seed.2.front_door_within_tolerance: on 1.0  off 0.0
+exempt   counterfactual.summary.answered_within_strict_tolerance.max: on 0.96  off 0.8
+exempt   counterfactual.summary.answered_within_strict_tolerance.mean: on 0.92  off 0.76
+exempt   counterfactual.summary.answered_within_strict_tolerance.min: on 0.84  off 0.68
+exempt   counterfactual.summary.answered_within_tolerance.max: on 1.0  off 0.84
+exempt   counterfactual.summary.answered_within_tolerance.mean: on 0.986667  off 0.826667
+exempt   counterfactual.summary.answered_within_tolerance.min: on 0.96  off 0.8
+exempt   counterfactual.summary.declined_confounded_share.max: on 0.0  off 1.0
+exempt   counterfactual.summary.declined_confounded_share.mean: on 0.0  off 1.0
+exempt   counterfactual.summary.declined_confounded_share.min: on 0.0  off 1.0
+exempt   counterfactual.summary_by_group.front_door.answered_within_strict_tolerance.max: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.answered_within_strict_tolerance.mean: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.answered_within_strict_tolerance.min: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.answered_within_tolerance.max: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.answered_within_tolerance.mean: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.answered_within_tolerance.min: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.front_door_declined.max: on 0.0  off 4.0
+exempt   counterfactual.summary_by_group.front_door.front_door_declined.mean: on 0.0  off 4.0
+exempt   counterfactual.summary_by_group.front_door.front_door_declined.min: on 0.0  off 4.0
+exempt   counterfactual.summary_by_group.front_door.front_door_within_tolerance.max: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.front_door_within_tolerance.mean: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.front_door_within_tolerance.min: on 1.0  off 0.0
+exempt   counterfactual.summary_by_group.front_door.max_relative_error.max: on 0.0  off None
+exempt   counterfactual.summary_by_group.front_door.max_relative_error.mean: on 0.0  off None
+exempt   counterfactual.summary_by_group.front_door.max_relative_error.min: on 0.0  off None
+exempt   counterfactual.summary_by_group.front_door.max_relative_error.n: on 3  off 0
+exempt   counterfactual.summary_by_group.front_door.max_relative_error.sd: on 0.0  off None
+{
+ "void": [],
+ "a_holds": true,
+ "front_door_max_relative_error": 0.0,
+ "front_door_group_answered_within_tolerance": {
+  "mean": 1.0,
+  "sd": 0.0,
+  "min": 1.0,
+  "max": 1.0,
+  "n": 3
+ },
+ "per_seed": [
+  {
+   "front_door": 4,
+   "front_door_declined": 0,
+   "front_door_within_tolerance": 1.0
+  },
+  {
+   "front_door": 4,
+   "front_door_declined": 0,
+   "front_door_within_tolerance": 1.0
+  },
+  {
+   "front_door": 4,
+   "front_door_declined": 0,
+   "front_door_within_tolerance": 1.0
+  }
+ ],
+ "exercised": "12 of 12 front-door questions answered",
+ "b_holds": true,
+ "differing_leaves": 47,
+ "outside_the_exemptions": 0
+}

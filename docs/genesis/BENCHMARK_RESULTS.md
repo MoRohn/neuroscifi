@@ -127,7 +127,7 @@ Ablations (held-out split, pooled; without the front-door questions in brackets)
 0.781 (0.893; learned graph 0.667). In Wave 1 the engine did no front-door adjustment and declined those questions;
 since Wave 3 (lane C, ADR-059) it answers them where the criterion holds and the moments are exact or their sample
 size is stated: front-door group 0 → 1.000 held-out (12 of 12), every other leaf unchanged (`genesis_frontdoor.json`;
-its withheld look is pending). Cost: a
+its withheld look, taken at the end of Wave 3, kept it on (12 of 12 front-door questions answered exactly; every other figure equal to the run without it; WAVE3.md, "The withheld looks")). Cost: a
 what-if runs on a private in-memory copy, bounded at 512 MiB and 10 s; lane B measured a 257 MiB copy under a busy
 writer at 0.07 s, on tmpfs only ([WAVE1.md](WAVE1.md) §6.2 Q2).
 

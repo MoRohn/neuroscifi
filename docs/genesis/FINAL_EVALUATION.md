@@ -56,6 +56,24 @@ for over a week of simulated days until the test ended ([WAVE3.md](WAVE3.md) §3
 (RUNBOOK, "Gathering evidence on your own host"; read its `settled.added` and `guide` first, not `settled.hits`); whether to
 turn on automatic replacement (not recommended on this evidence); nothing else needs your decision to stay safe.
 
+### What the final looks showed
+
+**The withheld looks, taken once at the end of Wave 3** (clean tree `0bdc41a`; the rule for them committed first;
+ledger lines 5 to 7; WAVE3.md, "The withheld looks"; evidence `genesis_wave3_look_*.json`). On three unseen worlds,
+four seeds each, as shipped the share of subjects held correctly is 0.465 / 0.286 / 0.323, exactly as at step 0
+(never refreshed 0.455 / 0.385 / 0.395; a blind round-robin with the same allowance 0.636 / 0.541 / 0.537), and the
+hole is open in the same counts: 16 versions only the individual itself had asserted and 31 only the wrong story
+stated became knowledge. **`echo_recognition` is supported on those worlds** by the rule written beforehand (the 16
+own-output versions → 0; wrongly admitted content 48 → 38, lower in every world; correctness +0.017 / +0.013 /
++0.007; no more subjects lost), though wrong-story versions rose 31 → 37; it stays off and is the owner's to turn
+on. **`attribution_independence` was not exercised** (every figure identical). **Supersession** gains +0.011 /
++0.042 / +0.007 (every seed) and made 3 false replacements of 54 by the rule; all 5 false replacements in its runs
+were still wrong when the runs ended (up to 17 cycles); it stays off. **The re-check's order gives no gain.** **The
+idle investigator run before the timer's pass** gives +0.013 / +0.042 / +0.052 (beyond the spread in two worlds)
+with fewer subjects lost; the look cannot promote it, and dividing the daily allowance between refreshing and
+reaching is the next thing to measure. **The front door stays on** (12 of 12 front-door questions exact; every
+other figure equal to the run without it).
+
 ## One page, in plain words (Wave 2)
 
 **What Project Cognitive Genesis set out to do.** Add ways for NeuroSciFi to anticipate, imagine, describe and check
@@ -155,7 +173,7 @@ Nothing lost: the offline research benchmark's digest at the shipped defaults is
   has strategy selection; it fails closed.
 - **Front-door questions** (4 of 32 answerable per held-out seed) were declined until Wave 3; lane C's front-door
   adjustment answers them (the group 0 → 1.000, 12 of 12; pooled 0.875 → 1.000, `genesis_frontdoor.json`, ADR-059),
-  on exact or stated moments only; its withheld look is pending.
+  on exact or stated moments only; its withheld look, taken at the end of Wave 3, kept it on (12 of 12 front-door questions answered exactly; every other figure equal to the run without it; WAVE3.md, "The withheld looks").
 - **Source independence is decided by wording, not by origin** (Wave 3): the hole the withheld learning-cycle look
   found is open at the shipped defaults ([WAVE3.md](WAVE3.md)). So is an older defect of the same rule: one page
   naming two honest outlets as its origins joins them into one source and their true fact is not verified (review3b

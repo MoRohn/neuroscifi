@@ -88,7 +88,7 @@ outcome.
 | File | What it holds |
 |---|---|
 | `docs/quality/evidence/genesis_baseline.json` | the benchmark on the unchanged system: development, held-out, reference policies (`oracle`, `random`, `autonomy` (the idle path), `open`), and the withheld family once |
-| `docs/quality/evidence/genesis_final_uses.jsonl` | the ledger of `--final` runs of the withheld family (three entries: the baseline's, and Wave 1's look: the baseline re-scored, then the Wave 1 mechanisms) |
+| `docs/quality/evidence/genesis_final_uses.jsonl` | the ledger of `--final` runs of the withheld family (seven entries: the baseline's; Wave 1's look, two lines: the baseline re-scored, then the Wave 1 mechanisms; Wave 3 step 0's look at the withheld learning-cycle worlds; and Wave 3's final looks, three lines: the cycles look and the front-door pair) |
 | `docs/quality/evidence/genesis_wave1_withheld.json` | Wave 1's one look at the withheld family: both runs, headline metrics and full results |
 | `docs/quality/evidence/genesis_provenance.json` | the imagined store: safeguards broken one at a time (42 of 42 caught), costs, both review rounds |
 | `docs/quality/evidence/genesis_safety.json` | quiet and admission: honour times, costs, the admission benchmark, safeguards (14 of 14 caught), both review rounds |
@@ -99,6 +99,7 @@ outcome.
 | `docs/quality/evidence/genesis_integration.json` | Wave 2 lane L: the integrated family on both splits (baseline, defaults, each link alone, integrated, integrated minus one link), the baseline's spread, the paired comparisons, retention, adversarial and self-description, and the same runner before any link (`scripts/bench_wave2_integration.py`) |
 | [REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) | Wave 2 lane U: no evidence file; the counts of the fault-injection, rollback and equivalence tests and the `added_wave2` adversarial results are in the document, the tests in `tests/uat/` |
 | `docs/quality/evidence/genesis_cycles_withheld_baseline.json` | Wave 3 step 0: the unchanged system's one look at the withheld learning-cycle worlds (names the worlds: not development material; its aggregate numbers are in COGNITIVE_BENCHMARK.md) |
+| `docs/quality/evidence/genesis_wave3_look_cycles.json`, `genesis_wave3_look_fd_on.json`, `genesis_wave3_look_fd_off.json`, `genesis_wave3_look_fd_compare.txt` | Wave 3's withheld looks (ledger lines 5 to 7): twelve configurations on the withheld learning-cycle worlds; the front-door pair and its comparison |
 | `docs/quality/evidence/genesis_{frontdoor,h,recheck_order,wave3_s,idle_coverage}.json`, `offline_deterministic_aarch64.json` | Wave 3 lanes C, H, R, S, V and P |
 | `docs/quality/evidence/genesis_wave3_combined_{idle,orders,cycles,s,checks}.json` | Wave 3 reconciliation: the lanes' commands re-run together on `f0a1f09`, compared value by value with each lane's file (before the fix lane) |
 

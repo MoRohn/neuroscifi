@@ -545,3 +545,21 @@ correctly at cycle 3 regressed. The shipped-on Wave 1 and Wave 2 records (`hypot
 `salience_record`, `arbitration_record`, `answer_monitoring`; read back in every run) changed no launch and no held
 item (0 changed cycles on every seed). The smallest gain the pre-registered rule can see with these seeds is the
 baseline's sd: 0.064, 0.039 and 0.035.
+
+### The looks at the end of Wave 3
+
+**The withheld looks, taken once at the end of Wave 3** (clean tree `0bdc41a`; the rule for them committed first;
+ledger lines 5 to 7; WAVE3.md, "The withheld looks"; evidence `genesis_wave3_look_*.json`). On three unseen worlds,
+four seeds each, as shipped the share of subjects held correctly is 0.465 / 0.286 / 0.323, exactly as at step 0
+(never refreshed 0.455 / 0.385 / 0.395; a blind round-robin with the same allowance 0.636 / 0.541 / 0.537), and the
+hole is open in the same counts: 16 versions only the individual itself had asserted and 31 only the wrong story
+stated became knowledge. **`echo_recognition` is supported on those worlds** by the rule written beforehand (the 16
+own-output versions → 0; wrongly admitted content 48 → 38, lower in every world; correctness +0.017 / +0.013 /
++0.007; no more subjects lost), though wrong-story versions rose 31 → 37; it stays off and is the owner's to turn
+on. **`attribution_independence` was not exercised** (every figure identical). **Supersession** gains +0.011 /
++0.042 / +0.007 (every seed) and made 3 false replacements of 54 by the rule; all 5 false replacements in its runs
+were still wrong when the runs ended (up to 17 cycles); it stays off. **The re-check's order gives no gain.** **The
+idle investigator run before the timer's pass** gives +0.013 / +0.042 / +0.052 (beyond the spread in two worlds)
+with fewer subjects lost; the look cannot promote it, and dividing the daily allowance between refreshing and
+reaching is the next thing to measure. **The front door stays on** (12 of 12 front-door questions exact; every
+other figure equal to the run without it).
