@@ -319,7 +319,7 @@ research digest is unchanged.
 
 ## 11. Honest boundaries
 
-- Pixels of JPEG, WebP, TIFF (other than its uncompressed baseline) and HEIC, samples of MP3, AAC, Opus and FLAC, and
+- Pixels of JPEG, WebP, compressed TIFF (other than uncompressed and PackBits strips) and HEIC, samples of MP3, AAC, Opus and FLAC, and
   frames of any video are **not decoded on this host**: no decoder is installed. They are identified, their containers
   are read (dimensions, duration, tracks, metadata), and the answer says what is missing.
 - **No model here sees images or hears sound.** "Understanding" an image or a sound means measurements computed from
