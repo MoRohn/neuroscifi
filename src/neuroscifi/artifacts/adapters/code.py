@@ -7,7 +7,8 @@ class/function, class -> method, function -> nested function), `imports`, `calls
 by name, in this order: `self.x`/`cls.x` to a method of the enclosing class; a name defined at the top of the same
 module; a name bound by an import (`from m import f`, `import m` then `m.f`) to a definition in the package when
 there is one; otherwise it is kept unresolved with its written name. No type inference: `obj.method()` on any other
-receiver stays unresolved. Node attributes: line numbers, the first line of the docstring, decorators, base names.
+receiver stays unresolved. An `import:` node's `module` attribute is the module its statement names (`from m import
+f` gives "m", as `import m.sub` gives "m.sub"). Node attributes: line numbers, the first line of the docstring, decorators, base names.
 `outline(graph)` turns a Python graph into a `Document` outline (modules, classes, functions as nested headings).
 Bounds: each file at most PY_FILE_MAX bytes; all files together at most max_decoded_bytes / 256 (the syntax tree
 and graph cost about 250 times the source, measured); nodes and edges count against max_elements.
@@ -107,6 +108,7 @@ class _Module:
         self.top: dict[str, str] = {}             # top-level name -> node id
         self.methods: dict[str, dict[str, str]] = {}   # class node id -> method name -> node id
         self.aliases: dict[str, str] = {}         # local name -> dotted target ("pkg.mod" or "pkg.mod.f")
+        self.modules: dict[str, str] = {}         # local name -> the module the import statement names
 
 
 def _first_pass(mod: _Module, b: _Builder) -> list[tuple[str, ast.AST, str | None]]:
@@ -151,8 +153,9 @@ def _first_pass(mod: _Module, b: _Builder) -> list[tuple[str, ast.AST, str | Non
 def _bind_import(mod: _Module, node) -> None:
     if isinstance(node, ast.Import):
         for alias in node.names:
-            mod.aliases[alias.asname or alias.name.split(".")[0]] = alias.name if alias.asname else \
-                alias.name.split(".")[0]
+            local = alias.asname or alias.name.split(".")[0]
+            mod.aliases[local] = alias.name if alias.asname else alias.name.split(".")[0]
+            mod.modules[local] = alias.name
     else:
         base = node.module or ""
         if node.level:
@@ -165,6 +168,7 @@ def _bind_import(mod: _Module, node) -> None:
             if alias.name == "*":
                 continue
             mod.aliases[alias.asname or alias.name] = f"{base}.{alias.name}" if base else alias.name
+            mod.modules[alias.asname or alias.name] = base or alias.name     # `from base import name`: base
 
 
 def _calls_in(scope: ast.AST):
@@ -256,7 +260,8 @@ def python_package_graph(files: Mapping[str, bytes], limits) -> tuple[Graph, lis
             if found:
                 b.edge(mid, found, "imports")
             else:
-                b.edge(mid, b.node(f"import:{target}", "import", target), "imports")
+                b.edge(mid, b.node(f"import:{target}", "import", target,
+                                   {"module": mod.modules.get(alias, target)}), "imports")
         for sid, node, cls in scopes[name]:
             if isinstance(node, ast.ClassDef):
                 continue

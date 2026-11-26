@@ -195,12 +195,28 @@ def _stand_in():
         media_type: str
 
     def make(spec, limits):
-        request = dict(spec["data"], form=reverse[spec["spec"]])
-        return Made(*reference.make(request))
+        return Made(*reference.make(_request_of(spec, reverse)))
     M.make = make
     P = types.ModuleType("neuroscifi.artifacts")
     return {"neuroscifi.artifacts": P, "neuroscifi.artifacts.types": T, "neuroscifi.artifacts.adapters": A,
             "neuroscifi.artifacts.make": M}
+
+
+def _request_of(spec, reverse):
+    """The benchmark request a spec was built from: the inverse of the driver's field-name mapping
+    (subject._data_and_options), so the reference maker can make it."""
+    form = reverse[spec["spec"]]
+    data, options = dict(spec["data"]), dict(spec["options"])
+    if form == "sonify":
+        data |= {"low_hz": options["low_hz"], "high_hz": options["high_hz"], "tone_s": options["tone_s"],
+                 "domain": options["range"]}
+    elif form == "surface":
+        nx, ny = len(data["values"][0]), len(data["values"])
+        data = {"x": [float(v) for v in np.linspace(*data["x"], nx)], "y": [float(v) for v in np.linspace(*data["y"], ny)],
+                "z": data["values"], "format": options.get("format", "stl")}
+    elif form == "animation":
+        data = {"frames": data["frames"], "delays_s": [d / 1000 for d in data["delays_ms"]]}
+    return dict(data, form=form)
 
 
 @pytest.fixture
@@ -247,11 +263,16 @@ def test_named_failures_and_opaque(artifacts):
 
 def test_made_and_transform_through_the_driver(artifacts):
     out = made.score(artifacts, "development")
-    assert out["right"] == out["n"], out["failures"]
+    # forms no product form makes (a solid from given vertices and faces) are "cannot" before anything is made
+    unmade = [t.id for t in made.tasks("development") if subject.FORM_NAMES[t.question.split(":")[1]] is None]
+    assert out["right"] == out["n"] - len(unmade) and out["abstained"] == len(unmade), out["failures"]
     for t in transform.tasks("development"):
         kind = t.question.split(":")[1]
         name = next(n for n in t.files if n != "request.json")
-        if kind == "doc_to_outline" and not name.endswith(".md") or kind == "mesh_to_stl" and name.endswith(".ply"):
+        if kind == "mesh_to_stl":
+            assert artifacts.answer(t).status == "cannot"
+            continue
+        if kind == "doc_to_outline" and not name.endswith(".md"):
             continue
         a = artifacts.answer(t)
         result = transform.judge(t, a, artifacts.answer(t))

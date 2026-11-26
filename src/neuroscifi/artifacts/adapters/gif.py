@@ -2,7 +2,7 @@
 transparency, and every frame composed on the logical screen with its delay and disposal method.
 
 One frame: a `Raster` (RGB, or RGBA when the frame has a transparent index). Several frames: `Frames` of the
-composed RGBA canvas, with each delay as stored (0 s is kept as 0; browsers often show such frames for 0.1 s).
+composed canvas (RGB when no pixel of any composed frame is transparent, else RGBA), with each delay as stored (0 s is kept as 0; browsers often show such frames for 0.1 s).
 Disposal 2 restores the frame's area to transparent (as browsers do, not to the background colour); disposal 3
 restores what was there before. Comment and plain-text extensions are the artifact's own words; the NETSCAPE loop
 count is noted. A pixel index beyond the colour table is shown black and counted in the notes.
@@ -204,7 +204,12 @@ def decode_gif(data: bytes, detected: Detected, limits: Limits) -> Decoded:
                        False)
     if loops is not None:
         notes.append(f"animation loops {'endlessly' if loops == 0 else f'{loops} time(s)'}")
-    notes.append("frames are the composed logical screen (RGBA)")
+    if all(int(f.pixels[:, :, 3].min()) == 255 for f in frames):
+        # as for one frame: no composed pixel is transparent, so no alpha channel is claimed that the file lacks
+        frames = [Raster(np.ascontiguousarray(f.pixels[:, :, :3]), "rgb", 8) for f in frames]
+        notes.append("frames are the composed logical screen (RGB: no pixel of any frame is transparent)")
+    else:
+        notes.append("frames are the composed logical screen (RGBA)")
     return Decoded(detected, R.Frames(tuple(frames), tuple(delays), words=text), tuple(notes), False)
 
 

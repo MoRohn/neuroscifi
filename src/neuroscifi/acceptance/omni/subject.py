@@ -70,6 +70,10 @@ class Cannot(Exception):
     """The representation does not carry what the measurement needs."""
 
 
+class RefusedHere(Cannot):
+    """The product refused what the measurement needs (a member it would not decode, a decode a limit cut short)."""
+
+
 def split_question(question: str) -> tuple[list[str], str, str]:
     parts = question.split("::")
     name, _, arg = parts[-1].partition(":")
@@ -106,13 +110,23 @@ def _descend_single(rep):
     return rep
 
 
-def _member(rep, name: str):
+def _member(rep, name: str, container: str | None = None):
     if _kind(rep) == "Bundle":
         for m in _members(rep):
-            path = str(m.path).lstrip("./")
+            path = str(m.path)
+            path = path[2:] if path.startswith("./") else path        # only "./": a "../" name is not the member
+            if path.startswith("/") or ".." in path.split("/"):
+                continue                                              # a climbing or absolute name names no member
+            if container == "npz" and path == name + ".npy":          # np.savez stores the array `name` as name.npy
+                path = name
             if path == name or path.endswith("/" + name) or path.rsplit("/", 1)[-1] == name and "/" not in name:
+                note = str(m.note or "")
                 if m.inner is None:
-                    raise Cannot(f"member {name} not decoded: {m.note}")
+                    if note.startswith("refused"):
+                        raise RefusedHere(f"member {name} refused: {note}")
+                    raise Cannot(f"member {name} not decoded: {note}")
+                if note.startswith("partial"):
+                    raise RefusedHere(f"member {name} only partly decoded (a limit stopped it): {note}")
                 return m.inner, m.detected
         raise Cannot(f"no member {name}")
     if _kind(rep) == "Table" and getattr(rep, "title", None) == name:
@@ -231,7 +245,7 @@ def _caption(block) -> str:
 def _figure_member(block) -> str | None:
     ref = block.ref
     if isinstance(ref, dict):
-        return ref.get("member") or ref.get("src")
+        return ref.get("member") or ref.get("src") or ref.get("address")
     if isinstance(ref, (tuple, list)) and len(ref) > 1:
         return str(ref[1])
     return None
@@ -328,11 +342,30 @@ def _array(rep):
     rep = _descend_single(rep)
     if isinstance(rep, np.ndarray):
         return rep
+    if _kind(rep) == "Table":
+        return _ArrayTable(rep)
     for attr in ("array", "values", "data"):
         value = getattr(rep, attr, None)
         if isinstance(value, np.ndarray):
             return value
     raise Cannot(f"a {_kind(rep)} is not an array")
+
+
+class _ArrayTable:
+    """A 1-D or 2-D array that lane B2 represents as a Table (its documented columns: "value" for 1-D, "c0", "c1",
+    ... for 2-D). Shape, sum and elements read off the columns; the storage dtype is not carried by a Table."""
+
+    def __init__(self, table):
+        names = [c.name for c in table.columns]
+        if not (names == ["value"] or names == [f"c{i}" for i in range(len(names))]):
+            raise Cannot("a table that is not an array's")
+        cols = []
+        for c in table.columns:
+            if not isinstance(c.values, np.ndarray) or c.kind not in ("number", "integer", "boolean"):
+                raise Cannot("an array column that is not numeric")
+            cols.append(np.asarray(c.values, dtype=np.float64))
+        self.one_d = names == ["value"]
+        self.values = cols[0] if self.one_d else np.column_stack(cols) if cols else np.zeros((table.n_rows, 0))
 
 
 def measure(rep, detected, name: str, arg: str):
@@ -443,9 +476,21 @@ def measure(rep, detected, name: str, arg: str):
         if name == "geo.n_points":
             return int(sum(c.shape[0] for c in coords))
         if name == "geo.bbox":
-            allc = np.concatenate(coords)
+            allc = np.concatenate([c[:, :2] for c in coords])
             return [float(allc[:, 0].min()), float(allc[:, 1].min()), float(allc[:, 0].max()),
                     float(allc[:, 1].max())]
+    if name.startswith("video."):
+        rep1 = _descend_single(rep)
+        if _kind(rep1) != "Tree":
+            raise Cannot(f"a {_kind(rep1)} is not a video container")
+        if name == "video.duration_s" and rep1.root.attrs.get("duration_s") not in (None, ""):
+            return float(rep1.root.attrs["duration_s"])
+        if name == "video.size":
+            for group in rep1.root.children:
+                for track in group.children if group.name == "tracks" else ():
+                    if track.attrs.get("width") and track.attrs.get("height"):
+                        return [int(track.attrs["width"]), int(track.attrs["height"])]
+        raise Cannot(f"{name} is not in the container's structure (no frame is decoded)")
     if name == "tree.value":
         what, node = _tree_node(rep, arg)
         return node if what == "attr" else node.value
@@ -460,8 +505,24 @@ def measure(rep, detected, name: str, arg: str):
         if name == "code.functions":
             return sorted(set(functions.values()))
         if name == "code.imports":
-            return sorted({_bare(n.label) for n in nodes if n.kind == "module" and any(
-                e.kind == "imports" and e.dst == n.id for e in edges)})
+            by_id = {n.id: n for n in nodes}
+            parent = {e.dst: e.src for e in edges if e.kind == "defines"}
+
+            def module_of(node_id):
+                """The module an imports edge reaches: an import node's stated module, a module node, or the
+                module that defines the function or class an import names (`from pkg.mod import f`)."""
+                seen = set()
+                while node_id in by_id and node_id not in seen:
+                    seen.add(node_id)
+                    n = by_id[node_id]
+                    if n.kind == "import":
+                        return str((n.attrs or {}).get("module") or n.label)
+                    if n.kind == "module":
+                        return n.label
+                    node_id = parent.get(node_id)
+                return None
+            found = {module_of(e.dst) for e in edges if e.kind == "imports"}
+            return sorted({_bare(m) for m in found if m})
         if name == "code.calls":
             names = set(functions.values())
             ids = [i for i, label in functions.items() if label == arg]
@@ -477,6 +538,9 @@ def measure(rep, detected, name: str, arg: str):
     if name.startswith("array."):
         return _array_measure(_array(rep), name, arg)
     if name.startswith("bundle."):
+        if detected is not None and detected.format in ("gzip", "bzip2", "xz", "zstd") and \
+                _kind(_descend_single(rep)) == "Bundle":
+            rep = _descend_single(rep)
         if _kind(rep) != "Bundle":
             raise Cannot(f"a {_kind(rep)} is not a bundle")
         paths = sorted(str(m.path) for m in _members(rep))
@@ -484,7 +548,11 @@ def measure(rep, detected, name: str, arg: str):
     raise Cannot(f"{name} is not read off a {_kind(rep)}")
 
 
-def _array_measure(a: np.ndarray, name: str, arg: str):
+def _array_measure(a, name: str, arg: str):
+    if isinstance(a, _ArrayTable):
+        if name == "array.dtype":
+            raise Cannot("the array is read as a table: its storage dtype is not carried")
+        a = a.values
     if name == "array.shape":
         return [int(s) for s in a.shape]
     if name == "array.dtype":
@@ -548,12 +616,20 @@ class ArtifactsSubject:
             if task.kind == "transform":
                 return self._transform(task)
             name, data, declared = _only_file(task)
-            decoded = self._decode(name, data, declared)
             members, measure_name, arg = split_question(task.question)
+            try:
+                decoded = self._decode(name, data, declared)
+            except error_type as error:
+                return self._undecoded(error, name, data, declared, members, measure_name)
+            if decoded.partial and not measure_name.startswith("detect."):
+                # a limit stopped the decode early: a measurement over what was read could misstate the whole
+                return Answer(None, "refused", "partial: " + "; ".join(decoded.notes)[:200])
             rep, detected = decoded.representation, decoded.detected
             for member in members:
                 try:
-                    rep, det = _member(rep, member)
+                    rep, det = _member(rep, member, detected.format)
+                except RefusedHere:
+                    raise
                 except Cannot:
                     if _descend_single(rep) is rep:
                         raise
@@ -562,11 +638,30 @@ class ArtifactsSubject:
             value = measure(rep, detected, measure_name, arg)
         except error_type as error:
             return self._status(error)
+        except RefusedHere as why:
+            return Answer(None, "refused", str(why)[:200])
         except Cannot as why:
             return Answer(None, "cannot", str(why))
         if isinstance(value, _Refuse):
             return Answer(None, "refused", value.reason)
         return Answer(_plain(value), "answered")
+
+    def _undecoded(self, error, name, data, declared, members, measure_name) -> Answer:
+        """A decode that raised. A safety refusal stays a refusal. Otherwise what was established is still read:
+        detection (the format was identified even though its content could not be read), and the header facts a
+        `HeaderOnly` carries (ADR-072): sizes, rates, channels and exact durations, never content."""
+        types = self._mods["types"]
+        if isinstance(error, getattr(types, "Refused", ())) or members:
+            return self._status(error)
+        if measure_name in ("detect.family", "detect.format"):
+            detect = importlib.import_module("neuroscifi.artifacts.detect").detect
+            detected = detect(data[:64 << 10], name=name, declared=declared, size=len(data))
+            return Answer(detected.family if measure_name == "detect.family" else detected.format, "answered")
+        if isinstance(error, getattr(types, "HeaderOnly", ())):
+            value = _header_fact(error.facts, measure_name)
+            if value is not None:
+                return Answer(value, "answered")
+        return self._status(error)
 
     # make and transform: the request becomes a DESIGN §6 spec
     def _make(self, request: dict) -> Answer:
@@ -574,7 +669,11 @@ class ArtifactsSubject:
             make = importlib.import_module("neuroscifi.artifacts.make")
         except ImportError as error:
             return Answer(None, "cannot", f"not built: {error.name or error}")
-        made = make.make(_spec(request), self._mods["types"].Limits())
+        spec = _spec(request)
+        if hasattr(make, "catalog") and not any(row["form"] == spec["spec"] and row["available"]
+                                                 for row in make.catalog()):
+            raise Cannot(f"nothing here makes the form {spec['spec']} (make.catalog)")
+        made = make.make(spec, self._mods["types"].Limits())
         return Answer({"bytes": bytes(made.bytes if hasattr(made, "bytes") else made[0]),
                        "media_type": getattr(made, "media_type", "")}, "answered")
 
@@ -629,6 +728,25 @@ class ArtifactsSubject:
         return self._make(made)
 
 
+def _header_fact(facts: dict, measure_name: str):
+    """A measurement a header states (lane B2's HeaderOnly facts), or None. An estimated duration is not one."""
+    def number(*keys):
+        for key in keys:
+            if isinstance(facts.get(key), (int, float)) and not isinstance(facts.get(key), bool):
+                return facts[key]
+        return None
+    if measure_name in ("image.size", "video.size"):
+        w, h = number("width"), number("height")
+        return [int(w), int(h)] if w is not None and h is not None else None
+    if measure_name == "audio.rate_hz":
+        return number("rate_hz", "sample_rate_hz")
+    if measure_name == "audio.channels":
+        return number("channels")
+    if measure_name in ("audio.duration_s", "video.duration_s"):
+        return number("duration_s")
+    return None
+
+
 def _plain(value):
     if isinstance(value, np.generic):
         return value.item()
@@ -637,18 +755,51 @@ def _plain(value):
     return value
 
 
-# The benchmark's request forms -> the form names of DESIGN §5. Requests carry data as plain lists; the spec's
-# "data" holds them under the same names. Adjust HERE (only) when lanes G1/G2 fix their schemas.
-FORM_NAMES = {"line": "line_chart", "bar": "bar_chart", "scatter": "scatter_chart", "histogram": "histogram",
-              "timeline": "timeline", "diagram": "node_link", "tone": "sound", "sonify": "sonification",
-              "mesh": "solid", "surface": "surface", "animation": "animation", "data_file": "data_file"}
+# The benchmark's request forms -> the product's registered form names (make.catalog(); lanes G1 and G2). None: no
+# product form makes it (a solid from given vertices and faces). Adjust HERE (only) when the schemas change.
+FORM_NAMES = {"line": "chart.line", "bar": "chart.bar", "scatter": "chart.scatter", "histogram": "chart.histogram",
+              "timeline": "timeline", "diagram": "graph.nodelink", "tone": "sound.tone", "sonify": "sound.sonify",
+              "mesh": None, "surface": "surface.grid", "animation": "image.apng", "data_file": "data.csv"}
+
+
+def _evenly_spaced(values) -> list:
+    """[first, last] of an evenly spaced axis (lane G2's grids are evenly spaced between two ends); else Cannot."""
+    v = np.asarray(values, dtype=np.float64)
+    if v.size < 2 or not np.allclose(np.diff(v), (v[-1] - v[0]) / (v.size - 1), rtol=1e-9, atol=1e-12):
+        raise Cannot("the request's grid is not evenly spaced, and the surface form takes its two ends only")
+    return [float(v[0]), float(v[-1])]
+
+
+def _data_and_options(form: str, request: dict) -> tuple[dict, dict]:
+    """The request's data and options under the product form's own field names (field names only; every value is
+    the request's, and nothing is chosen that the request did not say, beyond the form's stated defaults)."""
+    rest = {k: v for k, v in request.items() if k not in ("form", "title", "description", "options")}
+    options = dict(request.get("options", {}))
+    if form == "tone":
+        return {"frequency_hz": rest["frequency_hz"], "duration_s": rest["duration_s"]}, options
+    if form == "sonify":
+        options |= {"low_hz": rest["low_hz"], "high_hz": rest["high_hz"], "tone_s": rest["tone_s"],
+                    "range": list(rest["domain"]), "reference": "none"}       # the request asks for no reference
+        return {"values": rest["values"]}, options
+    if form == "surface":
+        if "format" in rest:
+            options["format"] = rest["format"]
+        return {"values": rest["z"], "x": _evenly_spaced(rest["x"]), "y": _evenly_spaced(rest["y"])}, options
+    if form == "animation":
+        options |= {"range": [0, 255], "ramp": "dark_low", "bits": 8, "cell_px": 1}   # the request's values are gray levels
+        return {"frames": rest["frames"], "delays_ms": [int(round(d * 1000)) for d in rest["delays_s"]]}, options
+    return rest, options
 
 
 def _spec(request: dict) -> dict:
-    data = {k: v for k, v in request.items() if k not in ("form", "title", "description", "options")}
-    return {"spec": FORM_NAMES.get(request["form"], request["form"]), "version": 1,
+    form = request["form"]
+    name = FORM_NAMES.get(form, form)
+    if name is None:
+        raise Cannot(f"no product form makes a {form} from the request's data")
+    data, options = _data_and_options(form, request)
+    return {"spec": name, "version": 1,
             "title": request.get("title", ""), "description": request.get("description", ""),
-            "data": data, "options": request.get("options", {}), "sources": ["request"],
+            "data": data, "options": options, "sources": ["request"],
             "made_by": {"generator": "", "version": 0}}
 
 
@@ -736,6 +887,77 @@ class TodaySubject:
             except (ValueError, zipfile.BadZipFile) as error:
                 return Answer(None, "refused", f"ValidationError: {type(error).__name__}")
         return Answer(_plain(_array_measure(array, measure_name, arg)), "answered")
+
+
+# ---- the forms family's product subject: the form planner (lane C), through the main session's name mapping -----
+# The forms benchmark (lane ZF) and the planner have vocabularies written independently; this is the mapping between
+# them, names only: the planner decides, the driver never re-decides a form. Moved here unchanged from
+# scripts/omni_forms_driver.py (the main session's driver) so that `bench_omni_forms.py run --family forms --subject
+# neuroscifi.acceptance.omni.subject:choose_form` runs it; the script keeps its command line.
+
+FORMS_TO_BENCH = {"prose": "prose", "spoken": "spoken", "table": "table", "document": "prose",
+                  "data_file": "data_file", "line_chart": "line_chart", "bar_chart": "bar_chart",
+                  "scatter_chart": "scatter_chart", "histogram": "histogram", "heatmap": "heatmap",
+                  "small_multiples": "line_chart", "timeline": "timeline", "node_link": "node_link",
+                  "tree_diagram": "node_link", "flow_steps": "flow", "step_through": "step_through",
+                  "explorable": "explorable", "animation": "animation", "sonification": "sonification",
+                  "tone": "sonification", "sound_view": "waveform_spectrum", "solid_view": "solid_viewer",
+                  "surface_view": "solid_viewer", "image": "image_view", "image_sequence": "animation", "map": "map"}
+FORMS_FROM_BENCH = {"prose": "prose", "spoken": "spoken", "table": "table", "data_file": "data_file",
+                    "line_chart": "line_chart", "bar_chart": "bar_chart", "scatter_chart": "scatter_chart",
+                    "histogram": "histogram", "heatmap": "heatmap", "timeline": "timeline", "node_link": "node_link",
+                    "flow": "flow_steps", "image_view": "image", "waveform_spectrum": "sound_view",
+                    "step_through": "step_through", "animation": "animation", "explorable": "explorable",
+                    "sonification": "sonification", "solid_viewer": "solid_view", "map": "map"}
+FORMS_MEDIA = {"text": ("text",), "picture": ("picture",), "sound": ("sound", "speech"),
+               "interaction": ("interactive",), "motion": ("motion",), "file": ("file",), "3d": ("3d",)}
+FORMS_UNMAPPED: list = []
+
+
+def choose_form(view) -> str:
+    """The planner's choice for one forms-benchmark view, in the benchmark's vocabulary."""
+    P = importlib.import_module("neuroscifi.artifacts.forms")              # lazily, as every driver here
+    ContentShape = importlib.import_module("neuroscifi.artifacts.types").ContentShape
+    x = view["context"]
+    shows = []
+    for m in x["shows"]:
+        shows.extend(FORMS_MEDIA[m])
+    access = [a for a in x["access"] if a in P.ACCESSIBILITY]
+    prefs = {}
+    for name in x["prefer"]:
+        if name in FORMS_FROM_BENCH:
+            prefs[FORMS_FROM_BENCH[name]] = 1.0
+        else:
+            FORMS_UNMAPPED.append(("prefer", name))
+    for name in x["avoid"]:
+        if name in FORMS_FROM_BENCH:
+            prefs[FORMS_FROM_BENCH[name]] = -1.0
+        else:
+            FORMS_UNMAPPED.append(("avoid", name))
+    explicit = view["explicit"]
+    if explicit is not None:
+        parts = [FORMS_FROM_BENCH.get(p) for p in explicit.split("+")]
+        if None in parts:
+            FORMS_UNMAPPED.append(("explicit", explicit))
+            explicit = None
+        else:
+            explicit = "+".join(parts)
+    purpose = view["purpose"]                    # any word: the planner uses the ones it knows, ignores the rest
+    try:
+        req = P.Request(text=view["request"], explicit_form=explicit, purpose=purpose)
+    except Exception:                            # e.g. a combination the planner's Request does not take
+        FORMS_UNMAPPED.append(("explicit-refused", str(view["explicit"])))
+        req = P.Request(text=view["request"], purpose=purpose)
+    content = tuple(ContentShape(kinds=tuple(c["kinds"]), n_items=c["n_items"], n_series=c["n_series"],
+                                 has_time=c["has_time"], has_space=c["has_space"],
+                                 has_parameters=c["has_parameters"], duration_s=c["duration_s"],
+                                 text_chars=c["text_chars"]) for c in view["content"])
+    generators = tuple(sorted({f.generator for f in P.FORMS.values() if f.generator}))
+    ctx = P.Context(device=x["device"], shows=tuple(dict.fromkeys(shows)), accessibility=tuple(access),
+                    preferences=prefs, budget_s=x["budget"]["seconds"], budget_bytes=int(x["budget"]["bytes"]),
+                    generators=generators)
+    plan = P.plan(req, content, ctx)
+    return "+".join(FORMS_TO_BENCH[f] for f in plan.chosen)
 
 
 SUBJECTS = {"today": TodaySubject, "artifacts": ArtifactsSubject}

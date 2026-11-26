@@ -312,10 +312,22 @@ def test_gif_animation_disposal_transparency_and_delays():
     out = adapters.decode(_gif(2, 2, [f0, f1, f2], palette, loops=0))
     r = out.representation
     assert isinstance(r, T.Frames) and r.delays_s == (0.1, 0.2, 0.05)
-    assert r.frames[1].pixels[1, 1].tolist() == [0, 0, 255, 255]
-    assert r.frames[2].pixels[1, 1].tolist() == [255, 0, 0, 255]  # frame 1 restored to previous
-    assert r.frames[2].pixels[0, 0].tolist() == [255, 0, 0, 255] and r.frames[2].pixels[0, 1].tolist() == [0, 0, 255, 255]
+    # no composed pixel is ever transparent here, so the frames are RGB (as a single opaque frame is)
+    assert all(f.mode == "rgb" for f in r.frames)
+    assert r.frames[1].pixels[1, 1].tolist() == [0, 0, 255]
+    assert r.frames[2].pixels[1, 1].tolist() == [255, 0, 0]  # frame 1 restored to previous
+    assert r.frames[2].pixels[0, 0].tolist() == [255, 0, 0] and r.frames[2].pixels[0, 1].tolist() == [0, 0, 255]
     assert any("endlessly" in n for n in out.notes)
+
+
+def test_gif_animation_keeps_alpha_only_where_a_pixel_is_transparent():
+    palette = [(0, 0, 0), (255, 0, 0), (0, 0, 255), (9, 9, 9)]
+    f0 = (0, 0, 1, 1, [1], 10, 1, None, False)                    # only (0,0) drawn: the rest of the screen is clear
+    f1 = (1, 1, 1, 1, [2], 10, 1, None, False)
+    r = adapters.decode(_gif(2, 2, [f0, f1], palette)).representation
+    assert all(f.mode == "rgba" for f in r.frames)
+    assert r.frames[0].pixels[0, 0].tolist() == [255, 0, 0, 255] and r.frames[0].pixels[1, 1, 3] == 0
+    assert r.frames[1].pixels[1, 1].tolist() == [0, 0, 255, 255]
 
 
 def test_gif_hostile():

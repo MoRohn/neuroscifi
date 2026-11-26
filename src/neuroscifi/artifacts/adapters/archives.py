@@ -75,9 +75,10 @@ class _Walk:
         if name.endswith(".py"):
             self.python[name] = data
         if self.limits.max_depth - 1 < 0:
-            self.counts["listed"] += 1
+            # the chain's own answer to this depth is Refused(rule="max_depth"): the member is refused, by the same rule
+            self.counts["refused"] += 1
             self.members.append(Member(name, len(data), _listed(name, self.container, "nested deeper than allowed"),
-                                       None, "not decoded: containers nest deeper than max_depth"))
+                                       None, "refused: containers nest deeper than max_depth (rule max_depth)"))
             return
         inner_limits = nested(self.limits, self.budget.bytes, self.deadline.elapsed())
         try:

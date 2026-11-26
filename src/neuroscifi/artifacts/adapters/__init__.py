@@ -208,6 +208,33 @@ def inspect_unknown(data: bytes, detected: Detected | None = None) -> Opaque:
     return _inspect_unknown(data, detected)
 
 
+# Formats that are ZIP archives by design (their adapters read the ZIP), and containers that may hold a ZIP as a
+# member: a ZIP directory in their bytes is expected, not a second reading.
+ZIP_BASED = frozenset({"zip", "jar", "apk", "npz", "kmz", "docx", "xlsx", "xlsm", "pptx", "odt", "ods", "odp",
+                       "epub"})
+
+
+def _also_a_zip(data: bytes, detected: Detected) -> bool:
+    """Whether bytes identified as something else are ALSO a ZIP archive: an end-of-central-directory record whose
+    directory lists at least one member (zipfile reads a ZIP with other data before it). Such a polyglot has two
+    readings and nothing here can establish which one is meant, so it is refused instead of read one way."""
+    if detected.format in ZIP_BASED or detected.container == "zip" or detected.family in ("archive", "unknown"):
+        return False
+    if data.rfind(b"PK\x05\x06", max(0, len(data) - (1 << 16) - 22)) < 0:
+        return False
+    import io
+    import zipfile
+    from ..safe import zip_declared_entries
+    declared = zip_declared_entries(data)
+    if not declared:
+        return False
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            return len(z.infolist()) > 0
+    except Exception:       # not a readable ZIP directory: there is only one reading
+        return False
+
+
 def decode(data: bytes, *, name: str | None = None, declared: str | None = None, limits: Limits = Limits()) -> Decoded:
     """The whole chain. Returns a `Decoded` (with an `Opaque` representation when nothing here can decode the
     bytes); raises an `ArtifactError` when a rule or limit refuses the input or an adapter finds it malformed."""
@@ -221,6 +248,9 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
     detected = detect(data[:64 << 10], name=name, declared=declared, size=len(data))
     if detected.format in REFUSED_FORMATS:
         raise Refused(REFUSED_FORMATS[detected.format], rule=detected.format)
+    if _also_a_zip(data, detected):
+        raise Refused(f"the bytes are a {detected.format} file and also a ZIP archive (a polyglot): which reading is "
+                      "meant cannot be established, so neither is read", rule="polyglot")
     adapter = resolve(detected)
     if adapter is None:
         _gap(detected, "opaque")
@@ -264,5 +294,5 @@ def _register_builtins() -> None:
 
 _register_builtins()
 
-__all__ = ["Adapter", "ENTRY_POINT_GROUP", "REFUSED_FORMATS", "catalog", "decode", "inspect_unknown",
+__all__ = ["Adapter", "ENTRY_POINT_GROUP", "REFUSED_FORMATS", "ZIP_BASED", "catalog", "decode", "inspect_unknown",
            "load_external", "nested", "on_gap", "register", "resolve", "unload_external", "unregister"]
