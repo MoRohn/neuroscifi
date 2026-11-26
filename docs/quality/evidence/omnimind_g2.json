@@ -1,0 +1,230 @@
+{
+ "adr": "ADR-074",
+ "browser_run": {
+  "axe": "not run here (the e2e test runs it where axe-core is installed)",
+  "documents": {
+   "explorable_model/dark": {
+    "failed": [],
+    "ok": true,
+    "seconds": 1.56,
+    "values_follow_parameters": 1.0
+   },
+   "explorable_model/light": {
+    "failed": [],
+    "ok": true,
+    "seconds": 1.36,
+    "values_follow_parameters": 1.0
+   },
+   "explorable_steps/dark": {
+    "failed": [],
+    "ok": true,
+    "seconds": 0.57,
+    "values_follow_parameters": null
+   },
+   "explorable_steps/light": {
+    "failed": [],
+    "ok": true,
+    "seconds": 0.68,
+    "values_follow_parameters": null
+   },
+   "solid_view/dark": {
+    "failed": [],
+    "ok": true,
+    "seconds": 0.63,
+    "values_follow_parameters": null
+   },
+   "solid_view/light": {
+    "failed": [],
+    "ok": true,
+    "seconds": 0.63,
+    "values_follow_parameters": null
+   }
+  },
+  "run": true
+ },
+ "expression_agreement": {
+  "accepted_by_both": 2626,
+  "disagreeing_decisions_or_trees": 0,
+  "expressions": 3000,
+  "refused_by_both": 374,
+  "run": true,
+  "values_compared": 5252,
+  "values_equal": 5252
+ },
+ "forms": {
+  "explorable_model": {
+   "bytes": 62915,
+   "carried_information": 1.0,
+   "check_ok": true,
+   "check_s": 0.0065,
+   "deterministic": true,
+   "made": true,
+   "make_s": 0.0079,
+   "media_type": "application/vnd.neuroscifi.explorable+html",
+   "wrong_caught": 9,
+   "wrong_missed": [],
+   "wrong_total": 9
+  },
+  "explorable_steps": {
+   "bytes": 61785,
+   "carried_information": null,
+   "check_ok": true,
+   "check_s": 0.0002,
+   "deterministic": true,
+   "made": true,
+   "make_s": 0.0007,
+   "media_type": "application/vnd.neuroscifi.explorable+html",
+   "wrong_caught": 9,
+   "wrong_missed": [],
+   "wrong_total": 9
+  },
+  "image_apng": {
+   "bytes": 13401,
+   "carried_information": 1.0,
+   "check_ok": true,
+   "check_s": 0.0071,
+   "deterministic": true,
+   "made": true,
+   "make_s": 0.0174,
+   "media_type": "image/apng",
+   "wrong_caught": 3,
+   "wrong_missed": [],
+   "wrong_total": 3
+  },
+  "image_raster": {
+   "bytes": 7976,
+   "carried_information": 1.0,
+   "check_ok": true,
+   "check_s": 0.0018,
+   "deterministic": true,
+   "made": true,
+   "make_s": 0.0063,
+   "media_type": "image/png",
+   "wrong_caught": 6,
+   "wrong_missed": [],
+   "wrong_total": 6
+  },
+  "solid_box": {
+   "bytes": 684,
+   "carried_information": null,
+   "check_ok": true,
+   "check_s": 0.0004,
+   "deterministic": true,
+   "geometry_matches": true,
+   "made": true,
+   "make_s": 0.0004,
+   "media_type": "model/stl",
+   "wrong_caught": 5,
+   "wrong_missed": [],
+   "wrong_total": 5
+  },
+  "solid_extrude": {
+   "bytes": 1684,
+   "carried_information": null,
+   "check_ok": true,
+   "check_s": 0.0002,
+   "deterministic": true,
+   "geometry_matches": true,
+   "made": true,
+   "make_s": 0.0012,
+   "media_type": "model/stl",
+   "wrong_caught": 5,
+   "wrong_missed": [],
+   "wrong_total": 5
+  },
+  "solid_points": {
+   "bytes": 20084,
+   "carried_information": 1.0,
+   "check_ok": true,
+   "check_s": 0.0016,
+   "deterministic": true,
+   "geometry_matches": true,
+   "made": true,
+   "make_s": 0.0006,
+   "media_type": "model/stl",
+   "wrong_caught": 5,
+   "wrong_missed": [],
+   "wrong_total": 5
+  },
+  "solid_revolve": {
+   "bytes": 38484,
+   "carried_information": null,
+   "check_ok": true,
+   "check_s": 0.0021,
+   "deterministic": true,
+   "geometry_matches": true,
+   "made": true,
+   "make_s": 0.0009,
+   "media_type": "model/stl",
+   "wrong_caught": 5,
+   "wrong_missed": [],
+   "wrong_total": 5
+  },
+  "solid_view": {
+   "bytes": 88191,
+   "carried_information": null,
+   "check_ok": true,
+   "check_s": 0.0014,
+   "deterministic": true,
+   "made": true,
+   "make_s": 0.01,
+   "media_type": "application/vnd.neuroscifi.explorable+html",
+   "wrong_caught": 9,
+   "wrong_missed": [],
+   "wrong_total": 9
+  },
+  "sound_sequence": {
+   "bytes": 128114,
+   "carried_information": 1.0,
+   "check_ok": true,
+   "check_s": 0.0035,
+   "deterministic": true,
+   "made": true,
+   "make_s": 0.0007,
+   "media_type": "audio/wav"
+  },
+  "sound_sonify": {
+   "bytes": 1229894,
+   "carried_information": 1.0,
+   "check_ok": true,
+   "check_s": 0.0196,
+   "deterministic": true,
+   "made": true,
+   "make_s": 0.0065,
+   "media_type": "audio/wav",
+   "wrong_caught": 5,
+   "wrong_missed": [],
+   "wrong_total": 5
+  },
+  "sound_tone": {
+   "bytes": 88408,
+   "carried_information": 1.0,
+   "check_ok": true,
+   "check_s": 0.0047,
+   "deterministic": true,
+   "made": true,
+   "make_s": 0.0013,
+   "media_type": "audio/wav"
+  },
+  "surface_grid": {
+   "bytes": 69584,
+   "carried_information": 1.0,
+   "check_ok": true,
+   "check_s": 0.007,
+   "deterministic": true,
+   "geometry_matches": true,
+   "made": true,
+   "make_s": 0.0017,
+   "media_type": "model/stl",
+   "wrong_caught": 5,
+   "wrong_missed": [],
+   "wrong_total": 5
+  }
+ },
+ "host": {
+  "machine": "aarch64",
+  "python": "3.12.16"
+ },
+ "lane": "G2",
+ "what": "made artifacts measured by independent checks; not evidence of any claim (made artifacts never are)"
+}
