@@ -23,7 +23,9 @@ Genesis added. Names describe functions; nothing here is a claim of consciousnes
   model-written reflection summaries) goes only into a quarantined store that the research loop never reads. A
   scenario's outcome reaches the loop only as a real prediction settling.
 - **Wave 2 found the pieces hand over correctly but measured no gain from linking them** (knowledge correctness
-  0.713 → 0.710 on held-out, `genesis_integration.json`; [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) §3).
+  0.713 [re-measured: lane Y] → 0.710 [re-measured: lane Y] on held-out, `genesis_integration.json`;
+  [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) §3). The Wave 2 measurement review found one link wrong: the
+  arbitration record names conflicts that did not happen (§3) [fixed: lane X].
 
 ## 1. The flow, as one picture
 
@@ -71,7 +73,7 @@ flowchart TD
     RECHECK -.->|"off"| ADMIT
     SAL -.->|"record (on); orders the admitted only with salience attention (off)"| ADMIT
     ADMIT --> ORCH
-    ADMIT -.->|"who lost a subject and why (record, on)"| ARB
+    ADMIT -.->|"who lost a subject and why (record, on; see section 3)"| ARB
     ORCH --> MON
     MON -.->|"selective answering, escalation, adaptive depth (off)"| ORCH
     ORCH --> CONS
@@ -122,7 +124,7 @@ and voice `DEFAULTS` on this tree; see [IMPLEMENTED_ENHANCEMENTS.md](IMPLEMENTED
 | internal-state history (`<db>.resources/internal-state.jsonl`, 720 samples) | the worker every 30 s (`internal_state.record`) | `nsf internal-state`, the self-description, the background gate when predictive regulation is on | `internal_state_history` (on), `predictive_regulation` (off) | **display-only** |
 | salience record (`$.autonomy.salience` in the decision event) | `salience.score` for every candidate | the decision log; broadcast (when `on`); salience attention (when on) | `salience_record` (on), `broadcast` (off), `salience_attention` (off) | **display-only** |
 | admission decision (`$.autonomy`) | `autonomy.admission` | the cooldown and lineage; the self-description's `doing.cycle` | `tick_admission` (`unified`), `quiet`, budgets | **real** once autonomous research is on |
-| arbitration record (`$.arbitration` on the winner's task) | `scheduler._arbitrated` | the self-description's `doing.cycle`; nothing decides on it | `arbitration_record` (on) | **display-only** (a record) |
+| arbitration record (`$.arbitration` on the winner's task) | `scheduler._arbitrated` | the self-description's `doing.cycle`; nothing decides on it | `arbitration_record` (on) | **display-only** (a record). Defect: with the re-check on it records a "curiosity lost" for subjects curiosity never wanted and with no budget left (every one the benchmark counted; measurement review H1) [fixed: lane X]; dormant at the defaults (the re-check is off) |
 | monitoring record (`report["monitoring"]`) | `monitoring.assess` in `orchestrator._monitor` | the report; the self-description; selective answering, escalation, adaptive depth when on | `answer_monitoring` (on); the other three off | **display-only** |
 | knowledge, versions, contradictions (`web_knowledge`, …) | `consolidate.run` | answers, curiosity, the re-check, predictions | existing | **real** |
 | predictions and their settlement (`web_predictions`) | `orchestrator._predict`; `predictions.check` | curiosity (×1.5 importance after a failure), the calibration reading in `autonomy.candidates`, the futility rule, marks, error analysis | `calibrated_forecasts` (on) | **real** (refreshes run only with autonomous research on) |
@@ -134,7 +136,7 @@ and voice `DEFAULTS` on this tree; see [IMPLEMENTED_ENHANCEMENTS.md](IMPLEMENTED
 | kept imagination answers (`imagined`) | `nsf imagine … --keep` | `nsf imagined list / show` | the imagine commands (on) | **display-only** (only when the owner keeps one) |
 | broadcast decisions (`$.broadcast`) | `broadcast.offer` | the owner's channels | `broadcast` (`off`: delivers as before) | **real** as before; the new holding back is **absent** |
 | self-description | built on read by `self_description.build` | console `GET /api/self`, `nsf self`, Pocket and voice `self_status`, MCP `self_status` (scope `agent`) | none | **display-only** |
-| voice follow-up (`voice_sessions.context`) | `voice/hub.py` | the next voice session after a restart | voice `resume_follow` (on) | **real** |
+| voice follow-up (`voice_sessions.context`) | `voice/hub.py` | the next voice session after a restart | voice `resume_follow` (on) | **real**. Defect: if the delivery claim fails, the answer is delivered anyway, also after the owner forgot the task (security review M1) [fixed: lane X] |
 | executive decision with information display (`decisions`) | `executive.decide` | `nsf decide`, `nsf explain` | `decision_information` (on), `executive_rule` (`rules-v1`) | **display-only**; the decision itself is unchanged |
 
 ## 4. The eight integration requirements of directive §8, link by link
@@ -144,14 +146,14 @@ From ADR-056's link map, at the shipped defaults and with everything on; lines r
 | # | Requirement | At the defaults | Everything on | What carries it |
 |---|---|---|---|---|
 | 1 | curiosity informs knowledge discovery | **real** once the owner opts in | real | `curiosity.rank` (`webcortex/curiosity.py:255`) → `autonomy.candidates` (`autonomy.py:509`) → `autonomy.admission` (`:701`) → the timer's launch or the idle investigator's `orchestrator.submit` (`autonomy.py:871`) → consolidation |
-| 2 | salience informs attention | **display-only** | real: broadcast `on` holds back low-salience findings; salience attention orders the admitted (no gain measured) | `salience.score` (`salience.py:71`, attached at `autonomy.py:631`); `salience.attention` / `order` (`autonomy.py:782-783`) |
+| 2 | salience informs attention | **display-only** | real: broadcast `on` holds back low-salience findings; salience attention orders the admitted (not exercised by the benchmark's worlds: never more than one candidate) | `salience.score` (`salience.py:71`, attached at `autonomy.py:631`); `salience.attention` / `order` (`autonomy.py:782-783`) |
 | 3a | imagination supports planning | **display-only** | real in the core (`information-v1` chooses by expected gain, `instance/executive.py:176`) | no web planning reads a scenario, by rule |
 | 3b | imagination supports learning | **absent** (scenario records off) | **display-only**: a scenario's error reaches no learner; assessed and not built (ADR-056 Decision 4) | `scenarios.tick` / `settle` / `errors` (`webcortex/scenarios.py:215`, `:170`, `:188`) |
 | 4 | the workspace coordinates access | **display-only** | real for delivery to the owner | `broadcast.offer` (`broadcast.py:113`); `self_description.build` (`self_description.py:661`); `presence.aggregator.derive` (`presence/aggregator.py:373`) |
 | 5 | metacognition monitors reasoning quality | **display-only** | real inside a task (escalation, selective answering, adaptive depth); low support → later re-check not built | `monitoring.assess` (`monitoring.py:313`) in `orchestrator._monitor` (`orchestrator.py:2723`) |
 | 6 | memory supports continuity | **real** (the voice follow-up; every step reads stored knowledge); marks display-only | real (marks order the re-check) | `premises.after_consolidation` (`premises.py:207`, called at `consolidate.py:1539`); re-check ranking (`recheck.py:92`); voice (`voice/hub.py:310-336`) |
 | 7 | verified outcomes drive improvements | **real** (futility; the calibration reading orders candidates, `autonomy.py:532`; ×1.5 importance after a failed prediction, `curiosity.py:292`); marks display-only; strategy selection inactive | real; learning progress | `predictions.check` (`predictions.py:108`): marks (`:127`), error analysis (`:130`), calibration (`:142`); `strategies.rank` (`strategies.py:106`) behind its gate |
-| 8 | executive control arbitrates conflicts and permissions | **real** decision; the record **on** | real, with the record | `background.allowed` (`background.py:208`); `autonomy.admission`; `scheduler._over_cap` (`:401`); `scheduler.claim_next` (`:646`, owner first); `scheduler._arbitrated` (`:422`) |
+| 8 | executive control arbitrates conflicts and permissions | **real** decision; the record **on** (records false conflicts when the re-check is on [fixed: lane X]) | real, with the record | `background.allowed` (`background.py:208`); `autonomy.admission`; `scheduler._over_cap` (`:401`); `scheduler.claim_next` (`:646`, owner first); `scheduler._arbitrated` (`:422`) |
 
 Competing objectives (directive §8 "prevent any subsystem from creating uncontrolled competing objectives"): every
 background activity passes `background.allowed`; the re-check, timer and idle paths all ask `autonomy.admission`;

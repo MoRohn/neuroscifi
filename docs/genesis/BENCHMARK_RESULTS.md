@@ -10,15 +10,22 @@ scores on synthetic and fictional worlds with known answers, driven offline thro
 
 - **Wave 2's three main results are negative or neutral.**
   1. **Making the mechanisms work together did not help.** With every link between them switched on, knowledge stayed
-     as correct as without them on held-out worlds (0.713 → 0.710, inside the spread), and each pass took about 70 %
-     longer (`genesis_integration.json`). The integrated configuration is not recommended.
-  2. **No knowledge mechanism made learning improve over repeated cycles, and knowledge decays in every
-     configuration.** Over 14 simulated days the existing loop keeps knowledge more correct than no loop
-     (0.574 → 0.631 and 0.497 → 0.571), but it still falls (0.88 → 0.44 and 0.85 → 0.46), and none of the six
-     knowledge mechanisms adds a gain beyond the baseline's spread (`genesis_learning_cycles.json`).
+     as correct as without them on held-out worlds, inside the spread (§3), and each pass took about 70 % longer
+     (`genesis_integration.json`). The integrated configuration is not recommended. Most links were not exercised by
+     the benchmark's worlds at all, and the arbitration record it counted was false every time (a defect, §3).
+  2. **No knowledge-evolution mechanism showed a held-out gain over repeated cycles; the existing loop beats no loop.**
+     Over 14 simulated days the timer's loop keeps knowledge more correct than no loop (0.574 → 0.631 and
+     0.497 → 0.571), but knowledge still falls over the cycles. That fall is partly the test world's design (its truth
+     changes more often than the budget can follow) and partly the product's: a same-budget blind schedule holds
+     more (§6.1). Only one mechanism, the idle re-check, could have moved the metric, and it showed no gain; the other
+     five were not exercised by this world (`genesis_learning_cycles.json`).
   3. **Deliberately breaking the new mechanisms found real failures.** 44 of 75 fault cases broke the owner's
      question, a status page, the timer or the worker before lane U added 14 guards; with them, 75 of 75 pass
-     ([REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) §4).
+     ([REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) §4). Of the 10 adversarial cases added in Wave 2,
+     9 pass; the tenth found a real gap.
+- **Two independent reviews of Wave 2** corrected the measurements' evidence and wording (and found two product
+  defects); their corrections are applied here ([WAVE2.md](WAVE2.md) §4). Figures the reviews asked to be re-measured are marked
+  as such beside each number.
 - **Where there are measured gains, they are narrow.** Answering what-if and forecast questions (held-out learned
   graph 0.222 → 1.000 within tolerance; withheld 0.30 → 0.967) and describing its own state (24 → 29 of 30; withheld
   12 → 15 of 15). Both ship on, as commands and displays. Predictive regulation avoids most memory breaches **in a
@@ -74,12 +81,12 @@ Source: `genesis_wave1.json`, `genesis_wave1_wide.json`, `genesis_fix1b.json` ([
 | curiosity learning progress, timer path (off) | realised bits per unit of budget (higher) / noise share (lower) | 0.093 → 0.134 / 0.537 → 0.512 | **0.139 → 0.126** (5 better, 1 worse, 6 equal) / 0.412 → 0.394 | −0.080 (sd 0.235) → 0.056 / 0.857 → 0.857 (inside the spread; same subjects, other order) | oracle 0.146 (split) |
 | curiosity learning progress, idle path (off) | same | −0.016 → 0.044 / 0.800 → 0.650 | 0.094 → 0.144 (11 of 12 better) / 0.706 → 0.550 | not run (one chooser per interface) | |
 | `information-v1` (opt-in) | core realised bits per unit of budget / noise share | 0.092 → 0.105 / 0.095 → 0.071 | 0.010 → 0.060 (12 of 12) / 0.054 → 0.030 | 0.043 → 0.043 (the same choices) | oracle 0.119, random 0.083 (split, held-out) |
-| salience attention (off; Wave 2) | knowledge correctness; noise share (integrated family) | 0.713 → 0.713 alone; 0.406 → 0.406 | — | not run | |
+| salience attention (off; Wave 2) | knowledge correctness (integrated family) | **not exercised**: the timer's curiosity pool never held more than one candidate, so the order changed the first candidate 0 times alone | — | not run | |
 
 Ablations: without learning progress each path returns exactly to its baseline. Learning progress ships off because
 the timer path loses bits per budget on the wide held-out seeds; `information-v1` stays opt-in because its held-out
-gain did not transfer to the withheld core world. Salience attention ships off: held-out equal to the baseline
-(development +0.003, within noise).
+gain did not transfer to the withheld core world. Salience attention ships off because the integrated worlds never
+offered it more than one candidate to order (the benchmark review, M1), not because a gain was ruled out.
 
 ### 1.3 Response under uncertainty
 
@@ -118,51 +125,75 @@ The only planning a measurement reaches is the core executive choosing what to a
 defaults (ADR-056 row 3a). **Planning quality as such** (multi-step plans, their outcomes) is **not measured**: no
 family stages a plan.
 
-### 2.3 Simulated outcome usefulness: scenario records (off) — a negative result
+### 2.3 Simulated outcome usefulness: scenario records (off) — no gain
 
-Source: `genesis_integration.json` (lane L, ADR-056). Three-way Brier of the scenario records once their real
-predictions settled; reference: three equal futures, 2/3 ≈ 0.667 (lower is better).
+Source: `genesis_integration.json` (lane L, ADR-056), with the benchmark review's wording (L3). Three-way Brier of
+the scenario records once their real predictions settled; reference: three equal futures, 2/3 ≈ 0.667 (lower is
+better).
 
 | Configuration | Development (2 worlds × 3 seeds) | Held-out (2 worlds × 4 seeds) |
 |---|---|---|
-| scenario records alone | 0.638 | **0.712** |
-| integrated | 0.655 | **0.698** |
+| scenario records alone | 0.638 [re-measured: lane Y] | 0.712 [re-measured: lane Y] |
+| integrated | 0.655 [re-measured: lane Y] | 0.698 [re-measured: lane Y] |
+| per seed, held-out | | 0.60–0.85 [re-measured: lane Y] |
 
-**On held-out the scenario records are worse than saying "all three futures are equally likely".** They stay off.
-Wave 1 had no settled real predictions to measure them on (ADR-052).
+**The scenario records are not better than saying "all three futures are equally likely"** on held-out (per seed
+on both sides of 0.667); on development they score a little better than that reference. They stay off. Wave 1 had no
+settled real predictions to measure them on (ADR-052).
 
 ## 3. Global integration (directive §10: information availability, coordination accuracy, multimodal consistency)
 
-Source: `genesis_integration.json`, ADR-056 "Measured", lane L's report. The family "integrated" runs the real timer
-pass and idle investigator step by step on staged Web Cortex individuals; the host's background gate is read as
-allowed. Spread = per-world sd over seeds.
+Source: `genesis_integration.json`, ADR-056 "Measured", lane L's report, and the Wave 2 benchmark review (findings
+H1, H2, H3, M1, M3, L2). The family "integrated" runs the real timer pass and idle investigator step by step on staged
+Web Cortex individuals; the host's background gate is read as allowed. Spread = per-world sd over seeds.
 
-| Measure | Split | Baseline | Integrated | Best single link | Verdict |
-|---|---|---|---|---|---|
-| knowledge correctness (mean over steps) | held-out | 0.713 (sd 0.033 / 0.042) | 0.710; paired −0.003 (sd 0.028; 4 higher, 4 lower) | 0.713 (marks, learning progress, scenarios, salience, arbitration alone each = baseline); re-check alone 0.707 | **no gain** |
-| | development | 0.741 (sd 0.094 / 0.022) | 0.738; paired −0.003 (sd 0.012; 2 higher, 4 lower) | salience attention alone 0.744 | within noise |
-| correctness at the last step | held-out | 0.589 | 0.584 | | |
-| stale facts caught per investigation | held-out | 0.263 | 0.263 | re-check alone 0.266 | |
-| share of investigations on noise | held-out / development | 0.406 / 0.421 | 0.408 / 0.413 | salience alone 0.406 / 0.402 | |
-| conflicts (two tasks on one subject in a pass); wasted looks; belief writes | both | 0; 0; 0 | 0; 0; 0 | 0 | every configuration |
-| arbitrations recorded per world | held-out / development | 0 | 14 / 11 | | all "re-check over curiosity" |
-| **cost:** wall seconds per world run | held-out / development | 0.319 / 0.216 | 0.550 / 0.361 (about +70 %) | re-check alone 0.458; arbitration alone 0.330 | |
+**What the review found in this benchmark.** (1) One random stream drove both the world's truth changes and the
+research outcomes, so when two configurations investigated different subjects their worlds diverged (in 4 of 8
+held-out runs, from step 9–13): the "paired" comparisons were not on the same worlds. With separate streams the
+reviewer measured integrated minus baseline +0.004 (sd 0.032; 5 seeds higher, 3 lower; baseline 0.700) where lane L
+reported −0.003. "No gain" holds either way; the exact figures are being re-measured. (2) Every arbitration the
+benchmark recorded was false: the subject was never in curiosity's candidates and no budget was left (a product
+defect, below). (3) The "integrated" retention and adversarial runs forced every Wave 1 setting off inside each case,
+so their passes are partly vacuous. (4) Most links were not exercised by these worlds.
 
-Ablations (held-out correctness): without the re-check 0.714, without learning progress 0.707, without salience
-attention 0.707, without marks, scenarios or the arbitration record 0.710. A run of the same runner on the product
-code before any lane L link equals the final run leaf by leaf for the baseline, the defaults and every single link
-(the self-description probes excepted).
+| Measure | Split | Baseline | Integrated | Verdict |
+|---|---|---|---|---|
+| knowledge correctness (mean over steps) | held-out | 0.713 [re-measured: lane Y] | 0.710 [re-measured: lane Y] | **no gain** |
+| paired difference, integrated − baseline (sd; seeds higher / lower) | held-out | | −0.003 [re-measured: lane Y] (sd 0.028 [re-measured: lane Y]; 4 / 4 [re-measured: lane Y]) | inside the noise |
+| the same with separate world and outcome streams (the reviewer's probe) | held-out | 0.700 | +0.004 (sd 0.032; 5 / 3) | inside the noise |
+| knowledge correctness | development | 0.741 [re-measured: lane Y] | 0.738 [re-measured: lane Y] | within noise |
+| conflicts (two tasks on one subject in a pass); belief writes | both | 0; 0 | 0; 0 | every configuration |
+| **cost:** wall seconds per world run | held-out | 0.319 [re-measured: lane Y] | 0.550 [re-measured: lane Y] (about +70 %) | |
+
+Each link alone (held-out), with what it did in these worlds (the benchmark review, M1):
+
+| Link | What it did | Effect on the metric |
+|---|---|---|
+| idle knowledge re-check | 14 re-check tasks per run | could move it: 0.707 [re-measured: lane Y] alone, no gain |
+| salience attention | 112 admissions with more than one candidate, but the timer's curiosity pool never held more than one, so the first candidate changed 0 times | **not exercised by this world** |
+| learning progress | 480–940 factors ≠ 1 per run, never changed a launch | **not exercised by this world** |
+| premise marks | written; nothing reads them without the re-check | **cannot affect this metric by construction** |
+| scenario records | quarantined by design | **cannot affect this metric by construction** |
+| arbitration record | fired 0 times alone | **not exercised** |
+
+**The smallest gain this rule can see:** the baseline's per-world spread is 0.033 and 0.042 against a paired sd of
+0.028 [re-measured: lane Y]; with 4 seeds a smaller gain cannot pass, so "no gain" does not exclude one of that size.
+"Best single link" was chosen on held-out, where five links tie with the baseline; it is a tie, not a winner (L2).
 
 - **Information availability:** the self-description answers 4 of 4 loop probes after lane L's `doing.cycle` field, 1
   of 4 before (**plumbing**). Wave 1's self-description family: 4 surfaces needed → 1 (§4).
-- **Coordination accuracy:** 0 conflicts and 0 wasted looks in every configuration, the baseline included: the
-  existing one-task-per-subject rule already coordinates; the arbitration record makes the decision visible and
-  changes no launch (results identical with it off).
+- **Coordination accuracy:** 0 conflicts in every configuration, the baseline included: the existing
+  one-task-per-subject rule already coordinates. **The arbitration record is not evidence of conflicts resolved.**
+  With the re-check on it fired 14 [re-measured: lane Y] and 11 [re-measured: lane Y] times per world (held-out,
+  development), each time the cooldown refused a subject the re-check had taken; in none was that subject among the
+  timer's curiosity candidates, and in none was budget left, so none was a real conflict. The record wrote "curiosity
+  lost" when curiosity never wanted the subject (a product defect [fixed: lane X]). It is dormant at the shipped
+  defaults, because the idle re-check is off.
 - **Multimodal consistency:** **not measured**. No family stages the same fact through voice, Pocket and the console
   and compares the answers.
 
-**The integrated configuration shows no gain over the baseline or over the best single link on either split, and
-costs about 70 % more wall time per pass.**
+**The integrated configuration shows no gain over the baseline on either split, and costs about 70 % more wall time
+per pass.**
 
 ## 4. Self-modelling (directive §10: internal-state accuracy, "limitation awareness", temporal consistency)
 
@@ -215,12 +246,15 @@ Source: `genesis_wave1.json`, `genesis_monitoring.json` ([WAVE1.md](WAVE1.md) §
 
 ## 6. Knowledge evolution (directive §10: retention, transfer, knowledge accuracy, improvement across cycles)
 
-### 6.1 Repeated learning cycles (lane F) — no mechanism gains; knowledge decays
+### 6.1 Repeated learning cycles (lane F) — no mechanism gains; the loop beats no loop; knowledge decays
 
-Source: `genesis_learning_cycles.json`, [RECURSIVE_KNOWLEDGE_ASSESSMENT.md](RECURSIVE_KNOWLEDGE_ASSESSMENT.md) §3–4.
-Fictional software releases change over 14 daily cycles; held-out = 2 worlds × 4 seeds; primary metric `correct`
-(share of subjects whose newest held item states the current version, mean over cycles 1–14); mean ± sd over seeds.
-The verdict rule was committed before the held-out run.
+Source: `genesis_learning_cycles.json`, [RECURSIVE_KNOWLEDGE_ASSESSMENT.md](RECURSIVE_KNOWLEDGE_ASSESSMENT.md) §3–4,
+and the Wave 2 benchmark review (H4, M1, M3, M4, L6). Fictional software releases change over 14 daily cycles;
+held-out = 2 worlds × 4 seeds; primary metric `correct` (share of subjects whose newest held item states the current
+version, mean over cycles 1–14); mean ± sd over seeds. The verdict rule was committed before the held-out run. "The
+loop" here is **the timer's pass only**; the worker's idle investigation (`autonomy.idle`), which shares the daily
+allowance in the product, was not run. The reviewer reproduced the held-out run on the integrated tree (3,600 of
+3,600 per-seed values within rounding).
 
 | Configuration | ho-sparse correct | ho-busy correct | cost per run (pages, wall s) |
 |---|---|---|---|
@@ -230,22 +264,43 @@ The verdict rule was committed before the held-out run.
 | all six lane K mechanisms | 0.625 ± 0.073 | 0.580 ± 0.083 | 213 / 194; 0.57 / 0.54 s; +0.14 MB |
 | each of the other five alone | = baseline on every knowledge metric, every seed | = baseline | storage only |
 
-Over the cycles (`correct` at cycle 0 → 14, baseline): 0.875 → 0.438 and 0.854 → 0.463; without the loop 0.375 and
-0.331. On 60-cycle development runs: 0.26 and 0.12 with the loop, 0.18 and 0.09 without.
+The loop against no loop (paired, held-out): +0.057 and +0.073, better on 8 of 8 seeds, at about twice the pages.
 
-| Mechanism (default) | Held-out gain (baseline sd); paired seeds better / worse | Verdict |
+**The decay, with its references.** Over the cycles (`correct` at cycle 0 → 14, baseline) knowledge falls
+0.875 → 0.438 and 0.854 → 0.463; without the loop to 0.375 and 0.331. In these worlds the truth changes 1.75 and 3.3
+times per cycle against a budget of 2 and 3 tasks, and 14 and 17 % of subjects are never covered by the owner's
+research in any configuration, so no budget-bound loop can hold its cycle-0 level: the decay is partly the world's
+design. References from the same worlds, computed by the reviewer (review2/bench/f_oracle.py), to be replaced by the
+harness's references:
+
+| Reference (ho-sparse / ho-busy) | Mean over cycles 1–14 | At cycle 14 |
 |---|---|---|
-| `hypothesis_fields` (on) | 0, 0 (identical) | no evidence |
-| `premise_recheck` (on) | 0, 0; in `all` its marks add +0.013, +0.014 (within the sd) | no evidence |
-| `idle_recheck` (off) | −0.019 (0.105), −0.004 (0.057); 1 / 3 and 1 / 3 | no evidence |
-| `hypothesis_abandon` (off) | 0, 0 | no evidence |
-| `reflection` (off) | 0, 0 | no evidence |
-| `strategy_selection` (gate, inactive) | 0, 0: one research mode in this world | no evidence (not measurable here) |
+| a perfect snapshot, never refreshed | 0.670 [re-measured: lane Y] / 0.574 [re-measured: lane Y] | 0.44 [re-measured: lane Y] / 0.38 [re-measured: lane Y] |
+| a blind round-robin of the same budget, reading each look's majority value | 0.79 [re-measured: lane Y] / 0.72 [re-measured: lane Y] | 0.67 [re-measured: lane Y] / 0.57 [re-measured: lane Y] |
+| an oracle that refreshes exactly the changed subjects | 0.96 [re-measured: lane Y] / 0.93 [re-measured: lane Y] | 0.91 [re-measured: lane Y] / 0.80 [re-measured: lane Y] |
+| **the product's loop** (measured) | 0.631 / 0.571 | 0.44 / 0.46 |
+| the product with no loop (measured) | 0.574 / 0.497 | 0.38 / 0.33 |
+
+The loop recovers about half of the gain a blind schedule of the same budget makes over never refreshing; the
+shortfall is the product's, not the world's: contested refreshes that never revise, and the due order (lane F's
+diagnosis: of 79 due refreshes on development, 20 ended contested; RECURSIVE_KNOWLEDGE_ASSESSMENT §5). On 60-cycle
+development runs: 0.26 and 0.12 with the loop, 0.18 and 0.09 without (no reference computed for these).
+
+| Mechanism (default) | What it did in this world | Held-out gain (baseline sd); paired seeds better / worse | Verdict |
+|---|---|---|---|
+| `idle_recheck` (off) | 6–14 re-check tasks per run: the only mechanism that could move the metric | −0.019 (0.105), −0.004 (0.057); 1 / 3 and 1 / 3 | **no evidence of gain** |
+| `hypothesis_fields` (on) | wrote detail rows; nothing consumes them | 0, 0 (identical) | **not exercised by this world** |
+| `premise_recheck` (on) | 81 premise rows, up to 10–17 open marks; nothing reads them without the re-check | 0, 0; in `all` its marks add +0.013, +0.014 to the re-check (within the sd) | **not exercised by this world** |
+| `hypothesis_abandon` (off) | 2–9 abandonments; no knowledge consumer | 0, 0 | **not exercised by this world** |
+| `reflection` (off) | 14 reports; no consumer | 0, 0 | **not exercised by this world** |
+| `strategy_selection` (gate, inactive) | in force, but one research mode: nothing to rank | 0, 0 | **not exercised by this world** |
+
+**The smallest gain this rule can see.** Rule (a) needs a paired gain larger than the baseline's between-seed sd:
+with 4 seeds a gain below 0.105 (ho-sparse) or 0.057 (ho-busy) cannot pass, while the paired noise is only about
+0.025–0.031 (`idle_recheck` − baseline). "No evidence" does not exclude a gain of that size.
 
 **Improvement across cycles: none.** The loop slows decay; it does not make knowledge better cycle over cycle, and no
-mechanism adds to it. Lane F's diagnosis: a refresh that finds the newer version beside one lagging outlet ends
-contested and is never revised without the owner's answer (of 79 due refreshes on development, 20 ended contested;
-RECURSIVE_KNOWLEDGE_ASSESSMENT §5).
+mechanism measurably adds to it.
 
 ### 6.2 Knowledge accuracy and retention
 
@@ -254,8 +309,9 @@ RECURSIVE_KNOWLEDGE_ASSESSMENT §5).
 - **Retention, learning cycles:** 0 lost and 0 regressed of the retention base in 120 held-out runs; 0 self-generated
   and 0 syndicated-wrong versions admitted; 0 confidence rises after one-origin looks (`genesis_learning_cycles.json`).
 - **Retention family** (4 acceptance scenarios, 7 offline metrics): all retained in every Wave 1 regime
-  (`genesis_wave1.json`), with lane K on (`genesis_learning_cycles.json`, `cognitive_benchmark_with_lane_k`), and
-  baseline and integrated (`genesis_integration.json`).
+  (`genesis_wave1.json`) and with lane K on (`genesis_learning_cycles.json`, `cognitive_benchmark_with_lane_k`, run
+  on lane F's branch). Lane L's "integrated" retention pass is **partly vacuous**: its harness forced every Wave 1
+  setting off inside each case (benchmark review H2); it is being re-run [re-measured: lane Y].
 - **Lane K's own worlds** (Wave 1, `genesis_knowledge.json`): retention under change 0.695 against the due order's
   0.693 (within noise); strategy selection 0.395 against 0.265 verified per investigation, but it cannot pass its
   gate (no withheld world for it).
@@ -291,7 +347,7 @@ No mechanism improved quality per unit of cost. What was measured is cost:
 
 | What | Cost | Source |
 |---|---|---|
-| integration loop, all links on | +70 % wall time per world run (0.319 → 0.550 s held-out) for no gain | `genesis_integration.json` |
+| integration loop, all links on | about +70 % wall time per world run (0.319 [re-measured: lane Y] → 0.550 [re-measured: lane Y] s held-out) for no gain | `genesis_integration.json` |
 | the existing knowledge loop against none | about twice the pages (106 → 208, 102 → 191) and wall time (0.20 → 0.42 s, 0.17 → 0.39 s) for +0.057 / +0.074 correct | `genesis_learning_cycles.json` |
 | the idle re-check (off) | ~25 % more wall time per cycle; half the autonomous budget on re-checks; no knowledge gain | `genesis_learning_cycles.json` |
 | reflection (off) | ~3 KB per report, kept without a cap (about 156 KB a year at the weekly default) | lane F, RECURSIVE_KNOWLEDGE_ASSESSMENT §5 |
@@ -305,7 +361,8 @@ Not measured: GPU use, the answer model's latency and tokens, anything on the DG
 
 ## 9. Reliability (directive §10: failure recovery, regression resistance, reproducibility)
 
-Source: [REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) (lane U, on `gen2-u` at `80718b2`), lanes L and F.
+Source: [REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) (lane U, on its branch `gen2-u`), lanes L and F, and the two
+Wave 2 reviews ([WAVE2.md](WAVE2.md) §4).
 
 | Measure | Result |
 |---|---|
@@ -316,7 +373,7 @@ Source: [REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) (lane U, on `ge
 | `nsf acceptance --all`; sentence guard differential; reproduction | 7 of 7; 1,937 compared, 0 different; 8 of 8 |
 | older files (schema 14, 16, 17, 18) opened at 19 and used | pass |
 | full non-e2e suite | 5,736 passed, 22 skipped, 0 failed on `gen2-u`; 5,639 passed, 1 failed (a voice timing flake that passed 3 of 3 alone) on `gen2-l`; 5,631 passed on `gen2-f`. **On the integrated tree: see [WAVE2.md](WAVE2.md) "Validation"** |
-| adversarial cases, by origin (never added up) | original 13 of 13, added in Wave 1 4 of 4, restored 1 of 1 (every regime); **added in Wave 2: 9 of 10** — `reflection_bounded_when_everything_asks` fails: a reflection section held 21 lines against its limit of 20 (a measured gap; its fix is Wave 2's follow-up lane, [WAVE2.md](WAVE2.md)) |
+| adversarial cases on the integrated tree, by origin (never added up) | 28 cases: original 13 of 13, added in Wave 1 4 of 4, restored 1 of 1; **added in Wave 2: 9 of 10** — `reflection_bounded_when_everything_asks` fails: a reflection section held 21 lines against its limit of 20 (a measured gap [fixed: lane X]). Lanes L and F reported "18 of 18" on their own branches, before lane U's 10 cases; lane L's "integrated" adversarial pass is partly vacuous (its harness forced every Wave 1 setting off inside each case) [re-measured: lane Y] |
 | **Reproducibility:** benchmark families deterministic per seed | lane F's re-runs: 0 of 10,363 held-out and 0 of 9,073 development values differ apart from wall time and file size; Wave 1's validation re-run equal to `genesis_wave1.json` |
 
 ## 10. The directive's success criteria (§14)
@@ -324,13 +381,13 @@ Source: [REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) (lane U, on `ge
 | Criterion | Result | Where, how large, at what cost |
 |---|---|---|
 | Anticipation | **measured gain in a simulation only** (mechanism off) | simulated plant: memory breaches avoided 0 → 0.80 held-out, 0 → 0.83 withheld; cost: background work given up 0.044 → 0.106, false alarms 0.009 → 0.043; the gain is mainly the per-task reserve; not measured on the host (§1.1) |
-| Imagination | **measured gain** for checkable questions (commands on); **no gain** for imagined futures (off) | learned-graph forecasts and actions within tolerance 0.222 → 1.000 held-out, 0.30 → 0.967 withheld ("answer 0" 0.407 held-out); cost: a bounded private copy per question. Scenario records worse than equal futures on held-out (0.698–0.712 against 0.667) (§2) |
-| Integration | **no measured gain** | knowledge correctness 0.713 → 0.710 held-out (paired −0.003, sd 0.028); +70 % wall time (§3) |
+| Imagination | **measured gain** for checkable questions (commands on); **no gain** for imagined futures (off) | learned-graph forecasts and actions within tolerance 0.222 → 1.000 held-out, 0.30 → 0.967 withheld ("answer 0" 0.407 held-out); cost: a bounded private copy per question. Scenario records not better than three equal futures on held-out (§2.3) |
+| Integration | **no measured gain** | knowledge correctness 0.713 [re-measured: lane Y] → 0.710 [re-measured: lane Y] held-out, inside the noise; most links not exercised by the worlds; about +70 % wall time (§3) |
 | Self-modelling | **measured gain** (display, on) | 24 → 29 of 30 (original key) held-out, 12 → 15 of 15 withheld; 4 surfaces → 1; two probes are plumbing; cost 14.87 ms at 10,000 items (§4) |
-| Knowledge | **no measured gain** from the new mechanisms | six knowledge mechanisms: "no evidence" each; calibration not a gain (the verdict word scores better); nothing lost (§5, §6) |
-| Learning | **no measured gain** | knowledge decays over cycles in every configuration; strategy selection cannot pass its gate; learning progress loses on the wide timer-path seeds (§1.2, §6.1) |
+| Knowledge | **no measured gain** from the new mechanisms | the idle re-check: no evidence of gain (it could move the metric); the other five lane K mechanisms not exercised by the cycle worlds; a gain below 0.105 / 0.057 could not have been seen; calibration not a gain (the verdict word scores better); nothing lost (§5, §6) |
+| Learning | **no measured gain** | knowledge decays over cycles in every configuration, partly by the world's design (truth changes faster than the budget); the loop recovers about half of what a same-budget blind schedule recovers; strategy selection cannot pass its gate; learning progress loses on the wide timer-path seeds (§1.2, §6.1) |
 | Generalisation | **measured transfer for two mechanisms** that ship on; **none** for the choosers | what-if / forecast and the self-description held up on withheld worlds; `information-v1` and learning progress did not transfer (§7) |
-| Autonomy | **no measured gain** at the shipped defaults; the boundaries were measured to hold | idle-path learning progress 0.094 → 0.144 (wide, 11 of 12) but the timer path loses, so off; salience attention no gain; quiet, budgets and the owner's stop held in every fault case and adversarial case (§1.2, §9) |
+| Autonomy | **no measured gain** at the shipped defaults; the boundaries were measured to hold | idle-path learning progress 0.094 → 0.144 (wide, 11 of 12) but the timer path loses, so off; salience attention not exercised by the integrated worlds (one candidate at a time); quiet, budgets and the owner's stop held in every fault case and adversarial case (§1.2, §9) |
 | Efficiency | **no measured gain** | only costs were added (§8); adaptive depth saves pages (581 → 559) but not wall time and ships off |
 | Reliability | **criterion met on the offline checks** (it asks for no loss, not a gain) | Wave 0 digest unchanged; acceptance 7 of 7; guard 0 different; 75 of 75 fault cases after guards that real failures made necessary; one adversarial gap open at `828ca8e` (§9). Unverified on real hardware, a live model and the open web |
 
@@ -343,8 +400,9 @@ No result here demonstrates consciousness, sentience, general intelligence or su
   knowledge evolution; quality per unit of compute.
 - **Not run:** the withheld family in Wave 2 (by rule: one look per wave, Wave 2 needed none); the "answer 0"
   reference on the withheld worlds; held-out learning-cycle horizons beyond 14 cycles; an owner who answers
-  contradiction questions; strategy selection with more than one research mode in a cycle world; the browser suite on
-  the Wave 2 lanes (no page changed).
+  contradiction questions; strategy selection with more than one research mode in a cycle world; the worker's idle
+  investigation in the learning cycles (lane F ran the timer's pass only); the browser suite on the Wave 2 lanes (no
+  page changed).
 - **Unverified:** anything on the open web, with a live answer model, on the DGX Spark's GPU or real memory pressure,
   real speech, real phones, two real processes for the voice follow-up, systemd, a real second account
   ([REGRESSION_VERIFICATION.md](REGRESSION_VERIFICATION.md) §7 gives the owner's command for each).
