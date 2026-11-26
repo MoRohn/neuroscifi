@@ -1,0 +1,322 @@
+{
+ "forms_planner_development": [
+  {
+   "bad": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0,
+    "too_much": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "too_poor": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "unfit": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "violation": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    }
+   },
+   "commit": "37a7d30c3ca8a36e606567c57b87b8616e81ac4f",
+   "explicit": {
+    "feasible_honoured": {
+     "k": 10.0,
+     "n": 10,
+     "share": 1.0
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    },
+    "infeasible_handled": {
+     "k": 4.0,
+     "n": 5,
+     "share": 0.8
+    }
+   },
+   "good": {
+    "k": 107.0,
+    "n": 133,
+    "share": 0.8045
+   },
+   "good_or_fine": {
+    "k": 133.0,
+    "n": 133,
+    "share": 1.0
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "n_cases": 133
+  }
+ ],
+ "how": "each run: scripts/bench_omni.py run --split development --subject artifacts --out FILE --scratch DIR; the planner: scripts/bench_omni_forms.py run --family forms --split development --subject neuroscifi.acceptance.omni.subject:choose_form; 41dacac was run from `git archive 41dacac src scripts` (the merged tree before the registries were wired)",
+ "runs": {
+  "after_fixes_37a7d30": {
+   "commit": "37a7d30",
+   "families": {
+    "all": {
+     "abstained": 29,
+     "abstention_floor": 52,
+     "failed": 0,
+     "n": 524,
+     "right": 492,
+     "wrong": 3
+    },
+    "compound": {
+     "abstained": 2,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 36,
+     "right": 34,
+     "wrong": 0
+    },
+    "honest": {
+     "abstained": 3,
+     "abstention_floor": 20,
+     "failed": 0,
+     "n": 55,
+     "right": 52,
+     "wrong": 0
+    },
+    "hostile": {
+     "abstained": 0,
+     "abstention_floor": 23,
+     "failed": 0,
+     "n": 23,
+     "right": 20,
+     "wrong": 3
+    },
+    "intake": {
+     "abstained": 7,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 337,
+     "right": 330,
+     "wrong": 0
+    },
+    "made": {
+     "abstained": 10,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 14,
+     "right": 4,
+     "wrong": 0
+    },
+    "transform": {
+     "abstained": 7,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 8,
+     "right": 1,
+     "wrong": 0
+    },
+    "unknown": {
+     "abstained": 0,
+     "abstention_floor": 9,
+     "failed": 0,
+     "n": 51,
+     "right": 51,
+     "wrong": 0
+    }
+   },
+   "not_right": {
+    "compound": [
+     "compound/development/docx-with-image-and-table/word/media/image1.png::image.pixel:0,0",
+     "compound/development/docx-with-image-and-table/word/media/image1.png::image.size"
+    ],
+    "honest": [
+     "honest/development/mp3-silent-frames/audio.duration_s",
+     "honest/development/parquet-footer/table.columns",
+     "honest/development/parquet-footer/table.n_rows"
+    ],
+    "hostile": [
+     "hostile/development/tar-member-dotdot",
+     "hostile/development/zip-member-absolute",
+     "hostile/development/zip-member-dotdot"
+    ],
+    "intake": [
+     "intake/development/npy-bigendian-fortran/array.dtype",
+     "intake/development/npy-float64-2d/array.dtype",
+     "intake/development/npy-int32-1d/array.dtype",
+     "intake/development/npz-states-targets/states::array.dtype",
+     "intake/development/npz-states-targets/targets::array.dtype",
+     "intake/development/npz-two-arrays/flow::array.dtype",
+     "intake/development/npz-two-arrays/pressure::array.dtype"
+    ],
+    "made": [
+     "made/development/bar-six",
+     "made/development/bar-with-a-warning",
+     "made/development/cube-stl",
+     "made/development/data-file-csv",
+     "made/development/diagram-tree-seven",
+     "made/development/histogram-eight-bins",
+     "made/development/line-one-series",
+     "made/development/line-two-series",
+     "made/development/scatter-twenty",
+     "made/development/timeline-five-events"
+    ],
+    "transform": [
+     "transform/development/csv-to-line-chart",
+     "transform/development/csv-to-scatter",
+     "transform/development/docx-to-outline",
+     "transform/development/markdown-to-outline",
+     "transform/development/obj-cube-to-stl",
+     "transform/development/ply-tetra-to-stl",
+     "transform/development/zip-to-index"
+    ]
+   }
+  },
+  "merged_unwired_41dacac": {
+   "commit": "41dacac",
+   "families": {
+    "all": {
+     "abstained": 341,
+     "abstention_floor": 52,
+     "failed": 0,
+     "n": 524,
+     "right": 181,
+     "wrong": 2
+    },
+    "compound": {
+     "abstained": 36,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 36,
+     "right": 0,
+     "wrong": 0
+    },
+    "honest": {
+     "abstained": 19,
+     "abstention_floor": 20,
+     "failed": 0,
+     "n": 55,
+     "right": 36,
+     "wrong": 0
+    },
+    "hostile": {
+     "abstained": 20,
+     "abstention_floor": 23,
+     "failed": 0,
+     "n": 23,
+     "right": 3,
+     "wrong": 0
+    },
+    "intake": {
+     "abstained": 228,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 337,
+     "right": 107,
+     "wrong": 2
+    },
+    "made": {
+     "abstained": 14,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 14,
+     "right": 0,
+     "wrong": 0
+    },
+    "transform": {
+     "abstained": 8,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 8,
+     "right": 0,
+     "wrong": 0
+    },
+    "unknown": {
+     "abstained": 16,
+     "abstention_floor": 9,
+     "failed": 0,
+     "n": 51,
+     "right": 35,
+     "wrong": 0
+    }
+   }
+  },
+  "wired_before_fixes_17a78d2": {
+   "commit": "17a78d2",
+   "families": {
+    "all": {
+     "abstained": 82,
+     "abstention_floor": 52,
+     "failed": 1,
+     "n": 524,
+     "right": 429,
+     "wrong": 12
+    },
+    "compound": {
+     "abstained": 2,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 36,
+     "right": 32,
+     "wrong": 2
+    },
+    "honest": {
+     "abstained": 28,
+     "abstention_floor": 20,
+     "failed": 0,
+     "n": 55,
+     "right": 27,
+     "wrong": 0
+    },
+    "hostile": {
+     "abstained": 5,
+     "abstention_floor": 23,
+     "failed": 0,
+     "n": 23,
+     "right": 13,
+     "wrong": 5
+    },
+    "intake": {
+     "abstained": 24,
+     "abstention_floor": 0,
+     "failed": 1,
+     "n": 337,
+     "right": 307,
+     "wrong": 5
+    },
+    "made": {
+     "abstained": 14,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 14,
+     "right": 0,
+     "wrong": 0
+    },
+    "transform": {
+     "abstained": 8,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 8,
+     "right": 0,
+     "wrong": 0
+    },
+    "unknown": {
+     "abstained": 1,
+     "abstention_floor": 9,
+     "failed": 0,
+     "n": 51,
+     "right": 50,
+     "wrong": 0
+    }
+   }
+  }
+ },
+ "what": "the OMNIMIND benchmark's DEVELOPMENT split (scripts/bench_omni.py run --split development --subject artifacts), before and after the integration lane's fixes; the held-out and withheld splits were not run"
+}
