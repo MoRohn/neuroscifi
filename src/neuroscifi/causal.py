@@ -355,7 +355,10 @@ def answer(query, *, front_door: bool = FRONT_DOOR):
                         f"every directed path from {cause} to {query['ask']}, {cause} has no unblocked back-door "
                         f"path to them, and {cause} blocks every back-door path from them to {query['ask']}",
                         "the given means and covariance are the population's (taken as exact)"],
-                    "uncertainty": "a point value: no spread is computed from a covariance alone"}
+                    "uncertainty": "a point value: no spread is computed from a covariance alone; means and a "
+                                   "covariance estimated from data carry an error this value does not show (ADR-059: "
+                                   "from 500 draws, 20 of 200 held-out test answers missed the truth by more than a "
+                                   "tenth of the outcome's sd; from 5,000, none)"}
             return base | {"rung": "interventional", "value": value, "sd": sd, "identified": True, "why": None,
                            "identified_by": "back_door",
                            "assumptions": ["the declared graph is complete apart from the named hidden common causes",
