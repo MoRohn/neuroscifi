@@ -3,12 +3,12 @@
 Status: 2026-11-26. Wave 3 of Project Cognitive Genesis. Step 0 (`gen3-0`) took one look at new withheld
 learning-cycle worlds with the unchanged system; six lanes (P, C, H, R, S, V) were then built in parallel and merged
 on `genesis-wave3` (`f0a1f09`). Two independent reviews read the merged tree (measurement, security); a fix lane
-(`gen3-fix`) acts on their findings, and this reconciliation lane (`gen3-rec`) wrote the record. The fix lane's
+(`gen3-fix`) acted on their findings, and the reconciliation lane (`gen3-rec`) wrote the record. The fix lane's
 final defaults and numbers are written in (its evidence: `genesis_wave3_fix_*.json`); a second and a third fix lane
-(`gen3-fix2`, `gen3-fix3`) acted on the security checks that followed (review3b, review3c). Sources: ADR-058 to
-ADR-063 in [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md), the evidence files named beside
-each number, the lanes' reports and the two reviews. Nothing here is a claim of consciousness, awareness or general
-intelligence; the names describe functions.
+(`gen3-fix2`, `gen3-fix3`) acted on the checks that followed (review3b, review3c; merged `2c48865`, `0410a22`).
+Sources: ADR-058 to ADR-063 in [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md), the evidence
+files named beside each number, the lanes' reports and the three review rounds ("Reviews and fixes", below). Nothing
+here is a claim of consciousness, awareness or general intelligence; the names describe functions.
 
 ## On one screen, in plain words
 
@@ -37,12 +37,23 @@ measured. It is the setting `origin_grouping` (default `"transitive"`, the group
 - `nsf imagine scm` answers causal questions that only front-door adjustment can answer, saying so, where before it
   declined them (lane C; on; its withheld look is pending);
 - the worker's idle investigation now stops at the day's task count, as the timer always did (lane V; a budget fix);
+  the count is checked again inside the submission's write transaction, so two deciders cannot both take the last
+  place (security L6), and the knowledge re-check, when the owner turns it on, checks it inside its own (review3b N5);
+- a fetch read ahead that was abandoned is granted no more bytes, so read-ahead stays inside the task's byte budget
+  (§3.9);
+- a forget marks the answer sentences that stated a forgotten value as sourced (security M3) with its scan made before
+  the write lock, which it holds for a fraction of a second (the first fix lane's version held it 7–40 s on a large
+  individual, review3b N2), and it removes the forgotten page's sentence from contradiction questions (N6);
 - the console overview and Pocket's lists are redrawn only when their content changed, so the keyboard stays where it
   was (lane P);
-- two things the owner can use and that change nothing by themselves: predictive regulation "in shadow", which only
-  writes down what the forecast would have done, and `nsf readiness`, which counts real outcomes (lane H);
-- built and off: another order for the knowledge re-check (lane R), automatic replacement of an out-of-date fact
-  (supersession, lane S), the two source rules (lane S), off since the fix lane, and the one-way origin rule
+- the withheld looks' commands refuse, before their ledger line, what would spend a look for nothing (a dirty tree, an
+  output that cannot be written, a misspelt mechanism, a blank note, a changed worlds file);
+- two things the owner can use and that change nothing by themselves: predictive regulation "in shadow" (opt-in),
+  which only writes down what the forecast would have done, and `nsf readiness` (read-only), which counts real
+  outcomes (lane H);
+- built and off, each the owner's opt-in: another order for the knowledge re-check (`recheck_order`, lane R),
+  automatic replacement of an out-of-date fact (`supersession`, lane S), the two source rules
+  (`attribution_independence`, `echo_recognition`, lane S), off since the fix lane, and the one-way origin rule
   (`origin_grouping`, off since the third fix lane; ADR-063).
 
 **Negative results, as plainly as the rest:**
@@ -331,7 +342,8 @@ cases; retention run in its quick form here).
 rollback test (two new: `"shadow"`, and the front door off / on / off) and the fault-injection test: 7 Wave 3 entry
 points (`recheck._ordered`, `claims.attribution_keys`, `consolidate._without_echoes`,
 `consolidate._rule_replacement`, `shadow._verdict`, `readiness.report`, `causal._frontdoor`) made to raise, time out
-and return garbage, plus a failure message naming a subject, with every Wave 1 and Wave 3 setting on: 28 cases. **12
+and return garbage, plus a failure message naming a subject, with every Wave 1 and Wave 3 setting on: 28 cases (32
+since the third fix lane added `origin_grouping` and its entry point `claims._one_way`). **12
 of 28 failed on `f0a1f09`**: a failing attribution read or echo check left the owner's question "partial"; a failing
 supersession rule failed the refresh's consolidation; garbage credits were taken silently. Three guards in lane U's
 pattern fix them (the claim counts as with the setting off, the cluster stays as with echo recognition off, the item
@@ -369,6 +381,10 @@ of 40 were over the bound. The test is right; making it deterministic needs that
   lane F's held-out split had been looked at by several lanes and reviews before lanes R, S and V.
 - **Rule changed after the fact.** Lane S shipped its rules on against the verdict its own rule returned ("unsafe",
   §3.1).
+- **Seeds line read.** The fix lane, the second fix lane and the round-2 measurement reviewer read the line of
+  `tests/acceptance/test_learning_cycles_withheld.py` that states the withheld cycle seeds (7341–7344; the benchmark
+  document states them too), not the worlds. The second fix lane copied both withheld files byte for byte inside a
+  `git archive` of `3ce4ae3` for one isolated re-run of lane S's harness, never opened.
 - The full non-e2e suite deselects the two tests that read the withheld cycle file's bytes
   (`test_the_withheld_worlds_are_frozen`, `test_the_withheld_seeds_are_disjoint_…`) in the lanes' and the
   reconciliation's runs; the suite's source scans read every file under `src` as text and print only violations.
@@ -409,8 +425,9 @@ of 40 were over the bound. The test is right; making it deterministic needs that
   reported (N7); a damaged bar of an opt-in rule turns the rule off instead of loosening it, logged once, and the
   console lists damaged settings (N8). Still open: on a very large individual one page can still use up the echo
   checks' 2 s budget (now visible in `echo_skipped` and the log); a checkpoint restore still scans the answers once
-  inside its own transaction (1.5–1.7 s at 10,000 answers of 20 kB); saved settings outside the five Wave 3 ones are
-  not checked when read (older); `requeue`, an owner surface, inserts without the day's task count (older).
+  inside its own transaction (1.5–1.7 s at 10,000 answers of 20 kB); saved settings outside the checked Wave 3 web
+  ones (`config.CHECKED_ON_LOAD`: five, six since the third fix lane added `origin_grouping`) are not checked when
+  read (older); `requeue`, an owner surface, inserts without the day's task count (older).
 - Coverage is limited by the allowance: a share of the allowance for reaching uncovered subjects would have to be
   chosen on development and tested on worlds no lane has seen. Not built.
 - Everything above is offline and simulated: nothing here was measured on the open web, with a live answer model, or
@@ -535,13 +552,200 @@ Nothing is tuned after a look. Whatever a look shows is reported in full.
 
 ## Reviews and fixes
 
-Two independent reviews read the merged tree `f0a1f09` read-only, without loading any withheld file. The measurement
-review: 9 high (lane S's evidence, S-1 to S-6; the look rule, two; the front-door look's command), 11 medium, 20 low.
-The security review: 0 critical, 1 high (H1), 6 medium (M1–M6), 8 low. Their findings that change this record are in
-§2, §3 and §5. The main session's decisions: both source rules ship off; the look rule is rewritten; the fix lane
-(`gen3-fix`) implements the findings.
+Three review rounds read Wave 3, each read-only and each independent of the lane whose work it read.
+**Round 1** read the merged tree `f0a1f09` (`9ac8943..f0a1f09`): a measurement review (9 high: lane S's evidence,
+S-1 to S-6, the look rule, two, and the front-door look's command; 11 medium; 20 low) and a security review (0
+critical, 1 high H1, 6 medium M1–M6, 8 low L1–L8). The fix lane `gen3-fix` acted on both, with the reconciliation
+lane's three guards merged into it (merged `3ce4ae3`). **Round 2** read the fix lane's work (`f0a1f09..3ce4ae3`): a
+measurement check of the fixes and of the looks' machinery (GO for both looks with preconditions; 1 high, 7 medium,
+13 low, most of them about the documents) and a security check (every round-1 finding fixed, documented or partly
+fixed; new N1–N10: 1 high, N1, older than Wave 3; 3 medium, N2 a regression at the shipped defaults; 6 low). The
+second fix lane `gen3-fix2` acted on both (merged `2c48865`). **Round 3** was one security check of that lane
+(`3ce4ae3..2c48865`): N2–N10 and the look guards verified; N1's change to the shipped grouping opened F1 (high by the
+brief's rule) and, with attribution on, F2 (medium); F3–F6 low. The third fix lane `gen3-fix3` answered it (merged
+`0410a22`). No reviewer read, printed or scored a withheld worlds file, passed `--final` or ran a `final`
+subcommand; the round-1 measurement reviewer took only the sha256 of `cycles_withheld.py`'s bytes, to check its pin,
+and the probes that import `neuroscifi.acceptance.cognition` import `withheld.py` indirectly, as every lane's do (§4).
+**Disclosed:** the round-2 measurement reviewer, the fix lane and the second fix lane read the line of
+`tests/acceptance/test_learning_cycles_withheld.py` that states the withheld cycle seeds (7341–7344), not the worlds;
+the second fix lane copied both withheld files byte for byte inside a `git archive` of `3ce4ae3` for one isolated
+re-run of lane S's harness, never opened. Every test named below was checked to exist on this branch
+(`grep -rn "def <name>" tests`); that each fails without its fix is the fix lanes' report (each restored the old file
+and ran the test), not re-checked here. Their findings that change this record are in §2, §3 and §5.
 
-<<WAVE3-REVIEWS>>
+**The main session's decisions, with their reasons:**
+- **Both lane S source rules ship OFF** (after round 1; the fix lane's D1, D2). Under lane S's own pre-registered
+  rule the verdict was "unsafe" (S-1); the own-text figure rests on a phrase list added after held-out (S-2); the
+  attribution figure is a property of the worlds' five phrasings (S-3); staged honest credits cost 0.07–0.13 `correct`
+  (S-4); one sentence could stop a true fact from being verified (H1). The settings stay, their defects are fixed, the
+  owner may turn either on; the withheld look reports them and cannot switch them on.
+- **`supersession` stays OFF** (`"ask"`; D3): gain below the spread, 3 of 23 rule replacements false, some still
+  wrong when the run ended, and it changes the standing rule that contradictions are asked, never decided.
+- **The look rule was rewritten twice before any look**: after round 1 (it named no output fields, decided the two
+  source rules jointly, lacked retention and one-origin terms, and implied a command that could not produce the
+  front-door pair) and again with round 2's exact field names, read-back conditions and preconditions (the section
+  "The rule for the withheld looks", committed before them).
+- **Wave 3 does not change the shipped grouping** (after round 3). Counting copies of one story as independent
+  sources (F1) is the more dangerous error; failing to verify a true fact (N1) is the safer one; and no benchmark world
+  contains a page naming two origins, so neither direction is measured. The shipped grouping is `3ce4ae3`'s again
+  (`origin_grouping: "transitive"`), and the one-way rule is a setting, off. **So N1, older than Wave 3, stays OPEN
+  at the shipped defaults.** The main session re-ran review3c's grouping probe on the merged tree (`0410a22`): 19 of 19
+  comparisons equal to the old code (on `2c48865`, before the third fix lane: 11 equal, 5 different).
+
+**Round 1, security review** (review3, `f0a1f09`; fixed by `gen3-fix`):
+
+| Finding | Severity | What was done | Test that fails without the fix |
+|---|---|---|---|
+| H1: one sentence crediting two honest outlets merged them through the attribution rule, so their true fact was never verified (a round-up page does it with no attacker) | high | fixed (`8bd1673`, refined `df238c8`): credits kept in `flags["credited"]`, groups formed without them, a crediting group joins one outlet it credits and never connects two others; the rule also ships OFF (D1). Round 2: partly fixed, the same class open as N3 and, at the defaults, through document origins (N1) | `tests/acceptance/test_wave3_fix.py::test_one_sentence_crediting_two_honest_outlets_does_not_merge_them`, `::test_a_hostile_host_crediting_each_honest_outlet_merges_nothing`; control `::test_copies_still_count_with_the_outlet_they_credit` |
+| M1: forget did not reach supersession's record; `nsf web revert` wrote a forgotten source back | medium | fixed (`a9e2137`): the record keeps only changed scalar columns; every web forget cuts older records down; forgetting the replaced version blanks the rule's question | `::test_a_revert_after_forgetting_a_source_of_the_replaced_item_does_not_write_it_back`, `::test_a_record_written_before_the_fix_is_cut_down_by_a_forget_and_never_written_back`, `::test_forgetting_the_replaced_items_research_leaves_no_trace_in_the_rules_records` |
+| M2: the echo scan's `LIMIT 200` with no subject filter discarded honest pages on a large individual | medium | fixed (`98109d7`): subject names filtered in SQL, existence tested oldest first | `::test_a_sourced_answer_stays_sourced_when_many_other_subjects_state_the_value`; control `::test_an_unsourced_answer_is_still_echoed` |
+| M3: forgetting the source an answer rested on blocked corroboration of that subject | medium | fixed (`98109d7`): before claims are forgotten, the answer sentences that stated their values are marked sourced (indexes only), also on checkpoint replay. This fix opened N2 (round 2) | `::test_after_forgetting_the_answers_source_later_honest_pages_still_count`, `::test_after_forgetting_the_research_the_answer_rested_on_later_honest_pages_still_count`, `::test_a_checkpoint_restored_after_the_forget_replays_the_mark` |
+| M4: the echo scan held the write lock (9.8 s for one claim at 10,000 tasks) | medium | fixed (`98109d7`): checks built once before the write transaction, asserted values only (8 per claim, 64 per consolidation), a 2 s budget; an unchecked claim is not an echo and is listed in `echo_skipped`. Round 2: the cap could be filled by one page (N4) | `::test_the_echo_checks_run_before_the_write_transaction`, `::test_a_claim_not_checked_in_time_is_not_an_echo_and_is_named`, `::test_the_echo_checks_take_one_scan_at_ten_thousand_tasks` |
+| M5: "the AI Act", "the AI Safety Institute" matched the model-credit pattern | medium | fixed (`98109d7`, the reviewer's narrowed pattern; ADR-061 calls the phrase rule a stop-gap) | `::test_ordinary_sentences_about_ai_are_not_model_text`, `::test_honest_pages_crediting_an_ai_institute_are_not_discarded_as_echoes`; control `::test_a_sentence_crediting_a_model_speaker_is_still_model_text` |
+| M6: with supersession on, a family or agent task could replace the owner's item; two colluding pages replace a true item | medium | fixed for the scope (`a9e2137`: only `console`, `cli`, `refresh:`, `refresh-owner:` let the rule decide); the colluding-pages risk documented (ADR-061), not fixed | `::test_a_family_or_agent_task_never_lets_the_rule_replace_the_owners_item`; control `::test_refreshes_let_the_rule_decide` |
+| L1: revert did not reopen the questions the rule closed, nor mark its links | low | fixed (`a9e2137`) | `::test_a_revert_reopens_the_questions_the_rule_closed_and_marks_its_links` |
+| L2, L3: the attribution rule is wording-deep; `attribution_keys` quadratic in one claim's credits | low | documented (`claims.py`, ADR-061), not changed; the possessive credit bug fixed with S-3 | `::test_a_possessive_credit_names_the_outlet` (the possessive only) |
+| L4: the shadow settlement blocked the worker's heartbeat on a lock another group member can hold | low | fixed (`7969153`): `LOCK_NB`, a held lock skips the pass. Round 2: dropped verdicts were untraced (N7) | `tests/test_forecast_shadow.py::test_a_held_shadow_lock_skips_the_settlement_without_waiting` |
+| L5: the shadow files appended without an owner check; forged future days and leads taken | low | fixed (`7969153`) | `tests/test_forecast_shadow.py::test_a_record_file_of_another_account_is_not_appended_to`, `::test_forged_future_days_and_absurd_lead_times_are_not_taken` |
+| L6: the idle task count was check-then-act (3 of a cap of 2) | low | fixed on the submit path (`7969153`: the autonomous count checked inside submit's write transaction, `BudgetRefused`); round 2: the re-check path still open (N5) | `tests/acceptance/test_wave3_fix.py::test_two_deciders_that_both_saw_room_cannot_both_take_the_last_place`, `::test_concurrent_autonomous_submissions_never_pass_the_cap` |
+| L7: `nsf imagine scm`: a nan/inf `do` value gave a traceback; duplicate parents quadratic | low | fixed (`7969153`) | `::test_a_do_value_that_is_not_finite_is_a_one_line_error`, `::test_the_owners_command_prints_one_line_for_a_value_that_is_not_finite`, `::test_duplicate_parent_entries_do_not_make_the_front_door_quadratic` |
+| L8: saved web settings not validated on load; CI actions tag-pinned | low | fixed for the Wave 3 web settings (`7969153`: `config.CHECKED_ON_LOAD`, damaged → default, logged, `nsf web config` lists `problems`); other settings not checked (older; open); tag pins documented, left (as everywhere in the repository) | `::test_a_damaged_saved_wave3_setting_reads_as_its_default` |
+
+**Round 1, found while reconciling the lanes** (`gen3-rec`, §3.9; the read-ahead fix by `gen3-fix`):
+
+| Finding | Severity | What was done | Test that fails without the fix |
+|---|---|---|---|
+| 12 of 28 fault cases failed: a failing attribution read or echo check left the owner's question "partial", a failing supersession rule failed the refresh, garbage credits taken silently | (not rated) | fixed (`ce5a432`): three guards; the fix lane gave the echo pre-check the same guard (`5c1b37f`) | `tests/uat/test_uat_fault_injection.py::test_a_failing_wave3_mechanism_leaves_the_owner_in_control`, `::test_a_wave3_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record` |
+| the read-ahead race: a fetch ahead already abandoned was granted a whole chunk, so unused bytes passed the task's byte budget (the load-sensitive `[max_bytes=200]` failure) | (not rated) | fixed (`82b7fd9`, test made load-proof `102e72b`): `take()` grants 0 bytes once abandoned | `tests/webcortex/test_read_ahead.py::test_a_fetch_ahead_abandoned_between_two_of_its_reads_reads_one_byte_more_not_the_rest_of_the_body` |
+
+**Round 1, measurement review** (review3, `f0a1f09`; fixed by `gen3-fix`):
+
+| Finding | Severity | What was done | Test that fails without the fix |
+|---|---|---|---|
+| S-1: the fixes shipped ON against lane S's own pre-registered rule ("unsafe" on development and held-out) | high | decided otherwise than the reviewer's wording (ship ON, let the look decide): both rules OFF (D1, D2, `a78a216`); ADR-061 opens with the "unsafe" verdict and "the hole is NOT closed" | `tests/acceptance/test_wave3_s.py::test_supersession_ships_off_and_its_values_are_checked` (asserts both rules default off) |
+| S-2: the own-text fall rests on a phrase list added after held-out; echoes crediting no model still pass | high | measured (variant worlds committed alone, `1aaa75b`: 92–100 % still admitted) and stated; not fixed: the rule is off, a rule without a phrase list is not built | — (evidence `genesis_wave3_fix_s_variants.json`) |
+| S-3: the attribution result is a tautology of the worlds' five phrasings; 19 of 27 others pass | high | measured (off-parser credits: 0 caught) and stated; the possessive bug fixed | `tests/acceptance/test_wave3_fix.py::test_a_possessive_credit_names_the_outlet` (the bug only) |
+| S-4: honest outlets crediting each other were never staged; staged, `correct` falls 0.07–0.13 | high | measured at 0/10/30/50 % honest credits, before and after H1 (30 %: −0.125/−0.069/−0.102 before, −0.081/−0.041/−0.081 after); rule OFF | — (evidence `genesis_wave3_fix_s_variants.json`) |
+| S-5: "longest false replacement 2 / 5 cycles" was a mean of per-seed maxima; really 8 and at least 10 (censored) | high | fixed: the harness records persistence, nothing-held cycles and censoring per replacement (`e4bbe32`; for the look `965416b`); figures corrected | `tests/acceptance/test_wave3_fix.py::test_false_persistence_counts_nothing_held_apart_and_censors_a_run_that_ends_wrong` |
+| S-6: "exactly the removal of wrongly admitted content" is false item by item (true → wrong 25 / 6 / 21) | high | fixed in the evidence (`item_changes_vs_baseline`, `e4bbe32`) and the wording | — (evidence) |
+| Q7-1, Q7-2: the look rule named no fields and decided the two rules jointly | high | the machinery (`965416b`): `lane-s:echo-only`, `-attribution-only`, `-both`, `LOOK_PAIRS`, `COUNTERS`, an explicit Step 0 `baseline`; the rule rewritten | `::test_the_look_configurations_read_back_as_named`, `::test_the_new_counters_count_on_development_worlds`, `::test_the_look_command_passes_the_twelve_configurations_to_final` |
+| the front-door look's command (`bench_wave1.py final`) could not produce the ablated pair | high | fixed (`965416b`): the pair is two `bench_cognition.py run --final` runs; `scripts/compare_front_door_look.py` applies condition (b); `--final` refuses a dirty tree and an `--out` inside the checkout | `::test_the_front_door_comparison_holds_on_a_held_out_pair_and_catches_a_change`, `::test_the_counterfactual_look_refuses_a_dirty_tree_and_an_output_inside_the_checkout` |
+| S-7: lane F's "unchanged" is "not tested"; S-8: lane S's held-out is development evidence | medium | wording (ADR-061, §3.1) | — (wording) |
+| Q7-3, Q7-4, Q7-5, Q7-8: one-origin and retention terms; (b)'s arithmetic; other Wave 3 changes reach `shipped`; `baseline` carried the fixes | medium | in the machinery (`965416b`: `baseline` forces both rules off) and the rule (Step 0's figures compared against the new runs) | as Q7-1 |
+| lane C: the 5 adversarial front-door cases and the sampled-trap test were declined by the moments rule, so a broken criterion passed | medium | fixed (`8a8fce7`): staged with population moments | `tests/test_causal_front_door.py::test_the_trap_cases_and_the_sampled_test_fail_when_the_separation_check_is_removed` |
+| R/V MEDIUM 1: lane S's echo recognition moved lane R's and V's numbers on the merged tree | medium | after D1, lanes R and V re-measured: every moved `correct` value returns to the lane's evidence (`genesis_wave3_fix_orders.json`, `…_idle.json`) | — (evidence) |
+| R/V MEDIUM 2: `idle-first`'s rise of "not looked" is a net figure | medium | wording (ADR-062, §3.4) | — (wording) |
+| H-1: a shadow "hit" counted holds the gate already made; the lead equals its cap | medium | fixed (`8f72f27`): `settled.added`, holds the gate refused apart, the lead as a distribution, `shadow.GUIDE` committed before host data | `tests/test_forecast_shadow.py::test_the_report_separates_what_the_forecast_adds_from_holds_the_gate_already_made` |
+| H-2: four of seven quantities equal a reference counter, not `breach_report` | medium | wording, and `breach_report`'s false alarms compared (`8f72f27`) | `tests/test_forecast_shadow.py::test_the_staged_check_compares_breach_reports_false_alarms_too` |
+| 0-1: the guard's dirty check failed open when `git status` failed | low (low-medium) | fixed (`965416b`): a failing, timed-out or raising `git status` is dirty | `tests/acceptance/test_wave3_fix.py::test_a_dirty_check_that_fails_is_not_clean_and_the_look_is_refused` |
+| 0-2: the worlds file's digest pinned by a test only | low | fixed for the cycles look (`965416b`: `cycles.WITHHELD_SHA256` checked before the ledger line; round 2's L-6 for the counterfactual look) | `::test_a_changed_worlds_file_is_refused_before_the_ledger_and_before_loading` |
+| P-1: the CI digest prefix longer than the record | low | fixed (`3e2be80`): CI's whole digest read with read-only `gh`; the test pins all 64 characters | `tests/test_offline_digest_hosts.py::test_the_committed_metrics_are_the_recorded_digest_and_ci_differs_only_by_the_browser_path` |
+| the other lows: S-9; Q7-6, Q7-7; lane C's six (bound coverage, the answerer's moments mark, "any regime", leaf identity, document drift, the rule's condition); R/V LOW 3–7; H-3, H-4, H-5 | low | wording in ADR-058 to ADR-062 and here (S-9 partly, completed in round 2); LOW 6: lane V's command records the commit per split (`ad6fc8a`); LOW 7: the product count enforced at submit (L6) | — (wording, evidence) |
+
+**Round 2, measurement check** (review3b, `3ce4ae3`; fixed by `gen3-fix2`). Verdict on round 1: every measurement
+finding fixed, S-9 partly. Both looks GO with preconditions (time allowed, an existing `--out` directory, the commands
+copied exactly, nothing committed between the front-door runs); documents: request changes.
+
+| Finding | Severity | What was done | Test that fails without the fix |
+|---|---|---|---|
+| M-1: `--out` checked for its place, not for being writable: a failure after the ledger line spends the look | medium | fixed (`94de412`): both look commands refuse before the ledger line | `tests/acceptance/test_wave3_fix.py::test_both_looks_refuse_an_output_that_cannot_be_written_before_the_ledger` |
+| M-2: `--final` checked the mechanism and ablation after the ledger line | medium | fixed (`94de412`) | `::test_the_counterfactual_look_refuses_a_misspelt_mechanism_an_unknown_ablation_and_no_note` |
+| M-3: the front-door condition (a) failed open | medium | fixed (`94de412`): (a) needs `max` ≤ 0.1, or None with `n` 0; a missing group is VOID | `::test_the_front_door_condition_a_does_not_fail_open` |
+| L-2: `run --final` accepted an empty note | low | fixed (`94de412`) | as M-2 |
+| L-6: the counterfactual look did not check `withheld.py`'s digest | low | fixed (`94de412`): `cognition.WITHHELD_SHA256` before the ledger line | `::test_the_counterfactual_look_refuses_a_changed_withheld_file_before_the_ledger` |
+| L-7: the `sealed` fixture did not replace `cognition._withheld` | low | fixed (`94de412`): it raises if reached | — (the fixture; shown by removing the dirty guard: four guard tests fail on the stand-in) |
+| L-12: a comment overclaimed what `baseline` turns off | low | fixed (`cycles.py` comment, `COGNITIVE_BENCHMARK.md`) | — (wording) |
+| D-1: the documents said the shipped defaults block AI-credited echoes; they do not (that check is part of `echo_recognition`, off) | high | fixed (`34d6ebc`) in WAVE3.md, FINAL_EVALUATION.md, RECURSIVE_KNOWLEDGE_ASSESSMENT.md, RUNBOOK | — (wording) |
+| D-2, D-3, D-4: supersession figures were lane S's pre-fix ones; a header said "fixes (shipped)"; the look's K2 is not the configuration measured | medium | fixed (`34d6ebc`): re-measured figures (3 of 23 false, about one in eight, gains +0.001 / −0.002 / +0.016) in six documents; the look's K2 stated as on the shipped defaults | — (wording) |
+| D-5 to D-12, S-9, L-1: a leftover marker, wording, the order of `df238c8` after the variant worlds | low | fixed (`34d6ebc`) | — (wording) |
+| the look's runtime on the withheld worlds; page kinds the generator may name | medium; low (open questions) | not knowable without the worlds: the rule asks for 10 minutes or more in the background; the admitted-content counters decide nothing | — |
+
+**Round 2, security check** (review3b, `3ce4ae3`; fixed by `gen3-fix2`). Verdict on round 1: M1–M3, M5, M6 (scope),
+L1, L4, L5, L7 and the read-ahead race fixed; M4 fixed for the lock; H1 and L6 partly (N3, N5); L2, L3 and the CI
+pins documented; L8 fixed for the Wave 3 settings.
+
+| Finding | Severity | What was done | Test that fails without the fix |
+|---|---|---|---|
+| N1: one page naming two honest outlets as its origins ("first published by X … originally appeared in Y") joins them, so their true fact is never verified; at the shipped defaults, since `10339b8`, older than Wave 3 | high | fixed by `gen3-fix2` as a change of the shipped grouping (`fe82ac1`); **decided otherwise after round 3**: the shipped grouping is `3ce4ae3`'s again and the one-way rule is a setting, off (`c91dc64`, ADR-063). **OPEN at the shipped defaults**; a KNOWN OPEN line in the adversarial family, never counted as a pass | `tests/acceptance/test_wave3_fix.py::test_a_page_naming_two_outlets_as_its_origins_merges_neither_with_one_way_and_both_at_the_default` (asserts both: kept apart with `"one_way"`, joined at the default); adversarial origin `added_wave3_fix2` |
+| N2: since M3's fix every web forget scanned all task results inside its write transaction (6.9–39.6 s at 10,000 answers of 20 kB): a regression at the shipped defaults | medium | fixed (`de82c7b`): the scan before the lock; the transaction held 0.15–0.25 s; checkpoint replay still one pass inside the restore (open) | `::test_a_forget_reads_no_task_result_by_scanning_inside_its_write_transaction`, `::test_an_answer_written_between_the_scan_and_the_transaction_is_still_marked` |
+| N3: with attribution on, a page crediting no one but carrying two wires' keys absorbs two honest crediting outlets | medium | fixed under `"one_way"` (`fe82ac1`; the reviewer's sketch not used: each crediting group takes one edge chosen by content); at the default as at `3ce4ae3`, open with attribution on; a word-for-word variant open with `"one_way"` too; the third fix lane re-staged the case (an expectation note committed first, `147cfe9`) | `::test_a_page_carrying_two_wire_credits_absorbs_no_honest_outlet_that_credits_one` |
+| N4: with echo recognition on, one hostile page used up the echo check's value cap or budget, silently | medium | fixed (`0fc74fd`): the cap shared per claim, every unchecked claim named and logged once, the subject looked up past the row bound; one page can still use up the 2 s budget on a very large individual (open, now visible) | `::test_one_page_with_many_values_cannot_take_the_whole_value_cap_and_what_is_unchecked_is_named`, `::test_answers_about_other_subjects_cannot_crowd_out_the_answer_an_echo_repeats` |
+| N5: the re-check checked the day's task count outside its transaction (3 of a cap of 2) | low | fixed (`4fb6e86`) | `::test_a_recheck_that_saw_room_cannot_take_the_last_place_after_the_idle_investigation` |
+| N6: a forgotten source's sentence stayed quoted in contradiction questions (older than Wave 3) | low | fixed (`de82c7b`): quotes replaced by «#forgotten», live and on replay | `::test_forgetting_a_source_removes_its_sentence_from_contradiction_questions` |
+| N7: shadow verdicts dropped while another account held the lock left no trace | low | fixed (`b3607bb`): counted, carried and reported (`not_recorded_busy`) | `tests/test_forecast_shadow.py::test_verdicts_dropped_while_the_record_is_busy_are_counted_and_reported` |
+| N8: a damaged saved bar loosened an owner-tightened rule; logged on every read; not in the console | low | fixed (`4f3ca3a`): a damaged `supersession_min_sources` turns supersession to "ask" (the reviewer proposed falling back to 10), logged once, shown in the console; a damaged source-rule switch reads as off (documented); settings outside the checked ones still unchecked (older, open) | `tests/acceptance/test_wave3_fix.py::test_a_damaged_bar_of_a_rule_that_is_on_turns_the_rule_off_and_is_logged_once`, `tests/console/test_console_web.py::test_the_web_status_lists_damaged_saved_settings` |
+| N9: M3's mark matched digit tokens across subjects | low | fixed (`de82c7b`): a sentence is marked only when it names a subject the forgotten claim named. This moved 36 values of lane S's family with echo recognition on (the known false rejection, no longer hidden) | `::test_forgetting_a_number_heavy_source_marks_no_answer_about_another_subject` |
+| N10: the credit grouping depended on the order of the claims | low | fixed under `"one_way"`; at the default as at `3ce4ae3` (order-dependent with attribution on; not reproduced end to end) | `::test_the_groups_do_not_depend_on_the_order_of_the_claims` |
+
+**Round 3, security check** (review3c, `2c48865`; answered by `gen3-fix3`). Verified: N2–N10, the look guards
+(M-1, M-2, M-3, L-2, L-6, L-7), no modified test loosened.
+
+| Finding | Severity | What was done | Test that fails without the fix |
+|---|---|---|---|
+| F1: with N1's change shipped, copies naming several origins (copies naming the origin and each other; copies of an unread origin each adding a different second origin; "first appeared in the Regional Times. (AP)" beside a plain copy) counted as 2–3 sources where they had counted as one | high by the brief's rule (medium on exploitability) | decided: not shipped. `origin_grouping` default `"transitive"` = `3ce4ae3`'s grouping, shown equal on 614,988 world inputs, 8,437 offline-benchmark groupings and 496 staged orders (0 differ); under `"one_way"` the edge is chosen by content (the reviewer's prototype) and every F1 shape counts once (`c91dc64`) | `tests/webcortex/test_origin_grouping.py::test_the_default_groups_exactly_as_3ce4ae3_in_every_order`, `::test_one_way_groups_as_recorded_in_every_order`, `::test_what_the_setting_decides_on_the_known_shapes`; adversarial origin `added_wave3_fix3` (3 cases, each fails with `2c48865`'s rule) |
+| F2: a page on a host named like an outlet that an honest copy credits, naming another outlet, joins two honest outlets (a regression with attribution on; at the defaults the dateline form is the N1 class, open before and after) | medium | under `"one_way"` a wire's name is owned only by the wire's own site (`_WIRE_SITES`, a list not checked against the real web); open at the default and, for names other than the news wires', with `"one_way"` (reasoned, not staged); "roots only" rejected because it splits copy-of-copy chains | `::test_what_the_setting_decides_on_the_known_shapes` (the F2 pages) |
+| F3: attribution lines are read case-sensitively ("Originally published by X" at a sentence start gives no origin) | low (older) | not changed (it would change the shipped grouping); documented open | — |
+| F4: `bench_cognition.py baseline` spends a withheld look with none of the `--out` guards | low (older) | fixed (`860db86`) | `tests/acceptance/test_wave3_fix.py::test_the_baseline_command_refuses_an_output_a_look_may_not_write_before_running_anything` |
+| F5: `cycles.final` accepted a note of only spaces | low | fixed (`860db86`) | `::test_the_cycles_look_refuses_a_note_of_only_spaces_before_the_ledger` |
+| F6: accepted residuals: one page can use the 2 s echo budget; a checkpoint replay scans inside its transaction; the forget's pre-pass sees a change only through `(status, updated_at)` | low | documented open (no code path rewrites a result without `updated_at` today) | — |
+
+**What the reviews changed in this wave's conclusions.** Lane S's two rules do not close the hole Step 0's look
+found: they read the phrasings lane S's worlds were written with (S-2, S-3), one merges honest outlets (S-4, H1), the
+other discarded honest pages and held the write lock (M2–M5); both ship OFF, and at the shipped defaults sources are
+treated as at step 0, so the hole is open. Supersession ships OFF ("ask"), and so does the one-way grouping; the
+shipped grouping is unchanged, so N1, older than Wave 3, stays open by decision. What changes at the defaults is
+small: the front door (pending its look), the task count honoured by the idle investigation and checked inside the
+submission, the read-ahead byte bound, a forget that holds the lock briefly and reaches contradiction questions, the
+redraw fix and the look guards. The figures the reviews corrected: lane S's held-out numbers are development evidence
+(S-8); supersession's false replacements are 3 of 23 (about one in eight; lane S reported 3 of 33) and the longest
+stayed wrong 8 cycles and at least 10 (censored; lane S reported the means of the maxima, 2 and 5); the gains are
++0.001 / −0.002 / +0.016 (lane S: +0.008 / +0.007 / +0.020); lane R's paired-gain range reaches −0.031 (not −0.029);
+"found, not revised" is mostly contested refreshes (50 of 70), not all; 73 % of the shadow's staged hits fell where
+the gate already refused, and what the forecast adds is 62 hits against 60 false alarms (development) and 78 against
+198 (held-out); lane C's five adversarial front-door cases tested the moments rule, not the criterion, until fixed;
+back-door coverage under the usefulness bound at n = 100 is 0.916 on a reviewer's re-run; the documents had said the
+defaults catch echoes that credit a model, which they do not (D-1). The negative results stand: no order of the
+re-check helps; the idle investigator does not close the gap to a blind schedule.
+
+**What stays open from the reviews** (each with its source):
+- The hole of Step 0, at the shipped defaults: reworded copies of a story can count as independent sources, and
+  pages repeating the individual's own answer count as corroboration, crediting a model or not (S-2, S-3, D-1; the
+  source rules off). A rule by publication order and derivation, or the owner's confirmation, is not built.
+- With `echo_recognition` on: echoes that credit no model still pass at 92–100 % of the baseline's rate (S-2, the
+  fix lane's variant worlds); with `attribution_independence` on: 19 of 27 common credit phrasings are not read
+  (S-3, L2), honest outlets crediting each other are merged (S-4: −0.081 / −0.041 / −0.081 at 30 % after H1), and
+  N3 and N10 are as at `3ce4ae3` (review3b; the third fix lane).
+- N1, a page naming two honest outlets as its origins joins them, at the shipped defaults (review3b N1; decision
+  after review3c); F2's dateline form at the defaults (review3c F2).
+- With `origin_grouping` "one_way": F2 for names other than the news wires' (review3c F2; reasoned, not staged); a
+  page copying one honest outlet's sentence word for word and naming another outlet joins the two (the third fix
+  lane); `_WIRE_SITES` not checked against the real web; a stored cluster read while `"one_way"` was on keeps its
+  mark after the owner sets it back, until one newly read claim joins it (the third fix lane; §6).
+- F3: "Originally published by X" at the start of a sentence gives no origin (review3c F3; not changed).
+- No benchmark world holds a page naming several origins, so neither grouping is measured on realistic data
+  (review3c 1e; ADR-063 lists the worlds needed).
+- Supersession, when the owner turns it on: two colluding pages can still replace a true item in the owner's research
+  or a refresh (security M6; review3b); revert never writes back a legacy record, which is cut down only at the next
+  web forget (review3b M1).
+- One page can use up the echo check's 2 s budget on a large individual (review3b N4, review3c F6; named in
+  `echo_skipped` and the log); an own-values side table would need a schema change, not built.
+- A checkpoint restore still scans the answers once inside its own transaction (1.5–1.7 s at 10,000 answers of
+  20 kB; the second fix lane, review3c F6); the forget's pre-pass sees a changed answer only through
+  `(status, updated_at)` (review3c F6).
+- Saved settings other than the Wave 3 web ones (`config.CHECKED_ON_LOAD`) are not validated on load (security L8,
+  review3b N8; older); a damaged source-rule switch reads as off (visible, by design).
+- `requeue`, an owner surface, inserts without the day's task count (review3b (f); older); the owner's own console,
+  CLI and voice research is not counted against it (by design).
+- The shadow report's evidence for turning predictive regulation on needs a week on the host (H-4; `shadow.GUIDE`
+  committed before any host data); a genuinely different account's lock (L4, L5, N7) was not tested.
+- The Wave 0 equivalence test depends on `/usr/bin/chromium` and on `NSF_CHROMIUM` being unset (review3 P-1); CI's
+  digest was read from the CI log by the fix lane, not re-fetched by a reviewer.
+- `nsf imagine scm --help` does not name the `moments` / `samples` fields (review3 lane C LOW; the decline reason
+  names them); a misdeclared graph is never tested (lane C).
+- Seed 2704's move on the merged tree was not traced (§3.8); the outcome of a split of the allowance between the two
+  measured extremes is not measured (R/V MEDIUM 2).
+- The real web (syndication and credit wording, multi-origin pages, hosts named like wires), a live answer model and
+  the host's own week: nothing in these reviews was measured there.
 
 ## The withheld looks
 

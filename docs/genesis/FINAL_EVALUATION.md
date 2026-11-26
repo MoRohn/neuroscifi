@@ -6,7 +6,8 @@ directive's §13: what improved, what did not, what remains limited, what is unv
 owner, and the research directions worth the most next. Every number is copied from the evidence file or document
 named beside it. Nothing here claims or implies consciousness, sentience, awareness, general intelligence or
 superintelligence; the mechanisms are functions with names that say what they do, and the measurements are task
-scores on synthetic worlds. Wave 3's defaults and numbers are final after the fix lane (`gen3-fix`).
+scores on synthetic worlds. Wave 3's defaults and numbers are final after its three fix lanes (`gen3-fix`,
+`gen3-fix2`, `gen3-fix3`; merged `0410a22`).
 
 ## Wave 3 in plain words (read this first)
 
@@ -35,10 +36,15 @@ mistake, and none of the test worlds contains such pages, so neither way could b
 - `nsf imagine scm` now answers a kind of causal question it used to decline, and says how it got the answer
   (checked exactly on 12 of 12 held-out questions, `genesis_frontdoor.json`); a last test on unseen questions is
   pending.
-- Background research started by the worker when idle now stops at your daily task limit, as the timer's always did.
+- Background research started by the worker when idle now stops at your daily task limit, as the timer's always did,
+  and the limit is checked as each background task is queued, so two of them cannot both take the last place.
+- Reading pages ahead now stays inside a task's byte budget; forgetting a source holds the database for a fraction of
+  a second and also removes its sentence from open contradiction questions.
 - The console overview and Pocket no longer rebuild their buttons when nothing changed, so the keyboard stays put.
-- Two read-only aids: predictive regulation "in shadow" writes down what it would have done, without doing it, and
-  `nsf readiness` counts how many real outcomes each learning part still needs.
+- The commands for the last tests on unseen worlds refuse to start when the run would be wasted.
+- Two aids that change no decision: predictive regulation "in shadow" (you switch it on) writes down what it would
+  have done, without doing it, and `nsf readiness` (read-only) counts how many real outcomes each learning part still
+  needs.
 
 **What did not help (measured):** no order of the re-check of known facts did better; letting the idle worker look
 up never-covered subjects reached more of them but still did not catch up with a simple round-robin schedule on the
@@ -185,7 +191,7 @@ Each with the command an owner would run (from [REGRESSION_VERIFICATION.md](REGR
 | Decision | Today | Evidence for | Evidence against | What would settle it |
 |---|---|---|---|---|
 | **Automatic supersession of a stale item** (`supersession`, built in Wave 3, off: a newer version stated by at least two independent sources replaces the older one without asking) | `"ask"`: contradictions are asked, never decided (ADR-026, ADR-038) | it asks fewer questions and catches stale items sooner (lane S) | gain below the spread in every world; 3 of 23 rule replacements false on lane S's held-out; of the 5 false replacements in those runs (3 by the rule, 2 by the path that existed before), 4 still wrong when the run ended, the longest at least 10 cycles (`genesis_wave3_fix_s.json`); development evidence only; forget and revert, and family or agent tasks triggering it, fixed by the fix lane; two colluding pages can still replace a true item | its withheld look (supersession on the shipped defaults, both source rules off: not the configuration measured here; reported, cannot switch it on); a sound source-independence rule first (§6, rank 1) |
-| `origin_grouping` (built in Wave 3's second fix lane, off since the third: a page naming its origin attaches to one origin only) | `"transitive"`: as before Wave 3's fix lanes; a page naming two honest outlets as its origins joins them (review3b N1, open) | closes N1 on staged pages; with the reviewer's edge choice, copies naming several origins count once on every staged case | as first shipped it counted such copies as 2–3 sources (review3c F1); F2 open for names other than the news wires'; no benchmark world holds a page naming several origins, so neither direction is measured (ADR-063) | worlds with multi-origin copies and pages naming two honest outlets, written by someone other than the rule's author and committed first (§6, rank 1) |
+| `origin_grouping` (built in Wave 3's second fix lane, off since the third: a page naming its origin attaches to one origin only) | `"transitive"`: the grouping of `3ce4ae3` (for a page's named origins, as before Wave 3); a page naming two honest outlets as its origins joins them (review3b N1, open) | closes N1 on staged pages; with the reviewer's edge choice, copies naming several origins count once on every staged case | as first shipped it counted such copies as 2–3 sources (review3c F1); F2 open for names other than the news wires'; no benchmark world holds a page naming several origins, so neither direction is measured (ADR-063) | worlds with multi-origin copies and pages naming two honest outlets, written by someone other than the rule's author and committed first (§6, rank 1) |
 | the two source rules (`attribution_independence`, `echo_recognition`) | off (fix lane) | none that survived review | read only their worlds' phrasings; merge honest outlets; discard honest pages (WAVE3.md §3.1) | a different kind of rule (§6, rank 1) |
 | `predictive_regulation` | off; `"shadow"` gathers evidence without acting (Wave 3) | simulated plant: 0.80 of memory breaches avoided held-out, 0.83 withheld | costs work given up (0.044 → 0.106) and false alarms (0.009 → 0.043); the plant's constants are declared; the shadow report counts what the forecast adds separately since the fix lane (staged held-out: 198 added false alarms against 78 added hits) | a week of shadow on the host: `nsf config --predictive-regulation-shadow`, then `nsf internal-state --shadow-report` |
 | `recheck_order` | `"staleness"` | none on held-out | every order "no evidence" (ADR-060) | none planned |
