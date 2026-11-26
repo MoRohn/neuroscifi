@@ -590,7 +590,8 @@ and ran the test), not re-checked here. Their findings that change this record a
   contains a page naming two origins, so neither direction is measured. The shipped grouping is `3ce4ae3`'s again
   (`origin_grouping: "transitive"`), and the one-way rule is a setting, off. **So N1, older than Wave 3, stays OPEN
   at the shipped defaults.** The main session re-ran review3c's grouping probe on the merged tree (`0410a22`): 19 of 19
-  comparisons equal to the old code (on `2c48865`, before the third fix lane: 11 equal, 5 different).
+  comparisons equal to the old code (the reviewer's saved output of the same probe on `2c48865`, before the third fix
+  lane, when it had 16 comparisons: 11 equal, 5 different).
 
 **Round 1, security review** (review3, `f0a1f09`; fixed by `gen3-fix`):
 
@@ -755,4 +756,26 @@ re-check helps; the idle investigator does not close the gap to a blind schedule
 
 The reconciliation's checks (branch `gen3-rec`) are in its report; the final validation is recorded here.
 
-<<WAVE3-VALIDATION>>
+Run on `49bf81a` (the commit that adds the rule for the looks), 2026-11-26, on this host (shared with other work;
+nothing below is a measurement of the DGX Spark, the open web or a live answer model). The commits after it changed
+documents only.
+
+| Check | Result |
+|---|---|
+| Quality gate (`bash scripts/check.sh`: ruff, the non-e2e suite, the JS checks, the numerical reproduction) | 6,195 passed, 22 skipped, 35 subtests; ALL CHECKS PASSED |
+| Browser suite (`scripts/e2e.sh`) | 212 passed, 1 skipped |
+| `nsf acceptance --all` | pass |
+| Sentence guard against `307b907` (`scripts/guard_differential.py compare`) | 1,937 compared: 1,688 identical, 232 stricter, 17 loosened, 0 different |
+| Two accounts (`scripts/two_account_check.py`, real uids in a user namespace) | 55 of 55 |
+| Offline research benchmark, every setting off, and as shipped | sha256 `68731d7235cb…` both, as at Wave 0 on this host; the portable digest `d87dbb4fb77f…` both |
+| Cognitive benchmark, development and held-out (`scripts/bench_cognition.py run`) | retention: all retained on both; adversarial: 55 of 55 scored cases pass on both (13 original, 4 added in Wave 1, 1 restored, 10 added in Wave 2, 27 added in Wave 3: 5 lane C, 16 lane S, 3 and 3 by the fix lanes) |
+| Dry run of the front-door look on held-out, no `--final` (`scripts/compare_front_door_look.py`) | 47 leaves differ, 0 outside the exemptions |
+| Dry run of the cycles look's twelve configurations on development, no `--final` | all twelve ran |
+
+The same checks were green on the two earlier trees of the fix rounds (`3ce4ae3`: gate 6,093 passed, browser suite
+212; `2c48865`: gate 6,117 passed, browser suite 212). The two tests that failed once under load inside single lanes
+(a voice follow-up timing test and the read-ahead byte-bound test, the second a product race fixed in this wave)
+failed in none of the three runs.
+
+Not run here: anything on the open web, a live answer model, real hardware, a real second account, two real
+processes for the voice follow-up, systemd, or a week of the shadow record on the host (the owner's to run).
