@@ -201,16 +201,17 @@ def _pending(c, p, q, b):
     if (asked or contested) and wstate.has_tables(c.db):
         from ..instance.errors import NotFound
         from ..webcortex import caution, knowledge
-        for row in out:
-            if row["id"] in contested:
-                row["caution_sides"] = caution.for_contested(c.db, contested[row["id"]], row["id"])
         items = {}
-        for kid in set(asked.values()):
+        for kid in sorted(set(asked.values())):
             try:
                 items[kid] = knowledge.row(c.db, kid)
             except NotFound:
                 continue
-        shown = dict(zip(items, caution.for_knowledge(c.db, list(items.values()))))
+        sides, cautions = caution.for_pending(c.db, contested, list(items.values()))  # one bound for the whole view
+        for row in out:
+            if row["id"] in contested:
+                row["caution_sides"] = sides.get(row["id"])
+        shown = dict(zip(items, cautions))
         for row in out:
             if asked.get(row["id"]) in shown:
                 row["caution"] = shown[asked[row["id"]]]

@@ -903,6 +903,23 @@ def test_allowance_division(individual, tmp_path):
                                     lambda d: governance.forget_research(d, queued["task_id"], time.time()))
 
 
+# ---- Wave 4 fix: the caution's unmeasured triggers (ADR-065, display only) ---------------------------------------------
+
+def test_caution_detail(individual):
+    """Off (default): three pages counted as two sources carry no caution (only "one source" is shown); on: they do;
+    off again: none, at the next view."""
+    from neuroscifi.webcortex import caution
+    db, _ = individual
+    copies = {"pages": 3, "groups": 2, "joined": ["near_duplicate"], "own_answer": True}
+
+    def probe():
+        return caution.sentence(copies, caution._detail(db))
+    on, off = web_switch(db, "caution_detail")
+    reference, on_, again = cycle(on, off, probe)
+    assert reference is None and "count as 2 sources" in on_ and "said earlier" in on_
+    assert_rolls_back(reference, on_, again)
+
+
 # Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
 # Wave 1/2 switch of the config classes is here; Wave 2 lane X)
 SWITCHES = {
@@ -928,4 +945,5 @@ SWITCHES = {
     "own_text_provenance": test_own_text_provenance,
     "source_derivation": test_source_derivation,
     "allowance_division": test_allowance_division,
+    "caution_detail": test_caution_detail,
 }

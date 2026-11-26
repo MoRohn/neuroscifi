@@ -30,6 +30,8 @@ def test_the_console_shows_the_caution_on_answers_knowledge_and_the_question_abo
             with store.write(db):
                 db.execute("INSERT INTO pending(epoch, kind, scope, question, created_at) VALUES(NULL, 'ask', ?, ?, ?)",
                            (f"web:knowledge:{kid}", "Accept this knowledge?", T0))
+        from neuroscifi.webcortex import state
+        state.set_config(db, {"caution_detail": True}, T0)  # Wave 4 fix: the copy trigger is shown only with it
         srv = server.ConsoleServer(path, 0, token=TOKEN, clock=lambda: T0 + 10)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:

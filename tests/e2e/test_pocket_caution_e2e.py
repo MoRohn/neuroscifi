@@ -15,6 +15,11 @@ COPY_HOST, COPY_PATH = "copy-four.example", "/zephyr-copy"
 @pytest.fixture
 def spark(tmp_path):
     s = Spark(tmp_path, delay=0.0)
+    from contextlib import closing
+    from neuroscifi.instance import store
+    from neuroscifi.webcortex import state
+    with closing(store.open_existing(s.instance)) as db:      # Wave 4 fix (review4 M4): the copy trigger needs it
+        state.set_config(db, {"caution_detail": True}, 0.0)
     title, date, text = PAGES[("news-one.example", "/zephyr")]
     s.web.add(COPY_HOST, COPY_PATH, f"<html><head><title>{title}</title><meta property='article:published_time' "
                                     f"content='{date}'></head><body><article><h1>{title}</h1><p>{text}</p>"

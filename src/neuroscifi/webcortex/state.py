@@ -125,7 +125,8 @@ def _validate(name, value):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
-    if name == "own_text_provenance":               # Wave 4 lane E (ADR-067)
+    if name in ("own_text_provenance",               # Wave 4 lane E (ADR-067)
+                "caution_detail"):                   # ADR-065 (Wave 4 fix): display only
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value

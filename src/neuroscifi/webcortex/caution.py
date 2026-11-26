@@ -16,10 +16,19 @@ The facts, per statement:
              it read stated it, or its wording: consolidate._Echoes, read only, within OWN_SECONDS). A flag computed for
              display, never a rule; None when not checked (time, or a view that may not see the owner's answers).
 
-When a caution is shown (written before it was measured; ADR-065): when the statement rests on at most one source that
-can be told apart (groups <= 1), when some of its pages were counted together as copies (pages > groups: copying is
-present in this story, and reworded copies are not caught), or when a supporting page repeats an earlier answer of
-the individual's own. The words say what is known and what is not; they never say the statement is wrong.
+When a caution is shown (the rule written before it was measured; ADR-065): when the statement rests on at most one
+source that can be told apart (groups <= 1), when some of its pages were counted together as copies (pages > groups:
+copying is present in this story, and reworded copies are not caught), or when a supporting page repeats an earlier
+answer of the individual's own. Since the Wave 4 fix (review4 measurement M4, security L2) only the first trigger is
+SHOWN: it is the only one the measurement supports (all 3 wrong answers carried it); the copy trigger sat on truly
+independent pages in 79 of 264 cases on held-out worlds, and the own-answer flag had no echo page in 7 of 22, and a
+caution that is wrong three times in ten teaches the owner to ignore cautions. The other two are still computed (the
+facts) and are shown only with WebConfig.caution_detail (off by default). The words say what is known and what is
+not; they never say the statement is wrong.
+
+ONE BOUND PER VIEW. A view computes the own-answer flag for all its statements with one time budget (OWN_SECONDS) and
+reads at most MAX_STATEMENTS statements (for_pending: every open question of the owner's list at once, the
+contradiction questions' records in one query).
 """
 from __future__ import annotations
 
@@ -29,6 +38,7 @@ from . import text as T
 
 OWN_SECONDS = 0.5       # the own-answer check's budget per view (consolidate._Echoes' deadline); unchecked: None
 MAX_CLAIMS = 40         # supporting claims read per statement (the rest are not looked at)
+MAX_STATEMENTS = 50     # statements given a caution in one view (the rest carry none)
 
 _JOINED_WORDS = {"same_site": "some are on the same site", "near_duplicate": "some have nearly the same wording",
                  "named_origin": "some name the same origin"}
@@ -88,14 +98,15 @@ class _Own:
         return None if set(self.echoes.skipped) & {c.id for c in claims} else False
 
 
-def shown(f: dict | None) -> bool:
-    """Whether a caution is shown for these facts (the rule in the module docstring)."""
-    return bool(f) and (f["groups"] <= 1 or f["pages"] > f["groups"] or f.get("own_answer") is True)
+def shown(f: dict | None, detail: bool = False) -> bool:
+    """Whether a caution is shown for these facts (the module docstring): one source only; with `detail`
+    (WebConfig.caution_detail) also pages counted together as copies and a page repeating an earlier answer."""
+    return bool(f) and (f["groups"] <= 1 or (detail and (f["pages"] > f["groups"] or f.get("own_answer") is True)))
 
 
-def sentence(f: dict | None) -> str | None:
+def sentence(f: dict | None, detail: bool = False) -> str | None:
     """The caution in plain words for a non-technical owner, or None when none is shown."""
-    if not shown(f):
+    if not shown(f, detail):
         return None
     pages, groups = f["pages"], f["groups"]
     why = "; ".join(_JOINED_WORDS[j] for j in f["joined"] if j in _JOINED_WORDS)
@@ -110,27 +121,32 @@ def sentence(f: dict | None) -> str | None:
         out = f"{pages} pages from {groups} sources say this."
     if pages > 1:
         out += " A reworded copy cannot be told from an independent report, so there may be fewer."
-    if f.get("own_answer") is True:
+    if detail and f.get("own_answer") is True:
         out += " One of these pages repeats something this system said earlier, so it may not be independent."
     return out
 
 
-def brief(f: dict | None) -> str | None:
+def brief(f: dict | None, detail: bool = False) -> str | None:
     """One short spoken sentence (voice says it once)."""
-    if not shown(f):
+    if not shown(f, detail):
         return None
-    if f.get("own_answer") is True:
+    if detail and f.get("own_answer") is True:
         return "Careful: a source may just repeat something I said before."
     if f["pages"] <= 1:
         return "Careful: only one source says this."
     return "Careful: these sources may be copies of each other."
 
 
-def view(db, claim_rows, *, own_check: bool = True, own=None) -> dict | None:
+def _detail(db) -> bool:
+    return bool(getattr(state.get_config(db), "caution_detail", False))
+
+
+def view(db, claim_rows, *, own_check: bool = True, own=None, detail: bool | None = None) -> dict | None:
     """{"pages", "groups", "joined", "own_answer", "text", "brief"} when a caution is shown, else None."""
+    detail = _detail(db) if detail is None else detail
     f = facts(db, claim_rows, own_check=own_check, own=own)
-    text = sentence(f)
-    return None if text is None else f | {"text": text, "brief": brief(f)}
+    text = sentence(f, detail)
+    return None if text is None else f | {"text": text, "brief": brief(f, detail)}
 
 
 def _rows(db, where, params) -> list[dict]:
@@ -172,39 +188,73 @@ def for_report(db, task_id, report: dict, *, own_check: bool = True) -> dict:
     if own_check:           # one time budget for the whole view
         every = {r["id"]: r for rows in [*statements, verdict_rows] if rows for r in rows[:MAX_CLAIMS]}
         own = _Own(db, [state.claim_from_row(r) for r in every.values()]) if every else None
-    return {"answer": [None if rows is None else view(db, rows, own_check=own_check, own=own) for rows in statements],
-            "verdict": None if verdict_rows is None else view(db, verdict_rows, own_check=own_check, own=own)}
+    detail = _detail(db)
+    return {"answer": [None if rows is None else view(db, rows, own_check=own_check, own=own, detail=detail)
+                       for rows in statements],
+            "verdict": None if verdict_rows is None else view(db, verdict_rows, own_check=own_check, own=own,
+                                                              detail=detail)}
+
+
+def _contested_sides(db, asked) -> dict:
+    """{pending id: [(value, claim rows)]} of contradiction questions {pending id: task id}: their records read in
+    ONE query over the tasks' feedback (web_feedback has no task index: one scan per view, not one per question)."""
+    import json
+    if not asked:
+        return {}
+    tasks = sorted({str(t) for t in asked.values()})
+    found = {}
+    for task, pid, key, detail in db.execute(
+            f"SELECT task_id, json_extract(detail, '$.pending_id'), key, detail FROM web_feedback WHERE task_id IN "
+            f"({','.join('?' * len(tasks))}) AND json_extract(detail, '$.pending_id') IS NOT NULL ORDER BY rowid",
+            tasks):
+        if isinstance(pid, int) and pid in asked and str(asked[pid]) == task:
+            found[pid] = (key, state.loads(detail, {}) or {})            # the latest record wins (rowid order)
+    out = {}
+    for pid, (key, detail) in found.items():
+        values = [v for v in (detail.get("values") or []) if isinstance(v, str)][:4]
+        out[pid] = [(v, _rows(db, "task_id=? AND key=? AND instr(claim_values, ?) > 0",
+                              (str(asked[pid]), key, json.dumps(v)))) for v in values]
+    return out
 
 
 def for_contested(db, task_id, pending_id, *, own_check: bool = True) -> list | None:
     """The caution of each side of a contradiction question (scope web:contested:<task>:<n>): [{"value", "caution"}]
     for the sides that carry one, from the task's claims about the question's subject stating that value; None when
     none does (or the question's record is gone)."""
-    import json
-    found = db.execute("SELECT key, detail FROM web_feedback WHERE task_id=? AND json_extract(detail, '$.pending_id')=? "
-                       "ORDER BY rowid DESC LIMIT 1", (str(task_id), int(pending_id))).fetchone()
-    if found is None:
-        return None
-    key, detail = found[0], state.loads(found[1], {}) or {}
-    values = [v for v in (detail.get("values") or []) if isinstance(v, str)][:4]
-    sides = [(v, _rows(db, "task_id=? AND key=? AND instr(claim_values, ?) > 0", (str(task_id), key, json.dumps(v))))
-             for v in values]
-    own = None
-    if own_check:
-        every = {r["id"]: r for _, rows in sides for r in rows}
-        own = _Own(db, [state.claim_from_row(r) for r in every.values()]) if every else None
-    out = [{"value": v, "caution": view(db, rows, own_check=own_check, own=own)} for v, rows in sides if rows]
-    return [x for x in out if x["caution"]] or None
+    return for_pending(db, {int(pending_id): task_id}, [], own_check=own_check)[0].get(int(pending_id))
 
 
-def for_knowledge(db, items, *, own_check: bool = True) -> list:
-    """The caution of each knowledge item (its supporting claims, as stored with it), one time budget for them all."""
+def for_pending(db, contested, items, *, own_check: bool = True) -> tuple[dict, list]:
+    """The owner's list of open questions, ONE bound for the whole view (security review L2): ({pending id: the sides'
+    cautions or None} of the contradiction questions `contested` {pending id: task id}, [the caution of each knowledge
+    item of `items`]); one own-answer check for every statement, at most MAX_STATEMENTS statements in all."""
+    sides = _contested_sides(db, contested)
     rows = []
     for item in items:
         ids = [i for i in ((item or {}).get("supporting") or ()) if isinstance(i, str)][:200]
         rows.append(_rows(db, f"id IN ({','.join('?' * len(ids))})", tuple(ids)) if ids else [])
+    budget = [MAX_STATEMENTS]
+
+    def take(found):
+        if not found or budget[0] <= 0:
+            return False
+        budget[0] -= 1
+        return True
+    sides = {pid: [(v, r) for v, r in found if take(r)] for pid, found in sides.items()}
+    rows = [found if take(found) else [] for found in rows]
     own = None
     if own_check:
-        every = {r["id"]: r for found in rows for r in found}
+        every = {r["id"]: r for found in [*rows, *(r for s in sides.values() for _, r in s)] for r in found}
         own = _Own(db, [state.claim_from_row(r) for r in every.values()]) if every else None
-    return [view(db, found, own_check=own_check, own=own) if found else None for found in rows]
+    detail = _detail(db)
+    out = {}
+    for pid, found in sides.items():
+        shown_sides = [{"value": v, "caution": view(db, r, own_check=own_check, own=own, detail=detail)}
+                       for v, r in found if r]
+        out[pid] = [x for x in shown_sides if x["caution"]] or None
+    return out, [view(db, found, own_check=own_check, own=own, detail=detail) if found else None for found in rows]
+
+
+def for_knowledge(db, items, *, own_check: bool = True) -> list:
+    """The caution of each knowledge item (its supporting claims, as stored with it), one time budget for them all."""
+    return for_pending(db, {}, items, own_check=own_check)[1]

@@ -48,7 +48,8 @@ class Research:
                    for (host, path), (title, _, paras) in PAGES.items()]
         self.path = Path(folder) / "owner.sqlite"
         db = store.create(self.path, NOW)
-        state.set_config(db, {"min_domain_interval": 0.0}, NOW)
+        # caution_detail (Wave 4 fix, review4 M4): pages counted together as copies are cautioned only with it on
+        state.set_config(db, {"min_domain_interval": 0.0, "caution_detail": True}, NOW)
         db.close()
         self.server = ConsoleServer(self.path, 0, token=TOKEN, web_worker=True,
                                     worker_options={"fixture": self.web, "providers": [CorpusProvider(results)]})

@@ -224,8 +224,11 @@ def test_the_caution_says_when_pages_look_like_copies_and_when_only_one_source_s
                              ("mirror.example", f"{n} 1.5.0 is the latest {n} release.", T0 - DAY, None),
                              ("pkgwatch.example", f"As of this week, the newest {n} release is {n} 1.5.0, its notes "
                                                   "say.", T0 - DAY, None)])
-        copies = caution.view(db, _claims_of(db, "relnotes.example", "mirror.example", "pkgwatch.example",
-                                             value="1.5.0"))
+        rows = _claims_of(db, "relnotes.example", "mirror.example", "pkgwatch.example", value="1.5.0")
+        # Wave 4 fix (review4 M4): by default only "one source" is shown; the copy trigger needs caution_detail
+        assert caution.view(db, rows) is None and caution.facts(db, rows)["groups"] == 2
+        state.set_config(db, {"caution_detail": True}, T0)
+        copies = caution.view(db, rows)
         assert (copies["pages"], copies["groups"], copies["joined"]) == (3, 2, ["near_duplicate"])
         assert "count as 2 sources" in copies["text"] and "nearly the same wording" in copies["text"]
         assert "reworded copy" in copies["text"] and copies["own_answer"] is False
@@ -247,6 +250,9 @@ def test_the_own_answer_flag_is_shown_to_the_owner_only_and_decides_nothing():
              None),
             ("answer-roundup.example", f"Answers roundup: {n} 9.4.0 is the latest {n} release.", T0 - 3600, None)])
         rows = _claims_of(db, "askboard.example", "answer-roundup.example", value="9.4.0")
+        # Wave 4 fix (review4 M4): computed by default, shown only with caution_detail
+        assert caution.facts(db, rows)["own_answer"] is True and caution.view(db, rows) is None
+        state.set_config(db, {"caution_detail": True}, T0)
         owner = caution.view(db, rows)
         assert owner["own_answer"] is True and "said earlier" in owner["text"]
         assert owner["brief"] == "Careful: a source may just repeat something I said before."
@@ -298,6 +304,8 @@ def test_the_console_cli_and_pocket_show_the_caution_and_pocket_never_the_own_an
     from neuroscifi.pocket import server as pocket
     with adv._s_individual("caution-views", **adv.LANE_S_OFF) as (db, path):
         task_id = _staged_report_task(db)
+        assert "count as" not in json.dumps(pocket.task_detail(orchestrator.get(db, task_id), db)["report"])
+        state.set_config(db, {"caution_detail": True}, T0)     # Wave 4 fix: the copy trigger is shown only with it
         task = orchestrator.get(db, task_id)
         detail = pocket.task_detail(task, db)
         assert "count as 2 sources" in detail["report"]["caution"]["answer"][0]

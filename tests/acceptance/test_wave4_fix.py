@@ -209,3 +209,36 @@ def test_the_bench_records_whether_the_tree_was_dirty(monkeypatch, tmp_path):
         status["out"] = out
         bench.main(["run", "--split", "development", "--out", str(tmp_path / "o.json")])
         assert json.loads((tmp_path / "o.json").read_text())["dirty"] is dirty
+
+
+# ---- item 6 (security L2): the owner's list of open questions has ONE bound ------------------------------------------
+
+def test_the_open_questions_view_reads_its_records_once_with_one_own_answer_budget(monkeypatch):
+    from neuroscifi.webcortex import caution
+    with adv._s_individual("pending-bound", **adv.LANE_S_OFF) as (db, _):
+        state.set_config(db, {"caution_detail": True}, T0)
+        for k in range(3):
+            adv._s_look(db, T0 + k * DAY, [("relnotes.example", f"{N} 1.{k}.1 is the latest {N} release.", T0, f"/{k}"),
+                                           ("pkgwatch.example", f"{N} 1.{k}.2 is the latest {N} release.", T0, f"/{k}")])
+        asked = {pid: scope.split(":")[2] for pid, scope in db.execute(
+            "SELECT id, scope FROM pending WHERE scope LIKE 'web:contested:%' AND resolved_at IS NULL")}
+        assert len(asked) == 3
+        alone = {pid: caution.for_contested(db, task, pid) for pid, task in asked.items()}
+        built, scans = [], []
+        real = caution._Own
+        monkeypatch.setattr(caution, "_Own", lambda *a, **k: built.append(1) or real(*a, **k))
+        db.set_trace_callback(lambda sql: scans.append(sql) if "FROM web_feedback" in sql else None)
+        sides, _ = caution.for_pending(db, asked, [])
+        db.set_trace_callback(None)
+        assert sides == alone and any(alone.values())
+        assert len(built) == 1 and len(scans) == 1, (built, scans)
+
+
+def test_the_caution_shows_only_one_source_by_default():
+    """review4 M4: the copy trigger and the own-answer flag are computed, not shown, unless caution_detail."""
+    from neuroscifi.webcortex import caution
+    copies = {"pages": 3, "groups": 2, "joined": ["near_duplicate"], "own_answer": True}
+    one = {"pages": 1, "groups": 1, "joined": [], "own_answer": True}
+    assert caution.sentence(copies) is None and caution.brief(copies) is None
+    assert caution.sentence(one) == "Only one source says this." and "said earlier" not in caution.sentence(one)
+    assert "count as 2 sources" in caution.sentence(copies, True) and "said earlier" in caution.sentence(copies, True)
