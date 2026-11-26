@@ -367,7 +367,7 @@ _SETTABLE = {
 # its default).
 _FIXED = {
     "evidence_ttl_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
-                                       and v > 0),
+                                       and v >= 0),       # `nsf init --ttl-days` may round to 0 (expires at once)
     "max_evidence_rows": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= MAX_ROW_LIMIT,
     "min_free_bytes": lambda v: isinstance(v, int) and not isinstance(v, bool) and v >= 0,
     "max_thermal_celsius": lambda v: v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)
