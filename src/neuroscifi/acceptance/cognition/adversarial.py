@@ -1272,14 +1272,14 @@ def _wire_copies(value, at, shapes):
     return [(hosts[n], text[s].format(N=_SN, v=value), at, f"/wire-{n}") for n, s in enumerate(shapes)]
 
 
-def _groups_of(pages, value, attribution=True):
+def _groups_of(pages, value, attribution=True, grouping="transitive"):
     from ...webcortex import claims
     from ...webcortex.types import Document
     docs = [Document(url=f"http://{h}{p or '/x'}", final_url=f"http://{h}{p or '/x'}",
                      canonical_url=f"http://{h}{p or '/x'}", domain=h, title=_SN, text=t, retrieved_at=T0,
                      retrieval_mode="live", published_at=at) for h, t, at, p in pages]
     found = [c for d in docs for c in claims.extract_claims(d, _SQ) if f"v{value}" in (c.values or [])]
-    claims.stamp_origins(found, docs, attribution=attribution)
+    claims.stamp_origins(found, docs, attribution=attribution, grouping=grouping)
     return len(claims.independence_groups(found))
 
 
@@ -1633,8 +1633,11 @@ def _fix2(case_id, observed, ok):
     return _result(case_id, directive, expected, observed, ok)
 
 
+_ONE_WAY = {"origin_grouping": "one_way"}      # ADR-063: off by default; the fix2 and fix3 cases switch it on
+
+
 def _fix2_look(name, pages, settings):
-    with _s_individual(name, **settings) as (db, _):
+    with _s_individual(name, **(settings | _ONE_WAY)) as (db, _):
         _s_look(db, T0, pages)
         return [r["status"] for r in _s_rows(db, _NEW)]
 
@@ -1646,7 +1649,8 @@ _FIX2_HONEST = [("devdesk.example", f"By now {_SN} {_NEW} is the latest {_SN} re
 def a_page_naming_two_outlets_as_its_origins_merges_neither():
     bridge = [("hostile.example", f"As of now, {_SN} {_NEW} is the latest {_SN} release. This story was first "
                "published by Devdesk. It originally appeared in Factline.", T0 - DAY, "/d")]
-    groups, alone = _groups_of(_FIX2_HONEST + bridge, _NEW, False), _groups_of(_FIX2_HONEST, _NEW, False)
+    groups = _groups_of(_FIX2_HONEST + bridge, _NEW, False, "one_way")
+    alone = _groups_of(_FIX2_HONEST, _NEW, False, "one_way")
     rows = _fix2_look("fix2-docbridge", _FIX2_HONEST + bridge, LANE_S_OFF)
     return _fix2("a_page_naming_two_outlets_as_its_origins_merges_neither",
                  f"{groups} independent group(s) with the page ({alone} without it); knowledge rows {rows}",
@@ -1656,7 +1660,7 @@ def a_page_naming_two_outlets_as_its_origins_merges_neither():
 def a_copy_naming_one_origin_still_counts_with_it():
     pages = [_FIX2_HONEST[0], ("copydesk.example", f"This story first appeared on Devdesk.\nThese days {_SN} {_NEW} is "
                                f"the newest {_SN} release.", T0 - DAY, "/c")]
-    groups = _groups_of(pages, _NEW, False)
+    groups = _groups_of(pages, _NEW, False, "one_way")
     rows = _fix2_look("fix2-copy", pages, LANE_S_OFF)
     return _fix2("a_copy_naming_one_origin_still_counts_with_it",
                  f"{groups} independent group(s); knowledge rows {rows}", groups == 1 and rows == [])
@@ -1664,11 +1668,11 @@ def a_copy_naming_one_origin_still_counts_with_it():
 
 def a_page_carrying_two_wire_credits_absorbs_no_honest_outlet():
     pages = [("devdesk.example", f"According to Reuters, {_SN} {_NEW} is the latest {_SN} release.", T0 - DAY, None),
-             ("factline.example", f"According to Bloomberg, {_SN} {_NEW} is the newest {_SN} release.", T0 - DAY,
+             ("factline.example", f"According to Bloomberg, {_SN} {_NEW} is the latest {_SN} release.", T0 - DAY,
               None),
              ("hostile.example", f"As of now, {_SN} {_NEW} is the current {_SN} release. (Reuters) (Bloomberg)",
               T0 - DAY, "/w")]
-    groups = _groups_of(pages, _NEW)
+    groups = _groups_of(pages, _NEW, True, "one_way")
     rows = _fix2_look("fix2-wires", pages, {})
     return _fix2("a_page_carrying_two_wire_credits_absorbs_no_honest_outlet",
                  f"{groups} independent group(s) with attribution on; knowledge rows {rows}",
@@ -1706,6 +1710,55 @@ EXPECTED_WAVE3_FIX3 = {
         "republished from the other copy: the outlet and both copies are one independent group and no knowledge row "
         "states the version from them alone"),
 }
+
+
+def _fix3(case_id, pages):
+    """One independent group and no knowledge row with origin_grouping "one_way" (the lane S rules off); the default's
+    count is reported beside it."""
+    groups = _groups_of(pages, _NEW, False, "one_way")
+    default = _groups_of(pages, _NEW, False)
+    rows = _fix2_look(f"fix3-{case_id[:12]}", pages, LANE_S_OFF)
+    directive, expected = EXPECTED_WAVE3_FIX3[case_id]
+    return _result(case_id, directive, expected, f"{groups} independent group(s) with one_way ({default} at the default "
+                   f"\"transitive\"); knowledge rows {rows}", groups == 1 and rows == [])
+
+
+def _copy(host, origin_lines, sentence):
+    return (host, f"{origin_lines}\n{sentence.format(N=_SN, v=_NEW)}", T0 - DAY, "/copy")
+
+
+def copies_naming_several_origins_count_once():
+    return _fix3("copies_naming_several_origins_count_once", [
+        _copy("copyone.example", "This story first appeared on Zeta Wire. It was republished from Alpha Times.",
+              "As of today, {N} {v} is the latest {N} release."),
+        _copy("copytwo.example", "This article was originally published by Zeta Wire. It was republished from Beta "
+              "News.", "As of now, {N} {v} is the latest {N} release."),
+        _copy("copythree.example", "It was first published by Zeta Wire. It was republished from Gamma Post.",
+              "{N} {v} is the latest {N} release.")])
+
+
+def a_copy_carrying_a_second_origin_line_counts_once():
+    return _fix3("a_copy_carrying_a_second_origin_line_counts_once", [
+        _copy("copyone.example", "This story first appeared in the Regional Times. (AP)",
+              "As of today, {N} {v} is the latest {N} release."),
+        _copy("copytwo.example", "This story first appeared in the Regional Times.",
+              "As of now, {N} {v} is the latest {N} release.")])
+
+
+def copies_naming_their_origin_and_each_other_count_once():
+    return _fix3("copies_naming_their_origin_and_each_other_count_once", [
+        _FIX2_HONEST[0],
+        _copy("acopy.example", "This story first appeared on Devdesk. It was republished from Bcopy.",
+              "As of today, {N} {v} is the latest {N} release."),
+        _copy("bcopy.example", "This story first appeared on Devdesk. It was republished from Acopy.",
+              "As of now, {N} {v} is the latest {N} release.")])
+
+
+CASES_WAVE3_FIX3 = (copies_naming_several_origins_count_once, a_copy_carrying_a_second_origin_line_counts_once,
+                    copies_naming_their_origin_and_each_other_count_once)
+assert [c.__name__ for c in CASES_WAVE3_FIX3] == list(EXPECTED_WAVE3_FIX3)
+CASES = CASES + CASES_WAVE3_FIX3
+ORIGIN["added_wave3_fix3"] = tuple(EXPECTED_WAVE3_FIX3)
 
 
 def run() -> dict:
