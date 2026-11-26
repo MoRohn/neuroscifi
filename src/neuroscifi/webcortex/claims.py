@@ -1394,20 +1394,25 @@ _GENERIC_SITE_WORDS = frozenset("lang language project official org hq dev docs 
 
 
 def independence_groups(claims, *, origins: dict | None = None) -> list[list[str]]:
-    """Claim ids grouped into independent sources: claims from the same host, with near-duplicate texts (shingle
-    Jaccard >= DUPLICATE_SHINGLE: syndication or copying), or sharing an origin (origin_keys in
-    flags["origin"], or `origins` {source url: keys} such as document_origins) collapse into one group. Groups
-    are in order of first appearance; ids keep input order.
+    """Claim ids grouped into independent sources. Groups are in order of first appearance; ids keep input order.
 
-    A credit (flags["credited"], attribution_independence; ADR-061) never joins two groups (security review H1: one
-    sentence crediting two honest outlets merged them, so a true fact was never verified). The groups are formed as
-    without credits; then a group made only of crediting claims counts with the first group (one with a claim that
-    credits no one) of an outlet it credits, and the remaining groups made only of crediting claims are one group per
-    outlet they credit (copies crediting an outlet that was not read are one source). A group that holds a claim
-    crediting no one is never moved, so a credit cannot carry a union between two such groups."""
+    Claims from the same host, with near-duplicate texts (shingle Jaccard >= DUPLICATE_SHINGLE: syndication or
+    copying), or that are copies of one document (a shared "doc:<url>" key, document_origins) are one group: that
+    join is transitive.
+
+    A page that NAMES an origin (origin_keys in flags["origin"] or `origins`: an attribution line, a wire credit, a
+    canonical URL on another host) and, with attribution_independence (ADR-061), a group made only of claims that
+    credit an outlet (flags["credited"]) count with that origin; that join is ONE-WAY (ADR-063, review3b N1, N3, N10;
+    security review H1 before them). Each such group takes ONE edge: to the group whose own site or site label is the
+    named key (the smallest such key in sort order; of several groups owning it, the one whose hosts sort first), or,
+    when no group read is that origin, to the smallest named key itself (copies of one unread origin meet there). A
+    group holding a claim that credits no one uses only its pages' named origins, never a credit. Because every group
+    has at most one such edge, a component holds at most one group that names nothing: a page naming two outlets
+    ("first published by Devdesk", "originally appeared in Factline"; a sentence crediting both; "(Reuters)
+    (Bloomberg)") counts with one of them and never joins two honest outlets into one source, whatever the order of
+    the claims. Before ADR-063 a named origin joined transitively (since 10339b8), so one such page suppressed a true
+    fact at the shipped defaults."""
     claims = list(claims)
-    if any((c.flags or {}).get("credited") for c in claims):
-        return _groups_with_credits(claims, origins)
     parent = list(range(len(claims)))
 
     def find(i: int) -> int:
@@ -1422,53 +1427,66 @@ def independence_groups(claims, *, origins: dict | None = None) -> list[list[str
             parent[max(ri, rj)] = min(ri, rj)
 
     sh = [T.shingles(c.text, SHINGLE_K) for c in claims]     # raw text: a copy keeps its numbers
-    ident = [_identity_keys(c) for c in claims]
     orig = [_origin_of(c, origins) for c in claims]
+    copies = [{k for k in o if k.startswith("doc:")} for o in orig]
     for i in range(len(claims)):
         for j in range(i + 1, len(claims)):
             if _domain(claims[i]) == _domain(claims[j]) or T.jaccard(sh[i], sh[j]) >= DUPLICATE_SHINGLE or \
-                    orig[i] & (orig[j] | ident[j]) or orig[j] & ident[i]:
+                    copies[i] & copies[j]:
                 union(i, j)
-    groups: dict[int, list[str]] = {}
-    for i, c in enumerate(claims):
-        ids = groups.setdefault(find(i), [])
-        if c.id not in ids:
-            ids.append(c.id)
-    return [groups[k] for k in sorted(groups)]
+    base: dict[int, list[int]] = {}
+    for i in range(len(claims)):
+        base.setdefault(find(i), []).append(i)
+    members = [base[k] for k in sorted(base)]
+    ident = [set().union(*(_identity_keys(claims[i]) for i in g)) for g in members]
+    pointers = []
+    for g in members:
+        named = set().union(*(orig[i] - copies[i] for i in g))
+        credited = [set((claims[i].flags or {}).get("credited") or ()) for i in g]
+        if all(credited):           # a group made only of crediting claims also counts with an outlet it credits
+            named |= set().union(*credited)
+        pointers.append(named)
+    label = [tuple(sorted({_domain(claims[i]) or "" for i in g})) for g in members]
+    comp = _one_way(ident, pointers, label)
+    groups: dict = {}
+    for g, idx in zip(members, comp):
+        groups.setdefault(idx, []).extend(claims[i].id for i in g)
+    first = {}
+    for n, c in enumerate(claims):
+        first.setdefault(c.id, n)
+    out = [sorted(dict.fromkeys(ids), key=first.get) for ids in groups.values()]
+    return sorted(out, key=lambda ids: first[ids[0]])
 
 
-def _groups_with_credits(claims, origins) -> list[list[str]]:
-    """independence_groups when some claim credits an outlet (see there)."""
-    from dataclasses import replace
-    plain = [dict.fromkeys(ids) for ids in independence_groups(
-        [replace(c, flags={k: v for k, v in (c.flags or {}).items() if k != "credited"}) for c in claims],
-        origins=origins)]
-    by_id = {c.id: c for c in claims}
-    keys = [set().union(*(_identity_keys(by_id[i]) | _origin_of(by_id[i], origins) for i in g)) for g in plain]
-    credits = [set().union(*(set((by_id[i].flags or {}).get("credited") or ()) for i in g)) for g in plain]
-    movable = [all((by_id[i].flags or {}).get("credited") for i in g) for g in plain]
-    groups = [list(g) for g in plain]
-    alive = [True] * len(groups)
-    # a group of crediting claims only counts with the first other group an outlet it credits belongs to
-    for n, g in enumerate(plain):
-        if not movable[n]:
+def _one_way(ident, pointers, label) -> list:
+    """The component of each group under independence_groups' one-way origin edges (see there): ident[g] the
+    group's identity keys, pointers[g] the keys it names, label[g] its sort label (which owner it joins)."""
+    owners: dict = {}
+    for g, keys in enumerate(ident):
+        for k in keys:
+            owners.setdefault(k, []).append(g)
+    parent: dict = {}
+
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for g, named in enumerate(pointers):
+        keys = sorted(set(named) - ident[g])
+        if not keys:
             continue
-        target = next((m for m in range(len(plain)) if m != n and alive[m] and not movable[m]
-                       and credits[n] & keys[m]), None)
-        if target is not None:
-            groups[target] += groups[n]
-            alive[n] = False
-    # what is left of them: one group per outlet credited (crediting groups that share a credit are one source)
-    loose = [n for n in range(len(plain)) if alive[n] and movable[n]]
-    for a_i, a in enumerate(loose):
-        for b in loose[a_i + 1:]:
-            if alive[a] and alive[b] and credits[a] & credits[b]:
-                groups[a] += groups[b]
-                credits[a] |= credits[b]
-                alive[b] = False
-    order = {c.id: n for n, c in enumerate(claims)}
-    out = [sorted(dict.fromkeys(groups[n]), key=order.get) for n in range(len(groups)) if alive[n]]
-    return sorted(out, key=lambda ids: order[ids[0]])
+        owned = [k for k in keys if any(o != g for o in owners.get(k, ()))]
+        if owned:
+            target = ("g", min((o for o in owners[owned[0]] if o != g), key=lambda o: (label[o], o)))
+        else:
+            target = ("k", keys[0])
+        a, b = find(("g", g)), find(target)
+        if a != b:
+            parent[a] = b
+    return [find(("g", g)) for g in range(len(ident))]
 
 
 def dependence(claims, documents=(), *, origins: dict | None = None) -> dict:
