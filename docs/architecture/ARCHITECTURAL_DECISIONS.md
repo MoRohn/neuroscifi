@@ -4253,7 +4253,10 @@ setting off is checked by `tests/uat/test_uat_wave0_equivalence.py` (passes; `68
 - Backing out: `nsf web config --db DB --set 'allowance_division="race"'` (nothing stored but the decision events'
   `division` field, which goes with its task); revert the branch.
 - The withheld look: the rule names **no** division configuration. `LOOKS["wave4-a"]` holds the references only
-  (`reference:no-loop`, `shipped`, `shipped+idle`, `shipped+idle-first`); it cannot promote anything.
+  (`reference:no-loop`, `shipped`, `shipped+idle`, `shipped+idle-first`); it cannot promote anything. *(Record lane,
+  2026-11-26: the look rule was corrected before the look to run Wave 3's own four configurations instead, `baseline`,
+  `idle-first`, `shipped`, `shipped+idle`, named on the command line (ledger line 10); still no division
+  configuration. Its result is under "Follow-up".)*
 - Not verified: the open web, real change rates, a live model, the real interleaving of the timer and the worker
   across a day (the harness compresses a day to one instant), the D4 budgets, the withheld worlds, an owner who
   answers.
@@ -4298,6 +4301,19 @@ fix. After the fix: 0 variation in every world, seed and configuration.
 **This ADR's figures after the fix** (re-run once more, disclosed; not replacing the record above): development still
 "nothing chosen" (every candidate "unsafe"); held-out every candidate "unsafe" (`reserve-0.25` was "harm", now also
 fails safety), mean gains over the non-covered worlds +0.008 / +0.014 / +0.014 / +0.010, none beyond the spread.
+
+**What this meant for Wave 3's withheld look, and what Wave 4's look settled** (added 2026-11-26 by the Wave 4 record
+lane). This follow-up's consequence, as recorded in WAVE4.md §1.4 and the documents it names, was that Wave 3's single
+`idle-first` runs carried the repeat-to-repeat swing: W2 +0.042 against a spread of 0.039 "not established", W3 +0.052
+against 0.035 "not shown to fail, not established". Wave 4's withheld look (ledger line 10, clean tree `e812a8e`;
+`genesis_wave4_look_analysis.json`) re-ran `baseline`, `idle-first`, `shipped` and `shipped+idle` on Wave 3's withheld
+learning-cycle worlds with this fix in: the references' means (0.465 / 0.286 / 0.323) and all six gains equal Wave
+3's to three decimals (`idle-first` − `baseline` +0.013 / +0.042 / +0.052; `shipped+idle` − `shipped` +0.006 / +0.035 /
++0.024), against this look's sd of the reference 0.064 / 0.039 / 0.035. So on those worlds the ties did not move the
+result, and that wording is corrected: `idle-first` is **reproduced on a repeatable run; beyond the spread by 0.003 in
+W2 and 0.017 in W3 on four seeds; a small margin in W2; it cannot be promoted and remains below the blind schedule**
+(0.478 / 0.328 / 0.376 against 0.636 / 0.541 / 0.537). `shipped+idle` is within the spread in all three. One seed is
+negative in W1 and in W2. Repeatability itself was measured on 18 public worlds; the look was taken once.
 
 # ADR-065 Uncertainty shown to the owner: a caution where an answer rests on sources that cannot be shown independent
 
