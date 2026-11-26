@@ -401,10 +401,30 @@ def remove_feed(db, url, now) -> list[str]:
     return set_feeds(db, [f for f in feeds if f != target], now)
 
 
+def disabled_message(closed=()) -> str:
+    """Why web access is off and what turns it on: DISABLED_MESSAGE, or, when damaged saved settings turned it off
+    (config.closed_by), the command that repairs them (Wave 4 fix, review4 L1)."""
+    if not closed:
+        return DISABLED_MESSAGE
+    names = ", ".join(closed)
+    return (f"Web access is off because the saved {names} {'is' if len(closed) == 1 else 'are'} damaged; it stays off "
+            f"until {'it is' if len(closed) == 1 else 'each is'} set again with `nsf web config --set NAME=VALUE` "
+            "(`nsf web config` lists what is wrong); `nsf web config --enable` alone does not turn it on")
+
+
+def closed_settings(db) -> list:
+    """config.closed_by of the saved settings ([] when they cannot be read)."""
+    row = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()
+    try:
+        return wconfig.closed_by(json.loads(row[0]) if row and row[0] else {})
+    except ValueError:
+        return []
+
+
 def require_enabled(db) -> wconfig.WebConfig:
     cfg = get_config(db)
     if not cfg.enabled:
-        raise Conflict(DISABLED_MESSAGE)
+        raise Conflict(disabled_message(closed_settings(db)))
     return cfg
 
 

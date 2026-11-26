@@ -70,6 +70,15 @@ CAUTIOUS = {"news_rendering": False, "daily_renders": 0, "daily_provider_queries
 _REPORTED: set = set()
 
 
+def closed_by(raw) -> list:
+    """The damaged saved settings (FAILS_CLOSED) that turned web access off although the saved switch is on, by name
+    (Wave 4 fix, review4 L1: `nsf web config --enable` alone cannot turn it on while one is damaged)."""
+    if not isinstance(raw, dict) or raw.get("enabled") is not True:
+        return []
+    return sorted(name for name, (rule, _) in FAILS_CLOSED.items()
+                  if rule == "enabled" and name in raw and damaged(name, raw[name]))
+
+
 def damaged(name, value) -> bool:
     """Whether a stored value of a CHECKED_ON_LOAD setting is one set_config would refuse."""
     from .state import _validate         # lazy: state imports this module

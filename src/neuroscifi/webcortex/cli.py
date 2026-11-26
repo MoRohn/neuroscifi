@@ -417,7 +417,7 @@ def _reads_only(path) -> bool:
         return False
 
 
-def _shared_config(path):
+def _shared_config(path, *, closed=None):
     """The Web Cortex configuration read from a database this account does not own (resources.shared
     .read_database: read only, no link or FIFO, nothing of its schema trusted). The text is the other account's:
     bounded, and nested too deeply is malformed, never a crash."""
@@ -457,6 +457,8 @@ def _shared_config(path):
         raise InstanceError(f"the Web Cortex configuration is malformed: {error}"[:300]) from None
     if not isinstance(cfg.enabled, bool) or not isinstance(cfg.searxng_url, str):
         raise InstanceError("the Web Cortex configuration is malformed: enabled or searxng_url has the wrong type")
+    if closed is not None:           # review4 L1: the damaged settings that keep web access off, by name
+        closed.extend(wconfig.closed_by(raw))
     return cfg
 
 
@@ -511,7 +513,8 @@ def _searxng_shared(a):
         raise Conflict("`nsf web searxng health` reads and records provider health in the instance database, which "
                        "this account may only read: run it as the account that owns "
                        f"{path} (deploy/install.sh: neuroscifi)")
-    cfg = _shared_config(path)
+    closed = []
+    cfg = _shared_config(path, closed=closed)
     try:
         container = _searxng_container(cfg)
     except ValueError as error:          # a port that is not one
@@ -526,7 +529,7 @@ def _searxng_shared(a):
     out = {"database": "read only (this account may not write it; nothing was written)"}
     if a.action == "start":
         if not cfg.enabled:
-            raise Conflict(state.DISABLED_MESSAGE)
+            raise Conflict(state.disabled_message(closed))
         out.update(container.start())
         if not cfg.searxng_url:
             out["configured"] = None

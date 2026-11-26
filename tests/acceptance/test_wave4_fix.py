@@ -242,3 +242,32 @@ def test_the_caution_shows_only_one_source_by_default():
     assert caution.sentence(copies) is None and caution.brief(copies) is None
     assert caution.sentence(one) == "Only one source says this." and "said earlier" not in caution.sentence(one)
     assert "count as 2 sources" in caution.sentence(copies, True) and "said earlier" in caution.sentence(copies, True)
+
+
+# ---- item 7 (security L1): the refusal for a damaged limit names the command that repairs it, on both paths ---------
+
+@pytest.mark.parametrize("name,bad", [("deny_domains", "evil.example"), ("private_terms", "secret"),
+                                      ("min_domain_interval", -1), ("budget_ceiling", {"max_requests": "lots"})])
+def test_the_refusal_for_a_damaged_limit_names_the_repair_not_enable(tmp_path, name, bad):
+    from neuroscifi.instance import store
+    from neuroscifi.instance.errors import Conflict
+    from neuroscifi.webcortex import cli, config as wconfig
+    path = tmp_path / f"l1-{name}.sqlite"
+    db = store.create(path, T0, note="review4 L1")
+    state.set_config(db, {"enabled": True}, T0)
+    raw = json.loads(db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()[0])
+    with store.write(db):
+        db.execute("UPDATE meta SET value=? WHERE key=?", (json.dumps(raw | {name: bad}), wconfig.META_KEY))
+    with pytest.raises(Conflict) as refused:
+        state.require_enabled(db)
+    db.close()
+    said = str(refused.value)
+    assert f"saved {name} is damaged" in said and "nsf web config --set NAME=VALUE" in said
+    assert "--enable` alone does not" in said
+    closed = []
+    assert cli._shared_config(path, closed=closed).enabled is False and closed == [name]
+    assert state.disabled_message(closed) == said
+
+
+def test_web_access_switched_off_by_the_owner_says_enable():
+    assert state.disabled_message([]) == state.DISABLED_MESSAGE and "--enable" in state.DISABLED_MESSAGE

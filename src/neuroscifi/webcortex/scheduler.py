@@ -507,7 +507,7 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     report = {"at": now, "ran": [], "queued": [], "skipped": [], "findings": [], "predictions": []}
     cfg = state.get_config(db)
     if not cfg.enabled:
-        report["skipped"].append({"what": "everything", "reason": state.DISABLED_MESSAGE})
+        report["skipped"].append({"what": "everything", "reason": state.disabled_message(state.closed_settings(db))})
         return report
     budget_left = max_tasks if max_tasks is not None else 10 ** 6
 
