@@ -6,10 +6,18 @@ improve knowledge over repeated cycles, and what does each of lane K's mechanism
   python scripts/bench_learning_cycles.py run --split held_out --out held.json      # report here, once
   python scripts/bench_learning_cycles.py verdict held.json                         # the pre-registered rule
   python scripts/bench_learning_cycles.py run --split development --cycles 3 --config baseline   # a quick look
+  python scripts/bench_learning_cycles.py final --note TEXT --out /outside/the/tree.json          # THE look (below)
 
 Offline and deterministic per seed (apart from wall seconds); no model is called and no connection is made. The worlds
 are frozen in src/neuroscifi/acceptance/cognition/cycles_splits.py (committed before this harness); what is measured,
-and the verdict rule, are in src/neuroscifi/acceptance/cognition/cycles.py. The withheld family is never run here.
+and the verdict rule, are in src/neuroscifi/acceptance/cognition/cycles.py. The cognitive benchmark's withheld family
+is never run here.
+
+`final` scores the WITHHELD learning-cycles worlds (cycles_withheld.py), and nothing else does: one look per run, for
+the main session at the end of a wave (and Wave 3 step 0's look at the unchanged system). It refuses a dirty or
+uncommitted tree, another tree's source and an --out inside this checkout, and appends its line to
+docs/quality/evidence/genesis_final_uses.jsonl before it scores anything. Default configurations: the no-loop
+reference, `baseline` (every Wave 1 setting off) and `shipped` (every setting as a new individual has it).
 """
 from __future__ import annotations
 
@@ -55,16 +63,24 @@ def main(argv=None) -> int:
     v = sub.add_parser("verdict")
     v.add_argument("result")
     v.add_argument("--out")
+    f = sub.add_parser("final")
+    f.add_argument("--note", required=True)
+    f.add_argument("--out", required=True, help="a path OUTSIDE this checkout; copy it in afterwards")
+    f.add_argument("--config", action="append", help=f"repeatable; default {', '.join(cycles.FINAL_CONFIGS)}")
+    f.add_argument("--mechanism", default="baseline", help="the name the ledger line records")
     a = ap.parse_args(argv)
     if a.command == "verdict":
         _write(cycles.verdicts(json.loads(Path(a.result).read_text(encoding="utf-8"))), a.out)
         return 0
-    configs = cycles.configurations()
+    known = cycles.configurations() | cycles.EXTRA
+    configs = cycles.configurations() if a.command == "run" else {k: known[k] for k in cycles.FINAL_CONFIGS}
     if a.config:
-        unknown = sorted(set(a.config) - set(configs))
+        unknown = sorted(set(a.config) - set(known))
         if unknown:
-            ap.error(f"unknown configuration(s): {', '.join(unknown)}; known: {', '.join(configs)}")
-        configs = {k: configs[k] for k in a.config}
+            ap.error(f"unknown configuration(s): {', '.join(unknown)}; known: {', '.join(known)}")
+        configs = {k: known[k] for k in a.config}
+    if a.command == "final":
+        return final(a, configs)
     started = time.perf_counter()
     out = {"label": "lane F learning cycles: a simulated world of fictional software releases driven through the "
                     "real modules (extraction, clustering, consolidation, predictions, the timer); offline; no "
@@ -73,6 +89,31 @@ def main(argv=None) -> int:
     out |= cycles.run_split(a.split, configs=configs, cycles=a.cycles)
     if a.cycles is None:        # lane Y (H4): the references, from the world generator alone (no product code)
         out["references"] = cycles.run_references(a.split)
+    out["wall_seconds"] = time.perf_counter() - started
+    _write(out, a.out)
+    return 0
+
+
+def final(a, configs) -> int:
+    """The look at the withheld worlds (cycles.final), refused here before anything is recorded when it would not name
+    this tree or would write into it."""
+    from neuroscifi.acceptance import cognition
+    if cognition.REPO.resolve() != ROOT.resolve():
+        raise SystemExit("final: run it on this checkout's own source (not an installed copy), so the ledger line is "
+                         "written here and names this tree")
+    if Path(a.out).resolve().is_relative_to(ROOT.resolve()):
+        raise SystemExit("final: write --out outside this checkout and copy it in afterwards: a new file in the tree "
+                         "would make the tree dirty")
+    started = time.perf_counter()
+    try:
+        value = cycles.final(a.note, configs=configs, mechanism=a.mechanism)
+    except cognition.Refused as exc:
+        raise SystemExit(str(exc)) from None
+    out = {"label": "the withheld learning-cycles worlds (Wave 3 step 0): simulated worlds of fictional software "
+                    "releases driven through the real modules; offline; no model; search, fetching and the owner "
+                    "substituted", "commit": _commit(),
+           "environment_short": {"python": platform.python_version(), "machine": platform.machine()}}
+    out |= value
     out["wall_seconds"] = time.perf_counter() - started
     _write(out, a.out)
     return 0
