@@ -157,11 +157,20 @@ def _rechecks(db) -> dict:
     return out
 
 
-def _scenarios(db) -> dict:
+def _scenarios(db) -> dict | None:
+    """The settled scenario records, through the scenario mechanism's own report (scenarios.errors: it reads back its
+    own records; this module never touches the imagined store, tests/webcortex/test_imagined_quarantine.py)."""
+    import sqlite3
     from .webcortex import scenarios
-    row = db.execute("SELECT count(*), coalesce(sum(outcome IS NOT NULL), 0) FROM imagined WHERE mechanism=?",
-                     (scenarios.MECHANISM,)).fetchone()
-    return {"records": row[0], "settled": row[1]}
+    try:
+        out = scenarios.errors(db)
+    except sqlite3.Error:            # an individual from before the imagined store
+        return None
+    by_version = {name: {"settled": m["n"], "brier_3way": round(m["brier_3way"], 4)}
+                  for name, m in out["mechanisms"].items()}
+    return {"label": out["label"], "settled": sum(v["settled"] for v in by_version.values()),
+            "by_version": by_version,
+            "reference_brier_3way_equal_futures": round(out["reference"]["brier_3way_equal_futures"], 4)}
 
 
 def _strategy_outcomes(db) -> dict:
@@ -200,7 +209,7 @@ def report(db, now=None) -> dict:
     hypotheses, hyp_eta = _hypotheses(db, now)
     out |= {"predictions": predictions, "answers": answers, "hypotheses": hypotheses,
             "rechecks": _rechecks(db) if _has(db, "web_rechecks") else None,
-            "scenarios": _scenarios(db) if _has(db, "imagined") else None}
+            "scenarios": _scenarios(db)}
     learners = {}
     for kind in evolution.RECALIBRATION_KINDS:
         have, recent, first = used.get(kind, (0, 0, None))

@@ -58,14 +58,6 @@ def _recheck(db, status, outcome):
                "VALUES('knowledge', 1, 'idle', ?, ?, ?, ?)", (status, outcome, T0, T0))
 
 
-def _scenario(db, i, settled):
-    db.execute("INSERT INTO imagined(id, kind, payload, assumptions, uncertainty, mechanism, mechanism_version, "
-               "question, created_at, expires_at, outcome, observed_at) VALUES(?, 'simulation', '{}', '[]', "
-               "'staged', ?, '1', 'staged', ?, ?, ?, ?)",
-               (f"imagined:{i:032x}", scenarios.MECHANISM, T0, T0 + 365 * DAY,
-                '{"futures": 0}' if settled else None, T0 + DAY if settled else None))
-
-
 def stage(path):
     with closing(store.connect(path)) as db, store.write(db):
         _task(db, "t1")
@@ -97,8 +89,6 @@ def stage(path):
                                 ("done", "closed: the item is superseded"), ("dropped", "dropped"),
                                 ("marked", None), ("queued", None)):
             _recheck(db, status, outcome)
-        _scenario(db, 1, True)
-        _scenario(db, 2, False)
 
 
 def test_an_individual_without_outcomes_is_far_from_every_minimum(individual):
@@ -132,13 +122,13 @@ def test_the_counts_on_a_staged_individual(individual):
     assert out["hypotheses"]["settled"] == 2 and out["hypotheses"]["by_status"]["abandoned"] == 1
     assert out["rechecks"] == {"found_a_change": 2, "found_no_change": 1, "undecided": 1,
                                "closed_by_another_path": 1, "dropped": 1, "open": 2}
-    assert out["scenarios"] == {"records": 2, "settled": 1}
+    assert out["scenarios"]["settled"] == 0
     # recalibration counts decisive settlements with a forecast, not forgotten: knowledge 3 (t1 twice, t3), not t4
     learner = out["learners"]["forecast_recalibration.knowledge"]
     assert learner["have"] == 3 and learner["missing"] == evolution.RECALIBRATION_MINIMUM - 3
     owner = out["learners"]["forecast_recalibration.owner"]
     assert owner["have"] == 1
-    assert out["learners"]["scenario_records"]["have"] == 1
+    assert out["learners"]["scenario_records"]["have"] == 0
     assert out["learners"]["strategy_selection"]["window"]
     assert out["learners"]["hypothesis_settlement"]["have"] == 2
 
@@ -175,6 +165,28 @@ def test_the_report_stores_nothing(individual, capsys):
     with closing(sqlite3.connect(f"file:{individual}?mode=ro", uri=True)) as db:
         db.execute("PRAGMA query_only=ON")
         assert readiness.report(db, NOW)["answers"]["with_a_later_verdict"] == 2
+
+
+def test_settled_scenario_records_are_counted_through_the_mechanisms_own_report(individual):
+    """Records made and settled by the real path (scenarios.tick with imagine_scenarios on)."""
+    with closing(store.connect(individual)) as db:
+        store.set_config(db, {"imagine_scenarios": True}, T0)
+        with store.write(db):
+            _task(db, "t1")
+            _knowledge(db, 1, "t1")
+            _knowledge(db, 2, "t1")
+            _prediction(db, knowledge_id=1)
+            _prediction(db, knowledge_id=2)
+        made = scenarios.tick(db, T0 + DAY)
+        assert made and made.get("imagined") == 2, made
+        with store.write(db):
+            db.execute("UPDATE web_predictions SET outcome='confirmed', checked_at=? WHERE knowledge_id=1",
+                       (T0 + 2 * DAY,))
+        assert scenarios.tick(db, T0 + 3 * DAY)["settled"] == 1
+    with shared.read_database(individual) as db:
+        out = readiness.report(db, NOW)
+    assert out["scenarios"]["settled"] == 1 and out["learners"]["scenario_records"]["have"] == 1
+    assert out["scenarios"]["reference_brier_3way_equal_futures"] == round(2 / 3, 4)
 
 
 def test_the_strategy_counts_equal_strategies_outcomes(individual):

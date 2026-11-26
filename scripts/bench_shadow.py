@@ -231,8 +231,14 @@ def readiness_cost(knowledge=10_000, events=500_000, tasks=10_000, predictions=2
                                "mechanism_version, question, created_at, expires_at, outcome, observed_at) "
                                "VALUES(?, 'simulation', '{}', '[]', 'u', ?, '1', 'q', ?, ?, ?, ?)",
                                [(f"imagined:{i:032x}", scenarios.MECHANISM, t0, t0 + 10 ** 9,
-                                 '{"futures": 0}' if i % 2 else None, t0 + 1 if i % 2 else None)
-                                for i in range(scenario_records)])
+                                 '{"observed": {"futures": 0}, "evidence": []}' if i % 2 else None,
+                                 t0 + 1 if i % 2 else None) for i in range(scenario_records)])
+                # the payload scenarios.compare reads (three futures and the forecast used), as scenarios.imagine
+                # writes it
+                db.execute("UPDATE imagined SET payload=json_object('prediction_id', 1, 'futures', json_object("
+                           "'confirmed', json_object('p', 0.5), 'error', json_object('p', 0.3), 'inconclusive', "
+                           "json_object('p', 0.2)), 'forecast', json_object('used', 0.6)) WHERE mechanism=?",
+                           (scenarios.MECHANISM,))
         times, strategy_times = [], []
         with shared.read_database(path) as db:
             for _ in range(5):
@@ -254,7 +260,8 @@ def readiness_cost(knowledge=10_000, events=500_000, tasks=10_000, predictions=2
                 "note": "the existing webcortex.strategies.outcomes on the same individual (two unindexed look-ups "
                         "per task); the report counts the same with one pass per table",
                 "same_counts_as_the_report": same},
-            "answers_with_a_later_verdict": out["answers"]["with_a_later_verdict"]}
+            "answers_with_a_later_verdict": out["answers"]["with_a_later_verdict"],
+            "scenario_records_settled": out["scenarios"]["settled"]}
 
 
 def main(argv=None) -> int:
