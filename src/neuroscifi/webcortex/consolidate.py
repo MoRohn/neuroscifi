@@ -279,6 +279,148 @@ def _without_adversarial(cluster, adversarial_urls):
                    statement=statement), len(bad)
 
 
+# ---- ADR-061 (Wave 3 lane S): the individual's own text, republished, is not a source --------------------------------
+#
+# The individual's own outputs are its model-written answers stored with its tasks (result.reasoning: its text, and
+# the sentences of its answer). Its imagined store is NOT read: consolidation never reads that store (ADR-049's
+# quarantine, tests/webcortex/test_imagined_quarantine.py), not even to set something aside, so a value the individual
+# only imagined, and never answered with, is not recognised here (its records are shown only in the console's
+# labelled panel). A page read later that repeats them is an echo,
+# not evidence, when it (a) names a subject the output names and states a specific value of it (not a year, a date or
+# a number below 100) that the output stated BEFORE any source the individual had read stated it for that subject, or
+# (b) repeats the output's own wording (3-word shingle Jaccard >= claims.DUPLICATE_SHINGLE) where that wording was not
+# itself a source's (no claim read before it within claims.SUPPORT_TEXT_SHINGLE). A page published before the output
+# is never its echo (the output may rest on it); a structured record (an API document, a metadata claim) is never one.
+# Own outputs are found by the digits the claim writes (SQL LIKE over web_tasks.result; at most ECHO_MAX_ROWS rows per
+# token, newest first), so nothing is decoded that cannot match.
+# An echo is never evidence FOR a value: it leaves the supporting side of its cluster (and the supersession rule never
+# counts it). An echo that only disagrees with what the sources say stays where it is: the disagreement is still asked,
+# as before, and a disagreement never raises a confidence or writes knowledge. (Removing it there too was measured: it
+# changed what the owner is asked and what curiosity looks at next, on worlds where no echo was ever admitted.)
+# A sentence that credits what it states to an assistant, a chatbot or an AI model ("..., an assistant reported.",
+# "\"...,\" a chatbot told one reader.", "According to an AI model, ...") quotes model-written text, whoever's: by the
+# standing rule (model text never becomes fact) it is treated as an echo too.
+ECHO_MAX_ROWS = 200
+_DIGITS = re.compile(r"\d[\d.,]*\d")
+_MODEL_SPEAKER = r"(?:an?|the|some|one)\s+(?:AI\s+)?(?:assistant|chat\s?bot|language\s+model|AI\s+model|AI)"
+_MODEL_CREDIT = re.compile(r"\baccording\s+to\s+" + _MODEL_SPEAKER + r"\b|\b" + _MODEL_SPEAKER +
+                           r"\s+(?:reported|said|says|told|answered|wrote|stated|claims|claimed|replied)\b",
+                           re.IGNORECASE)
+
+
+def _name_set(sentence) -> set:
+    named, opening = _names(sentence)
+    return named | ({opening.lower()} if opening else set())
+
+
+def _specific(value) -> bool:
+    from . import text as T
+    kind, _group, parsed = T.value_kind(value)
+    return kind not in ("date", "year") and not (kind == "number" and abs(parsed) < 100)
+
+
+class _Echoes:
+    """The own-output index of one consolidation (see the section comment), filled lazily per digit token."""
+
+    def __init__(self, db):
+        self.db, self.by_token, self.sourced, self.worded, self.seen = db, {}, {}, {}, {}
+
+    def _own(self, token):
+        from . import text as T
+        if token in self.by_token:
+            return self.by_token[token]
+        found, pattern = [], f"%{token}%"
+        for at, raw in self.db.execute(
+                "SELECT coalesce(finished_at, updated_at, created_at), result FROM web_tasks WHERE result LIKE ? "
+                "AND result LIKE '%model:%' ORDER BY updated_at DESC LIMIT ?", (pattern, ECHO_MAX_ROWS)):
+            reasoning = (state.loads(raw, {}) or {}).get("reasoning")
+            if not isinstance(reasoning, dict) or not str(reasoning.get("generated_by") or "").startswith("model:"):
+                continue
+            texts = [reasoning.get("text")] + [a.get("text") for a in reasoning.get("answer") or ()
+                                               if isinstance(a, dict)]
+            found += [(at, t) for t in texts if isinstance(t, str)]
+        out = []
+        for at, text in found:
+            for s in T.sentences(text):
+                s = " ".join(s.split())
+                if token in s and state.finite(at) is not None:
+                    out.append((at, s, set(T.values(s)), _name_set(s)))
+        self.by_token[token] = out
+        return out
+
+    def _read_before(self, value, at):
+        """(text, names) of claims read at or before `at` stating `value`."""
+        rows = self.db.execute("SELECT text FROM web_claims WHERE retrieved_at <= ? AND claim_values LIKE ? LIMIT ?",
+                               (at, f'%"{value}"%', ECHO_MAX_ROWS)).fetchall()
+        return [(t, _name_set(t)) for (t,) in rows]
+
+    def _self_originated(self, value, names, at):
+        key = (value, frozenset(names), at)
+        if key not in self.sourced:
+            self.sourced[key] = not any(names & n for _, n in self._read_before(value, at))
+        return self.sourced[key]
+
+    def _own_wording(self, sentence, values, at):
+        from . import text as T
+        key = (sentence, at)
+        if key not in self.worded:
+            mine = T.shingles(T.normalise(sentence), _claims.SHINGLE_K)
+            self.worded[key] = bool(values) and not any(
+                T.jaccard(mine, T.shingles(T.normalise(t), _claims.SHINGLE_K)) >= _claims.SUPPORT_TEXT_SHINGLE
+                for v in values for t, _ in self._read_before(v, at))
+        return self.worded[key]
+
+    def of(self, claim) -> str | None:
+        """'value' or 'wording' when `claim` echoes an own output (see the section comment), else None."""
+        if claim.id not in self.seen:
+            self.seen[claim.id] = self._of(claim)
+        return self.seen[claim.id]
+
+    def _of(self, claim) -> str | None:
+        from . import text as T
+        if claim.kind == "metadata" or _claims.is_primary(claim):
+            return None
+        if _MODEL_CREDIT.search(claim.text or ""):
+            return "model"
+        read, published = state.finite(claim.retrieved_at), state.finite(claim.published_at)
+        if read is None:
+            return None
+        values = {v for v in _claims.asserted_values(claim) if _specific(v)}
+        names = _name_set(claim.text)
+        mine = None
+        for token in dict.fromkeys(_DIGITS.findall(claim.text or "")):
+            for at, sentence, own_values, own_names in self._own(token):
+                if at >= read or (published is not None and published < at) or not names & own_names:
+                    continue
+                if any(self._self_originated(v, names & own_names, at) for v in values & own_values):
+                    return "value"
+                mine = mine or T.shingles(T.normalise(claim.text), _claims.SHINGLE_K)
+                if T.jaccard(mine, T.shingles(T.normalise(sentence), _claims.SHINGLE_K)) >= \
+                        _claims.DUPLICATE_SHINGLE and self._own_wording(sentence, own_values, at):
+                    return "wording"
+        return None
+
+
+def _without_echoes(echoes, cluster, *, now, freshness, ttl_overrides):
+    """(the cluster without the supporting claims that echo the individual's own outputs, re-scored as
+    _without_set_aside re-scores, until its supporting side holds none; [the echo claim ids removed]). Echoes that
+    only contradict the representative stay (see the section comment). Unchanged when no supporting claim echoes."""
+    from dataclasses import replace
+    gone = []
+    for _ in range(4):          # a removal can make another side the representative; four rounds bound it
+        head = _head(cluster)
+        found = [c.id for c in cluster.claims if _claims.bearing(head, c) == "support" and echoes.of(c)]
+        if not found:
+            break
+        gone += found
+        kept = [c for c in cluster.claims if c.id not in set(gone)]
+        if not kept:
+            return replace(cluster, claims=[]), gone
+        cluster = _claims.score(replace(cluster, claims=kept), now=now, freshness_class=freshness,
+                                ttl_overrides=ttl_overrides)
+    return cluster, gone
+
+
 def _eligibility(db, task_id, cluster, removed=0):
     """(eligible, reasons): relevance gate before verification and memory comparison (the evidence-quality bar is
     the ADR-035 verification state, _meets_bar)."""
@@ -1263,11 +1405,132 @@ def _sides(cluster) -> list[str]:
     return out
 
 
-def _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key):
+# ---- ADR-061 (Wave 3 lane S): supersession of a stale item, setting `supersession` ("ask" by default) ------------------
+#
+# Today (ADR-026, ADR-038) a refresh whose cluster is contested - a newer value beside a lagging source that still
+# states the held one - records a contradiction and asks the owner; the held item is never revised. With supersession
+# "independent" the side of the cluster that conflicts with the held item (the conflicting claims stating one value;
+# of several such sides, the one with most independent groups) replaces the item without asking when ALL hold:
+#   (i)   it is newer by its stated time (temporal.supersedes over the side's event or publication dates against the
+#         item's, as the uncontested path already decides), not by when the pages were read;
+#   (ii)  claims.independence_groups counts at least supersession_min_sources groups on that side (echoes of the
+#         individual's own text are gone before this, with echo_recognition on);
+#   (iii) no owner's answer stands against it: the item was not accepted or asserted by the owner, the owner never
+#         decided this disagreement (knowledge.contested_decision), never rejected these values for this key (a
+#         reverted replacement is such a rejection, so the rule never applies the same replacement again);
+#   (iv)  the value is not one this key held before and that was replaced (no flip-flop: a correction of a
+#         correction is asked);
+#   and the side alone passes the bar of a newly verified item (evolution.cluster_verdict 'supported', _meets_bar,
+#   a well-formed claim). The new version's confidence is the side's own posterior (claims.score), never higher
+#   because of the replacement. It is provisional and asked for acceptance as every new item is; its verification
+#   record says decided_by "rule" and keeps the replaced row's columns as they were, so `knowledge.revert` restores
+#   them exactly. The contradiction question is recorded, answered by the rule, under the new version's scope (so
+#   forgetting the new version forgets it too; the replaced item's open questions are closed). Anything else
+#   stays "ask".
+RULE = "supersession-v1"
+RESTORE_COLUMNS = ("status", "valid_until", "superseded_by", "confidence", "uncertainty", "supporting",
+                   "contradicting", "sources", "note", "pending_id", "last_verified_at", "updated_at")
+
+
+def _rule_side(cluster, item, echoes=None):
+    """The claims of the cluster that conflict with the item and state one value (see the section comment); an echo
+    of the individual's own output (echo_recognition) is never one of them."""
+    sides = {}
+    for c in cluster.claims:
+        if echoes is not None and echoes.of(c):
+            continue
+        relation, _ = _compare(list(c.values or []), -1 if c.polarity < 0 else 1, item)
+        if relation == "conflict":
+            sides.setdefault((tuple(sorted(c.values or [])), c.polarity < 0), []).append(c)
+    if not sides:
+        return []
+    return max(sides.values(), key=lambda side: (len(_claims.independence_groups(side)),
+                                                 max(_claims._effective(c) for c in side)))
+
+
+def _rule_replacement(db, cfg, cluster, item, now, *, freshness, window, focus, echoes=None):
+    """(the side as a scored cluster, its verdict, its independent groups) when the rule replaces `item`, else
+    None (see the section comment)."""
+    from dataclasses import replace
+    if cfg.supersession != "independent" or item.get("provenance") == "user_asserted" or \
+            item["status"] == "accepted":
+        return None
+    side = _rule_side(cluster, item, echoes)
+    if not side:
+        return None
+    groups = len(_claims.independence_groups(side))
+    if groups < cfg.supersession_min_sources:
+        return None
+    sub = _claims.score(replace(cluster, claims=side), now=now, freshness_class=freshness,
+                        ttl_overrides=cfg.freshness_ttl or None)
+    if not _supersedes(_as_temporal(sub, now, item["key"]), _item_temporal(item), now):
+        return None
+    values, polarity = _values(sub)
+    keys = list(dict.fromkeys([cluster.key, item["key"]]))
+    if _rejected_before(db, keys, values, polarity) is not None:
+        return None
+    if any(knowledge.contested_decision(db, k, _sides(cluster) + list(values) + list(item["claim_values"] or []))
+           for k in keys):
+        return None
+    if any(_compare(values, polarity, old)[0] == "same" for old in knowledge.rows(
+            db, "status='superseded' AND key=?", (item["key"],))):
+        return None
+    verdict = evolution.cluster_verdict(sub, now=now, freshness_class=freshness,
+                                        ttl_overrides=cfg.freshness_ttl or None, window=window)
+    if not _meets_bar(sub, cfg, verdict)[0] or _unaskable_cluster(sub, focus) is not None:
+        return None
+    return sub, verdict, groups
+
+
+def _replace_by_rule(db, task_id, cfg, found, item, freshness, now, summary, questions, ids_by_key):
+    """Write the rule's replacement of `item` (see the section comment). Caller owns the transaction."""
+    sub, verdict, groups = found
+    previous = dict(zip(RESTORE_COLUMNS, db.execute(
+        f"SELECT {', '.join(RESTORE_COLUMNS)} FROM web_knowledge WHERE id=?", (item["id"],)).fetchone()))
+    record = {"decided_by": "rule", "supersession": {"rule": RULE, "replaced": item["id"], "groups": groups,
+                                                     "min_sources": cfg.supersession_min_sources, "at": now,
+                                                     "previous": previous}}
+    differ = _compare(*_values(sub), item)[1] or "a newer value from independent sources"
+    kid, valid_from = _insert_knowledge(db, task_id, sub, freshness, now, key=item["key"],
+                                        version=next_version(db, item["key"]), questions=questions,
+                                        verdict=verdict | record)
+    db.execute("UPDATE web_knowledge SET status='superseded', valid_until=?, superseded_by=?, updated_at=? WHERE id=?",
+               (valid_from, kid, now, item["id"]))
+    knowledge.close_questions(db, f"web:knowledge:{item['id']}", f"replaced by knowledge #{kid} (supersession rule)",
+                              now)
+    pid = db.execute("INSERT INTO pending(epoch,kind,scope,question,created_at,resolved_at,resolution) "
+                     "VALUES(NULL,'ask',?,?,?,?,?)",
+                     (f"web:knowledge:{kid}",       # the new version's scope: forgetting it forgets this record
+                      f"Sources now contradict known «{knowledge.quote(item['statement'])}»: "
+                      f"«{knowledge.quote(safe_text(_head(sub)))}» ({differ}). Keep it as knowledge?", now, now,
+                      f"answered by the supersession rule: replaced by knowledge #{kid} ({groups} independent "
+                      f"sources, newer); `nsf web revert {kid}` restores it")).lastrowid
+    if item["supporting"]:
+        state.add_link(db, task_id, _head(sub).id, item["supporting"][0], "supersedes",
+                       {"old": item["id"], "new": kid, "reason": differ, "by": "rule"}, now)
+    evolution.link(db, task_id, "knowledge", kid, "supersedes", "knowledge", item["id"],
+                   {"reason": differ, "valid_until": valid_from, "by": "rule"}, now)
+    _feedback(db, task_id, kid, item["key"], "reversed", state.finite(item["confidence"], 0.0),
+              state.finite(sub.confidence, 0.0), {"superseded": item["id"], "reason": differ, "by": "rule"}, now)
+    summary["superseded"].append({"old": item["id"], "new": kid, "reason": differ, "by": "rule"})
+    summary["provisional"].append(kid)
+    summary.setdefault("answered_by_rule", []).append(pid)
+    ids_by_key[sub.key] = kid
+
+
+def _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key, rule=None):
     """A contested cluster about live knowledge: compare values first. When the cluster's supporting side states
     the same values and polarity as the item, the item is strengthened by them (confidence never lowered) and
     only claims that really conflict with it are recorded as contradictions, each citing that claim. When the
-    supporting side conflicts with the item, the item is contradicted by it (citing the supporting head)."""
+    supporting side conflicts with the item, the item is contradicted by it (citing the supporting head).
+    `rule` ({cfg, freshness, window, focus}, only with supersession "independent"): first, the supersession rule."""
+    if rule is not None:
+        found = _rule_replacement(db, rule["cfg"], cluster, item, now, freshness=rule["freshness"],
+                                  window=rule["window"], focus=rule["focus"], echoes=rule.get("echoes"))
+        if found is not None:
+            _replace_by_rule(db, task_id, rule["cfg"], found, item, rule["freshness"], now, summary, questions,
+                             ids_by_key)
+            return
     values, polarity = _values(cluster)
     relation, differ = _compare(values, polarity, item)
     if relation == "incomparable":
@@ -1339,6 +1602,7 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
         focus = _question_focus(task)
         feedback_before = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0]
         adversarial = _adversarial_urls(db, task_id)
+        echoes = _Echoes(db) if cfg.echo_recognition else None
         ids_by_key, cleaned, observed = {}, [], []
         for n, cluster in enumerate(clusters):
             whole, cluster = cluster, _without_set_aside(cluster, set_aside, now=now, freshness=freshness,
@@ -1348,6 +1612,15 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                     set_aside[c.source_url] for c in whole.claims)]))
                 continue
             cluster, removed = _without_adversarial(cluster, adversarial)
+            if echoes is not None and cluster.claims:       # ADR-061: the individual's own text is no source
+                whole, (cluster, echoed) = cluster, _without_echoes(echoes, cluster, now=now, freshness=freshness,
+                                                                    ttl_overrides=cfg.freshness_ttl or None)
+                if echoed:
+                    summary.setdefault("echoes", []).extend(echoed)
+                if whole.claims and not cluster.claims:
+                    summary["held"].append(_held(whole, ["every claim repeats what only the individual's own output "
+                                                         "had stated (an echo of its own text, never evidence)"]))
+                    continue
             cleaned.append(cluster)
             if not cluster.claims:
                 summary["held"].append({"key": cluster.key, "statement": WITHHELD, "status": cluster.status,
@@ -1364,7 +1637,10 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                 reason = "; ".join(sorted({c.get("reason", "") for c in cluster.contradicting} - {""})) or \
                     "the sources disagree"
                 if item is not None:
-                    _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key)
+                    _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key,
+                                       rule={"cfg": cfg, "freshness": freshness, "window": window, "focus": focus,
+                                             "echoes": echoes}
+                                       if cfg.supersession == "independent" else None)
                     continue
                 described = "; ".join(sorted({c.get("description") or c.get("reason") or ""
                                               for c in cluster.contradicting} - {""})) or "the sources disagree"

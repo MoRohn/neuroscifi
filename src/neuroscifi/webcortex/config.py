@@ -200,6 +200,24 @@ class WebConfig:
     # on the winner's task naming the mechanism that lost and the rule that decided. A record only.
     salience_attention: bool = False
     arbitration_record: bool = True
+    # ADR-061 (Wave 3 lane S), what counts as an independent source, and what may replace an out-of-date item.
+    # attribution_independence: a sentence that names the outlet it repeats ("According to X, ...", "..., X says.",
+    # "... (X).", "... via X.") counts with that outlet as one source (claims.attribution_keys). echo_recognition: a
+    # page repeating a value, or the very wording, that only the individual's own outputs had stated (its model-written
+    # answers stored with its tasks; its imagined store is never read here) before any source it read did, or that
+    # credits what it states to an assistant, a chatbot or an AI model, is not evidence for that value; a disagreement
+    # it raises is still asked (consolidate._without_echoes).
+    # Both protect what the individual believes; ADR-061 has the measurement behind their defaults.
+    attribution_independence: bool = True
+    echo_recognition: bool = True
+    # supersession: "ask" (the standing rule of ADR-026/038: a refresh that contradicts a held item asks the owner and
+    # never revises it) or "independent": a newer value (by its stated time) stated by at least
+    # supersession_min_sources independent sources, never contradicted by an owner's answer and never the
+    # individual's own text, replaces the held item without asking; the replacement is listed for review and one
+    # command reverts it (`nsf web replacements`, `nsf web revert ID`). Off ("ask") by default:
+    # the owner has not decided to change the standing rule (ADR-061 has the gains and the false replacements).
+    supersession: str = "ask"
+    supersession_min_sources: int = 2
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

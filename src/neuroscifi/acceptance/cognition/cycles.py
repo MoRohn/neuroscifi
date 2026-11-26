@@ -121,6 +121,15 @@ def order_configurations() -> dict:
 
 EXTRA |= {k: v for k, v in order_configurations().items() if k not in ("reference:no-loop", "baseline")}
 
+# Wave 3 lane S (ADR-061), for the main session's one withheld look (cycles_s.py measures the rest): the shipped
+# defaults with lane S's two fixes off (what Step 0 ran), and with supersession on at the K chosen on development.
+LANE_S_FIXES_OFF, LANE_S_SUPERSEDE = "-lane-s-fixes", "+lane-s-supersession-K2"
+ON.update({LANE_S_FIXES_OFF: {"attribution_independence": False, "echo_recognition": False},
+           LANE_S_SUPERSEDE: {"supersession": "independent", "supersession_min_sources": 2}})
+EXTRA.update({"lane-s:fixes-off": frozenset({SHIPPED, LANE_S_FIXES_OFF}),
+              "lane-s:supersede-K2": frozenset({SHIPPED, LANE_S_SUPERSEDE})})
+READ_BACK = READ_BACK + ("attribution_independence", "echo_recognition", "supersession", "supersession_min_sources")
+
 
 def configurations() -> dict:
     """{name: set of lane K mechanisms on}: the no-loop reference, baseline, each alone, all, all without one."""
@@ -174,7 +183,7 @@ def investigate(db, task, docs, now, *, answer=None) -> dict:
             source_ids[d.canonical_url] = state.save_source(db, tid, d, now)
     for d in docs:
         found += claims.extract_claims(d, task["objective"])
-    origins = claims.stamp_origins(found, docs)
+    origins = claims.stamp_origins(found, docs, attribution=state.get_config(db).attribution_independence)
     clusters = [claims.score(c, now=now, freshness_class=freshness, origins=origins)
                 for c in claims.cluster(found)] if found else []
     with store.write(db):

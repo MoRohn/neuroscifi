@@ -1274,16 +1274,68 @@ def document_origins(documents) -> dict[str, list[str]]:
     return out
 
 
-def stamp_origins(claims, documents) -> dict[str, list[str]]:
+def stamp_origins(claims, documents, *, attribution: bool = False) -> dict[str, list[str]]:
     """Add each claim's document_origins keys to its flags["origin"] (in place) and return the origins: copies
     of one story then form one independence group wherever the claims go next (scoring, the report verdict,
-    per-claim states, consolidation from stored clusters), not only where the documents are at hand."""
+    per-claim states, consolidation from stored clusters), not only where the documents are at hand. With
+    `attribution` (WebConfig.attribution_independence, ADR-061) the outlets a sentence credits (attribution_keys)
+    are added too: a reworded copy that names the story's origin inside the sentence is that origin."""
     origins = document_origins(documents)
     for c in claims:
-        extra = origins.get(c.source_url)
+        extra = list(origins.get(c.source_url) or ())
+        if attribution:
+            extra += attribution_keys(c.text)
         if extra:
             c.flags = dict(c.flags or {}, origin=list(dict.fromkeys([*((c.flags or {}).get("origin") or ()), *extra])))
     return origins
+
+
+# ---- ADR-061 (Wave 3 lane S): the outlet a sentence credits -----------------------------------------------------------
+#
+# A copy of a story need not carry an attribution line: it may reword the story and credit its origin inside the
+# sentence ("According to Syndiwire, ...", "..., Syndiwire says.", "... (Syndiwire).", "... via Syndiwire.", "..., as
+# the Syndiwire desk reports."). attribution_keys() reads that credit as the origin key "name:<name>" (the key an
+# attribution line gives, and the one a claim on the credited outlet's own site carries), so such copies are one
+# independent source with the outlet they credit. A credit to the sentence's own subject ("..., the Velmora team says"
+# in a sentence about Velmora) is the subject speaking, not an outlet repeated: it gives no key, so two outlets quoting
+# a project's announcement stay two sources, as before. Indefinite or plural speakers ("Someone says", "Experts said")
+# name no outlet.
+_CREDITED = r"(?P<name>[A-Z][\w&'’-]*(?:[ \t]+[A-Z][\w&'’-]*){0,3})"
+_CREDIT_VERB = r"(?:reports?|reported|says|said|states|stated|writes|wrote|announced|announces|confirms|confirmed)"
+_CREDITS = (
+    re.compile(r"\b[Aa]ccording[ \t]+to[ \t]+(?:the[ \t]+)?" + _CREDITED),
+    re.compile(r"\b(?:via|per|[Ss]ource:|[Cc]redit:|(?:first[ \t]+|as[ \t]+)?reported[ \t]+by)[ \t]+(?:the[ \t]+)?"
+               + _CREDITED),
+    re.compile(r"(?:^|[,;:][\"”’']?[ \t]*|\b(?:as|that)[ \t]+)(?:[Tt]he[ \t]+)?" + _CREDITED
+               + r"(?:[ \t]+[a-z]+)?[ \t]+" + _CREDIT_VERB + r"\b"),
+    re.compile(r"\((?:the[ \t]+)?" + _CREDITED + r"\)[ \t]*[.!]?[ \t]*$"),
+)
+_NO_OUTLET = frozenset("someone somebody everyone everybody nobody people officials experts analysts researchers "
+                       "scientists critics sources reports many some it they he she we i you this that these those "
+                       "there here one others users readers fans".split())
+_OUTLET_SUFFIX = frozenset("desk team newsroom news staff editors editorial wire service agency reporters reporter "
+                           "blog magazine site website".split())
+
+
+def attribution_keys(text: str) -> list[str]:
+    """["name:<normalised name>"] for each outlet the sentence credits (see the section comment); [] for none."""
+    text = text or ""
+    keys = []
+    for pattern in _CREDITS:
+        for m in pattern.finditer(text):
+            words = m.group("name").split()
+            if words and words[0].lower() == "the":
+                words = words[1:]
+            while words and words[-1].lower() in _OUTLET_SUFFIX:
+                words = words[:-1]
+            if not words or words[0].lower() in _NO_OUTLET or words[0].lower() in T.MONTHS or \
+                    words[0].lower() in T.STOPWORDS:
+                continue
+            rest = (text[:m.start("name")] + " " + text[m.end("name"):]).lower()
+            if all(re.search(r"\b" + re.escape(w.lower()) + r"\b", rest) for w in words):
+                continue        # the sentence's own subject speaking, not an outlet repeated
+            keys.append(_name_key(" ".join(words)))
+    return list(dict.fromkeys(k for k in keys if k != "name:"))
 
 
 def _identity_keys(claim: Claim) -> set:

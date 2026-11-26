@@ -12,6 +12,7 @@ This is a regression set, not a tuning set: there is no split, and no setting ma
 from __future__ import annotations
 
 from contextlib import closing, contextmanager
+import json
 import random
 import tempfile
 import time
@@ -1032,6 +1033,537 @@ CASES_WAVE3_C = (front_door_declined_when_the_hidden_cause_reaches_the_mediator,
 assert [c.__name__ for c in CASES_WAVE3_C] == list(EXPECTED_WAVE3_C)
 CASES = CASES + CASES_WAVE3_C
 ORIGIN["added_wave3_c"] = tuple(EXPECTED_WAVE3_C)
+
+# ---- Wave 3, lane S (ADR-061): what each added case expects, written and committed BEFORE the case was written or run,
+# before the worlds and before any mechanism. Origin `added_wave3_s`: reported apart from every other origin, never
+# added up with them. id -> (the directive's item, the expectation). Settings named here are lane S's:
+#   attribution_independence  a sentence that names the outlet it repeats counts with that outlet, as one source
+#   echo_recognition          outside pages repeating what only the individual's own outputs had stated are not evidence
+#   supersession              "ask" (today: a contradiction is asked, never decided) | "independent" (the rule below)
+#   supersession_min_sources  K, the independent sources the rule needs
+# Part 1, the independence and own-text holes (Step 0's withheld look found both; they exist without supersession):
+# expected with the two fixes ON. Part 2, supersession: expected with supersession "independent" and K = 2 unless the
+# case says otherwise; the fixes keep their shipped values.
+EXPECTED_WAVE3_S = {
+    # ---- part 1: what counts as an independent source -------------------------------------------------------------
+    "echoed_own_value_is_not_corroboration": (
+        "Self-reinforcing false conclusions; Hallucinated knowledge",
+        "a version only the individual's own outputs asserted (its stored model answer and an imagined record, no "
+        "source ever read stating it) is later stated by two outside pages on two hosts in two different wordings: "
+        "no knowledge row states that version, and consolidation holds the cluster with a reason naming the "
+        "individual's own output"),
+    "republished_own_wording_raises_nothing": (
+        "Self-reinforcing false conclusions",
+        "a knowledge item verified by two outlets; the individual's own answer said the same value in its own words; "
+        "two outside pages republish that answer's sentence verbatim: the item's confidence, supporting claims and "
+        "sources are exactly as before"),
+    "reworded_syndicated_copies_count_once": (
+        "Persistent misinformation; Self-reinforcing false conclusions",
+        "a wrong version stated by a wire story and by copies on other hosts that reword it and name the wire inside "
+        "the sentence (\"According to Syndiwire, ...\", \"..., Syndiwire says.\", \"... (Syndiwire).\", \"... via "
+        "Syndiwire.\") with no attribution line: one independent group, and no knowledge row states it"),
+    "copy_chains_and_redated_mirrors_count_once": (
+        "Persistent misinformation",
+        "copies naming the copy they took the story from (a chain of three), and mirrors of the story republished "
+        "with later dates and a reworded sentence that names the wire's desk: one independent group, no knowledge "
+        "row, and a correct held item is not superseded by it"),
+    "one_origin_never_raises_confidence": (
+        "Overconfident decision-making",
+        "a held item at confidence c; a later look finds only one outlet's story and three reworded copies that name "
+        "that outlet: the item's confidence stays at most max(c, what that one outlet earns alone)"),
+    "honest_independent_corroboration_still_counts": (
+        "Hallucinated knowledge (false rejection guard)",
+        "two independent outlets in their own words state a version, one of them quoting the project's own "
+        "announcement by name, and the individual's own answer had restated that version from a source it read: a "
+        "provisional knowledge row with 2 independent supporting groups, as with both fixes off"),
+    # ---- part 2: supersession of a stale item (setting off by default) --------------------------------------------
+    "setting_off_asks_as_today": (
+        "Conflicting knowledge (standing rule ADR-026/038)",
+        "with supersession 'ask' (the default), a refresh whose newer version is stated by three independent outlets "
+        "beside one lagging outlet records a contradiction, asks the owner and leaves the held item live and "
+        "unrevised; the consolidation summary and every knowledge row equal those of the same run on the code before "
+        "lane S"),
+    "one_source_newer_value_does_not_supersede": (
+        "Persistent misinformation",
+        "with supersession 'independent', a newer version stated by one outlet beside one lagging outlet does not "
+        "replace the held item; the owner is asked"),
+    "syndicated_newer_value_does_not_supersede": (
+        "Persistent misinformation",
+        "a newer version stated by a wire story and four copies (attribution lines and reworded in-sentence "
+        "credits) beside one lagging outlet does not replace the held item; the owner is asked"),
+    "echoed_own_value_does_not_supersede": (
+        "Self-reinforcing false conclusions",
+        "a newer version that only the individual's own output asserted, stated by two outside pages in two "
+        "wordings beside one lagging outlet, does not replace the held item and raises no confidence"),
+    "older_value_restated_later_does_not_supersede": (
+        "Persistent misinformation",
+        "a held item states the version released on a later stated date; three independent pages published after "
+        "it restate the previous version with its earlier stated release date: the held item is not replaced "
+        "(recency is the value's stated time, not the page's)"),
+    "correction_of_a_correction_is_asked": (
+        "Conflicting knowledge",
+        "the rule replaced version A by B; later two independent outlets state A again as the newer value: the rule "
+        "does not reinstate a value this item held before and that was replaced (no flip-flop); the owner is asked"),
+    "owner_answer_is_never_overridden": (
+        "Conflicting internal priorities",
+        "an item the owner accepted, an item the owner asserted, and a contested key the owner already decided are "
+        "each met by a newer version from three independent outlets beside a lagging one: none is replaced"),
+    "rule_replacement_is_listed_and_reverts_exactly": (
+        "Incorrect self-assessment; Reward hacking",
+        "a replacement the rule made is listed for review with both versions, their sources and 'decided by the "
+        "rule', with its question recorded as answered by the rule; one revert restores every column of the "
+        "previous version as it was before (status, validity, superseded_by, confidence, supporting, sources, "
+        "contradicting) and marks the rule's version rejected; a later refresh with the same pages does not apply "
+        "the same replacement again"),
+    "forget_and_restore_cover_rule_records": (
+        "Privacy and the owner's authority",
+        "forgetting the domain of the sources the rule relied on removes the rule's version and its records "
+        "(question, review entry, feedback, links); a checkpoint taken before the forget restores them"),
+    "rule_runs_only_inside_admitted_consolidation": (
+        "Owner authority",
+        "with quiet on, or the daily allowance spent, the timer launches no refresh and nothing is replaced; the rule "
+        "adds no background activity (the registry of background activities is unchanged)"),
+}
+
+
+def _s(case_id, observed, ok):
+    directive, expected = EXPECTED_WAVE3_S[case_id]
+    return _result(case_id, directive, expected, observed, ok)
+
+
+_SN = "Velmora"
+_SQ = f"What is the latest {_SN} release?"
+_OLD, _NEW = "1.4.0", "1.5.0"
+_TEMPLATES = {"relnotes.example": "{N} {v} is the latest {N} release.",
+              "pkgwatch.example": "As of today, {N} {v} is the latest {N} release.",
+              "devdesk.example": "By now {N} {v} is the latest {N} release.",
+              "factline.example": "Once again {N} {v} is the latest {N} release.",
+              "dailytrack.example": "As of yesterday, {N} {v} is the latest {N} release.",
+              "weekly-builds.example": "As of now, {N} {v} is the latest {N} release."}
+_WIRE_TEXT = "{N} {v} is the latest {N} release, the Syndiwire desk reports."
+LANE_S_OFF = {"attribution_independence": False, "echo_recognition": False, "supersession": "ask"}
+RULE_ON = {"supersession": "independent", "supersession_min_sources": 2}
+
+
+@contextmanager
+def _s_individual(name, **settings):
+    """A temporary individual for lane S's cases, its resource gate held open and no model called (cycles'
+    environment); `settings` over the defaults."""
+    from ...webcortex import state
+    from . import cycles
+    with _individual(name) as (db, path):
+        state.set_config(db, {"enabled": True, "min_domain_interval": 0.0} | settings, T0 - 30 * DAY)
+        with cycles._environment([None]):
+            yield db, path
+
+
+def _s_page(host, value, published, *, text=None, path=None):
+    return (host, text or _TEMPLATES[host].format(N=_SN, v=value), published, path)
+
+
+def _s_look(db, at, pages, *, answer=None):
+    """One research task about Velmora read from `pages` [(host, text, published, path)] at `at` through the real
+    modules (cycles.investigate); `answer` is the model-written answer stored with it. Returns the consolidation."""
+    from ...webcortex import orchestrator
+    from ...webcortex.types import Document
+    from . import cycles
+    task = orchestrator.submit(db, _SQ, at, mode="fact_verification", origin="console")
+    docs = []
+    for host, text, published, path in pages:
+        url = f"http://{host}{path or '/' + _SN.lower()}"
+        docs.append(Document(url=url, final_url=url, canonical_url=url, domain=host, title=_SN, text=text,
+                             retrieved_at=at, retrieval_mode="live", published_at=published))
+    return cycles.investigate(db, task, docs, at, answer=answer)
+
+
+def _s_rows(db, value=None):
+    from ...webcortex import knowledge
+    return [r for r in knowledge.rows(db) if value is None or f"v{value}" in (r["claim_values"] or [])]
+
+
+def _s_item(db, at=T0, value=_OLD):
+    """The held item: `value` verified by two outlets at `at` (pages a day older). Returns its id."""
+    out = _s_look(db, at, [_s_page("relnotes.example", value, at - DAY), _s_page("pkgwatch.example", value, at - DAY)])
+    return out["provisional"][0]
+
+
+def _s_refresh(db, at, *, newer=3, lag=1, extra=()):
+    """A refresh: `newer` outlets stating _NEW (published a day before `at`), `lag` outlets still stating _OLD
+    (published when it was true), and `extra` pages."""
+    hosts = ["devdesk.example", "factline.example", "dailytrack.example", "weekly-builds.example"]
+    pages = [_s_page(h, _NEW, at - DAY) for h in hosts[:newer]]
+    pages += [_s_page("relnotes.example", _OLD, T0 - DAY, path="/velmora-old")][:lag]
+    return _s_look(db, at, pages + list(extra))
+
+
+def _s_live(db, kid):
+    from ...webcortex import knowledge
+    return knowledge.row(db, kid)
+
+
+def echoed_own_value_is_not_corroboration():
+    from ...instance import imagined as imagined_store
+    observed = {}
+    for label, settings in (("on", {}), ("off", LANE_S_OFF)):
+        with _s_individual(f"s-echo-{label}", **settings) as (db, _):
+            imagined_store.record(db, "inference", payload={"text": f"{_SN} 9.4.0 is the latest {_SN} release."},
+                            assumptions=["the individual's own earlier output"], uncertainty="no source states it",
+                            mechanism="adversarial-lane-s", mechanism_version="1", question=_SQ, now=T0 - DAY)
+            _s_look(db, T0 - DAY, [], answer=f"{_SN} 9.4.0 is the latest {_SN} release.")
+            out = _s_look(db, T0 + DAY, [
+                ("askboard.example", f"Someone on the forum says {_SN} 9.4.0 is now the latest {_SN} release.",
+                 T0 + DAY - 3600, None),
+                ("answer-roundup.example", f"Answers roundup: {_SN} 9.4.0 is the latest {_SN} release.",
+                 T0 + DAY - 3600, None)])
+            observed[label] = (len(_s_rows(db, "9.4.0")),
+                               any("own output" in r for h in out["held"] for r in h.get("reasons") or ()))
+    ok = observed["on"] == (0, True)
+    return _s("echoed_own_value_is_not_corroboration",
+              f"on: {observed['on'][0]} row(s) stating 9.4.0, held as an echo: {observed['on'][1]}; with both fixes "
+              f"off: {observed['off'][0]} row(s)", ok)
+
+
+def republished_own_wording_raises_nothing():
+    own = f"Right now the newest {_SN} build anyone ships is {_SN} {_OLD}, two outlets agree."
+    observed = {}
+    for label, settings in (("on", {}), ("off", LANE_S_OFF)):
+        with _s_individual(f"s-wording-{label}", **settings) as (db, _):
+            kid = _s_item(db)
+            _s_look(db, T0 + DAY, [], answer=own)
+            before = {k: _s_live(db, kid)[k] for k in ("confidence", "supporting", "sources")}
+            _s_look(db, T0 + 2 * DAY, [("paste-one.example", own, T0 + 2 * DAY - 3600, None),
+                                       ("paste-two.example", own, T0 + 2 * DAY - 3600, None)])
+            after = {k: _s_live(db, kid)[k] for k in ("confidence", "supporting", "sources")}
+            observed[label] = before == after
+    return _s("republished_own_wording_raises_nothing",
+              f"item unchanged: {observed['on']} (with both fixes off: {observed['off']}: two verbatim copies were "
+              "already one source, by the near-duplicate rule; not a hole on its own)", observed["on"])
+
+
+def _wire_copies(value, at, shapes):
+    text = {"according": "According to Syndiwire, {N} {v} is the latest {N} release.",
+            "says": "{N} {v} is now the latest {N} release, Syndiwire says.",
+            "paren": "Release roundup: {N} {v} is the latest {N} release (Syndiwire).",
+            "via": "{N} {v} is the newest {N} release, via Syndiwire.",
+            "desk": "{N} {v} is the latest {N} release, as the Syndiwire desk reports.",
+            "line": "This story first appeared on Syndiwire.\n" + _WIRE_TEXT}
+    hosts = ("mirror-one.example", "mirror-two.example", "mirror-three.example", "mirror-four.example",
+             "mirror-five.example")
+    return [(hosts[n], text[s].format(N=_SN, v=value), at, f"/wire-{n}") for n, s in enumerate(shapes)]
+
+
+def _groups_of(pages, value, attribution=True):
+    from ...webcortex import claims
+    from ...webcortex.types import Document
+    docs = [Document(url=f"http://{h}{p or '/x'}", final_url=f"http://{h}{p or '/x'}",
+                     canonical_url=f"http://{h}{p or '/x'}", domain=h, title=_SN, text=t, retrieved_at=T0,
+                     retrieval_mode="live", published_at=at) for h, t, at, p in pages]
+    found = [c for d in docs for c in claims.extract_claims(d, _SQ) if f"v{value}" in (c.values or [])]
+    claims.stamp_origins(found, docs, attribution=attribution)
+    return len(claims.independence_groups(found))
+
+
+def reworded_syndicated_copies_count_once():
+    pages = [("syndiwire.example", _WIRE_TEXT.format(N=_SN, v="7.3.0"), T0 - 3600, "/w")] + \
+        _wire_copies("7.3.0", T0 - 3600, ("according", "says", "paren", "via"))
+    groups, before = _groups_of(pages, "7.3.0"), _groups_of(pages, "7.3.0", attribution=False)
+    with _s_individual("s-syndicated") as (db, _):
+        _s_look(db, T0, pages)
+        rows = len(_s_rows(db, "7.3.0"))
+    return _s("reworded_syndicated_copies_count_once",
+              f"{groups} independent group(s) ({before} with the attribution rule off); {rows} knowledge row(s)",
+              groups == 1 and rows == 0)
+
+
+def copy_chains_and_redated_mirrors_count_once():
+    wrong = _WIRE_TEXT.format(N=_SN, v=_NEW)
+    chain = [("mirror-one.example", "This story first appeared on Syndiwire.\n" + wrong, T0 + DAY, "/c1"),
+             ("mirror-two.example", "This story first appeared on Mirror One.\n" + wrong, T0 + DAY, "/c2"),
+             ("mirror-three.example", "This story first appeared on Mirror Two.\n" + wrong, T0 + DAY, "/c3")] + \
+        _wire_copies(_NEW, T0 + 2 * DAY, ("desk",))[:1]
+    chain[-1] = ("mirror-four.example",) + chain[-1][1:]
+    groups = _groups_of(chain, _NEW)
+    with _s_individual("s-chain") as (db, _):
+        kid = _s_item(db)
+        _s_look(db, T0 + 3 * DAY, chain)
+        rows, status = len(_s_rows(db, _NEW)), _s_live(db, kid)["status"]
+    return _s("copy_chains_and_redated_mirrors_count_once",
+              f"{groups} independent group(s); {rows} knowledge row(s) stating {_NEW}; held item {status}",
+              groups == 1 and rows == 0 and status in ("provisional", "accepted", "stale"))
+
+
+def one_origin_never_raises_confidence():
+    from ...webcortex import orchestrator, state as wstate
+    from ...webcortex.types import Document
+    from . import cycles
+    observed = {}
+    for label, settings in (("on", {}), ("off", LANE_S_OFF)):
+        with _s_individual(f"s-origin-{label}", **settings) as (db, _):
+            kid = _s_item(db)
+            before = wstate.finite(_s_live(db, kid)["confidence"], 0.0)
+            at = T0 + 2 * DAY
+            origin = _s_page("relnotes.example", _OLD, at - DAY, path="/velmora-2")
+            copies = [("mirror-one.example", f"According to Relnotes, {_SN} {_OLD} is the latest {_SN} release.",
+                       at - DAY, "/o1"),
+                      ("mirror-two.example", f"{_SN} {_OLD} is now the latest {_SN} release, Relnotes says.",
+                       at - DAY, "/o2"),
+                      ("mirror-three.example", f"Release roundup: {_SN} {_OLD} is the latest {_SN} release "
+                                               "(Relnotes).", at - DAY, "/o3")]
+            task = orchestrator.submit(db, _SQ, at, mode="fact_verification", origin="console")
+            url = f"http://{origin[0]}{origin[3]}"
+            single = cycles.one_origin_confidence(db, task, Document(
+                url=url, final_url=url, canonical_url=url, domain=origin[0], title=_SN, text=origin[1],
+                retrieved_at=at, retrieval_mode="live", published_at=origin[2]), at) or 0.0
+            look = _s_look(db, at, [origin] + copies)
+            after = wstate.finite(_s_live(db, kid)["confidence"], 0.0)
+            observed[label] = (before, single, after, len(look["provisional"]))
+    b, s, a, new = observed["on"]
+    return _s("one_origin_never_raises_confidence",
+              f"confidence {b:.3f} -> {a:.3f}, one origin earns {s:.3f}, {new} new knowledge row(s) from that look; "
+              f"with both fixes off {observed['off'][0]:.3f} -> {observed['off'][2]:.3f} and {observed['off'][3]} "
+              "new row(s) (a second row admitted on one origin)", a <= max(b, s) + 1e-9 and new == 0)
+
+
+def honest_independent_corroboration_still_counts():
+    observed = {}
+    for label, settings in (("on", {}), ("off", LANE_S_OFF)):
+        with _s_individual(f"s-honest-{label}", **settings) as (db, _):
+            _s_look(db, T0 - 2 * DAY, [_s_page("weekly-builds.example", _NEW, T0 - 3 * DAY)],
+                    answer=f"{_SN} {_NEW} is the latest {_SN} release.")
+            out = _s_look(db, T0, [
+                ("devdesk.example", f"{_SN} {_NEW} is the latest {_SN} release, the {_SN} team says.", T0 - DAY, None),
+                _s_page("pkgwatch.example", _NEW, T0 - DAY)])
+            rows = [r for r in _s_rows(db, _NEW) if r["id"] in out["provisional"]]
+            observed[label] = [(r["status"], (r["verification"].get("independent_groups") or {}).get("supporting"))
+                               for r in rows]
+    ok = observed["on"] == [("provisional", 2)] and observed["on"] == observed["off"]
+    return _s("honest_independent_corroboration_still_counts",
+              f"on: {observed['on']}; with both fixes off: {observed['off']}", ok)
+
+
+def setting_off_asks_as_today():
+    from ...webcortex import knowledge
+    seen = {}
+    for label, settings in (("shipped", {}), ("lane-s-off", LANE_S_OFF)):
+        with _s_individual(f"s-off-{label}", **settings) as (db, _):
+            kid = _s_item(db)
+            out = _s_refresh(db, T0 + 3 * DAY)
+            rows = knowledge.rows(db)
+            open_q = db.execute("SELECT count(*) FROM pending WHERE scope=? AND resolved_at IS NULL",
+                                (f"web:knowledge:{kid}",)).fetchone()[0]
+            text = json.dumps([out, rows], sort_keys=True, default=str)
+            for n, (tid,) in enumerate(db.execute("SELECT id FROM web_tasks ORDER BY created_at, rowid")):
+                text = text.replace(tid, f"task-{n}")       # task ids are random: compared by their order
+            out, rows = json.loads(text)
+            seen[label] = (out, rows, _s_live(db, kid)["status"], open_q)
+    out, rows, status, open_q = seen["shipped"]
+    same = out == seen["lane-s-off"][0] and rows == seen["lane-s-off"][1]
+    asked = any(c.get("knowledge_id") is not None for c in out["contested"]) and open_q >= 1
+    return _s("setting_off_asks_as_today",
+              f"item {status}; contradiction asked: {asked}; replaced: {bool(out['superseded'])}; summary and rows "
+              f"equal to lane S off: {same}",
+              status == "provisional" and asked and not out["superseded"] and same)
+
+
+def _s_not_replaced(case_id, build, name, *, asked_too=True):
+    with _s_individual(name, **RULE_ON) as (db, _):
+        kid = _s_item(db)
+        before = _s_live(db, kid)["confidence"]
+        out = build(db)
+        item = _s_live(db, kid)
+        asked = any(c.get("knowledge_id") == kid or c.get("pending_id") is not None for c in out["contested"])
+    ok = item["status"] == "provisional" and not out["superseded"] and (asked or not asked_too) and \
+        item["confidence"] <= before
+    return _s(case_id, f"item {item['status']}, confidence {before:.3f} -> {item['confidence']:.3f}; replaced: "
+                       f"{bool(out['superseded'])}; asked: {asked}", ok)
+
+
+def one_source_newer_value_does_not_supersede():
+    return _s_not_replaced("one_source_newer_value_does_not_supersede",
+                           lambda db: _s_refresh(db, T0 + 3 * DAY, newer=1), "s-one")
+
+
+def syndicated_newer_value_does_not_supersede():
+    at = T0 + 3 * DAY
+    wire = [("syndiwire.example", _WIRE_TEXT.format(N=_SN, v=_NEW), at - DAY, "/w")] + \
+        _wire_copies(_NEW, at - DAY, ("line", "according", "says", "paren"))
+    return _s_not_replaced("syndicated_newer_value_does_not_supersede",
+                           lambda db: _s_refresh(db, at, newer=0, extra=wire), "s-wire")
+
+
+def echoed_own_value_does_not_supersede():
+    at = T0 + 3 * DAY
+
+    def build(db):
+        _s_look(db, T0 + DAY, [], answer=f"{_SN} {_NEW} is the latest {_SN} release.")
+        echoes = [("askboard.example", f"Someone on the forum says {_SN} {_NEW} is now the latest {_SN} release.",
+                   at - DAY, None),
+                  ("paste-one.example", f"{_SN} {_NEW} is the latest {_SN} release.", at - DAY, None)]
+        return _s_refresh(db, at, newer=0, extra=echoes)
+    return _s_not_replaced("echoed_own_value_does_not_supersede", build, "s-echoed", asked_too=False)
+
+
+def older_value_restated_later_does_not_supersede():
+    newer = "{p}{N} {v}, released on 10 January 2027, is the latest {N} release."
+    older = "{p}{N} {v}, released on 1 December 2026, is the latest {N} release."
+    with _s_individual("s-older", **RULE_ON) as (db, _):
+        out = _s_look(db, T0, [("relnotes.example", newer.format(p="", N=_SN, v=_NEW), T0 - DAY, None),
+                               ("pkgwatch.example", newer.format(p="As of today, ", N=_SN, v=_NEW), T0 - DAY, None)])
+        kid = out["provisional"][0]
+        at = T0 + 3 * DAY
+        # wordings without a relative time ("as of yesterday" states a time of its own: then the page is newer)
+        refresh = _s_look(db, at, [
+            ("devdesk.example", older.format(p="Reportedly, ", N=_SN, v=_OLD), at - DAY, None),
+            ("factline.example", older.format(p="In short, ", N=_SN, v=_OLD), at - DAY, None),
+            ("dailytrack.example", older.format(p="Our records show that ", N=_SN, v=_OLD), at - DAY, None),
+            ("weekly-builds.example", newer.format(p="For the record, ", N=_SN, v=_NEW), at - DAY, None)])
+        item = _s_live(db, kid)
+    return _s("older_value_restated_later_does_not_supersede",
+              f"item {item['status']}; replaced: {bool(refresh['superseded'])}",
+              item["status"] == "provisional" and not refresh["superseded"])
+
+
+def correction_of_a_correction_is_asked():
+    with _s_individual("s-flipflop", **RULE_ON) as (db, _):
+        kid = _s_item(db)
+        first = _s_refresh(db, T0 + 3 * DAY)
+        replaced = [s for s in first["superseded"] if s.get("by") == "rule"]
+        at = T0 + 6 * DAY
+        second = _s_look(db, at, [_s_page("devdesk.example", _OLD, at - DAY, path="/v2"),
+                                  _s_page("factline.example", _OLD, at - DAY, path="/v2"),
+                                  _s_page("dailytrack.example", _NEW, T0 + 2 * DAY, path="/v2")])
+        live = [r for r in _s_rows(db) if r["status"] in ("provisional", "accepted", "stale")]
+        asked = bool(second["contested"])
+    ok = bool(replaced) and replaced[0]["old"] == kid and not second["superseded"] and asked and \
+        [r["claim_values"] for r in live] == [[f"v{_NEW}"]]
+    return _s("correction_of_a_correction_is_asked",
+              f"first refresh replaced by the rule: {bool(replaced)}; second refresh replaced: "
+              f"{bool(second['superseded'])}; asked: {asked}; live values {[r['claim_values'] for r in live]}", ok)
+
+
+def owner_answer_is_never_overridden():
+    from ...webcortex import knowledge, state as wstate
+    out = {}
+    for label in ("accepted", "asserted", "decided"):
+        with _s_individual(f"s-owner-{label}", **RULE_ON) as (db, _):
+            if label == "asserted":
+                kid = knowledge.assert_fact(db, f"{_SN} {_OLD} is the latest {_SN} release.", T0)["id"]
+            else:
+                kid = _s_item(db)
+            if label == "accepted":
+                knowledge.review(db, kid, True, T0 + DAY)
+            if label == "decided":      # as knowledge.answer_contested records the owner's choice
+                key = _s_live(db, kid)["key"]
+                with store.write(db):
+                    db.execute("INSERT INTO web_feedback(task_id,knowledge_id,key,effect,before_confidence,"
+                               "after_confidence,info_gain,detail,created_at) VALUES(NULL,NULL,?,'unchanged',NULL,"
+                               "NULL,0,?,?)", (key, wstate.dumps({"owner_choice": f"v{_OLD}",
+                                                                   "values": [f"v{_OLD}", f"v{_NEW}"],
+                                                                   "pending_id": None}), T0 + DAY))
+            refresh = _s_refresh(db, T0 + 3 * DAY)
+            out[label] = (_s_live(db, kid)["status"], bool(refresh["superseded"]))
+    ok = all(status != "superseded" and not replaced for status, replaced in out.values())
+    return _s("owner_answer_is_never_overridden", "; ".join(f"{k}: item {s}, replaced {r}" for k, (s, r) in
+                                                             out.items()), ok)
+
+
+def _s_replaced(db):
+    kid = _s_item(db)
+    columns = [r[1] for r in db.execute("PRAGMA table_info(web_knowledge)")]
+    before = db.execute(f"SELECT {', '.join(columns)} FROM web_knowledge WHERE id=?", (kid,)).fetchone()
+    out = _s_refresh(db, T0 + 3 * DAY)
+    new = next((s["new"] for s in out["superseded"] if s.get("by") == "rule"), None)
+    return kid, new, columns, before
+
+
+def rule_replacement_is_listed_and_reverts_exactly():
+    from ...webcortex import knowledge
+    with _s_individual("s-revert", **RULE_ON) as (db, _):
+        kid, new, columns, before = _s_replaced(db)
+        listed = [r for r in knowledge.replacements(db) if r["id"] == new]
+        entry = listed[0] if listed else {}
+        answered = db.execute("SELECT count(*) FROM pending WHERE scope=? AND resolved_at IS NOT NULL AND resolution "
+                              "LIKE 'answered by the supersession rule%'", (f"web:knowledge:{new}",)).fetchone()[0]
+        shown = bool(entry) and entry["decided_by"] == "rule" and (entry.get("replaced") or {}).get("id") == kid and \
+            entry["sources"] and entry["replaced"]["sources"] and entry["statement"] and entry["replaced"]["statement"]
+        knowledge.revert(db, new, T0 + 3 * DAY + 60)
+        after = db.execute(f"SELECT {', '.join(columns)} FROM web_knowledge WHERE id=?", (kid,)).fetchone()
+        status = _s_live(db, new)["status"]
+        again = _s_refresh(db, T0 + 4 * DAY)
+    ok = new is not None and shown and answered == 1 and after == before and status == "rejected" and \
+        not again["superseded"]
+    return _s("rule_replacement_is_listed_and_reverts_exactly",
+              f"replaced by #{new}; listed with both versions and sources: {bool(shown)}; answered by the rule: "
+              f"{answered}; previous row restored exactly: {after == before}; rule's version {status}; same refresh "
+              f"again replaced: {bool(again['superseded'])}", ok)
+
+
+def forget_and_restore_cover_rule_records():
+    from ...instance import checkpoints, governance
+    with _s_individual("s-forget", **RULE_ON) as (db, path):
+        _kid, new, _c, _b = _s_replaced(db)
+
+        def count(d):
+            scope = f"web:knowledge:{new}"
+            return sum(d.execute(q, a).fetchone()[0] for q, a in (
+                ("SELECT count(*) FROM web_knowledge WHERE json_extract(verification,'$.decided_by')='rule'", ()),
+                ("SELECT count(*) FROM pending WHERE scope=? AND question LIKE ?", (scope, f"%{_SN}%")),
+                ("SELECT count(*) FROM web_feedback WHERE knowledge_id=?", (new,))))
+        held = count(db)
+        with tempfile.TemporaryDirectory(prefix="nsf-cognition-adv-cp-") as directory:
+            made = checkpoints.create(db, path, Path(directory) / "checkpoints", time.time())
+            copy = Path(directory) / "restored.sqlite"
+            checkpoints.restore(db, made["id"], copy, time.time())
+            with closing(store.connect(copy)) as restored:
+                restored_before = count(restored)
+            for host in ("devdesk.example", "factline.example", "dailytrack.example"):
+                governance.forget_source(db, host, time.time())
+            after_forget = count(db)
+            again = Path(directory) / "restored-after-forget.sqlite"
+            checkpoints.restore(db, made["id"], again, time.time())
+            with closing(store.connect(again)) as restored:
+                restored_after = count(restored)
+    ok = held > 0 and restored_before == held and after_forget == 0 and restored_after == 0
+    return _s("forget_and_restore_cover_rule_records",
+              f"{held} record(s); a checkpoint restored before the forget holds {restored_before}; after forgetting "
+              f"the sources' domains {after_forget}; the same checkpoint restored after the forget {restored_after} "
+              "(a forget is replayed on restore)", ok)
+
+
+def rule_runs_only_inside_admitted_consolidation():
+    import inspect
+    from ... import background
+    from ...webcortex import autonomy, consolidate, scheduler
+    with _s_individual("s-quiet", **RULE_ON) as (db, _):
+        autonomy.enable(db, T0 - DAY)
+        kid = _s_item(db)
+        store.set_config(db, {"quiet": True}, T0 + DAY)
+        held = scheduler.tick(db, T0 + 40 * DAY, None, queue=True)
+        store.set_config(db, {"quiet": False}, T0 + 40 * DAY)
+        free = scheduler.tick(db, T0 + 40 * DAY + 60, None, queue=True)
+        status = _s_live(db, kid)["status"]
+    names = " ".join(list(background.ACTIVITIES) + list(background.RUNNERS)).lower()
+    callers = [n for n, f in inspect.getmembers(consolidate, inspect.isfunction)
+               if "_rule_replacement(" in inspect.getsource(f) and n not in ("_rule_replacement",)]
+    ok = not held.get("queued") and bool(free.get("queued")) and status == "provisional" and \
+        "supersession" not in names and "replacement" not in names and callers == ["_contested_against"]
+    return _s("rule_runs_only_inside_admitted_consolidation",
+              f"quiet: {len(held.get('queued') or [])} queued; quiet off: {len(free.get('queued') or [])} queued; "
+              f"item {status}; the rule is called from {callers}; no background activity names it: "
+              f"{'supersession' not in names}", ok)
+
+
+CASES_WAVE3_S = (echoed_own_value_is_not_corroboration, republished_own_wording_raises_nothing,
+                 reworded_syndicated_copies_count_once, copy_chains_and_redated_mirrors_count_once,
+                 one_origin_never_raises_confidence, honest_independent_corroboration_still_counts,
+                 setting_off_asks_as_today, one_source_newer_value_does_not_supersede,
+                 syndicated_newer_value_does_not_supersede, echoed_own_value_does_not_supersede,
+                 older_value_restated_later_does_not_supersede, correction_of_a_correction_is_asked,
+                 owner_answer_is_never_overridden, rule_replacement_is_listed_and_reverts_exactly,
+                 forget_and_restore_cover_rule_records, rule_runs_only_inside_admitted_consolidation)
+assert [c.__name__ for c in CASES_WAVE3_S] == list(EXPECTED_WAVE3_S)
+CASES = CASES + CASES_WAVE3_S
+ORIGIN["added_wave3_s"] = tuple(EXPECTED_WAVE3_S)
 
 
 def run() -> dict:

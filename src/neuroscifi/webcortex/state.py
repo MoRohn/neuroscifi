@@ -94,7 +94,7 @@ def _validate(name, value):
                 "salience_record", "hypothesis_fields", "hypothesis_abandon", "premise_recheck", "idle_recheck",
                 "reflection", "reflection_model_summary", "answer_monitoring", "selective_answering",
                 "verification_escalation", "adaptive_depth", "pocket_recent", "salience_attention",
-                "arbitration_record"):
+                "arbitration_record", "attribution_independence", "echo_recognition"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
@@ -106,6 +106,15 @@ def _validate(name, value):
     if name == "strategy_selection":
         if value not in ("gate", "off"):
             raise ValidationError("strategy_selection must be 'gate' (follows the improvement ledger) or 'off'")
+        return value
+    if name == "supersession":
+        if value not in ("ask", "independent"):
+            raise ValidationError("supersession must be 'ask' (contradictions are asked, never decided) or "
+                                  "'independent' (a newer value from enough independent sources replaces the item)")
+        return value
+    if name == "supersession_min_sources":
+        if not _is_int(value) or not 2 <= value <= 10:
+            raise ValidationError("supersession_min_sources must be an integer between 2 and 10")
         return value
     if name in ("recheck_per_tick", "recheck_daily"):
         if not _is_int(value) or not 0 <= value <= 100:
