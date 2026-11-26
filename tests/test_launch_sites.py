@@ -251,6 +251,8 @@ SITES = {
         (2, "owner", "`scripts/bench_omni.py`: the time bound on one benchmark task run in this process"),
     ("neuroscifi.acceptance.cognition:environment", "process"):
         (2, "owner", "the cognitive benchmark's environment record (measurement only; MEASUREMENT_ONLY)"),
+    ("neuroscifi.acceptance.omni.final:environment", "process"):
+        (2, "owner", "`bench_omni.py final`: git commit and status once per look at the withheld split"),
 }
 
 

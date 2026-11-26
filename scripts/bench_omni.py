@@ -5,12 +5,19 @@
                       [--evidence] [--scratch DIR]
     bench_omni.py hash [--split development|held_out]
     bench_omni.py list
+    bench_omni.py final --family F [--family F ...] --subject today|artifacts --note TEXT --out FILE [--scratch DIR]
 
 `run` writes a summary (per family: counts with denominators, the fabrication count on its own, per-task outcomes,
 cost) and refuses to write inside the repository unless --evidence is given (the recorded baseline is
 docs/quality/evidence/omnimind_baseline.json). Hostile tasks run each in their own process under a scratch
 directory (--scratch, default the system's temporary directory). docs/quality/OMNIMIND_BENCHMARK.md explains the
 families, the measures, the outcomes and the rules for the withheld split.
+
+`final` is THE look at the withheld split (acceptance/omni/final.py; one look per mechanism, by the main session, at
+the end): it refuses a missing or blank note, an --out inside this checkout or not writable, another tree's source, a
+dirty or uncommitted tree and a changed withheld file; then it appends one line per family to
+docs/quality/evidence/omnimind_final_uses.jsonl BEFORE it loads or scores anything, and writes summaries only.
+`run` refuses the withheld split: only `final` loads it.
 """
 from __future__ import annotations
 
@@ -48,6 +55,10 @@ def _totals(families: dict) -> dict:
 
 
 def cmd_run(args) -> int:
+    if args.split == "withheld":
+        print("refused: the withheld split is scored only by `final`, once per mechanism, and every look is recorded "
+              "in the ledger first (docs/quality/OMNIMIND_BENCHMARK.md)", file=sys.stderr)
+        return 2
     out_path = Path(args.out).resolve()
     if REPO in out_path.parents and not args.evidence:
         print(f"refused: {out_path} is inside the repository; pass --evidence to record it there", file=sys.stderr)
@@ -100,11 +111,36 @@ def cmd_list(args) -> int:
     return 0
 
 
+def cmd_final(args) -> int:
+    from neuroscifi.acceptance.omni import final
+    problem = final.out_problem(args.out, REPO)
+    if problem is None and final.REPO.resolve() != REPO.resolve():
+        problem = "run it on this checkout's own source, so the ledger line is written here and names this tree"
+    if problem:
+        print(f"refused: {problem}", file=sys.stderr)
+        return 2
+    families = omni.FAMILIES if "all" in args.family else tuple(dict.fromkeys(args.family))
+    try:
+        value = final.look(families, subject.get(args.subject), args.subject, args.note, script="bench_omni.py final",
+                           scratch=args.scratch)
+    except final.Refused as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    value |= {"python": platform.python_version(), "machine": platform.machine()}
+    text = json.dumps(value, indent=1, sort_keys=True) + "\n"
+    Path(args.out).write_text(text)
+    for name, r in value["families"].items():
+        print(f"withheld {name:10s} n={r['n']:4d} right={r['right']:4d} abstained={r['abstained']:4d} "
+              f"wrong={r['wrong']:3d} failed={r['failed']:3d}", flush=True)
+    print(f"wrote {args.out} ({len(text.encode())} bytes); ledger lines now {value['ledger_lines']}")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run")
-    run.add_argument("--split", choices=(*omni.SPLITS, "both"), required=True)
+    run.add_argument("--split", choices=(*omni.SPLITS, "both", "withheld"), required=True)
     run.add_argument("--subject", default="today", choices=tuple(subject.SUBJECTS))
     run.add_argument("--family", action="append", choices=omni.FAMILIES)
     run.add_argument("--out", required=True)
@@ -116,6 +152,13 @@ def main(argv=None) -> int:
     h.set_defaults(func=cmd_hash)
     lst = sub.add_parser("list")
     lst.set_defaults(func=cmd_list)
+    fin = sub.add_parser("final", help="THE look at the withheld split (recorded in the ledger first)")
+    fin.add_argument("--family", action="append", required=True, choices=(*omni.FAMILIES, "all"))
+    fin.add_argument("--subject", required=True, choices=tuple(subject.SUBJECTS))
+    fin.add_argument("--note", required=True, help="the reason for the look (the ledger line's note)")
+    fin.add_argument("--out", required=True, help="a path OUTSIDE this checkout")
+    fin.add_argument("--scratch", default=None, help="directory for the hostile family's per-task folders")
+    fin.set_defaults(func=cmd_final)
     args = parser.parse_args(argv)
     return args.func(args)
 
