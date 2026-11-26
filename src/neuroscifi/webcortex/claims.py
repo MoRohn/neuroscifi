@@ -1291,7 +1291,7 @@ def stamp_origins(claims, documents, *, attribution: bool = False, grouping: str
     says so; independence_groups then uses the derivation rule for claims that all carry it. Off: the mark is removed
     where present, and a claim never marked is left exactly as it was."""
     origins = document_origins(documents)
-    cites = derivation_cites(documents) if derivation else {}
+    cites = derivation_cites(documents, claims) if derivation else {}
     echo_failed = None
     for c in claims:
         if derivation:
@@ -1662,8 +1662,8 @@ def _one_way(ident, pointers, label) -> list:
 # ---- ADR-066 (Wave 4 lane S): one source by evidence of derivation, not by the wording of a credit --------------------
 #
 # WebConfig.source_derivation, OFF by default. Evidence a page carries about the OTHER pages of its task: it names one
-# of them (capitalised words of its text that, joined, equal that page's site label: "Tech Ledger" for
-# techledger.example, whatever verb or line surrounds them) or links to it (its host or URL). Such a page may derive
+# of them (capitalised words of its text that, joined, equal that page's site label: "Acme Wire" for
+# acmewire.example, whatever verb or line surrounds them) or links to it (its host or URL). Such a page may derive
 # from the page it names (a copy crediting its origin, a round-up, a mirror) or may have checked the value itself and
 # still name it (a credit, a contributor line): the text cannot tell the two apart, so the join is an uncertain
 # estimate of "same source" and is reported as such (derivation_joins). The rule counts what the evidence cannot
@@ -1680,7 +1680,13 @@ def _one_way(ident, pointers, label) -> list:
 #     origin);
 #   - no list of phrases, hosts or names: the only text it reads is capitalised words matched against the site labels
 #     of the pages read in the same task (the identity key independence_groups already uses);
-#   - lane E's hook: a page its echo check marks (flags["derivation"]["echo"]) counts for nothing: it is in no group.
+#   - lane E's hook: a page its echo check marks (flags["derivation"]["echo"]) counts for nothing: it is in no group;
+#   - (Wave 4 fix, review4 H1) a page the injection screen flagged, or one that yields no claim, is never named or
+#     linked (so it can never be the point where others meet), and a name both pages' claims carry (the subject they
+#     are about, "Velmora" for velmora.org) or a calendar word (a host labelled like a month) is no site label.
+# VERDICT (ADR-066, after review4 H1, M2, M3): not supported; do not turn on. Its only signal, a capitalised name equal
+# to a host's site label, is a convention of the benchmark worlds' generator, and one page linked by every honest
+# outlet still merges them.
 # Bounds: DERIVATION_SCAN_WORDS words of a page are read; DERIVATION_MAX_CITES pages kept per page; a site label
 # shorter than DERIVATION_MIN_KEY characters is never matched in text (links still count).
 DERIVATION_MIN_KEY = 4
@@ -1689,12 +1695,14 @@ DERIVATION_MAX_CITES = 16
 # The benchmark's ablations only (empty in the product): "names", "links", "time" (the publication-order filter),
 # "values" (the same-values condition), "whole_group" (a group moves only when every page in it cites).
 DERIVATION_ABLATE: frozenset = frozenset()
+_CALENDAR = frozenset("january february march april may june july august september october november december monday "
+                      "tuesday wednesday thursday friday saturday sunday".split())
 _CAPITALISED = re.compile(r"[^\W_][\w'’&-]*")
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
 def _capitalised_keys(text: str) -> set:
-    """Letters and digits of 1-4 consecutive capitalised words, lower-cased and joined ("Tech Ledger" -> "techledger");
+    """Letters and digits of 1-4 consecutive capitalised words, lower-cased and joined ("Acme Wire" -> "acmewire");
     a sentence's first word alone is not one ("Today, ..." names nothing). The first DERIVATION_SCAN_WORDS words."""
     out, seen = set(), 0
     for sentence in _SENTENCE_BREAK.split(text or ""):
@@ -1712,15 +1720,26 @@ def _capitalised_keys(text: str) -> set:
     return out
 
 
-def derivation_cites(documents) -> dict[str, list[str]]:
+def derivation_cites(documents, claims=None) -> dict[str, list[str]]:
     """{source url: identity keys "name:<site label>" of the OTHER documents (another host and label) that this
     document names (_capitalised_keys meets their site label) or links to}, sorted, at most DERIVATION_MAX_CITES; a
     document stated as published after this one is never cited (a derivation cannot precede its origin). Only the
     normalised name is kept, never a host or URL: the key is what the citing page's own words already say, and
-    forgetting the cited page leaves nothing of it here."""
+    forgetting the cited page leaves nothing of it here. Never cited (Wave 4 fix, review4 H1): a document the injection
+    screen flagged (adversarial_document) and, given the task's `claims`, one that yields none; never a name match on a
+    calendar word or, given `claims`, on a name the claims of both pages carry (the subject they are both about)."""
     docs = [d for d in documents or () if d is not None]
     own = [(d.domain or _host(d.final_url or d.url or "")).lower() for d in docs]
     labels = [re.sub(r"[^a-z0-9]", "", site_label(h)) for h in own]
+    said: dict = {}
+    if claims is not None:
+        from .consolidate import _name_set
+        for c in claims:
+            said.setdefault(c.source_url, set()).update(_name_set(c.text))
+    urls = [{d.canonical_url, d.final_url, d.url} - {None, ""} for d in docs]
+    named_in_claims = [set().union(*(said.get(u, set()) for u in us)) if us else set() for us in urls]
+    citable = [not adversarial_document(d) and (claims is None or any(u in said for u in urls[j]))
+               for j, d in enumerate(docs)]
     out: dict[str, list[str]] = {}
     for i, d in enumerate(docs):
         named = _capitalised_keys(d.text)
@@ -1731,12 +1750,13 @@ def derivation_cites(documents) -> dict[str, list[str]]:
                 linked.add(_host(link))
         keys = set()
         for j, e in enumerate(docs):
-            if not own[j] or own[j] == own[i]:
+            if not own[j] or own[j] == own[i] or not citable[j]:
                 continue
             if d.published_at is not None and e.published_at is not None and e.published_at > d.published_at and \
                     "time" not in DERIVATION_ABLATE:
                 continue
             if len(labels[j]) >= DERIVATION_MIN_KEY and labels[j] != labels[i] and labels[j] in named and \
+                    labels[j] not in _CALENDAR and labels[j] not in (named_in_claims[i] & named_in_claims[j]) and \
                     "names" not in DERIVATION_ABLATE:
                 keys.add("name:" + labels[j])
             if labels[j] and labels[j] != labels[i] and "links" not in DERIVATION_ABLATE and \
