@@ -564,8 +564,9 @@ with fewer subjects lost; the look cannot promote it, and dividing the daily all
 reaching is the next thing to measure. *Correction, 2026-11-26 (Wave 4 lane A, ADR-064 "Follow-up: repeatability").*
 The idle-first figures are single runs of code whose idle runs were not repeatable (a pick among equal records
 followed random task ids; fixed in Wave 4). On public worlds a world's mean gain moved by up to 0.015 between repeats,
-so "beyond the spread" holds for W3 (margin 0.017) but is not established for W2 (margin 0.003); the held-out figures
-of ADR-062 are exactly repeatable. **The front door stays on** (12 of 12 front-door questions exact; every
+so "beyond the spread" is not established for W2 (margin 0.003) and for W3 (margin 0.017) is not shown to fail but is
+not verified on those worlds (review4 measurement, second pass); the held-out figures of ADR-062 are exactly
+repeatable. **The front door stays on** (12 of 12 front-door questions exact; every
 other figure equal to the run without it).
 
 ## Wave 4: the source-independence family
