@@ -95,17 +95,22 @@ merged and its acceptance test has run, every gap below is open.
   Excel, medical and scientific images "where supported".
 - **Exists**: nothing.
 - **Root cause**: these formats use codecs (DCT, VP8, HEVC, AV1, MPEG audio, AAC, Opus, Vorbis, FLAC, Snappy) or
-  recognition models (OCR) that no installed Python package provides, and writing a codec by hand is outside a lane's
-  reach and a large new attack surface.
+  recognition models (OCR) that no installed Python package provides. Writing such a codec by hand in Python is
+  possible in principle for some of them (FLAC more than the others), but it is a large, slow piece of new attack
+  surface, and no lane plans it.
 - **Closing it**: within the rules, only header facts: dimensions, duration, sample rate, channels, tracks, codecs,
   tags (lane B2), then `Unsupported` with `needs` naming what is missing. The benchmark (lane Z, family `honest`)
   counts any content answer for these formats as a fabrication.
-- **Out of reach here**: pixels of JPEG, WebP, HEIC/AVIF, PSD layers and compressed TIFF; samples of MP3, AAC, Opus,
-  Vorbis and FLAC; frames of any video; OCR and handwriting; Parquet and Arrow data; legacy binary `.doc`/`.xls`/`.ppt`
-  content; CAD (STEP, IGES, DWG); YAML beyond its JSON subset; 7z and RAR members. Each needs **an owner decision**:
-  either an optional, pinned Python package (Pillow, soundfile, pyarrow, PyYAML ...), or running a system program that
-  is already on the host (ffmpeg, ImageMagick, vips, Tesseract, LibreOffice) on untrusted input inside a sandbox with
-  no network and bounded resources. Neither is done.
+- **Out of reach here, without the owner**: pixels of JPEG, WebP, HEIC/AVIF and JPEG-compressed TIFF; samples of MP3,
+  AAC, Opus, Vorbis and FLAC; frames of any video; OCR and handwriting; Parquet and Arrow data. Each needs **an owner
+  decision**: either an optional, pinned Python package (Pillow, soundfile, pyarrow ...), or running a system program
+  that is already on the host (ffmpeg, ImageMagick, vips, Tesseract) on untrusted input inside a sandbox with no network
+  and bounded resources. Neither is done.
+- **Not planned, though not strictly out of reach**: PSD layers, LZW- or Deflate-compressed TIFF, legacy binary
+  `.doc`/`.xls`/`.ppt` content, 7z members (its LZMA is in the standard library), YAML beyond its JSON subset, CAD
+  exchange formats (STEP, IGES). Each could be parsed by hand within the dependency rule, at a cost no Wave O-0 lane
+  takes on. RAR and DWG have no openly licensed specification of their content, so they stay identified only.
+  LibreOffice on the host could convert legacy office files, under the same owner decision as the programs above.
 
 ### II.5 Streaming, resumable and partial processing
 
