@@ -457,8 +457,9 @@ def _lineage(db):
     decision event; a refresh task investigates its knowledge item; an autonomous task without either counts as one
     step from its own objective). The originating owner subject of a depth-1 subject is the depth-0 subject that
     the autonomous task investigated (its objective and key). Unknown keys are depth 0."""
-    tasks = {tid: (str(origin), objective) for tid, origin, objective in
-             db.execute("SELECT id, origin, objective FROM web_tasks")}
+    tasks, made = {}, {}
+    for tid, origin, objective, rowid in db.execute("SELECT id, origin, objective, rowid FROM web_tasks"):
+        tasks[tid], made[tid] = (str(origin), objective), rowid
     investigated = {}
     for tid, key in db.execute("SELECT task_id, json_extract(detail,'$.autonomy.key') FROM web_events WHERE "
                                "kind='decision' AND task_id IS NOT NULL AND json_extract(detail,'$.autonomy.key') "
@@ -494,7 +495,11 @@ def _lineage(db):
         if key not in sources:
             memo[key] = (0, frozenset())
             return memo[key]
-        found = [task_depth(t) for t in sources[key]]
+        # Wave 4 lane A: the subject's records are visited in a stable order, the owner's first, then tasks in the
+        # order they were created (rowid). The walk marks a subject in progress (memo above), so what a subject
+        # visited later finds can depend on that order; a set of task ids iterates in an order that differs from run
+        # to run (task ids are random uuid4), which made the same history give different lineages.
+        found = [task_depth(t) for t in sorted(sources[key], key=lambda t: (t is not None, made.get(t, -1), str(t)))]
         best = min(d for d, _ in found)
         memo[key] = (best, frozenset().union(*(r for d, r in found if d == best)))
         return memo[key]
@@ -827,6 +832,83 @@ def decision_inputs(pick, admitted) -> dict:
     return inputs | {"admission": admission}
 
 
+# ---- the division of the day's allowance between refreshing and reaching (ADR-064; setting allowance_division) ------
+#
+# One allowance, WebConfig.daily_autonomous.tasks (the rolling 24 h of curiosity and refresh tasks the timer counts).
+# REACHING is an idle investigation of a candidate the one admission rule admitted that is no knowledge item (no
+# knowledge_id: an open hypothesis, a contested subject or a single-source gap about a subject that holds nothing);
+# REFRESHING is every other autonomous task (the timer's re-check, due refreshes and curiosity, and idle
+# investigations of a knowledge item). "race" (the default) is the behaviour before ADR-064 and reads nothing here.
+# Otherwise `reserve` = round(tasks x share) places are HELD for reaching, minus the reaching tasks of the window,
+# while the admission rule admits a reaching candidate now (released at once when it admits none, or when autonomy is
+# not enabled, since only the idle investigator reaches): refreshing may not take held places, reaching may take any
+# room. "reserve": share = reach_share. "yield": share = y_reach / (y_reach + y_refresh) bounded to YIELD_BOUNDS, where
+# y is (tasks that wrote a new or replacing knowledge item + 1) / (finished tasks + 2) of that path over the last
+# YIELD_WINDOW; admission to knowledge is the evidence (two independent sources), so a wrongly admitted version counts
+# as a yield too: the product cannot see the truth. The division never adds a task, a request or an activity: the cap
+# is checked as before (inside submit's transaction); the division only decides which path may take a place.
+DIVISIONS = ("race", "reserve", "yield")
+YIELD_WINDOW = 7 * 86400.0
+YIELD_BOUNDS = (0.1, 0.9)
+HELD_FOR_REACHING = "held for reaching subjects that hold nothing (allowance_division)"
+
+
+def reaching(pick) -> bool:
+    """Whether an admitted candidate reaches a subject that holds nothing: it is no knowledge item."""
+    return pick.get("knowledge_id") is None
+
+
+def _reach_tasks(db, now) -> int:
+    """Reaching tasks of the day's window (scheduler._window): idle investigations recorded as reaching."""
+    from . import scheduler
+    where, params = scheduler._window(now)
+    return db.execute(f"SELECT count(*) FROM web_tasks WHERE {where} AND origin='curiosity' AND EXISTS (SELECT 1 "
+                      "FROM web_events e WHERE e.task_id=web_tasks.id AND e.kind='decision' AND "
+                      "json_extract(e.detail,'$.autonomy.division.path')='reach')", params).fetchone()[0]
+
+
+def _reach_open(db, now) -> bool:
+    """Whether the one admission rule admits a reaching candidate now (the idle investigator could take it)."""
+    if not enabled(db):
+        return False
+    return any(reaching(c) for c in candidates(db, now, limit=MAX_CANDIDATES)["chosen"])
+
+
+def _yield_share(db, now) -> tuple[float, dict]:
+    """(share, inputs) of the "yield" rule from the autonomous tasks finished in the last YIELD_WINDOW."""
+    counts = {"reach": [0, 0], "refresh": [0, 0]}          # path -> [finished, wrote knowledge]
+    for wrote, reach in db.execute(
+            "SELECT coalesce(json_array_length(json_extract(result,'$.consolidation.provisional')),0) + "
+            "coalesce(json_array_length(json_extract(result,'$.consolidation.superseded')),0), EXISTS (SELECT 1 FROM "
+            "web_events e WHERE e.task_id=web_tasks.id AND e.kind='decision' AND "
+            "json_extract(e.detail,'$.autonomy.division.path')='reach') FROM web_tasks WHERE status='completed' AND "
+            f"finished_at>? AND {AUTONOMOUS_SQL}", (now - YIELD_WINDOW,)):
+        c = counts["reach" if reach else "refresh"]
+        c[0] += 1
+        c[1] += bool(wrote)
+    y = {k: (v[1] + 1) / (v[0] + 2) for k, v in counts.items()}
+    lo, hi = YIELD_BOUNDS
+    share = min(hi, max(lo, y["reach"] / (y["reach"] + y["refresh"])))
+    return share, {k: {"finished": v[0], "wrote_knowledge": v[1], "yield": round(y[k], 6)} for k, v in counts.items()}
+
+
+def division(db, now, cfg=None) -> dict:
+    """The division in force now (see above): {"rule", "held": places refreshing may not take, ...why}. "race":
+    {"rule": "race", "held": 0}, with nothing read."""
+    cfg = cfg or state.get_config(db)
+    rule = cfg.allowance_division
+    if rule not in DIVISIONS or rule == "race":
+        return {"rule": "race", "held": 0}
+    share, inputs = (float(cfg.reach_share), None) if rule == "reserve" else _yield_share(db, now)
+    cap = int(cfg.daily_autonomous.get("tasks", 0))
+    reserve = int(math.floor(cap * share + 0.5))
+    reached = _reach_tasks(db, now)
+    open_ = reserve > reached and _reach_open(db, now)
+    out = {"rule": rule, "share": round(share, 6), "reserve": reserve, "reached": reached, "reach_open": open_,
+           "held": max(0, reserve - reached) if open_ else 0}
+    return out | ({"yield": inputs} if inputs is not None else {})
+
+
 # ---- the idle investigator -----------------------------------------------------------------------------------------
 
 MAX_IDLE_WORKERS = 32
@@ -885,7 +967,31 @@ def idle(db, now, *, worker=None) -> dict:
         return {"action": "refused", "reason": reason}
     if full(db, now):
         return {"action": "busy", "running": running(db, now)}
-    ranked = admission(db, now, path="idle", limit=5)
+    cfg = state.get_config(db)
+    split = None
+    if cfg.allowance_division in DIVISIONS and cfg.allowance_division != "race":
+        try:        # ADR-064; a division that cannot be read holds nothing (the decision as before), logged
+            split = division(db, now, cfg)
+            if not isinstance(split, dict) or not isinstance(split.get("held"), int) or split["held"] < 0:
+                raise TypeError(f"the division returned {type(split).__name__} without a count of held places")
+        except Exception as exc:          # noqa: BLE001 - logged with its type only, never silent
+            log.warning("the allowance division could not be read (%s); the idle investigation decides as before",
+                        type(exc).__name__)
+            split = None
+    ranked = admission(db, now, path="idle", limit=5 if split is None else MAX_CANDIDATES)
+    if split is not None:     # ADR-064: refreshing may not take the places held for reaching
+        from . import scheduler
+        room = int(cfg.daily_autonomous.get("tasks", 0)) - scheduler.autonomous_usage(db, now)["tasks"]
+        split["refresh_room"] = max(0, room - split["held"])
+        if split["refresh_room"] <= 0:
+            kept = [c for c in ranked["chosen"] if reaching(c)]
+            if ranked["chosen"] and not kept:
+                _decide(db, now, {"autonomy": "nothing worth researching", "reason": "the rest of the day's tasks is "
+                                  + HELD_FOR_REACHING + " and no reaching candidate was admitted",
+                                  "division": split}, worker=worker)
+                return {"action": "nothing", "reason": HELD_FOR_REACHING, "division": split}
+            ranked = ranked | {"chosen": kept}
+        ranked["chosen"] = ranked["chosen"][:5]
     if not ranked["chosen"]:
         best = ranked["refused"][0] if ranked["refused"] else None
         why = best["reason"] if best else "no candidate in the records"
@@ -907,6 +1013,8 @@ def idle(db, now, *, worker=None) -> dict:
                 return {"action": "refused", "reason": str(exc)}
             continue
         inputs = decision_inputs(pick, ranked)
+        if split is not None:       # ADR-064: which path this place went to, and the division it was decided under
+            inputs["division"] = split | {"path": "reach" if reaching(pick) else "refresh"}
         _decide(db, now, {"autonomy": inputs | {"weights": dict(WEIGHTS), "min_gain": ranked["min_gain"]}},
                 task_id=task["id"], worker=worker)
         return {"action": "queued", "task_id": task["id"], "candidate": inputs}

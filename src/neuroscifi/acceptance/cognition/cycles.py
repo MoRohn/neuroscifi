@@ -206,6 +206,40 @@ WAVE4_S_DERIVATION = "+wave4-s-derivation"
 ON[WAVE4_S_DERIVATION] = {"source_derivation": True}
 EXTRA["wave4-s:derivation"] = frozenset({SHIPPED, WAVE4_S_DERIVATION})
 READ_BACK = READ_BACK + ("source_derivation",)
+# Wave 4 lane A (ADR-064): the division of the day's allowance between refreshing and reaching (WebConfig
+# allowance_division, reach_share), each on top of `shipped+idle` (the product as shipped with autonomy on: the
+# timer's pass, then the worker's idle investigation, one allowance), which is every division's reference. Candidates
+# assessed on development: a fixed reserve at three shares (0.5 is the fair interleave: equal halves of the day, each
+# path's half released to the other when it has nothing admitted), and the adaptive share from each path's observed
+# yield. Ablations: NO_RELEASE keeps the reserve held when nothing reaching is admitted (a harness patch of
+# autonomy._reach_open, not a setting); "/idle-first" runs the idle investigation before the pass (the order the
+# division should make irrelevant). References beside them: the timer's pass alone (`shipped`), and the idle
+# investigation taking the allowance first (`shipped+idle-first`).
+DIVISION_RULES = {"reserve-0.25": {"allowance_division": "reserve", "reach_share": 0.25},
+                  "reserve-0.5": {"allowance_division": "reserve", "reach_share": 0.5},
+                  "reserve-0.75": {"allowance_division": "reserve", "reach_share": 0.75},
+                  "yield": {"allowance_division": "yield"}}
+for _rule, _values in DIVISION_RULES.items():
+    ON[f"division:{_rule}"] = _values
+NO_RELEASE = "+no-release"
+WORKER = WORKER | {NO_RELEASE}
+DIVISION_REFERENCE = "shipped+idle"
+READ_BACK = READ_BACK + ("allowance_division", "reach_share")
+
+
+def division_configurations() -> dict:
+    """{name: mechanisms}: the references and every division candidate (see DIVISION_RULES)."""
+    out = {"reference:no-loop": frozenset({NO_LOOP}), "baseline": frozenset(), "shipped": frozenset({SHIPPED}),
+           "shipped+idle": frozenset({SHIPPED, IDLE}), "shipped+idle-first": frozenset({SHIPPED, IDLE_FIRST})}
+    for rule in DIVISION_RULES:
+        out[f"division:{rule}"] = frozenset({SHIPPED, IDLE, f"division:{rule}"})
+    out["division:reserve-0.5/no-release"] = frozenset({SHIPPED, IDLE, "division:reserve-0.5", NO_RELEASE})
+    out["division:reserve-0.5/idle-first"] = frozenset({SHIPPED, IDLE_FIRST, "division:reserve-0.5"})
+    return out
+
+
+EXTRA |= {k: v for k, v in division_configurations().items() if k not in EXTRA and k not in ("reference:no-loop",
+                                                                                              "baseline")}
 
 
 def configurations() -> dict:
@@ -341,6 +375,7 @@ class Run:
         self.admitted = {"rows": 0, "wrong": 0, "own_only": 0, "wire_only": 0}
         self.replaced = {"true": 0, "false": 0, "other": 0, "by_rule_true": 0, "by_rule_false": 0, "by_rule_other": 0}
         self.false_replaced = []
+        self.divisions = []               # Wave 4 lane A: the division the timer's pass ran under, per cycle (or None)
 
     # ---- the world ----------------------------------------------------------------------------------------------
     def subject_in(self, text):
@@ -514,6 +549,57 @@ class Run:
                 "idle_covered_true": sum(1 for lk in idle if lk["before"] is None and lk["after"] == lk["truth"]),
                 "idle_stopped_by_allowance": self.idle.get("stopped_by_allowance", 0)}
 
+    def _division_activity(self) -> dict:
+        """Wave 4 lane A: what the allowance division did: timer passes that held places for reaching and how many,
+        its mean share, and the idle investigations it recorded as reaching or refreshing (their decision events)."""
+        held = [d for d in self.divisions if d]
+        paths = dict(self.db.execute("SELECT json_extract(detail,'$.autonomy.division.path'), count(*) FROM web_events "
+                                     "WHERE kind='decision' AND json_extract(detail,'$.autonomy.division.path') IS NOT "
+                                     "NULL GROUP BY 1").fetchall())
+        return {"division_held_cycles": sum(1 for d in held if d.get("held")),
+                "division_held_places": sum(d.get("held") or 0 for d in held),
+                "division_mean_share": (sum(d.get("share") or 0 for d in held) / len(held)) if held else None,
+                "division_reach_tasks": paths.get("reach", 0), "division_refresh_idle_tasks": paths.get("refresh", 0)}
+
+    def diagnosis(self) -> dict:
+        """Wave 4 lane A, step 2: per cycle, the looks the allowance bought for REFRESHING (a subject that held an
+        item) and for REACHING (a subject that held nothing), and what each bought, read against the world's truth:
+        made (the subject's newest held item became the true version), lost (it was true and is not), kept (true
+        before and after); `last`: what the last look of each path in the cycle bought (+1 made, -1 lost, 0 else; None
+        when the path had no look). A record of the looks made, not a counterfactual."""
+        per = []
+        for c in range(1, self.cycle + 1):
+            row = {"cycle": c, "allowance": self.allowance[c - 1] if c - 1 < len(self.allowance) else None,
+                   "timer": 0, "idle": 0}
+            for path in ("refresh", "reach"):
+                row |= {f"{path}_{k}": 0 for k in ("looks", "made", "lost", "kept")} | {f"{path}_last": None}
+            for lk in self.looks:
+                if lk["cycle"] != c:
+                    continue
+                row["idle" if lk["kind"] == "idle" else "timer"] += 1
+                path = "reach" if lk["before"] is None else "refresh"
+                made = lk["before"] != lk["truth"] and lk["after"] == lk["truth"]
+                lost = lk["before"] == lk["truth"] and lk["after"] != lk["truth"]
+                row[f"{path}_looks"] += 1
+                row[f"{path}_made"] += made
+                row[f"{path}_lost"] += lost
+                row[f"{path}_kept"] += lk["before"] == lk["truth"] == lk["after"]
+                row[f"{path}_last"] = 1 if made else -1 if lost else 0
+            per.append(row)
+        total = {}
+        for path in ("refresh", "reach"):
+            looks = sum(r[f"{path}_looks"] for r in per)
+            net = sum(r[f"{path}_made"] - r[f"{path}_lost"] for r in per)
+            last = [r[f"{path}_last"] for r in per if r[f"{path}_last"] is not None]
+            total[path] = {"looks": looks, "made": sum(r[f"{path}_made"] for r in per),
+                           "lost": sum(r[f"{path}_lost"] for r in per), "kept": sum(r[f"{path}_kept"] for r in per),
+                           "net_per_look": net / looks if looks else None,
+                           "last_unit_mean": sum(last) / len(last) if last else None}
+        spent = sum(1 for r in per if r["allowance"] is not None and r["timer"] + r["idle"] >= r["allowance"])
+        return {"per_cycle": per, "total": total, "cycles_allowance_spent": spent,
+                "timer_spent_allowance_cycles": sum(1 for r in per if r["allowance"] is not None
+                                                    and r["timer"] >= r["allowance"])}
+
     def _newest_version(self, name):
         """The newest held item's minor version (None: nothing held; -1: a version that is not 1.x), as score()."""
         top = self.newest(self.held().get(name) or [])
@@ -575,6 +661,7 @@ class Run:
         if IDLE_FIRST in self.mechanisms:
             self.idle_investigations()
         report = scheduler.tick(self.db, self.now, None, queue=True)
+        self.divisions.append(report.get("division"))
         self.run_queued()
         if IDLE in self.mechanisms:
             self.idle_investigations()
@@ -713,9 +800,12 @@ class Run:
                          # Wave 3 lane R: re-check picks made under another order, and why (their decision events)
                          **self._order_picks(),
                          # Wave 3 lane V: the idle investigation's decisions, tasks, and the subjects it reached
-                         **self._idle_activity()},
+                         **self._idle_activity(),
+                         # Wave 4 lane A: the allowance division's holds and the paths of the idle investigations
+                         **self._division_activity()},
             "launches": list(self.launches), "history": {n: list(h) for n, h in self.history.items()},
             "config": dict(self.config), "allowance": list(self.allowance), "looks": list(self.looks),
+            "diagnosis": self.diagnosis(),
         }
 
 
@@ -768,7 +858,10 @@ def run_world(spec, seed, mechanisms=frozenset(), *, cycles=None, generate=None)
         db = store.create(Path(directory) / "f.sqlite", T0 - 31 * DAY, note="lane F: learning cycles")
         with closing(db):
             ref = [None]
-            with _environment(ref):
+            with _environment(ref), ExitStack() as ablation:
+                if NO_RELEASE in mechanisms:     # Wave 4 lane A's ablation: the reserve held even with nothing to reach
+                    from ...webcortex import autonomy
+                    ablation.enter_context(mock.patch.object(autonomy, "_reach_open", lambda db, now: True))
                 run = Run(spec, seed, mechanisms, db, generate)
                 ref[0] = run
                 run.start()
@@ -800,7 +893,14 @@ SCALARS = ("mean.accuracy", "mean.coverage", "mean.correct", "final.correct", "c
            # Wave 3 fix lane (review3 Q7, S-5): admitted content without a version convention, and replacements
            "admitted.rows", "admitted.wrong", "admitted.own_only", "admitted.wire_only",
            "replacements.true", "replacements.false", "replacements.other", "replacements.by_rule_true",
-           "replacements.by_rule_false", "replacements.false_persistence_max", "replacements.false_censored")
+           "replacements.by_rule_false", "replacements.false_persistence_max", "replacements.false_censored",
+           # Wave 4 lane A (ADR-064): what the allowance division did, and what it changed against shipped+idle
+           "activity.division_held_cycles", "activity.division_held_places", "activity.division_mean_share",
+           "activity.division_reach_tasks", "activity.division_refresh_idle_tasks",
+           "division_changed_launch_cycles", "division_changed_held_cycles",
+           "diagnosis.total.refresh.looks", "diagnosis.total.refresh.made", "diagnosis.total.refresh.lost",
+           "diagnosis.total.reach.looks", "diagnosis.total.reach.made", "diagnosis.total.reach.lost",
+           "diagnosis.cycles_allowance_spent")
 
 
 def _get(d, dotted):
@@ -830,7 +930,26 @@ def _changed(row, base) -> tuple[int, int]:
 
 
 RATE = "rate:"            # Wave 3 lane R: "rate:development", "rate:held_out" are the splits of cycles_rate_splits.py
-SPLITS = ("development", "held_out", RATE + "development", RATE + "held_out")
+REACH = "reach:"          # Wave 4 lane A: "reach:development", "reach:held_out" are the splits of cycles_reach_splits.py
+SPLITS = ("development", "held_out", RATE + "development", RATE + "held_out", REACH + "development",
+          REACH + "held_out")
+
+
+def _mean_diagnosis(rows) -> dict:
+    """Run.diagnosis() of several seeds: the totals' mean, and per cycle the mean of each count (None-free means of
+    `last`, with the number of seeds in which the path had a look)."""
+    def mean(values):
+        xs = [v for v in values if v is not None]
+        return sum(xs) / len(xs) if xs else None
+    totals = {p: {k: mean([r["total"][p][k] for r in rows]) for k in rows[0]["total"][p]} for p in ("refresh", "reach")}
+    per = []
+    for i in range(len(rows[0]["per_cycle"])):
+        cells = [r["per_cycle"][i] for r in rows]
+        per.append({k: mean([c[k] for c in cells]) for k in cells[0]}
+                   | {f"{p}_last_n": sum(1 for c in cells if c[f"{p}_last"] is not None) for p in ("refresh", "reach")})
+    return {"total": totals, "per_cycle": per,
+            "cycles_allowance_spent": mean([r["cycles_allowance_spent"] for r in rows]),
+            "timer_spent_allowance_cycles": mean([r["timer_spent_allowance_cycles"] for r in rows])}
 
 
 def _public(split) -> tuple[dict, object]:
@@ -844,6 +963,9 @@ def _public(split) -> tuple[dict, object]:
     if split.startswith(RATE):
         from . import cycles_rate_splits
         return cycles_rate_splits.CYCLES[split[len(RATE):]], cycles_rate_splits.generate
+    if split.startswith(REACH):
+        from . import cycles_reach_splits
+        return cycles_reach_splits.CYCLES[split[len(REACH):]], cycles_reach_splits.generate
     return worlds.CYCLES[split], None
 
 
@@ -864,7 +986,11 @@ def _run_split(split, spec, generate, *, configs=None, cycles=None, seeds=None) 
         # Wave 3 lane R: what a re-check order changed against lane K's order at the same share
         lane_k = "recheck:staleness" + ("/all" if name.endswith("/all") else "")
         same_share = raw.get((lane_k, world)) if name.startswith("recheck:") and name != lane_k else None
+        # Wave 4 lane A: what a division changed against its reference (shipped+idle), same world and seed
+        divided = raw.get((DIVISION_REFERENCE, world)) if name.startswith("division:") else None
         for i, r in enumerate(rows):
+            r["division_changed_launch_cycles"], r["division_changed_held_cycles"] = \
+                _changed(r, divided[i]) if divided else (None, None)
             r["changed_launch_cycles"], r["changed_held_cycles"] = _changed(r, base[i]) if base else (None, None)
             r["order_changed_launch_cycles"], r["order_changed_held_cycles"] = \
                 _changed(r, same_share[i]) if same_share else (None, None)
@@ -891,6 +1017,9 @@ def _run_split(split, spec, generate, *, configs=None, cycles=None, seeds=None) 
                 "decomposition": _mean_decomposition([r["decomposition"] for r in rows]),
                 "decomposition_per_seed": [{ref: r["decomposition"][ref] for ref in ("round_robin", "oracle")}
                                            for r in rows]}
+            if split.startswith(REACH):      # Wave 4 lane A: the world's kind and the diagnosis (mean over seeds)
+                per_world[world["name"]] |= {"kind": specs[world["name"]].get("kind"),
+                                             "diagnosis": _mean_diagnosis([r["diagnosis"] for r in rows])}
         out[name] = {"mechanisms": sorted(mechanisms), "worlds": per_world}
     return {"split": split, "seeds": list(seeds), "configurations": out,
             "strategy_selection_note": "in force without passing the real gate (a 'retain' row written into each "
@@ -1405,3 +1534,156 @@ def idle_verdicts(result) -> dict:
                        "checks": {"a_beats_spread": a, "c_retention": retention, "d_safety": safety},
                        "per_world": per_world}
     return out
+
+
+# ---- Wave 4 lane A: the verdict on dividing the allowance, written before any held-out run (ADR-064) ------------------
+#
+# Each division configuration (division_configurations(), every name starting "division:") against DIVISION_REFERENCE
+# (`shipped+idle`, the product as shipped with autonomy on), paired by world and seed, on each world of a split of
+# cycles_reach_splits.py. PRIMARY as above; sd = the sample sd of the reference's PRIMARY over the seeds (the smallest
+# gain the rule can see); a world's `kind` is the one cycles_reach_splits.py states (written before any division ran):
+#   (a) gain:       the paired gain > sd in every world whose kind is not "covered" (where reaching can matter)
+#   (b) no harm:    the paired gain >= -sd in every world, "covered" ones included (a division that always favours
+#                   reaching must not cost refreshing more than the spread)
+#   (c) retention:  subjects lost plus regressed, summed over the seeds of a world, not above the reference's, in
+#                   every world
+#   (d) safety:     own-output versions admitted, wrong-story versions admitted, one-origin confidence rises and rows
+#                   admitted stating a version that was not true (admitted.wrong, no version convention), each summed
+#                   over the seeds of a world, not above the reference's, in every world (reaching more subjects meets
+#                   more sources: a gain with more wrongly admitted content is not a gain); the counts are reported
+#                   beside every gain
+# verdict: "unsafe" when (d) fails; else "harm" when (b) or (c) fails; else "gain" when (a) holds; else "revise" when
+# the gain is positive in every non-covered world with at least n-1 of n paired seeds better, or (a) holds in some
+# non-covered world; else "not exercised" when the division changed no launch against the reference in any run
+# (division_changed_launch_cycles all 0); else "no evidence".
+# Reported, not part of the rule: the paired sd (paired noise), coverage change, the reach / refresh looks and their
+# yield (diagnosis), the division's activity, the ablations (`/no-release` against `division:reserve-0.5`,
+# `/idle-first` against `division:reserve-0.5`), the gap to the blind round-robin.
+#
+# The choice, made on DEVELOPMENT only, before the held-out run (DIVISION_CANDIDATES): the candidate whose development
+# verdict is "gain", else "revise", with the highest mean paired gain over the non-covered worlds (ties: the name);
+# when none is "gain" or "revise", nothing is chosen: every candidate is still run and reported on held-out, the record
+# says "nothing chosen on development", and the withheld look names the candidate with the highest mean paired gain
+# over the non-covered development worlds among those not "unsafe" or "harm" (or none). Whatever any verdict says,
+# allowance_division ships "race" (off): turning it on is the owner's decision.
+DIVISION_CANDIDATES = tuple(f"division:{rule}" for rule in DIVISION_RULES)
+DIVISION_SAFETY = SAFETY + ("admitted.wrong",)
+# The development choice (docs/quality/evidence/genesis_wave4_a_dev.json, commit 39ba9af): every candidate "unsafe"
+# (more wrongly admitted content than shipped+idle in at least one world), so NOTHING is chosen and the rule names no
+# division configuration for the withheld look. The look below holds only the references, should the main session
+# want the existing split measured on unseen worlds; it cannot promote anything. Its pairs are this rule's (every
+# configuration against DIVISION_REFERENCE), not LOOK_PAIRS (Wave 3's look).
+LOOKS["wave4-a"] = ("reference:no-loop", "shipped", "shipped+idle", "shipped+idle-first")
+
+
+def division_verdicts(result) -> dict:
+    """{configuration: {"verdict", "against", "checks", "per_world"}} under the rule above (a run_split result over
+    division_configurations() on a split of cycles_reach_splits.py)."""
+    confs = result["configurations"]
+    ref = confs[DIVISION_REFERENCE]["worlds"]
+    out = {}
+    for config in confs:
+        if not config.startswith("division:"):
+            continue
+        per_world = {}
+        for w, mine in confs[config]["worlds"].items():
+            rows, base = mine["per_seed"], ref[w]["per_seed"]
+            diffs = [r[PRIMARY] - b[PRIMARY] for r, b in zip(rows, base)]
+            sd = ref[w]["spread"][PRIMARY]["sd"] or 0.0
+            gain = sum(diffs) / len(diffs)
+            per_world[w] = {
+                "kind": mine.get("kind"), "gain": gain, "against_sd": sd, "beats": gain > sd, "harm": gain < -sd,
+                "paired": diffs, "paired_sd": scoring.spread(diffs)["sd"],
+                "better_seeds": sum(1 for d in diffs if d > 1e-12), "worse_seeds": sum(1 for d in diffs if d < -1e-12),
+                "coverage_change": sum(r["mean.coverage"] - b["mean.coverage"] for r, b in zip(rows, base)) / len(rows),
+                "safety": {k: sum(r[k] or 0 for r in rows) for k in DIVISION_SAFETY},
+                "against_safety": {k: sum(b[k] or 0 for b in base) for k in DIVISION_SAFETY},
+                "retention_lost_or_regressed": sum(r[k] or 0 for r in rows for k in LOSSES),
+                "against_retention_lost_or_regressed": sum(b[k] or 0 for b in base for k in LOSSES),
+                "changed_launch_cycles": [r.get("division_changed_launch_cycles") for r in rows],
+                "reach_tasks": [r.get("activity.division_reach_tasks") for r in rows],
+                "held_places": [r.get("activity.division_held_places") for r in rows]}
+        open_worlds = [w for w, p in per_world.items() if p["kind"] != "covered"]
+        a = bool(open_worlds) and all(per_world[w]["beats"] for w in open_worlds)
+        b = not any(p["harm"] for p in per_world.values())
+        c = all(p["retention_lost_or_regressed"] <= p["against_retention_lost_or_regressed"]
+                for p in per_world.values())
+        d = all(p["safety"][k] <= p["against_safety"][k] for p in per_world.values() for k in DIVISION_SAFETY)
+        changed = [x for p in per_world.values() for x in p["changed_launch_cycles"] if x is not None]
+        if not d:
+            verdict = "unsafe"
+        elif not (b and c):
+            verdict = "harm"
+        elif a:
+            verdict = "gain"
+        elif (open_worlds and all(per_world[w]["gain"] > 0 and per_world[w]["better_seeds"] >=
+                                  max(1, len(per_world[w]["paired"]) - 1) for w in open_worlds)) or \
+                any(per_world[w]["beats"] for w in open_worlds):
+            verdict = "revise"
+        elif changed and not any(changed):
+            verdict = "not exercised"
+        else:
+            verdict = "no evidence"
+        out[config] = {"verdict": verdict, "against": DIVISION_REFERENCE,
+                       "mean_gain_open_worlds": (sum(per_world[w]["gain"] for w in open_worlds) / len(open_worlds)
+                                                 if open_worlds else None),
+                       "checks": {"a_gain_beyond_sd": a, "b_no_harm": b, "c_retention": c, "d_safety": d},
+                       "per_world": per_world}
+    return out
+
+
+DIVISION_FIELDS = ("mean.correct", "mean.coverage", "self_admitted", "wire_admitted", "one_origin_rises",
+                   "admitted.rows", "admitted.wrong", "admitted.own_only", "admitted.wire_only", "retention.lost",
+                   "retention.regressed", "pages", "wall_seconds", "activity.idle_tasks",
+                   "activity.division_held_cycles", "activity.division_held_places", "activity.division_mean_share",
+                   "activity.division_reach_tasks", "activity.division_refresh_idle_tasks",
+                   "division_changed_launch_cycles", "division_changed_held_cycles",
+                   "diagnosis.total.refresh.looks", "diagnosis.total.refresh.made", "diagnosis.total.refresh.lost",
+                   "diagnosis.total.reach.looks", "diagnosis.total.reach.made", "diagnosis.total.reach.lost",
+                   "diagnosis.cycles_allowance_spent")
+DIAGNOSED = ("shipped", DIVISION_REFERENCE, "shipped+idle-first")   # their per-cycle diagnosis is kept in the summary
+
+
+def division_summary(result) -> dict:
+    """A summary of a run_split result over division_configurations() (evidence files hold summaries, Wave 4): per
+    configuration and world the DIVISION_FIELDS per seed and their spread, the read-back, the diagnosis totals (and
+    per cycle for DIAGNOSED), the gap to the references; then the verdicts and the development choice."""
+    refs = (result.get("references") or {}).get("worlds") or {}
+    out = {}
+    for name, conf in result["configurations"].items():
+        worlds = {}
+        for w, e in conf["worlds"].items():
+            diag = dict(e.get("diagnosis") or {})
+            if name not in DIAGNOSED:
+                diag.pop("per_cycle", None)
+            gaps = {k: refs[w][k]["mean_correct"]["mean"] - e["spread"][PRIMARY]["mean"]
+                    for k in ("round_robin", "oracle")} if w in refs else None
+            worlds[w] = {"kind": e.get("kind"), "seeds": e["seeds"],
+                         "per_seed": [{k: r.get(k) for k in DIVISION_FIELDS} for r in e["per_seed"]],
+                         "spread": {k: {s: e["spread"][k][s] for s in ("mean", "sd")} for k in DIVISION_FIELDS
+                                    if k in e["spread"]},
+                         "config_same_every_seed": e["config_same_every_seed"], "diagnosis": diag,
+                         "gap_to": gaps}
+        backs = [e["config_read_back"] for e in conf["worlds"].values()]
+        out[name] = {"mechanisms": conf["mechanisms"], "config_read_back": backs[0],
+                     "config_same_every_world": all(b == backs[0] for b in backs), "worlds": worlds}
+    verdicts = division_verdicts(result)
+    return {"split": result["split"], "seeds": result["seeds"], "configurations": out,
+            "references": {w: {k: v[k]["mean_correct"] for k in REFERENCES} | {"budget": v["budget"]}
+                           for w, v in refs.items()},
+            "verdicts": verdicts, "choice": division_choice(verdicts)}
+
+
+def division_choice(verdicts) -> dict:
+    """The development choice under the rule above: {"chosen": name or None, "for_the_look": name or None, "why"}."""
+    ranked = sorted(((v["mean_gain_open_worlds"] if v["mean_gain_open_worlds"] is not None else float("-inf"), name)
+                     for name, v in verdicts.items() if name in DIVISION_CANDIDATES), key=lambda t: (-t[0], t[1]))
+    for wanted in ("gain", "revise"):
+        hits = [name for _, name in ranked if verdicts[name]["verdict"] == wanted]
+        if hits:
+            return {"chosen": hits[0], "for_the_look": hits[0],
+                    "why": f"the {wanted!r} candidate with the highest mean paired gain over the non-covered worlds"}
+    fallback = [name for _, name in ranked if verdicts[name]["verdict"] not in ("unsafe", "harm")]
+    return {"chosen": None, "for_the_look": fallback[0] if fallback else None,
+            "why": "nothing chosen on development (no candidate is 'gain' or 'revise'); the look names the candidate "
+                   "with the highest mean paired gain over the non-covered worlds that is not 'unsafe' or 'harm'"}

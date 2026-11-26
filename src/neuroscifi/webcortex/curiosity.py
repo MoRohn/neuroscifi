@@ -213,7 +213,9 @@ def search_terms(statement=None, key=None, db=None) -> str:
     query_text = getattr(intent, "query_text", None)
     if query_text is not None:
         if not statement and key and db is not None:
-            found = db.execute("SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC LIMIT 1",
+            # among claims stored at the same instant, the one stored last (rowid): the index on (key, task_id)
+            # would otherwise order them by task id, which is random (Wave 4 lane A)
+            found = db.execute("SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
                                (key,)).fetchone()
             statement = found[0] if found else None
         if statement:
@@ -345,7 +347,8 @@ def rank(db, now, *, limit=10) -> list[dict]:
         gain = categorical_gain([0.35, 0.35, 0.15, 0.15])
         factor, futile, lp = damp(key, gain, factor, futile)
         terms = search_terms(None, key, db)
-        said = db.execute("SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC LIMIT 1", (key,)).fetchone()
+        said = db.execute("SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                          (key,)).fetchone()          # ties: the claim stored last, not the random task id's order
         target = {"key": key} | ({"statement": knowledge.quote(said[0])} if said else {})   # shown, never the key
         entry = _entry("hypothesis", target, gain, "gap_resolution", IMPORTANCE["held"],
                        f"sources disagree and nothing is known yet; distinguishing hypotheses gains {gain:.3f} bits"

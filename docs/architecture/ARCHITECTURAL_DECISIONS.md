@@ -4082,6 +4082,210 @@ counted as a pass: the family scores every staged case as a pass or failure of a
   cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
   it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).
 
+# ADR-064 Dividing the day's autonomous allowance between refreshing and reaching: built, measured, OFF
+
+Status: Wave 4 lane A (branch `gen4-a` from `8f68beb`). Built and **OFF** (`allowance_division`, default `"race"`).
+No schema change, no new background activity, no dependency. Evidence: `docs/quality/evidence/genesis_wave4_a_dev.json`
+(development, `39ba9af`, 384 kB), `genesis_wave4_a_held_out.json` (held-out, `78540a0`, 437 kB),
+`genesis_wave4_a_default_identity.json` (the default path against the tree before it, 6 kB),
+`genesis_wave4_a_cost.json` (a large individual, 3 kB). Simulated worlds through the real modules, offline, no model.
+
+**Result in one line: no division of the allowance earns a gain.** On held-out every candidate's paired gain against
+the product as shipped with autonomy on is below the spread in every world (−0.024 to +0.026 against sds of
+0.034–0.054), it costs refreshing in the world where everything is covered (−0.016 to −0.024), and every candidate
+is "unsafe" or "harm" under the rule written before the run. The division stays off; the gap to a blind round-robin
+of the same allowance (0.09–0.26) is not closed by any split.
+
+## Context
+
+Wave 3 (ADR-062, WAVE3.md "The withheld looks"): the timer's pass spends most of the daily task count on refreshing
+knowledge items, so the worker's idle investigation, which can reach subjects that hold nothing, gets little. Run
+before the pass (`idle-first`) it helped on the withheld worlds (+0.013 / +0.042 / +0.052) but was "revise" on
+held-out, and it displaces due refreshes. Nothing between the two extremes was measured (review R/V MEDIUM 2).
+
+## Worlds (committed alone first, `f802ba4`)
+
+`cycles_reach_splits.py`: lane S's worlds (every Wave 3 failure shape: plausible and implausible wrong stories in
+nine syndication shapes, echoes of the individual's own outputs in five shapes, rumours, retractions, one-origin
+looks) plus **thin births**: a share of subjects whose owner research finds one origin only, so they hold nothing.
+Each world states its kind before any rule ran: `reach` (many thin births), `covered` (none; frequent changes and a
+small allowance: a split that always favours reaching should lose here), `mixed` (heavier wrong stories and
+echoes), `shift` (thin births only in the first half). Development seeds 6401–6403, held-out 6501–6504, disjoint from
+every other split (test). These worlds DO reproduce the withheld holes: as shipped with autonomy on, held-out admits
+46 rows stating a version that was not true (6 own-output, 19 wrong-story), so the safety counts here are exercised.
+
+## Diagnosis (development, `shipped+idle`, mean of 3 seeds; `diagnosis` in the evidence)
+
+Per cycle, each autonomous look is classed by what the subject held when it was looked at: REFRESHING (it held an
+item) or REACHING (it held nothing), and scored against the world's truth (made correct, lost, kept; the last look
+of each path in the cycle as "what the last unit bought"; a record of the looks made, not a counterfactual).
+- The timer's pass alone used the whole allowance in 8.0–9.7 of 12 cycles; reaching got looks only in the first
+  cycles (5.0 / 3.0 / 3.0 / 5.3 reach looks per run against 19–32 refreshing looks).
+- Per look, reaching made more subjects correct than refreshing (net per look 0.60 / 0.23 / 0.67 / 0.27 against
+  0.19 / 0.21 / 0.18 / 0.15; held-out 0.25 / 1.00 / 0.43 / 0.28 against 0.16 / 0.27 / 0.12 / 0.12), and the last unit
+  of each path bought about what its average did.
+- But reaching runs out: what it can reach is the admission rule's candidates for subjects that hold nothing (gaps
+  inside their 7-day window, open hypotheses with a prediction), and they are few after the first cycles. Shares
+  0.5 and 0.75 behave identically in three of four worlds (the release decides, not the share).
+
+## Decision
+
+- `WebConfig.allowance_division`: `"race"` (default; before ADR-064, reads nothing), `"reserve"`, `"yield"`;
+  `reach_share` (0 < x < 1, default 0.25). Both validated and checked when read (`CHECKED_ON_LOAD`: a damaged value
+  reads as the default and is listed by `setting_problems`).
+- REACHING = an idle investigation of an admitted candidate that is no knowledge item (`autonomy.reaching`);
+  REFRESHING = every other autonomous task. With a division on, `reserve = round(tasks × share)` places are HELD for
+  reaching minus the reaching tasks of the window, while the one admission rule admits a reaching candidate now and
+  autonomy is enabled (released at once otherwise). The timer's pass (re-check, due refreshes, curiosity) may not take
+  held places (`scheduler._over_cap(..., held=)`); the idle investigator takes reaching candidates into any room and
+  refreshing ones only outside the held places, and records the path and the division in its decision event
+  (`autonomy.division`). `"yield"`: share = y_reach / (y_reach + y_refresh) bounded to 0.1–0.9, y = (tasks that wrote
+  a new or replacing knowledge item + 1) / (finished + 2) per path over 7 days; the product cannot see the truth, so a
+  wrongly admitted version counts as a yield too.
+- Never more tasks: the cap is checked as before inside submit's transaction; no new activity, no new budget; the
+  owner's quiet, enable and own work are untouched (the owner's tasks are not autonomous). A division that cannot be
+  read holds nothing (the timer's pass: a report line and a WARNING with the error's type; the idle decision: a
+  WARNING, decided as with `"race"`).
+- **Default `"race"`**: the pre-registered rule returned no gain for any candidate.
+
+## The rule, written before held-out (`cycles.division_verdicts`, `division_choice`, committed in `ea83927`)
+
+Each candidate against `shipped+idle`, paired by world and seed; sd = the reference's sample sd over seeds (the
+smallest visible gain). (a) gain > sd in every non-covered world; (b) gain ≥ −sd in every world; (c) lost +
+regressed, summed per world, not above the reference's; (d) own-output, wrong-story, one-origin rises and
+`admitted.wrong`, each summed per world, not above the reference's. "unsafe" if (d) fails, else "harm" if (b) or
+(c) fails, else "gain" if (a), else "revise" (positive in every non-covered world with n−1 of n seeds better, or (a)
+somewhere), else "not exercised" / "no evidence". Choice on development only: the best "gain", else "revise",
+candidate; none → nothing chosen, and the withheld look names no candidate.
+
+## Measured
+
+Development (3 seeds; `39ba9af`): every candidate **"unsafe"** — each admitted more wrong content than the reference
+in at least one world (e.g. `reserve-0.25` in rd-covered: `admitted.wrong` 7 against 4, wrong-story 3 against 2);
+mean paired gain over the non-covered worlds +0.024 (`reserve-0.25`), +0.001 (`0.5`, `0.75`), +0.010 (`yield`),
+none beyond the spread in any world. **Nothing chosen** (`39ba9af`, committed with the evidence in `78540a0` before
+the held-out run).
+
+Held-out (4 seeds, run once on `78540a0`; the held-out file's `choice` field is the same function applied to held-out
+verdicts and decides nothing), `mean.correct` mean (sd); the paired gain against `shipped+idle` (seeds
+better of 4):
+
+| | rh-reach (reach) | rh-covered (covered) | rh-mixed (mixed) | rh-shift (shift) |
+|---|---|---|---|---|
+| reference: never refreshed / blind round-robin / oracle | 0.671 / 0.776 / 0.980 | 0.430 / 0.555 / 0.729 | 0.586 / 0.757 / 0.971 | 0.628 / 0.763 / 0.972 |
+| no loop / timer only (`shipped`) | 0.544 / 0.592 | 0.364 / 0.429 | 0.375 / 0.438 | 0.477 / 0.516 |
+| `shipped+idle` (reference; sd = smallest visible gain) | 0.612 (0.054) | 0.461 (0.051) | 0.497 (0.037) | 0.560 (0.034) |
+| `shipped+idle-first` (the other extreme) | +0.006 (2) | −0.022 (1) | −0.023 (1) | +0.044 (4) |
+| `division:reserve-0.25` | +0.003 (2) | −0.019 (1) | +0.010 (2) | +0.004 (2) |
+| `division:reserve-0.5` (equal halves) | −0.001 (3) | −0.019 (1) | +0.005 (2) | +0.026 (4) |
+| `division:reserve-0.75` | −0.001 (3) | −0.024 (1) | +0.005 (2) | +0.026 (4) |
+| `division:yield` | −0.011 (1) | −0.016 (1) | +0.023 (3) | +0.024 (4) |
+| ablation `reserve-0.5/no-release` | −0.003 (3) | −0.037 (0) | +0.011 (2) | +0.023 (3) |
+| ablation `reserve-0.5/idle-first` | +0.006 (2) | −0.022 (1) | −0.009 (2) | +0.044 (4) |
+| coverage: reference / `reserve-0.5` | 0.871 / 0.916 | 0.948 / 0.966 | 0.838 / 0.898 | 0.829 / 0.885 |
+
+Verdicts: `reserve-0.25` **harm** (retention: rh-shift lost or regressed 1 against 0); `reserve-0.5`, `reserve-0.75`,
+`yield` **unsafe** (rh-mixed: `admitted.wrong` 14 / 14 / 15 against 12) — and each of them also fails (c) in some
+world. No candidate's gain is beyond the spread in any
+world.
+
+**Safety beside every gain** (held-out, summed over 4 worlds × 4 seeds; own-output / wrong-story / one-origin rises /
+all wrong rows / rows): `shipped+idle` 6 / 19 / 0 / 46 / 628; `reserve-0.25` 3 / 11 / 0 / 38 / 602; `reserve-0.5`
+6 / 9 / 0 / 35 / 601; `reserve-0.75` 6 / 7 / 0 / 32 / 601; `yield` 6 / 14 / 0 / 41 / 603; `shipped+idle-first`
+5 / 8 / 0 / 31 / 589. Pooled (not a claim) the divisions admit fewer wrong rows than the reference; per world they
+admit more in rh-mixed, which is what the rule reads. Retention (lost + regressed, pooled): 3–5 against 5.
+
+**What the division DID** (held-out, per run): 6–28 places held for reaching, 6–29 reaching tasks; it changed the
+launch in 8–14 of 14 cycles of every run against the reference. **The release matters only where everything is
+covered**: without it (`no-release`) rh-covered loses −0.037 (0 of 4 seeds better). **The order matters little
+with a division**: `reserve-0.5` run before the pass equals `shipped+idle-first` within 0.014.
+
+**Cost.** Harness wall time +25 to +57 % per run (reach looks are executed; 0.48–0.76 s → 0.60–1.19 s). On a large
+individual (10,000 tasks, 500,000 events, 10,000 knowledge items, 3,000 open hypotheses; `division-cost`): `"race"`
+reads nothing (0.04 ms); `"reserve"` 0.40 s per call (0.29 s of it the admission rule's candidate list, as the idle
+path's own ranking costs 0.29 s; the window count 0.13 s); `"yield"` 1.5 s per call (its 7-day read crosses the
+tasks' large `result` column, 1.1 s); an idle decision 0.45 s → 0.83 s. Every read is outside a write transaction
+(asserted); one call per timer pass and per idle decision.
+
+**The default path is today's.** The tree before the mechanism (`f802ba4`) against `ea83927` at the shipped default,
+every public learning-cycles corpus (lanes F, R, S, S-variant, A), development and held-out, five configurations:
+495 runs, 55,584 leaves compared, 671 differ: 436 are database file sizes, and the other 235 are in 8 `idle-first`
+runs, which are **not repeatable on the unchanged tree** (six repeats of each on each tree: every outcome the new tree
+gave the old tree also gave; e.g. lane S variant sv-echo seed 4501: `mean.correct` 0.613 / 0.632 / 0.644 on repeats
+of the same code). The unrepeatable runs come from two product choices older than this ADR that followed the random task
+ids; traced and fixed in the follow-up below. (They do not explain WAVE3.md's seed 2704 move: that run did not vary
+in 10 repeats of Wave 3's final code; the move was measured with echo recognition on; still untraced.) Some division runs vary between repeats too (two development runs of the same code: 12 of
+660 compared values differ, all in rd-covered). A second held-out run of the same code, made only as a repeatability
+check after the first was recorded (not committed; disclosed): 7 of 1,232 compared values differ, every verdict is
+the same, and the mean gains over the non-covered worlds are equal to 4 decimals except `reserve-0.5/idle-first`
+(+0.0137 / +0.0139). The offline research digest at the shipped defaults and with every
+setting off is checked by `tests/uat/test_uat_wave0_equivalence.py` (passes; `68731d72…`).
+
+## Alternatives rejected
+
+- Shipping any candidate on: none passed its own rule; turning one on is the owner's decision regardless.
+- A reserve without release: loses in the covered world (above).
+- Counting reaching by the world's truth: the product cannot see it; reaching is defined by the admission rule's own
+  candidate (no knowledge item).
+- More candidates for uncovered subjects (ADR-062's rejected step 2): not this lane's question; the diagnosis shows
+  reaching runs out of admitted candidates, which a share cannot change.
+
+## Consequences
+
+- Changed: `webcortex/config.py` (two fields, `CHECKED_ON_LOAD`), `webcortex/state.py` (validation),
+  `webcortex/autonomy.py` (the division section; `idle` filters by it when on), `webcortex/scheduler.py`
+  (`_over_cap(held=)`, `_division`, the pass's three cap reads), `acceptance/cognition/cycles.py` (division
+  configurations, `Run.diagnosis`, `division_verdicts`, `division_choice`, `division_summary`, `LOOKS["wave4-a"]`),
+  `scripts/bench_learning_cycles.py` (`run --division`, `verdict --division`, `division`, `division-cost`), the new
+  worlds file.
+- Tests: `tests/webcortex/test_allowance_division.py` (13), `tests/acceptance/test_learning_cycles_division.py` (7),
+  `tests/uat` (rollback `test_allowance_division`, setting lists, fault injection: 4 cases).
+- Backing out: `nsf web config --db DB --set 'allowance_division="race"'` (nothing stored but the decision events'
+  `division` field, which goes with its task); revert the branch.
+- The withheld look: the rule names **no** division configuration. `LOOKS["wave4-a"]` holds the references only
+  (`reference:no-loop`, `shipped`, `shipped+idle`, `shipped+idle-first`); it cannot promote anything.
+- Not verified: the open web, real change rates, a live model, the real interleaving of the timer and the worker
+  across a day (the harness compresses a day to one instant), the D4 budgets, the withheld worlds, an owner who
+  answers.
+
+## Follow-up: repeatability (the idle investigation's runs were not repeatable; traced and fixed)
+
+Evidence: `docs/quality/evidence/genesis_wave4_a_repeatability.json` (49 kB).
+
+**Cause, in the product** (an arbitrary pick among equal records that followed the task ids, which are uuid4):
+1. `webcortex/autonomy.py` `_lineage`, `depth()` (line 497 at `8f68beb`: `found = [task_depth(t) for t in
+   sources[key]]`): a depth-first walk that marks a subject in progress iterated a SET of task ids, so a lineage
+   computed while another subject was in progress (depth, originating owner subjects, hence relevance and refusal)
+   depended on the ids' order. Fix: the owner's records first, then tasks in creation order (rowid).
+2. `webcortex/curiosity.py` lines 216 (`search_terms`) and 348 (`rank`, contested subjects that are no knowledge):
+   `SELECT text FROM web_claims WHERE key=? ORDER BY created_at DESC LIMIT 1`. Claims stored at the same instant tie
+   on `created_at`, and the scan follows the index `web_claims_key(key, task_id)`, i.e. the random ids, so another
+   sentence became the candidate's statement, hence its objective. Fix: `ORDER BY created_at DESC, rowid DESC` (the
+   claim stored last).
+Found by running one varying run with deterministic ids (identical), then two id schemes and diffing every table
+after every task. Only runs with the idle investigation were affected (it admits derived subjects and contested
+subjects without knowledge).
+
+**At the shipped defaults** nothing measured moved: the offline research digest `68731d72…` / portable `d87dbb4f…`
+in both regimes (defaults, every setting off); `nsf acceptance --all` 7 of 7; the timer-only configurations
+(`reference:no-loop`, `baseline`, `shipped`, `lane-s:fixes-off`, `lane-s:supersede-K2`,
+`recheck:rate+seen+rotation/all`) on every public cycles corpus, old against fixed: 594 runs, 66,912 leaves, only
+database file sizes differ. Test: `tests/acceptance/test_learning_cycles_division.py::
+test_the_same_history_gives_the_same_run_whatever_the_task_ids` (rd-covered seeds 6402, 6403; eight id sets gave
+2 outcomes each on the old code, 1 after).
+
+**How large the variation was** (10 repeats of `baseline`, `shipped+idle`, `idle-first` per world and seed, Wave 3's
+final product code; 18 public worlds: lanes A, F, R, development and held-out): `baseline` and `shipped+idle` never
+varied. `idle-first` varied in 4 of 18 worlds (6 of 63 world-seeds): largest repeat sd of one seed 0.029 (range
+0.056, rh-mixed); largest range of a world's mean paired difference idle-first − baseline 0.015 (rh-mixed, +0.037 to
++0.051); 0.007 in rd-covered; under 0.001 elsewhere. Lane V's five held-out worlds did not vary at all: ADR-062's
+held-out `idle-first` gains (+0.057 / +0.012 / +0.086 / +0.035 / +0.018) are reproduced exactly, before and after the
+fix. After the fix: 0 variation in every world, seed and configuration.
+
+**This ADR's figures after the fix** (re-run once more, disclosed; not replacing the record above): development still
+"nothing chosen" (every candidate "unsafe"); held-out every candidate "unsafe" (`reserve-0.25` was "harm", now also
+fails safety), mean gains over the non-covered worlds +0.008 / +0.014 / +0.014 / +0.010, none beyond the spread.
+
 # ADR-065 Uncertainty shown to the owner: a caution where an answer rests on sources that cannot be shown independent
 
 Status: built, **display only** (no setting: it changes nothing but what the owner reads). Wave 4 lane D (`gen4-d`).

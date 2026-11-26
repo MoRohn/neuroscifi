@@ -77,6 +77,8 @@ def main(argv=None) -> int:
                    help="lane R's configurations (cycles.order_configurations) instead of lane K's")
     r.add_argument("--idle", action="store_true",
                    help="lane V's configurations (cycles.idle_configurations): the worker's idle investigation")
+    r.add_argument("--division", action="store_true",
+                   help="Wave 4 lane A's configurations (cycles.division_configurations): the allowance division")
     r.add_argument("--config", action="append", help="repeatable; default every configuration")
     r.add_argument("--look", choices=sorted(cycles.LOOKS),
                    help="the configurations of a withheld look (cycles.LOOKS), on a public split: a dry run of it")
@@ -88,6 +90,8 @@ def main(argv=None) -> int:
     v.add_argument("--out")
     v.add_argument("--orders", action="store_true", help="lane R's rule (cycles.order_verdicts)")
     v.add_argument("--idle", action="store_true", help="lane V's rule (cycles.idle_verdicts)")
+    v.add_argument("--division", action="store_true",
+                   help="Wave 4 lane A's rule (cycles.division_verdicts) and the development choice")
     f = sub.add_parser("final")
     f.add_argument("--note", required=True)
     f.add_argument("--out", required=True, help="a path OUTSIDE this checkout; copy it in afterwards")
@@ -100,16 +104,47 @@ def main(argv=None) -> int:
     i.add_argument("--out", required=True)
     i.add_argument("--split", action="append", choices=cycles.SPLITS, help="repeatable; default every public split")
     i.add_argument("--full-history", action="store_true", help="also write the per-cycle means (scoring.HISTORY_KEYS)")
+    d = sub.add_parser("division", help="Wave 4 lane A's measurement in one command: a split of "
+                                        "cycles_reach_splits.py with cycles.division_configurations(), its references, "
+                                        "the verdicts and the development choice, written as a summary")
+    d.add_argument("--split", required=True, choices=[s for s in cycles.SPLITS if s.startswith(cycles.REACH)])
+    d.add_argument("--out", required=True)
+    d.add_argument("--full", help="also write the whole run_split result here (not evidence: per-cycle histories)")
+    c = sub.add_parser("division-cost", help="Wave 4 lane A: the allowance division's cost on a large individual")
+    c.add_argument("--out")
+    c.add_argument("--tasks", type=int, default=10_000)
+    c.add_argument("--events", type=int, default=500_000)
     a = ap.parse_args(argv)
+    if a.command == "division-cost":
+        return division_cost(a)
+    if a.command == "division":
+        started = time.perf_counter()
+        run = cycles.run_split(a.split, configs=cycles.division_configurations())
+        run["references"] = cycles.run_references(a.split)
+        if a.full:
+            _write(run, a.full)
+        out = {"label": "Wave 4 lane A: the division of the day's allowance between refreshing and reaching; simulated "
+                        "worlds (cycles_reach_splits.py) through the real modules; offline; no model",
+               "commit": _commit(), "environment": {"python": platform.python_version(),
+                                                    "machine": platform.machine()}}
+        out |= cycles.division_summary(run)
+        out["wall_seconds"] = time.perf_counter() - started
+        _write(out, a.out)
+        return 0
     if a.command == "idle":
         return idle(a)
     if a.command == "verdict":
+        if a.division:
+            verdicts = cycles.division_verdicts(json.loads(Path(a.result).read_text(encoding="utf-8")))
+            _write({"verdicts": verdicts, "choice": cycles.division_choice(verdicts)}, a.out)
+            return 0
         rule = cycles.order_verdicts if a.orders else cycles.idle_verdicts if a.idle else cycles.verdicts
         _write(rule(json.loads(Path(a.result).read_text(encoding="utf-8"))), a.out)
         return 0
     known = cycles.configurations() | cycles.EXTRA
     configs = ((cycles.order_configurations() if a.orders else cycles.idle_configurations() if a.idle else
-                cycles.configurations()) if a.command == "run" else {k: known[k] for k in cycles.FINAL_CONFIGS})
+                cycles.division_configurations() if a.division else cycles.configurations())
+               if a.command == "run" else {k: known[k] for k in cycles.FINAL_CONFIGS})
     if a.config and getattr(a, "look", None):
         ap.error("--look names the configurations itself; give it without --config")
     if a.config:
@@ -155,6 +190,104 @@ def idle(a) -> int:
                                                                for k in cycles.SAFETY + cycles.LOSSES}
     out["wall_seconds"] = time.perf_counter() - started
     _write(out, a.out, full=a.full_history)
+    return 0
+
+
+def division_cost(a) -> int:
+    """Wave 4 lane A (ADR-064): the division's cost on a large staged individual (rows written directly: tasks, events,
+    knowledge, open hypotheses with predictions, autonomous tasks of the last week with results and decisions): the
+    wall time of each read the division makes, of autonomy.division per rule, and of an idle decision under "race" and
+    "reserve" (each on a fresh copy). Every read is outside a write transaction (asserted)."""
+    import random
+    import shutil
+    import tempfile
+    from contextlib import closing
+    from neuroscifi.instance import store
+    from neuroscifi.webcortex import autonomy, state
+    from neuroscifi.webcortex.types import MODES
+    rng = random.Random(64)
+    t0 = 1_800_000_000.0
+    now = t0 + 400 * 86400
+    n_tasks, n_events, n_knowledge, n_hyp, recent = a.tasks, a.events, 10_000, 3_000, 300
+    out = {"rows": {"web_tasks": n_tasks, "web_events": n_events, "web_knowledge": n_knowledge,
+                    "open hypotheses with a prediction": n_hyp, "autonomous tasks finished in the last 7 days": recent}}
+    with tempfile.TemporaryDirectory(prefix="nsf-division-cost-") as directory:
+        path = Path(directory) / "individual.sqlite"
+        with closing(store.create(path, t0)) as db:
+            state.set_config(db, {"enabled": True, "autonomous": True,
+                                  "daily_autonomous": {"tasks": 100, "requests": 4000, "bytes": 800_000_000}}, t0)
+            result = json.dumps({"consolidation": {"provisional": [1], "superseded": []}, "pad": "x" * 20_000})
+            with store.write(db):
+                db.executemany("INSERT INTO web_tasks(id, objective, mode, status, origin, created_at, updated_at, "
+                               "finished_at, result) VALUES(?, 'q', ?, 'completed', ?, ?, ?, ?, ?)",
+                               [(f"t{i}", MODES[i % len(MODES)],
+                                 ("curiosity" if i % 2 else f"refresh:{i}") if i >= n_tasks - recent else "console",
+                                 (now - (n_tasks - i) * 1800) if i >= n_tasks - recent else t0 + i * 3000,
+                                 t0, (now - (n_tasks - i) * 1800) if i >= n_tasks - recent else t0 + i * 3000,
+                                 result) for i in range(n_tasks)])
+                db.executemany("INSERT INTO web_events(task_id, kind, detail, created_at) VALUES(?, ?, ?, ?)",
+                               [(f"t{rng.randrange(n_tasks)}", "decision" if i % 5 == 0 else "stage",
+                                 json.dumps({"autonomy": {"division": {"path": rng.choice(("reach", "refresh"))}}})
+                                 if i % 5 == 0 else "{}", t0 + i * 60) for i in range(n_events)])
+                db.executemany("INSERT INTO web_knowledge(id, key, version, statement, status, confidence, "
+                               "uncertainty, freshness_class, first_verified_at, last_verified_at, task_id, "
+                               "created_at, updated_at) VALUES(?, ?, 1, ?, 'accepted', 0.8, 0.2, 'stable', ?, ?, ?, "
+                               "?, ?)", [(i + 1, f"k{i}", f"Subject{i} 1.{i % 9}.0 is the latest Subject{i} release.",
+                                          now - 86400, now - 86400, f"t{rng.randrange(n_tasks)}", t0, t0)
+                                         for i in range(n_knowledge)])
+            from neuroscifi.webcortex import claims, evolution, text
+            with store.write(db):
+                for i in range(n_hyp):
+                    s = f"The Project{i} compiler version 4.{i % 9}.0 was released in November"
+                    hid, _ = evolution.open_hypothesis(
+                        db, key=claims.claim_key(s), statement=s, origin="owner" if i % 10 == 0 else "gap",
+                        verification={"policy": "ADR-035", "state": "not_evaluated", "basis": "owner_hypothesis",
+                                      "confidence": 0.5}, claims=[], values=text.values(s),
+                        polarity=claims.polarity(s), now=now - 3600, with_prediction=False)
+                    evolution.predict(db, hid, now - 3600, deadline=now + 20 * 86400, probability=0.5)
+            autonomy.enable(db, t0)
+        timings = {}
+
+        def timed(label, fn, copy=False, repeat=3):
+            runs = []
+            for k in range(repeat):
+                target = path
+                if copy:
+                    target = Path(directory) / f"copy-{label}-{k}.sqlite"
+                    shutil.copyfile(path, target)
+                with closing(store.connect(target)) as db:
+                    started = time.perf_counter()
+                    value = fn(db)
+                    runs.append(time.perf_counter() - started)
+                    assert not db.in_transaction, label
+            timings[label] = {"median_seconds": sorted(runs)[len(runs) // 2], "runs": runs}
+            return value
+
+        timed("_reach_tasks (window count)", lambda db: autonomy._reach_tasks(db, now))
+        timed("_yield_share (7 days of finished tasks)", lambda db: autonomy._yield_share(db, now))
+        timed("_reach_open (the admission rule's candidates)", lambda db: autonomy._reach_open(db, now))
+        timed("candidates (the idle path's own ranking, for comparison)",
+              lambda db: autonomy.candidates(db, now, limit=5))
+        for rule in ("race", "reserve", "yield"):
+            def one(db, rule=rule):
+                state.set_config(db, {"allowance_division": rule, "reach_share": 0.5}, now)
+                started = time.perf_counter()
+                value = autonomy.division(db, now)
+                timings.setdefault(f"division[{rule}] alone", {"runs": []})["runs"].append(
+                    time.perf_counter() - started)
+                return value
+            out[f"division[{rule}]"] = timed(f"division[{rule}] with its setting write", one, copy=True)
+            runs = timings[f"division[{rule}] alone"]["runs"]
+            timings[f"division[{rule}] alone"]["median_seconds"] = sorted(runs)[len(runs) // 2]
+        for rule in ("race", "reserve"):
+            def decide(db, rule=rule):
+                state.set_config(db, {"allowance_division": rule, "reach_share": 0.5}, now)
+                return autonomy.idle(db, now, worker=f"cost-{rule}")["action"]
+            out[f"idle[{rule}]"] = timed(f"idle decision[{rule}] (with its setting write)", decide, copy=True)
+    out["timings"] = timings
+    out["commit"], out["environment"] = _commit(), {"python": platform.python_version(),
+                                                    "machine": platform.machine()}
+    _write(out, a.out)
     return 0
 
 

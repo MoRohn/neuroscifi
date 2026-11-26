@@ -398,7 +398,7 @@ def autonomous_waiting(db, now, *, exclude=None) -> str | None:
             if short else None)
 
 
-def _over_cap(db, now, cfg, *, ignore_tasks=False):
+def _over_cap(db, now, cfg, *, ignore_tasks=False, held=0):
     from ..resources import policy as rpolicy
     gate = rpolicy.background_gate(rpolicy.db_file(db))      # RD-46: audio priority, critical memory pressure
     if not gate["allowed"]:
@@ -408,7 +408,35 @@ def _over_cap(db, now, cfg, *, ignore_tasks=False):
     for key in (("requests", "bytes") if ignore_tasks else ("tasks", "requests", "bytes")):
         if used[key] >= caps.get(key, 0):
             return f"daily autonomous cap reached: {key} {used[key]} of {caps.get(key, 0)}"
+    if held and not ignore_tasks and used["tasks"] + held >= caps.get("tasks", 0):     # ADR-064 (0 unless divided)
+        return f"the rest of today's autonomous tasks ({held}) is {_held_text()}"
     return None
+
+
+def _held_text():
+    from .autonomy import HELD_FOR_REACHING
+    return HELD_FOR_REACHING
+
+
+def _division(db, now, cfg, report) -> int:
+    """ADR-064: the places of the day's task count the timer's pass leaves for reaching (0 with allowance_division
+    "race", the default, which reads nothing). A division that cannot be read holds nothing (the pass as before),
+    said in the report and logged with the error's type only."""
+    if cfg.allowance_division == "race":
+        return 0
+    from . import autonomy
+    try:
+        out = autonomy.division(db, now, cfg)
+        held = out["held"]
+        if not isinstance(held, int) or isinstance(held, bool) or held < 0:
+            raise TypeError(f"the division held {type(held).__name__}, not a count")
+    except Exception as exc:              # noqa: BLE001 - reported in the pass and logged, never silent
+        log.warning("the allowance division could not be read (%s); the pass takes the room as before",
+                    type(exc).__name__)
+        report["skipped"].append({"what": "allowance division", "reason": f"failed: {type(exc).__name__}"})
+        return 0
+    report["division"] = out
+    return held
 
 
 # Under the unified rule a curiosity pick may name the subject a due prediction's refresh queued in the same tick
@@ -548,9 +576,11 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     # lane K: the re-check of the knowledge most at risk of being stale, before the due-order refreshes (setting
     # `idle_recheck`, off by default; its own share of the daily allowance; recheck.run asks the owner's quiet)
     taken = {}          # knowledge id -> the re-check's task queued for it in this pass (ADR-056 arbitration)
+    held = _division(db, now, cfg, report)      # ADR-064: 0 unless allowance_division is set
     if recheck.enabled(db) and budget_left > 0:
         rechecked = _wave1_step(report, "knowledge re-check", lambda: recheck.run(
-            db, now, limit=min(cfg.recheck_per_tick, budget_left), over_cap=lambda: _over_cap(db, now, cfg)))
+            db, now, limit=min(cfg.recheck_per_tick, budget_left),
+            over_cap=lambda: _over_cap(db, now, cfg, held=held)))
         if rechecked is None:   # Wave 2 lane X (review2 L4): failed part-way; what it queued still counts
             rechecked = {"skipped": [], "submitted": _rechecks_queued(db, now)}
         report["skipped"] += rechecked["skipped"]
@@ -569,13 +599,15 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     refreshes, quiet = owner_switch.allowed(db, "tick.prediction_refresh")
     if not refreshes:
         report["skipped"].append({"what": "prediction refreshes", "reason": quiet})
-    cap = _over_cap(db, now, cfg)
-    room = max(0, cfg.daily_autonomous.get("tasks", 0) - autonomous_usage(db, now)["tasks"])
+    cap = _over_cap(db, now, cfg, held=held)
+    room = max(0, cfg.daily_autonomous.get("tasks", 0) - autonomous_usage(db, now)["tasks"] - held)
     limit = 0 if cap else max(0, min(room, budget_left, predictions.MAX_REFRESHES))
     report["predictions"] = predictions.check_due(db, now, services, limit=limit) if refreshes else []
     for action in report["predictions"]:
         if action["action"] == "skipped" and action["reason"].startswith("refresh limit"):
             action["reason"] = cap or (f"max_tasks {max_tasks} reached" if budget_left <= 0 else
+                                       f"the rest of today's autonomous tasks ({held}) is {_held_text()}"
+                                       if held and room <= 0 < room + held else
                                        f"daily autonomous cap reached: tasks {cfg.daily_autonomous.get('tasks', 0)}")
             report["skipped"].append({"prediction_id": action["prediction_id"], "reason": action["reason"]})
         if action["action"] != "refresh_submitted":
@@ -621,7 +653,7 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         if refused.get("key") in taken_keys and str(refused.get("reason", "")).startswith("investigated autonomously") \
                 and pool.get(refused["key"]) == refused.get("kind"):
             if room is None:
-                room = budget_left > 0 and _over_cap(db, now, cfg) is None
+                room = budget_left > 0 and _over_cap(db, now, cfg, held=held) is None
             if room:
                 _arbitrate(db, report, now, taken_keys[refused["key"]], "recheck", "curiosity", TAKEN_BY_RECHECK)
     refreshes = {a["knowledge_id"]: a["task_id"] for a in report["predictions"]
@@ -635,10 +667,10 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         if admitted["rule"] == "unified" and (pick.get("knowledge_id") in refreshed or pick["key"] in refreshed_keys):
             report["skipped"].append({"target": target, "reason": REFRESHED_THIS_TICK})
             winner = refreshes.get(pick.get("knowledge_id")) or refreshed_keys.get(pick["key"])
-            if budget_left > 0 and _over_cap(db, now, cfg) is None:     # lane Y (H1): curiosity could have taken it
+            if budget_left > 0 and _over_cap(db, now, cfg, held=held) is None:  # lane Y (H1): curiosity could take it
                 _arbitrate(db, report, now, winner, "refresh", "curiosity", REFRESHED_THIS_TICK)
             continue
-        cap = _over_cap(db, now, cfg)
+        cap = _over_cap(db, now, cfg, held=held)
         if cap or budget_left <= 0:
             report["skipped"].append({"target": target, "reason": cap or f"max_tasks {max_tasks} reached"})
             continue
