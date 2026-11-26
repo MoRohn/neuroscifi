@@ -635,3 +635,85 @@ output, per world and summed over the four seeds: `totals_sum` and `by_shape_sum
 read-back other than the shipped defaults with `enabled` true voids the look), `world_digests`, and the same fields
 for each reference. The evidence file is a summary per world, seed and shape. It names shapes the other splits do
 not have, so only the main session reads it.
+
+### The unchanged system and the three opt-in rules, development and held-out (Wave 4 step 0)
+
+Measured on `cd99288` (clean), `scripts/bench_sources.py run --split development` and `--split held_out`; evidence
+`docs/quality/evidence/genesis_sources_baseline.json` (463 kB: both splits per world, seed and shape, the
+references, and the form census below). About 0.4 s per run (0.1 s of it inside `consolidate.run`); every
+configuration read its settings back as named in every world (`config_same_every_seed` true).
+
+Held-out, summed over 3 worlds × 4 seeds (12 cycles, 72 looks per run). Each cell: wrongly admitted / own answers
+admitted / suppressed of eligible / grouping precision, recall ("–": no pair of that kind). The references' cells
+omit precision and recall (the oracle's are 1, 1 by definition).
+
+| shape (looks) | shipped | `attribution_independence` | `echo_recognition` | `origin_grouping` one_way | oracle | todays_rule | every_page |
+|---|---|---|---|---|---|---|---|
+| independent (183) | 0 / 0 / 16 of 183 / 0.00, – | 0 / 0 / 16 of 183 / 0.00, – | 0 / 0 / 17 of 183 / 0.00, – | 0 / 0 / 16 of 183 / 0.00, – | 0 / 0 / 0 of 183 | 0 / 0 / 12 of 183 | 0 / 0 / 0 of 183 |
+| syndicated_credit (109) | 61 / 0 / 23 of 30 / 0.92, 0.06 | 56 / 0 / 23 of 30 / 0.98, 0.24 | 61 / 0 / 23 of 30 / 0.92, 0.06 | 61 / 0 / 23 of 30 / 0.92, 0.06 | 0 / 0 / 0 of 30 | 101 / 0 / 28 of 30 | 104 / 0 / 29 of 30 |
+| primary_cited (103) | 0 / 0 / 4 of 103 / –, 0.00 | 0 / 0 / 3 of 103 / –, 0.00 | 0 / 0 / 5 of 103 / –, 0.00 | 0 / 0 / 4 of 103 / –, 0.00 | 0 / 0 / 0 of 103 | 0 / 0 / 0 of 103 | 0 / 0 / 0 of 103 |
+| syndicated_nocredit (72) | 36 / 0 / 5 of 13 / 0.96, 0.17 | 36 / 0 / 5 of 13 / 0.96, 0.17 | 36 / 0 / 5 of 13 / 0.96, 0.17 | 36 / 0 / 5 of 13 / 0.96, 0.17 | 0 / 0 / 0 of 13 | 66 / 0 / 13 of 13 | 69 / 0 / 12 of 13 |
+| wire_like_host (61) | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 33 of 61 / 1.00, 0.88 | 0 / 0 / 0 of 61 | 0 / 0 / 3 of 61 | 0 / 0 / 0 of 61 |
+| extra_origin (58) | 26 / 0 / 6 of 12 / 0.92, 0.12 | 22 / 0 / 6 of 12 / 0.96, 0.25 | 25 / 0 / 6 of 12 / 0.92, 0.12 | 26 / 0 / 6 of 12 / 0.92, 0.12 | 0 / 0 / 0 of 12 | 52 / 0 / 10 of 12 | 54 / 0 / 10 of 12 |
+| mirror_dates (58) | 0 / 0 / 12 of 18 / 0.98, 1.00 | 0 / 0 / 12 of 18 / 0.98, 1.00 | 0 / 0 / 12 of 18 / 0.98, 1.00 | 0 / 0 / 12 of 18 / 0.98, 1.00 | 0 / 0 / 0 of 18 | 0 / 0 / 2 of 18 | 46 / 0 / 14 of 18 |
+| verified_credit (55) | 0 / 0 / 4 of 55 / 0.00, – | 0 / 0 / 13 of 55 / 0.00, – | 0 / 0 / 5 of 55 / 0.00, – | 0 / 0 / 4 of 55 / 0.00, – | 0 / 0 / 0 of 55 | 0 / 0 / 1 of 55 | 0 / 0 / 0 of 55 |
+| roundup (53) | 0 / 0 / 5 of 53 / 0.00, 0.00 | 0 / 0 / 8 of 53 / 0.62, 0.10 | 0 / 0 / 5 of 53 / 0.00, 0.00 | 0 / 0 / 5 of 53 / 0.00, 0.00 | 0 / 0 / 0 of 53 | 0 / 0 / 0 of 53 | 0 / 0 / 0 of 53 |
+| two_origins (43) | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 7 of 43 / 0.81, 0.41 | 0 / 0 / 0 of 43 | 0 / 0 / 6 of 43 | 0 / 0 / 0 of 43 |
+| correction (32) | 0 / 0 / 20 of 32 / 0.00, – | 0 / 0 / 20 of 32 / 0.00, – | 0 / 0 / 20 of 32 / 0.00, – | 0 / 0 / 20 of 32 / 0.00, – | 0 / 0 / 0 of 32 | 0 / 0 / 0 of 32 | 0 / 0 / 0 of 32 |
+| echo (21) | 4 / 4 / 1 of 3 / 0.75, 0.12 | 4 / 4 / 1 of 3 / 0.75, 0.12 | 1 / 1 / 1 of 3 / 0.75, 0.12 | 4 / 4 / 1 of 3 / 0.75, 0.12 | 0 / 0 / 0 of 3 | 13 / 13 / 2 of 3 | 14 / 14 / 1 of 3 |
+| stale (16) | 0 / 0 / 6 of 6 / 0.00, – | 0 / 0 / 6 of 6 / 0.00, – | 0 / 0 / 6 of 6 / 0.00, – | 0 / 0 / 6 of 6 / 0.00, – | 0 / 0 / 4 of 6 | 0 / 0 / 5 of 6 | 0 / 0 / 4 of 6 |
+| **all** | **127 / 4 / 142 of 612 / 0.81, 0.20** | 118 / 4 / 153 of 612 / 0.81, 0.27 | 123 / 1 / 145 of 612 / 0.81, 0.20 | 127 / 4 / 142 of 612 / 0.81, 0.20 | 0 / 0 / 4 of 612 | 232 / 13 / 82 of 612 | 287 / 14 / 70 of 612 |
+
+`correct` (mean over cycles 1..12, mean ± sd over 4 seeds; for a rule: the paired difference with `shipped`, seeds
+better / worse, and the looks it changed against `shipped`):
+
+| world | shipped | `attribution_independence` | `echo_recognition` | one_way | oracle | todays_rule | every_page | same_value |
+|---|---|---|---|---|---|---|---|---|
+| src-ho-mixed | 0.601 ± 0.064 | −0.008 (0 / 3); 26 looks | −0.004 (0 / 3); 4 | 0 (0 / 0); 0 | 0.713 | 0.683 | 0.714 | 0.093 |
+| src-ho-copies | 0.627 ± 0.064 | −0.009 (0 / 2); 35 | +0.002 (1 / 1); 7 | 0 (0 / 0); 0 | 0.718 | 0.615 | 0.618 | 0.118 |
+| src-ho-origins | 0.656 ± 0.073 | −0.027 (0 / 3); 30 | 0 (0 / 0); 1 | 0 (0 / 0); 0 | 0.709 | 0.720 | 0.731 | 0.113 |
+
+Development (2 worlds × 3 seeds, all shapes summed): shipped 64 / 4 / 39 of 233 / 0.87, 0.20;
+`attribution_independence` 56 / 3 / 49 of 233 / 0.86, 0.27; `echo_recognition` 58 / 0 / 39 of 233 / 0.87, 0.20;
+one_way identical to shipped (0 looks changed); oracle 0 / 0 / 2 of 233; todays_rule 114 / 9 / 25 of 233; every_page
+137 / 11 / 22 of 233. `correct` src-dev-mixed 0.704 ± 0.064, src-dev-copies 0.579 ± 0.050; attribution −0.023 and
+−0.058 (every changed seed worse), echo 0 and −0.011. Wrongly admitted values that are also false: shipped 21 (dev) and
+40 (held-out); `dependent_rises` 1 on each split in every configuration (the metric is barely exercised: held items'
+confidence rarely rises in these worlds). Full per-shape tables are in the evidence file.
+
+Reading (held-out; pooled over worlds, not a claim):
+- **Where the shipped system fails.** Every wrongly admitted row comes from four shapes: syndicated copies crediting
+  their origin (61), copies crediting nobody (36), copies naming an irrelevant contributor (26) and echoes (4). The
+  shipped grouping joins only 6 % of truly same-source page pairs among credited copies, 17 % among uncredited ones,
+  12 % with an extra contributor, none among outlets restating the release page or among round-ups and the outlets
+  they cite (it does join mirrors and wire datelines). It also joins honest outlets that wrote the same short sentence
+  (precision 0.00 within `independent`: 53 false same-source pairs, 16 of 183 true values not held).
+- **Suppression that is not grouping.** `wire_like_host` (33 of 61), `correction` (20 of 32), `stale` and
+  `mirror_dates` lose true values with almost no false merge (precision 0.98-1.00): the cause is elsewhere (a
+  correction note names the wrong value, so the look is contested; dateline forms; earlier held values). A source rule
+  cannot remove these, and a reader of `suppressed` must not credit or blame one for them.
+- **What each opt-in rule cannot see.** `attribution_independence` raises recall among credited copies only from 0.06
+  to 0.24 (76 % of same-source pairs still unseen; wrongly admitted 61 → 56) and among copies with an extra
+  contributor 0.12 → 0.25, sees nothing of uncredited copies, release-page citation or echoes, and merges honest
+  outlets that credit another (suppressed in `verified_credit` 4 → 13, in `roundup` 5 → 8); `correct` falls in 8 of 12
+  seeds. `echo_recognition` removes 3 of the 4 own answers admitted (dev 4 → 0) and nothing else; none of the
+  model-crediting echo forms used here (APA "(OpenAI, 2023)", "according to ChatGPT", "ChatGPT said") matches its
+  model-credit pattern (0 of 28 pages), so what it catches it catches by value and wording. `origin_grouping`
+  "one_way" changed no look in any world or seed: not exercised by these worlds (the multi-origin pages here carry at
+  most one origin the reader recognises; the "contributed to this report" lines are not read).
+- **References.** The oracle admits no wrongly supported value and misses 4 of 612 eligible true values (ties with a
+  stale value). `todays_rule` (today's grouping under the reference admission) admits 232 wrongly supported values:
+  the product admits fewer (127) because its other rules (contradiction questions, recency, relevance) refuse many,
+  not because of its grouping. `correct` of the shipped system is 0.06-0.11 below the oracle's in every held-out
+  world.
+
+**The form census** (development and held-out pages, computed from the rules' code after the worlds were committed;
+`form_census` in the evidence file). Of the derived pages: the shipped origin reader (`claims.origin_keys`) gives a
+key to the ProPublica line "This story was originally published by X." (29 of 29), to the AP and Reuters datelines
+(97 of 135: not the fictional wire's), to canonical-linked mirrors and to the two-origin form that opens with that
+line (on its first name only); to none of the MOS:SAID verb forms, "Read the full article on X", "X contributed to
+this report", "HT: X", "via X", round-ups or reworded copies. The attribution reader (`claims.attribution_keys`) reads
+"according to X", "X wrote / stated / confirmed that", "(via X)", "..., X said." and round-ups' "According to X and
+Y", not "claimed", "commented", "noted", "observed", "explained", "pointed out", "remarked", "Read the full article
+on", "contributed", "HT", "said" lists or datelines; it reads the model credits "According to ChatGPT" and "ChatGPT
+said" as an outlet named ChatGPT. Every page of every form yielded a claim through the real extractor.
