@@ -149,6 +149,8 @@ RUNNERS = {
                                                                                           "mid-task",
     "neuroscifi.acceptance.cognition.cycles:Run.step": "benchmark (lane F): one cycle's timer pass (scheduler.tick, "
                                                        "queue only) on a staged temporary individual",
+    "neuroscifi.acceptance.cognition.integrated:run_world": "benchmark (Wave 2 lane L): the timer pass and the idle "
+                                                            "investigator on a staged individual, step by step",
 }
 
 # Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored

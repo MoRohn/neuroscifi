@@ -97,6 +97,8 @@ DISPLAYS: dict[str, str] = {
                            "kind, labelled not evidence",
     "presence/aggregator.py": "lane W (ADR-053): Presence shows 'simulating' while records were just made (a count "
                               "and a time, never content)",
+    "acceptance/cognition/integrated.py": "Wave 2 lane L (ADR-056): the integrated benchmark reports how many records "
+                                          "its temporary individual holds (imagined.counts: a number, never content)",
 }
 WRITE_API = {"record", "observe", "example", "written_by", "present", "KINDS", "REF_KINDS", "OBSERVATION_KINDS",
              "MAX_REFS", "NOT_EVIDENCE",
