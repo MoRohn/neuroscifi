@@ -125,6 +125,66 @@ class WebConfig:
     # (autonomy.admission: recorded enable, min_gain, lineage, cooldown). "legacy" restores the tick's rule before
     # it for one release: `nsf web config --set tick_admission='"legacy"'`.
     tick_admission: str = "unified"
+    # ADR-051 (lane I). curiosity_learning_progress: curiosity.rank (and derived hypotheses in autonomy.candidates)
+    # down-weight a subject whose recent looks realised nothing like the gain expected of them (curiosity.progress;
+    # the stronger of it and the futility down-weight applies, it fades with a 7-day half-life and has a floor). The
+    # reduced gain is what admission compares with its minimum (curiosity.MIN_GAIN on the timer, min_gain on the idle
+    # path), so a down-weighted subject can fall below it and not be researched; caps and budgets are unchanged.
+    # Off by default (review1 CM1 re-measure): on the held-out worlds' 12 further seeds it lowered the timer path's
+    # realised bits per budget (0.139 -> 0.126) while lowering its noise share.
+    # On: `nsf web config --set curiosity_learning_progress=true`.
+    # salience_record: each autonomy candidate carries one explainable salience score with its signals, logged with
+    # the decision (salience.py); display and record only, it never changes what is admitted or its order.
+    curiosity_learning_progress: bool = False
+    salience_record: bool = True
+    # Recursive knowledge evolution (lane K, ADR-055). None of these changes a belief, a verification state or an
+    # answer: a knowledge item changes only through the evidence path (consolidate.run).
+    # A new hypothesis records its assumptions (template statements from its own records), the claims against it,
+    # the expected information gain and cost of one investigation, and every status change with its evidence.
+    # Display-only records; off: `nsf web config --set hypothesis_fields=false`.
+    hypothesis_fields: bool = True
+    # A derived hypothesis whose prediction found no evidence at all by its deadline is marked 'abandoned' (with the
+    # evidence: the expired predictions). Off by default: no benchmark measures it.
+    hypothesis_abandon: bool = False
+    # Record what a new knowledge item or hypothesis rests on (premises.py) and mark its dependents "to re-check"
+    # when a premise is superseded, contradicted or forgotten, or a prediction it rested on fails. Display-only
+    # records (a mark queues a re-verification, it changes nothing); off: `--set premise_recheck=false`.
+    premise_recheck: bool = True
+    # The timer's re-check of the knowledge most at risk of being stale (recheck.py; importance x staleness x
+    # dependents), before the due-order refreshes, admitted by autonomy.admission, at most recheck_per_tick per pass
+    # and recheck_daily per rolling 24 h inside the daily autonomous allowance; held by quiet. Off by default (ADR-055
+    # has the measured numbers and why).
+    idle_recheck: bool = False
+    recheck_per_tick: int = 1
+    recheck_daily: int = 4
+    # The bounded reflection routine (reflection.py) on the timer, every reflection_interval_days; `nsf knowledge
+    # reflect` runs it when the owner asks. Off by default. reflection_model_summary lets a local model phrase the
+    # report (display only, stored as an 'inference' in the imagined store); off by default.
+    reflection: bool = False
+    reflection_interval_days: float = 7.0
+    reflection_model_summary: bool = False
+    # Strategy selection (strategies.py, Thompson sampling over research modes from external outcomes): "gate"
+    # follows the improvement ledger (off until a promotion passed the gate, and the owner can revert it); "off"
+    # never ranks by it.
+    strategy_selection: str = "gate"
+    # ADR-054 (monitoring.py), each its own switch. answer_monitoring: every research result carries
+    # report["monitoring"] (the answer confidence, none with "not enough development data" while no fitted map has
+    # enough development items; the unfitted claim probability; evidence sufficiency, source dependence, the depth
+    # record); a record only, it changes no verification state, answer or knowledge. selective_answering: an answer
+    # judged weak (by evidence sufficiency while no fitted map applies) opens with a plain "not enough evidence"
+    # line (the quotes stay). verification_escalation: before that, read one more independent source for the
+    # weakest statement when the task's own budget still allows it. adaptive_depth: stop reading once the last
+    # pages added no statement with two independent sources and no contradiction. Only the record is on by default
+    # (display only, nothing else changes); the other three showed no held-out gain (ADR-054).
+    # Off: `nsf web config --set answer_monitoring=false`.
+    answer_monitoring: bool = True
+    selective_answering: bool = False
+    verification_escalation: bool = False
+    adaptive_depth: bool = False
+    # ADR-053: paired Pocket devices also see the owner's own latest research questions by reference ("what we were
+    # just doing": the question as asked, its status and when; the report stays family-scoped and cannot be opened
+    # from a phone). Off by default: a pairing family may include devices that are not the owner's.
+    pocket_recent: bool = False
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

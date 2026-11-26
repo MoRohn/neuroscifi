@@ -177,9 +177,15 @@ def act(args):
         with idle._flock(p._file("idle-inuse-vllm.lock"), fcntl.LOCK_SH | fcntl.LOCK_NB):
             pass
         SharedAudioBeacon(DB).write(False, False)
+        from neuroscifi import internal_state
+        from neuroscifi.presence import activity
+        with activity.track("generating", subsystem="reasoning", purpose="check", publish=DB):
+            out["inflight"] = facts(p._file(f"inflight-{os.getpid()}.json"))
+        internal_state.append(DB, {"v": 1, "at": time.time()})
         out |= {"timeouts": p.timeouts(), "events": len(p.events()),
                 "marker": facts(p._file("idle-used-vllm")), "lock": facts(p._file("idle-inuse-vllm.lock")),
-                "beacon": facts(p._file("audio.json")), "marker_age": time.time() - p.last_used("vllm")}
+                "beacon": facts(p._file("audio.json")), "history": facts(p._file(internal_state.HISTORY_FILE)),
+                "marker_age": time.time() - p.last_used("vllm")}
     elif what == "see":
         from neuroscifi.resources import idle
         p = idle.Idle(DB)
@@ -576,9 +582,13 @@ def inside(repo, prefix, site, rel_python):
     used = run(SVC, "use")
     check("the service account reads the policy's settings and events",
           used.get("timeouts", {}).get("vllm") == 60.0 and used.get("events", 0) >= 1, used)
-    check("what the service account writes is the group's to read and write",
-          all(used.get(k, {}).get("mode") == "0o660" and used[k].get("uid") == uid[SVC] for k in ("marker", "beacon"))
-          and used.get("lock", {}).get("mode") == "0o660", used)
+    # review1b R2: what only the service account writes (the beacon, the in-flight files, the internal-state
+    # history) the idle account may read and not rewrite; the marker and the lock both accounts write
+    check("what the service account writes is the group's to read, and to write where both accounts write it",
+          all(used.get(k, {}).get("mode") == "0o660" and used[k].get("uid") == uid[SVC] for k in ("marker",))
+          and used.get("lock", {}).get("mode") == "0o660"
+          and all(used.get(k, {}).get("mode") == "0o640" and used[k].get("uid") == uid[SVC] and used[k].get("gid") == gid
+                  for k in ("beacon", "inflight", "history")), used)
     check("a use is marked now", abs(used.get("marker_age", 99)) < 5, used.get("marker_age"))
 
     # 7. The pass, the request and the reload.

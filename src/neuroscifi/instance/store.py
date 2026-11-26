@@ -99,6 +99,36 @@ class InstanceConfig:
     # The owner's one switch for everything done unasked (background.py, ADR-050): on = background research,
     # monitors, refreshes and idle investigations are held; work the owner asks for is not. Off by default.
     quiet: bool = False
+    # ADR-051 (lane I). internal_state_history: the research worker appends a compact sample of the internal-state
+    # record (numbers only) to <db>.resources/internal-state.jsonl every 30 s (internal_state.py).
+    # predictive_regulation: policy.background_gate also refuses NEW background research while resources/forecast.py
+    # forecasts memory
+    # headroom under the critical line, or a regular voice session, within its horizon; it never touches owner work.
+    # executive_rule: the executive's rule version (store.RULE_VERSIONS; the owner adopts one. A released version is
+    # never edited; information-v1 was amended once before it was released: review1b N4).
+    # decision_information: `nsf decide` shows each question's exact expected information gain and whether the
+    # decision rests on a matched earlier setup (information.py); display only.
+    internal_state_history: bool = True
+    predictive_regulation: bool = False
+    executive_rule: str = "rules-v1"
+    decision_information: bool = True
+    # Imagination (ADR-052): answers computed on a private in-memory copy of this file (instance/imagine.py), never
+    # written to it. Each switch is the owner's: what-ifs on the beliefs and the comparison of possible questions,
+    # multi-step forecasts from an active graph, leave-one-out retrospection, and scenario records for the Web
+    # Cortex's predictions (webcortex/scenarios.py; the only one that writes, and only to the imagined store: off by
+    # default). A copy is refused above imagine_max_bytes; imagine_max_seconds is checked once the one-step copy ends
+    # and stops the work on the copy.
+    imagine_what_if: bool = True
+    imagine_forecast: bool = True
+    imagine_retrospect: bool = True
+    imagine_scenarios: bool = False
+    imagine_max_seconds: float = 10.0
+    imagine_max_bytes: int = 512 * 1024 * 1024
+    # Selective broadcast (broadcast.py, ADR-053): which findings reach the other subsystems (owner question,
+    # Presence, Pocket push). "off" (default) = as before; "log" = as before plus a logged salience decision per
+    # finding; "on" = only findings at or above broadcast_threshold (and within broadcast.MAX_PER_HOUR) go out.
+    broadcast: str = "off"
+    broadcast_threshold: float = 0.5
 
     @classmethod
     def from_json(cls, text):
@@ -118,12 +148,32 @@ class InstanceConfig:
         # owner may have stopped.
         if not isinstance(values.get("quiet", False), bool):
             values["quiet"] = True
+        # ADR-051: a damaged value reads as the behaviour before these settings existed (no history kept, no
+        # predictive holds, the first rule version).
+        for name in ("internal_state_history", "predictive_regulation", "decision_information"):
+            if name in values and not isinstance(values[name], bool):
+                values[name] = False
+        if "executive_rule" in values and not _SETTABLE["executive_rule"](values["executive_rule"]):
+            del values["executive_rule"]
         # A limit that is not a whole number from 0 up (a hand-edited "none", a -1, true) is not a limit: the default
         # stands, never "no limit" by accident. setting_problems() reports it.
         if "max_consolidated_rows" in values and not _row_limit(values["max_consolidated_rows"]):
             del values["max_consolidated_rows"]
         # The imagined store's bounds: a damaged value reads as the default, never as "unbounded".
         for name in ("max_imagined_rows", "imagined_lifetime_seconds"):
+            if name in values and not _SETTABLE[name](values[name]):
+                del values[name]
+        # Imagination (ADR-052): a damaged switch reads as off (nothing is computed or written), a damaged bound as
+        # its default.
+        for name in IMAGINE_SWITCHES:
+            if name in values and not isinstance(values[name], bool):
+                values[name] = False
+        for name in ("imagine_max_seconds", "imagine_max_bytes"):
+            if name in values and not _SETTABLE[name](values[name]):
+                del values[name]
+        # Selective broadcast: a damaged value reads as the default (off; threshold 0.5), the reading that changes
+        # nothing about what reaches the owner.
+        for name in ("broadcast", "broadcast_threshold"):
             if name in values and not _SETTABLE[name](values[name]):
                 del values[name]
         return cls(**values)
@@ -281,9 +331,27 @@ _SETTABLE = {
     "imagined_lifetime_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool)
                                             and math.isfinite(v) and 60 <= v <= MAX_IMAGINED_LIFETIME),
     "quiet": lambda v: isinstance(v, bool),
+    "internal_state_history": lambda v: isinstance(v, bool),
+    "predictive_regulation": lambda v: isinstance(v, bool),
+    "executive_rule": lambda v: isinstance(v, str) and v in RULE_VERSIONS,
+    "decision_information": lambda v: isinstance(v, bool),
+    "imagine_what_if": lambda v: isinstance(v, bool),
+    "imagine_forecast": lambda v: isinstance(v, bool),
+    "imagine_retrospect": lambda v: isinstance(v, bool),
+    "imagine_scenarios": lambda v: isinstance(v, bool),
+    "imagine_max_seconds": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                                      and 0.1 <= v <= 600),
+    "imagine_max_bytes": lambda v: isinstance(v, int) and not isinstance(v, bool) and 1 << 20 <= v <= 64 << 30,
+    "broadcast": lambda v: v in ("off", "log", "on"),
+    "broadcast_threshold": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                                      and 0 <= v <= 1),
 }
+# The executive's rule versions (executive._policy; information.information_policy): added; a released one is never
+# edited (information-v1 was amended once before its release: review1b N4).
+RULE_VERSIONS = ("rules-v1", "information-v1")
 MAX_IMAGINED_ROWS = 100_000
 MAX_IMAGINED_LIFETIME = 365 * 86400    # also how long an imagined tombstone is kept (imagined.expire)
+IMAGINE_SWITCHES = ("imagine_what_if", "imagine_forecast", "imagine_retrospect", "imagine_scenarios")
 
 
 SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
@@ -315,7 +383,20 @@ def setting_problems(db):
              "imagined_lifetime_seconds": "; the default lifetime of imagined records applies until it is set with "
                                           "`nsf config --imagined-lifetime-days D`",
              "quiet": "; quiet is treated as on (background work held) until it is set with `nsf quiet on` or "
-                      "`nsf quiet off`"}
+                      "`nsf quiet off`",
+             "internal_state_history": "; no internal-state history is kept until it is set with `nsf config "
+                                       "--internal-state-history`",
+             "predictive_regulation": "; predictive regulation is treated as off until it is set with `nsf config "
+                                      "--predictive-regulation`",
+             "executive_rule": "; the executive uses rules-v1 until it is set with `nsf config --executive-rule`",
+             "decision_information": "; decisions are shown without their information gains until it is set with "
+                                     "`nsf config --decision-information`",
+             **{name: f"; it is treated as off until it is set with `nsf config --{name.replace('_', '-')}` or "
+                      f"`--no-{name.replace('_', '-')}`" for name in IMAGINE_SWITCHES},
+             "imagine_max_seconds": "; the default of 10 seconds applies until it is set with "
+                                    "`nsf config --imagine-max-seconds S`",
+             "imagine_max_bytes": "; the default of 512 MiB applies until it is set with "
+                                  "`nsf config --imagine-max-mib M`"}
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
             for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
 

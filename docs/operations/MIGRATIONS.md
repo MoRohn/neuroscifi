@@ -2,7 +2,7 @@
 
 ## 1. How the instance database is versioned
 
-The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (17 in this release; 13 in 0.7.0).
+The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (19 in this release; 13 in 0.7.0).
 
 - **Forward only.** Opening an instance with `nsf` applies every pending migration in order, each in one transaction that also sets `user_version`. The version is read again under the write lock, so two processes opening an old file at once apply each migration once; a migration that fails is rolled back. There are no down-migrations. A released migration is never edited; changes arrive as a new migration.
 - **Newer than the software is refused.** If `user_version` is greater than the software's version, the command stops with "Instance schema N is newer than this software (M)" and changes nothing. Do not run older software on a database an upgrade has opened.
@@ -44,11 +44,35 @@ before release: a file migrated by either earlier build gets the current trigger
 tombstone index at its next open, in one short transaction (`schema.ensure_triggers`; a second process opening it at
 the same moment waits and finds it done); records observed under the first build are removed in that transaction,
 each with a tombstone and one deletion-log row (kind `imagined`), as their outcomes kept text no forget reached. The
-store stays empty until a mechanism writes to it; nothing does in this release. Two settings come with it,
+store stays empty until a mechanism writes to it; at the defaults nothing does (Wave 1: scenario records with
+`imagine_scenarios` on, `nsf imagine ... --keep` when the owner asks, a reflection's model summary with
+`reflection_model_summary` on). Two settings come with it,
 `max_imagined_rows` (1000) and `imagined_lifetime_seconds` (7 days), changeable with `nsf config
 --max-imagined-rows N` and `--imagined-lifetime-days D`; a file saved by older software reads them as these
 defaults. `nsf imagined list` shows what is held. Software of an earlier schema refuses a version-17 file; rollback is
 a restore of the pre-upgrade checkpoint.
+
+**Version 18 (knowledge that knows what it rests on, ADR-055).** It adds five empty tables: `web_hypothesis_details`
+(the assumptions, counter-evidence, expected information gain, cost and revision record of each hypothesis recorded
+after the upgrade; older hypotheses get none), `web_premises` (what a knowledge item or hypothesis rests on; a CHECK
+refuses an imagined id), `web_rechecks` ("to re-check" marks; a mark changes no belief), `web_reflections` (reflection
+reports) and `improvement_ledger` (append-only: a trigger refuses an update), with their indexes. `IF NOT EXISTS`
+throughout, so the migration can run again on a file that already holds these objects. No existing row is read or
+written; the migration takes milliseconds. Forgetting covers the new rows (`governance._premise_cascade` in the web
+forget and in a restore's replay). The settings that write to them are WebConfig switches: `hypothesis_fields` and
+`premise_recheck` on (records only), `idle_recheck`, `hypothesis_abandon` and `reflection` off, `strategy_selection`
+"gate" (off until a promotion passes the gate). The improvement ledger also refuses a DELETE (trigger
+`improvement_ledger_no_delete`, added to version 18 before release after the Wave 1 review, S7): a file migrated by
+18's first build gets that trigger at its next open (`schema.ensure_triggers`, `_TRIGGERS_18`). Software of an earlier
+schema refuses a version-18 file; rollback is a restore of the pre-upgrade checkpoint.
+
+**Version 19 (an index for reads by kind and time, Wave 1 review A2/A3).** One statement: `CREATE INDEX IF NOT
+EXISTS web_events_kind_time ON web_events(kind, created_at)`. It changes no row; building it reads `web_events` once
+(milliseconds on a small file; proportional to the number of web events on a large one). It serves Presence's
+predictions and findings, the selective broadcast's hourly count, the autonomy windows and the self-description's
+decision reads (measured: Presence derive at 500,000 web events 41.15 → 0.15 ms; one more index costs about 10 % per
+web-event insert, 5.39 → 5.94 µs; `genesis_fix1a.json`). No setting comes with it and nothing changes at the defaults.
+Software of an earlier schema refuses a version-19 file; rollback is a restore of the pre-upgrade checkpoint.
 
 ## 2. Upgrade procedure
 

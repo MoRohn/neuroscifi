@@ -1,0 +1,38 @@
+{
+  "lane": "genesis wave 1, fix lane A (security and runtime), review1 A2/A3",
+  "measured_on": "this host (aarch64, Python 3.12), 2026-11-25; base 3c2a3bc vs branch gen-fix1a",
+  "method": "the reviewer's probes review1/rt/lat_probe.py N (median of 20 calls, ms; held-out self-model state 0 plus N cloned knowledge rows) and review1/rt/events_probe.py (median of 10 / 5 calls, ms; web_events filled 1:1:1:1 decision/fetch/search/stage, no autonomy or broadcast decision among them); one run each, single process; numbers are medians, not means",
+  "request_path_ms": {
+    "self_description.build owner": {
+      "knowledge_0": {"before": 2.99, "after": 3.09},
+      "knowledge_2000": {"before": 70.39, "after": 4.74},
+      "knowledge_10000": {"before": 188.05, "after": 14.87}
+    },
+    "self_description.build family": {
+      "knowledge_0": {"before": 0.49, "after": 0.26},
+      "knowledge_10000": {"before": 0.49, "after": 0.26}
+    },
+    "internal_state.snapshot (nsf internal-state, keeps the per-item staleness of the first 2,000 items)": {
+      "knowledge_2000": {"before": 64.02, "after": 64.09},
+      "knowledge_10000": {"before": 172.61, "after": 70.32}
+    },
+    "presence.aggregator.derive": {
+      "events_0": {"before": 0.12, "after": 0.12},
+      "events_100000": {"before": 7.45, "after": 0.12},
+      "events_500000": {"before": 41.15, "after": 0.15}
+    },
+    "self_description.build owner, by web_events": {
+      "events_0": {"before": 1.22, "after": 1.10},
+      "events_100000": {"before": 14.25, "after": 2.02},
+      "events_500000": {"before": 70.23, "after": 2.21}
+    }
+  },
+  "changes": [
+    "migration 19 (appended last): CREATE INDEX IF NOT EXISTS web_events_kind_time ON web_events(kind, created_at)",
+    "the self-description's copy of the internal-state record counts live and contradicted knowledge in SQL and leaves the per-item staleness to `nsf internal-state`",
+    "the latest autonomy and broadcast decisions are read from the latest 2,000 decision events through the index",
+    "the self-description's autonomy field reads the budgets without autonomy.status's list of recent decisions"
+  ],
+  "index_write_cost": {"method": "200,000 web_events inserts in 2,000-row transactions, 3 runs each, the index dropped vs kept (scratchpad idx_cost.py)", "without_index_ms": [1085, 1069, 1078], "with_index_ms": [1193, 1179, 1194], "per_insert_us": {"without": 5.39, "with": 5.94}},
+  "unverified": "timings on the owner's production host; the knowledge-count rows were measured while another benchmark process ran on the host"
+}

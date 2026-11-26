@@ -524,9 +524,10 @@ class Gateway:
         row = {"at": self.wall(), "purpose": purpose, "model": model, "locality": where, "stream": stream,
                "task_id": self.task_id, "provider": self.provider, "priority": priority}
         # The ledger row is written when the call ends; while a stream runs it is visible to Presence only through
-        # the in-process registry (presence/activity.py), with the content and tool-call deltas counted as tokens.
+        # the in-process registry (presence/activity.py), with the content and tool-call deltas counted as tokens;
+        # with the instance file known it is also published for other processes' Presence (ADR-053).
         inflight = activity.track("generating", subsystem="reasoning", purpose=purpose, task_id=self.task_id,
-                                  clock=self.wall) if stream else nullcontext(None)
+                                  clock=self.wall, publish=self.db_path) if stream else nullcontext(None)
         try:
             if timeout <= 0:
                 raise InferenceError("timeout", (

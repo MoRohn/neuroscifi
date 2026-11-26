@@ -8,8 +8,8 @@
 ![Version](https://img.shields.io/badge/version-0.7.0-3A3437)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-3A3437)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-3A3437?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-5053%20passed-3A3437)
-![Browser](https://img.shields.io/badge/browser%20e2e-206%20passed-3A3437)
+![Tests](https://img.shields.io/badge/tests-5624%20passed-3A3437)
+![Browser](https://img.shields.io/badge/browser%20e2e-209%20passed-3A3437)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-3A3437)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-3A3437)
 
@@ -49,6 +49,7 @@ Web research enters memory only as dated, cited evidence that passes verificatio
 | 🔏 **Signed research nodes** | The owner enrols a paired device after comparing key fingerprints. Nodes sign their requests and can hand off research sessions; Pocket checks the Spark's signature on every reply. |
 | ⚖️ **Resource scheduling** | One pressure level from memory and GPU data, audio first. Opt-in idle unloading of the model, speech, search and memory services; a reload is refused if it would not fit, and never holds a call past its timeout. |
 | 🧾 **Governed forgetting** | `nsf forget` cascades through every derived record, in-memory indexes included, and a checkpoint restore replays every forget, so forgotten records do not come back. |
+| 🔬 **Measured cognitive mechanisms** | Project Cognitive Genesis, Wave 1: an internal-state record, a self-description (`nsf self`) with each field's source and age, exact what-if and forecast commands on a private copy (`nsf imagine`), a monitoring record per research answer, knowledge premises and re-check marks. On by default only where they record or display; whatever would change research, answers or beliefs is off until the owner turns it on ([Wave 1](docs/genesis/WAVE1.md)). |
 | 🩺 **Health checks** | `nsf doctor` checks dependencies, file modes, WAL mode, schema, integrity, free space, disk encryption and swap. |
 
 The **[34-page architecture brief](NeuroSciFi_Architecture.pdf)** (editable as [`Architecture.md`](Architecture.md)) covers reanalyses of human brain and behavioural data, controlled simulations, CPU benchmarks, the TufaZip evaluation, the DGX Spark plan and the mobile field runtime.
@@ -429,7 +430,7 @@ Idle unloading never stops a service during a voice session in use, a running ta
 
 ### Upgrading an individual you already have
 
-The file format is now schema 17 (17 adds an empty store for imagined content, never evidence: [ADR-049](docs/architecture/ARCHITECTURAL_DECISIONS.md)). The first command that opens an individual made by older software upgrades it, so read [Migrations](docs/operations/MIGRATIONS.md) section 2 first and take a checkpoint. At that first open, once and recorded:
+The file format is now schema 19 (17 adds an empty store for imagined content, never evidence: [ADR-049](docs/architecture/ARCHITECTURAL_DECISIONS.md); 18 adds empty tables for knowledge premises, re-check marks, reflections and the improvement ledger, ADR-055; 19 adds one index. At the shipped defaults nothing changes in what the individual researches, answers or believes). The first command that opens an individual made by older software upgrades it, so read [Migrations](docs/operations/MIGRATIONS.md) section 2 first and take a checkpoint. At that first open, once and recorded:
 
 - an individual still on the original graph rule (`gate-v1`) moves to `best-learner-v1`, and an active graph that predicts worse than no graph at all is archived (nothing is deleted);
 - datasets you forgot under an earlier version lose the graph weights learned from them, as a forget now does.
@@ -492,7 +493,9 @@ An event expires after 7 days unless promoted (`nsf promote`), and what a learni
 | `nsf console` | Owner web console on loopback |
 | `nsf pocket serve\|invite\|list-pairings\|erase-pairing\|tls` | Pocket bridge, pairing and the private CA |
 | `nsf web …` | Web Cortex: `config`, `ask`, `tasks`, `status`, `searxng`, `provider`, `autonomy`, `node`, `work`, `memory`, `deps`, `mcp` and more |
-| `nsf knowledge …` | `evolution`, `changes`, `hypotheses`, `calibration`, `graph`, `learning`, `assert` |
+| `nsf knowledge …` | `evolution`, `changes`, `hypotheses`, `calibration`, `graph`, `learning`, `assert`, `rechecks`, `reflect`, `reflections`, `strategy`, `ledger`, `compete` |
+| `nsf self` / `nsf internal-state` | The self-description record; the internal-state record and its history |
+| `nsf imagine what-if\|questions\|retrospect\|forecast\|scm\|scenarios` | Answers computed on a private copy, labelled imagined, never evidence |
 | `nsf llm config\|status\|models\|ask\|usage` | Inference gateway (off until configured) |
 | `nsf voice health\|settings\|transcripts\|forget\|sweep\|selftest` | Voice Cortex |
 | `nsf resources [status\|idle\|tick\|unload\|load\|wake]` | Pressure, scheduling and idle unloading |
@@ -603,8 +606,8 @@ python scripts/guard_differential.py compare   # the answer guard against its at
 
 | Gate | Result |
 |---|---|
-| Quality gate (`bash scripts/check.sh`) | **5053 passed**, 18 skipped (live-service and platform tests), 0 failed |
-| Browser end-to-end (`tests/e2e`) | **206 passed**, 1 skipped (opt-in degraded-voice test) |
+| Quality gate (`bash scripts/check.sh`) | **5624 passed**, 22 skipped (live-service and platform tests, opt-in benchmark runs), 0 failed |
+| Browser end-to-end (`tests/e2e`) | **209 passed**, 1 skipped (opt-in degraded-voice test) |
 | Acceptance scenarios | 7 of 7 pass ([pre-registered](docs/quality/PREREGISTRATION_D1.md) D-1 redesign) |
 | Reproduction | 8 of 8 analyses within tolerance |
 | Answer guard differential | 1,937 inputs against the attack-tested reference: 0 unexplained differences, every change stricter or a proven exact restatement |
@@ -666,6 +669,7 @@ neuroscifi/
 - **General discovery is thin without a Brave key**, and Brave has offline tests only. Browser impersonation will not be enabled.
 - **PersonaPlex is not real-time** on GB10 (99–152 ms per 80 ms frame) and stays an opt-in experiment that never answers a question.
 - **Owner-side checks not run here:** root-only hardening and systemd/polkit acting on the installed units; the CA, Pocket and push on physical phones; a real remote provider; days of wall-clock autonomy; a person using a screen reader. Calibration's evidence is simulated: no individual has settled predictions yet.
+- **Wave 1's cognitive mechanisms are measured on synthetic, offline worlds only.** No answer confidence is shown (not enough development data); predictive regulation is a simulated-plant result; nothing was measured on the open web, a live model or real hardware ([Wave 1](docs/genesis/WAVE1.md), "What stays open").
 - **No worker federation.** Nodes submit, own and hand off research, but the Spark that runs `nsf web work` is the only executing node.
 
 Release status: [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md). All simulated results specify their hidden variables, source graphs and assumptions in code; the reference model, the sensory front end and the graph benchmark are separate components, and their results do not amount to an integrated human-level system.

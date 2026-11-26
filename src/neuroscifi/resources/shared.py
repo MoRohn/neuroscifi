@@ -9,7 +9,9 @@ folder: the audio beacon and the use markers are the service account's, the poli
 operations account's, and each takes the other's locks. The installer makes the folder setgid and group-writable
 (2770, group: the operations group). That is the one signal this module reads: in such a folder a file this
 process creates is made group-readable and group-writable (0660), set on the open descriptor because a unit's
-`UMask=0077` would otherwise remove the group's bits; the folder's setgid bit gives it the folder's group.
+`UMask=0077` would otherwise remove the group's bits; the folder's setgid bit gives it the folder's group. A file
+only the service account writes (the in-flight files, the internal-state history: `group_write=False`) is made
+0640 there instead: the other account reads it and cannot rewrite what the trusted account wrote (review1b R2).
 
 What this module never does: change the mode or the owner of a folder, or of a file it did not create in the same
 call. A folder that is not setgid and group-writable keeps private files, whatever its group is.
@@ -24,6 +26,7 @@ import stat
 
 PRIVATE_FILE = 0o600
 SHARED_FILE = 0o660
+SHARED_READ_ONLY_FILE = 0o640       # a file of a shared folder the other account reads and never writes
 PRIVATE_FOLDER = 0o700
 
 
@@ -43,8 +46,10 @@ def is_shared(folder) -> bool:
     return bool(mode & stat.S_ISGID) and bool(mode & stat.S_IWGRP)
 
 
-def file_mode(folder) -> int:
-    return SHARED_FILE if is_shared(folder) else PRIVATE_FILE
+def file_mode(folder, *, group_write=True) -> int:
+    if not is_shared(folder):
+        return PRIVATE_FILE
+    return SHARED_FILE if group_write else SHARED_READ_ONLY_FILE
 
 
 class NotAFile(OSError):
@@ -61,13 +66,14 @@ def _regular(fd, path) -> int:
     return fd
 
 
-def open_file(path, flags) -> int:
+def open_file(path, flags, *, group_write=True) -> int:
     """os.open for a file of the folder: an existing file is opened as it is (its mode is never touched); a missing
     one is created with the folder's file mode, set on the descriptor so that a umask cannot narrow it. A link is
-    never followed, and anything but a plain file is refused (NotAFile) without blocking on it."""
+    never followed, and anything but a plain file is refused (NotAFile) without blocking on it. group_write=False:
+    a file only this account writes (0640 in a shared folder; 0600 elsewhere as always)."""
     path = Path(path)
     flags = (flags & ~(os.O_CREAT | os.O_EXCL)) | os.O_NONBLOCK | os.O_NOFOLLOW
-    mode = file_mode(path.parent)
+    mode = file_mode(path.parent, group_write=group_write)
     for _ in range(3):
         try:
             fd = os.open(path, flags | os.O_CREAT | os.O_EXCL, mode)
@@ -89,11 +95,30 @@ def open_file(path, flags) -> int:
 READ_LIMIT = 4 << 20                 # bytes read from one file of the folder at most
 
 
-def read_text(path, *, limit=READ_LIMIT, tail=False) -> str:
+class NotOwned(OSError):
+    """The file belongs to an account other than the ones allowed to write it (owners=)."""
+
+
+def writers(db_path) -> set[int]:
+    """The accounts whose files of `<db>.resources/` this process trusts: its own, and the instance database's owner
+    (the service account of a two-account install). A file the other account of the folder created is not theirs."""
+    out = {os.getuid(), os.geteuid()}
+    try:
+        out.add(os.stat(db_path).st_uid)
+    except (OSError, TypeError, ValueError):
+        pass
+    return out
+
+
+def read_text(path, *, limit=READ_LIMIT, tail=False, owners=None) -> str:
     """The file's text, read without following a link and without blocking (NotAFile for anything but a plain
     file). At most `limit` bytes: a larger file is refused (ValueError), or with `tail` its last `limit` bytes are
-    read, from the first whole line in them."""
+    read, from the first whole line in them. owners: the uids allowed to own the file (writers()); a file of any
+    other account is refused (NotOwned)."""
     fd = _regular(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), path)
+    if owners is not None and os.fstat(fd).st_uid not in owners:
+        os.close(fd)
+        raise NotOwned(f"{path} belongs to another account")
     try:
         size = os.fstat(fd).st_size
         if size > limit:
@@ -115,13 +140,36 @@ def read_text(path, *, limit=READ_LIMIT, tail=False) -> str:
         os.close(fd)
 
 
+def _no_constant(name):
+    raise ValueError(f"{name} is not a number")
+
+
+def _finite(text):
+    value = float(text)
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError(f"{text} is not a finite number")
+    return value
+
+
+INT_DIGITS = 18                      # the longest integer a file of the folder may hold (a time, a count, bytes)
+
+
+def _bounded_int(text):
+    if len(text.lstrip("-")) > INT_DIGITS:
+        raise ValueError(f"{text[:20]}... is too large a number")
+    return int(text)
+
+
 def loads(text):
     """json.loads for text another account wrote: anything that is not JSON raises ValueError, including text nested
     deeply enough to exhaust the parser's recursion (a state file of 200,000 '[' raised RecursionError, which the
-    callers' ValueError handlers did not catch: review L4c)."""
+    callers' ValueError handlers did not catch: review L4c), a number that is not finite (NaN, Infinity, 1e400:
+    Python's json accepts them, and one NaN in the internal-state history made every reader raise: review1 S2), and
+    an integer of more than INT_DIGITS digits (a 1 followed by 400 zeros is a Python int that no float can hold:
+    every reader comparing it with a time raised OverflowError: review1b R1)."""
     import json
     try:
-        return json.loads(text)
+        return json.loads(text, parse_constant=_no_constant, parse_float=_finite, parse_int=_bounded_int)
     except RecursionError:
         raise ValueError("nested too deeply to be read") from None
 
@@ -131,15 +179,16 @@ def read_json(path, **kwargs):
     return loads(read_text(path, **kwargs))
 
 
-def write_text(path, text) -> None:
-    """Replace the file's content atomically (a temporary file of this process beside it, then a rename)."""
+def write_text(path, text, *, group_write=True) -> None:
+    """Replace the file's content atomically (a temporary file of this process beside it, then a rename);
+    group_write as for open_file."""
     path = Path(path)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     try:
         os.unlink(tmp)                       # a stale one of a process that had this pid
     except OSError:
         pass
-    fd = open_file(tmp, os.O_WRONLY | os.O_TRUNC)
+    fd = open_file(tmp, os.O_WRONLY | os.O_TRUNC, group_write=group_write)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
@@ -219,6 +268,7 @@ def table(db, name) -> bool:
     return row is not None and row[0] == "table"
 
 
-__all__ = ["NotAFile", "PRIVATE_FILE", "PRIVATE_FOLDER", "READ_LIMIT", "SHARED_FILE", "ensure_folder", "file_mode",
+__all__ = ["NotAFile", "NotOwned", "PRIVATE_FILE", "PRIVATE_FOLDER", "READ_LIMIT", "SHARED_FILE",
+           "SHARED_READ_ONLY_FILE", "ensure_folder", "file_mode",
            "is_shared", "loads", "open_file", "read_database", "read_json", "read_text", "table", "touch",
-           "write_text"]
+           "write_text", "writers"]

@@ -65,9 +65,15 @@ from . import splits, withheld
 FAMILIES = ("anticipation", "info_value", "counterfactual", "self_model", "selective", "retention", "adversarial",
             "withheld")
 DEFAULT_FAMILIES = FAMILIES[:-1]
-PLUGINS: tuple[str, ...] = ()        # dotted module names whose import registers mechanisms (later lanes append)
+PLUGINS: tuple[str, ...] = (       # dotted module names whose import registers mechanisms (later lanes append)
+    "neuroscifi.acceptance.cognition.instinct",
+    "neuroscifi.acceptance.cognition.imagination",
+    "neuroscifi.acceptance.cognition.knowledge",
+    "neuroscifi.acceptance.cognition.monitoring",
+    "neuroscifi.acceptance.cognition.selfrecord",)
 REPO = Path(__file__).resolve().parents[4]
-LEDGER = REPO / "docs" / "quality" / "evidence" / "genesis_final_uses.jsonl"
+LEDGER_NAME = "docs/quality/evidence/genesis_final_uses.jsonl"
+LEDGER = REPO / LEDGER_NAME
 BASELINE = REPO / "docs" / "quality" / "evidence" / "genesis_baseline.json"
 LABEL = ("cognitive benchmark: synthetic, fictional worlds driven through the real modules; offline (loopback only); "
          "no answer model; simulated, not a measurement of the DGX Spark or of the open web")
@@ -138,10 +144,15 @@ def _register_baselines():
              description="reference: uniform choice among the subjects")
     register("counterfactual", "baseline", lambda ablate: counterfactual.TodayAnswerer,
              description="the active graph's one-step prediction; nothing else can be answered today")
+    register("counterfactual", "zero", lambda ablate: counterfactual.ZeroAnswerer, reference=True,
+             description="reference: 0 with sd 1e6 for everything (the Wave 1 review's trivial mechanism)")
     register("self_model", "baseline", lambda ablate: selfmodel.TodayDescriber,
              description="today's surfaces: regulation, inventory, resources.status, presence, autonomy.status")
     register("selective", "baseline", lambda ablate: selective.TodayConfidence,
              description="the verdict's and the top quote's confidence, as the pipeline exposes them")
+    register("selective", "verdict_word", lambda ablate: selective.VerdictWord, reference=True,
+             description="reference: P(claim true) 0.95 / 0.05 / 0.5 from the verdict's state word alone (Wave 1 "
+                         "review B5), constant answer confidence")
     register("retention", "baseline", lambda ablate: _Inert, description="nothing switched on")
     register("adversarial", "baseline", lambda ablate: _Inert, description="nothing switched on")
 
@@ -296,8 +307,11 @@ def environment() -> dict:
     try:
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
                                 timeout=5).stdout.strip() or None
-        dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
-                                    timeout=5).stdout.strip()) if commit else None
+        # the ledger of final runs is a record, not code: a run's own line (appended before it scores) must not make
+        # the next run of the same look read as dirty (review1c)
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO, capture_output=True, text=True,
+                                timeout=5).stdout.splitlines() if commit else None
+        dirty = any(line[3:].strip('"') != LEDGER_NAME for line in status if line.strip()) if commit else None
     except (OSError, subprocess.SubprocessError):
         pass
     import numpy
@@ -367,24 +381,100 @@ def run(families=DEFAULT_FAMILIES, *, split: str = "development", mechanism: str
     return rounded(out)
 
 
+# ---- the supplementary wide-seeds run (Wave 1 review B1, B2, B6) -------------------------------------------------------
+
+# Twelve further seeds (the ones the Wave 1 review used). SUPPLEMENTARY: the frozen split's own three seeds stay the
+# official numbers; this run is reported beside them, never instead. Disjoint from every split's and the withheld
+# family's seeds (tests/acceptance/test_cognition_bench.py checks it).
+WIDE_SEEDS = tuple(range(5001, 5013))
+SEEDED_FAMILIES = ("anticipation", "info_value", "counterfactual", "self_model")    # the families a seed changes
+
+
+def wide_seeds(family: str, split: str, mechanism: str, *, reference: str = "baseline", seeds=WIDE_SEEDS,
+               ablate=(), contexts=None) -> dict:
+    """The family on `split`'s worlds once per seed in `seeds`, for `mechanism` and for `reference`; per HEADLINES
+    metric: each one's mean and per-seed standard deviation, and the paired difference (mechanism - reference, seed by
+    seed) with how many seeds it was better, worse or equal in. `contexts` = (mechanism's, reference's) zero-argument
+    context-manager factories (a settings regime), default none. The withheld family is never run here."""
+    if family not in SEEDED_FAMILIES:
+        raise ValueError(f"{family} has no seeds (one of {', '.join(SEEDED_FAMILIES)})")
+    from .scoring import spread
+    make_m, make_r = contexts or (nullcontext, nullcontext)
+    values: dict = {"mechanism": {}, "reference": {}}
+    for seed in seeds:
+        for side, name, ctx, abl in (("mechanism", mechanism, make_m, ablate), ("reference", reference, make_r, ())):
+            with ctx():
+                result = run([family], split=split, mechanism=name, ablate=abl, seeds=(seed,))
+            values[side][seed] = result["families"][family]["result"]
+    metrics = {}
+    for dotted, higher in HEADLINES[family]:
+        m = [headline_value(values["mechanism"][s], dotted) for s in seeds]
+        r = [headline_value(values["reference"][s], dotted) for s in seeds]
+        pairs = [(x, y) for x, y in zip(m, r) if isinstance(x, (int, float)) and isinstance(y, (int, float))]
+        diffs = [x - y for x, y in pairs]
+        row = {"mechanism": spread(m), "reference": spread(r), "paired_difference": spread(diffs),
+               "per_seed": {str(s): {"mechanism": x, "reference": y} for s, x, y in zip(seeds, m, r)}}
+        if higher is not None:
+            row["seeds_better"] = sum(1 for d in diffs if (d > 0 if higher else d < 0))
+            row["seeds_worse"] = sum(1 for d in diffs if (d < 0 if higher else d > 0))
+            row["seeds_equal"] = sum(1 for d in diffs if d == 0)
+        metrics[dotted] = row
+    from .scoring import rounded
+    return rounded({"supplementary": "wide seeds: reported beside the split's own seeds, which stay the official "
+                                     "numbers", "family": family, "split": split, "mechanism": mechanism,
+                    "reference": reference, "ablate": sorted(ablate), "seeds": list(seeds), "metrics": metrics})
+
+
 # ---- comparing two outputs -------------------------------------------------------------------------------------------
 
+# (dotted metric, higher is better; None = reported, never "better" or "worse")
 HEADLINES = {
     "anticipation": [("summary.breach_ticks_all_channels.mean", False), ("summary.memory.breach_ticks.mean", False),
+                     ("summary.memory.avoided_share.mean", True),
                      ("summary.memory.mean_lead_ticks.mean", True), ("summary.false_alarm_share.mean", False),
                      ("summary.work_given_up_share.mean", False)],
     "info_value": [("core_mean.realised_bits_per_budget", True), ("core_mean.noise_share", False),
                    ("web_mean.realised_bits_per_budget", True), ("web_mean.noise_share", False),
                    ("web_mean.stale_share", True)],
-    "counterfactual": [("summary.coverage.mean", True), ("summary.mean_relative_error.mean", False),
-                       ("summary.interval_coverage.mean", True), ("summary.abstention_correct.mean", True)],
+    # the interval score is over the questions each answerer answered: comparable only between answerers that
+    # answered the same ones (answered_share beside it), so it is never called better or worse here
+    # `summary` pools the groups (counterfactual.POOLED: reported, not a claim); a decline of an answerable question,
+    # front door included, is not within tolerance. The strict tolerance and the largest error are always beside it.
+    "counterfactual": [("summary.answered_within_tolerance.mean", True),
+                       ("summary.answered_within_strict_tolerance.mean", True), ("summary.interval_score.mean", None),
+                       ("summary.answered_within_tolerance_without_front_door.mean", None),
+                       ("summary_by_group.handed_equations.answered_within_tolerance.mean", True),
+                       ("summary_by_group.belief_what_if.answered_within_tolerance.mean", True),
+                       ("summary_by_group.learned_graph.answered_within_tolerance.mean", True),
+                       ("summary_by_group.learned_graph.answered_within_strict_tolerance.mean", True),
+                       ("summary_by_group.learned_graph.max_relative_error.max", None),
+                       ("summary_by_group.learned_graph.interval_score.mean", None),
+                       ("summary_by_group.front_door.front_door_declined.mean", None),
+                       ("summary_by_group.front_door.front_door_within_tolerance.mean", True),
+                       ("summary.answered_share.mean", None), ("summary.mean_relative_error.mean", False),
+                       ("summary.interval_coverage.mean", None), ("summary.declined_confounded_share.mean", None)],
     "self_model": [("summary.coverage.mean", True), ("summary.accuracy.mean", True),
+                   ("summary_original_key.accuracy.mean", True), ("summary_without_plumbing.accuracy.mean", True),
                    ("summary.surfaces_used.mean", False)],
     "selective": [("selective.aurc", False), ("selective.coverage_at_risk_0.05", True),
-                  ("claim_probability.murphy.brier", False), ("claim_probability.ece_10_bins", False)],
+                  ("claim_probability.items", None), ("claim_probability.murphy.brier", False),
+                  ("claim_probability.murphy.reliability", False), ("claim_probability.murphy.resolution", True)],
     "retention": [("all_scenarios_pass", True), ("all_retained", True)],
-    "adversarial": [("passed", True)],
+    "adversarial": [("passed", True), ("by_origin.original.passed", True), ("by_origin.added_wave1.passed", True),
+                    ("by_origin.restored.passed", True)],
 }
+# Metrics renamed by the Wave 1 review (B3) so the old meaning cannot be mistaken for the headline: an output written
+# before the rename (the recorded baseline) is read under its old name.
+RENAMED = {"summary.answered_share.mean": "summary.coverage.mean",
+           "summary.declined_confounded_share.mean": "summary.abstention_correct.mean"}
+
+
+def headline_value(result, dotted):
+    """A HEADLINES metric of one family result; an output recorded before a rename is read under the old name."""
+    value = _lookup(result, dotted)
+    if value is None and dotted in RENAMED:
+        value = _lookup(result, RENAMED[dotted])
+    return value
 
 
 def compare(before: dict, after: dict) -> dict:
@@ -400,9 +490,9 @@ def compare(before: dict, after: dict) -> dict:
             continue
         rows = {}
         for dotted, higher in metrics:
-            x, y = _lookup(a["result"], dotted), _lookup(b["result"], dotted)
+            x, y = headline_value(a["result"], dotted), headline_value(b["result"], dotted)
             better = None
-            if isinstance(x, (int, float)) and isinstance(y, (int, float)) and x != y:
+            if higher is not None and isinstance(x, (int, float)) and isinstance(y, (int, float)) and x != y:
                 better = (y > x) if higher else (y < x)
             rows[dotted] = {"before": x, "after": y, "better": better}
         out[family] = rows
@@ -427,5 +517,6 @@ def _lookup(tree, dotted):
     return node
 
 
-__all__ = ["BASELINE", "DEFAULT_FAMILIES", "FAMILIES", "LEDGER", "Mechanism", "PLUGINS", "Refused", "compare",
-           "load_plugins", "mechanisms", "register", "run"]
+__all__ = ["BASELINE", "DEFAULT_FAMILIES", "FAMILIES", "LEDGER", "Mechanism", "PLUGINS", "Refused",
+           "SEEDED_FAMILIES", "WIDE_SEEDS", "compare", "headline_value", "load_plugins", "mechanisms", "register",
+           "run", "wide_seeds"]

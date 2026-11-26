@@ -212,7 +212,20 @@ def evaluate(traces, seeds, make_regulator) -> dict:
         for k in ("work_given_up_share", "false_alarm_ticks_any_channel"):
             traces_out[name][k] = scoring.spread([r[k] for r in rows])["mean"]
         traces_out[name]["hold_ticks"] = scoring.spread([r["memory"]["hold_ticks"] for r in rows])["mean"]
-    return {"seeds": list(seeds), "summary": summary, "per_seed": per_seed, "traces": traces_out}
+    return {"seeds": list(seeds), "scope": SCOPE, "summary": summary, "per_seed": per_seed, "traces": traces_out}
+
+
+# What a result of this family is and is not (Wave 1 review B6), carried in every output.
+SCOPE = {
+    "plant": "simulated: the constants (CONSTANTS: task memory, task length, breach lines) are declared by the "
+             "benchmark, not measured on the host",
+    "wiring": "the regulator is called directly with the plant's history; the product's wiring (the gate "
+              "resources.policy.background_gate, the history file <db>.resources/internal-state.jsonl and the "
+              "worker's sampler internal_state.record) is not exercised by this family; "
+              "tests/test_predictive_wiring.py drives it end to end on a staged individual",
+    "reading": "a gain here is a gain inside this plant; for lane I's forecaster on held-out it comes from reserving "
+               "memory per background task (removing the trend leaves all of it there; on development the trend "
+               "matters more: scripts/bench_wave1.py ablations, trend_share_of_avoided)"}
 
 
 class ReactiveRegulator:

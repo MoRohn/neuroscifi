@@ -503,7 +503,7 @@ def _overlap_share(a: set, b: set) -> float:
     return len(a & b) / min(len(a), len(b)) if a and b else 0.0
 
 
-def candidates(db, now, *, limit=10) -> dict:
+def candidates(db, now, *, limit=10, offered=()) -> dict:
     """{"chosen": ranked candidates at or above min_gain, "refused": those below it or cooling down}. Each has
     kind, key, statement, objective, mode, info_gain, cost, signals, priority, owner, depth and the reason.
 
@@ -511,7 +511,9 @@ def candidates(db, now, *, limit=10) -> dict:
     assertions) are always considered, never cut by MAX_CANDIDATES, and listed ahead of every derived candidate
     (chosen and refused alike); `total` counts both lists before `limit`, so nothing is dropped silently (T1-03).
     A derived subject that only autonomous research produced is pursued only within MAX_DERIVATION_DEPTH steps of
-    an owner record and when it shares MIN_RELEVANCE of its words with the owner subject it came from (T1-02)."""
+    an owner record and when it shares MIN_RELEVANCE of its words with the owner subject it came from (T1-02).
+    `offered`: further candidates offered by a caller (the knowledge re-check, recheck.rank: {kind, key, statement,
+    mode, info_gain, signals, extra}); they go through exactly the same rule as every other candidate."""
     from . import claims, curiosity, evolution, intent
     from .config import MODE_BUDGETS
     pol = policy(db)
@@ -560,6 +562,8 @@ def candidates(db, now, *, limit=10) -> dict:
                    "stale": 1.0 if c["kind"] == "stale" else 0.0, "gap": 1.0 if c["kind"] == "gap" else 0.0,
                    "hypothesis": 1.0 if c["kind"] == "hypothesis" else 0.0}
         extra = {"knowledge_id": target["knowledge_id"]} if "knowledge_id" in target else {}
+        if "learning_progress" in c:     # ADR-051: shown and logged with the candidate
+            extra["learning_progress"] = c["learning_progress"]
         if target.get("knowledge_id") in asserted:
             extra["owner"] = True
         if c["kind"] == "prediction":
@@ -580,19 +584,24 @@ def candidates(db, now, *, limit=10) -> dict:
     rows += db.execute("SELECT p.id, p.hypothesis_id FROM web_predictions p JOIN web_hypotheses h ON "
                        "h.id=p.hypothesis_id WHERE p.outcome IS NULL AND h.status='open' AND h.origin!='owner' "
                        "ORDER BY p.id DESC LIMIT ?", (MAX_CANDIDATES,)).fetchall()
+    lp_on = curiosity.learning_progress_on(db)
     for pid, hid in rows:
         h = evolution.hypothesis(db, hid)
         found = db.execute("SELECT probability FROM web_predictions WHERE id=?", (pid,)).fetchone() if pid else None
         stated = state.finite(found[0] if found else h["verification"].get("confidence"), 0.5)
         p = evolution.recalibrate(stated, read["owner" if h["origin"] == "owner" else "hypothesis"])
-        add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", curiosity.info_gain(stated),
+        gain, gain_as_read, lp = curiosity.info_gain(stated), curiosity.info_gain(p), {}
+        if lp_on and h["origin"] != "owner":     # ADR-051: learning progress, never on the owner's own records
+            factor, _, record = curiosity.progress(db, h["key"], gain, now)
+            gain, gain_as_read, lp = gain * factor, gain_as_read * factor, {"learning_progress": record}
+        add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", gain,
             {"hypothesis": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6),
              "contradiction": 1.0 if h["origin"] in ("conflicting", "disputed") else 0.0,
              "gap": 1.0 if h["origin"] in ("insufficient", "gap", "not_evaluated") else 0.0},
             {"hypothesis_id": hid, "prediction_id": pid, "forecast": stated} |
             ({"forecast_as_read": p} if p != stated else {}) |
-            ({"owner": True} if h["origin"] == "owner" else {}),
-            gain_as_read=curiosity.info_gain(p))
+            ({"owner": True} if h["origin"] == "owner" else {}) | lp,
+            gain_as_read=gain_as_read)
     # The owner's assertions that no evidence has been examined for yet (ADR-038: not_evaluated, no support).
     for kid, key, statement, confidence in db.execute(
             "SELECT id, key, statement, confidence FROM web_knowledge WHERE provenance='user_asserted' AND "
@@ -602,8 +611,15 @@ def candidates(db, now, *, limit=10) -> dict:
         add("owner_assertion", key, statement, "fact_verification", curiosity.info_gain(p),
             {"gap": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6)}, {"knowledge_id": kid,
                                                                                     "owner": True})
+    for item in offered:        # lane K: the knowledge re-check's pool, admitted by this same rule
+        add(item["kind"], item["key"], item.get("statement") or "", item["mode"], float(item["info_gain"]),
+            item.get("signals") or {}, item.get("extra"))
     chosen, refused = [], []
+    from . import salience
+    salient = salience.enabled(db)
     for item in by_key.values():
+        if salient:             # ADR-051: one explainable score per candidate, recorded; it changes no decision
+            item["salience"] = salience.score(db, item, now)
         mode_cost = curiosity.cost(item["mode"])
         budget = MODE_BUDGETS.get(item["mode"], MODE_BUDGETS["fact_verification"])
         est = budget.max_queries * float(prices.get("search", 0)) + budget.max_pages * float(prices.get("page", 0))
@@ -669,7 +685,7 @@ ADMISSION_RULES = ("unified", "legacy")
 _TICK_SCOPE = "autonomous research is limited to items already in knowledge and owner monitors; propose it instead"
 
 
-def admission(db, now, *, path, rule="unified", limit=5) -> dict:
+def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
     """The one admission rule for autonomous investigations: both launch paths (the worker's idle investigation,
     path 'idle', and the timer's curiosity, path 'tick') ask here. {"rule", "path", "gate": None or why nothing
     may be admitted, "chosen": [...], "refused": [...]}; a chosen item carries objective, mode, key and the
@@ -685,8 +701,13 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
     'legacy' (path 'tick' only, kept one release: `nsf web config --set tick_admission="legacy"`): the tick's rule
     before ADR-050 - curiosity.rank's own floor (curiosity.MIN_GAIN), knowledge items only, no goal weighting, no
     lineage, no cooldown, no recorded enable (the `autonomous` switch suffices), the statement's own words as the
-    objective."""
-    if rule not in ADMISSION_RULES or (rule == "legacy" and path != "tick"):
+    objective.
+    Path 'recheck' (lane K, recheck.py): the pool is `offered`, the knowledge re-check's ranked items, admitted by the
+    'unified' rule through candidates(); the admitted ones keep the pool's order (value), each with its
+    knowledge_id.
+    When strategy selection is in force (strategies.active: promoted through its gate, never by default), the admitted
+    candidates are re-ordered by it; it never admits or refuses one."""
+    if rule not in ADMISSION_RULES or (rule == "legacy" and path != "tick") or (path == "recheck" and rule != "unified"):
         raise ValidationError(f"admission rule {rule!r} does not apply to path {path!r}")
     out = {"rule": rule, "path": path, "gate": None, "chosen": [], "refused": []}
     if rule == "legacy":
@@ -712,6 +733,15 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
         out["gate"] = ("autonomy is not enabled by a recorded owner switch (`nsf web autonomy enable` or the "
                        "console switch)")
         return out
+    if path == "recheck":     # lane K: only the re-check's own pool, in its order, by the same rule
+        order = {item["key"]: (n, item) for n, item in enumerate(offered)}
+        ranked = candidates(db, now, limit=10 ** 6, offered=offered)
+        out["min_gain"] = ranked["min_gain"]
+        out["refused"] = [r for r in ranked["refused"] if r["key"] in order]
+        picked = sorted((c for c in ranked["chosen"] if c["key"] in order), key=lambda c: order[c["key"]][0])
+        out["chosen"] = [c | {k: order[c["key"]][1][k] for k in ("knowledge_id", "value", "p_current", "dependents",
+                                                                 "mark_id")} for c in picked][:limit]
+        return out
     pool = None
     if path == "tick":       # the tick's own pool, as before: knowledge items among curiosity.rank's top ten
         from . import curiosity
@@ -735,6 +765,9 @@ def admission(db, now, *, path, rule="unified", limit=5) -> dict:
                                           f"{item['kind']} (the idle investigator's)"})
             continue
         out["chosen"].append(item)
+    from . import strategies
+    if strategies.active(db):       # lane K: ranks the admitted candidates only, once promoted through its gate
+        out["chosen"], out["strategy"] = strategies.rank(db, now, out["chosen"])
     out["chosen"] = out["chosen"][:limit]
     return out
 
@@ -744,7 +777,8 @@ def decision_inputs(pick, admitted) -> dict:
     inputs = {k: pick[k] for k in ("kind", "key", "mode", "info_gain", "cost", "priority", "signals", "reason")
               if k in pick}
     inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast",
-                                    "forecast_as_read", "info_gain_as_read", "owner", "depth") if k in pick}
+                                    "forecast_as_read", "info_gain_as_read", "owner", "depth", "salience",
+                                    "learning_progress") if k in pick}
     return inputs | {"admission": {"rule": admitted["rule"], "path": admitted["path"]}}
 
 
@@ -827,6 +861,24 @@ def idle(db, now, *, worker=None) -> dict:
 
 # ---- meaningful findings -> the owner's pending questions ------------------------------------------------------------
 
+SALIENCE_SOURCE = "webcortex/salience.py: the salience record its candidate carried when it was queued"
+
+
+def _candidate_salience(db, task_id) -> tuple[float | None, dict | None]:
+    """(score, inputs) of the salience record (salience.py, ADR-051) that the task's decision event stored when it was
+    queued (decision_inputs), for selective broadcast; (None, None) when it has none (salience_record off, the legacy
+    tick rule, a task queued before the record existed): broadcast.score's local function applies then."""
+    for (detail,) in db.execute("SELECT detail FROM web_events WHERE task_id=? AND kind='decision' ORDER BY id DESC",
+                                (task_id,)):
+        picked = (state.loads(detail, {}) or {}).get("autonomy")
+        record = picked.get("salience") if isinstance(picked, dict) else None
+        score = state.finite(record.get("score")) if isinstance(record, dict) else None
+        if score is not None:
+            return score, {"source": SALIENCE_SOURCE, "explanation": record.get("explanation"),
+                           "signals": record.get("signals")}
+    return None, None
+
+
 def after_task(db, task_id, now) -> dict | None:
     """For a finished autonomous task: a notification (the owner's pending question web:autonomy:<task>) only for a
     meaningful finding - a new verified claim (knowledge candidate from a supported
@@ -864,10 +916,33 @@ def after_task(db, task_id, now) -> dict | None:
         parts.append(f"{len(settled)} prediction(s) settled ({outcome})")
     text = (f"Autonomous research «{knowledge.quote(task['objective'])[:120]}» found: {'; '.join(parts)}. "
             "See the console (Research) or `nsf web evidence` for the sources; answer to dismiss.")
+    from .. import broadcast
+    scope = f"web:autonomy:{task_id}"
+    signals = {"new_verified": len(findings["new_verified"]), "resolved_contradictions": len(resolved),
+               "settled_predictions": sum(1 for s in settled if s.get("outcome") == "confirmed"),
+               "prediction_errors": sum(1 for s in settled if s.get("outcome") == "error")}
+    # the salience of what the task found (broadcast.score over the findings) and, when it carried one, its
+    # candidate's own pre-task salience record (ADR-051): the higher of the two, so a finding is never judged only
+    # by what was expected of it before the task ran (review1 A7); the inputs name both
+    salience, salience_inputs = broadcast.score("autonomy.finding", signals)
+    candidate, candidate_inputs = _candidate_salience(db, task_id)
+    if candidate is not None:
+        salience_inputs = {"rule": "max(finding salience, candidate salience)",
+                           "finding": {"score": salience, **salience_inputs},
+                           "candidate": {"score": candidate, **candidate_inputs}}
+        salience = max(salience, candidate)
     with store.write(db):
-        findings["pending_id"] = knowledge.open_question(db, f"web:autonomy:{task_id}", text, now)
+        # selective broadcast (ADR-053): mode off (the default) delivers exactly as before. The salience is the
+        # higher of the findings' own (broadcast.score) and the candidate's salience record.
+        offered = broadcast.offer(db, "autonomy.finding", now=now, signals=signals, scope=scope, task_id=task_id,
+                                  deliver=lambda: knowledge.open_question(db, scope, text, now),
+                                  salience=salience, salience_inputs=salience_inputs)
+        findings["pending_id"] = offered["pending_id"]
         delivered = findings["pending_id"] is not None
-        state.log_event(db, task_id, "decision", {"autonomy": "notified" if delivered else "finding not delivered",
+        kept = offered["outcome"] == "local"
+        state.log_event(db, task_id, "decision", {"autonomy": "notified" if delivered else
+                                                  f"finding kept local ({offered['reason']})" if kept else
+                                                  "finding not delivered",
                                                   "pending_id": findings["pending_id"],
                                                   "findings": {k: len(v) if isinstance(v, list) else v
                                                                for k, v in findings.items()}}, now)

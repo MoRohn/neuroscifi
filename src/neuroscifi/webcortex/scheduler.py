@@ -267,8 +267,13 @@ def _after_monitor_run(db, mon, task, now) -> dict:
     with store.write(db):
         db.execute("UPDATE web_monitors SET baseline=? WHERE id=?", (state.dumps(baseline), mon["id"]))
         if changes["meaningful"]:
-            changes["pending_id"] = ask(db, f"web:finding:{mon['id']}:{task['id']}", _finding_text(mon, changes),
-                                        now)
+            from .. import broadcast
+            scope, text = f"web:finding:{mon['id']}:{task['id']}", _finding_text(mon, changes)
+            # selective broadcast (ADR-053): mode off (the default) delivers exactly as before
+            changes["pending_id"] = broadcast.offer(
+                db, "monitor.finding", now=now, scope=scope, task_id=task["id"],
+                signals={k: len(changes.get(k) or []) for k in ("changed_values", "new_claims", "superseded")},
+                deliver=lambda: ask(db, scope, text, now))["pending_id"]
             state.log_event(db, task["id"], "finding", {"monitor_id": mon["id"], "changes": changes}, now)
         store.bump_state_version(db)
     return changes
@@ -464,10 +469,38 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
                                         (task["id"],)):
                 changes = (state.loads(detail, {}) or {}).get("changes") or {}
                 report["findings"].append({"monitor_id": mid, "task_id": task["id"], "changes": changes})
+    from . import scenarios     # ADR-052: scenario records, imagined store only; None while imagine_scenarios is off
+    imagined_report = scenarios.tick(db, now)
+    if imagined_report is not None:
+        report["scenarios"] = imagined_report
+    from . import recheck, reflection
+    reflected = reflection.scheduled(db, now)    # lane K: the bounded reflection (setting `reflection`, off)
+    if reflected is not None:
+        if "skipped" in reflected:
+            report["skipped"].append({"what": "reflection", "reason": reflected["skipped"]})
+        else:
+            report["reflection"] = {"id": reflected["id"], "actions": len(reflected["actions"])}
     if not cfg.autonomous:
         report["skipped"].append({"what": "predictions and curiosity",
                                   "reason": "autonomous research is off (nsf web config --autonomous)"})
         return _retention(report, services, now)
+    # lane K: the re-check of the knowledge most at risk of being stale, before the due-order refreshes (setting
+    # `idle_recheck`, off by default; its own share of the daily allowance; recheck.run asks the owner's quiet)
+    if recheck.enabled(db) and budget_left > 0:
+        rechecked = recheck.run(db, now, limit=min(cfg.recheck_per_tick, budget_left),
+                                over_cap=lambda: _over_cap(db, now, cfg))
+        report["skipped"] += rechecked["skipped"]
+        for item in rechecked["submitted"]:
+            budget_left -= 1
+            if queue:
+                report["queued"].append({"task_id": item["task_id"], "origin": "recheck"})
+                continue
+            try:
+                done = orchestrator.run(db, item["task_id"], services)
+            except (LeaseHeld, Conflict) as exc:
+                report["queued"].append({"task_id": item["task_id"], "origin": "recheck", "note": str(exc)[:200]})
+                continue
+            report["ran"].append({"task_id": done["id"], "origin": "recheck", "status": done["status"]})
     refreshes, quiet = owner_switch.allowed(db, "tick.prediction_refresh")
     if not refreshes:
         report["skipped"].append({"what": "prediction refreshes", "reason": quiet})
@@ -741,8 +774,15 @@ def work(db_path, *, once=False, stop=None, poll=5.0, sleep=None, clock=time.tim
             wait_for_queue(db, seconds, stop)
 
     def beat():
+        from .. import internal_state
+        sampled = None
         while not beating.is_set():
             _beat(db_path, holder)
+            # ADR-051: a compact internal-state sample every RECORD_EVERY s (numbers only), the history that
+            # predictive regulation reads; off with the owner's internal_state_history setting
+            if sampled is None or time.monotonic() - sampled >= internal_state.RECORD_EVERY:
+                internal_state.record_quietly(db_path)
+                sampled = time.monotonic()
             beating.wait(HEARTBEAT_EVERY)
     beater = threading.Thread(target=beat, daemon=True, name="nsf-worker-heartbeat")
     beater.start()

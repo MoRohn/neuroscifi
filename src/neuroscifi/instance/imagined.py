@@ -111,6 +111,28 @@ def _unresolved(db, refs):
     return missing
 
 
+def unresolved(db, refs):
+    """The references among `refs` ((kind, id) pairs) that name nothing this file holds, as record() judges them: a
+    caller can refuse before it asks the store to keep something."""
+    return _unresolved(db, [_ref(r) for r in refs])
+
+
+def derived_ids(db, mechanism, ref_kind):
+    """The ids of `ref_kind` that one mechanism's records are derived from (one read): how a writer finds what it has
+    not imagined yet without reading every record."""
+    if not present(db):
+        return set()
+    return {i for (i,) in db.execute("SELECT DISTINCT r.ref_id FROM imagined_refs r JOIN imagined i ON i.id=r.record_id "
+                                     "WHERE i.mechanism=? AND r.ref_kind=? AND r.observed=0", (mechanism, ref_kind))}
+
+
+def room(db):
+    """How many more records fit under max_imagined_rows without evicting any (0 when the store is absent)."""
+    if not present(db):
+        return 0
+    return max(0, store.config(db).max_imagined_rows - db.execute("SELECT count(*) FROM imagined").fetchone()[0])
+
+
 def _stale_checkpoints(db, since):
     """Mark valid checkpoints written at or after `since` (they may hold a removed record) stale. Caller owns the
     transaction."""
@@ -208,11 +230,13 @@ def bound(db, now):
 
 
 def record(db, kind, *, payload, assumptions, uncertainty, mechanism, mechanism_version, question, now,
-           derived_from=(), model=None, lifetime=None):
+           derived_from=(), model=None, lifetime=None, once_per=None):
     """Store one imagined record and return its id ('imagined:' + 32 hex). Every reference in `derived_from`
     ((kind, id) pairs, kind in REF_KINDS) must name a record this file holds. `lifetime` (seconds) may only shorten
     InstanceConfig.imagined_lifetime_seconds. At max_imagined_rows the oldest records are evicted first; with 0 the
-    store takes nothing (ValidationError). Writes are refused while regulation pauses them."""
+    store takes nothing (ValidationError). Writes are refused while regulation pauses them. `once_per` (a reference):
+    when this mechanism already holds a record derived from it, that record's id is returned and nothing is written,
+    decided inside the write transaction (two concurrent writers make one record; review1 CL7)."""
     if kind not in KINDS:
         raise ValidationError(f"an imagined record is one of {', '.join(KINDS)}; evidence and predictions have their "
                               "own tables")
@@ -244,7 +268,14 @@ def record(db, kind, *, payload, assumptions, uncertainty, mechanism, mechanism_
         life = min(life, lifetime)
     store.require_write_allowed(db)
     record_id = "imagined:" + secrets.token_hex(16)
+    once = None if once_per is None else _ref(once_per)
     with store.write(db):
+        if once is not None:
+            found = db.execute("SELECT i.id FROM imagined i JOIN imagined_refs r ON r.record_id=i.id WHERE "
+                               "i.mechanism=? AND r.ref_kind=? AND r.ref_id=? AND r.observed=0 ORDER BY i.created_at, "
+                               "i.id LIMIT 1", (mechanism, *once)).fetchone()
+            if found is not None:
+                return found[0]
         missing = _unresolved(db, refs)
         if missing:
             raise ValidationError(f"derived_from names records this instance does not hold: {missing}")
@@ -356,6 +387,39 @@ def show(db, record_id):
     if row is None:
         raise NotFound(f"Unknown imagined record {record_id}")
     return _item(db, row, full=True)
+
+
+def counts(db, *, since=None):
+    """How many records are held, by kind, and the newest one's time (records made at or after `since` only, when
+    given), labelled NOT_EVIDENCE: the numbers a display shows, never a record's content. Read-only."""
+    if not present(db):
+        return {"label": NOT_EVIDENCE, "counts": {k: 0 for k in KINDS}, "total": 0, "newest": None}
+    where, params = ("created_at>=?", (since,)) if since is not None else ("1", ())
+    rows = db.execute(f"SELECT kind, count(*), max(created_at) FROM imagined WHERE {where} GROUP BY kind",
+                      params).fetchall()
+    by_kind = {kind: n for kind, n, _ in rows}
+    return {"label": NOT_EVIDENCE, "counts": {k: by_kind.get(k, 0) for k in KINDS}, "total": sum(by_kind.values()),
+            "newest": max((t for _, _, t in rows), default=None)}
+
+
+def written_by(db, mechanism, *, derived_from=None, observed=None):
+    """The records one mechanism wrote, oldest first, in full: how a writer reads back its own records to fill their
+    outcome slots or report its own prediction errors (never another mechanism's). derived_from=(kind, id) keeps
+    those derived from that record; observed=True/False keeps those whose outcome is filled / still empty."""
+    if not isinstance(mechanism, str) or not mechanism:
+        raise ValidationError("mechanism must be a non-empty string")
+    if not present(db):
+        return []
+    where, params = ["mechanism=?"], [mechanism]
+    if observed is not None:
+        where.append("outcome IS NOT NULL" if observed else "outcome IS NULL")
+    if derived_from is not None:
+        kind, ref_id = derived_from
+        where.append("id IN (SELECT record_id FROM imagined_refs WHERE ref_kind=? AND ref_id=? AND observed=0)")
+        params += [kind, str(ref_id)]
+    rows = db.execute(f"SELECT {','.join(COLUMNS)} FROM imagined WHERE {' AND '.join(where)} "
+                      f"ORDER BY created_at, id", params).fetchall()
+    return [_item(db, r, full=True) for r in rows]
 
 
 def purge(db, now, *, record_id=None, kind=None):

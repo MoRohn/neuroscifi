@@ -12,7 +12,7 @@ from . import store
 from .errors import InstanceError
 
 SUBMODULES = ["neuroscifi.instance.cli_evidence", "neuroscifi.instance.cli_graphs", "neuroscifi.instance.cli_memory",
-              "neuroscifi.instance.cli_imagined"]
+              "neuroscifi.instance.cli_imagined", "neuroscifi.instance.cli_imagine"]
 
 
 def emit(value):
@@ -83,6 +83,19 @@ def imagined_days(text):
         raise argparse.ArgumentTypeError(f"expected a number of days, got {text!r}") from None
     if not math.isfinite(value) or not 60 <= value * 86400 <= 365 * 86400:
         raise argparse.ArgumentTypeError(f"expected a number of days from one minute to 365, got {text}")
+    return value
+
+
+def unit_interval(text):
+    """argparse type: a finite number from 0 to 1."""
+    import argparse
+    import math
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a number from 0 to 1, got {text!r}") from None
+    if not math.isfinite(value) or not 0 <= value <= 1:
+        raise argparse.ArgumentTypeError(f"expected a number from 0 to 1, got {text}")
     return value
 
 
@@ -178,6 +191,21 @@ def _config(db, args, now):
         changes["imagined_lifetime_seconds"] = args.imagined_lifetime_days * 86400
     if args.quiet is not None:
         changes["quiet"] = args.quiet
+    for name in ("internal_state_history", "predictive_regulation", "executive_rule",     # ADR-051
+                 "decision_information"):
+        if getattr(args, name) is not None:
+            changes[name] = getattr(args, name)
+    for name in store.IMAGINE_SWITCHES:
+        if getattr(args, name) is not None:
+            changes[name] = getattr(args, name)
+    if args.imagine_max_seconds is not None:
+        changes["imagine_max_seconds"] = args.imagine_max_seconds
+    if args.imagine_max_mib is not None:
+        changes["imagine_max_bytes"] = args.imagine_max_mib * 1024 * 1024
+    if args.broadcast is not None:
+        changes["broadcast"] = args.broadcast
+    if args.broadcast_threshold is not None:
+        changes["broadcast_threshold"] = args.broadcast_threshold
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
@@ -189,6 +217,22 @@ def _config(db, args, now):
         notes.append("the graph-rule migration was undone (`nsf graph migration undo`); turning "
                      "--graph-rule-migration on does not run it again")
     return out | ({"warnings": problems} if problems else {}) | ({"notes": notes} if notes else {})
+
+
+def _regulation(db, args, now):
+    """`nsf regulation`; --precision adds executive.precision (ADR-054), computed only when asked."""
+    out = store.regulation(db, store.resolve_db(args), measure=True)
+    if getattr(args, "precision", False):
+        from .executive import precision
+        out["precision"] = precision(db)
+    return out
+
+
+def _self(db, args, now):
+    """`nsf self`: the self-description record (self_description.build), or with --short its plain sentences."""
+    from .. import self_description
+    record = self_description.build(db, store.resolve_db(args), now)
+    return {"short": self_description.short(record)} if args.short else record
 
 
 def register(sub):
@@ -239,7 +283,46 @@ def register(sub):
     p.add_argument("--quiet", action=argparse.BooleanOptionalAction, default=None,
                    help="hold everything done unasked: background research, monitors, refreshes, idle "
                         "investigations (default: off; the same as `nsf quiet on|off`)")
+    p.add_argument("--internal-state-history", action=argparse.BooleanOptionalAction, default=None,
+                   help="the research worker keeps a 6-hour history of the internal-state record (numbers only; "
+                        "`nsf internal-state`) (default: on)")
+    p.add_argument("--predictive-regulation", action=argparse.BooleanOptionalAction, default=None,
+                   help="new background research also waits while memory headroom is forecast to cross the critical "
+                        "line, or a regular voice session is expected, within 3 minutes; owner work is never held "
+                        "(default: off)")
+    p.add_argument("--executive-rule", choices=store.RULE_VERSIONS, default=None,
+                   help="the executive's rule version: rules-v1 (the fixed rule order) or information-v1 (asks the "
+                        "most informative question); default rules-v1")
+    p.add_argument("--decision-information", action=argparse.BooleanOptionalAction, default=None,
+                   help="`nsf decide` also shows each question's expected information gain and whether the decision "
+                        "rests on a matched earlier setup (display only; default: on)")
+    for name, what in (("imagine_what_if", "`nsf imagine what-if` and `questions`: exact what-ifs on the beliefs "
+                                           "(default: on)"),
+                       ("imagine_forecast", "`nsf imagine forecast`: several steps ahead from an active graph "
+                                            "(default: on)"),
+                       ("imagine_retrospect", "`nsf imagine retrospect`: which reading most changed a belief "
+                                              "(default: on)"),
+                       ("imagine_scenarios", "scenario records for the Web Cortex's predictions, in the imagined "
+                                             "store only, compared once settled (default: off)")):
+        p.add_argument("--" + name.replace("_", "-"), dest=name, action=argparse.BooleanOptionalAction, default=None,
+                       help=what)
+    p.add_argument("--imagine-max-seconds", type=float,
+                   help="the longest an imagination question may run on its private copy (0.1 to 600; default 10)")
+    p.add_argument("--imagine-max-mib", type=bounded_int(1, 64 * 1024),
+                   help="the largest individual file imagination may copy, in MiB (default 512)")
+    p.add_argument("--broadcast", choices=("off", "log", "on"),
+                   help="selective broadcast of findings (ADR-053): off = every finding reaches you as before "
+                        "(default); log = as before, and each finding's salience is logged; on = only findings at or "
+                        "above --broadcast-threshold become questions, the others stay in their task's record")
+    p.add_argument("--broadcast-threshold", type=unit_interval,
+                   help="the salience (0 to 1) a finding needs to be broadcast while --broadcast is on (default 0.5)")
     p.set_defaults(handler=with_db(_config))
+
+    p = sub.add_parser("self", help="what this individual is doing, knows, is unsure of and can do next, each with "
+                                    "its source and age (self-description; read-only)")
+    store.add_db_argument(p)
+    p.add_argument("--short", action="store_true", help="a few plain sentences instead of the full record")
+    p.set_defaults(handler=with_db(_self))
 
     p = sub.add_parser("quiet", help="one switch for everything done unasked: on = nothing runs unless you ask "
                                      "(background research, monitors, refreshes); off = as your other settings say")
@@ -254,7 +337,10 @@ def register(sub):
 
     p = sub.add_parser("regulation", help="write budget, backlog and pause state")
     store.add_db_argument(p)
-    p.set_defaults(handler=with_db(lambda db, args, now: store.regulation(db, store.resolve_db(args), measure=True)))
+    p.add_argument("--precision", action="store_true",
+                   help="also report how the executive's questions turned out (confirmed, rejected, expired) per "
+                        "rule and per epoch: how often a change alarm was a change you confirmed (display only)")
+    p.set_defaults(handler=with_db(_regulation))
 
     for name in SUBMODULES:
         try:

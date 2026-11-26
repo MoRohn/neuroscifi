@@ -85,6 +85,39 @@ def last_context(db, principal) -> dict:
     return json.loads(row[0]) if row else {}
 
 
+def last_session(db, principal) -> dict | None:
+    """The principal's most recent session (the one last_context reads): {"id", "status", "ended_at", "context"}."""
+    row = db.execute("SELECT id, status, ended_at, context FROM voice_sessions WHERE principal=? ORDER BY updated_at "
+                     "DESC, rowid DESC LIMIT 1", (principal,)).fetchone()
+    return None if row is None else {"id": row[0], "status": row[1], "ended_at": row[2],
+                                     "context": json.loads(row[3] or "{}")}
+
+
+def clear_follow(db, principal, task_id) -> int:
+    """Take the awaited answer of `task_id` off every session of the principal, in one write transaction; returns
+    how many sessions awaited it. The follower that gets a count above 0 is the one that delivers it: two processes
+    following the same task cannot both (review1 A9, A10), and an answer delivered or given up on is never picked
+    up again by a later session (S9)."""
+    with store.write(db):
+        rows = db.execute("SELECT id, context FROM voice_sessions WHERE principal=? AND json_valid(context) AND "
+                          "json_extract(context,'$.follow_task_id')=?", (principal, task_id)).fetchall()
+        for sid, text in rows:
+            ctx = json.loads(text)
+            ctx.pop("follow_task_id", None)
+            ctx.pop("follow_by", None)
+            # updated_at stays: it orders the sessions last_context reads
+            db.execute("UPDATE voice_sessions SET context=? WHERE id=?", (json.dumps(ctx, sort_keys=True), sid))
+    return len(rows)
+
+
+def active_elsewhere(db, principal, ids) -> bool:
+    """Whether the principal has an active session other than `ids` (one another process holds)."""
+    ids = list(ids)
+    return db.execute("SELECT 1 FROM voice_sessions WHERE principal=? AND status='active'"
+                      + (f" AND id NOT IN ({','.join('?' * len(ids))})" if ids else "") + " LIMIT 1",
+                      (principal, *ids)).fetchone() is not None
+
+
 def sessions(db, principal=None, limit=20) -> list[dict]:
     where, params = ("WHERE principal=?", (principal,)) if principal else ("", ())
     out = _rows(db, f"SELECT s.*, (SELECT count(*) FROM voice_segments g WHERE g.session_id=s.id) AS segments "

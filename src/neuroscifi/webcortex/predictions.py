@@ -123,6 +123,10 @@ def check(db, prediction_id, task_report, now) -> dict:
         if outcome == "error":
             state.log_event(db, pred["task_id"], "prediction_error",
                             {"prediction_id": prediction_id, "knowledge_id": kid, "reason": reason}, now)
+            from . import premises     # lane K: what the failed prediction rested on is marked for re-check
+            marked = premises.failed_prediction(db, pred, now)
+            if marked:
+                detail["rechecks_marked"] = marked
             detail["error_analysis"] = evolution.knowledge_prediction_error(
                 db, pred, item, reason, {"task_id": report.get("task_id") or pred["task_id"]}, now)
             if item is not None and item["status"] in knowledge.REVIEWABLE:   # a superseded item has a successor

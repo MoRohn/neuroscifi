@@ -100,9 +100,43 @@ def _number(text, name, kind=float):
 # ---- route handlers: (ctx, params, query, body) -> JSON value -----------------------------------------
 
 def _inventory(c, p, q, b):
-    measure = _query(q, ("measure",)).get("measure") in ("1", "true")   # the overview asks; the header, reloaded
+    q = _query(q, ("measure", "self"))
+    measure = q.get("measure") in ("1", "true")   # the overview asks; the header, reloaded
     # after every teaching action, does not
-    return {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path, measure=measure)}
+    out = {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path, measure=measure)}
+    if q.get("self") in ("1", "true"):        # kept for older pages; the console asks GET /api/self (review1 A1)
+        out |= _self_record(c)
+    return out
+
+
+def _self_record(c) -> dict:
+    """{"self", "self_short"}; {"self": None, "self_error"} when the record cannot be built at all (each of its
+    fields already reports its own failure: self_description._guarded)."""
+    from .. import self_description
+    try:
+        record = self_description.build(c.db, c.path, c.now)
+        return {"self": record, "self_short": self_description.short(record)}
+    except Exception as exc:                  # noqa: BLE001 - the overview shows that it could not be read
+        return {"self": None, "self_short": None,
+                "self_error": f"the self-description could not be built ({type(exc).__name__})"}
+
+
+def _self(c, p, q, b):
+    """The self-description record (ADR-053) in its own request, so the header and the overview's other panels never
+    depend on it (review1 A1); computed on request, read-only."""
+    _query(q, ())
+    return {"state_version": store.state_version(c.db)} | _self_record(c)
+
+
+def _imagined(c, p, q, b):
+    """Imagined records (instance/imagined.py), read-only and labelled "imagined, not evidence": simulations,
+    speculations and inferences the system produced itself, never evidence. ?kind= filters, ?limit= (1-100)."""
+    from ..instance import imagined
+    q = _query(q, ("kind", "limit"))
+    limit = _number(q.get("limit", "30"), "limit", int)
+    if not 1 <= limit <= 100:
+        raise ValidationError("limit must be between 1 and 100")
+    return imagined.listing(c.db, c.now, kind=q.get("kind") or None, limit=limit)
 
 
 def _epochs(c, p, q, b):
@@ -279,7 +313,7 @@ def _memory(c, p, q, b):
 # ---- Web Cortex (ARCHITECTURE.md §4.5): research tasks, knowledge, monitors, switches --------------------------
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-WEB_SWITCHES = ("enabled", "autonomous", "pocket_research", "browser_rendering")
+WEB_SWITCHES = ("enabled", "autonomous", "pocket_research", "browser_rendering", "pocket_recent")
 WORKER_POLL = 5.0      # seconds between idle polls of the opt-in embedded worker (as `nsf web work`)
 WORKER_RETRY = 5.0     # first back-off after an unexpected worker error; doubles per consecutive error
 WORKER_RETRY_MAX = 60.0
@@ -602,7 +636,9 @@ def _resources(c, p, q, b):
     """Memory/GPU/container use, the pressure level and what the scheduling policies decide now (RD-46;
     resources.status). ?cold_start=1 also reads each neuroscifi-* container's last start-to-ready time."""
     from .. import resources
-    q = _query(q, ("cold_start",))
+    q = _query(q, ("cold_start", "quick"))
+    if q.get("quick") in ("1", "true"):     # the overview's Resources card (ADR-053): memory and policies only, no
+        return resources.status(c.path, full=False)    # subprocess (as `nsf resources --quick`)
     return resources.status(c.path, full=True, cold_start=q.get("cold_start") in ("1", "true"))
 
 
@@ -637,6 +673,8 @@ def _phones_status(c, p, q, b):
 SEGMENT = r"([^/]+)"
 ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern, handler in (
     ("GET", "inventory", _inventory),
+    ("GET", "self", _self),
+    ("GET", "imagined", _imagined),
     ("GET", "epochs", _epochs),
     ("POST", "epochs", _start_epoch),
     ("GET", f"epochs/{SEGMENT}/beliefs", _explain),

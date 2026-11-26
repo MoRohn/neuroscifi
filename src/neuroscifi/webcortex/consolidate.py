@@ -1528,6 +1528,12 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
         summary["predictions_settled"] = evolution.observe(db, task_id, observed, now, freshness_class=freshness,
                                                            ttl_overrides=cfg.freshness_ttl or None,
                                                            knowledge_by_key=ids_by_key)
+        # lane K (ADR-055): premises of the new items, re-check marks of what rested on a changed one (no belief moves)
+        from . import premises
+        evolution.refresh_counter_evidence(db, summary["hypotheses"])
+        rechecked = premises.after_consolidation(db, task_id, summary, now)
+        if rechecked["marked"] or rechecked["closed"]:
+            summary["rechecks"] = {"marked": rechecked["marked"], "closed": rechecked["closed"]}
         summary["feedback"] = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0] - feedback_before
         summary["pending"] = sorted(set(summary["pending"]))
         state.log_event(db, task_id, "consolidated", {k: (len(v) if isinstance(v, list) else v)

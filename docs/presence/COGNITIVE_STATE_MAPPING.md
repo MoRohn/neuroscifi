@@ -11,7 +11,8 @@ check every row of these tables.
 | `queued` | — | waiting | waiting | web_research |
 | running, lease expired | — | recovering (+condition `recovering`) | recovering | web_research |
 | `cancel_requested=1` | — | waiting ("stopping at the next safe point") | waiting | — |
-| `discovering` | any | searching | researching (telescope, scanning) | web_research |
+| `discovering` | `decision` with `needs_web: true` (the query plan is made next; ADR-053) | planning | exploration | web_research |
+| `discovering` | any other | searching | researching (telescope, scanning) | web_research |
 | `reading` | any | reading | reading (book) | web_research |
 | `evaluating` | no `contradicts` link | verifying | Tier B *evaluating evidence* (magnifier) | evidence_verification |
 | `evaluating` | ≥1 `contradicts` link for the task | comparing | Tier B *comparing* (balance) | evidence_verification |
@@ -40,10 +41,21 @@ primary is shown *subtly*: the calm exploring entity, an orbiting dot and half t
 | `pending` unresolved, created ≤ 15 min ago | `awaiting_permission` | waiting, concept *asking*, priority **user_critical**, `tool_awaiting_confirmation` |
 | `pending` unresolved, older | `awaiting_permission` | none (a small "?" overlay) |
 | monitor `finding` event ≤ 8 s ago | — | learning, concept *discovery*, background |
-| `presence.activity` entries (in-process model calls) | — | generating, priority tool, with streamed token count |
+| `prediction` event ≤ 8 s ago (a forecast recorded with its check date; owner scope; ADR-053) | — | predicting, background ("Recorded N predictions to check later") |
+| `imagined` record written ≤ 8 s ago (instance/imagined.py; owner scope; ADR-053) | — | simulating, background ("Imagining a what-if; imagined, not evidence") |
+| unexpired `graph_leases` row (a graph being learned, promoted or rolled back; owner scope; ADR-053) | — | analyzing, foreground ("Fitting and scoring a graph for context …") |
+| `presence.activity` entries of this process: streamed model calls | — | generating, priority tool, with streamed token count |
+| `presence.activity` entry `interpreting` (the voice hub while the bridge handles a request; ADR-053) | — | interpreting, priority communication ("Interpreting your request") |
+| `presence.activity` entry `executing` (an allow-listed model tool while it runs, `inference.tools`; ADR-053) | — | executing, priority tool, secondary `tool_execution` |
+| `<db>.resources/inflight-<pid>.json` of another live process (the research worker's streamed model calls; ADR-053): written when a call starts or ends and at most once a second while tokens stream, removed when the process has none; ignored when the process is gone or the file is older than 600 s | — | generating, priority tool, "… in the research worker" |
 | token ledger: calls that ended in the last 30 s | — | feeds intensity (`tokens_30s`) |
-| write regulation paused | `resource_constrained` | — |
+| write regulation paused | `resource_constrained`, `sources.writes = "paused"` | — |
 | measured memory/GPU pressure `elevated` or `critical` (`resources.monitor`, RD-46; `sources.resources`) | `resource_constrained` | — |
+
+The words for `resource_constrained` name its cause (ADR-053): `sources.resources = "elevated"` "memory is getting
+tight", `"critical"` "memory is nearly full; background research waits", `sources.writes = "paused"` "writes paused
+to protect storage", both when both hold, and "resources are constrained" when a server names neither. Before, the
+client said "writes paused to protect storage" for memory pressure too.
 | any provider circuit `open` (web enabled) | `network_degraded` (`sources.search = "degraded"`) | — |
 | owner voice session active in a voice mode whose speech engines (ASR; plus TTS in `voice_text`) were last measured not `ready` by the hub (`voice.state.engines`, ≤ 60 s old) | `network_degraded` (`sources.voice = "engines_unavailable"`, `sources.voice_engines_down = "asr,tts"`); the text names the engines | — |
 | ≥2 running tasks, or running plus queued | `busy` | — |
@@ -66,7 +78,8 @@ In the browser, `nsf:voice` events (which carry a measured level) replace the ba
 
 ## Arbitration
 
-Candidates are sorted by rank, then by recency (`since`). The first one is primary. Up to two others become
+Candidates are sorted by rank, then by recency (`since`): `aggregator.arbitrate`, which the selective broadcast
+(`broadcast.py`, ADR-053) also uses to record which of several live findings is shown first. The first one is primary. Up to two others become
 accents: an orbiting dot for background work, or a small shape for a condition that is not primary. Conditions are
 always shape marks, never colour alone: "?" for awaiting permission, "!" for error, a broken ring for degraded,
 dashes for disconnected. When the client cannot reach the server, the concept is *disconnected* and the text says
@@ -82,7 +95,8 @@ page turns *resting* into *idle*.
 ## Family scope (Pocket)
 
 `derive(..., family=digest)` adds `AND family=?` to every task query and filters the ledger to the family's task
-ids. It excludes `pending`, the voice snapshot and the in-process registry. Global conditions such as write
+ids. It excludes `pending`, the voice snapshot, the in-process registry and the other processes' in-flight files,
+and the predicting, simulating and analyzing rows (owner records). Global conditions such as write
 regulation still apply. `tests/presence/test_routes.py::test_pocket_presence_is_family_scoped` and
 `tests/e2e/test_presence.py::test_pocket_presence_shows_own_family_task` check that nothing of another family
 appears.

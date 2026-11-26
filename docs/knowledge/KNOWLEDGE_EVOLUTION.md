@@ -220,3 +220,21 @@ An interrupted run leaves the file at version 7, with nothing changed, and the n
 - Calibration is only as good as the number of settled forecasts. With few outcomes the Brier score and bins are noisy, and `n` is always reported.
 - Document-level syndication (`claims.document_origins`) is computed during synthesis and not stored. Consolidation recounts groups from the claims' own origin flags and their sentences.
 - Entity relationships are co-mentions only.
+
+## 11. Premises, re-checks, reflection and strategy selection (ADR-055)
+
+None of this moves a belief: a knowledge item changes only through consolidation of new evidence.
+
+| Mechanism | Module | Setting (default) | What it records or does |
+|---|---|---|---|
+| Hypothesis fields | `evolution._describe`, `record_revision`, `compete` | `hypothesis_fields` (on) | assumptions, counter-evidence, expected information gain, cost, revision record; `nsf knowledge compete KEY` compares the open hypotheses of a key with dampened likelihoods (display only) |
+| Abandonment | `evolution.abandon_if_unsupported` | `hypothesis_abandon` (off) | a derived hypothesis whose predictions all expired with no evidence becomes `abandoned`, with that evidence |
+| Premises and marks | `premises.py` | `premise_recheck` (on) | what a new item or hypothesis rests on; "to re-check" marks when a premise is superseded, contradicted or forgotten, or a prediction it rested on fails (`nsf knowledge rechecks`) |
+| Idle re-check | `recheck.py` | `idle_recheck` (off), `recheck_per_tick` 1, `recheck_daily` 4 | refreshes the knowledge most at risk of being stale (importance x TTLs elapsed), admitted by `autonomy.admission(path="recheck")`; background activity `tick.knowledge_recheck` |
+| Reflection | `reflection.py` | `reflection` (off), `reflection_interval_days` 7 | a traceable report and at most 5 actions (`nsf knowledge reflect`, `reflections`); background activity `tick.reflection` |
+| Strategy selection | `strategies.py` | `strategy_selection` ("gate") | Thompson sampling over research modes from external outcomes; ranks admitted candidates only after its gate passed (`nsf knowledge strategy`) |
+| Improvement ledger | `strategies.record`, `ledger` | - | every adopted or reverted strategy or rule change with its evidence (`nsf knowledge ledger`); levels 4 and 5 refused |
+
+Forgetting: premise rows, marks and reflection lines naming a forgotten record are removed in the forget's
+transaction and again after a restore's replay (`governance._premise_cascade`). Measurements:
+`docs/quality/evidence/genesis_knowledge.json`.

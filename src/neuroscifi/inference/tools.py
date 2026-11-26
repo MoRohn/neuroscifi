@@ -72,8 +72,11 @@ class ToolRegistry:
         decision = self.decide(call)
         if not decision["allowed"]:
             return decision | {"status": "refused"}
+        from ..presence import activity      # Presence shows an allow-listed tool while it runs (executing)
         try:
-            result = self.tools[decision["name"]].handler(decision["arguments"], ctx)
+            with activity.track("executing", subsystem="reasoning", purpose=f"model tool {decision['name']}",
+                                secondary=("tool_execution",), publish=getattr(ctx, "path", None)):
+                result = self.tools[decision["name"]].handler(decision["arguments"], ctx)
         except Exception as exc:     # an instance error (validation, conflict, disabled) is the tool's answer
             return decision | {"status": "error", "error": f"{type(exc).__name__}: {str(exc)[:300]}"}
         return decision | {"status": "executed", "result": result}

@@ -339,12 +339,48 @@ def test_background_origins_are_matched_with_case_everywhere(individual):
         held_sql = db.execute(f"SELECT 1 FROM web_tasks WHERE id=? AND {background.HELD_SQL}", (tid,)).fetchone()
         assert (held_sql is not None) == background.held_origin(origin) == background.held_task(db, tid, origin), \
             origin
+def drive_tick_scenarios(db, path, site, monkeypatch):
+    from neuroscifi.webcortex import evolution
+    store.set_config(db, {"imagine_scenarios": True}, T0)
+    with store.write(db):
+        evolution.open_hypothesis(db, key="zephyr board release", statement="Zephyr board 3 is the latest release.",
+                                  origin="gap", verification={"confidence": 0.6}, claims=[], values=[], polarity=1,
+                                  now=T0)
+    quiet(db)
+    assert scheduler.tick(db, T0, None, queue=True)["scenarios"] == {"held": background.QUIET_REASON}
+    assert db.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
+    quiet(db, False)
+    assert scheduler.tick(db, T0, None, queue=True)["scenarios"] == {"settled": 0, "imagined": 1}
+def drive_tick_knowledge_recheck(db, path, site, monkeypatch):
+    from test_consolidate import consolidated, two_sources
+    _, done = consolidated(db, [two_sources(published=T0 - 91 * 86400.0)], T0 - 90 * 86400.0)
+    autonomy.enable(db, T0)
+    state.set_config(db, {"idle_recheck": True}, T0)
+    quiet(db)
+    report = scheduler.tick(db, T0, None, queue=True)
+    refresh = f"refresh:{done['provisional'][0]}"
+    assert {"what": "knowledge re-check", "reason": background.QUIET_REASON} in report["skipped"]
+    assert queued(db, refresh) == [] and report["queued"] == []
+    quiet(db, False)
+    report = scheduler.tick(db, T0, None, queue=True)
+    assert [q["origin"] for q in report["queued"]][:1] == ["recheck"] and len(queued(db, refresh)) == 1
+
+
+def drive_tick_reflection(db, path, site, monkeypatch):
+    state.set_config(db, {"reflection": True}, T0)
+    quiet(db)
+    report = scheduler.tick(db, T0, None, queue=True)
+    assert {"what": "reflection", "reason": background.QUIET_REASON} in report["skipped"] and "reflection" not in report
+    assert db.execute("SELECT count(*) FROM web_reflections").fetchone()[0] == 0
+    quiet(db, False)
+    assert scheduler.tick(db, T0, None, queue=True)["reflection"]["id"] == 1
 
 
 DRIVERS = {"tick.monitors": drive_tick_monitors, "tick.prediction_refresh": drive_tick_prediction_refresh,
            "tick.curiosity": drive_tick_curiosity, "worker.idle_investigation": drive_worker_idle_investigation,
            "worker.claim_background": drive_worker_claim_background,
-           "task.background_run": drive_task_background_run}
+           "task.background_run": drive_task_background_run, "tick.scenarios": drive_tick_scenarios,
+           "tick.knowledge_recheck": drive_tick_knowledge_recheck, "tick.reflection": drive_tick_reflection}
 
 
 def test_every_registered_cognition_activity_has_a_driver():
@@ -580,7 +616,9 @@ def test_no_other_surface_can_change_quiet():
     from neuroscifi.webcortex import mcp
     assert "quiet" not in console.WEB_SWITCHES
     names = {t["name"] for t in mcp._tools()}
-    assert names == {"web_search", "web_research", "web_task", "web_evidence", "web_knowledge"}
+    # ADR-053 adds self_status, which only reads (it reports quiet, it cannot set it)
+    assert names == {"web_search", "web_research", "web_task", "web_evidence", "web_knowledge", "self_status"}
+    assert next(t for t in mcp._tools() if t["name"] == "self_status")["annotations"]["readOnlyHint"] is True
     assert not any(word in n for n in names for word in ("config", "forget", "quiet", "autonomy", "monitor"))
     pocket = (SRC / "pocket" / "server.py").read_text() + (SRC / "pocket" / "research_routes.py").read_text()
     assert "set_config" not in pocket and "quiet" not in pocket

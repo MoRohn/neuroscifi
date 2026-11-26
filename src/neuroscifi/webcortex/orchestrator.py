@@ -93,7 +93,7 @@ from ..instance import store
 from ..instance.errors import Conflict, LeaseHeld, ValidationError
 from . import state, temporal
 from .types import (FETCH_ERROR_CODES, MODES, TERMINAL_STATES, Budget, BudgetExceeded, Claim, ClaimCluster, Document,
-                    FetchError, FetchResult, QueryPlan, SearchResult, Stopped, Usage)
+                    FetchError, FetchResult, Query, QueryPlan, SearchResult, Stopped, Usage)
 
 LEASE_SECONDS = 600.0
 AUTHORIZED_DISCLOSURE = "owner-approved-disclosure"
@@ -108,6 +108,8 @@ OWNER_NOTE_ORIGINS = frozenset({"console", "voice", "pocket", "pocket-voice"})  
 SPOKEN_ORIGINS = frozenset({"voice", "pocket-voice"})    # the answer is spoken (voice/bridge.py), not shown
 MAX_OBJECTIVE = 2000
 MAX_FOLLOW = 2
+DEPTH_MIN_PAGES = 4           # ADR-054 adaptive_depth: never stop before this many pages were read
+DEPTH_PATIENCE = 2            # ... and only after this many pages in a row added no verified statement or contradiction
 MAX_CONTEXT_PACKAGES = 200
 MAX_PRESENTATION = 200
 CANDIDATE_FACTOR = 3          # reading ranks up to 3 x max_pages candidates; failed fetches do not use a page slot
@@ -692,6 +694,8 @@ class _Run:
         self.config_read = time.monotonic()
         self.lookout = None               # what fetches ask from other threads while the task reads (_Lookout)
         self.deferred = []                # events noted inside a fetch, written after it (flush_deferred)
+        self.depth_stopped = self.escalated = None      # ADR-054: adaptive_depth / verification_escalation outcomes
+        self.depth_seen = []                            # (claims of each page read, verified, contradictions)
         from .. import background         # background work the owner's quiet stops (ADR-050)
         self.held_when_quiet = background.held_task(db, self.id, self.origin)
 
@@ -1623,6 +1627,9 @@ class _Run:
                 self.usage.charge(self.budget, pages=1)
                 self.record(doc, provider=r.provider, api=as_api, published_hint=hint,
                             search_date=None if as_api or hint is not None else _search_date(r))
+                if self.cfg.adaptive_depth and self.depth_stop(doc):
+                    later, deferred = [], []
+                    break
             self.drop_prefetched(ahead)
             # pages without text (to render) first, then undated pages, encyclopedia articles and pages (or hits)
             # dated before the required window, in rank order (sorted() is stable). A page without text that could
@@ -1675,7 +1682,8 @@ class _Run:
                 elif n:
                     self.note(f"{host}: {n} more candidate(s) not tried: the site's crawl delay puts the next "
                               "request beyond the fetch timeout")
-            self.follow()
+            if not self.depth_stopped:
+                self.follow()
         except BudgetExceeded as exc:
             self.limit(f"budget exhausted while reading: {exc}")
         except _OutOfTime:
@@ -1926,6 +1934,91 @@ class _Run:
             self.usage.charge(self.budget, pages=1)
             self.event("crawl", {"from": first.url, "url": link}, "reading")
             self.record(doc, provider="crawl", api=False)
+
+    # ---- monitoring (ADR-054) -----------------------------------------------------------------------------------
+    def depth_stop(self, doc) -> bool:
+        """adaptive_depth: after a page is read, count the statements that have MIN_GROUPS independent sources and
+        the contradictions among the pages read so far (the claims module's own extraction, clustering and
+        grouping, on copies: nothing is stored). True (stop reading) once DEPTH_MIN_PAGES pages were read, at least
+        one statement is verified and the last DEPTH_PATIENCE pages changed neither count. It only shortens the
+        reading inside the budget; what is read is evaluated exactly as before."""
+        from . import claims, monitoring
+        try:
+            found = self.extract_claims(doc, self.by_salience())
+        except Exception:      # an untrusted page that does not extract adds nothing here; evaluate() decides
+            found = []
+        everything = [c for page in self.depth_seen for c in page[0]] + list(found)
+        origins = claims.stamp_origins(everything, self.documents)
+        freshness = (self.checkpoint.get("assessment") or {}).get("freshness_class") or "stable"
+        scored = [claims.score(c, now=self.clock(), freshness_class=freshness, ttl_overrides=self.ttl_overrides(),
+                               origins=origins) for c in claims.cluster(everything)]
+        counts = (monitoring.verified_count(scored), sum(len(c.contradicting) for c in scored))
+        self.depth_seen.append((found, counts))
+        history = [c for _, c in self.depth_seen]
+        if len(history) <= max(DEPTH_MIN_PAGES - 1, DEPTH_PATIENCE) or not counts[0] or \
+                history[-1 - DEPTH_PATIENCE] != counts:
+            return False
+        self.depth_stopped = {"after_pages": len(history), "verified": counts[0], "contradiction_pairs": counts[1]}
+        self.event("decision", {"adaptive_depth": f"stopped reading after {len(history)} pages: the last "
+                                                  f"{DEPTH_PATIENCE} added no verified statement and no contradiction",
+                                **self.depth_stopped}, "reading")
+        return True
+
+    def escalate_verification(self, report):
+        """verification_escalation: when the answer's calibrated confidence is below the threshold and the task's
+        own budget allows it (monitoring.escalation), search once for the weakest statement, read the first unread
+        result from a family of sites not read yet, then evaluate and synthesize again over everything read. The
+        owner's stops (check) apply as everywhere; budget or time running out keeps the report as it was. Runs at
+        most once per task (stage 'escalating')."""
+        from . import monitoring, safety
+        from .claims import site_label
+        from .extract import canonical_url
+        record = monitoring.assess(report, documents=self.documents, clusters=self.clusters)
+        plan = monitoring.escalation(record, usage=self.usage, budget=self.budget, elapsed=self.elapsed())
+        self.done("escalating")
+        if plan is None:
+            return report
+        self.escalated = {"confidence": plan["confidence"], "threshold": plan["threshold"], "read": None}
+        self.event("decision", {"escalation": {k: plan[k] for k in ("confidence", "threshold", "why")}},
+                   "synthesizing")
+        try:
+            self.check()
+            queries = self.screened(QueryPlan(queries=(Query(text=plan["statement"][:300],
+                                                             purpose="verification escalation"),)))
+            if not queries.queries:
+                return report
+            outcome = self.search(queries)
+            self.renew()
+            have = {canonical_url(d.canonical_url or d.url) for d in self.documents}
+            families = {site_label(d.domain or _host(d.url)) for d in self.documents}
+            for r in outcome.results:
+                if canonical_url(r.url) in have or site_label(_host(r.url)) in families:
+                    continue
+                if self.skip_denied(r.url, r.provider):
+                    continue
+                self.check()
+                try:
+                    doc = safety.quarantine(_extract(self.fetch(r.url)))
+                except FetchError as exc:
+                    self.failures.append({"stage": "reading", "found_by": r.provider, **exc.to_json()})
+                    self.event("error", {"stage": "reading", "escalation": True, **exc.to_json()}, "synthesizing")
+                    self.renew()
+                    continue
+                self.usage.charge(self.budget, pages=1)
+                self.record(doc, provider=r.provider, api=False, search_date=_search_date(r))
+                self.escalated["read"] = doc.canonical_url or doc.url
+                break
+            else:
+                self.event("decision", {"escalation": "no unread source from another family of sites was found"},
+                           "synthesizing")
+                return report
+        except (BudgetExceeded, _OutOfTime):
+            self.note("verification escalation stopped: the task's budget ran out")
+            return report
+        except _STOP:
+            raise
+        self.evaluate()
+        return self.synthesize()
 
     # ---- evaluating ---------------------------------------------------------------------------------------------
     def evaluate(self):
@@ -2446,6 +2539,8 @@ def _execute(db, task_id, services, *, resume):
                               "evaluating")
             run.stage("synthesizing")
             report = run.synthesize()
+            if run.cfg.verification_escalation and not run.is_done("escalating"):
+                report = run.escalate_verification(report)
             run.done("synthesizing")
             status = "partial" if (run.exhausted or run.stage_failed) else "completed"
             failed = _retrieval_failed(run)
@@ -2539,6 +2634,9 @@ def _execute(db, task_id, services, *, resume):
             except state.LostLease:
                 return _lost_lease(db, task_id, run)
             status = "partial"
+    if report is not None and status in ("completed", "partial") and (run.cfg.answer_monitoring or
+                                                                      run.cfg.selective_answering):
+        _monitor(run, report)
     run.usage.seconds = round(run.elapsed(), 3)
     try:
         with store.write(db):
@@ -2613,6 +2711,28 @@ def _reason(db, run, report):
         run.event("decision", {"reasoning": out["status"], "generated_by": out["generated_by"],
                                "accepted": len(out.get("answer") or []), "rejected": len(out.get("rejected") or []),
                                "reason": out.get("reason"), "usage": out.get("usage")}, "synthesizing")
+
+
+def _monitor(run, report):
+    """ADR-054: report["monitoring"] (monitoring.assess and the depth record) and, with selective_answering, the
+    plain "not enough evidence" line. A record only: verification states, the answer's quotes, the model's guarded
+    summary and what consolidation kept are unchanged. A failure here never fails the task and never changes the
+    report: it is logged as the task's "error" event (stage "monitoring"), not a line in the owner's report (Wave 1
+    review A13: a display-only record must not change what the owner reads)."""
+    from . import monitoring
+    try:
+        record = monitoring.assess(report, documents=run.documents, clusters=run.clusters,
+                                   consolidation=report.get("consolidation"), selective=run.cfg.selective_answering)
+        record["depth"] = monitoring.depth(run.documents, run.clusters, run.usage, run.budget,
+                                           stopped_early=run.depth_stopped, escalated=run.escalated,
+                                           guard=record["signals"].get("guard"))
+        monitoring.apply_note(report, record)
+        report["monitoring"] = record
+    except Exception as exc:   # monitoring must never cost the owner the answer
+        try:
+            run.event("error", {"stage": "monitoring", "error": type(exc).__name__, "detail": str(exc)[:300]})
+        except Exception:      # noqa: BLE001 - a lost lease is seen by the task's own final update
+            pass
 
 
 def _sense_note(report, asked):

@@ -31,9 +31,17 @@ DEFAULTS = {
     "transcript_visible": True, "asr_url": "http://127.0.0.1:18431", "asr_model": "whisper-large-v3-turbo",
     "tts_url": "http://127.0.0.1:18432", "key_file": None, "personaplex": False,
     "personaplex_url": "http://127.0.0.1:18998", "personaplex_voice": "NATF2", "consent": {},
+    # R8 (ADR-053): a spoken question's research answer is still delivered after the console or Pocket restarts: the
+    # session keeps which task it follows, and the principal's next session picks the follow up again. On by
+    # default (it fixes a recorded finding; nothing new is stored beyond one task id in the session context).
+    "resume_follow": True,
+    # ADR-053, review1 A15: "what are you working on?" and the other status questions that started research before
+    # the voice command "what are you doing" existed keep starting research unless the owner switches this on (then
+    # they get the short self-description). Off by default: an existing phrase keeps what it did.
+    "status_questions": False,
 }
 OWNER_ONLY = {"retain_audio", "audio_ttl_hours", "asr_url", "asr_model", "tts_url", "key_file", "personaplex",
-              "personaplex_url", "personaplex_voice"}
+              "personaplex_url", "personaplex_voice", "resume_follow", "status_questions"}
 DEFAULT_KEY_FILE = paths.home() / ".config" / "neuroscifi" / "voice" / "api_key"     # never raises (paths.home)
 
 
@@ -64,7 +72,8 @@ def _validate(name, value):
         raise ValidationError("personaplex_voice must be one of " + ", ".join(PERSONAPLEX_VOICES))
     if name == "speed" and (isinstance(value, bool) or not isinstance(value, (int, float)) or not 0.5 <= value <= 2.0):
         raise ValidationError("speed must be between 0.5 and 2.0")
-    if name in ("retain_audio", "transcript_visible", "personaplex") and not isinstance(value, bool):
+    if name in ("retain_audio", "transcript_visible", "personaplex", "resume_follow", "status_questions") \
+            and not isinstance(value, bool):
         raise ValidationError(f"{name} must be true or false")
     if name == "audio_ttl_hours" and (isinstance(value, bool) or not isinstance(value, int)
                                       or not 1 <= value <= MAX_AUDIO_TTL_HOURS):

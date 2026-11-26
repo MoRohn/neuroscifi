@@ -57,8 +57,10 @@ def dump(db):
 # import the store nor carry SQL naming its tables. Each entry gives the reason it is allowed.
 #   STORE     the store, its schema and lifecycle (bounds, forgets, sweep, restore) and the owner's own commands:
 #             any use. Closed: a mechanism never goes here.
-#   WRITERS   a mechanism that records what it imagined: only the write API (WRITE_API), never SQL on the store.
-#   DISPLAYS  a surface that lists records, each labelled "imagined, not evidence": only DISPLAY_API, never SQL.
+#   WRITERS   a mechanism that records what it imagined: only the write API (WRITE_API; written_by reads back the
+#             mechanism's own records to fill their outcome slots), never SQL on the store.
+#   DISPLAYS  a surface that lists or counts records, each labelled "imagined, not evidence": only DISPLAY_API, never
+#             SQL.
 # No evidence path (FORBIDDEN: knowledge, claims, consolidation, verification, calibration, beliefs, retrieval, the
 # answer bundle) may be added to any category: those modules may not read the store at all.
 #
@@ -73,10 +75,31 @@ STORE = {
     "instance/checkpoints.py": "a restore replays the store's removals (tombstones, limits, orphans)",
     "instance/cli_imagined.py": "the owner's `nsf imagined list|show|purge|kinds`, every item labelled",
 }
-WRITERS: dict[str, str] = {}
-DISPLAYS: dict[str, str] = {}
-WRITE_API = {"record", "observe", "example", "KINDS", "REF_KINDS", "OBSERVATION_KINDS", "MAX_REFS", "NOT_EVIDENCE"}
-DISPLAY_API = {"listing", "show", "present", "KINDS", "NOT_EVIDENCE"}
+WRITERS: dict[str, str] = {
+    "webcortex/scenarios.py": "lane M (ADR-052): one simulation record per open prediction (imagine_scenarios, off), "
+                              "its outcome slot filled once from the settled prediction; reads back only its own "
+                              "records (written_by)",
+    "instance/imagine.py": "lane M (ADR-052): `nsf imagine ... --keep` stores an answer the owner asked to keep, "
+                           "derived from the epoch and readings it names",
+    "webcortex/reflection.py": "lane K (ADR-055): the optional model summary of a reflection report, stored as an "
+                               "inference (reflection_model_summary, off); the report itself is not imagined",
+    "acceptance/cognition/adversarial.py": "the cognitive benchmark's adversarial case "
+                                          "system_made_content_never_enters_the_journal records one what-if in a "
+                                          "temporary individual to check it can never become a reading",
+}
+DISPLAYS: dict[str, str] = {
+    "console/server.py": "lane W (ADR-053): the console's read-only 'Imagined, not evidence' panel (GET "
+                         "/api/imagined), every item labelled",
+    "self_description.py": "lane W (ADR-053): the self-description's provenance section counts the records held by "
+                           "kind, labelled not evidence",
+    "presence/aggregator.py": "lane W (ADR-053): Presence shows 'simulating' while records were just made (a count "
+                              "and a time, never content)",
+}
+WRITE_API = {"record", "observe", "example", "written_by", "present", "KINDS", "REF_KINDS", "OBSERVATION_KINDS",
+             "MAX_REFS", "NOT_EVIDENCE",
+             # read-only helpers of a writer (review1 CH1, CL8): refuse before writing, find what is not imagined yet
+             "unresolved", "derived_ids", "room"}
+DISPLAY_API = {"listing", "show", "counts", "present", "KINDS", "NOT_EVIDENCE"}
 FORBIDDEN = ["webcortex/knowledge.py", "webcortex/claims.py", "webcortex/consolidate.py", "webcortex/synthesis.py",
              "webcortex/evolution.py", "webcortex/predictions.py", "webcortex/semantic.py",
              "webcortex/memory_gate.py", "webcortex/reasoning.py", "webcortex/state.py", "webcortex/temporal.py",

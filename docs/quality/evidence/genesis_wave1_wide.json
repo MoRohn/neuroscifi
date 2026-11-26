@@ -1,0 +1,8357 @@
+{
+ "benchmark": "cognition, Wave 1: supplementary wide-seeds run",
+ "environment": {
+  "git_commit": "1c6cf1e30584de95b7d7ce265224f6379632ac0a",
+  "git_dirty": true,
+  "python": "3.12.16",
+  "numpy": "2.3.5",
+  "sqlite": "3.53.1",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39",
+  "withheld_sha256": "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
+ },
+ "seeds": [
+  5001,
+  5002,
+  5003,
+  5004,
+  5005,
+  5006,
+  5007,
+  5008,
+  5009,
+  5010,
+  5011,
+  5012
+ ],
+ "note": "supplementary: reported beside the frozen split's own 3 seeds, which stay the official numbers; the worlds are the split's, only the seeds differ; the withheld family is never run; regenerated on the reconciled tree: learning progress is off as shipped, so the 'as shipped' rows equal 'all off'; lane I's rows switch learning progress on (reworked); regenerated on gen-fix1e under the re-review's counterfactual scoring (every answerable question counted, a decline not within tolerance; strict tolerance 0.05 and the largest relative error beside it): only counterfactual metrics differ",
+ "splits": {
+  "development": {
+   "anticipation: predictive regulation (lane I) vs the reactive gate": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "anticipation",
+    "split": "development",
+    "mechanism": "instinct",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "summary.breach_ticks_all_channels.mean": {
+      "mechanism": {
+       "mean": 164.833333,
+       "sd": 4.783178,
+       "min": 156.0,
+       "max": 172.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 210.416667,
+       "sd": 3.848455,
+       "min": 205.0,
+       "max": 216.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -45.583333,
+       "sd": 4.209477,
+       "min": -53.0,
+       "max": -40.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 165.0,
+        "reference": 209.0
+       },
+       "5002": {
+        "mechanism": 157.0,
+        "reference": 210.0
+       },
+       "5003": {
+        "mechanism": 172.0,
+        "reference": 216.0
+       },
+       "5004": {
+        "mechanism": 168.0,
+        "reference": 212.0
+       },
+       "5005": {
+        "mechanism": 163.0,
+        "reference": 205.0
+       },
+       "5006": {
+        "mechanism": 162.0,
+        "reference": 213.0
+       },
+       "5007": {
+        "mechanism": 166.0,
+        "reference": 207.0
+       },
+       "5008": {
+        "mechanism": 156.0,
+        "reference": 205.0
+       },
+       "5009": {
+        "mechanism": 165.0,
+        "reference": 208.0
+       },
+       "5010": {
+        "mechanism": 170.0,
+        "reference": 210.0
+       },
+       "5011": {
+        "mechanism": 168.0,
+        "reference": 214.0
+       },
+       "5012": {
+        "mechanism": 166.0,
+        "reference": 216.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.memory.breach_ticks.mean": {
+      "mechanism": {
+       "mean": 5.0,
+       "sd": 2.954196,
+       "min": 1.0,
+       "max": 7.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 42.0,
+       "sd": 0.953463,
+       "min": 40.0,
+       "max": 43.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -37.0,
+       "sd": 2.923261,
+       "min": -42.0,
+       "max": -34.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 7.0,
+        "reference": 41.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 42.0
+       },
+       "5003": {
+        "mechanism": 7.0,
+        "reference": 43.0
+       },
+       "5004": {
+        "mechanism": 7.0,
+        "reference": 42.0
+       },
+       "5005": {
+        "mechanism": 7.0,
+        "reference": 43.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 42.0
+       },
+       "5007": {
+        "mechanism": 7.0,
+        "reference": 42.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 40.0
+       },
+       "5009": {
+        "mechanism": 7.0,
+        "reference": 41.0
+       },
+       "5010": {
+        "mechanism": 7.0,
+        "reference": 42.0
+       },
+       "5011": {
+        "mechanism": 7.0,
+        "reference": 43.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 43.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.memory.avoided_share.mean": {
+      "mechanism": {
+       "mean": 0.444444,
+       "sd": 0.164122,
+       "min": 0.333333,
+       "max": 0.666667,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.444444,
+       "sd": 0.164122,
+       "min": 0.333333,
+       "max": 0.666667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.333333,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.666667,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.333333,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.333333,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.333333,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.666667,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.333333,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.666667,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.333333,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.333333,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.333333,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.666667,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.memory.mean_lead_ticks.mean": {
+      "mechanism": {
+       "mean": 8.5,
+       "sd": 0.522233,
+       "min": 7.333333,
+       "max": 9.333333,
+       "n": 12
+      },
+      "reference": {
+       "mean": 4.361111,
+       "sd": 0.501681,
+       "min": 3.333333,
+       "max": 5.333333,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 4.138889,
+       "sd": 0.501681,
+       "min": 3.666666,
+       "max": 5.333333,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 8.666667,
+        "reference": 4.666667
+       },
+       "5002": {
+        "mechanism": 9.333333,
+        "reference": 4.0
+       },
+       "5003": {
+        "mechanism": 8.0,
+        "reference": 4.333333
+       },
+       "5004": {
+        "mechanism": 8.666667,
+        "reference": 4.333333
+       },
+       "5005": {
+        "mechanism": 7.333333,
+        "reference": 3.333333
+       },
+       "5006": {
+        "mechanism": 8.333333,
+        "reference": 4.0
+       },
+       "5007": {
+        "mechanism": 9.0,
+        "reference": 4.333333
+       },
+       "5008": {
+        "mechanism": 9.0,
+        "reference": 5.333333
+       },
+       "5009": {
+        "mechanism": 8.666667,
+        "reference": 4.666667
+       },
+       "5010": {
+        "mechanism": 8.333333,
+        "reference": 4.0
+       },
+       "5011": {
+        "mechanism": 8.333333,
+        "reference": 4.666667
+       },
+       "5012": {
+        "mechanism": 8.333333,
+        "reference": 4.666667
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.false_alarm_share.mean": {
+      "mechanism": {
+       "mean": 0.022006,
+       "sd": 0.010509,
+       "min": 0.010309,
+       "max": 0.041667,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.022006,
+       "sd": 0.010509,
+       "min": 0.010309,
+       "max": 0.041667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.041667,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.032609,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.010417,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.020619,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.022222,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.010638,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.021053,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.030928,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.010417,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.031915,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.021277,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.010309,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 12,
+      "seeds_equal": 0
+     },
+     "summary.work_given_up_share.mean": {
+      "mechanism": {
+       "mean": 0.0591,
+       "sd": 0.001462,
+       "min": 0.057531,
+       "max": 0.061192,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.019002,
+       "sd": 0.001518,
+       "min": 0.017259,
+       "max": 0.02249,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.040098,
+       "sd": 0.001228,
+       "min": 0.038179,
+       "max": 0.041841,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.061192,
+        "reference": 0.019351
+       },
+       "5002": {
+        "mechanism": 0.060669,
+        "reference": 0.019351
+       },
+       "5003": {
+        "mechanism": 0.057531,
+        "reference": 0.017782
+       },
+       "5004": {
+        "mechanism": 0.058577,
+        "reference": 0.017259
+       },
+       "5005": {
+        "mechanism": 0.060669,
+        "reference": 0.02249
+       },
+       "5006": {
+        "mechanism": 0.057531,
+        "reference": 0.017259
+       },
+       "5007": {
+        "mechanism": 0.057531,
+        "reference": 0.019351
+       },
+       "5008": {
+        "mechanism": 0.060669,
+        "reference": 0.019874
+       },
+       "5009": {
+        "mechanism": 0.060146,
+        "reference": 0.019874
+       },
+       "5010": {
+        "mechanism": 0.058577,
+        "reference": 0.019874
+       },
+       "5011": {
+        "mechanism": 0.058577,
+        "reference": 0.017782
+       },
+       "5012": {
+        "mechanism": 0.057531,
+        "reference": 0.017782
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 12,
+      "seeds_equal": 0
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 3.0
+   },
+   "info_value, timer path: as shipped (learning progress off) vs every Wave 1 setting off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "development",
+    "mechanism": "baseline",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.092433,
+       "sd": 0.132079,
+       "min": 0.01366,
+       "max": 0.332602,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.092433,
+       "sd": 0.132079,
+       "min": 0.01366,
+       "max": 0.332602,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.320467,
+        "reference": 0.320467
+       },
+       "5002": {
+        "mechanism": 0.01366,
+        "reference": 0.01366
+       },
+       "5003": {
+        "mechanism": 0.272109,
+        "reference": 0.272109
+       },
+       "5004": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5005": {
+        "mechanism": 0.074525,
+        "reference": 0.074525
+       },
+       "5006": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5007": {
+        "mechanism": 0.013692,
+        "reference": 0.013692
+       },
+       "5008": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5009": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5010": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5011": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5012": {
+        "mechanism": 0.332602,
+        "reference": 0.332602
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5004": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.145833,
+        "reference": 0.145833
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.180272,
+       "sd": 0.073805,
+       "min": 0.085633,
+       "max": 0.317964,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.180272,
+       "sd": 0.073805,
+       "min": 0.085633,
+       "max": 0.317964,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.229605,
+        "reference": 0.229605
+       },
+       "5002": {
+        "mechanism": 0.128371,
+        "reference": 0.128371
+       },
+       "5003": {
+        "mechanism": 0.228131,
+        "reference": 0.228131
+       },
+       "5004": {
+        "mechanism": 0.128353,
+        "reference": 0.128353
+       },
+       "5005": {
+        "mechanism": 0.085633,
+        "reference": 0.085633
+       },
+       "5006": {
+        "mechanism": 0.317964,
+        "reference": 0.317964
+       },
+       "5007": {
+        "mechanism": 0.184164,
+        "reference": 0.184164
+       },
+       "5008": {
+        "mechanism": 0.128371,
+        "reference": 0.128371
+       },
+       "5009": {
+        "mechanism": 0.20354,
+        "reference": 0.20354
+       },
+       "5010": {
+        "mechanism": 0.285398,
+        "reference": 0.285398
+       },
+       "5011": {
+        "mechanism": 0.141426,
+        "reference": 0.141426
+       },
+       "5012": {
+        "mechanism": 0.102306,
+        "reference": 0.102306
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.375,
+       "sd": 0.119183,
+       "min": 0.25,
+       "max": 0.5,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.375,
+       "sd": 0.119183,
+       "min": 0.25,
+       "max": 0.5,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5002": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5003": {
+        "mechanism": 0.375,
+        "reference": 0.375
+       },
+       "5004": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5005": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5006": {
+        "mechanism": 0.375,
+        "reference": 0.375
+       },
+       "5007": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       },
+       "5008": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5009": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       },
+       "5010": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       },
+       "5011": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       },
+       "5012": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.208334,
+       "sd": 0.043519,
+       "min": 0.166667,
+       "max": 0.25,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.208334,
+       "sd": 0.043519,
+       "min": 0.166667,
+       "max": 0.25,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.166667,
+        "reference": 0.166667
+       },
+       "5002": {
+        "mechanism": 0.166667,
+        "reference": 0.166667
+       },
+       "5003": {
+        "mechanism": 0.166667,
+        "reference": 0.166667
+       },
+       "5004": {
+        "mechanism": 0.166667,
+        "reference": 0.166667
+       },
+       "5005": {
+        "mechanism": 0.166667,
+        "reference": 0.166667
+       },
+       "5006": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5007": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5008": {
+        "mechanism": 0.166667,
+        "reference": 0.166667
+       },
+       "5009": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5010": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5011": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5012": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.15
+   },
+   "info_value, idle path: as shipped vs every Wave 1 setting off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "development",
+    "mechanism": "autonomy",
+    "reference": "autonomy",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.092433,
+       "sd": 0.132079,
+       "min": 0.01366,
+       "max": 0.332602,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.092433,
+       "sd": 0.132079,
+       "min": 0.01366,
+       "max": 0.332602,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.320467,
+        "reference": 0.320467
+       },
+       "5002": {
+        "mechanism": 0.01366,
+        "reference": 0.01366
+       },
+       "5003": {
+        "mechanism": 0.272109,
+        "reference": 0.272109
+       },
+       "5004": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5005": {
+        "mechanism": 0.074525,
+        "reference": 0.074525
+       },
+       "5006": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5007": {
+        "mechanism": 0.013692,
+        "reference": 0.013692
+       },
+       "5008": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5009": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5010": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5011": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5012": {
+        "mechanism": 0.332602,
+        "reference": 0.332602
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5004": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.145833,
+        "reference": 0.145833
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.025739,
+       "sd": 0.144978,
+       "min": -0.172532,
+       "max": 0.174943,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.025739,
+       "sd": 0.144978,
+       "min": -0.172532,
+       "max": 0.174943,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.136138,
+        "reference": 0.136138
+       },
+       "5002": {
+        "mechanism": 0.136138,
+        "reference": 0.136138
+       },
+       "5003": {
+        "mechanism": -0.140671,
+        "reference": -0.140671
+       },
+       "5004": {
+        "mechanism": -0.140671,
+        "reference": -0.140671
+       },
+       "5005": {
+        "mechanism": -0.101866,
+        "reference": -0.101866
+       },
+       "5006": {
+        "mechanism": 0.174943,
+        "reference": 0.174943
+       },
+       "5007": {
+        "mechanism": 0.123489,
+        "reference": 0.123489
+       },
+       "5008": {
+        "mechanism": -0.128023,
+        "reference": -0.128023
+       },
+       "5009": {
+        "mechanism": 0.162294,
+        "reference": 0.162294
+       },
+       "5010": {
+        "mechanism": 0.123489,
+        "reference": 0.123489
+       },
+       "5011": {
+        "mechanism": -0.172532,
+        "reference": -0.172532
+       },
+       "5012": {
+        "mechanism": 0.136138,
+        "reference": 0.136138
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.682292,
+       "sd": 0.114497,
+       "min": 0.5625,
+       "max": 0.8125,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.682292,
+       "sd": 0.114497,
+       "min": 0.5625,
+       "max": 0.8125,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.5625,
+        "reference": 0.5625
+       },
+       "5002": {
+        "mechanism": 0.5625,
+        "reference": 0.5625
+       },
+       "5003": {
+        "mechanism": 0.8125,
+        "reference": 0.8125
+       },
+       "5004": {
+        "mechanism": 0.6875,
+        "reference": 0.6875
+       },
+       "5005": {
+        "mechanism": 0.6875,
+        "reference": 0.6875
+       },
+       "5006": {
+        "mechanism": 0.5625,
+        "reference": 0.5625
+       },
+       "5007": {
+        "mechanism": 0.8125,
+        "reference": 0.8125
+       },
+       "5008": {
+        "mechanism": 0.5625,
+        "reference": 0.5625
+       },
+       "5009": {
+        "mechanism": 0.8125,
+        "reference": 0.8125
+       },
+       "5010": {
+        "mechanism": 0.8125,
+        "reference": 0.8125
+       },
+       "5011": {
+        "mechanism": 0.75,
+        "reference": 0.75
+       },
+       "5012": {
+        "mechanism": 0.5625,
+        "reference": 0.5625
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.39
+   },
+   "info_value, timer path: lane I instinct (information-v1 core, learning progress on, reworked) vs all off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "development",
+    "mechanism": "instinct",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.094158,
+       "sd": 0.133047,
+       "min": 0.013688,
+       "max": 0.332602,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.092433,
+       "sd": 0.132079,
+       "min": 0.01366,
+       "max": 0.332602,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.001725,
+       "sd": 0.003616,
+       "min": 0.0,
+       "max": 0.009681,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.330148,
+        "reference": 0.320467
+       },
+       "5002": {
+        "mechanism": 0.022715,
+        "reference": 0.01366
+       },
+       "5003": {
+        "mechanism": 0.272109,
+        "reference": 0.272109
+       },
+       "5004": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5005": {
+        "mechanism": 0.074525,
+        "reference": 0.074525
+       },
+       "5006": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5007": {
+        "mechanism": 0.015656,
+        "reference": 0.013692
+       },
+       "5008": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5009": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5010": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5011": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5012": {
+        "mechanism": 0.332602,
+        "reference": 0.332602
+       }
+      },
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5004": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.145833,
+        "reference": 0.145833
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.184377,
+       "sd": 0.151918,
+       "min": -0.157647,
+       "max": 0.396441,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.180272,
+       "sd": 0.073805,
+       "min": 0.085633,
+       "max": 0.317964,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.004105,
+       "sd": 0.140661,
+       "min": -0.299073,
+       "max": 0.140696,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.269277,
+        "reference": 0.229605
+       },
+       "5002": {
+        "mechanism": 0.178655,
+        "reference": 0.128371
+       },
+       "5003": {
+        "mechanism": 0.368827,
+        "reference": 0.228131
+       },
+       "5004": {
+        "mechanism": 0.217442,
+        "reference": 0.128353
+       },
+       "5005": {
+        "mechanism": 0.178655,
+        "reference": 0.085633
+       },
+       "5006": {
+        "mechanism": 0.396441,
+        "reference": 0.317964
+       },
+       "5007": {
+        "mechanism": 0.009093,
+        "reference": 0.184164
+       },
+       "5008": {
+        "mechanism": 0.21746,
+        "reference": 0.128371
+       },
+       "5009": {
+        "mechanism": 0.282017,
+        "reference": 0.20354
+       },
+       "5010": {
+        "mechanism": 0.099715,
+        "reference": 0.285398
+       },
+       "5011": {
+        "mechanism": -0.157647,
+        "reference": 0.141426
+       },
+       "5012": {
+        "mechanism": 0.15259,
+        "reference": 0.102306
+       }
+      },
+      "seeds_better": 9,
+      "seeds_worse": 3,
+      "seeds_equal": 0
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.369792,
+       "sd": 0.120541,
+       "min": 0.25,
+       "max": 0.5,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.375,
+       "sd": 0.119183,
+       "min": 0.25,
+       "max": 0.5,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.005208,
+       "sd": 0.018042,
+       "min": -0.0625,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5002": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5003": {
+        "mechanism": 0.3125,
+        "reference": 0.375
+       },
+       "5004": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5005": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5006": {
+        "mechanism": 0.375,
+        "reference": 0.375
+       },
+       "5007": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       },
+       "5008": {
+        "mechanism": 0.25,
+        "reference": 0.25
+       },
+       "5009": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       },
+       "5010": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       },
+       "5011": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       },
+       "5012": {
+        "mechanism": 0.5,
+        "reference": 0.5
+       }
+      },
+      "seeds_better": 1,
+      "seeds_worse": 0,
+      "seeds_equal": 11
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.131944,
+       "sd": 0.042911,
+       "min": 0.083333,
+       "max": 0.166667,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.208334,
+       "sd": 0.043519,
+       "min": 0.166667,
+       "max": 0.25,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.076389,
+       "sd": 0.024056,
+       "min": -0.083334,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.083333,
+        "reference": 0.166667
+       },
+       "5002": {
+        "mechanism": 0.083333,
+        "reference": 0.166667
+       },
+       "5003": {
+        "mechanism": 0.166667,
+        "reference": 0.166667
+       },
+       "5004": {
+        "mechanism": 0.083333,
+        "reference": 0.166667
+       },
+       "5005": {
+        "mechanism": 0.083333,
+        "reference": 0.166667
+       },
+       "5006": {
+        "mechanism": 0.166667,
+        "reference": 0.25
+       },
+       "5007": {
+        "mechanism": 0.166667,
+        "reference": 0.25
+       },
+       "5008": {
+        "mechanism": 0.083333,
+        "reference": 0.166667
+       },
+       "5009": {
+        "mechanism": 0.166667,
+        "reference": 0.25
+       },
+       "5010": {
+        "mechanism": 0.166667,
+        "reference": 0.25
+       },
+       "5011": {
+        "mechanism": 0.166667,
+        "reference": 0.25
+       },
+       "5012": {
+        "mechanism": 0.166667,
+        "reference": 0.25
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 11,
+      "seeds_equal": 1
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.4
+   },
+   "info_value, idle path: lane I instinct-idle (learning progress on, reworked) vs all off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "development",
+    "mechanism": "instinct-idle",
+    "reference": "autonomy",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.094158,
+       "sd": 0.133047,
+       "min": 0.013688,
+       "max": 0.332602,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.092433,
+       "sd": 0.132079,
+       "min": 0.01366,
+       "max": 0.332602,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.001725,
+       "sd": 0.003616,
+       "min": 0.0,
+       "max": 0.009681,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.330148,
+        "reference": 0.320467
+       },
+       "5002": {
+        "mechanism": 0.022715,
+        "reference": 0.01366
+       },
+       "5003": {
+        "mechanism": 0.272109,
+        "reference": 0.272109
+       },
+       "5004": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5005": {
+        "mechanism": 0.074525,
+        "reference": 0.074525
+       },
+       "5006": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5007": {
+        "mechanism": 0.015656,
+        "reference": 0.013692
+       },
+       "5008": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5009": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5010": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5011": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5012": {
+        "mechanism": 0.332602,
+        "reference": 0.332602
+       }
+      },
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5004": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.145833,
+        "reference": 0.145833
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.232136,
+       "sd": 0.060837,
+       "min": 0.15259,
+       "max": 0.32507,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.025739,
+       "sd": 0.144978,
+       "min": -0.172532,
+       "max": 0.174943,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.206397,
+       "sd": 0.128875,
+       "min": 0.042499,
+       "max": 0.37444,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.269259,
+        "reference": 0.136138
+       },
+       "5002": {
+        "mechanism": 0.178637,
+        "reference": 0.136138
+       },
+       "5003": {
+        "mechanism": 0.229992,
+        "reference": -0.140671
+       },
+       "5004": {
+        "mechanism": 0.233769,
+        "reference": -0.140671
+       },
+       "5005": {
+        "mechanism": 0.165988,
+        "reference": -0.101866
+       },
+       "5006": {
+        "mechanism": 0.324391,
+        "reference": 0.174943
+       },
+       "5007": {
+        "mechanism": 0.195181,
+        "reference": 0.123489
+       },
+       "5008": {
+        "mechanism": 0.233769,
+        "reference": -0.128023
+       },
+       "5009": {
+        "mechanism": 0.298343,
+        "reference": 0.162294
+       },
+       "5010": {
+        "mechanism": 0.32507,
+        "reference": 0.123489
+       },
+       "5011": {
+        "mechanism": 0.15259,
+        "reference": -0.172532
+       },
+       "5012": {
+        "mechanism": 0.178637,
+        "reference": 0.136138
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.401042,
+       "sd": 0.072781,
+       "min": 0.3125,
+       "max": 0.5,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.682292,
+       "sd": 0.114497,
+       "min": 0.5625,
+       "max": 0.8125,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.28125,
+       "sd": 0.082141,
+       "min": -0.4375,
+       "max": -0.1875,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.375,
+        "reference": 0.5625
+       },
+       "5002": {
+        "mechanism": 0.375,
+        "reference": 0.5625
+       },
+       "5003": {
+        "mechanism": 0.375,
+        "reference": 0.8125
+       },
+       "5004": {
+        "mechanism": 0.3125,
+        "reference": 0.6875
+       },
+       "5005": {
+        "mechanism": 0.4375,
+        "reference": 0.6875
+       },
+       "5006": {
+        "mechanism": 0.3125,
+        "reference": 0.5625
+       },
+       "5007": {
+        "mechanism": 0.5,
+        "reference": 0.8125
+       },
+       "5008": {
+        "mechanism": 0.3125,
+        "reference": 0.5625
+       },
+       "5009": {
+        "mechanism": 0.4375,
+        "reference": 0.8125
+       },
+       "5010": {
+        "mechanism": 0.5,
+        "reference": 0.8125
+       },
+       "5011": {
+        "mechanism": 0.5,
+        "reference": 0.75
+       },
+       "5012": {
+        "mechanism": 0.375,
+        "reference": 0.5625
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.111111,
+       "sd": 0.041031,
+       "min": 0.083333,
+       "max": 0.166667,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.111111,
+       "sd": 0.041031,
+       "min": 0.083333,
+       "max": 0.166667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.166667,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.166667,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.166667,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.166667,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.57
+   },
+   "info_value: every Wave 1 chooser on (re-check first) vs all off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "development",
+    "mechanism": "wave1_all_on",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.094158,
+       "sd": 0.133047,
+       "min": 0.013688,
+       "max": 0.332602,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.092433,
+       "sd": 0.132079,
+       "min": 0.01366,
+       "max": 0.332602,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.001725,
+       "sd": 0.003616,
+       "min": 0.0,
+       "max": 0.009681,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.330148,
+        "reference": 0.320467
+       },
+       "5002": {
+        "mechanism": 0.022715,
+        "reference": 0.01366
+       },
+       "5003": {
+        "mechanism": 0.272109,
+        "reference": 0.272109
+       },
+       "5004": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5005": {
+        "mechanism": 0.074525,
+        "reference": 0.074525
+       },
+       "5006": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5007": {
+        "mechanism": 0.015656,
+        "reference": 0.013692
+       },
+       "5008": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5009": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5010": {
+        "mechanism": 0.013693,
+        "reference": 0.013693
+       },
+       "5011": {
+        "mechanism": 0.013688,
+        "reference": 0.013688
+       },
+       "5012": {
+        "mechanism": 0.332602,
+        "reference": 0.332602
+       }
+      },
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.034722,
+       "sd": 0.048112,
+       "min": 0.0,
+       "max": 0.145833,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5004": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0625,
+        "reference": 0.0625
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.145833,
+        "reference": 0.145833
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.220473,
+       "sd": 0.114816,
+       "min": -0.086919,
+       "max": 0.327807,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.180272,
+       "sd": 0.073805,
+       "min": 0.085633,
+       "max": 0.317964,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.040201,
+       "sd": 0.084554,
+       "min": -0.189225,
+       "max": 0.152972,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.326553,
+        "reference": 0.229605
+       },
+       "5002": {
+        "mechanism": 0.187199,
+        "reference": 0.128371
+       },
+       "5003": {
+        "mechanism": 0.326553,
+        "reference": 0.228131
+       },
+       "5004": {
+        "mechanism": 0.185738,
+        "reference": 0.128353
+       },
+       "5005": {
+        "mechanism": 0.238605,
+        "reference": 0.085633
+       },
+       "5006": {
+        "mechanism": 0.327807,
+        "reference": 0.317964
+       },
+       "5007": {
+        "mechanism": 0.189744,
+        "reference": 0.184164
+       },
+       "5008": {
+        "mechanism": 0.189873,
+        "reference": 0.128371
+       },
+       "5009": {
+        "mechanism": 0.291577,
+        "reference": 0.20354
+       },
+       "5010": {
+        "mechanism": 0.291577,
+        "reference": 0.285398
+       },
+       "5011": {
+        "mechanism": 0.177371,
+        "reference": 0.141426
+       },
+       "5012": {
+        "mechanism": -0.086919,
+        "reference": 0.102306
+       }
+      },
+      "seeds_better": 11,
+      "seeds_worse": 1,
+      "seeds_equal": 0
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.375,
+       "sd": 0.119183,
+       "min": 0.25,
+       "max": 0.5,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.375,
+       "sd": 0.119183,
+       "min": -0.5,
+       "max": -0.25,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.25
+       },
+       "5002": {
+        "mechanism": 0.0,
+        "reference": 0.25
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.375
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.25
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.25
+       },
+       "5006": {
+        "mechanism": 0.0,
+        "reference": 0.375
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.5
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.25
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.5
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.5
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.5
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.5
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.5,
+       "sd": 0.0,
+       "min": 0.5,
+       "max": 0.5,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.208334,
+       "sd": 0.043519,
+       "min": 0.166667,
+       "max": 0.25,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.291666,
+       "sd": 0.043519,
+       "min": 0.25,
+       "max": 0.333333,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.5,
+        "reference": 0.166667
+       },
+       "5002": {
+        "mechanism": 0.5,
+        "reference": 0.166667
+       },
+       "5003": {
+        "mechanism": 0.5,
+        "reference": 0.166667
+       },
+       "5004": {
+        "mechanism": 0.5,
+        "reference": 0.166667
+       },
+       "5005": {
+        "mechanism": 0.5,
+        "reference": 0.166667
+       },
+       "5006": {
+        "mechanism": 0.5,
+        "reference": 0.25
+       },
+       "5007": {
+        "mechanism": 0.5,
+        "reference": 0.25
+       },
+       "5008": {
+        "mechanism": 0.5,
+        "reference": 0.166667
+       },
+       "5009": {
+        "mechanism": 0.5,
+        "reference": 0.25
+       },
+       "5010": {
+        "mechanism": 0.5,
+        "reference": 0.25
+       },
+       "5011": {
+        "mechanism": 0.5,
+        "reference": 0.25
+       },
+       "5012": {
+        "mechanism": 0.5,
+        "reference": 0.25
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     }
+    },
+    "regimes": {
+     "mechanism": "all_on",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.41
+   },
+   "counterfactual: imagination (lane M) vs today's answerer": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "counterfactual",
+    "split": "development",
+    "mechanism": "imagination",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "summary.answered_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.854167,
+       "sd": 0.024328,
+       "min": 0.8125,
+       "max": 0.875,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.078125,
+       "sd": 0.021069,
+       "min": 0.03125,
+       "max": 0.09375,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.776042,
+       "sd": 0.012164,
+       "min": 0.75,
+       "max": 0.78125,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5002": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5003": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5004": {
+        "mechanism": 0.8125,
+        "reference": 0.03125
+       },
+       "5005": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5006": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5007": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5008": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5009": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5010": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5011": {
+        "mechanism": 0.84375,
+        "reference": 0.09375
+       },
+       "5012": {
+        "mechanism": 0.8125,
+        "reference": 0.0625
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.answered_within_strict_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.830729,
+       "sd": 0.033863,
+       "min": 0.78125,
+       "max": 0.875,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.067708,
+       "sd": 0.022429,
+       "min": 0.03125,
+       "max": 0.09375,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.763021,
+       "sd": 0.020892,
+       "min": 0.71875,
+       "max": 0.78125,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5002": {
+        "mechanism": 0.84375,
+        "reference": 0.09375
+       },
+       "5003": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5004": {
+        "mechanism": 0.78125,
+        "reference": 0.03125
+       },
+       "5005": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5006": {
+        "mechanism": 0.875,
+        "reference": 0.09375
+       },
+       "5007": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5008": {
+        "mechanism": 0.78125,
+        "reference": 0.03125
+       },
+       "5009": {
+        "mechanism": 0.8125,
+        "reference": 0.0625
+       },
+       "5010": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5011": {
+        "mechanism": 0.84375,
+        "reference": 0.09375
+       },
+       "5012": {
+        "mechanism": 0.78125,
+        "reference": 0.0625
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.interval_score.mean": {
+      "mechanism": {
+       "mean": 2.324135,
+       "sd": 0.080364,
+       "min": 2.193325,
+       "max": 2.519857,
+       "n": 12
+      },
+      "reference": {
+       "mean": 1.916326,
+       "sd": 0.057918,
+       "min": 1.845606,
+       "max": 2.021714,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.407809,
+       "sd": 0.101035,
+       "min": 0.270204,
+       "max": 0.63434,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 2.193325,
+        "reference": 1.859693
+       },
+       "5002": {
+        "mechanism": 2.248237,
+        "reference": 1.845606
+       },
+       "5003": {
+        "mechanism": 2.519857,
+        "reference": 1.885517
+       },
+       "5004": {
+        "mechanism": 2.396107,
+        "reference": 1.922882
+       },
+       "5005": {
+        "mechanism": 2.323812,
+        "reference": 1.928607
+       },
+       "5006": {
+        "mechanism": 2.342765,
+        "reference": 1.937943
+       },
+       "5007": {
+        "mechanism": 2.291918,
+        "reference": 2.021714
+       },
+       "5008": {
+        "mechanism": 2.330683,
+        "reference": 1.852062
+       },
+       "5009": {
+        "mechanism": 2.304552,
+        "reference": 1.928884
+       },
+       "5010": {
+        "mechanism": 2.293916,
+        "reference": 1.987351
+       },
+       "5011": {
+        "mechanism": 2.353464,
+        "reference": 1.855303
+       },
+       "5012": {
+        "mechanism": 2.290981,
+        "reference": 1.970347
+       }
+      }
+     },
+     "summary.answered_within_tolerance_without_front_door.mean": {
+      "mechanism": {
+       "mean": 0.97619,
+       "sd": 0.027804,
+       "min": 0.928571,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.089286,
+       "sd": 0.024079,
+       "min": 0.035714,
+       "max": 0.107143,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.886905,
+       "sd": 0.013902,
+       "min": 0.857142,
+       "max": 0.892857,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5004": {
+        "mechanism": 0.928571,
+        "reference": 0.035714
+       },
+       "5005": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5008": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5011": {
+        "mechanism": 0.964286,
+        "reference": 0.107143
+       },
+       "5012": {
+        "mechanism": 0.928571,
+        "reference": 0.071429
+       }
+      }
+     },
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.925926,
+       "sd": 0.0865,
+       "min": 0.777778,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.277778,
+       "sd": 0.074911,
+       "min": 0.111111,
+       "max": 0.333333,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.648149,
+       "sd": 0.04325,
+       "min": 0.555556,
+       "max": 0.666667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5004": {
+        "mechanism": 0.777778,
+        "reference": 0.111111
+       },
+       "5005": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5008": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5011": {
+        "mechanism": 0.888889,
+        "reference": 0.333333
+       },
+       "5012": {
+        "mechanism": 0.777778,
+        "reference": 0.222222
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.842593,
+       "sd": 0.120403,
+       "min": 0.666667,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.24074,
+       "sd": 0.079749,
+       "min": 0.111111,
+       "max": 0.333333,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.601852,
+       "sd": 0.074284,
+       "min": 0.444445,
+       "max": 0.666667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5002": {
+        "mechanism": 0.888889,
+        "reference": 0.333333
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5004": {
+        "mechanism": 0.666667,
+        "reference": 0.111111
+       },
+       "5005": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.333333
+       },
+       "5007": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5008": {
+        "mechanism": 0.666667,
+        "reference": 0.111111
+       },
+       "5009": {
+        "mechanism": 0.777778,
+        "reference": 0.222222
+       },
+       "5010": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5011": {
+        "mechanism": 0.888889,
+        "reference": 0.333333
+       },
+       "5012": {
+        "mechanism": 0.666667,
+        "reference": 0.222222
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.max_relative_error.max": {
+      "mechanism": {
+       "mean": 0.11309,
+       "sd": 0.076783,
+       "min": 0.039194,
+       "max": 0.298806,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.08969,
+       "sd": 0.080596,
+       "min": 0.009009,
+       "max": 0.298806,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0234,
+       "sd": 0.039788,
+       "min": 0.0,
+       "max": 0.124202,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.103414,
+        "reference": 0.103414
+       },
+       "5002": {
+        "mechanism": 0.071179,
+        "reference": 0.009009
+       },
+       "5003": {
+        "mechanism": 0.039194,
+        "reference": 0.03452
+       },
+       "5004": {
+        "mechanism": 0.298806,
+        "reference": 0.298806
+       },
+       "5005": {
+        "mechanism": 0.158679,
+        "reference": 0.158679
+       },
+       "5006": {
+        "mechanism": 0.048654,
+        "reference": 0.029554
+       },
+       "5007": {
+        "mechanism": 0.056114,
+        "reference": 0.056114
+       },
+       "5008": {
+        "mechanism": 0.106498,
+        "reference": 0.106498
+       },
+       "5009": {
+        "mechanism": 0.062125,
+        "reference": 0.056884
+       },
+       "5010": {
+        "mechanism": 0.065724,
+        "reference": 0.065724
+       },
+       "5011": {
+        "mechanism": 0.14663,
+        "reference": 0.022428
+       },
+       "5012": {
+        "mechanism": 0.200063,
+        "reference": 0.13465
+       }
+      }
+     },
+     "summary_by_group.learned_graph.interval_score.mean": {
+      "mechanism": {
+       "mean": 3.261307,
+       "sd": 0.054525,
+       "min": 3.202883,
+       "max": 3.409022,
+       "n": 12
+      },
+      "reference": {
+       "mean": 1.916326,
+       "sd": 0.057918,
+       "min": 1.845606,
+       "max": 2.021714,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 1.344981,
+       "sd": 0.093229,
+       "min": 1.1823,
+       "max": 1.563416,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 3.241615,
+        "reference": 1.859693
+       },
+       "5002": {
+        "mechanism": 3.409022,
+        "reference": 1.845606
+       },
+       "5003": {
+        "mechanism": 3.280735,
+        "reference": 1.885517
+       },
+       "5004": {
+        "mechanism": 3.296097,
+        "reference": 1.922882
+       },
+       "5005": {
+        "mechanism": 3.250715,
+        "reference": 1.928607
+       },
+       "5006": {
+        "mechanism": 3.227958,
+        "reference": 1.937943
+       },
+       "5007": {
+        "mechanism": 3.204014,
+        "reference": 2.021714
+       },
+       "5008": {
+        "mechanism": 3.202883,
+        "reference": 1.852062
+       },
+       "5009": {
+        "mechanism": 3.28027,
+        "reference": 1.928884
+       },
+       "5010": {
+        "mechanism": 3.246195,
+        "reference": 1.987351
+       },
+       "5011": {
+        "mechanism": 3.24308,
+        "reference": 1.855303
+       },
+       "5012": {
+        "mechanism": 3.253096,
+        "reference": 1.970347
+       }
+      }
+     },
+     "summary_by_group.front_door.front_door_declined.mean": {
+      "mechanism": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5002": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5003": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5004": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5005": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5006": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5007": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5008": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5009": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5010": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5011": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5012": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       }
+      }
+     },
+     "summary_by_group.front_door.front_door_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "summary.answered_share.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.107143,
+       "sd": 0.0,
+       "min": 0.107143,
+       "max": 0.107143,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.892857,
+       "sd": 0.0,
+       "min": 0.892857,
+       "max": 0.892857,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.107143
+       }
+      }
+     },
+     "summary.mean_relative_error.mean": {
+      "mechanism": {
+       "mean": 0.011353,
+       "sd": 0.005592,
+       "min": 0.006169,
+       "max": 0.02387,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.04753,
+       "sd": 0.043039,
+       "min": 0.00444,
+       "max": 0.165694,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.036177,
+       "sd": 0.038367,
+       "min": -0.141824,
+       "max": 0.001729,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.008302,
+        "reference": 0.048173
+       },
+       "5002": {
+        "mechanism": 0.006169,
+        "reference": 0.00444
+       },
+       "5003": {
+        "mechanism": 0.007378,
+        "reference": 0.020747
+       },
+       "5004": {
+        "mechanism": 0.02387,
+        "reference": 0.165694
+       },
+       "5005": {
+        "mechanism": 0.013014,
+        "reference": 0.072093
+       },
+       "5006": {
+        "mechanism": 0.00881,
+        "reference": 0.018434
+       },
+       "5007": {
+        "mechanism": 0.007014,
+        "reference": 0.031393
+       },
+       "5008": {
+        "mechanism": 0.011333,
+        "reference": 0.057627
+       },
+       "5009": {
+        "mechanism": 0.008274,
+        "reference": 0.034186
+       },
+       "5010": {
+        "mechanism": 0.010403,
+        "reference": 0.040431
+       },
+       "5011": {
+        "mechanism": 0.010512,
+        "reference": 0.009959
+       },
+       "5012": {
+        "mechanism": 0.021161,
+        "reference": 0.067182
+       }
+      },
+      "seeds_better": 10,
+      "seeds_worse": 2,
+      "seeds_equal": 0
+     },
+     "summary.interval_coverage.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       }
+      }
+     },
+     "summary.declined_confounded_share.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       }
+      }
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 1.47
+   },
+   "self_model: one self-description record (lane W) vs today's surfaces": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "self_model",
+    "split": "development",
+    "mechanism": "self_description",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "summary.coverage.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.2,
+       "sd": 0.0,
+       "min": 0.2,
+       "max": 0.2,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.accuracy.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.2,
+       "sd": 0.0,
+       "min": 0.2,
+       "max": 0.2,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_original_key.accuracy.mean": {
+      "mechanism": {
+       "mean": 0.966667,
+       "sd": 0.0,
+       "min": 0.966667,
+       "max": 0.966667,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.166667,
+       "sd": 0.0,
+       "min": 0.166667,
+       "max": 0.166667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5002": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5003": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5004": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5005": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5006": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5007": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5008": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5009": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5010": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5011": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5012": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_without_plumbing.accuracy.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.923077,
+       "sd": 0.0,
+       "min": 0.923077,
+       "max": 0.923077,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.076923,
+       "sd": 0.0,
+       "min": 0.076923,
+       "max": 0.076923,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.surfaces_used.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -3.0,
+       "sd": 0.0,
+       "min": -3.0,
+       "max": -3.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 1.77
+   }
+  },
+  "held_out": {
+   "anticipation: predictive regulation (lane I) vs the reactive gate": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "anticipation",
+    "split": "held_out",
+    "mechanism": "instinct",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "summary.breach_ticks_all_channels.mean": {
+      "mechanism": {
+       "mean": 158.5,
+       "sd": 3.0,
+       "min": 153.0,
+       "max": 163.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 215.75,
+       "sd": 7.62919,
+       "min": 200.0,
+       "max": 227.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -57.25,
+       "sd": 5.879471,
+       "min": -65.0,
+       "max": -44.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 159.0,
+        "reference": 219.0
+       },
+       "5002": {
+        "mechanism": 156.0,
+        "reference": 216.0
+       },
+       "5003": {
+        "mechanism": 153.0,
+        "reference": 215.0
+       },
+       "5004": {
+        "mechanism": 157.0,
+        "reference": 210.0
+       },
+       "5005": {
+        "mechanism": 158.0,
+        "reference": 216.0
+       },
+       "5006": {
+        "mechanism": 156.0,
+        "reference": 200.0
+       },
+       "5007": {
+        "mechanism": 163.0,
+        "reference": 226.0
+       },
+       "5008": {
+        "mechanism": 162.0,
+        "reference": 227.0
+       },
+       "5009": {
+        "mechanism": 161.0,
+        "reference": 219.0
+       },
+       "5010": {
+        "mechanism": 156.0,
+        "reference": 206.0
+       },
+       "5011": {
+        "mechanism": 161.0,
+        "reference": 219.0
+       },
+       "5012": {
+        "mechanism": 160.0,
+        "reference": 216.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.memory.breach_ticks.mean": {
+      "mechanism": {
+       "mean": 18.333333,
+       "sd": 1.073087,
+       "min": 17.0,
+       "max": 21.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 53.166667,
+       "sd": 2.329,
+       "min": 49.0,
+       "max": 57.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -34.833333,
+       "sd": 2.167249,
+       "min": -39.0,
+       "max": -31.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 17.0,
+        "reference": 51.0
+       },
+       "5002": {
+        "mechanism": 18.0,
+        "reference": 57.0
+       },
+       "5003": {
+        "mechanism": 17.0,
+        "reference": 52.0
+       },
+       "5004": {
+        "mechanism": 19.0,
+        "reference": 53.0
+       },
+       "5005": {
+        "mechanism": 18.0,
+        "reference": 55.0
+       },
+       "5006": {
+        "mechanism": 21.0,
+        "reference": 55.0
+       },
+       "5007": {
+        "mechanism": 18.0,
+        "reference": 50.0
+       },
+       "5008": {
+        "mechanism": 19.0,
+        "reference": 53.0
+       },
+       "5009": {
+        "mechanism": 19.0,
+        "reference": 55.0
+       },
+       "5010": {
+        "mechanism": 18.0,
+        "reference": 54.0
+       },
+       "5011": {
+        "mechanism": 18.0,
+        "reference": 49.0
+       },
+       "5012": {
+        "mechanism": 18.0,
+        "reference": 54.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.memory.avoided_share.mean": {
+      "mechanism": {
+       "mean": 0.801587,
+       "sd": 0.071263,
+       "min": 0.666667,
+       "max": 0.875,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.058532,
+       "sd": 0.109045,
+       "min": 0.0,
+       "max": 0.285714,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.743056,
+       "sd": 0.098915,
+       "min": 0.571429,
+       "max": 0.875,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.857143,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.75,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.857143,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.714286,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.833333,
+        "reference": 0.166667
+       },
+       "5006": {
+        "mechanism": 0.75,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.857143,
+        "reference": 0.285714
+       },
+       "5008": {
+        "mechanism": 0.75,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.666667,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.833333,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.875,
+        "reference": 0.25
+       },
+       "5012": {
+        "mechanism": 0.875,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.memory.mean_lead_ticks.mean": {
+      "mechanism": {
+       "mean": 10.023611,
+       "sd": 0.601873,
+       "min": 8.833333,
+       "max": 10.722222,
+       "n": 12
+      },
+      "reference": {
+       "mean": 6.060648,
+       "sd": 0.467499,
+       "min": 5.5,
+       "max": 6.7,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 3.962963,
+       "sd": 0.500467,
+       "min": 3.222222,
+       "max": 4.833334,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 9.916667,
+        "reference": 6.083333
+       },
+       "5002": {
+        "mechanism": 9.75,
+        "reference": 6.527778
+       },
+       "5003": {
+        "mechanism": 10.666667,
+        "reference": 6.666667
+       },
+       "5004": {
+        "mechanism": 10.083333,
+        "reference": 5.583333
+       },
+       "5005": {
+        "mechanism": 9.611111,
+        "reference": 5.777778
+       },
+       "5006": {
+        "mechanism": 10.166667,
+        "reference": 5.666667
+       },
+       "5007": {
+        "mechanism": 8.833333,
+        "reference": 5.5
+       },
+       "5008": {
+        "mechanism": 10.3,
+        "reference": 6.3
+       },
+       "5009": {
+        "mechanism": 10.722222,
+        "reference": 6.555556
+       },
+       "5010": {
+        "mechanism": 9.166667,
+        "reference": 5.833333
+       },
+       "5011": {
+        "mechanism": 10.7,
+        "reference": 6.7
+       },
+       "5012": {
+        "mechanism": 10.366667,
+        "reference": 5.533333
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.false_alarm_share.mean": {
+      "mechanism": {
+       "mean": 0.036366,
+       "sd": 0.013625,
+       "min": 0.017143,
+       "max": 0.054545,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.007171,
+       "sd": 0.009952,
+       "min": 0.0,
+       "max": 0.026316,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.029195,
+       "sd": 0.012124,
+       "min": 0.012011,
+       "max": 0.050562,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.051948,
+        "reference": 0.019868
+       },
+       "5002": {
+        "mechanism": 0.035088,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.017143,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.03352,
+        "reference": 0.013245
+       },
+       "5005": {
+        "mechanism": 0.050562,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.041916,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.045455,
+        "reference": 0.026316
+       },
+       "5008": {
+        "mechanism": 0.018405,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.018634,
+        "reference": 0.006623
+       },
+       "5010": {
+        "mechanism": 0.054545,
+        "reference": 0.02
+       },
+       "5011": {
+        "mechanism": 0.02649,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.042683,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 12,
+      "seeds_equal": 0
+     },
+     "summary.work_given_up_share.mean": {
+      "mechanism": {
+       "mean": 0.107,
+       "sd": 0.008141,
+       "min": 0.09728,
+       "max": 0.120816,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.043279,
+       "sd": 0.004313,
+       "min": 0.03818,
+       "max": 0.052824,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.06372,
+       "sd": 0.006995,
+       "min": 0.054917,
+       "max": 0.077929,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.100941,
+        "reference": 0.040795
+       },
+       "5002": {
+        "mechanism": 0.117155,
+        "reference": 0.047071
+       },
+       "5003": {
+        "mechanism": 0.113494,
+        "reference": 0.041841
+       },
+       "5004": {
+        "mechanism": 0.117155,
+        "reference": 0.047594
+       },
+       "5005": {
+        "mechanism": 0.120816,
+        "reference": 0.042887
+       },
+       "5006": {
+        "mechanism": 0.107741,
+        "reference": 0.052824
+       },
+       "5007": {
+        "mechanism": 0.100418,
+        "reference": 0.03818
+       },
+       "5008": {
+        "mechanism": 0.098326,
+        "reference": 0.039226
+       },
+       "5009": {
+        "mechanism": 0.10251,
+        "reference": 0.040272
+       },
+       "5010": {
+        "mechanism": 0.105126,
+        "reference": 0.046548
+       },
+       "5011": {
+        "mechanism": 0.09728,
+        "reference": 0.040795
+       },
+       "5012": {
+        "mechanism": 0.103033,
+        "reference": 0.041318
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 12,
+      "seeds_equal": 0
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 3.01
+   },
+   "info_value, timer path: as shipped (learning progress off) vs every Wave 1 setting off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "held_out",
+    "mechanism": "baseline",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.010302,
+       "sd": 0.019745,
+       "min": 0.001382,
+       "max": 0.071388,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.010302,
+       "sd": 0.019745,
+       "min": 0.001382,
+       "max": 0.071388,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.010704,
+        "reference": 0.010704
+       },
+       "5002": {
+        "mechanism": 0.001386,
+        "reference": 0.001386
+       },
+       "5003": {
+        "mechanism": 0.0107,
+        "reference": 0.0107
+       },
+       "5004": {
+        "mechanism": 0.010429,
+        "reference": 0.010429
+       },
+       "5005": {
+        "mechanism": 0.001383,
+        "reference": 0.001383
+       },
+       "5006": {
+        "mechanism": 0.071388,
+        "reference": 0.071388
+       },
+       "5007": {
+        "mechanism": 0.001386,
+        "reference": 0.001386
+       },
+       "5008": {
+        "mechanism": 0.001385,
+        "reference": 0.001385
+       },
+       "5009": {
+        "mechanism": 0.001382,
+        "reference": 0.001382
+       },
+       "5010": {
+        "mechanism": 0.010707,
+        "reference": 0.010707
+       },
+       "5011": {
+        "mechanism": 0.001385,
+        "reference": 0.001385
+       },
+       "5012": {
+        "mechanism": 0.001386,
+        "reference": 0.001386
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.053572,
+       "sd": 0.086817,
+       "min": 0.0,
+       "max": 0.214286,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.053572,
+       "sd": 0.086817,
+       "min": 0.0,
+       "max": 0.214286,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.071429,
+        "reference": 0.071429
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.142857,
+        "reference": 0.142857
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.214286,
+        "reference": 0.214286
+       },
+       "5010": {
+        "mechanism": 0.214286,
+        "reference": 0.214286
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.138718,
+       "sd": 0.082911,
+       "min": -0.011711,
+       "max": 0.272822,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.138718,
+       "sd": 0.082911,
+       "min": -0.011711,
+       "max": 0.272822,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": -0.011711,
+        "reference": -0.011711
+       },
+       "5002": {
+        "mechanism": 0.125785,
+        "reference": 0.125785
+       },
+       "5003": {
+        "mechanism": 0.086518,
+        "reference": 0.086518
+       },
+       "5004": {
+        "mechanism": 0.127553,
+        "reference": 0.127553
+       },
+       "5005": {
+        "mechanism": 0.271054,
+        "reference": 0.271054
+       },
+       "5006": {
+        "mechanism": 0.127553,
+        "reference": 0.127553
+       },
+       "5007": {
+        "mechanism": 0.088286,
+        "reference": 0.088286
+       },
+       "5008": {
+        "mechanism": 0.272822,
+        "reference": 0.272822
+       },
+       "5009": {
+        "mechanism": 0.127553,
+        "reference": 0.127553
+       },
+       "5010": {
+        "mechanism": 0.233555,
+        "reference": 0.233555
+       },
+       "5011": {
+        "mechanism": 0.127553,
+        "reference": 0.127553
+       },
+       "5012": {
+        "mechanism": 0.088091,
+        "reference": 0.088091
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.4125,
+       "sd": 0.14771,
+       "min": 0.3125,
+       "max": 0.6125,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.4125,
+       "sd": 0.14771,
+       "min": 0.3125,
+       "max": 0.6125,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.6125,
+        "reference": 0.6125
+       },
+       "5002": {
+        "mechanism": 0.6125,
+        "reference": 0.6125
+       },
+       "5003": {
+        "mechanism": 0.6125,
+        "reference": 0.6125
+       },
+       "5004": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5005": {
+        "mechanism": 0.6125,
+        "reference": 0.6125
+       },
+       "5006": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5007": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5008": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5009": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5010": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5011": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5012": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.083333,
+       "sd": 0.0,
+       "min": 0.083333,
+       "max": 0.083333,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.083333,
+       "sd": 0.0,
+       "min": 0.083333,
+       "max": 0.083333,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5002": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5004": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5005": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5006": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5007": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5008": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5009": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5010": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5011": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5012": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.02
+   },
+   "info_value, idle path: as shipped vs every Wave 1 setting off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "held_out",
+    "mechanism": "autonomy",
+    "reference": "autonomy",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.010302,
+       "sd": 0.019745,
+       "min": 0.001382,
+       "max": 0.071388,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.010302,
+       "sd": 0.019745,
+       "min": 0.001382,
+       "max": 0.071388,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.010704,
+        "reference": 0.010704
+       },
+       "5002": {
+        "mechanism": 0.001386,
+        "reference": 0.001386
+       },
+       "5003": {
+        "mechanism": 0.0107,
+        "reference": 0.0107
+       },
+       "5004": {
+        "mechanism": 0.010429,
+        "reference": 0.010429
+       },
+       "5005": {
+        "mechanism": 0.001383,
+        "reference": 0.001383
+       },
+       "5006": {
+        "mechanism": 0.071388,
+        "reference": 0.071388
+       },
+       "5007": {
+        "mechanism": 0.001386,
+        "reference": 0.001386
+       },
+       "5008": {
+        "mechanism": 0.001385,
+        "reference": 0.001385
+       },
+       "5009": {
+        "mechanism": 0.001382,
+        "reference": 0.001382
+       },
+       "5010": {
+        "mechanism": 0.010707,
+        "reference": 0.010707
+       },
+       "5011": {
+        "mechanism": 0.001385,
+        "reference": 0.001385
+       },
+       "5012": {
+        "mechanism": 0.001386,
+        "reference": 0.001386
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.053572,
+       "sd": 0.086817,
+       "min": 0.0,
+       "max": 0.214286,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.053572,
+       "sd": 0.086817,
+       "min": 0.0,
+       "max": 0.214286,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.071429,
+        "reference": 0.071429
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.142857,
+        "reference": 0.142857
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.214286,
+        "reference": 0.214286
+       },
+       "5010": {
+        "mechanism": 0.214286,
+        "reference": 0.214286
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.093551,
+       "sd": 0.007725,
+       "min": 0.0848,
+       "max": 0.099802,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.093551,
+       "sd": 0.007725,
+       "min": 0.0848,
+       "max": 0.099802,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.099802,
+        "reference": 0.099802
+       },
+       "5002": {
+        "mechanism": 0.0848,
+        "reference": 0.0848
+       },
+       "5003": {
+        "mechanism": 0.0848,
+        "reference": 0.0848
+       },
+       "5004": {
+        "mechanism": 0.099802,
+        "reference": 0.099802
+       },
+       "5005": {
+        "mechanism": 0.0848,
+        "reference": 0.0848
+       },
+       "5006": {
+        "mechanism": 0.099802,
+        "reference": 0.099802
+       },
+       "5007": {
+        "mechanism": 0.099802,
+        "reference": 0.099802
+       },
+       "5008": {
+        "mechanism": 0.099802,
+        "reference": 0.099802
+       },
+       "5009": {
+        "mechanism": 0.099802,
+        "reference": 0.099802
+       },
+       "5010": {
+        "mechanism": 0.099802,
+        "reference": 0.099802
+       },
+       "5011": {
+        "mechanism": 0.0848,
+        "reference": 0.0848
+       },
+       "5012": {
+        "mechanism": 0.0848,
+        "reference": 0.0848
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.70625,
+       "sd": 0.10176,
+       "min": 0.65,
+       "max": 0.875,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.70625,
+       "sd": 0.10176,
+       "min": 0.65,
+       "max": 0.875,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       },
+       "5002": {
+        "mechanism": 0.875,
+        "reference": 0.875
+       },
+       "5003": {
+        "mechanism": 0.875,
+        "reference": 0.875
+       },
+       "5004": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       },
+       "5005": {
+        "mechanism": 0.875,
+        "reference": 0.875
+       },
+       "5006": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       },
+       "5007": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       },
+       "5008": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       },
+       "5009": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       },
+       "5010": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       },
+       "5011": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       },
+       "5012": {
+        "mechanism": 0.65,
+        "reference": 0.65
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.24
+   },
+   "info_value, timer path: lane I instinct (information-v1 core, learning progress on, reworked) vs all off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "held_out",
+    "mechanism": "instinct",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.060281,
+       "sd": 0.087026,
+       "min": 0.012083,
+       "max": 0.246387,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.010302,
+       "sd": 0.019745,
+       "min": 0.001382,
+       "max": 0.071388,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.04998,
+       "sd": 0.086919,
+       "min": 0.010671,
+       "max": 0.236217,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.021375,
+        "reference": 0.010704
+       },
+       "5002": {
+        "mechanism": 0.237603,
+        "reference": 0.001386
+       },
+       "5003": {
+        "mechanism": 0.021398,
+        "reference": 0.0107
+       },
+       "5004": {
+        "mechanism": 0.028102,
+        "reference": 0.010429
+       },
+       "5005": {
+        "mechanism": 0.019439,
+        "reference": 0.001383
+       },
+       "5006": {
+        "mechanism": 0.082086,
+        "reference": 0.071388
+       },
+       "5007": {
+        "mechanism": 0.012091,
+        "reference": 0.001386
+       },
+       "5008": {
+        "mechanism": 0.012084,
+        "reference": 0.001385
+       },
+       "5009": {
+        "mechanism": 0.018637,
+        "reference": 0.001382
+       },
+       "5010": {
+        "mechanism": 0.246387,
+        "reference": 0.010707
+       },
+       "5011": {
+        "mechanism": 0.012083,
+        "reference": 0.001385
+       },
+       "5012": {
+        "mechanism": 0.012091,
+        "reference": 0.001386
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.029762,
+       "sd": 0.047754,
+       "min": 0.0,
+       "max": 0.142857,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.053572,
+       "sd": 0.086817,
+       "min": 0.0,
+       "max": 0.214286,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.02381,
+       "sd": 0.046524,
+       "min": -0.142857,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.071429,
+        "reference": 0.071429
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.071429,
+        "reference": 0.142857
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.142857,
+        "reference": 0.214286
+       },
+       "5010": {
+        "mechanism": 0.071429,
+        "reference": 0.214286
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.126085,
+       "sd": 0.139903,
+       "min": -0.226441,
+       "max": 0.311993,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.138718,
+       "sd": 0.082911,
+       "min": -0.011711,
+       "max": 0.272822,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.012633,
+       "sd": 0.14586,
+       "min": -0.459996,
+       "max": 0.123947,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": -0.011711,
+        "reference": -0.011711
+       },
+       "5002": {
+        "mechanism": 0.249732,
+        "reference": 0.125785
+       },
+       "5003": {
+        "mechanism": 0.151502,
+        "reference": 0.086518
+       },
+       "5004": {
+        "mechanism": 0.127553,
+        "reference": 0.127553
+       },
+       "5005": {
+        "mechanism": 0.311993,
+        "reference": 0.271054
+       },
+       "5006": {
+        "mechanism": 0.127553,
+        "reference": 0.127553
+       },
+       "5007": {
+        "mechanism": 0.127553,
+        "reference": 0.088286
+       },
+       "5008": {
+        "mechanism": 0.272822,
+        "reference": 0.272822
+       },
+       "5009": {
+        "mechanism": 0.127553,
+        "reference": 0.127553
+       },
+       "5010": {
+        "mechanism": -0.226441,
+        "reference": 0.233555
+       },
+       "5011": {
+        "mechanism": 0.127553,
+        "reference": 0.127553
+       },
+       "5012": {
+        "mechanism": 0.127358,
+        "reference": 0.088091
+       }
+      },
+      "seeds_better": 5,
+      "seeds_worse": 1,
+      "seeds_equal": 6
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.39375,
+       "sd": 0.121602,
+       "min": 0.3125,
+       "max": 0.6125,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.4125,
+       "sd": 0.14771,
+       "min": 0.3125,
+       "max": 0.6125,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.01875,
+       "sd": 0.03392,
+       "min": -0.075,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.6125,
+        "reference": 0.6125
+       },
+       "5002": {
+        "mechanism": 0.5375,
+        "reference": 0.6125
+       },
+       "5003": {
+        "mechanism": 0.5375,
+        "reference": 0.6125
+       },
+       "5004": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5005": {
+        "mechanism": 0.5375,
+        "reference": 0.6125
+       },
+       "5006": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5007": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5008": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5009": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5010": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5011": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       },
+       "5012": {
+        "mechanism": 0.3125,
+        "reference": 0.3125
+       }
+      },
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.083333,
+       "sd": 0.0,
+       "min": 0.083333,
+       "max": 0.083333,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.083333,
+       "sd": 0.0,
+       "min": 0.083333,
+       "max": 0.083333,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5002": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5004": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5005": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5006": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5007": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5008": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5009": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5010": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5011": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       },
+       "5012": {
+        "mechanism": 0.083333,
+        "reference": 0.083333
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.24
+   },
+   "info_value, idle path: lane I instinct-idle (learning progress on, reworked) vs all off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "held_out",
+    "mechanism": "instinct-idle",
+    "reference": "autonomy",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.060281,
+       "sd": 0.087026,
+       "min": 0.012083,
+       "max": 0.246387,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.010302,
+       "sd": 0.019745,
+       "min": 0.001382,
+       "max": 0.071388,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.04998,
+       "sd": 0.086919,
+       "min": 0.010671,
+       "max": 0.236217,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.021375,
+        "reference": 0.010704
+       },
+       "5002": {
+        "mechanism": 0.237603,
+        "reference": 0.001386
+       },
+       "5003": {
+        "mechanism": 0.021398,
+        "reference": 0.0107
+       },
+       "5004": {
+        "mechanism": 0.028102,
+        "reference": 0.010429
+       },
+       "5005": {
+        "mechanism": 0.019439,
+        "reference": 0.001383
+       },
+       "5006": {
+        "mechanism": 0.082086,
+        "reference": 0.071388
+       },
+       "5007": {
+        "mechanism": 0.012091,
+        "reference": 0.001386
+       },
+       "5008": {
+        "mechanism": 0.012084,
+        "reference": 0.001385
+       },
+       "5009": {
+        "mechanism": 0.018637,
+        "reference": 0.001382
+       },
+       "5010": {
+        "mechanism": 0.246387,
+        "reference": 0.010707
+       },
+       "5011": {
+        "mechanism": 0.012083,
+        "reference": 0.001385
+       },
+       "5012": {
+        "mechanism": 0.012091,
+        "reference": 0.001386
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.029762,
+       "sd": 0.047754,
+       "min": 0.0,
+       "max": 0.142857,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.053572,
+       "sd": 0.086817,
+       "min": 0.0,
+       "max": 0.214286,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.02381,
+       "sd": 0.046524,
+       "min": -0.142857,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.071429,
+        "reference": 0.071429
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.071429,
+        "reference": 0.142857
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.142857,
+        "reference": 0.214286
+       },
+       "5010": {
+        "mechanism": 0.071429,
+        "reference": 0.214286
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.143918,
+       "sd": 0.101011,
+       "min": -0.083667,
+       "max": 0.296263,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.093551,
+       "sd": 0.007725,
+       "min": 0.0848,
+       "max": 0.099802,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.050367,
+       "sd": 0.103905,
+       "min": -0.183469,
+       "max": 0.211463,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": -0.083667,
+        "reference": 0.099802
+       },
+       "5002": {
+        "mechanism": 0.273632,
+        "reference": 0.0848
+       },
+       "5003": {
+        "mechanism": 0.110055,
+        "reference": 0.0848
+       },
+       "5004": {
+        "mechanism": 0.125058,
+        "reference": 0.099802
+       },
+       "5005": {
+        "mechanism": 0.296263,
+        "reference": 0.0848
+       },
+       "5006": {
+        "mechanism": 0.125058,
+        "reference": 0.099802
+       },
+       "5007": {
+        "mechanism": 0.125058,
+        "reference": 0.099802
+       },
+       "5008": {
+        "mechanism": 0.270327,
+        "reference": 0.099802
+       },
+       "5009": {
+        "mechanism": 0.125058,
+        "reference": 0.099802
+       },
+       "5010": {
+        "mechanism": 0.125058,
+        "reference": 0.099802
+       },
+       "5011": {
+        "mechanism": 0.125058,
+        "reference": 0.0848
+       },
+       "5012": {
+        "mechanism": 0.110055,
+        "reference": 0.0848
+       }
+      },
+      "seeds_better": 11,
+      "seeds_worse": 1,
+      "seeds_equal": 0
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.55,
+       "sd": 0.04885,
+       "min": 0.525,
+       "max": 0.675,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.70625,
+       "sd": 0.10176,
+       "min": 0.65,
+       "max": 0.875,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.15625,
+       "sd": 0.059472,
+       "min": -0.275,
+       "max": -0.125,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       },
+       "5002": {
+        "mechanism": 0.6,
+        "reference": 0.875
+       },
+       "5003": {
+        "mechanism": 0.6,
+        "reference": 0.875
+       },
+       "5004": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       },
+       "5005": {
+        "mechanism": 0.675,
+        "reference": 0.875
+       },
+       "5006": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       },
+       "5007": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       },
+       "5008": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       },
+       "5009": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       },
+       "5010": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       },
+       "5011": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       },
+       "5012": {
+        "mechanism": 0.525,
+        "reference": 0.65
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.083333,
+       "sd": 0.0,
+       "min": 0.083333,
+       "max": 0.083333,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.083333,
+       "sd": 0.0,
+       "min": 0.083333,
+       "max": 0.083333,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.083333,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.5
+   },
+   "info_value: every Wave 1 chooser on (re-check first) vs all off": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "info_value",
+    "split": "held_out",
+    "mechanism": "wave1_all_on",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "core_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.060281,
+       "sd": 0.087026,
+       "min": 0.012083,
+       "max": 0.246387,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.010302,
+       "sd": 0.019745,
+       "min": 0.001382,
+       "max": 0.071388,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.04998,
+       "sd": 0.086919,
+       "min": 0.010671,
+       "max": 0.236217,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.021375,
+        "reference": 0.010704
+       },
+       "5002": {
+        "mechanism": 0.237603,
+        "reference": 0.001386
+       },
+       "5003": {
+        "mechanism": 0.021398,
+        "reference": 0.0107
+       },
+       "5004": {
+        "mechanism": 0.028102,
+        "reference": 0.010429
+       },
+       "5005": {
+        "mechanism": 0.019439,
+        "reference": 0.001383
+       },
+       "5006": {
+        "mechanism": 0.082086,
+        "reference": 0.071388
+       },
+       "5007": {
+        "mechanism": 0.012091,
+        "reference": 0.001386
+       },
+       "5008": {
+        "mechanism": 0.012084,
+        "reference": 0.001385
+       },
+       "5009": {
+        "mechanism": 0.018637,
+        "reference": 0.001382
+       },
+       "5010": {
+        "mechanism": 0.246387,
+        "reference": 0.010707
+       },
+       "5011": {
+        "mechanism": 0.012083,
+        "reference": 0.001385
+       },
+       "5012": {
+        "mechanism": 0.012091,
+        "reference": 0.001386
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "core_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.029762,
+       "sd": 0.047754,
+       "min": 0.0,
+       "max": 0.142857,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.053572,
+       "sd": 0.086817,
+       "min": 0.0,
+       "max": 0.214286,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.02381,
+       "sd": 0.046524,
+       "min": -0.142857,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.071429,
+        "reference": 0.071429
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.071429,
+        "reference": 0.142857
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.142857,
+        "reference": 0.214286
+       },
+       "5010": {
+        "mechanism": 0.071429,
+        "reference": 0.214286
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 3,
+      "seeds_worse": 0,
+      "seeds_equal": 9
+     },
+     "web_mean.realised_bits_per_budget": {
+      "mechanism": {
+       "mean": 0.19586,
+       "sd": 0.141547,
+       "min": 0.129054,
+       "max": 0.596286,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.138718,
+       "sd": 0.082911,
+       "min": -0.011711,
+       "max": 0.272822,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.057142,
+       "sd": 0.103808,
+       "min": 0.001567,
+       "max": 0.362731,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.129054,
+        "reference": -0.011711
+       },
+       "5002": {
+        "mechanism": 0.129054,
+        "reference": 0.125785
+       },
+       "5003": {
+        "mechanism": 0.129054,
+        "reference": 0.086518
+       },
+       "5004": {
+        "mechanism": 0.129249,
+        "reference": 0.127553
+       },
+       "5005": {
+        "mechanism": 0.29585,
+        "reference": 0.271054
+       },
+       "5006": {
+        "mechanism": 0.129249,
+        "reference": 0.127553
+       },
+       "5007": {
+        "mechanism": 0.129249,
+        "reference": 0.088286
+       },
+       "5008": {
+        "mechanism": 0.29585,
+        "reference": 0.272822
+       },
+       "5009": {
+        "mechanism": 0.129249,
+        "reference": 0.127553
+       },
+       "5010": {
+        "mechanism": 0.596286,
+        "reference": 0.233555
+       },
+       "5011": {
+        "mechanism": 0.12912,
+        "reference": 0.127553
+       },
+       "5012": {
+        "mechanism": 0.129054,
+        "reference": 0.088091
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "web_mean.noise_share": {
+      "mechanism": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.4125,
+       "sd": 0.14771,
+       "min": 0.3125,
+       "max": 0.6125,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.4125,
+       "sd": 0.14771,
+       "min": -0.6125,
+       "max": -0.3125,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.6125
+       },
+       "5002": {
+        "mechanism": 0.0,
+        "reference": 0.6125
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.6125
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.3125
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.6125
+       },
+       "5006": {
+        "mechanism": 0.0,
+        "reference": 0.3125
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.3125
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.3125
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.3125
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.3125
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.3125
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.3125
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "web_mean.stale_share": {
+      "mechanism": {
+       "mean": 0.25,
+       "sd": 0.0,
+       "min": 0.25,
+       "max": 0.25,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.083333,
+       "sd": 0.0,
+       "min": 0.083333,
+       "max": 0.083333,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.166667,
+       "sd": 0.0,
+       "min": 0.166667,
+       "max": 0.166667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5002": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5003": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5004": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5005": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5006": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5007": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5008": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5009": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5010": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5011": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       },
+       "5012": {
+        "mechanism": 0.25,
+        "reference": 0.083333
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     }
+    },
+    "regimes": {
+     "mechanism": "all_on",
+     "reference": "all_off"
+    },
+    "run_seconds": 4.33
+   },
+   "counterfactual: imagination (lane M) vs today's answerer": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "counterfactual",
+    "split": "held_out",
+    "mechanism": "imagination",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "summary.answered_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.861979,
+       "sd": 0.016092,
+       "min": 0.84375,
+       "max": 0.875,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.057292,
+       "sd": 0.012164,
+       "min": 0.03125,
+       "max": 0.0625,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.804688,
+       "sd": 0.014133,
+       "min": 0.78125,
+       "max": 0.8125,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5002": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5003": {
+        "mechanism": 0.84375,
+        "reference": 0.03125
+       },
+       "5004": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5005": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5006": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5007": {
+        "mechanism": 0.84375,
+        "reference": 0.03125
+       },
+       "5008": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5009": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5010": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5011": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5012": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.answered_within_strict_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.830729,
+       "sd": 0.031131,
+       "min": 0.78125,
+       "max": 0.875,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.046875,
+       "sd": 0.021069,
+       "min": 0.0,
+       "max": 0.0625,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.783854,
+       "sd": 0.020892,
+       "min": 0.75,
+       "max": 0.8125,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5002": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5003": {
+        "mechanism": 0.84375,
+        "reference": 0.03125
+       },
+       "5004": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5005": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5006": {
+        "mechanism": 0.84375,
+        "reference": 0.0625
+       },
+       "5007": {
+        "mechanism": 0.78125,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.8125,
+        "reference": 0.0625
+       },
+       "5009": {
+        "mechanism": 0.875,
+        "reference": 0.0625
+       },
+       "5010": {
+        "mechanism": 0.8125,
+        "reference": 0.03125
+       },
+       "5011": {
+        "mechanism": 0.78125,
+        "reference": 0.03125
+       },
+       "5012": {
+        "mechanism": 0.8125,
+        "reference": 0.03125
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.interval_score.mean": {
+      "mechanism": {
+       "mean": 2.442095,
+       "sd": 0.137365,
+       "min": 2.21714,
+       "max": 2.660687,
+       "n": 12
+      },
+      "reference": {
+       "mean": 1.917488,
+       "sd": 0.09709,
+       "min": 1.798174,
+       "max": 2.106113,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.524606,
+       "sd": 0.178713,
+       "min": 0.276185,
+       "max": 0.84558,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 2.523918,
+        "reference": 1.979491
+       },
+       "5002": {
+        "mechanism": 2.21714,
+        "reference": 1.856445
+       },
+       "5003": {
+        "mechanism": 2.660687,
+        "reference": 1.815107
+       },
+       "5004": {
+        "mechanism": 2.282075,
+        "reference": 2.00589
+       },
+       "5005": {
+        "mechanism": 2.293675,
+        "reference": 1.977786
+       },
+       "5006": {
+        "mechanism": 2.461714,
+        "reference": 1.858024
+       },
+       "5007": {
+        "mechanism": 2.63164,
+        "reference": 1.832754
+       },
+       "5008": {
+        "mechanism": 2.47293,
+        "reference": 1.832183
+       },
+       "5009": {
+        "mechanism": 2.414275,
+        "reference": 1.972364
+       },
+       "5010": {
+        "mechanism": 2.486614,
+        "reference": 1.975529
+       },
+       "5011": {
+        "mechanism": 2.515504,
+        "reference": 2.106113
+       },
+       "5012": {
+        "mechanism": 2.344962,
+        "reference": 1.798174
+       }
+      }
+     },
+     "summary.answered_within_tolerance_without_front_door.mean": {
+      "mechanism": {
+       "mean": 0.985119,
+       "sd": 0.01839,
+       "min": 0.964286,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.065477,
+       "sd": 0.013902,
+       "min": 0.035714,
+       "max": 0.071429,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.919643,
+       "sd": 0.016152,
+       "min": 0.892857,
+       "max": 0.928572,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5002": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5003": {
+        "mechanism": 0.964286,
+        "reference": 0.035714
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5006": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5007": {
+        "mechanism": 0.964286,
+        "reference": 0.035714
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5012": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       }
+      }
+     },
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.953704,
+       "sd": 0.057214,
+       "min": 0.888889,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.203704,
+       "sd": 0.04325,
+       "min": 0.111111,
+       "max": 0.222222,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.75,
+       "sd": 0.050252,
+       "min": 0.666667,
+       "max": 0.777778,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5002": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5003": {
+        "mechanism": 0.888889,
+        "reference": 0.111111
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5006": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5007": {
+        "mechanism": 0.888889,
+        "reference": 0.111111
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5012": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.842593,
+       "sd": 0.110689,
+       "min": 0.666667,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.166666,
+       "sd": 0.074911,
+       "min": 0.0,
+       "max": 0.222222,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.675926,
+       "sd": 0.074284,
+       "min": 0.555556,
+       "max": 0.777778,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5002": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5003": {
+        "mechanism": 0.888889,
+        "reference": 0.111111
+       },
+       "5004": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5005": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5006": {
+        "mechanism": 0.888889,
+        "reference": 0.222222
+       },
+       "5007": {
+        "mechanism": 0.666667,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.777778,
+        "reference": 0.222222
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.222222
+       },
+       "5010": {
+        "mechanism": 0.777778,
+        "reference": 0.111111
+       },
+       "5011": {
+        "mechanism": 0.666667,
+        "reference": 0.111111
+       },
+       "5012": {
+        "mechanism": 0.777778,
+        "reference": 0.111111
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_by_group.learned_graph.max_relative_error.max": {
+      "mechanism": {
+       "mean": 0.100084,
+       "sd": 0.088228,
+       "min": 0.036031,
+       "max": 0.3665,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.080595,
+       "sd": 0.096079,
+       "min": 0.012686,
+       "max": 0.3665,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.019489,
+       "sd": 0.029414,
+       "min": 0.0,
+       "max": 0.095654,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.036031,
+        "reference": 0.036031
+       },
+       "5002": {
+        "mechanism": 0.046533,
+        "reference": 0.036042
+       },
+       "5003": {
+        "mechanism": 0.120158,
+        "reference": 0.120158
+       },
+       "5004": {
+        "mechanism": 0.080423,
+        "reference": 0.028203
+       },
+       "5005": {
+        "mechanism": 0.051927,
+        "reference": 0.023284
+       },
+       "5006": {
+        "mechanism": 0.10834,
+        "reference": 0.012686
+       },
+       "5007": {
+        "mechanism": 0.3665,
+        "reference": 0.3665
+       },
+       "5008": {
+        "mechanism": 0.071588,
+        "reference": 0.037315
+       },
+       "5009": {
+        "mechanism": 0.045067,
+        "reference": 0.045067
+       },
+       "5010": {
+        "mechanism": 0.075648,
+        "reference": 0.071972
+       },
+       "5011": {
+        "mechanism": 0.093761,
+        "reference": 0.093761
+       },
+       "5012": {
+        "mechanism": 0.105031,
+        "reference": 0.096122
+       }
+      }
+     },
+     "summary_by_group.learned_graph.interval_score.mean": {
+      "mechanism": {
+       "mean": 3.364363,
+       "sd": 0.079867,
+       "min": 3.250889,
+       "max": 3.489098,
+       "n": 12
+      },
+      "reference": {
+       "mean": 1.917488,
+       "sd": 0.09709,
+       "min": 1.798174,
+       "max": 2.106113,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 1.446875,
+       "sd": 0.09367,
+       "min": 1.278123,
+       "max": 1.617618,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 3.257614,
+        "reference": 1.979491
+       },
+       "5002": {
+        "mechanism": 3.252816,
+        "reference": 1.856445
+       },
+       "5003": {
+        "mechanism": 3.357787,
+        "reference": 1.815107
+       },
+       "5004": {
+        "mechanism": 3.438093,
+        "reference": 2.00589
+       },
+       "5005": {
+        "mechanism": 3.376088,
+        "reference": 1.977786
+       },
+       "5006": {
+        "mechanism": 3.250889,
+        "reference": 1.858024
+       },
+       "5007": {
+        "mechanism": 3.330865,
+        "reference": 1.832754
+       },
+       "5008": {
+        "mechanism": 3.449801,
+        "reference": 1.832183
+       },
+       "5009": {
+        "mechanism": 3.422841,
+        "reference": 1.972364
+       },
+       "5010": {
+        "mechanism": 3.385024,
+        "reference": 1.975529
+       },
+       "5011": {
+        "mechanism": 3.489098,
+        "reference": 2.106113
+       },
+       "5012": {
+        "mechanism": 3.361438,
+        "reference": 1.798174
+       }
+      }
+     },
+     "summary_by_group.front_door.front_door_declined.mean": {
+      "mechanism": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5002": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5003": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5004": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5005": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5006": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5007": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5008": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5009": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5010": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5011": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       },
+       "5012": {
+        "mechanism": 4.0,
+        "reference": 4.0
+       }
+      }
+     },
+     "summary_by_group.front_door.front_door_within_tolerance.mean": {
+      "mechanism": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5002": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5003": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5004": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5005": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5006": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5007": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5008": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5009": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5010": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5011": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       },
+       "5012": {
+        "mechanism": 0.0,
+        "reference": 0.0
+       }
+      },
+      "seeds_better": 0,
+      "seeds_worse": 0,
+      "seeds_equal": 12
+     },
+     "summary.answered_share.mean": {
+      "mechanism": {
+       "mean": 0.997024,
+       "sd": 0.01031,
+       "min": 0.964286,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.071429,
+       "sd": 0.0,
+       "min": 0.071429,
+       "max": 0.071429,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.925595,
+       "sd": 0.01031,
+       "min": 0.892857,
+       "max": 0.928571,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5002": {
+        "mechanism": 0.964286,
+        "reference": 0.071429
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.071429
+       }
+      }
+     },
+     "summary.mean_relative_error.mean": {
+      "mechanism": {
+       "mean": 0.008792,
+       "sd": 0.004096,
+       "min": 0.004761,
+       "max": 0.020018,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.049396,
+       "sd": 0.052996,
+       "min": 0.007796,
+       "max": 0.208612,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -0.040604,
+       "sd": 0.049221,
+       "min": -0.188594,
+       "max": -0.002198,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.006359,
+        "reference": 0.035727
+       },
+       "5002": {
+        "mechanism": 0.007675,
+        "reference": 0.024341
+       },
+       "5003": {
+        "mechanism": 0.008628,
+        "reference": 0.061676
+       },
+       "5004": {
+        "mechanism": 0.006659,
+        "reference": 0.014864
+       },
+       "5005": {
+        "mechanism": 0.004761,
+        "reference": 0.021749
+       },
+       "5006": {
+        "mechanism": 0.005598,
+        "reference": 0.007796
+       },
+       "5007": {
+        "mechanism": 0.020018,
+        "reference": 0.208612
+       },
+       "5008": {
+        "mechanism": 0.008661,
+        "reference": 0.021547
+       },
+       "5009": {
+        "mechanism": 0.005688,
+        "reference": 0.040101
+       },
+       "5010": {
+        "mechanism": 0.009935,
+        "reference": 0.051893
+       },
+       "5011": {
+        "mechanism": 0.009864,
+        "reference": 0.05028
+       },
+       "5012": {
+        "mechanism": 0.011653,
+        "reference": 0.054166
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.interval_coverage.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       }
+      }
+     },
+     "summary.declined_confounded_share.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 1.0
+       }
+      }
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 1.56
+   },
+   "self_model: one self-description record (lane W) vs today's surfaces": {
+    "supplementary": "wide seeds: reported beside the split's own seeds, which stay the official numbers",
+    "family": "self_model",
+    "split": "held_out",
+    "mechanism": "self_description",
+    "reference": "baseline",
+    "ablate": [],
+    "seeds": [
+     5001,
+     5002,
+     5003,
+     5004,
+     5005,
+     5006,
+     5007,
+     5008,
+     5009,
+     5010,
+     5011,
+     5012
+    ],
+    "metrics": {
+     "summary.coverage.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.2,
+       "sd": 0.0,
+       "min": 0.2,
+       "max": 0.2,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.accuracy.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.2,
+       "sd": 0.0,
+       "min": 0.2,
+       "max": 0.2,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.8
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_original_key.accuracy.mean": {
+      "mechanism": {
+       "mean": 0.966667,
+       "sd": 0.0,
+       "min": 0.966667,
+       "max": 0.966667,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.166667,
+       "sd": 0.0,
+       "min": 0.166667,
+       "max": 0.166667,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5002": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5003": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5004": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5005": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5006": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5007": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5008": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5009": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5010": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5011": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       },
+       "5012": {
+        "mechanism": 0.966667,
+        "reference": 0.8
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary_without_plumbing.accuracy.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 0.923077,
+       "sd": 0.0,
+       "min": 0.923077,
+       "max": 0.923077,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": 0.076923,
+       "sd": 0.0,
+       "min": 0.076923,
+       "max": 0.076923,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 0.923077
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     },
+     "summary.surfaces_used.mean": {
+      "mechanism": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 12
+      },
+      "reference": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 12
+      },
+      "paired_difference": {
+       "mean": -3.0,
+       "sd": 0.0,
+       "min": -3.0,
+       "max": -3.0,
+       "n": 12
+      },
+      "per_seed": {
+       "5001": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5002": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5003": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5004": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5005": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5006": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5007": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5008": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5009": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5010": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5011": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       },
+       "5012": {
+        "mechanism": 1.0,
+        "reference": 4.0
+       }
+      },
+      "seeds_better": 12,
+      "seeds_worse": 0,
+      "seeds_equal": 0
+     }
+    },
+    "regimes": {
+     "mechanism": "defaults",
+     "reference": "all_off"
+    },
+    "run_seconds": 2.7
+   }
+  }
+ },
+ "code_commit": "gen-fix1e: 1c6cf1e plus the re-review's counterfactual scoring change (src/neuroscifi/acceptance/cognition: scoring.py, counterfactual.py, __init__.py), run with that change uncommitted and committed with this file; no product code changed"
+}

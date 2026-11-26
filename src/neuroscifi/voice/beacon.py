@@ -32,7 +32,10 @@ def _alive(pid) -> bool:
 
 
 def _number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    try:
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    except OverflowError:       # an int too large for a float (review1b R1)
+        return False
 
 
 class SharedAudioBeacon(AudioBeacon):
@@ -63,7 +66,8 @@ class SharedAudioBeacon(AudioBeacon):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX)
             try:
-                current = shared.read_json(self.path)
+                # another account's file is not merged in (policy._read_beacon reads it the same way)
+                current = shared.read_json(self.path, owners=shared.writers(self.db_path))
             except (OSError, ValueError):
                 current = {}
             current = current if isinstance(current, dict) else {}
@@ -86,6 +90,6 @@ class SharedAudioBeacon(AudioBeacon):
             sessions = [e for e in entries.values() if e["session"]]
             if sessions and all("used_at" in e for e in sessions):
                 record["used_at"] = max(e["used_at"] for e in sessions)
-            shared.write_text(self.path, json.dumps(record))
+            shared.write_text(self.path, json.dumps(record), group_write=False)   # the service's alone (R2)
         finally:
             os.close(lock)                             # releases the flock

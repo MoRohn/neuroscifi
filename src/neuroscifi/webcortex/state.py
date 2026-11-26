@@ -90,7 +90,10 @@ def _str_list(name, value, *, max_items=200, max_len=256):
 def _validate(name, value):
     """Return the validated value for one WebConfig field, or raise ValidationError."""
     if name in ("enabled", "autonomous", "pocket_research", "browser_rendering", "news_rendering", "memory_check",
-                "search_browser_user_agent", "calibrated_forecasts"):
+                "search_browser_user_agent", "calibrated_forecasts", "curiosity_learning_progress",
+                "salience_record", "hypothesis_fields", "hypothesis_abandon", "premise_recheck", "idle_recheck",
+                "reflection", "reflection_model_summary", "answer_monitoring", "selective_answering",
+                "verification_escalation", "adaptive_depth", "pocket_recent"):
         if not isinstance(value, bool):
             raise ValidationError(f"{name} must be true or false")
         return value
@@ -99,6 +102,18 @@ def _validate(name, value):
         if value not in ADMISSION_RULES:
             raise ValidationError(f"tick_admission must be one of {', '.join(ADMISSION_RULES)}")
         return value
+    if name == "strategy_selection":
+        if value not in ("gate", "off"):
+            raise ValidationError("strategy_selection must be 'gate' (follows the improvement ledger) or 'off'")
+        return value
+    if name in ("recheck_per_tick", "recheck_daily"):
+        if not _is_int(value) or not 0 <= value <= 100:
+            raise ValidationError(f"{name} must be an integer between 0 and 100")
+        return value
+    if name == "reflection_interval_days":
+        if not _is_num(value) or not 1 <= value <= 365:
+            raise ValidationError("reflection_interval_days must be a number of days between 1 and 365")
+        return float(value)
     if name == "openwebsearch_url":
         parts = urlsplit(value) if isinstance(value, str) else None
         if parts is None or parts.scheme != "http" or (parts.hostname or "") not in LOOPBACK_HOSTS:

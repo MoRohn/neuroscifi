@@ -105,11 +105,21 @@ def _segment_phrase(db, other, segments):
     return "".join(" " + part if i == 0 else " and " + part for i, part in enumerate(parts))
 
 
-def _policy(db, epoch, allowed, why, horizon):
-    """Return (decision, pending kind or None, scope, reason, question or None) before the ask budget."""
+def rule_version(db) -> str:
+    """The individual's rule version (InstanceConfig.executive_rule; store.RULE_VERSIONS). ADR-051."""
+    return store.config(db).executive_rule
+
+
+def _policy(db, epoch, allowed, why, horizon, rule="rules-v1", seen=None):
+    """Return (decision, pending kind or None, scope, reason, question or None) before the ask budget. `rule` is the
+    rule version: rules-v1 below; information-v1 (information.py) replaces rules 5-7. `seen`, a dict, receives the
+    assessment the policy read."""
     if not allowed:
         return "defer", None, None, f"writes are paused ({why}); defer until regulation allows new evidence", None
-    result = beliefs._assess(db, epoch, legacy=False)[0]
+    assessed = beliefs._assess(db, epoch, legacy=False)
+    result = assessed[0]
+    if seen is not None:
+        seen["assessed"] = assessed
     change = result["change"]
     through = f" (evidence through #{horizon})"
     if change["suspected"]:
@@ -160,6 +170,9 @@ def _policy(db, epoch, allowed, why, horizon):
                 f"({match['new_setup_posterior']:.3f}) and every other earlier configuration; ask whether this is "
                 "the earlier setup",
                 f"This looks like {best}{where}; continue with that calibration?{through}")
+    if rule == "information-v1":
+        from .information import information_policy
+        return information_policy(db, epoch, result, assessed, horizon, _answered)
     p = result["mechanism"]["p_inverted"]
     if not result["mechanism"]["identifiable"]:
         return ("test_reference", "test_reference", "mechanism",
@@ -220,7 +233,8 @@ def _decide(db, epoch, now, record, path):
                            + (" AND created_at>?" if window else ""),
                            (epoch, now - window) if window else (epoch,)).fetchone()[0]
     allowed, why = store.write_allowed(db, path)
-    decision, kind, scope, reason, question = _policy(db, epoch, allowed, why, _horizon(db, epoch))
+    rule, seen = rule_version(db), {}
+    decision, kind, scope, reason, question = _policy(db, epoch, allowed, why, _horizon(db, epoch), rule, seen)
     wanted = (kind, scope)  # the policy's own recommendation, before any budget conversion
     pending_id = _open_pending(db, epoch, kind, scope, now) if kind else None
     if decision == "ask" and pending_id is None and asks_used >= budget:
@@ -257,6 +271,17 @@ def _decide(db, epoch, now, record, path):
     out = {"decision": decision, "scope": scope, "reason": reason, "pending_id": pending_id,
            "asks_used": asks_used, "ask_budget": budget, "ask_budget_window_seconds": window,
            "closed_pending": closed, "expired_pending": expired}
+    if rule != "rules-v1":      # review1 CL9: the decision of the default rule is exactly as before ADR-051
+        out["rule"] = rule
+    if "assessed" in seen and cfg.decision_information:
+        # ADR-051, shown beside the decision and never changing it: the exact expected information gain of each
+        # question it could ask, and whether it rests on a matched earlier setup (habitual) or its own evidence
+        from . import information
+        assessed = seen["assessed"]
+        if assessed[0]["evidence"]["learning"]:
+            out["information"] = {"readings_per_question": information.READINGS,
+                                  "candidates": information.assessed_gains(assessed)}
+        out["processing"] = information.processing(db, epoch, assessed[0].get("change"))
     if window_warning:      # absent unless the saved window was unusable
         out["warnings"] = [window_warning]
     return out
@@ -286,6 +311,99 @@ def pending(db, *, epoch=None, include_resolved=False):
     if where:
         sql += " WHERE " + " AND ".join(where)
     return [dict(zip(_PENDING_COLUMNS, row)) for row in db.execute(sql + " ORDER BY id", params)]
+
+
+PRECISION_RULES = {
+    "change_alarm": "rule 2: the change detector asked to confirm a change (kind 'calibrate')",
+    "change_ambiguous": "rule 3: an ambiguous change, asked which scope changed (kind 'ask')",
+    "epoch_match": "rule 4b: asked whether this is an earlier setup (scope 'epoch:...')",
+    "partner_meaning": "rule 6: asked what a partner means by their words (kind 'ask')",
+    "reference_test": "rules 3 and 5: asked for a known reference reading (kind 'test_reference')",
+    "web_knowledge": "Web Cortex: asked to accept a knowledge candidate (scope 'web:knowledge:...')",
+    "web_other": "Web Cortex: other owner questions (reviews, contested subjects, proposals)",
+}
+_OUTCOMES = ("confirmed", "rejected", "answered", "withdrawn", "expired", "open")
+
+
+def _rule_of(kind, scope, question):
+    scope = scope or ""
+    if scope.startswith("web:knowledge:"):
+        return "web_knowledge"
+    if scope.startswith("web:"):
+        return "web_other"
+    if kind == "calibrate":
+        return "change_alarm"
+    if kind == "test_reference":
+        return "reference_test"
+    if kind == "ask" and scope.startswith("epoch:"):
+        return "epoch_match"
+    if kind == "ask" and (question or "").startswith("Something changed"):
+        return "change_ambiguous"
+    if kind == "ask":
+        return "partner_meaning"
+    return None
+
+
+def _rates(counts):
+    decided = counts["confirmed"] + counts["rejected"]
+    closed = sum(counts[k] for k in _OUTCOMES if k != "open")
+    owner = decided + counts["answered"]
+    return {"asked": sum(counts.values()), **counts,
+            "precision": round(counts["confirmed"] / decided, 4) if decided else None,
+            "owner_answered_share": round(owner / closed, 4) if closed else None}
+
+
+def precision(db) -> dict:
+    """How the executive's questions turned out, from records that already exist (ADR-054; display only, nothing
+    reads it back and nothing is written). Per rule (PRECISION_RULES) and per epoch, every question asked: confirmed
+    (a change question answered with confirm=True: a changepoint row confirmed=1; an earlier-setup question
+    answered "continue there": an epoch_links row; a knowledge candidate the owner accepted), rejected (confirm=False:
+    a changepoint row confirmed=0; the earlier setup declined; a candidate rejected), answered (the owner answered
+    without confirming or rejecting), withdrawn ("resolved by evidence": the executive no longer asks it), expired
+    (no answer within 7 days) or open. precision = confirmed / (confirmed + rejected): for change_alarm, how often
+    the change detector's alarm was a change the owner confirmed. An earlier-setup question the owner closed without
+    a link counts as rejected (confirm=False and a bare close leave the same record). Questions about forgotten roots are counted with
+    their scrubbed scope; a forgotten epoch's questions are gone with it."""
+    cps = {}
+    if beliefs._has_changepoints(db):
+        for pid, confirmed in db.execute("SELECT pending_id, confirmed FROM changepoints WHERE pending_id IS NOT NULL"):
+            cps[pid] = bool(confirmed)
+    links = set()
+    if beliefs._has_table(db, "epoch_links"):
+        links = {pid for (pid,) in db.execute("SELECT pending_id FROM epoch_links WHERE pending_id IS NOT NULL")}
+    web_status = {}
+    if beliefs._has_table(db, "web_knowledge"):
+        web_status = dict(db.execute("SELECT 'web:knowledge:' || id, status FROM web_knowledge"))
+    by_rule, by_epoch = {}, {}
+    for pid, epoch, kind, scope, question, resolved_at, resolution in db.execute(
+            "SELECT id, epoch, kind, scope, question, resolved_at, resolution FROM pending ORDER BY id"):
+        rule = _rule_of(kind, scope, question)
+        if rule is None:
+            continue
+        resolution = resolution or ""
+        if resolved_at is None:
+            outcome = "open"
+        elif resolution.startswith("expired:"):
+            outcome = "expired"
+        elif resolution.startswith("resolved by evidence:"):
+            outcome = "withdrawn"
+        elif pid in cps:
+            outcome = "confirmed" if cps[pid] else "rejected"
+        elif rule == "epoch_match":
+            outcome = "confirmed" if pid in links else "rejected"
+        elif rule == "web_knowledge" and web_status.get(scope) in ("accepted", "rejected"):
+            outcome = "confirmed" if web_status[scope] == "accepted" else "rejected"
+        else:
+            outcome = "answered"
+        counts = by_rule.setdefault(rule, dict.fromkeys(_OUTCOMES, 0))
+        counts[outcome] += 1
+        if epoch is not None:
+            per = by_epoch.setdefault(epoch, {}).setdefault(rule, dict.fromkeys(_OUTCOMES, 0))
+            per[outcome] += 1
+    return {"display_only": True, "rules": PRECISION_RULES,
+            "by_rule": {rule: _rates(c) for rule, c in sorted(by_rule.items())},
+            "by_epoch": {epoch: {rule: _rates(c) for rule, c in sorted(rules.items())}
+                         for epoch, rules in sorted(by_epoch.items())}}
 
 
 def _changepoint(db, pending_id):

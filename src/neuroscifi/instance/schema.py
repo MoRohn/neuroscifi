@@ -106,6 +106,13 @@ _STORE_TRIGGERS_17 = {
       BEGIN SELECT RAISE(ABORT,'an imagined record is never rewritten'); END""",
 }
 _TRIGGERS_17 = _STORE_TRIGGERS_17 | NO_IMAGINED_TRIGGERS
+# Version 18 was amended while unreleased (review1 S7): its first build let a row of the improvement ledger be
+# deleted, and deleting the owner's 'revert' row switched strategy selection back on. ensure_triggers adds this
+# trigger to a file migrated by that build.
+_TRIGGERS_18 = {
+    "improvement_ledger_no_delete": """CREATE TRIGGER IF NOT EXISTS improvement_ledger_no_delete BEFORE DELETE ON
+      improvement_ledger BEGIN SELECT RAISE(ABORT,'the improvement ledger is append-only'); END""",
+}
 _INDEX_17 = "CREATE INDEX IF NOT EXISTS imagined_forgotten_age ON imagined_forgotten(forgotten_at)"
 # The reference triggers of the first build of 17 that the current build no longer has (by name: a trigger of that
 # name pattern a later migration adds is never dropped).
@@ -715,6 +722,75 @@ MIGRATIONS = [
     """ + ";\n".join(_STORE_TRIGGERS_17.values()) + """;
     -- No reference column of an evidence-side table may name an imagined record (schema._NO_IMAGINED).
     """ + ";\n".join(NO_IMAGINED_TRIGGERS.values()) + ";\n",
+    # ---- version 18 (recursive knowledge evolution, lane K, ADR-055; webcortex/premises.py, reflection.py, ...) ----
+    """
+    -- Hypothesis fields of directive 7.2, one row per hypothesis recorded after this migration (older hypotheses have
+    -- none: nothing is invented for them): the assumptions it makes (template statements from its own records), the
+    -- claims that speak against it, the expected information gain (bits) and the cost of one investigation when it
+    -- was recorded, and its revision record (every status change, with the evidence that made it). A table beside
+    -- web_hypotheses, not new columns, so the migration can run again on a file that already holds it (IF NOT EXISTS
+    -- throughout, as version 17).
+    CREATE TABLE IF NOT EXISTS web_hypothesis_details(
+      hypothesis_id INTEGER PRIMARY KEY,
+      assumptions TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(assumptions)),
+      counter_evidence TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(counter_evidence)
+        AND counter_evidence NOT GLOB '*"imagined:*'),
+      expected_info_gain REAL, cost REAL,
+      revisions TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(revisions)), created_at REAL NOT NULL);
+    -- What a knowledge item or a hypothesis rests on (its premises), recorded when it is derived. Never rewritten for
+    -- older rows. A premise is a stored record of the individual; an imagined record is never a premise.
+    CREATE TABLE IF NOT EXISTS web_premises(
+      dependent_kind TEXT NOT NULL CHECK(dependent_kind IN ('knowledge','hypothesis')),
+      dependent_id INTEGER NOT NULL,
+      premise_kind TEXT NOT NULL CHECK(premise_kind IN ('knowledge','claim','hypothesis')),
+      premise_id TEXT NOT NULL CHECK(length(premise_id) BETWEEN 1 AND 128 AND premise_id NOT GLOB 'imagined:*'),
+      relation TEXT NOT NULL CHECK(relation IN ('supported_by','alternative_to','revision_of')),
+      created_at REAL NOT NULL,
+      PRIMARY KEY(dependent_kind, dependent_id, premise_kind, premise_id));
+    CREATE INDEX IF NOT EXISTS web_premises_premise ON web_premises(premise_kind, premise_id);
+    -- A mark "to re-check": a premise changed (superseded, contradicted, forgotten), a prediction the subject rested
+    -- on failed, or the idle re-check chose it. A mark never changes a belief; it queues a re-verification, and the
+    -- subject changes only through the normal evidence path. cause holds kind and id of what changed (never text).
+    CREATE TABLE IF NOT EXISTS web_rechecks(
+      id INTEGER PRIMARY KEY,
+      subject_kind TEXT NOT NULL CHECK(subject_kind IN ('knowledge','hypothesis')),
+      subject_id INTEGER NOT NULL,
+      reason TEXT NOT NULL CHECK(reason IN ('premise_superseded','premise_contradicted','premise_forgotten',
+        'prediction_failed','idle','reflection')),
+      cause TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(cause)),
+      status TEXT NOT NULL CHECK(status IN ('marked','queued','done','dropped')),
+      task_id TEXT, outcome TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL);
+    CREATE INDEX IF NOT EXISTS web_rechecks_subject ON web_rechecks(subject_kind, subject_id, status);
+    CREATE INDEX IF NOT EXISTS web_rechecks_task ON web_rechecks(task_id);
+    -- Reflection reports (webcortex/reflection.py): deterministic, over a period, every line naming the record ids it
+    -- was read from; the bounded actions it took. Numbers, ids and template text only (no statement is quoted).
+    CREATE TABLE IF NOT EXISTS web_reflections(
+      id INTEGER PRIMARY KEY, period_from REAL NOT NULL, period_to REAL NOT NULL,
+      report TEXT NOT NULL CHECK(json_valid(report)), actions TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(actions)),
+      trigger TEXT NOT NULL CHECK(trigger IN ('owner','schedule')), created_at REAL NOT NULL);
+    -- The improvement ledger (directive 7.7): every adopted or reverted change of a strategy or rule, with its
+    -- evidence (benchmark run ids), generalisation, regressions checked, cost, reproducibility, the decision and who
+    -- decided. Append-only: a later row supersedes an earlier one for the same capability.
+    CREATE TABLE IF NOT EXISTS improvement_ledger(
+      id INTEGER PRIMARY KEY, capability TEXT NOT NULL CHECK(length(capability) BETWEEN 1 AND 80),
+      level INTEGER NOT NULL CHECK(level BETWEEN 1 AND 3),
+      change TEXT NOT NULL CHECK(length(change) BETWEEN 1 AND 500),
+      evidence TEXT NOT NULL CHECK(json_valid(evidence)), generalisation TEXT NOT NULL CHECK(json_valid(generalisation)),
+      regressions TEXT NOT NULL CHECK(json_valid(regressions)), cost TEXT NOT NULL CHECK(json_valid(cost)),
+      reproducibility TEXT NOT NULL CHECK(json_valid(reproducibility)),
+      decision TEXT NOT NULL CHECK(decision IN ('retain','revise','revert')),
+      decided_by TEXT NOT NULL CHECK(decided_by IN ('owner','gate')), created_at REAL NOT NULL);
+    CREATE INDEX IF NOT EXISTS improvement_ledger_capability ON improvement_ledger(capability, id);
+    CREATE TRIGGER IF NOT EXISTS improvement_ledger_append_only BEFORE UPDATE ON improvement_ledger
+      BEGIN SELECT RAISE(ABORT,'the improvement ledger is append-only'); END;
+    """ + _TRIGGERS_18["improvement_ledger_no_delete"] + ";\n",
+    # ---- version 19 (review1 A2/A3: the request-path reads of web_events by kind and time) ----------------------
+    """
+    -- Presence's recent predictions and findings, the selective broadcast's hourly count, the autonomy windows and
+    -- the self-description's latest decisions read web_events by kind and a recent time; without this index each
+    -- scanned the whole episode log (500,000 events: about 40 ms per Presence poll). Additive, no data changes.
+    CREATE INDEX IF NOT EXISTS web_events_kind_time ON web_events(kind, created_at);
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)
@@ -760,6 +836,8 @@ def _repairs(db):
     if "imagined_refs" in present:
         wanted |= _TRIGGERS_17
         observed = any(c[1] == "observed" for c in db.execute("PRAGMA table_info(imagined_refs)"))
+    if "improvement_ledger" in present:
+        wanted |= _TRIGGERS_18
     stale = [name for name, sql in wanted.items() if present.get(name) != ("trigger", _as_stored(sql))]
     retired = [name for name in _RETIRED_17 if name in present]
     index = "imagined_refs" in present and "imagined_forgotten_age" not in present
@@ -767,8 +845,9 @@ def _repairs(db):
 
 
 def ensure_triggers(db):
-    """Bring the triggers of the two migrations amended while unreleased to their current statements: the graph
-    triggers of version 15 (_TRIGGERS_15) and the imagined store's of version 17 (_TRIGGERS_17, with
+    """Bring the triggers of the migrations amended while unreleased to their current statements: the graph
+    triggers of version 15 (_TRIGGERS_15), the improvement ledger's delete trigger of version 18 (_TRIGGERS_18), and
+    the imagined store's of version 17 (_TRIGGERS_17, with
     imagined_refs.observed and the tombstones' age index, and without the reference triggers the current build retired,
     _RETIRED_17), for a file of either earlier build of 17. The same one-time repair removes, with a tombstone each,
     every record observed under the first build of 17 (its outcomes kept text and evidence that no forget reached) and
@@ -801,7 +880,8 @@ def ensure_triggers(db):
             for name in stale:
                 db.execute(f"DROP TRIGGER IF EXISTS {name}")
                 db.execute(wanted[name])
-            if "imagined_never_rewritten" in wanted and (stale or retired or not observed or index):
+            if "imagined_never_rewritten" in wanted and ([n for n in stale if n in _TRIGGERS_17] or retired
+                                                        or not observed or index):
                 _purge_unsupported_outcomes(db, "outcome IS NOT NULL" if not observed else _OUTCOME_UNSUPPORTED)
             db.execute("COMMIT")
         except BaseException:
@@ -873,7 +953,7 @@ def migrate(db):
     refuse_newer(current)
     if current == SCHEMA_VERSION:
         ensure_indexes(db)                   # nothing to do but for a file of the first version-14 build
-        ensure_triggers(db)                  # nothing to do but for a file of a first version-15 or -17 build
+        ensure_triggers(db)                  # nothing to do but for a file of a first version-15, -17 or -18 build
         return SCHEMA_VERSION                # an up-to-date file is opened without taking the write lock
     control = db.autocommit
     db.autocommit = True                     # so executescript does not commit the transaction holding the lock

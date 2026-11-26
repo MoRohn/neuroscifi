@@ -356,7 +356,9 @@ Loopback only (`127.0.0.1`), started with `nsf console --db PATH [--port 8766]`.
 
 | Method | Route | Service call |
 |---|---|---|
-| GET | /api/inventory | store.inventory + store.regulation |
+| GET | /api/inventory | store.inventory + store.regulation (+ `self`, `self_short` with `?self=1`, §13) |
+| GET | /api/self | `{state_version, self, self_short}`: the self-description in its own request (§13) |
+| GET | /api/imagined | imagined.listing, read-only (`?kind=`, `?limit=` 1–100; §13) |
 | GET | /api/epochs | epochs plus evidence counts |
 | GET | /api/epochs/{e}/beliefs | beliefs.explain |
 | GET | /api/epochs/{e}/decision | executive.decide(record=False) |
@@ -560,7 +562,7 @@ unaffected.
   "lexical", "reason", "retry_in_seconds"?, "waking"?}`) and `paired_by_meaning` (`[{key, knowledge_id, relation:
   "same" | "conflict", similarity, score, score_back}]`). With the switch off the summary has neither key.
 
-`POST /api/web/config` accepts only the four switches listed above; `memory_check` is set with
+`POST /api/web/config` accepts only the four switches listed above and `pocket_recent` (ADR-053, §13); `memory_check` is set with
 `nsf web config --memory-check|--no-memory-check`.
 
 **Forecasts as read (ADR-046).** Additive, nothing renamed or removed:
@@ -644,8 +646,13 @@ JSON content type and 512-byte body rules apply.
 Every push is an empty POST to the stored endpoint, with `TTL: 43200`, `Urgency: normal` and `Authorization: vapid t=<ES256 JWT>, k=<key>`. 404 or 410 deletes the subscription (after a 120 s grace for new registrations). 429 and 5xx are retried after `Retry-After`, and every attempt counts for the one-a-minute interval. Every reply of the `push` route, like every research reply, carries `X-NSF-Spark-Signature` (ADR-042 §4).
 
 **MCP (`nsf web mcp`, stdio JSON-RPC 2.0, protocol 2025-06-18).** Tools: `web_search`, `web_research`, `web_task`,
-`web_evidence`, `web_knowledge`. Retrieved content is wrapped in `safety.untrusted` envelopes. There are no forget,
-review or configuration tools.
+`web_evidence`, `web_knowledge`, `self_status` (read-only, ADR-053, §13). Retrieved content is wrapped in
+`safety.untrusted` envelopes. There are no forget, review or configuration tools. `serverInfo.version` is the
+package's `neuroscifi.__version__` (it was a hard-coded "0.7.0"). `web_task`, `web_evidence` and `self_status` read
+the owner's own research only (`family IS NULL`, table in §13). `web_knowledge` returns **knowledge, which is shared
+by the whole individual**: consolidation does not ask whose research verified a statement, so an item may come from a
+Pocket family's research. Its items name no family's task: a family task id anywhere in an item is blanked (`null`)
+(review1b R4).
 
 ## 9. Resource scheduling (0.7, RD-46)
 
@@ -654,7 +661,7 @@ review or configuration tools.
 
 | Surface | Result |
 |---|---|
-| GET /api/resources[?cold_start=1] (console token rules as §6) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `measured_at`, `memory` (/proc/meminfo bytes, PSI), `load` {`available`, `avg1`, `avg5`, `avg15`, `cpus`} (/proc/loadavg; `{available: false, reason}` when unreadable), `gpu` (nvidia-smi: `available`, `memory_used_bytes`, `memory_total_bytes`, `utilization_percent`, `memory_readable` false where it reports N/A, `temperature_c`, `power_draw_w`, `throttle` {`thermal`, `sw_thermal_slowdown`, `hw_thermal_slowdown`, `sw_power_cap`, `hw_slowdown`, `active_mask`} or null on a driver without these fields, `compute_apps` [{pid, name, memory_bytes}]), `containers` (docker stats of neuroscifi-*), `inference` (the vLLM server of the configured loopback endpoint, from its `/metrics`, cached 15 s: `{available: true, url, models, requests_running, requests_waiting, kv_cache_usage, server_started_at, since_start, interval}`; `since_start` and an available `interval` are `{requests_finished, mean_seconds {queue, prefill, decode, first_token, request}, prompt_tokens, prefix_cache_hit_share, generation_tokens, preemptions, finished_by_reason}`, `interval` also has `available` and `seconds` and is `{available: false, reason}` for the first reading of a process or after a server restart; the whole object is `{available: false, reason, url?}` when the endpoint is not configured, not on this host, unreachable or not a vLLM server), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload` {`automatic` (some timeout set), `services` {vllm, asr, tts, searxng: {`timeout_s` (null: off), `suggested_minutes`, `loaded`, `state`, `state_by`, `last_used_at`, `idle_s`, `reload_estimate_s`}}, `critical_share`, `events` (last 20: {at, service, action, reason, by, ok, seconds, shape, told?, error?, headroom?, took_bytes?, freed_bytes?, refused?, available_bytes?, need_bytes?, floor_bytes?}), `how`}}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
+| GET /api/resources[?cold_start=1 | ?quick=1] (console token rules as §6; `quick`: `resources.status(full=False)`, no subprocess, as `nsf resources --quick`; ADR-053) | `resources.status`: `level` (`ok` \| `elevated` \| `critical` \| `unknown`), `reasons`, `thresholds`, `measured_at`, `memory` (/proc/meminfo bytes, PSI), `load` {`available`, `avg1`, `avg5`, `avg15`, `cpus`} (/proc/loadavg; `{available: false, reason}` when unreadable), `gpu` (nvidia-smi: `available`, `memory_used_bytes`, `memory_total_bytes`, `utilization_percent`, `memory_readable` false where it reports N/A, `temperature_c`, `power_draw_w`, `throttle` {`thermal`, `sw_thermal_slowdown`, `hw_thermal_slowdown`, `sw_power_cap`, `hw_slowdown`, `active_mask`} or null on a driver without these fields, `compute_apps` [{pid, name, memory_bytes}]), `containers` (docker stats of neuroscifi-*), `inference` (the vLLM server of the configured loopback endpoint, from its `/metrics`, cached 15 s: `{available: true, url, models, requests_running, requests_waiting, kv_cache_usage, server_started_at, since_start, interval}`; `since_start` and an available `interval` are `{requests_finished, mean_seconds {queue, prefill, decode, first_token, request}, prompt_tokens, prefix_cache_hit_share, generation_tokens, preemptions, finished_by_reason}`, `interval` also has `available` and `seconds` and is `{available: false, reason}` for the first reading of a process or after a server restart; the whole object is `{available: false, reason, url?}` when the endpoint is not configured, not on this host, unreachable or not a vLLM server), `audio_active`, `policy` {`background_research`, `browser_rendering`: {allowed, reason}, `background_model_slots`, `idle_unload` {`automatic` (some timeout set), `services` {vllm, asr, tts, searxng: {`timeout_s` (null: off), `suggested_minutes`, `loaded`, `state`, `state_by`, `last_used_at`, `idle_s`, `reload_estimate_s`}}, `critical_share`, `events` (last 20: {at, service, action, reason, by, ok, seconds, shape, told?, error?, headroom?, took_bytes?, freed_bytes?, refused?, available_bytes?, need_bytes?, floor_bytes?}), `how`}}; with `cold_start=1` also `cold_starts` [{name, started_at, ready_at, seconds}] |
 | `nsf resources [--db] [--quick] [--cold-start]` | the same JSON on stdout (`--quick`: memory only, no subprocesses; `load`, `gpu`, `containers` and `inference` are then null) |
 | `nsf resources idle [--set SERVICE=DURATION ...]` | show or set idle timeouts (`30m`, `900s`, `1h`, `off`; at least 1 min); prints `idle_unload` |
 | `nsf resources tick` | one idle-policy pass: {`enabled`, `level`, `blockers`, `decisions` {service: {action `none` \| `unload` \| `failed`, why, idle_s?, event?}}} |
@@ -718,7 +725,8 @@ its direction marks, embeddings and isolates in `text`.
 `neuroscifi/provenance.py` (vocabulary) and `instance/imagined.py` (owner of `imagined`, `imagined_refs`,
 `imagined_forgotten`). Nothing in the evidence, knowledge, claims, verification, calibration, belief or retrieval code
 reads or writes these tables (an allow-list in tests/webcortex/test_imagined_quarantine.py: the store's lifecycle,
-WRITERS that may call `record`/`observe`, DISPLAYS that may call `listing`/`show`); the database refuses an id of the
+WRITERS that may call `record`/`observe`/`written_by`, DISPLAYS that may call `listing`/`show`/`counts`); the
+database refuses an id of the
 form `imagined:` + 32 hex digits (any case, padded) in a reference column of the evidence side, never in free text
 (`schema._NO_IMAGINED`; sqlite3.IntegrityError "an imagined record is never evidence"; INSERT OR REPLACE of a held
 record: "an imagined record is never rewritten").
@@ -742,6 +750,9 @@ imagined.observe(db, id, *, observation, now, evidence=[(ref_kind, id)]) -> show
 imagined.listing(db, now, *, kind=None, limit=100) -> {"label", "counts" {kind: n}, "items": [{"id", "kind", "label",
                  "mechanism", "mechanism_version", "model", "question", "created_at", "expires_at", "observed"}]}
 imagined.show(db, id) -> item + {"payload", "assumptions", "uncertainty", "derived_from", "outcome", "observed_at"}
+imagined.counts(db, *, since=None) -> {"label", "counts" {kind: n}, "total", "newest"}   # numbers only (displays)
+imagined.written_by(db, mechanism, *, derived_from=None, observed=None) -> [show() items], oldest first
+#   one mechanism's own records (a writer filling its outcome slots); derived_from=(ref_kind, id), observed=True/False
 imagined.purge(db, now, *, record_id=None, kind=None) -> {"status": "purged"|"absent", "effects": {"imagined_removed",
                "checkpoints_stale", "state_version", "wal_checkpoint"}}   # neither given: everything
 imagined.section(records) -> {"label": "imagined, not evidence", "items": [{"kind", "payload", "assumptions",
@@ -766,3 +777,113 @@ Additive fields, absent while zero unless noted: forget results `effects["imagin
 | `nsf imagined purge --id ID \| --kind K \| --all` | `imagined.purge`, then the rewrite of the archives it made stale (as `nsf forget`) |
 | `nsf imagined kinds` | `{"kinds", "never_evidence", "records": provenance.mapping()}` |
 | `nsf config --max-imagined-rows N --imagined-lifetime-days D` | `store.set_config` (N 0–100,000; D one minute to 365 days) |
+
+## 12. Imagination (ADR-052)
+
+Every answer carries `"label": "imagined, not evidence"`, `"kind": "simulation"`, `"mechanism"`,
+`"mechanism_version"`, `"assumptions": [str]` and `"uncertainty": str`. Nothing writes to the individual except
+`imagine.keep` and the scenario records, both into the imagined store (§11). A switch that is off raises
+`imagine.Refused` (an `InstanceError`, HTTP 409, CLI exit 2), as do a copy above `imagine_max_bytes` (before
+copying), a copy that alone took longer than `imagine_max_seconds` (checked once the one-step copy ends), work past
+`imagine_max_seconds`, a horizon beyond `forecast.MAX_HORIZON` (12), a horizon above 1 when the carry-over's spectral
+radius is >= 1, and a push the recorded trajectory does not identify.
+
+```python
+imagine.sandbox(db, *, max_bytes=None, max_seconds=None)    # context manager -> Box(db=<in-memory copy>, cost())
+imagine.what_if(db, epoch, *, flip=[id | "#SEQ"], drop=[...], add=[{"factor": "camera:R"|"partner:P"|"reference:R",
+                "reading": 0|1|"agree"|"disagree", "count": n}], now=None, detect=True)
+  -> {"before", "after": {"mechanism": {"p_inverted", "identifiable"}, "camera:R"|"partner:P": {..., "n"},
+      "change"?}, "difference": {factor: after - before}, "changes", "question", "exact": True, "cost", ...}
+imagine.question_values(db, epoch, *, now=None) -> {"before", "candidates": [{"factor", "p_reading": {0, 1},
+                "after": {0, 1}, "expected_change": {factor}, "information_bits": {factor}, "information_bits_total",
+                "information_bits_joint"}]}   # joint: lane I's information.gains with one reading; None for a reference
+imagine.retrospect(db, epoch, factor="mechanism", *, limit=200, top=10) -> {"belief_now", "tried", "most",
+                "ranked": [{"what": "readings", "factor", "reading", "influence", "count", "readings"} |
+                           {"what": "owner answer", "answer", "influence"}]}       # influence = now - without it
+imagine.keep(db, answer, now, *, lifetime=None) -> "imagined:<32 hex>"   # derived from the epoch and named readings
+forecast.forecast(db, context, state, horizon, *, population=None, action={"population": i, "push": u} | None)
+  -> {"mean", "sd", "skill", "horizon", "revision_id", "limits": {"max_horizon", "spectral_radius"},
+      "action_support": {"supported", "reasons"} | None, ...}               # read-only
+forecast.model(db, context) ; forecast.action_support(model, population) -> (bool, [reason])
+causal.answer(query) -> {"rung", "value" | None, "sd", "identified", "why", ...}   # ValueError for a malformed query
+scenarios.futures(db, prediction_id) ; scenarios.imagine(db, prediction_id, now) -> record id
+scenarios.settle(db, now) -> [{"record_id", "prediction_id", "outcome", "brier_3way"}] ; scenarios.errors(db)
+#   the outcome slot holds {"futures": index into scenarios.FUTURES} (no text, imagined.observe); the comparison is
+#   computed on read: scenarios.compare(payload, scenarios.observed_future(record))
+scenarios.tick(db, now) -> None (off) | {"held"} | {"settled", "imagined"} | {"skipped"}
+```
+
+`scheduler.tick()` gains `"scenarios"` only while `imagine_scenarios` is on.
+
+| CLI | Result |
+|---|---|
+| `nsf imagine what-if EPOCH [--flip ID] [--drop ID] [--add FACTOR=READING[xN]] [--keep]` | `imagine.what_if` (+ `kept_as`) |
+| `nsf imagine questions EPOCH [--keep]` | `imagine.question_values` |
+| `nsf imagine retrospect EPOCH [FACTOR] [--limit N] [--top N] [--keep]` | `imagine.retrospect` |
+| `nsf imagine forecast CONTEXT --state JSON [--horizon K] [--population I] [--push I U]` | `forecast.forecast` |
+| `nsf imagine scm FILE.json` | `causal.answer` |
+| `nsf imagine scenarios [--prediction ID [--record]]` | `scenarios.errors` after `settle`, or one prediction's futures |
+| `nsf config --[no-]imagine-what-if --[no-]imagine-forecast --[no-]imagine-retrospect --[no-]imagine-scenarios --imagine-max-seconds S --imagine-max-mib M` | `store.set_config` |
+
+## 13. Self-description, selective broadcast and continuity (ADR-053)
+
+`neuroscifi/self_description.py`, `neuroscifi/broadcast.py`. Additive; nothing renamed or removed.
+
+```python
+self_description.build(db, path, now, *, scope="owner", family=None) -> record     # read-only, writes nothing
+#   record = {"schema": "nsf.self-description/1", "scope": "owner"|"agent"|"family", "built_at", "state_version", "note",
+#             "doing", "resources", "knows"?, "uncertain"?, "can", "decisions"?, "provenance", "recent"?, "answers"}
+#   every leaf field is {"value", "source": str, "at": float | None, "age_seconds": float | None}
+#   owner sections: doing {quiet, tasks {running, queued, proposals_waiting, items}, questions {open, web, items},
+#     epoch, goals}; knows {memory, knowledge}; uncertain {beliefs {epoch, least_certain: "mechanism" |
+#     "camera:<root>" | "partner:<root>" | "nothing" | None, margin, factors}, contradictions {open_hypotheses,
+#     contested_knowledge, items}, low_confidence [..], predictions {unsettled, items}}; can {capabilities {models,
+#     speech, devices, search}, limits {writes, background_research, journal, ask_budget, autonomy, web_questions},
+#     tools {model_tools [{name, permission, granted_by_default}], mcp_tools, voice_commands, voice_owner_only}};
+#     decisions {executive_now {epoch, decision, scope, reason, pending_id} (executive.decide(record=False) for the
+#     most recently started epoch), executive_recorded [5], autonomy [5], broadcast [5]}; provenance {software
+#     {version, schema_version, software_at_birth, instance_id, models}, counts {evidence, prediction, imagined}}
+#   scope "family" (family = the Pocket family digest): doing {quiet, tasks of that family}, resources, can
+#     {capabilities {search}, limits {writes, background_research}}, provenance {software {version}}, recent
+#   owner fields added at integration: internal_state (the snapshot), uncertain.answers [{task_id, at, confidence,
+#     confidence_note, below_threshold, decision, sufficiency}] (the monitoring record of the latest finished
+#     research; confidence is null with confidence_note "not enough development data" while no fitted map has 30
+#     development items in 3 blocks, which none of the shipped maps has), uncertain.to_recheck {open, by_kind},
+#     decisions.improvement_ledger, can.capabilities.imagination; scope "agent" (MCP) is the owner record restricted
+#     to family IS NULL research, without file paths, web-derived text wrapped (table below)
+#   recent: [{task_id, objective (≤120 chars), status, device, at, finished_at, openable}]: person-asked tasks; a
+#     family sees its own and, with web setting pocket_recent, the owner's (openable false)
+self_description.short(record) -> [str]            # plain sentences from the values; no model
+self_description.consistency(db, path, record, now) -> {"state_version", "comparable", "checks", "mismatches"}
+self_description.value(record, "doing.tasks") -> the field's value
+
+broadcast.offer(db, kind, *, now, signals, deliver, scope=None, task_id=None, salience=None, salience_inputs=None)
+#   kind in broadcast.KINDS ("autonomy.finding", "monitor.finding"); caller owns the transaction. Returns
+#   {"outcome": "delivered" (mode off or log) | "broadcast" | "local", "pending_id", ...}; modes log and on add a
+#   web_events 'decision' row {"broadcast": {kind, mode, salience, inputs, threshold, outcome, would, reason, scope,
+#   pending_id, channels, contention?}}
+broadcast.score(kind, signals) -> (salience in [0, 1), inputs)     # 1 - exp(-sum SIGNAL_WEIGHTS * min(n, CAP))
+broadcast.log(db, *, limit=20) -> [{at, task_id, kind, mode, salience, threshold, outcome, would, reason, scope,
+                                     pending_id, channels, contention}]
+presence.aggregator.arbitrate(cands) -> cands sorted by rank, then newest     # Presence and broadcast contention
+presence.activity.track(activity, *, subsystem, purpose, task_id=None, clock=..., priority="tool", secondary=(),
+                        publish=None)          # publish=<db path>: <db>.resources/inflight-<pid>.json
+presence.activity.remote(db_path, now=None) -> [entries of other live processes]
+    # a file is read only when this account or the database's owner owns it, its "pid" is the pid in its name and
+    # its "started" is that process's start time (/proc/<pid>/stat); a remote entry ranks at most "tool" (review1 S4)
+```
+
+| Surface | Result |
+|---|---|
+| console `GET /api/inventory?self=1` | adds `self` (the owner record) and `self_short` ([str]); without it, unchanged. Kept for older pages: the console's overview asks `GET /api/self` |
+| console `GET /api/self` | `{state_version, self, self_short}`, or `self: null` with `self_error` when the record cannot be built at all; 400 for any query parameter. A part of the record that cannot be read is that field with `value: null` and `error` (review1 A1); the record is read in one read transaction (A4) |
+| console `GET /api/imagined[?kind=K&limit=N]` | `imagined.listing` (labelled "imagined, not evidence"); 400 for an unknown kind or a limit outside 1–100; read-only (POST 405) |
+| console `POST /api/web/config {"pocket_recent": bool}` | the web setting `pocket_recent` (default false) |
+| Pocket `self_status` `{}` | a research route (gated, signed and limited like the others; 404 while research is off): 200 `{record (scope "family"), short}`; 400 for any body key |
+| MCP tool `self_status` `{short?: bool}` | the record in scope `agent` (the owner's own research only: tasks, questions, goals and recent research with `family IS NULL`; no file path; task objectives, goals, knowledge and contradiction keys and autonomy objectives inside `safety.untrusted` envelopes), or `{short}`; read-only annotations; behind the untrusted header like every tool result. MCP `web_task` / `web_evidence` answer "No research task" for a Pocket family's task (review1 S1, S5); `uncertain.answers` lists the owner's own tasks only, and a stored answer confidence no shipped map gives is shown as null with "not enough development data" (review1b R4, R6) |
+| voice intent `self_status` ("status report", "status", and with the owner's `status_questions` on also "what are you doing", "what's your status") | a reply of `short` sentences, label "NeuroSciFi status from its own records (no model involved)"; a Pocket device hears its family scope |
+| voice setting `status_questions` (owner only; default false) | off: a status question that started research before the command existed ("what are you working on?") still starts research; on: it gets the short self-description (review1 A15) |
+| `nsf self [--short] [--db]` | the owner record, or `{"short": [...]}` |
+| `nsf config --broadcast off\|log\|on --broadcast-threshold X` | InstanceConfig.broadcast ("off" default) and broadcast_threshold (0–1, default 0.5); owner-settable, carried by restore; a damaged value reads as the default and is listed by store.setting_problems() |
+| voice setting `resume_follow` (owner only; default true) | R8: the session context keeps `follow_task_id` and `follow_by` (the following hub) while a spoken question's answer is awaited; the principal's next session (another process after a restart) follows it again. The answer goes to the person's session open when it is ready; the delivery is claimed in the database (`transcripts.clear_follow`), which takes the task off every session of the person, so it is delivered at most once across processes; when the person is live only on another process that does not follow it, the answer goes into the asking session's transcript after a short grace (review1b R3); a follower that gives up clears it too; a task that finished before the previous session ended (its follower alive) or more than 24 h ago is not picked up; "before the restart" only when the following hub is gone. Off: nothing is written (review1 A9, A10, A15, S9) |
+| Presence (`docs/presence/COGNITIVE_STATE_MAPPING.md`) | activities planning, predicting, simulating, analyzing, interpreting, executing from real rows; `sources.writes = "paused"` while writes are paused; worker model calls through `inflight-<pid>.json` |

@@ -86,7 +86,9 @@ def test_handshake_listing_and_protocol_errors(individual):
     assert init["protocolVersion"] == "2025-06-18" and init["capabilities"] == {"tools": {"listChanged": False}}
     assert init["serverInfo"]["name"] == "neuroscifi-webcortex"
     names = [t["name"] for t in got[2]["result"]["tools"]]
-    assert names == ["web_search", "web_research", "web_task", "web_evidence", "web_knowledge"]
+    assert names == ["web_search", "web_research", "web_task", "web_evidence", "web_knowledge", "self_status"]
+    from neuroscifi import __version__
+    assert init["serverInfo"]["version"] == __version__      # the package version, not a hard-coded one
     assert not any(word in n for n in names for word in ("forget", "config", "review", "monitor", "delete"))
     for tool in got[2]["result"]["tools"]:
         assert tool["inputSchema"]["type"] == "object" and tool["inputSchema"]["additionalProperties"] is False
@@ -211,7 +213,7 @@ def test_spawned_server_round_trip(individual):
     responses = {r["id"]: r for r in map(json.loads, proc.stdout.splitlines())}
     assert set(responses) == {1, 2, 3, 4, 5}
     assert responses[1]["result"]["protocolVersion"] == "2025-06-18"
-    assert len(responses[2]["result"]["tools"]) == 5
+    assert len(responses[2]["result"]["tools"]) == 6        # five web tools and self_status (ADR-053)
     assert "disabled" in error_text(responses[3])
     assert payload(responses[4])["matched"] == 0
     assert responses[5]["error"]["code"] == -32601

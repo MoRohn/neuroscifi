@@ -1824,8 +1824,10 @@ stores such content.
    copied from a record is kept out by the code instead: an AST scan of every module under `src/neuroscifi` allows the
    store only to an allow-list (`tests/webcortex/test_imagined_quarantine.py`): the store and its lifecycle (schema,
    bounds, forgets and sweep, restore, the owner's commands); *writers*, which may call only its write API (`record`,
-   `observe`); and *displays*, which may list records labelled "imagined, not evidence" (`listing`, `show`), each
-   entry with its reason. No evidence path (knowledge, claims, consolidation, synthesis, evolution and calibration,
+   `observe`, and `written_by` to read back their own mechanism's records); and *displays*, which may list or count
+   records labelled "imagined, not evidence" (`listing`, `show`, `counts`), each entry with its reason. At the Wave 1
+   integration the writers are scenario records and kept imagination answers (lane M) and a reflection's model
+   summary (lane K); the displays are the console panel, the self-description and Presence's "simulating" (lane W). No evidence path (knowledge, claims, consolidation, synthesis, evolution and calibration,
    predictions, semantic memory, the memory gate, reasoning, web state, temporal reasoning, beliefs, evidence, the
    executive, memory, datasets, graphs, the learner, recall) may be put on any list, nor may the orchestrator (it
    builds the report the answer model is sent), curiosity or autonomy (they choose what is investigated): a
@@ -2105,3 +2107,707 @@ Cognitive Genesis (owner directive 2026-11-25) adds new autonomous mechanisms on
   systemd units, the owner-only surfaces including MCP, a damaged value, restore, the other switches unchanged and
   owner work running, Presence in both scopes, a running worker within one poll, the unified rule against the legacy
   one), `tests/presence/client_check.mjs`, `tests/e2e/test_console.py` and `tests/e2e/test_presence.py`.
+
+# ADR-051 (draft) Instinct-like regulation as measurements: an internal-state record, predictive regulation, salience, curiosity by learning progress, information gain beside decisions
+
+## Context
+
+Cognitive Genesis §4 (lane I). Verified in code at the start commit (2aee516): the individual measured much about its
+own condition, but only `store.write_allowed` and the ask budget acted on it, and the measurements lived in five
+separate views (`resources.status`, `store.regulation`, the gateway's health and token ledger, Presence, the voice
+hub), none persisted. Regulation was reactive only: `policy.background_gate` refuses new background research at
+"critical" memory pressure or while audio is active, and a background task already running continues, so a task
+started just before a slow leak reaches the critical line still adds its memory on top. The executive chose by a
+fixed rule order with no information-gain computation. Curiosity's only outcome signal was the futility streak
+(`curiosity._futility`). The cognitive benchmark's baseline (`genesis_baseline.json`) measured 0 of 3 (development)
+and 0 of 7 (held-out) memory breaches avoided, 0.014 bits per core investigation (random 0.037), and 38 % / 54 % of
+the timer's curiosity budget (idle investigator about 80 %) spent on a subject that never resolves.
+
+## Decision
+
+Each piece has its own setting. Nothing here is a feeling or awareness; the names describe what is measured.
+
+1. **Internal-state record (`neuroscifi/internal_state.py`), display, on.** `snapshot()` assembles one typed,
+   versioned record (`nsf.internal_state/1`) from what already exists: memory and pressure, the background gate,
+   audio, background model slots in use and model services in use (read from `/proc/locks`, never by taking a
+   lock), the idle policy's unloaded services, write regulation and backlog, the research queue (owner and
+   background), the worker's heartbeat, the token ledger's last five minutes (read only; a missing ledger is not
+   created), the endpoint's health on request (`--gateway`), knowledge staleness, prediction errors and open change
+   questions, open contradictions, and `quiet`. Every field carries `value`, `source`, `at` and `age_seconds`.
+   `nsf internal-state [--gateway] [--history N]`. The research worker's heartbeat thread appends one compact sample
+   (numbers and flags only) every 30 s to `<db>.resources/internal-state.jsonl` (the audio beacon's folder and file
+   rules: no link followed, bounded reads, the folder's file mode, so the idle account can read it); 720 samples are
+   kept (6 h). No new daemon, timer or listener; the heartbeat stays a maintenance activity (`background.py`). Like
+   `idle-events.jsonl` and the token ledger it is telemetry: no text, not in checkpoints, nothing `forget` must
+   reach. `nsf config --no-internal-state-history` stops it.
+2. **Predictive regulation (`resources/forecast.py`), off.** `assess(history)`: available memory as it would be with
+   no background task running (available + footprint x running, the footprint being the median memory change per
+   change in running background tasks), Holt's linear smoothing (level 0.5, trend 0.3) over the last 40 samples, a
+   declared horizon of 180 s; hold when the forecast less the existing cap's worth of background tasks
+   (`BACKGROUND_MODEL_SLOTS`) falls under the code's critical line (`monitor.thresholds`). A regular pattern of voice
+   sessions (at least two starts, intervals within 25 % of their median) is anticipated the same way. With
+   `nsf config --predictive-regulation` on, `policy.background_gate` adds the refusal `why="forecast"` after the
+   audio and critical checks: it can only add a hold on NEW background research, never lift one, never touch owner
+   work, a running task, idle unloading or any other lever, and never keeps anything alive. Too little or stale
+   history (fewer than 4 samples, newest older than 300 s) gives no forecast.
+3. **Salience record (`webcortex/salience.py`), display and record, on.** One score per autonomy candidate,
+   `sum(weight x signal)` over novelty, contradiction, staleness, confidence shortfall, owner importance, potential
+   consequence and prediction discrepancy (each in [0, 1], declared weights summing to 1), with every signal's value
+   and a one-line explanation, stored with the decision event of a queued investigation (`autonomy.decision_inputs`).
+   It changes nothing that is admitted or its order. `nsf web config --set salience_record=false` hides it.
+4. **Curiosity by learning progress (`curiosity.progress`), off** (on in the first build; reworked and turned off
+   before release, see the amendment below). Per subject, its last six looks in `web_feedback`:
+   a look's realised gain is the entropy it removed, and a look that changed what is held (new, reversed,
+   strengthened, weakened; not an unresolved disagreement) is credited with the gain expected of it; a look made
+   progress when it realised at least half the expected gain. With n looks without progress since the last that made
+   some, P(resolvable) = p (1 - c)^n / (p (1 - c)^n + 1 - p) with p = 0.5 and c = 0.8, and the expected gain is
+   multiplied by P(resolvable) / p (only ever down). Applied in `curiosity.rank` (both launch paths read it) and to
+   derived hypotheses in `autonomy.candidates`; never to the owner's own records. Hard caps, `min_gain`,
+   `autonomy.admission`, `background.allowed` and `quiet` are unchanged.
+   `nsf web config --set curiosity_learning_progress=true` turns it on.
+5. **Information gain beside decisions (`instance/information.py`), display, on; rule information-v1, opt-in.**
+   For a new reference root, each camera root and each partner: the exact mutual information between the hidden bits
+   and the next 3 readings, H(Y) from the ratio of marginal likelihoods with and without each hypothetical sequence
+   (`beliefs._infer`, as the change detector rescores hypothetical counts) minus the reading noise; beside it
+   `p_informative`, a Bayes factor of the subject's own readings between the reporter the model assumes and coin
+   flips (prior 1/2). `nsf decide` and `nsf explain` show it; the decision is unchanged (`decision_information`).
+   Rule versions are immutable: `rules-v1` is the existing order, unchanged; `information-v1` keeps rules 1-4b and
+   replaces 5-7 by the subject with the greatest EIG x p_informative if it reaches 0.01 bits, else act. Existing and
+   new individuals keep `rules-v1`; the owner adopts the other with `nsf config --executive-rule information-v1`
+   (logged, carried by restore). The ask budget and the "answered, wait for 3 events" rule apply to both.
+6. **Habitual or deliberate (`information.processing`, `information.report`), display, on.** A decision in an epoch
+   that continues a matched earlier setup (an epoch link) is habitual, otherwise deliberate; a change suspected in a
+   linked epoch says the habit may no longer apply. `report()` gives the rates from the recorded decisions, links
+   and changepoints. No new automation.
+
+Settings: `InstanceConfig.internal_state_history` (true), `predictive_regulation` (false), `executive_rule`
+("rules-v1"), `decision_information` (true); `WebConfig.curiosity_learning_progress` (false since the amendment), `salience_record`
+(true). A damaged saved value reads as the behaviour before the setting (no history, no forecast holds, rules-v1, no
+display) and `store.setting_problems` names it. No schema change, no migration.
+
+## Measured
+
+`docs/quality/evidence/genesis_instinct.json` (the cognitive benchmark, `--mechanism instinct` / `instinct-idle`,
+each component ablated; constants chosen on development, held-out run once; the withheld family not run). Held-out:
+
+- **Predictive regulation (anticipation, 8 traces x 3 seeds).** Memory breaches avoided 0.80 of reference episodes
+  (baseline 0.00); memory breach ticks 18.0 (54.7); lead before a memory breach 9.9 ticks (5.8); voice-session
+  breaches avoided 0.53 (0.00); breach ticks over all channels 160.3 (217.7). Cost: false-alarm share 0.043 (0.009)
+  and background work given up 0.106 (0.044). Ablations: without the footprint, memory avoided 0.00; without the
+  voice pattern, audio avoided 0.00; without the trend, memory avoided stays 0.80 on held-out (on development 0.11
+  against 0.56). Latency and backlog channels are not addressed (the product has no latency target to hold to).
+- **Learning progress (information value, web).** Timer path: budget on the noise subjects 0.375 (baseline 0.537),
+  on the stale-but-important subject 0.167 (0.083), realised bits per budget 0.163 (0.093). Idle path: noise 0.375
+  (0.800), stale 0.167 (0.000), realised bits per budget -0.017 (-0.016). Without learning progress both paths
+  return exactly to their baselines.
+- **information-v1 (information value, core).** Realised bits per unit of budget 0.118 (rules-v1 0.092; oracle
+  0.119, random 0.083); share of investigations on noise partners 0.31 (0.10).
+- **Retention.** With predictive regulation and learning progress on: 4/4 scenarios, 7/7 offline metrics retained,
+  adversarial 12 (baseline 12). With information-v1 on as well: `lifelong_correction` fails its check
+  `asks_only_while_partner_ambiguous`, a property of rules-v1's order (information-v1 asks about whatever is most
+  informative), so information-v1 stays the owner's choice.
+- **Cost on this host (aarch64, medians).** `decide` 1.31 ms without the display, 1.48 ms with it, 1.64 ms under
+  information-v1 (a 120-reading epoch); `snapshot` 0.69 ms; one history sample 0.60 ms; 720 samples 181 KB.
+  `background_gate` 0.47 ms with the setting off (it now reads the setting with a read-only connection) and 2.05 ms
+  with it on over a full history. Every benchmark family ran with 0 model calls and 0 refused connections.
+
+## After the Wave 1 review (fix lane C): the wording the evidence supports
+
+The bullets above are the lane's measurement on the split's 3 seeds. The review (B1, B2, B6) found three of them
+worded more strongly than the evidence; these are the claims now made (`genesis_wave1.json`, wide-seeds run
+`genesis_wave1_wide.json`: 12 further seeds 5001-5012 on the held-out worlds, supplementary to the split's seeds):
+
+- **Predictive regulation**, sound within the simulated plant: held-out memory breaches avoided 0.80 (split seeds);
+  12 further seeds 0.80 ± 0.07 against 0.06 ± 0.11 for the reactive gate, better in 12 of 12. The plant's constants
+  are declared, not measured on the host; the benchmark feeds the forecaster directly, so the gate's wiring, the
+  history file and the worker's sampler are not exercised by it (`tests/test_predictive_wiring.py` now drives them
+  end to end on a staged individual: the gate holds exactly when the benchmark's forecaster does). The gain is
+  mainly the memory reserved per background task: without the trend the held-out share stays 0.80 (on development
+  the trend carries more of it: 0.56 → 0.11 without it). On held-out the trend adds lead time (5.7 → 9.9 ticks) but
+  avoids no further breaches and accounts for all the added false alarms (without it 0.009). Costs:
+  background work given up 0.044 → 0.106, false alarms 0.009 → 0.043.
+- **Learning progress, web information gain** (B1, B2). The first build's numbers (held-out timer path 0.093 →
+  0.163 bits per budget on the split's 3 seeds, 0.139 → 0.185 on 12 further seeds) were overstated as written and
+  are superseded by the rework (amendment below). Re-measured, held-out, off → on (reworked), the two paths apart
+  (`genesis_fix1b.json`; re-run on the reconciled tree with identical numbers, `genesis_wave1.json`,
+  `genesis_wave1_wide.json`):
+  - timer path, split seeds: noise share 0.537 → 0.512, bits per budget 0.093 → 0.134; 12 further seeds: noise
+    0.412 → 0.394, bits per budget **0.139 → 0.126** (paired difference −0.013, per-seed sd 0.14: within one sd;
+    5 seeds better, 1 worse, 6 equal);
+  - idle path, split seeds: noise share 0.800 → 0.650, bits per budget −0.016 → 0.044; 12 further seeds: noise
+    0.706 → 0.550, bits per budget 0.094 → 0.144 (11 of 12 seeds better).
+  The timer path loses bits per budget on the wider seeds, so learning progress ships off. With every Wave 1
+  chooser on (the knowledge re-check's pick first) the held-out timer path is 0.093 → 0.124 on the split seeds and
+  0.139 → 0.196 (12 of 12 seeds better, noise 0.412 → 0) on 12 further seeds; that row is the re-check's (ADR-055),
+  whose numbers the rework did not move.
+- **Retention** held for the shipped defaults only: the first build of information-v1 failed
+  `asks_only_while_partner_ambiguous` (as stated above). With information-v1 amended (below), retention passes with
+  every Wave 1 setting on, on both splits (reconciled tree, `genesis_wave1.json`).
+
+## Defaults and why
+
+- On: the record and its history, the salience record, the information display (display and record only).
+- Off since the amendment: learning progress (the first build was on; reworked, it lowers the timer path's bits per
+  budget on the held-out wider seeds, 0.139 → 0.126).
+- Off: predictive regulation. It shows a clear held-out gain, but it gives up 2.4 times the background work and
+  raises the false-alarm share fivefold on the benchmark's plant, whose constants are declared, not measured on the
+  host, and its footprint estimate on the real host is unmeasured. `nsf config --predictive-regulation` turns it on.
+- Opt-in: information-v1 (rule versions are the owner's to adopt; existing individuals keep their rule).
+
+## Amendment (review1, before release)
+
+- **Learning progress reworked and now off by default.** A confirming re-verification (a refresh that found the item
+  still current) counts as progress on what it was asked to settle; learning progress and the futility down-weight
+  read the same `web_feedback` rows, so the stronger of the two applies, never their product; the down-weight halves
+  every 7 days after the subject's newest look and never goes below 0.05 (constants chosen on development only).
+  Re-measured on the held-out worlds with the split's seeds and 12 further ones (`genesis_fix1b.json`): on the wider
+  seeds the timer path's noise share fell (0.412 to 0.394) but its realised bits per budget fell too (0.139 to
+  0.126); the idle path gained (0.094 to 0.144, noise 0.706 to 0.550). The rule was to keep it on only if bits per
+  budget did not fall on both paths, so `curiosity_learning_progress` defaults to false. The reduced gain is what
+  admission compares with its minimum (`curiosity.MIN_GAIN`, `min_gain`): "ranking only" was wrong.
+- **information-v1 amended in place (unreleased).** A partner is scored by what its next words teach about its own
+  convention (`own_bits`), not the mechanism, and is asked only while its meaning is ambiguous by rule 6's test (at
+  least 4 words, |p - .5| < .37); `p_informative` is judged per mechanism segment (pooled, a reporter whose readings
+  flip exactly when the mechanism changed looked like a coin). With it on, `lifelong_correction` passes
+  `asks_only_while_partner_ambiguous`. Held-out (split seeds): 0.105 bits per budget (rules-v1 0.092, the first
+  build 0.118), noise share 0.071 (0.095, 0.307). It stays opt-in. A rules-v1 decision no longer carries `rule`.
+
+## Alternatives rejected
+
+- A learned forecaster or learned salience weights: not transparent, and nothing external to train them against.
+- Taking each lock to see whether it is held: it would block a slot taker or the idle pass for a moment.
+- Writing the history from the console or the CLI too: the worker is the process that runs continuously and may
+  write there; a second writer would add a second cadence.
+- Pure EIG under the belief model as the rule: a partner whose words are coin flips keeps its belief near 1/2 and so
+  can keep the greatest EIG (the noisy TV); the check of its readings against coin flips is what removes it.
+- Changing rules-v1 in place: rule versions are immutable; the owner adopts a new one.
+
+## Consequences
+
+- `nsf decide` gains `rule`, `information` and `processing`; `nsf explain` gains `information`. Autonomy candidates
+  and their decision events gain `salience` and, where it applied, `learning_progress`.
+- The worker writes one small file in `<db>.resources/`; lane W surfaces the record in the console.
+- Tests: `tests/test_internal_state.py`, `tests/instance/test_information.py`,
+  `tests/webcortex/test_curiosity_progress.py`, `tests/acceptance/test_cognition_instinct.py`.
+
+# ADR-052 (draft) Imagination is computation whose answers can be checked: exact what-ifs on a sandbox, graph forecasts, a causal engine, and scenario records kept apart. R
+
+## Context
+
+Cognitive Genesis §5 asks for imagination that is "an active cognitive mechanism, not merely text generation":
+counterfactuals with explicit assumptions and uncertainty (§5.2), prospective simulation with bounded horizons (§5.3),
+an isolated sandbox (§5.5) and an imagine → predict → observe → compare loop (§5.6). The core audit found the substrate
+there and unused: the belief model's exact inference can score hypothetical readings, a promoted graph can be
+iterated, and the acceptance code already copies an individual into memory; the graph has no action input (audit-core
+Q5). The research review graded deterministic engines on declared models as established, and model-written scenario
+narration as preliminary (research.md 2.2, 2.3, 2.6). The cognitive benchmark measured today's counterfactual coverage
+at 0.107 (development) and 0.071 (held-out): one-step graph predictions only. ADR-049's imagined store exists for
+whatever such a mechanism keeps.
+
+## Decision
+
+1. **Sandbox (`instance/imagine.py: sandbox`).** A private in-memory copy of the individual (sqlite backup; the live
+   connection is only read). It is an in-memory database by construction and checked (`store.database_path(copy) is
+   None`), so nothing done to it reaches the file. Bounded: a file above `imagine_max_bytes` is not copied. The copy is
+   one step (so writers are not held back, review1 Q2), which cannot be interrupted: its time is bounded by
+   `imagine_max_bytes`, and `imagine_max_seconds` is checked once it ends (a copy that alone took longer is refused
+   then, before any work) and interrupts the work on the copy (review1b N5). Tests: after writes into the sandbox the live file's bytes
+   (file and WAL), state version and journal are unchanged; a mutation that hands the live connection to the sandbox
+   fails both isolation tests.
+2. **Exact what-ifs on the beliefs (`what_if`, `nsf imagine what-if`).** Flip, drop or add readings (an evidence id,
+   `#SEQ` for a consolidated reading, or `FACTOR=READING[xN]`, where `agree`/`disagree` means the factor's most
+   probable next reading) on the copy, and read the belief model's own exact posterior. The answer carries the model's
+   assumptions, the stated changes, before and after, and the uncertainty "exact under the model". Tests check
+   equality with a hand-made copy and with actually observing the added readings.
+3. **Comparing next readings (`question_values`, `nsf imagine questions`).** For each reading the individual could take
+   next: the exact predictive probability of each outcome (a ratio of marginal likelihoods), the posterior after each,
+   the expected change and the mutual information with each hidden bit. It decides nothing; it is the function an
+   information-gain score may read (lane I). No executive rule changed.
+4. **Retrospection (`retrospect`, `nsf imagine retrospect`).** Exact leave-one-out on the copy over the latest readings
+   (journal and consolidated) and the owner's answers that shape the beliefs (confirmed and rejected changes, the link
+   to an earlier setup); interchangeable readings are grouped.
+5. **Forecasts from an active graph (`instance/forecast.py`, `nsf imagine forecast`).** How a state carries over is
+   learned from the graph's own training trajectory (x' = c x + g y + input, per population), giving k-step means
+   A M^(k-1) x with M = diag(c) + diag(g) A, and variances propagated from the residual covariance plus the graph's
+   validation error. Stated limit: 12 steps, and nothing beyond one step when the carry-over grows (spectral radius
+   >= 1: the error has no bound). Parameters are taken as estimated (the interval covers process noise only).
+6. **Consequences of an action, only where the data identifies them.** The belief model's recorded actions do not:
+   an action enters only as the declared inversion of a reading (bit XOR action), and nothing recorded says what an
+   action did to the world, so such questions are declined. On a graph, a push is answered only when the training
+   trajectory holds inputs that move a population by itself (at least 5 % of its next-state variance), those inputs do
+   not follow the state or themselves (|correlation| below 4/sqrt(T)), and the carry-over holds on the validation
+   trajectory (error at most 1.5 times the training one); otherwise it is declined with the reason. Tested on the
+   benchmark's worlds (answered, within the stated spread) and on worlds without inputs and with feedback (declined).
+7. **A linear-Gaussian causal engine (`neuroscifi/causal.py`, `nsf imagine scm FILE`).** Rungs 1-3 in closed form on a
+   declared model (conditioning; the mutilated model; abduction, action and prediction, with partial observation). A
+   question with only a graph and an observational covariance is answered by back-door adjustment, and declined when a
+   hidden common cause touches the cause. Front-door and other identification formulas are not implemented, so a
+   decline means "not identified by this engine" (see the benchmark note).
+8. **Scenario records for predictions (`webcortex/scenarios.py`).** For each open prediction one deterministic record of
+   kind `simulation` in the imagined store, derived from the prediction and its hypothesis or knowledge item: three
+   futures (decisive and right `d q`, decisive and wrong `d (1-q)`, nothing decisive `1-d`), q the forecast as the
+   ADR-046 mapping reads it, d the Laplace share of earlier settled predictions of the kind that were decisive; the
+   assumptions are written with it. When the prediction settles the outcome slot is filled once (the prediction named
+   as the evidence) with which future happened (its index: an outcome holds no text, ADR-049 as amended in Wave 0);
+   the three-way Brier and log score and the plain forecast's Brier are computed from it on read, and `errors()`
+   reports them per mechanism; the next template's d already includes the settled prediction. The timer runs it
+   (`scheduler.tick`, activity `tick.scenarios`, held by quiet). Settlement is pulled from the stored outcomes, so
+   `evolution.py` is not touched and a failure here can never roll back a settlement. No model writes scenarios: a
+   model-written pilot was not built, since no offline ablation can show a gain (research.md: preliminary). No blending
+   generator.
+9. **The adversarial case about `provenance='simulated'` was mislabelled, and is corrected.** Evidence: the label is
+   written by the acceptance harness and the cognitive benchmark into individuals made for the test (every reading of
+   the case's individual carries it, the reference readings that pin the mechanism too), by `datasets.simulate`, and
+   by the owner's explicit `nsf observe --simulated` / `epoch stream --simulated`. ADR-014 and ADR-049
+   (`provenance.mapping`) define it as an observation of a simulated test environment, and the acceptance scenarios
+   learn from exactly such readings: excluding them from beliefs would break that suite and contradict both ADRs. What
+   the directive forbids is the system's own imagined content counting as an observation, and that cannot happen:
+   imagined readings exist only on a sandbox copy, and the evidence tables refuse imagined ids (ADR-049). The case is
+   now `imagined_reading_moves_no_belief`: a what-if of the same four readings must leave the live belief, the journal
+   and the state version unchanged (the what-if says 0.994 on the copy; the live belief stays 0.500); the old
+   observation is still reported (four observed environment readings move it to 0.994). Mixing simulated-environment
+   and real readings in one epoch is not refused: no product path does it unasked, and consolidated readings do not
+   keep their provenance, so an epoch-level rule needs a schema change. It is an open question for the owner. Existing
+   individuals see no change.
+
+## Settings (owner's, `nsf config`; carried into a restored copy)
+
+| Setting | Default | What it does |
+|---|---|---|
+| `imagine_what_if` | on | `what_if` and `question_values` (read-only; stored only with `--keep`) |
+| `imagine_forecast` | on | graph forecasts and pushes (read-only) |
+| `imagine_retrospect` | on | leave-one-out retrospection (read-only) |
+| `imagine_scenarios` | off | scenario records for predictions, written to the imagined store, compared once settled |
+| `imagine_max_seconds` | 10 | the longest a question may run on its copy (0.1 to 600) |
+| `imagine_max_bytes` | 512 MiB | the largest file a sandbox may copy (`--imagine-max-mib`) |
+
+A damaged switch reads as off and a damaged bound as its default (`setting_problems` says so). The three read-only
+switches are on: the benchmark shows the gain below, and they are reached only from `nsf imagine` and the library, so
+nothing existing changes. The scenario records write, and have no measurement on a real individual (no individual has
+settled predictions yet), so they stay off.
+
+## Evidence (`docs/quality/evidence/genesis_imagination.json`, `scripts/genesis_imagination.py`)
+
+Counterfactual family, each split's three seeds, mean (baseline rerun equals the recorded baseline):
+
+| | coverage dev | coverage held-out | rel. error dev | rel. error held-out |
+|---|---|---|---|---|
+| baseline | 0.107 | 0.071 | 0.045 | 0.045 |
+| imagination | 1.000 | 1.000 | 0.011 | 0.010 |
+| without the causal engine | 0.429 | 0.429 | 0.026 | 0.024 |
+| without the what-if | 0.893 | 0.893 | 0.012 | 0.011 |
+| without forecasts (and pushes) | 0.786 | 0.750 | 0.006 | 0.004 |
+| without pushes | 0.893 | 0.893 | 0.008 | 0.006 |
+
+Interval coverage (within 2 stated sd) 1.0 and correct abstention on the confounded questions 1.0 in every row.
+Adversarial 13 of 13 with the corrected case (the recorded 12 of 13 differs by the relabelled expectation, not by a
+mechanism). Retention (full, against the recorded baseline): every scenario passes, every metric retained. Cost: a what-if 5 ms at 1,000 readings and 24 ms at 50,000 (the copy is
+the whole file, 8 MiB there); retrospection over 200 readings 0.8 s at 50,000; a 5-step forecast on 24 populations
+2 ms. No model call, no network.
+
+## Benchmark note
+
+The family's "confounded" structures (hidden U → X0 and U → Y around the chain X0 → X1 → … → Y) are identifiable by the
+front-door criterion through X1, so "decline" is right only for an engine without front-door adjustment, as this one
+is. The frozen split is not changed. The causal engine's share of the coverage is exact arithmetic on declared models
+and says nothing about real-world causal questions; the core mechanisms' share is in the what-if, forecast and push
+rows. Interval coverage is a weak test here: the stated sd includes each population's own noise while the truth is
+the conditional mean.
+
+## After the Wave 1 review (fix lane C): what the evidence supports
+
+The table above scores "coverage", which counts any answer: the review (B3) showed a trivial answerer (0 with sd
+1e6) reaches coverage, interval coverage and abstention 1.0. "Coverage 0.071 → 1.0" is **not** a supported headline.
+The family is now scored on the share of answerable questions answered within 0.1 × scale of the truth, with the
+interval score of the stated 95 % interval, in three groups never pooled in a claim, and the confounded questions
+relabelled answerable by the front door (a decline there is not within tolerance, and the declines are also counted
+on their own line; corrected at the re-review of the fix round; COGNITIVE_BENCHMARK.md §3). Held-out, split seeds (12 further seeds in brackets), baseline → imagination:
+
+| Group (questions per seed) | Within tolerance | What it measures |
+|---|---|---|
+| all answerable (32, front door included; pooled, not a claim) | 0.063 → 0.875 (84 of 96; 0.057 → 0.862) | the front-door questions declined |
+| answerable other than the 4 front-door ones (28) | 0.071 → 1.000 (28 of 28 per seed; 0.065 → 0.985) | |
+| equations handed to the engine (16) | 0 → 1.000 | exact arithmetic on the given model |
+| belief what-ifs (3) | 0 → 1.000 | plumbing: the truth is the same posterior function on a copy |
+| learned graph forecasts and actions (9) | 0.222 → 1.000 within 0.1 × sd (largest error 0.092; 0.778 within 0.05; the tolerance was set in the same commit as the results; 0.204 → 0.954) | **the substantive part**: relative error 0.024 / 0.008 / 0.043 at horizon 2 / 5 / pushes |
+| front door (4) | declined (each not within tolerance) | identifiable; this engine has no front-door adjustment |
+
+The `zero` reference (the review's trivial answerer) is within tolerance on 0.111 (development) and 0.407 (held-out)
+of the learned-graph questions (0.037 and 0.148 within 0.05), because a 5-step forecast decays towards 0; its interval score is above 10^7.
+Imagination's interval score is about 2.4 (the stated sd is the outcome's spread, so the width dominates). Adversarial: 13 of the original 13 under the redefinition in §6 (it is a different test: a
+reading labelled provenance='simulated' still moves the belief, as an observation of a simulated environment should);
+the original concern is now staged as `system_made_content_never_enters_the_journal`, which passes in every regime.
+
+## Consequences
+
+- New owner commands `nsf imagine what-if | questions | retrospect | forecast | scm | scenarios`; every answer is
+  labelled "imagined, not evidence". `--keep` stores an answer in the imagined store derived from the epoch and the
+  readings it names, so forgetting those readings removes it.
+- No schema change, no migration, no new dependency, listener or daemon. `background.ACTIVITIES` gains
+  `tick.scenarios` (cognition: held by quiet), and the tick timer's unit lists it.
+- The cognitive benchmark registers the mechanism `imagination` (`acceptance/cognition/imagination.py`, in
+  `PLUGINS`) for the counterfactual, retention and adversarial families; the adversarial case is renamed as above.
+- Not done: model-written scenarios, conceptual blending, front-door identification, actions on the belief model,
+  parameter uncertainty in forecast intervals, a refusal of mixed simulated and real readings (owner question).
+
+# ADR-053 (draft) Self-description record, selective broadcast, Presence from real activity, and continuity. R
+
+## Context
+
+Cognitive Genesis §6.1, §6.2, §6.4, §6.5, §6.7 and §8 ask for a mechanism that makes important information
+available across subsystems without broadcasting everything, a structured functional self-model that answers "what
+am I doing, what do I know, what am I uncertain about, what can I do next, what evidence supports that decision",
+continuity across sessions and devices, and measurements of access and consistency. The runtime audit found five
+partial status views and no record; `pending` plus `autonomy.after_task` already a salience-gated, budgeted
+broadcast for findings, Presence's RANK already a contention rule; six Presence activities declared and never shown;
+worker model calls invisible to the console's Presence; the memory-pressure condition described as paused writes;
+MCP's version hard-coded; no console view of `GET /api/resources` or of the imagined store; and a spoken question's
+answer lost when the console restarts (R8). The baseline self-description benchmark answered 12 of 15 probes from four
+surfaces (never: what it is uncertain about, its last decision, which tools the model may use).
+
+None of this is a claim about experience. The names are functional ("self-description", "selective broadcast"); the
+literature (research.md §3) gives no support for reading a workspace or a self-model as evidence of consciousness,
+and the measurements below are not scores of anything but the function they name.
+
+## Decision
+
+1. **One self-description record (`self_description.py`, schema `nsf.self-description/1`).** Built on request from
+   the existing stores, read-only. Every field is `{value, source, at, age_seconds}`; nothing in it is text a model
+   wrote (objectives are the owner's words, reasons are the executive's own sentences, knowledge keys come from
+   sources and are shown as data). Sections: doing, knows, uncertain, can, decisions, resources, provenance, recent,
+   and `answers` mapping the five questions to field paths. "Uncertain" is the current epoch's least certain factor
+   by the exact posterior (mechanism first while it is not identifiable), open contradictions, the lowest-confidence
+   knowledge in use and unsettled predictions; "decisions" carries the executive's decision for the most recently
+   started epoch computed now (not recorded) with its reason, and the recorded ones with their state_version.
+   Served by `GET /api/inventory?self=1` (the overview's plain-words panel; the header's reload does not pay for it),
+   `nsf self [--short]`, the Pocket research route `self_status` (signed like every research reply, family scope:
+   its own tasks and the global conditions only), the voice intent `self_status` ("status report"; "what are you
+   doing" only when the owner turns the voice setting `status_questions` on, off by default) and the
+   read-only MCP tool `self_status`. MCP's `serverInfo.version` is now `neuroscifi.__version__`.
+2. **Selective broadcast (`broadcast.py`), one function.** `offer(db, kind, now, signals, deliver, ...)`: the two
+   existing producers (autonomous findings, monitor findings) call it with their own delivery. Salience is a small
+   local function of the producer's counts (`score`, 1 − e^(−Σ weight·min(n, 5))). Mode `off` (default) delivers
+   exactly as before and logs nothing; `log` delivers as before and logs the salience decision; `on` delivers only at
+   or above `broadcast_threshold` (0.5) and within 12 broadcasts an hour, the rest stays local with its reason. Only
+   existing channels: the owner question (`pending`: Presence, console Questions, Pocket push), `web_events` (the
+   log), `state_version` (the producer's own bump). Contention: `presence.aggregator.arbitrate` (rank, then newest),
+   the ordering Presence itself uses, records which live question is shown first. Seam for lane I: `offer(...,
+   salience=, salience_inputs=)` takes the salience record's value; or `score()` is pointed at it.
+3. **Presence from real activity.** planning (a discovery stage's `decision` with `needs_web`, before the query
+   plan), predicting (a `prediction` event in the last 8 s), simulating (an imagined record in the last 8 s),
+   analyzing (an unexpired graph lease), interpreting (the voice hub while the bridge handles a request; rank
+   communication), executing (an allow-listed model tool while it runs; secondary `tool_execution`). The research
+   worker's streamed model calls are published the way the audio beacon publishes audio: `presence.activity.track(
+   ..., publish=<db>)` writes `<db>.resources/inflight-<pid>.json` (no text: activity, purpose, task id, start, token
+   count) on start and end and at most once a second while tokens stream; the console reads the other live
+   processes' files and ignores dead or stale (600 s) ones. Paused writes now set `sources.writes = "paused"`, and
+   the client names each cause of `resource_constrained` in its own words. The console overview shows the
+   self-description, "What we were just doing", Resources (`GET /api/resources`, which had no view) and a read-only
+   "Imagined, not evidence" list (`GET /api/imagined`).
+4. **Continuity.** (a) R8: the voice session context keeps `follow_task_id` while an answer is awaited; the
+   principal's next session (after a restart) follows it again and delivers the answer once; owner voice setting
+   `resume_follow`, on by default (it fixes a recorded finding and stores one task id). (b) "What we were just
+   doing": `self_description.recent` lists the latest person-asked tasks by reference; the owner sees all devices,
+   a Pocket family its own, and the owner's own questions only with the web setting `pocket_recent` (off by default:
+   a pairing family may include devices that are not the owner's; even then a phone cannot open the owner's report).
+   (c) Instrumentation (`scripts/bench_workspace.py`): which subsystems can read an event right after its commit and
+   their polling periods, and the record's agreement with the existing surfaces over a scripted sequence.
+
+## Measured
+
+`docs/quality/evidence/genesis_workspace.json` (`scripts/bench_workspace.py`), offline, temporary individuals:
+
+- **Self-description family** (cognitive benchmark, 15 probes, 2 states × 2 seeds per split): baseline coverage and
+  accuracy 0.80 from 4 surfaces on development and held-out; the record 1.00 and 1.00 from 1 surface on both.
+  Ablations (held-out): without the capabilities/resources sections 0.80; without uncertainty, decisions or tools
+  0.933 each. Cost about 0.1–0.2 s per family run, 0 model calls.
+  *After the Wave 1 review (B4), the wording the evidence supports:* sound with caveats. Held-out, per seed: 29 of 30
+  under the original answer key and 30 of 30 under this lane's changed key (`uncertain_about` = "nothing" when every
+  factor is settled; the baseline scores 24 of 30 under both). Two probes are plumbing checks, not accuracy:
+  `authorised_model_tools` compares the tool list with itself and `last_decision` re-runs the executive's own
+  decision; without them the record answers 26 of 26 and the baseline 24 of 26. The lane printed the record's
+  answers on the held-out states once during development. Both keys are scored side by side
+  (`summary_original_key`, `summary_without_plumbing`).
+- **Consistency:** 8 of 8 staged records (96 field checks) and 12 of 12 steps of a scripted day agree with
+  store.regulation, store.inventory, autonomy.status, resources.status and presence.derive at the same
+  state_version; build 1.3 ms median on these small individuals (it computes one epoch's beliefs: linear in its
+  readings, as the overview's largest-epoch measurement already is).
+- **Broadcast**, a fixed mix of 10 findings: off 10 owner questions; log 10 (each with its salience logged); on 4 at
+  threshold 0.5. A broadcast event is readable by 6 subsystems at once (Presence, console Questions, Pocket push's
+  query, the self-description, the worker's data_version wake, state_version); one kept local by 3 (the
+  self-description's log, and the change signals of the producer's own record), never by Presence, Questions or
+  push. Readers then see it within their existing polling periods: Presence 0.35 s, worker 0.1 s, push 5 s.
+- **Presence:** 6 of the 6 declared-but-unused activities now shown from real rows; one derive 0.13 ms median, 0.15
+  ms with one other process's in-flight file.
+- **R8:** with the start commit's voice hub the answer is not delivered after a restart (the test fails); with this
+  change it is, once. Real microphone and handset: unverified.
+
+## Amendment (review1, before release)
+
+- **Scopes.** MCP `self_status` builds scope `agent`: the owner's own research only (`family IS NULL`), no file
+  path, web-derived text inside `safety.untrusted` envelopes; MCP `web_task` / `web_evidence` refuse a family's task.
+  The family scope carries the resource level and reasons only and a generic background-gate reason (S1, S5, S6).
+- **Robustness.** Every field is built under its own guard (a part that cannot be read is that field with `value:
+  null` and `error`); the record is read in one read transaction; the console asks `GET /api/self` in its own
+  request; the internal-state copy counts knowledge in SQL and decisions are read through migration 19's index
+  (A1–A4; owner build at 10,000 knowledge items 188 → 14.9 ms, `genesis_fix1a.json`).
+- **Answer monitoring in the record.** `uncertain.answers` gives each latest result's `confidence` and the monitoring
+  record's own `confidence_note`: while no fitted map has 30 development items in 3 blocks (none of the shipped maps
+  has), the confidence is null and the note says "not enough development data"; the field's source says why
+  (reconciliation of review A6 with this record).
+- **Voice.** The follow-up is delivered at most once to the person's live session, claimed in the database (when
+  the person is live only on another process that does not follow it, into the asking transcript: review1b R3); with
+  `resume_follow` off nothing is written; a new owner voice setting `status_questions` (default off) keeps "what are
+  you doing?" starting research as before; "status report" and "status" are the status command (A9, A10, A15, S9).
+- **Broadcast.** With `log` or `on`, a finding is offered with the higher of its own salience and its candidate's;
+  log mode counts what would have been broadcast, so it shows the hourly limit (A7, A8).
+
+## Alternatives rejected
+
+- A bus, a listener or a daemon for broadcast: the existing pending/web_events/state_version channels and polling
+  readers already carry it; a new mechanism would be a second source of truth.
+- Broadcast on by default: no benchmark shows that holding a finding back helps the owner.
+- A persisted self-model table: the record is computed from the stores, so it cannot drift from them, and forget
+  and restore need no new rule.
+- A model-written self-summary: model text never becomes a statement about the system.
+- Showing the owner's Pocket tasks' reports on another family's phone: references only, and only with the switch.
+
+## Consequences
+
+- New settings: InstanceConfig `broadcast` ("off") and `broadcast_threshold` (0.5), carried by restore; web
+  setting `pocket_recent` (false); voice setting `resume_follow` (true). No schema change, no migration.
+- The benchmark's self-description truth for `uncertain_about` is "nothing" when every factor is settled (it was
+  `None`, which no answer could match); the baseline's numbers do not change.
+- Tests: `tests/test_self_description.py`, `tests/test_self_description_surfaces.py`,
+  `tests/webcortex/test_broadcast.py`, `tests/presence/test_workspace_states.py`, `tests/voice/test_follow_restart.py`,
+  `tests/presence/client_check.mjs`, `tests/e2e/test_console.py`.
+
+# ADR-054 (draft) Answer monitoring: a calibrated confidence from existing signals, selective answering, source dependence and the executive's precision report. R
+
+## Context
+
+Cognitive Genesis §6.3 asks for metacognitive monitoring with task-level evidence. Verified in code at 2aee516:
+the verdict's confidence (a Beta posterior per independent group) ranks supported against disputed claims
+perfectly on the benchmark but is under-confident (held-out ECE 0.34, Brier 0.12); nothing turns the signals the
+pipeline already produces (verification state, groups for and against, guard refusals, the self-critique's marks,
+contradictions, staleness) into one probability; `claims.independence_groups` counts two subdomains of one site, or
+a page and the page it cites, as two independent groups; reading depth follows fixed per-mode budgets; the records
+that say how often the change detector's alarms were confirmed exist (`pending`, `changepoints`, `epoch_links`)
+but nothing computes it; the self-critique's marks were never checked against gold. The research (Huang et al.
+2024; Panickssery et al. 2024) rules out a model judging its own output as a gate.
+
+## Decision
+
+1. **`webcortex/monitoring.py`, a record per research result (`report["monitoring"]`, setting `answer_monitoring`,
+   on).** A transparent sum of named log-odds terms (`WEIGHTS`, fixed, never fitted) over existing signals, mapped to
+   probabilities by monotone maps (isotonic, Beta(1, 1) per block, per stratum) fitted on the cognitive benchmark's
+   development split only and shipped as `webcortex/data/monitoring_calibration.json`. It changes no verification
+   state, posterior, guard decision, answer or knowledge, and calls no model. The self-critique's marks are one
+   named input with weight 0 (measured: they do not predict wrong sentences), never a gate.
+   **Changed after the Wave 1 review (A5, A6, A13, B5):** the claim probability is the *unfitted* score (the fitted
+   claim map was worse on development: Brier 0.034 against 0.016 on 8 items; held-out agrees, 0.042 against 0.022 on
+   10); a fitted map is applied only with at least 30 development items in at least 3 blocks, and none of the shipped
+   maps has that (6 to 15 items, 1 to 3 blocks), so the record shows no answer confidence and says "not enough
+   development data" (before, every fact check showed the same 0.941, an "insufficient" one too); the guard's
+   refusals and the model abstaining have weight 0 and are shown only (the development data has no model calls); a
+   monitoring failure is logged as the task's error event and adds nothing to the owner's report.
+2. **Selective answering (`selective_answering`, off).** When the evidence is weak the answer opens with a plain
+   "Not enough evidence for a confident answer: <why>" line; the quotes stay. Weak means: for a fact check, and
+   wherever no map is applied (everywhere today), `monitoring.sufficiency` says the sources are not enough (fewer
+   than two independent groups, one family of sites, one source citing another, stale, or a state that is not
+   verified); only an applied map would use the threshold chosen on development data for a 10 % target risk.
+3. **Verification escalation (`verification_escalation`, off).** When the evidence is weak (as in 2), and only inside the task's own
+   budget (a page, a query, two requests, 15 s left), one search for the weakest statement and one more page from a
+   family of sites not read yet, then evaluation and synthesis again; once per task; the owner's stops apply.
+4. **Adaptive depth (`adaptive_depth`, off).** Reading stops once 4 pages were read, a statement is verified and
+   the last 2 pages added no verified statement and no contradiction. Deepening is item 3.
+5. **`claims.dependence`**: groups joined by a shared site label or a citation link, reported in the record and in
+   plain words; `independence_groups` and every verdict are unchanged.
+6. **`executive.precision` and `nsf regulation --precision`**: per rule and per epoch, how the executive's
+   questions ended and the precision of the change detector's alarms; display only, computed only when asked.
+
+No schema change, no migration, no new dependency, endpoint or process. The record lives in `web_tasks.result`, so
+forgetting a task removes it.
+
+## Measured
+
+`docs/quality/evidence/genesis_monitoring.json` (`scripts/bench_monitoring.py evidence`; offline, no model).
+*As first recorded by the lane (superseded; kept in the file under `before_wave1_review`):* held-out claim
+probability Brier 0.122 → 0.042, ECE 0.341 → 0.199, AUROC 1.0 → 1.0; held-out answer confidence ECE 0.372 → 0.181;
+development AURC 0.080 → 0.027. The review (B5) found this is not a calibration gain: 10 held-out claims, all
+answered correctly (AUROC 1.0 before and after); 10-bin ECE is meaningless at n = 10; the fitted map was worse than
+the unfitted score; the two-line rule on the verdict word scores Brier 0.0025.
+*The wording the evidence supports, as shipped now:* on 10 held-out claims, adding the verification state to the
+posterior lowers Brier 0.122 → 0.022 with the unfitted score (0.042 with the fitted map, no longer shipped; the
+verdict-word rule 0.0025; Brier is all reliability error in every row, resolution 0.24 = the uncertainty); development
+8 claims 0.095 → 0.016. **No held-out evidence about selective answering:** no held-out answer is wrong, and the
+sufficiency decision would withhold 12 of 20 right held-out answers (development: it withholds 3 of the 3 wrong and
+12 of the 18 right). The terms `independence`, `guard` and `critique` are 0 on every item of the corpus, so their
+ablations change nothing: they are **untested** here. Selective answering: off (on the offline corpus the
+sufficiency basis opens 36 questions with the plain line, key metrics unchanged). Escalation: no key metric changed
+(+2 pages with the old threshold; +6 pages, +28 queries for 14 tasks with the sufficiency basis): off. Adaptive depth: equal rates
+at 22 fewer pages of 581, wall time not lower: off (an owner decision). Offline benchmark with the settings off:
+identical to the unchanged code (digest); with `answer_monitoring` on: 0 differences. Guard differential: 0
+different. Ablations of every term are in the evidence file.
+
+## Alternatives rejected
+
+- Fitting the weights on the 21 development items: too few to fit eight weights without overfitting; the weights
+  stay declared and only the monotone map is fitted.
+- Retuning after seeing ablations: the ablations show `stale` and the posterior term slightly hurt development
+  ranking on this corpus; changing them now would tune against held-out numbers already seen.
+- Calibrating from live settled forecasts (ADR-046) instead: the right next step for the open web once enough
+  research answers have settled outcomes; not available offline.
+- Self-critique as a gate or a strong input: measured not predictive; and a model grading its own output is not a
+  gate under the Genesis rules.
+
+## Consequences
+
+- Every research result is about 2 KB larger. Console, Pocket and Presence do not show the record yet (lane W or
+  the integration pass).
+- The calibration is fitted on a fictional corpus; on the open web it is a starting point.
+- Tests: `tests/webcortex/test_monitoring.py`, `tests/instance/test_precision_report.py`,
+  `tests/acceptance/test_cognition_monitoring.py` (the corpus runs under `NSF_BENCH_COGNITION=1`).
+
+# ADR-055 (draft) Knowledge that knows what it rests on: premises, re-checks, reflection and gated strategy selection. R (H for the schema)
+
+## Context
+
+Cognitive Genesis directive §7 (recursive knowledge evolution) and §6.6 (reflective introspection). Verified in code at
+`2aee516`: a hypothesis had no assumptions, expected information gain or cost, and `abandoned` was never set
+(`evolution.HYPOTHESIS_STATES` only); a failed prediction changed no belief and marked nothing; the research-policy
+weights and the per-mode outcome statistics (`state.record_mode_outcome`) were written and read by nothing;
+knowledge was flat (no record said what a conclusion rests on, so nothing re-checked it when a premise changed); no
+reflection routine ran; transfer was never measured. Lane S measured that the timer's ten-candidate curiosity pool is
+filled by contested subjects that are not knowledge, so stale knowledge is never refreshed through it.
+
+## Decision
+
+Schema (one additive migration, appended last; tests find it by its content `CREATE TABLE IF NOT EXISTS
+web_premises`; IF NOT EXISTS throughout, so it runs again on a file that holds its objects):
+`web_hypothesis_details` beside `web_hypotheses` (`assumptions`, `counter_evidence`, `expected_info_gain`, `cost`,
+`revisions`; one row per hypothesis recorded after it, none invented for older ones; a table rather than columns
+because `ALTER TABLE ADD COLUMN` cannot run twice), `web_premises` (refuses an `imagined:` id by CHECK), `web_rechecks`,
+`web_reflections`, `improvement_ledger` (append-only by trigger). Seven settings, each its own switch:
+
+1. **Hypothesis fields** (`hypothesis_fields`, on: display-only records). A new hypothesis records template
+   assumptions read from its own records, counter-evidence (the supporting claims of the item it is an alternative
+   to, then every claim linked to it by a `contradicts` edge), the expected information gain of its forecast and the
+   cost of one fact-verification investigation (the numbers autonomy ranks it by), and every status change with the
+   evidence that made it (`supported`, `revised`, `refuted`: the prediction and task; `abandoned`: the rule).
+   `evolution.compete(key)` compares the open hypotheses of one key with "other" as a member, likelihood ratio
+   0.8/0.2 per independent group raised to 0.5 (dampened, research.md 4.5); display-only.
+   **`abandoned`** (`hypothesis_abandon`, off: no benchmark measures it): a derived hypothesis whose every prediction
+   expired with no tracked observation and none open. The owner's hypotheses are never abandoned automatically.
+2. **Premises and re-check marks** (`premise_recheck`, on: display-only). New knowledge rests on its supporting
+   claims; a hypothesis on its claims, the item it is an alternative to and the hypothesis it revises. A superseded
+   or contradicted premise, a forgotten one, and a failed prediction (item 4 of the brief: what it rested on) mark
+   every held dependent "to re-check", at most 50 per change, one open mark per subject, 500 open in all. A mark
+   changes nothing: no confidence, status, verification or answer moves (test: the item is identical with the
+   setting on and off). A subject changes only through consolidation of new evidence, which closes its mark with
+   what the evidence did. Forget: `premises.purge` in the forget's transaction and after a restore's replay marks the
+   dependents of a premise that is gone (the mark names no forgotten id) and deletes every row naming it.
+3. **The idle re-check** (`idle_recheck`, **off**; `recheck_per_tick` 1, `recheck_daily` 4). Registered background
+   activity `tick.knowledge_recheck` (cognition: held by quiet). Before the due-order refreshes, the timer ranks live
+   knowledge by importance x staleness x (1 + DEPENDENT_WEIGHT x dependents) x curiosity's futility factor, staleness
+   = TTLs elapsed (+1 when marked, marked stale or a newer release was seen), and admits picks through
+   `autonomy.admission(path="recheck")`: the unified rule unchanged (recorded enable, min_gain on the stated forecast,
+   lineage, cooldown, templates, searchable words), only the pool differs (the re-check's ranked knowledge instead of
+   curiosity's ten best). A pick is a refresh task (`refresh:<id>`, autonomous budget, claimed after owner work), its
+   due prediction linked to it. `curiosity.rank` is not changed.
+4. **Reflection** (`reflection`, off; `reflection_interval_days` 7; `nsf knowledge reflect` on request). Registered
+   activity `tick.reflection` (cognition). A deterministic report over a period (learned, failed, assumptions,
+   missing, strategies) whose every line names its record ids and quotes no statement; at most 5 actions: re-check
+   marks, abandoned hypotheses (only with `hypothesis_abandon`), one owner question within the web question budget.
+   No line is a gate. An optional local-model summary (`reflection_model_summary`, off) is stored as an `inference`
+   in the imagined store and is never evidence. Forget drops every line and action naming a removed record.
+5. **Strategy selection** (`strategy_selection` "gate"). Thompson sampling over research modes, Beta(1 + rewarded,
+   1 + not) over the last 100 finished tasks per mode; reward = the task produced verified knowledge or settled a
+   prediction decisively, read from the records. Self-reported mode statistics are never rewarded. It only re-orders
+   the candidates `autonomy.admission` admitted. In force only after `strategies.promote` passes its gate (held-out
+   gain of at least 0.02 verified items per investigation, no larger share on the self-reporting arm, retention not
+   worse, one withheld evaluation by the main session) and while the owner has not reverted it or set "off". The
+   withheld evaluation is a line of `docs/quality/evidence/genesis_final_uses.jsonl`: a `--final` run of the
+   `strategy_selection` mechanism without ablations whose line records `"not_worse": true`; the evidence file cannot
+   say "not worse" in its place (review1b N1). The harness records a final run before it starts and does not write
+   that result, so until such a line exists the gate fails closed ("no withheld run evaluated strategy selection").
+   Installed without the docs folder, it fails closed with "the final-runs ledger is not available in this
+   installation", naming no path (review1b N2).
+6. **Improvement ledger** (`improvement_ledger`, `nsf knowledge ledger`): capability, level (1 to 3), change,
+   evidence (run ids), generalisation, regressions, cost, reproducibility, decision (retain/revise/revert), decided by
+   (owner/gate). Levels 4 (weights) and 5 (architecture) are refused: they need the owner's authorisation
+   (`evolution.model_adaptation_guard`). **The ledger is permanent**: no forget reaches it and triggers refuse every
+   update and delete. So it holds no free text (review1b N3): the owner's revert takes a reason code
+   (`--reason not_wanted|worse_results|unexpected_behaviour|testing`, or none), and of a promotion's evidence file
+   only finite numbers, booleans and run ids matching `^[A-Za-z0-9][A-Za-z0-9:._-]{0,63}$` are kept (anything else is
+   stored as null); the gate's own details are fixed sentences with numbers.
+
+## Measured
+
+`docs/quality/evidence/genesis_knowledge.json` (`scripts/bench_genesis_knowledge.py`, worlds frozen at `8b8a9c0`
+before any mechanism; `scripts/bench_cognition.py` with the plugin `neuroscifi.acceptance.cognition.knowledge`).
+Simulated worlds driven through the real modules, offline.
+
+- **Retention under change, held-out** (2 worlds x 4 seeds, run once): share of subjects whose live knowledge states
+  the world's current truth, mean over the steps: due order (today) 0.693, re-check 0.695 (random 0.663, oracle
+  0.803); old subjects weighted by owner importance 0.629 vs 0.638; final step 0.581 vs 0.575; stale facts caught per
+  investigation 0.461 vs 0.432. Per world: sparse budget 0.633 (sd 0.097) vs 0.624 (0.104), busy 0.753 (0.040) vs
+  0.766 (0.036): **within noise of the due order.** 0 subjects lost, 0 belief writes in every run. Ablation: without
+  importance the order is the due order (identical numbers on development, 0.6925 on held-out); marks change nothing
+  here (these worlds raise no mark on knowledge); weighting dependents 1.0 gave 0.629 old-weighted.
+  Development choices (stated before the held-out run): staleness as 1 - P(current) gave 0.682 against the due
+  order's 0.716 (it saturates two TTLs after verification), so staleness is TTLs elapsed; DEPENDENT_WEIGHT 0 (1.0,
+  0.25 and 0.1 gave 0.695, 0.685 and 0.696 old-weighted against 0.713 for 0).
+- **Information value (cognitive benchmark), the re-check's pick then the timer's curiosity:** development 0.222 bits
+  per unit of budget against the recorded baseline's 0.161 (oracle 0.263, random 0.202), share of budget on noise
+  0.000 against 0.375; held-out 0.124 against 0.093 (oracle 0.146, random 0.091), noise 0.000 against 0.538. The core
+  world is unchanged. The withheld (transfer) family is not run by this lane.
+- **Strategy selection, held-out** (2 worlds x 4 seeds): verified items per investigation 0.395 (Thompson) against
+  0.265 (incumbent order); share on the self-reporting arm 0.105 against 0.253. Gate: held-out gain and reward-hacking
+  checks pass, retention passes, the withheld check is missing, so the decision is **revise: off**.
+- **Retention family**: 4/4 scenarios, 7/7 offline metrics retained, with the lane's mechanisms on and off.
+  **Adversarial**: 16/17 on and off (the recorded baseline 12/13; the 4 lane-K cases added pass; the one failure is
+  `simulated_reading_moves_no_belief`, outside this lane). *Wording after the Wave 1 review:* the four cases are
+  invariants that pass in every regime, with every Wave 1 setting off too; they are reported as their own line
+  ("4 new invariant cases pass in every regime"), never added to the original 13 as an improvement.
+- *Information value, after the Wave 1 review:* the 0.124 held-out figure is the re-check's pick then the **timer's**
+  curiosity, on the split's 3 seeds; the idle investigator's path is reported apart (`genesis_wave1.json`
+  `idle_path`). With every Wave 1 chooser on, 12 further seeds on the held-out worlds give 0.139 → 0.196 (paired,
+  better in 12 of 12), noise share 0.41 → 0. Re-measured on the reconciled tree after the learning-progress rework
+  (learning progress on in that regime, reworked): the same 0.139 → 0.196 and 0.412 → 0, 12 of 12; the
+  numbers did not move with the rework (on the split's seeds the re-check alone gives the everything-on numbers;
+  `genesis_wave1.json`, `genesis_wave1_wide.json`). The idle re-check stays off: no gain on
+  retention under change (above).
+- **Cost** (aarch64, while other lanes' suites ran): consolidation 1.35 -> 1.38 ms median per one-cluster task
+  with premises; re-check rank 82 ms and admission 168 ms per pass over 200 items; a reflection report 2 ms; a
+  Thompson ranking 1.5 ms. 0 model calls in every benchmark.
+
+## Alternatives rejected
+
+- Widening the timer's curiosity pool (ADR-050 ablation): a loosening of the admission rule. The re-check keeps the
+  rule and changes only the pool, to knowledge the owner already holds.
+- Letting a mark lower confidence or set `stale`: a belief would move without evidence.
+- A reflection written by a model, or a model judging strategies: self-grading (research.md 4.8).
+- Rewarding the mode statistics tasks write about themselves: gameable by construction (tested).
+
+## Consequences
+
+- After the Wave 1 review (fix lane B, before release): a mark closes, with its reason, when any normal path
+  re-verifies its subject, when the subject is no longer live, or after 3 failed re-verifications, and a hypothesis
+  is marked only while it rests on live knowledge (60 simulated days: at most 2 marks open); migration 18 was amended
+  in place so the improvement ledger also refuses a DELETE (a file of 18's first build gets the trigger at its next
+  open); the strategy gate checks the named line of `genesis_final_uses.jsonl`; a restore carries the owner's revert.
+  No default changed.
+- Defaults: hypothesis fields and premises on (display-only records; retention and adversarial unchanged); the idle
+  re-check, abandonment and reflection off; strategy selection off until its gate passes. The idle re-check showed a
+  gain on information value and none on retention under change: turning it on is the owner's call.
+- `evolution.py` changed in `_decode_h`, `hypothesis` and `hypotheses` (read the details with a LEFT JOIN: new
+  constants `K_COLUMNS`, `_K_JSON`, `_H_SELECT`), `open_hypothesis` (one call to `_describe`), `observe` (two
+  `record_revision` calls), `expire` (the abandonment rule) and `register` (lane K's commands); new functions
+  `fields_enabled`, `_describe`, `record_revision`, `refresh_counter_evidence`, `abandon_if_unsupported`, `compete`.
+- Tests changed beside the new ones: `tests/instance/test_migrations.py` (19 web tables), `tests/instance/
+  test_imagined.py` (version 17 is no longer the last migration), `tests/webcortex/test_state.py` (table list).
+- New commands under `nsf knowledge`: `rechecks [--rank]`, `reflect`, `reflections`, `strategy [--promote FILE |
+  --revert]`, `ledger`, `compete KEY` (JSON, for the console and Pocket lanes).
+- Tests: `tests/webcortex/test_knowledge_evolution.py`, `tests/acceptance/test_genesis_knowledge_bench.py`, two new
+  drivers in `tests/webcortex/test_background.py`, the table list in `tests/webcortex/test_state.py`.

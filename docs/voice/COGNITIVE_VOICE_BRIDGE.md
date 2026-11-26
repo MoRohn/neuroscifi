@@ -84,6 +84,7 @@ Parsing is deterministic (regular expressions over the normalised transcript); n
 | "remember (these) conclusions" | remember | accept the last task's provisional knowledge items (`knowledge.review`) | **yes** (owner only) |
 | "what have you learned since yesterday / this week" | learned_since | knowledge created/updated in the window, from memory (template-labelled) | — (owner only: it reads the whole knowledge base) |
 | "what was I researching", "what did I ask earlier", "show my recent research" | history | the conversation's last question and up to 5 of the principal's own recent tasks with their status (owner: tasks a person asked for; Pocket: its family's), from history; nothing is searched (R2-07) | — |
+| "status report", "status"; with the owner's voice setting `status_questions` on (off by default) also "what are you doing", "what's your status" (off, those start research as before) | self_status | a few plain sentences from the self-description record (`self_description.short`, ADR-053): research running and queued, open questions, what it is least certain about, its next step, memory/storage/quiet notes; never searched, no model (Pocket: its family's scope) | — |
 | "continue the previous investigation" | continue_research | `orchestrator.requeue` (partial / cancelled / failed) or a new linked task | — |
 | "stop", "stop speaking but keep researching" | stop_speaking | playback stops; research continues | — |
 | "go on" | resume_speaking | speak the rest of an interrupted reply | — |
@@ -137,7 +138,12 @@ answer is still written to the transcript when the session has ended.
 
 **Durable context.** The session row keeps `last_task_id` / `last_objective`; a new session of the same principal
 inherits them, so "show the evidence" or "continue the previous investigation" work after a restart. Nothing
-depends on a speech engine's context window.
+depends on a speech engine's context window. While a spoken question's answer is awaited the row also keeps
+`follow_task_id` (cleared when the answer is delivered). When the process ends first (a restart: its follower stops),
+the principal's next session picks the follow up again, says "Picking up the research you asked about before the
+restart." and delivers the answer once (R8, ADR-053; owner voice setting `resume_follow`, on by default). A session
+that merely ended in a running process is not followed twice. Validated with the speech-engine test doubles only; on
+a real microphone and handset it is **unverified**.
 
 ## 5. Modes and controls
 

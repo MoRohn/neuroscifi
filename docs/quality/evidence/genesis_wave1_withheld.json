@@ -1,0 +1,2781 @@
+{
+ "benchmark": "cognition, the withheld family: Wave 1's one look",
+ "environment": {
+  "git_commit": "816fa124e22789743ca6f87002440a8b141cc86a",
+  "git_dirty": false,
+  "python": "3.12.16",
+  "numpy": "2.3.5",
+  "sqlite": "3.53.1",
+  "platform": "Linux-7.3.0-3.1-omarchy-aarch64-with-glibc2.43",
+  "machine": "aarch64",
+  "cpu_count": 20,
+  "splits_sha256": "7f21365473e2fedd36011d626be46453d67433691b67b9b126244f1d644a1c39",
+  "withheld_sha256": "be646257370e45c6ac50b45b51f9dcf75b2ec556c4f91f2933618082251964e2"
+ },
+ "what": "Two runs of the withheld family, each recorded in the ledger before it scored anything. (1) 'baseline': the baseline mechanisms with every Wave 1 setting off, re-run because the recorded baseline's withheld numbers (genesis_baseline.json) were scored before the Wave 1 reviews corrected the scoring; the behaviour is the unchanged system's. (2) 'wave1': each interface answered by its lane's mechanism (mechanisms). Where a mechanism ships off, the shipped system's number is the baseline's. Reported whatever it shows; nothing was tuned afterwards.",
+ "mechanisms": {
+  "anticipation": {
+   "mechanism": "instinct",
+   "a_new_individual_has_it": "off (predictive_regulation)"
+  },
+  "info_value": {
+   "mechanism": "instinct",
+   "a_new_individual_has_it": "off (executive_rule information-v1 is opt-in; curiosity_learning_progress)"
+  },
+  "counterfactual": {
+   "mechanism": "imagination",
+   "a_new_individual_has_it": "on (what-if, forecast and retrospect commands)"
+  },
+  "self_model": {
+   "mechanism": "self_description",
+   "a_new_individual_has_it": "on (display)"
+  }
+ },
+ "runs": {
+  "baseline": {
+   "regime": "all_off",
+   "used": {
+    "anticipation": {
+     "used": "baseline",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    },
+    "info_value": {
+     "used": "baseline",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    },
+    "counterfactual": {
+     "used": "baseline",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    },
+    "self_model": {
+     "used": "baseline",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    }
+   },
+   "cost": {
+    "wall_seconds": 0.681,
+    "model_calls": 0,
+    "refused_connections": 0,
+    "peak_rss_bytes": 69054464,
+    "peak_rss_rise_bytes": 17539072
+   },
+   "headline": {
+    "anticipation": {
+     "summary.breach_ticks_all_channels.mean": 137.333333,
+     "summary.memory.breach_ticks.mean": 21.0,
+     "summary.memory.avoided_share.mean": 0.0,
+     "summary.memory.mean_lead_ticks.mean": 5.666667,
+     "summary.false_alarm_share.mean": 0.0,
+     "summary.work_given_up_share.mean": 0.049128
+    },
+    "info_value": {
+     "core_mean.realised_bits_per_budget": 0.042781,
+     "core_mean.noise_share": 0.041667,
+     "web_mean.realised_bits_per_budget": -0.079978,
+     "web_mean.noise_share": 0.857143,
+     "web_mean.stale_share": 0.142857
+    },
+    "counterfactual": {
+     "summary.answered_within_tolerance.mean": 0.12,
+     "summary.answered_within_strict_tolerance.mean": 0.08,
+     "summary.interval_score.mean": 1.905742,
+     "summary.answered_within_tolerance_without_front_door.mean": 0.142857,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 0.0,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 0.0,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.3,
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.2,
+     "summary_by_group.learned_graph.max_relative_error.max": 0.06598,
+     "summary_by_group.learned_graph.interval_score.mean": 1.905742,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 0.142857,
+     "summary.mean_relative_error.mean": 0.029411,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "self_model": {
+     "summary.coverage.mean": 0.8,
+     "summary.accuracy.mean": 0.8,
+     "summary_original_key.accuracy.mean": 0.8,
+     "summary_without_plumbing.accuracy.mean": 0.923077,
+     "summary.surfaces_used.mean": 4.0
+    }
+   },
+   "result": {
+    "anticipation": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "scope": {
+      "plant": "simulated: the constants (CONSTANTS: task memory, task length, breach lines) are declared by the benchmark, not measured on the host",
+      "wiring": "the regulator is called directly with the plant's history; the product's wiring (the gate resources.policy.background_gate, the history file <db>.resources/internal-state.jsonl and the worker's sampler internal_state.record) is not exercised by this family; tests/test_predictive_wiring.py drives it end to end on a staged individual",
+      "reading": "a gain here is a gain inside this plant; for lane I's forecaster on held-out it comes from reserving memory per background task (removing the trend leaves all of it there; on development the trend matters more: scripts/bench_wave1.py ablations, trend_share_of_avoided)"
+     },
+     "summary": {
+      "memory.reference_episodes": {
+       "mean": 2.0,
+       "sd": 0.0,
+       "min": 2.0,
+       "max": 2.0,
+       "n": 3
+      },
+      "memory.breach_ticks": {
+       "mean": 21.0,
+       "sd": 0.0,
+       "min": 21.0,
+       "max": 21.0,
+       "n": 3
+      },
+      "memory.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "memory.mean_lead_ticks": {
+       "mean": 5.666667,
+       "sd": 1.258306,
+       "min": 4.5,
+       "max": 7.0,
+       "n": 3
+      },
+      "latency.reference_episodes": {
+       "mean": 11.333333,
+       "sd": 1.154701,
+       "min": 10.0,
+       "max": 12.0,
+       "n": 3
+      },
+      "latency.breach_ticks": {
+       "mean": 82.333333,
+       "sd": 4.163332,
+       "min": 79.0,
+       "max": 87.0,
+       "n": 3
+      },
+      "latency.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "latency.mean_lead_ticks": {
+       "mean": 1.25,
+       "sd": 1.767767,
+       "min": 0.0,
+       "max": 2.5,
+       "n": 2
+      },
+      "audio.reference_episodes": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 3
+      },
+      "audio.breach_ticks": {
+       "mean": 14.0,
+       "sd": 3.605551,
+       "min": 10.0,
+       "max": 17.0,
+       "n": 3
+      },
+      "audio.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "audio.mean_lead_ticks": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "backlog.reference_episodes": {
+       "mean": 5.0,
+       "sd": 0.0,
+       "min": 5.0,
+       "max": 5.0,
+       "n": 3
+      },
+      "backlog.breach_ticks": {
+       "mean": 20.0,
+       "sd": 0.0,
+       "min": 20.0,
+       "max": 20.0,
+       "n": 3
+      },
+      "backlog.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "backlog.mean_lead_ticks": {
+       "mean": null,
+       "sd": null,
+       "min": null,
+       "max": null,
+       "n": 0
+      },
+      "hold_ticks": {
+       "mean": 63.0,
+       "sd": 2.645751,
+       "min": 61.0,
+       "max": 66.0,
+       "n": 3
+      },
+      "false_alarm_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "work_given_up_share": {
+       "mean": 0.049128,
+       "sd": 0.005714,
+       "min": 0.044374,
+       "max": 0.055468,
+       "n": 3
+      },
+      "breach_ticks_all_channels": {
+       "mean": 137.333333,
+       "sd": 6.658328,
+       "min": 130.0,
+       "max": 143.0,
+       "n": 3
+      }
+     },
+     "per_seed": [
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 6,
+        "breach_ticks": 21,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 7.0
+       },
+       "latency": {
+        "reference_episodes": 12,
+        "episodes": 16,
+        "breach_ticks": 79,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 2.5
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 4,
+        "breach_ticks": 10,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 4,
+        "mean_lead_ticks": 0.0
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 20,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 0,
+        "mean_lead_ticks": null
+       },
+       "hold_ticks": 66,
+       "false_alarm_ticks": 0,
+       "false_alarm_share": 0.0,
+       "work_given_up_share": 0.055468,
+       "breach_ticks_all_channels": 130
+      },
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 5,
+        "breach_ticks": 21,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 4.5
+       },
+       "latency": {
+        "reference_episodes": 12,
+        "episodes": 18,
+        "breach_ticks": 81,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 0,
+        "mean_lead_ticks": null
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 4,
+        "breach_ticks": 17,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 4,
+        "mean_lead_ticks": 0.0
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 20,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 0,
+        "mean_lead_ticks": null
+       },
+       "hold_ticks": 61,
+       "false_alarm_ticks": 0,
+       "false_alarm_share": 0.0,
+       "work_given_up_share": 0.044374,
+       "breach_ticks_all_channels": 139
+      },
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 5,
+        "breach_ticks": 21,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 5.5
+       },
+       "latency": {
+        "reference_episodes": 10,
+        "episodes": 14,
+        "breach_ticks": 87,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 1,
+        "mean_lead_ticks": 0.0
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 4,
+        "breach_ticks": 15,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 4,
+        "mean_lead_ticks": 0.0
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 20,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 0,
+        "mean_lead_ticks": null
+       },
+       "hold_ticks": 62,
+       "false_alarm_ticks": 0,
+       "false_alarm_share": 0.0,
+       "work_given_up_share": 0.047544,
+       "breach_ticks_all_channels": 143
+      }
+     ],
+     "traces": {
+      "accelerating leak (slope doubles twice)": {
+       "memory": {
+        "reference_episodes": 1.0,
+        "ticks": 12.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": 4.666667
+       },
+       "latency": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "audio": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "backlog": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "work_given_up_share": 0.012552,
+       "false_alarm_ticks_any_channel": 0.0,
+       "hold_ticks": 15.666667
+      },
+      "voice sessions right after each backlog burst": {
+       "memory": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "latency": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "audio": {
+        "reference_episodes": 4.0,
+        "ticks": 14.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": 0.0
+       },
+       "backlog": {
+        "reference_episodes": 5.0,
+        "ticks": 20.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "work_given_up_share": 0.09205,
+       "false_alarm_ticks_any_channel": 0.0,
+       "hold_ticks": 32.0
+      },
+      "latency drift during a leak, background demand that varies": {
+       "memory": {
+        "reference_episodes": 1.0,
+        "ticks": 9.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": 6.666667
+       },
+       "latency": {
+        "reference_episodes": 11.333333,
+        "ticks": 82.333333,
+        "avoided": 0.0,
+        "mean_lead_ticks": 1.25
+       },
+       "audio": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "backlog": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "work_given_up_share": 0.039216,
+       "false_alarm_ticks_any_channel": 0.0,
+       "hold_ticks": 15.333333
+      }
+     }
+    },
+    "info_value": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "core": {
+      "three noisy partners, one honest partner seen once": {
+       "realised_bits": {
+        "mean": 0.342249,
+        "sd": 0.562308,
+        "min": 0.017597,
+        "max": 0.991546,
+        "n": 3
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.042781,
+        "sd": 0.070288,
+        "min": 0.0022,
+        "max": 0.123943,
+        "n": 3
+       },
+       "known_gain_bits": {
+        "mean": 0.342552,
+        "sd": 0.458798,
+        "min": 0.072813,
+        "max": 0.872297,
+        "n": 3
+       },
+       "noise_share": {
+        "mean": 0.041667,
+        "sd": 0.072169,
+        "min": 0.0,
+        "max": 0.125,
+        "n": 3
+       },
+       "idle_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "choices": {
+        "9001": [
+         "partner:p-noise-3",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ],
+        "9002": [
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ],
+        "9003": [
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ]
+       }
+      }
+     },
+     "web": {
+      "three noisy subjects, one stale, one gap": {
+       "realised_bits": {
+        "mean": -0.559846,
+        "sd": 1.645089,
+        "min": -2.459432,
+        "max": 0.389947,
+        "n": 3
+       },
+       "realised_bits_per_budget": {
+        "mean": -0.079978,
+        "sd": 0.235013,
+        "min": -0.351347,
+        "max": 0.055707,
+        "n": 3
+       },
+       "known_gain_bits": {
+        "mean": 0.562151,
+        "sd": 0.0,
+        "min": 0.562151,
+        "max": 0.562151,
+        "n": 3
+       },
+       "noise_share": {
+        "mean": 0.857143,
+        "sd": 0.0,
+        "min": 0.857143,
+        "max": 0.857143,
+        "n": 3
+       },
+       "stale_share": {
+        "mean": 0.142857,
+        "sd": 0.0,
+        "min": 0.142857,
+        "max": 0.142857,
+        "n": 3
+       },
+       "idle_steps": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "choices": {
+        "9001": [
+         "garnet",
+         "garnet",
+         "haddock",
+         "haddock",
+         "isobar",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock"
+        ],
+        "9002": [
+         "garnet",
+         "garnet",
+         "haddock",
+         "haddock",
+         "isobar",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock"
+        ],
+        "9003": [
+         "garnet",
+         "garnet",
+         "haddock",
+         "haddock",
+         "isobar",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock"
+        ]
+       }
+      }
+     },
+     "core_mean": {
+      "realised_bits": 0.342249,
+      "realised_bits_per_budget": 0.042781,
+      "known_gain_bits": 0.342552,
+      "noise_share": 0.041667,
+      "idle_share": 0.0
+     },
+     "web_mean": {
+      "realised_bits": -0.559846,
+      "realised_bits_per_budget": -0.079978,
+      "known_gain_bits": 0.562151,
+      "noise_share": 0.857143,
+      "stale_share": 0.142857,
+      "idle_steps": 0.0
+     }
+    },
+    "counterfactual": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "tolerance": 0.1,
+     "strict_tolerance": 0.05,
+     "interval": "central 95 % normal interval",
+     "summary": {
+      "answered_within_tolerance": {
+       "mean": 0.12,
+       "sd": 0.0,
+       "min": 0.12,
+       "max": 0.12,
+       "n": 3
+      },
+      "answered_within_strict_tolerance": {
+       "mean": 0.08,
+       "sd": 0.04,
+       "min": 0.04,
+       "max": 0.12,
+       "n": 3
+      },
+      "max_relative_error": {
+       "mean": 0.050194,
+       "sd": 0.015973,
+       "min": 0.034041,
+       "max": 0.06598,
+       "n": 3
+      },
+      "answered_within_tolerance_without_front_door": {
+       "mean": 0.142857,
+       "sd": 0.0,
+       "min": 0.142857,
+       "max": 0.142857,
+       "n": 3
+      },
+      "interval_score": {
+       "mean": 1.905742,
+       "sd": 0.088592,
+       "min": 1.828479,
+       "max": 2.002437,
+       "n": 3
+      },
+      "answered_share": {
+       "mean": 0.142857,
+       "sd": 0.0,
+       "min": 0.142857,
+       "max": 0.142857,
+       "n": 3
+      },
+      "mean_relative_error": {
+       "mean": 0.029411,
+       "sd": 0.012543,
+       "min": 0.017931,
+       "max": 0.042799,
+       "n": 3
+      },
+      "interval_coverage": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "declined_confounded_share": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      }
+     },
+     "summary_is": "pooled over every group, the front-door questions included: reported, not a claim (the groups measure different things and are never pooled in a claim; see summary_by_group)",
+     "summary_by_group": {
+      "handed_equations": {
+       "answered_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "interval_score": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "answered_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 8
+      },
+      "belief_what_if": {
+       "answered_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "interval_score": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "answered_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 3
+      },
+      "learned_graph": {
+       "answered_within_tolerance": {
+        "mean": 0.3,
+        "sd": 0.0,
+        "min": 0.3,
+        "max": 0.3,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.2,
+        "sd": 0.1,
+        "min": 0.1,
+        "max": 0.3,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.050194,
+        "sd": 0.015973,
+        "min": 0.034041,
+        "max": 0.06598,
+        "n": 3
+       },
+       "interval_score": {
+        "mean": 1.905742,
+        "sd": 0.088592,
+        "min": 1.828479,
+        "max": 2.002437,
+        "n": 3
+       },
+       "answered_share": {
+        "mean": 0.3,
+        "sd": 0.0,
+        "min": 0.3,
+        "max": 0.3,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": 0.029411,
+        "sd": 0.012543,
+        "min": 0.017931,
+        "max": 0.042799,
+        "n": 3
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 10
+      },
+      "front_door": {
+       "answered_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "interval_score": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "answered_share": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "mean_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "front_door_declined": {
+        "mean": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "questions_per_seed": 4
+      }
+     },
+     "per_seed": [
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.12,
+       "answered_within_strict_tolerance": 0.08,
+       "max_relative_error": 0.050562,
+       "answered_within_tolerance_without_front_door": 0.142857,
+       "interval_score": 1.88631,
+       "interval_score_answered": 3,
+       "answered_share": 0.142857,
+       "mean_relative_error": 0.027504,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.12,
+       "answered_within_strict_tolerance": 0.12,
+       "max_relative_error": 0.034041,
+       "answered_within_tolerance_without_front_door": 0.142857,
+       "interval_score": 1.828479,
+       "interval_score_answered": 3,
+       "answered_share": 0.142857,
+       "mean_relative_error": 0.017931,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.12,
+       "answered_within_strict_tolerance": 0.04,
+       "max_relative_error": 0.06598,
+       "answered_within_tolerance_without_front_door": 0.142857,
+       "interval_score": 2.002437,
+       "interval_score_answered": 3,
+       "answered_share": 0.142857,
+       "mean_relative_error": 0.042799,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      }
+     ],
+     "by_query_kind": {
+      "belief:what-if": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": 0.0,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:action": {
+       "queries": 12,
+       "answerable": 12,
+       "answerable_with_front_door": 12,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": 0.0,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:horizon 1": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 0.666667,
+       "max_relative_error": 0.06598,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 1.905742,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.029411,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:horizon 4": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": 0.0,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:confounded": {
+       "queries": 12,
+       "answerable": 0,
+       "answerable_with_front_door": 12,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": null,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": null,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 12,
+       "front_door_declined": 12,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      "scm:counterfactual": {
+       "queries": 6,
+       "answerable": 6,
+       "answerable_with_front_door": 6,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": 0.0,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:interventional": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": 0.0,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:observational": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": 0.0,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": 0.0,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      }
+     }
+    },
+    "self_model": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "probes": [
+      "running_tasks",
+      "queued_tasks",
+      "open_owner_questions",
+      "autonomy_enabled",
+      "autonomous_searches_left",
+      "memory_level",
+      "writes_allowed",
+      "audio_active",
+      "background_research_allowed",
+      "local_model_unloaded",
+      "uncertain_about",
+      "last_decision",
+      "journal_row_limit",
+      "authorised_model_tools",
+      "researching_now"
+     ],
+     "summary": {
+      "coverage": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 3
+      },
+      "accuracy": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 3
+      },
+      "accuracy_when_answered": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "surfaces_used": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 3
+      }
+     },
+     "summary_original_key": {
+      "accuracy": {
+       "mean": 0.8,
+       "sd": 0.0,
+       "min": 0.8,
+       "max": 0.8,
+       "n": 3
+      },
+      "correct": {
+       "mean": 12.0,
+       "sd": 0.0,
+       "min": 12.0,
+       "max": 12.0,
+       "n": 3
+      },
+      "probes": {
+       "mean": 15.0,
+       "sd": 0.0,
+       "min": 15.0,
+       "max": 15.0,
+       "n": 3
+      }
+     },
+     "summary_without_plumbing": {
+      "coverage": {
+       "mean": 0.923077,
+       "sd": 0.0,
+       "min": 0.923077,
+       "max": 0.923077,
+       "n": 3
+      },
+      "accuracy": {
+       "mean": 0.923077,
+       "sd": 0.0,
+       "min": 0.923077,
+       "max": 0.923077,
+       "n": 3
+      },
+      "correct": {
+       "mean": 12.0,
+       "sd": 0.0,
+       "min": 12.0,
+       "max": 12.0,
+       "n": 3
+      },
+      "probes": {
+       "mean": 13.0,
+       "sd": 0.0,
+       "min": 13.0,
+       "max": 13.0,
+       "n": 3
+      }
+     },
+     "plumbing_checks": [
+      "authorised_model_tools",
+      "last_decision"
+     ],
+     "disclosure": "lane W printed its describer's answers on the held-out states once during development; the answer key of uncertain_about changed in Wave 1 (summary_original_key is the key the baseline was recorded with)",
+     "per_probe": {
+      "running_tasks": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "queued_tasks": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "open_owner_questions": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "autonomy_enabled": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "autonomous_searches_left": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "memory_level": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "writes_allowed": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "audio_active": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "background_research_allowed": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "local_model_unloaded": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "uncertain_about": {
+       "answered": 0.0,
+       "correct": 0.0
+      },
+      "last_decision": {
+       "answered": 0.0,
+       "correct": 0.0,
+       "plumbing_check": true
+      },
+      "journal_row_limit": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "authorised_model_tools": {
+       "answered": 0.0,
+       "correct": 0.0,
+       "plumbing_check": true
+      },
+      "researching_now": {
+       "answered": 1.0,
+       "correct": 1.0
+      }
+     },
+     "staging_problems": []
+    }
+   },
+   "run_seconds": 0.7
+  },
+  "wave1": {
+   "regime": "defaults",
+   "used": {
+    "anticipation": {
+     "used": "wave1",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    },
+    "info_value": {
+     "used": "wave1",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    },
+    "counterfactual": {
+     "used": "wave1",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    },
+    "self_model": {
+     "used": "wave1",
+     "fell_back_to_baseline": false,
+     "needs_model": false,
+     "reference": false
+    }
+   },
+   "cost": {
+    "wall_seconds": 1.025,
+    "model_calls": 0,
+    "refused_connections": 0,
+    "peak_rss_bytes": 77615104,
+    "peak_rss_rise_bytes": 8396800
+   },
+   "headline": {
+    "anticipation": {
+     "summary.breach_ticks_all_channels.mean": 89.0,
+     "summary.memory.breach_ticks.mean": 0.666667,
+     "summary.memory.avoided_share.mean": 0.833333,
+     "summary.memory.mean_lead_ticks.mean": 11.333333,
+     "summary.false_alarm_share.mean": 0.013338,
+     "summary.work_given_up_share.mean": 0.129952
+    },
+    "info_value": {
+     "core_mean.realised_bits_per_budget": 0.042781,
+     "core_mean.noise_share": 0.041667,
+     "web_mean.realised_bits_per_budget": 0.055707,
+     "web_mean.noise_share": 0.857143,
+     "web_mean.stale_share": 0.142857
+    },
+    "counterfactual": {
+     "summary.answered_within_tolerance.mean": 0.826667,
+     "summary.answered_within_strict_tolerance.mean": 0.76,
+     "summary.interval_score.mean": 2.540074,
+     "summary.answered_within_tolerance_without_front_door.mean": 0.984127,
+     "summary_by_group.handed_equations.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.belief_what_if.answered_within_tolerance.mean": 1.0,
+     "summary_by_group.learned_graph.answered_within_tolerance.mean": 0.966667,
+     "summary_by_group.learned_graph.answered_within_strict_tolerance.mean": 0.8,
+     "summary_by_group.learned_graph.max_relative_error.max": 0.135018,
+     "summary_by_group.learned_graph.interval_score.mean": 3.37336,
+     "summary_by_group.front_door.front_door_declined.mean": 4.0,
+     "summary_by_group.front_door.front_door_within_tolerance.mean": 0.0,
+     "summary.answered_share.mean": 1.0,
+     "summary.mean_relative_error.mean": 0.012441,
+     "summary.interval_coverage.mean": 1.0,
+     "summary.declined_confounded_share.mean": 1.0
+    },
+    "self_model": {
+     "summary.coverage.mean": 1.0,
+     "summary.accuracy.mean": 1.0,
+     "summary_original_key.accuracy.mean": 1.0,
+     "summary_without_plumbing.accuracy.mean": 1.0,
+     "summary.surfaces_used.mean": 1.0
+    }
+   },
+   "result": {
+    "anticipation": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "scope": {
+      "plant": "simulated: the constants (CONSTANTS: task memory, task length, breach lines) are declared by the benchmark, not measured on the host",
+      "wiring": "the regulator is called directly with the plant's history; the product's wiring (the gate resources.policy.background_gate, the history file <db>.resources/internal-state.jsonl and the worker's sampler internal_state.record) is not exercised by this family; tests/test_predictive_wiring.py drives it end to end on a staged individual",
+      "reading": "a gain here is a gain inside this plant; for lane I's forecaster on held-out it comes from reserving memory per background task (removing the trend leaves all of it there; on development the trend matters more: scripts/bench_wave1.py ablations, trend_share_of_avoided)"
+     },
+     "summary": {
+      "memory.reference_episodes": {
+       "mean": 2.0,
+       "sd": 0.0,
+       "min": 2.0,
+       "max": 2.0,
+       "n": 3
+      },
+      "memory.breach_ticks": {
+       "mean": 0.666667,
+       "sd": 1.154701,
+       "min": 0.0,
+       "max": 2.0,
+       "n": 3
+      },
+      "memory.avoided_share": {
+       "mean": 0.833333,
+       "sd": 0.288675,
+       "min": 0.5,
+       "max": 1.0,
+       "n": 3
+      },
+      "memory.mean_lead_ticks": {
+       "mean": 11.333333,
+       "sd": 0.763763,
+       "min": 10.5,
+       "max": 12.0,
+       "n": 3
+      },
+      "latency.reference_episodes": {
+       "mean": 11.333333,
+       "sd": 1.154701,
+       "min": 10.0,
+       "max": 12.0,
+       "n": 3
+      },
+      "latency.breach_ticks": {
+       "mean": 67.333333,
+       "sd": 5.859465,
+       "min": 63.0,
+       "max": 74.0,
+       "n": 3
+      },
+      "latency.avoided_share": {
+       "mean": 0.055556,
+       "sd": 0.048113,
+       "min": 0.0,
+       "max": 0.083333,
+       "n": 3
+      },
+      "latency.mean_lead_ticks": {
+       "mean": 4.666667,
+       "sd": 2.020726,
+       "min": 2.5,
+       "max": 6.5,
+       "n": 3
+      },
+      "audio.reference_episodes": {
+       "mean": 4.0,
+       "sd": 0.0,
+       "min": 4.0,
+       "max": 4.0,
+       "n": 3
+      },
+      "audio.breach_ticks": {
+       "mean": 8.0,
+       "sd": 2.645751,
+       "min": 6.0,
+       "max": 11.0,
+       "n": 3
+      },
+      "audio.avoided_share": {
+       "mean": 0.5,
+       "sd": 0.0,
+       "min": 0.5,
+       "max": 0.5,
+       "n": 3
+      },
+      "audio.mean_lead_ticks": {
+       "mean": 8.833333,
+       "sd": 1.607275,
+       "min": 7.0,
+       "max": 10.0,
+       "n": 3
+      },
+      "backlog.reference_episodes": {
+       "mean": 5.0,
+       "sd": 0.0,
+       "min": 5.0,
+       "max": 5.0,
+       "n": 3
+      },
+      "backlog.breach_ticks": {
+       "mean": 13.0,
+       "sd": 0.0,
+       "min": 13.0,
+       "max": 13.0,
+       "n": 3
+      },
+      "backlog.avoided_share": {
+       "mean": 0.0,
+       "sd": 0.0,
+       "min": 0.0,
+       "max": 0.0,
+       "n": 3
+      },
+      "backlog.mean_lead_ticks": {
+       "mean": 3.222222,
+       "sd": 0.509175,
+       "min": 2.666667,
+       "max": 3.666667,
+       "n": 3
+      },
+      "hold_ticks": {
+       "mean": 75.0,
+       "sd": 1.732051,
+       "min": 74.0,
+       "max": 77.0,
+       "n": 3
+      },
+      "false_alarm_share": {
+       "mean": 0.013338,
+       "sd": 0.000304,
+       "min": 0.012987,
+       "max": 0.013514,
+       "n": 3
+      },
+      "work_given_up_share": {
+       "mean": 0.129952,
+       "sd": 0.00549,
+       "min": 0.126783,
+       "max": 0.136292,
+       "n": 3
+      },
+      "breach_ticks_all_channels": {
+       "mean": 89.0,
+       "sd": 7.0,
+       "min": 82.0,
+       "max": 96.0,
+       "n": 3
+      }
+     },
+     "per_seed": [
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 0,
+        "breach_ticks": 0,
+        "avoided": 2,
+        "avoided_share": 1.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 11.5
+       },
+       "latency": {
+        "reference_episodes": 12,
+        "episodes": 11,
+        "breach_ticks": 63,
+        "avoided": 1,
+        "avoided_share": 0.083333,
+        "anticipated": 2,
+        "mean_lead_ticks": 6.5
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 2,
+        "breach_ticks": 6,
+        "avoided": 2,
+        "avoided_share": 0.5,
+        "anticipated": 2,
+        "mean_lead_ticks": 9.5
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 13,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 3,
+        "mean_lead_ticks": 3.666667
+       },
+       "hold_ticks": 77,
+       "false_alarm_ticks": 1,
+       "false_alarm_share": 0.012987,
+       "work_given_up_share": 0.136292,
+       "breach_ticks_all_channels": 82
+      },
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 0,
+        "breach_ticks": 0,
+        "avoided": 2,
+        "avoided_share": 1.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 12.0
+       },
+       "latency": {
+        "reference_episodes": 12,
+        "episodes": 12,
+        "breach_ticks": 65,
+        "avoided": 1,
+        "avoided_share": 0.083333,
+        "anticipated": 3,
+        "mean_lead_ticks": 5.0
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 2,
+        "breach_ticks": 11,
+        "avoided": 2,
+        "avoided_share": 0.5,
+        "anticipated": 2,
+        "mean_lead_ticks": 7.0
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 13,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 3,
+        "mean_lead_ticks": 2.666667
+       },
+       "hold_ticks": 74,
+       "false_alarm_ticks": 1,
+       "false_alarm_share": 0.013514,
+       "work_given_up_share": 0.126783,
+       "breach_ticks_all_channels": 89
+      },
+      {
+       "memory": {
+        "reference_episodes": 2,
+        "episodes": 1,
+        "breach_ticks": 2,
+        "avoided": 1,
+        "avoided_share": 0.5,
+        "anticipated": 2,
+        "mean_lead_ticks": 10.5
+       },
+       "latency": {
+        "reference_episodes": 10,
+        "episodes": 11,
+        "breach_ticks": 74,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 2,
+        "mean_lead_ticks": 2.5
+       },
+       "audio": {
+        "reference_episodes": 4,
+        "episodes": 2,
+        "breach_ticks": 7,
+        "avoided": 2,
+        "avoided_share": 0.5,
+        "anticipated": 2,
+        "mean_lead_ticks": 10.0
+       },
+       "backlog": {
+        "reference_episodes": 5,
+        "episodes": 5,
+        "breach_ticks": 13,
+        "avoided": 0,
+        "avoided_share": 0.0,
+        "anticipated": 3,
+        "mean_lead_ticks": 3.333333
+       },
+       "hold_ticks": 74,
+       "false_alarm_ticks": 1,
+       "false_alarm_share": 0.013514,
+       "work_given_up_share": 0.126783,
+       "breach_ticks_all_channels": 96
+      }
+     ],
+     "traces": {
+      "accelerating leak (slope doubles twice)": {
+       "memory": {
+        "reference_episodes": 1.0,
+        "ticks": 0.0,
+        "avoided": 1.0,
+        "mean_lead_ticks": 10.666667
+       },
+       "latency": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "audio": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "backlog": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "work_given_up_share": 0.087866,
+       "false_alarm_ticks_any_channel": 0.0,
+       "hold_ticks": 23.666667
+      },
+      "voice sessions right after each backlog burst": {
+       "memory": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "latency": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "audio": {
+        "reference_episodes": 4.0,
+        "ticks": 8.0,
+        "avoided": 2.0,
+        "mean_lead_ticks": 8.833333
+       },
+       "backlog": {
+        "reference_episodes": 5.0,
+        "ticks": 13.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": 3.222222
+       },
+       "work_given_up_share": 0.16318,
+       "false_alarm_ticks_any_channel": 1.0,
+       "hold_ticks": 25.666667
+      },
+      "latency drift during a leak, background demand that varies": {
+       "memory": {
+        "reference_episodes": 1.0,
+        "ticks": 0.666667,
+        "avoided": 0.666667,
+        "mean_lead_ticks": 12.0
+       },
+       "latency": {
+        "reference_episodes": 11.333333,
+        "ticks": 67.333333,
+        "avoided": 0.666667,
+        "mean_lead_ticks": 4.666667
+       },
+       "audio": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "backlog": {
+        "reference_episodes": 0.0,
+        "ticks": 0.0,
+        "avoided": 0.0,
+        "mean_lead_ticks": null
+       },
+       "work_given_up_share": 0.143791,
+       "false_alarm_ticks_any_channel": 0.0,
+       "hold_ticks": 25.666667
+      }
+     }
+    },
+    "info_value": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "core": {
+      "three noisy partners, one honest partner seen once": {
+       "realised_bits": {
+        "mean": 0.342249,
+        "sd": 0.562308,
+        "min": 0.017597,
+        "max": 0.991546,
+        "n": 3
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.042781,
+        "sd": 0.070288,
+        "min": 0.0022,
+        "max": 0.123943,
+        "n": 3
+       },
+       "known_gain_bits": {
+        "mean": 0.342552,
+        "sd": 0.458798,
+        "min": 0.072813,
+        "max": 0.872297,
+        "n": 3
+       },
+       "noise_share": {
+        "mean": 0.041667,
+        "sd": 0.072169,
+        "min": 0.0,
+        "max": 0.125,
+        "n": 3
+       },
+       "idle_share": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "choices": {
+        "9001": [
+         "partner:p-noise-3",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ],
+        "9002": [
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ],
+        "9003": [
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1",
+         "camera:cam-1"
+        ]
+       }
+      }
+     },
+     "web": {
+      "three noisy subjects, one stale, one gap": {
+       "realised_bits": {
+        "mean": 0.389947,
+        "sd": 0.0,
+        "min": 0.389947,
+        "max": 0.389947,
+        "n": 3
+       },
+       "realised_bits_per_budget": {
+        "mean": 0.055707,
+        "sd": 0.0,
+        "min": 0.055707,
+        "max": 0.055707,
+        "n": 3
+       },
+       "known_gain_bits": {
+        "mean": 0.562151,
+        "sd": 0.0,
+        "min": 0.562151,
+        "max": 0.562151,
+        "n": 3
+       },
+       "noise_share": {
+        "mean": 0.857143,
+        "sd": 0.0,
+        "min": 0.857143,
+        "max": 0.857143,
+        "n": 3
+       },
+       "stale_share": {
+        "mean": 0.142857,
+        "sd": 0.0,
+        "min": 0.142857,
+        "max": 0.142857,
+        "n": 3
+       },
+       "idle_steps": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "choices": {
+        "9001": [
+         "garnet",
+         "haddock",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock",
+         "isobar",
+         "garnet",
+         "haddock"
+        ],
+        "9002": [
+         "garnet",
+         "haddock",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock",
+         "isobar",
+         "garnet",
+         "haddock"
+        ],
+        "9003": [
+         "garnet",
+         "haddock",
+         "isobar",
+         "juniper",
+         "garnet",
+         "haddock",
+         "isobar",
+         "garnet",
+         "haddock"
+        ]
+       }
+      }
+     },
+     "core_mean": {
+      "realised_bits": 0.342249,
+      "realised_bits_per_budget": 0.042781,
+      "known_gain_bits": 0.342552,
+      "noise_share": 0.041667,
+      "idle_share": 0.0
+     },
+     "web_mean": {
+      "realised_bits": 0.389947,
+      "realised_bits_per_budget": 0.055707,
+      "known_gain_bits": 0.562151,
+      "noise_share": 0.857143,
+      "stale_share": 0.142857,
+      "idle_steps": 0.0
+     }
+    },
+    "counterfactual": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "tolerance": 0.1,
+     "strict_tolerance": 0.05,
+     "interval": "central 95 % normal interval",
+     "summary": {
+      "answered_within_tolerance": {
+       "mean": 0.826667,
+       "sd": 0.023094,
+       "min": 0.8,
+       "max": 0.84,
+       "n": 3
+      },
+      "answered_within_strict_tolerance": {
+       "mean": 0.76,
+       "sd": 0.069282,
+       "min": 0.68,
+       "max": 0.8,
+       "n": 3
+      },
+      "max_relative_error": {
+       "mean": 0.094449,
+       "sd": 0.042326,
+       "min": 0.050562,
+       "max": 0.135018,
+       "n": 3
+      },
+      "answered_within_tolerance_without_front_door": {
+       "mean": 0.984127,
+       "sd": 0.027493,
+       "min": 0.952381,
+       "max": 1.0,
+       "n": 3
+      },
+      "interval_score": {
+       "mean": 2.540074,
+       "sd": 0.142766,
+       "min": 2.376987,
+       "max": 2.642454,
+       "n": 3
+      },
+      "answered_share": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "mean_relative_error": {
+       "mean": 0.012441,
+       "sd": 0.003468,
+       "min": 0.009037,
+       "max": 0.015969,
+       "n": 3
+      },
+      "interval_coverage": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "declined_confounded_share": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      }
+     },
+     "summary_is": "pooled over every group, the front-door questions included: reported, not a claim (the groups measure different things and are never pooled in a claim; see summary_by_group)",
+     "summary_by_group": {
+      "handed_equations": {
+       "answered_within_tolerance": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "interval_score": {
+        "mean": 2.450993,
+        "sd": 0.321538,
+        "min": 2.0808,
+        "max": 2.660682,
+        "n": 3
+       },
+       "answered_share": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 8
+      },
+      "belief_what_if": {
+       "answered_within_tolerance": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "interval_score": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_share": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 3
+      },
+      "learned_graph": {
+       "answered_within_tolerance": {
+        "mean": 0.966667,
+        "sd": 0.057735,
+        "min": 0.9,
+        "max": 1.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.8,
+        "sd": 0.173205,
+        "min": 0.6,
+        "max": 0.9,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": 0.094449,
+        "sd": 0.042326,
+        "min": 0.050562,
+        "max": 0.135018,
+        "n": 3
+       },
+       "interval_score": {
+        "mean": 3.37336,
+        "sd": 0.075054,
+        "min": 3.327033,
+        "max": 3.459955,
+        "n": 3
+       },
+       "answered_share": {
+        "mean": 1.0,
+        "sd": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 3
+       },
+       "mean_relative_error": {
+        "mean": 0.026126,
+        "sd": 0.007282,
+        "min": 0.018978,
+        "max": 0.033535,
+        "n": 3
+       },
+       "front_door_declined": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "questions_per_seed": 10
+      },
+      "front_door": {
+       "answered_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "answered_within_strict_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "max_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "interval_score": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "answered_share": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "mean_relative_error": {
+        "mean": null,
+        "sd": null,
+        "min": null,
+        "max": null,
+        "n": 0
+       },
+       "front_door_declined": {
+        "mean": 4.0,
+        "sd": 0.0,
+        "min": 4.0,
+        "max": 4.0,
+        "n": 3
+       },
+       "front_door_within_tolerance": {
+        "mean": 0.0,
+        "sd": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "n": 3
+       },
+       "questions_per_seed": 4
+      }
+     },
+     "per_seed": [
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.84,
+       "answered_within_strict_tolerance": 0.8,
+       "max_relative_error": 0.050562,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 2.376987,
+       "interval_score_answered": 21,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.009037,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.8,
+       "answered_within_strict_tolerance": 0.8,
+       "max_relative_error": 0.135018,
+       "answered_within_tolerance_without_front_door": 0.952381,
+       "interval_score": 2.60078,
+       "interval_score_answered": 21,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.012317,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      {
+       "queries": 25,
+       "answerable": 21,
+       "answerable_with_front_door": 25,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.84,
+       "answered_within_strict_tolerance": 0.68,
+       "max_relative_error": 0.097767,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 2.642454,
+       "interval_score_answered": 21,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.015969,
+       "interval_coverage": 1.0,
+       "front_door": 4,
+       "front_door_declined": 4,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      }
+     ],
+     "by_query_kind": {
+      "belief:what-if": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.0,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 0.0,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.0,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:action": {
+       "queries": 12,
+       "answerable": 12,
+       "answerable_with_front_door": 12,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.916667,
+       "answered_within_strict_tolerance": 0.75,
+       "max_relative_error": 0.135018,
+       "answered_within_tolerance_without_front_door": 0.916667,
+       "interval_score": 3.876557,
+       "interval_score_answered": 12,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.03193,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:horizon 1": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 0.666667,
+       "max_relative_error": 0.06598,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 1.905742,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.029411,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "graph:horizon 4": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.026141,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 4.17005,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.015103,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:confounded": {
+       "queries": 12,
+       "answerable": 0,
+       "answerable_with_front_door": 12,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 0.0,
+       "answered_within_strict_tolerance": 0.0,
+       "max_relative_error": null,
+       "answered_within_tolerance_without_front_door": null,
+       "interval_score": null,
+       "interval_score_answered": 0,
+       "answered_share": null,
+       "mean_relative_error": null,
+       "interval_coverage": null,
+       "front_door": 12,
+       "front_door_declined": 12,
+       "front_door_within_tolerance": 0.0,
+       "unanswerable": 0,
+       "declined_confounded_share": 1.0
+      },
+      "scm:counterfactual": {
+       "queries": 6,
+       "answerable": 6,
+       "answerable_with_front_door": 6,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.0,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 0.0,
+       "interval_score_answered": 6,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.0,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:interventional": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.0,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 3.267991,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.0,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      },
+      "scm:observational": {
+       "queries": 9,
+       "answerable": 9,
+       "answerable_with_front_door": 9,
+       "tolerance": 0.1,
+       "strict_tolerance": 0.05,
+       "answered_within_tolerance": 1.0,
+       "answered_within_strict_tolerance": 1.0,
+       "max_relative_error": 0.0,
+       "answered_within_tolerance_without_front_door": 1.0,
+       "interval_score": 3.267991,
+       "interval_score_answered": 9,
+       "answered_share": 1.0,
+       "mean_relative_error": 0.0,
+       "interval_coverage": 1.0,
+       "front_door": 0,
+       "front_door_declined": 0,
+       "front_door_within_tolerance": null,
+       "unanswerable": 0,
+       "declined_confounded_share": null
+      }
+     }
+    },
+    "self_model": {
+     "seeds": [
+      9001,
+      9002,
+      9003
+     ],
+     "probes": [
+      "running_tasks",
+      "queued_tasks",
+      "open_owner_questions",
+      "autonomy_enabled",
+      "autonomous_searches_left",
+      "memory_level",
+      "writes_allowed",
+      "audio_active",
+      "background_research_allowed",
+      "local_model_unloaded",
+      "uncertain_about",
+      "last_decision",
+      "journal_row_limit",
+      "authorised_model_tools",
+      "researching_now"
+     ],
+     "summary": {
+      "coverage": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "accuracy": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "accuracy_when_answered": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "surfaces_used": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      }
+     },
+     "summary_original_key": {
+      "accuracy": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "correct": {
+       "mean": 15.0,
+       "sd": 0.0,
+       "min": 15.0,
+       "max": 15.0,
+       "n": 3
+      },
+      "probes": {
+       "mean": 15.0,
+       "sd": 0.0,
+       "min": 15.0,
+       "max": 15.0,
+       "n": 3
+      }
+     },
+     "summary_without_plumbing": {
+      "coverage": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "accuracy": {
+       "mean": 1.0,
+       "sd": 0.0,
+       "min": 1.0,
+       "max": 1.0,
+       "n": 3
+      },
+      "correct": {
+       "mean": 13.0,
+       "sd": 0.0,
+       "min": 13.0,
+       "max": 13.0,
+       "n": 3
+      },
+      "probes": {
+       "mean": 13.0,
+       "sd": 0.0,
+       "min": 13.0,
+       "max": 13.0,
+       "n": 3
+      }
+     },
+     "plumbing_checks": [
+      "authorised_model_tools",
+      "last_decision"
+     ],
+     "disclosure": "lane W printed its describer's answers on the held-out states once during development; the answer key of uncertain_about changed in Wave 1 (summary_original_key is the key the baseline was recorded with)",
+     "per_probe": {
+      "running_tasks": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "queued_tasks": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "open_owner_questions": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "autonomy_enabled": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "autonomous_searches_left": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "memory_level": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "writes_allowed": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "audio_active": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "background_research_allowed": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "local_model_unloaded": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "uncertain_about": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "last_decision": {
+       "answered": 1.0,
+       "correct": 1.0,
+       "plumbing_check": true
+      },
+      "journal_row_limit": {
+       "answered": 1.0,
+       "correct": 1.0
+      },
+      "authorised_model_tools": {
+       "answered": 1.0,
+       "correct": 1.0,
+       "plumbing_check": true
+      },
+      "researching_now": {
+       "answered": 1.0,
+       "correct": 1.0
+      }
+     },
+     "staging_problems": []
+    }
+   },
+   "run_seconds": 1.03
+  }
+ },
+ "final_runs": [
+  {
+   "ablate": [],
+   "at": "2026-11-25T12:23:34Z",
+   "commit": "19f80e283d543be8969de14ad852bba53aeda2e7",
+   "dirty": false,
+   "families": [
+    "withheld"
+   ],
+   "mechanism": "baseline",
+   "note": "baseline on the unchanged system"
+  },
+  {
+   "ablate": [],
+   "at": "2026-11-25T23:25:17Z",
+   "commit": "816fa124e22789743ca6f87002440a8b141cc86a",
+   "dirty": false,
+   "families": [
+    "withheld"
+   ],
+   "mechanism": "baseline",
+   "note": "Wave 1, final tree 816fa12: baseline re-scored under the corrected scoring; behaviour unchanged"
+  },
+  {
+   "ablate": [],
+   "at": "2026-11-25T23:25:18Z",
+   "commit": "816fa124e22789743ca6f87002440a8b141cc86a",
+   "dirty": false,
+   "families": [
+    "withheld"
+   ],
+   "mechanism": "wave1",
+   "note": "Wave 1, final tree 816fa12: Wave 1 mechanisms, the one look"
+  }
+ ]
+}

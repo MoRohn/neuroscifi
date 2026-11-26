@@ -128,7 +128,8 @@ def test_old_file_migrates_to_current_with_data_intact(tmp_path, version):
         for table in ("epoch_contexts", "epoch_streams"):   # migration 5 adds both, empty
             assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
         web = [t for t in _tables(db) if t.startswith("web_")]   # migrations 6-8 add the Web Cortex tables, empty
-        assert len(web) == 15 and all(db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0 for t in web)
+        assert len(web) == 15 + 4          # lane K's migration adds 4 (ADR-055)
+        assert all(db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] == 0 for t in web)
         assert db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='evidence_tally'").fetchone()
         if version == 1:  # migration 2 adds forgotten_roots, empty
             assert db.execute("SELECT count(*) FROM forgotten_roots").fetchone()[0] == 0

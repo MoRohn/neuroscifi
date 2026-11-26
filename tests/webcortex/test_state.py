@@ -16,7 +16,8 @@ def db(tmp_path):
 
 WEB_TABLES = {"web_tasks", "web_events", "web_sources", "web_claims", "web_claim_links", "web_knowledge",
               "web_entities", "web_mentions", "web_strategies", "web_monitors", "web_predictions", "web_feedback",
-              "web_forgotten", "web_hypotheses", "web_metrics"}
+              "web_forgotten", "web_hypotheses", "web_metrics", "web_premises", "web_rechecks", "web_reflections",
+              "web_hypothesis_details"}
 
 
 def _check_values(db, table, column):

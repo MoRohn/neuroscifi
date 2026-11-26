@@ -202,7 +202,10 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
 # window. The settings fixed at `nsf init` (lifetime, journal limit, free-space reserve, temperature limit) cannot
 # differ between an individual and its own archives, so they stay as the archive has them.
 CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_epoch", "ask_budget_window_seconds",
-                    "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet")
+                    "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet",
+                    "internal_state_history", "predictive_regulation", "executive_rule", "decision_information",
+                    *store.IMAGINE_SWITCHES, "imagine_max_seconds", "imagine_max_bytes",
+                    "broadcast", "broadcast_threshold")
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
@@ -321,7 +324,8 @@ def _live_settings(db):
         value = raw.get(name, effective[name])
         if store.valid_setting(name, value):
             carried[name] = value
-        elif name in ("consolidation", "graph_rule_migration", "quiet"):
+        elif name in ("consolidation", "graph_rule_migration", "quiet", "internal_state_history",
+                      "predictive_regulation", "decision_information", *store.IMAGINE_SWITCHES):
             carried[name] = effective[name]
             acts = "on" if effective[name] else "off"
             warnings.append(f"the live instance's saved {name} ({value!r}) is not true or false; it acts as "
@@ -348,11 +352,27 @@ def _live_rule(db):
     return _acting_rule(saved.get("tick_admission")) if isinstance(saved, dict) else None
 
 
+_LEDGER_ROW = ("capability", "level", "change", "evidence", "generalisation", "regressions", "cost", "reproducibility",
+               "decision", "decided_by", "created_at")
+
+
+def _live_reverts(db):
+    """The improvement ledger's owner reverts in force in the live file: for each capability whose latest row is the
+    owner's 'revert', that row (_LEDGER_ROW). A restore carries them like quiet (review1 CL3): an archive taken before
+    the revert must not switch strategy selection back on."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='improvement_ledger'").fetchone() is None:
+        return []
+    return db.execute(f"SELECT {','.join('l.' + c for c in _LEDGER_ROW)} FROM improvement_ledger l WHERE l.id IN "
+                      "(SELECT max(id) FROM improvement_ledger GROUP BY capability) AND l.decision='revert' AND "
+                      "l.decided_by='owner' ORDER BY l.id").fetchall()
+
+
 def _read_forgets(db, now, wanted=None):
     from ..webcortex.signing import FRESH_SECONDS
     settings, warnings = _live_settings(db)
     return {
         "settings": settings, "settings_warnings": warnings, "tick_admission": _live_rule(db),
+        "reverts": _live_reverts(db),
         # Cameras and partners forgotten by name (governance.SCOPE_KINDS): their changepoints carry no tombstone, so
         # the deletion log is the record, as for epochs below.
         "scopes": [(kind, label, json.loads(effects).get("state_version", float("inf")), requested_at, effects)
@@ -465,6 +485,17 @@ def _replay(copy, forgets, now):
                          (store.SETTING_KIND, "tick_admission", now,
                           json.dumps(change | {"carried_by_restore": True}, sort_keys=True)))
             carried["tick_admission"] = change
+    for row in (forgets.get("reverts") or []) if forgets else []:
+        # The owner's revert of a strategy or rule (improvement ledger, append-only) is carried like a setting: the
+        # copy gets the same row appended unless its own latest row for that capability is already that revert.
+        capability, created_at = row[0], row[-1]
+        latest = copy.execute("SELECT decision, decided_by, created_at FROM improvement_ledger WHERE capability=? "
+                              "ORDER BY id DESC LIMIT 1", (capability,)).fetchone()
+        if latest is not None and latest[:2] == ("revert", "owner") and latest[2] >= created_at:
+            continue
+        copy.execute(f"INSERT INTO improvement_ledger({','.join(_LEDGER_ROW)}) VALUES({','.join('?' * len(row))})",
+                     row)
+        carried[f"improvement_ledger:{capability}"] = {"from": latest[0] if latest else None, "to": "revert"}
     candidates = _root_candidates(copy) if roots or kind_scopes else {}
     applied = 0
     for tomb in tombstones:

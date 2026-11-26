@@ -858,6 +858,27 @@ def _scrub_observations(db, task_id):
             db.execute("UPDATE web_predictions SET detail=? WHERE id=?", (_dump(value), pid))
 
 
+def _drop_counter_support(db, ids):
+    """A hypothesis opened against a knowledge item counts that item's supporting claims as evidence against it
+    (evolution._describe). When the item is forgotten its support is no longer evidence against anything: remove those
+    claims from the counter-evidence of the hypotheses opened against it (review1 CM2). Caller owns the txn."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='web_hypothesis_details'").fetchone() is None:
+        return
+    for part in _chunks(ids):
+        marks = _in(part)
+        support = {}
+        for kid, supporting in db.execute(f"SELECT id, supporting FROM web_knowledge WHERE id IN ({marks})", part):
+            support[kid] = set(json.loads(supporting or "[]"))
+        for hid, kid, counter in db.execute(
+                "SELECT h.id, h.knowledge_id, d.counter_evidence FROM web_hypotheses h JOIN web_hypothesis_details d "
+                f"ON d.hypothesis_id=h.id WHERE h.knowledge_id IN ({marks})", part).fetchall():
+            held = json.loads(counter or "[]")
+            kept = [c for c in held if c not in support.get(kid, set())]
+            if kept != held:
+                db.execute("UPDATE web_hypothesis_details SET counter_evidence=? WHERE hypothesis_id=?",
+                           (_dump(kept), hid))
+
+
 def _drop_knowledge(db, ids, now):
     """Delete knowledge rows and everything derived from them, recording a tombstone per version. Caller owns the
     txn. Returns effects."""
@@ -892,6 +913,7 @@ def _drop_knowledge(db, ids, now):
     _web_tombstones(db, "knowledge", [_knowledge_subject(kid, key) for kid, key, _ in rows], now)
     if _has_evolution(db):
         _drop_node_links(db, ("knowledge", "interval"), ids)
+    _drop_counter_support(db, ids)
     for part in _chunks(ids):
         marks = _in(part)
         db.execute(f"DELETE FROM web_knowledge WHERE id IN ({marks})", part)
@@ -947,9 +969,22 @@ def _web_cascade(db, removed_claims, now):
     return effects
 
 
+def _premise_cascade(db, effects, now):
+    """Lane K (ADR-055): premise rows and re-check marks naming what this forget removed go; what rested on it is
+    marked "to re-check" (webcortex.premises.purge); reflection lines naming it go (reflection.purge).
+    effects["premises"] only when something changed."""
+    from ..webcortex import premises, reflection     # lazy, as the other webcortex imports here
+    found = premises.purge(db, now)
+    found["reflection_lines_removed"] = reflection.purge(db)
+    if any(found.values()):
+        effects["premises"] = found
+    return effects
+
+
 def _web_finish(db, kind, target, effects, now):
     """Stale checkpoints, state version and deletion_log. Caller owns the txn. `target` is persisted: it must
     not carry forgotten payload (a URL or domain goes in as its digest label)."""
+    _premise_cascade(db, effects, now)
     _imagined_cascade(db, effects, now)
     effects["checkpoints_stale"] = _stale_all(db)
     effects["state_version"] = store.bump_state_version(db)
@@ -992,6 +1027,7 @@ def _forget_research_core(db, task_id, now):
     db.execute("UPDATE web_monitors SET last_task_id=NULL WHERE last_task_id=?", (task_id,))
     db.execute("UPDATE web_knowledge SET task_id=NULL WHERE task_id=?", (task_id,))
     _unlink_ledger(db, task_id)
+    _scrub_voice_context(db, task_id)
     db.execute("DELETE FROM web_tasks WHERE id=?", (task_id,))
     _web_tombstones(db, "task", [task_id], now)
     effects = _web_cascade(db, claim_ids, now)
@@ -1010,6 +1046,31 @@ def _unlink_ledger(db, task_id):
     db.execute("UPDATE autonomy_ledger SET task_id=?, opened_at=CAST(strftime('%s', day) AS REAL), "
                "settled_at=CASE WHEN settled_at IS NULL THEN NULL ELSE CAST(strftime('%s', day) AS REAL) END "
                "WHERE task_id=?", ("forgotten:" + secrets.token_hex(12), task_id))
+
+
+_VOICE_TASK_KEYS = {"last_task_id": ("last_task_id", "last_objective"), "follow_task_id": ("follow_task_id",
+                                                                                          "follow_by")}
+
+
+def _scrub_voice_context(db, task_id):
+    """Every voice session's context that names the task (the last research asked, the one whose answer a session
+    awaits: voice/hub.py) or quotes its question loses those keys, so a forgotten question is not carried into the
+    next session (review1 S3). Runs inside the forget's transaction and in every checkpoint replay
+    (_forget_research_core); the task row is still there to read its question from."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='voice_sessions'").fetchone() is None:
+        return
+    row = db.execute("SELECT objective FROM web_tasks WHERE id=?", (task_id,)).fetchone()
+    objective = row[0] if row else None
+    rows = db.execute("SELECT id, context FROM voice_sessions WHERE json_valid(context) AND "
+                      "(json_extract(context,'$.last_task_id')=? OR json_extract(context,'$.follow_task_id')=? OR "
+                      "json_extract(context,'$.last_objective')=?)", (task_id, task_id, objective)).fetchall()
+    for sid, text in rows:
+        context = json.loads(text)
+        doomed = {k for key, keys in _VOICE_TASK_KEYS.items() if context.get(key) == task_id for k in keys}
+        if objective is not None and context.get("last_objective") == objective:
+            doomed |= set(_VOICE_TASK_KEYS["last_task_id"])
+        context = {k: v for k, v in context.items() if k not in doomed}
+        db.execute("UPDATE voice_sessions SET context=? WHERE id=?", (json.dumps(context, sort_keys=True), sid))
 
 
 def _forget_task_questions(db, task_id, now):
@@ -1312,6 +1373,8 @@ def replay_web_forgets(db, forgotten, now):
     for domain in sorted({s for d in domains for s in _suffixes(d)}):
         if wanted("source_domain", domain) and _forget_source_core(db, domain, now) is not None:
             out["sources"] += 1
+    if any(out.values()):
+        _premise_cascade(db, {}, now)       # lane K: premises and re-check marks of what the replay removed
     return out
 
 

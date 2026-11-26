@@ -783,11 +783,25 @@ async function refresh(){
     $("researchworker").hidden=workerRunning!==false;
     $("researchworker").textContent=workerRunning===false?NO_WORKER+": questions wait as Queued until your owner starts one on the Spark.":"";
     if(!nodeInfo||nodeInfo.error||nodeInfo.pending==="attested")loadNode();
+    loadNow(g);
     const left=away;away=null;
     const done=left?tasks.filter(t=>left.has(t.id)&&!active(t)):[];
     if(done.length)say("Finished while you were away: "+done.map(t=>"“"+t.objective+"” ("+(LABEL[t.status]||t.status)+")").join("; ")+".");
   }
   catch(e){if(g===generation)fail(e);}
+}
+// The Spark's self-description in this family's scope (ADR-053): a few plain sentences, and the owner's latest
+// questions by reference when the owner shares them. A Spark without the route (404) shows nothing here.
+async function loadNow(g){
+  let reply;
+  try{reply=await call("self_status",{});}catch{if(g===generation)$("researchnow").hidden=true;return;}
+  if(g!==generation)return;
+  $("nowtext").textContent=(reply.short||[]).join(" ");
+  const owner=((reply.record?.recent?.value)||[]).filter(x=>!x.openable);
+  const list=$("recentlist");list.replaceChildren();
+  for(const x of owner.slice(0,5))list.append(node("li","“"+x.objective+"” on the "+x.device+" ("+(LABEL[x.status]||x.status)+")","rtask"));
+  $("recentbox").hidden=!owner.length;
+  $("researchnow").hidden=false;
 }
 function scheduleList(){
   clearTimeout(listTimer);listTimer=0;

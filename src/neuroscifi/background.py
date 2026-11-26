@@ -66,6 +66,21 @@ ACTIVITIES = {
     "tick.curiosity": {
         "kind": "cognition", "what": "the timer's curiosity investigations",
         "sites": ("neuroscifi.webcortex.scheduler:tick",)},
+    "tick.scenarios": {
+        "kind": "cognition", "what": "the timer's scenario records for open predictions and their comparison once "
+                                     "settled (imagined store only; off unless imagine_scenarios is on)",
+        "sites": ("neuroscifi.webcortex.scenarios:tick",)},
+    "tick.knowledge_recheck": {
+        "kind": "cognition", "what": "the timer's re-check of the knowledge most at risk of being stale (lane K, "
+                                     "setting idle_recheck, off by default): refresh tasks admitted by "
+                                     "autonomy.admission",
+        "sites": ("neuroscifi.webcortex.scheduler:tick", "neuroscifi.webcortex.recheck:run",
+                  "neuroscifi.webcortex.recheck:submit")},
+    "tick.reflection": {
+        "kind": "cognition", "what": "the timer's bounded reflection over the records (lane K, setting reflection, "
+                                     "off by default): a report, at most 5 actions (re-check marks, abandoned "
+                                     "hypotheses, one owner question)",
+        "sites": ("neuroscifi.webcortex.scheduler:tick", "neuroscifi.webcortex.reflection:scheduled")},
     "task.background_run": {
         "kind": "cognition", "what": "a background task already running: it stops at its next stop check, "
                                      "before any further network step",
@@ -88,7 +103,9 @@ ACTIVITIES = {
         "kind": "maintenance", "what": "reloading a model service a request is waiting for",
         "sites": ("neuroscifi.resources.idle:serve_wake_requests",)},
     "worker.heartbeat": {
-        "kind": "maintenance", "what": "the worker's liveness file every 10 s (no task, no text)",
+        "kind": "maintenance", "what": "the worker's liveness file every 10 s, and a sample of the internal-state "
+                                       "record every 30 s (internal_state.py, ADR-051; numbers only: no task, "
+                                       "no text)",
         "sites": ("neuroscifi.webcortex.scheduler:_beat",)},
     "voice.sweep": {
         "kind": "maintenance", "what": "expiring retained audio and ending idle voice sessions",
@@ -122,6 +139,8 @@ RUNNERS = {
     "neuroscifi.acceptance.cognition.adversarial:critical_memory_stops_background_only": "benchmark: critical memory",
     "neuroscifi.acceptance.cognition.adversarial:owner_stop_holds": "benchmark: the owner's stop",
     "neuroscifi.acceptance.cognition.adversarial:owner_first_under_contention": "benchmark: owner work first",
+    "neuroscifi.acceptance.cognition.knowledge:_World.investigate": "benchmark (lane K): one re-check outcome fed "
+                                                                    "through consolidation on a staged individual",
 }
 
 # Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored
@@ -139,9 +158,13 @@ FORWARDERS = {
     "neuroscifi.voice.bridge:Bridge._continue_research": "a requeue by the owner's voice, with the principal's origin",
     "neuroscifi.webcortex.bench.live:_task": "a live benchmark's origin on its own temporary individual",
     "neuroscifi.acceptance.cognition.infovalue:_Web._consolidate": "benchmark: a staged task on a temporary individual",
+    "neuroscifi.acceptance.cognition.knowledge:_World._consolidate": "benchmark (lane K): a staged task on a "
+                                                                     "temporary individual",
     # not a task's origin at all: a hypothesis's (evolution.HYPOTHESIS_ORIGINS), a claim's sources, a Presence label
     "neuroscifi.webcortex.consolidate:run": "a hypothesis's origin (verdict state), not a task's",
     "neuroscifi.webcortex.consolidate:_research_opportunity": "a hypothesis's origin (verdict state), not a task's",
+    "neuroscifi.webcortex.evolution:open_hypothesis": "a hypothesis's origin to its recorded fields (lane K's "
+                                                      "_describe), not a task's",
     "neuroscifi.webcortex.claims:stamp_origins": "the list of feeds a claim came from (claim flags), not a task's",
     "neuroscifi.presence.aggregator:derive": "the class of a task's origin, shown on Presence (starts nothing)",
 }
@@ -154,7 +177,8 @@ MEASUREMENT_ONLY = ("neuroscifi.acceptance.cognition",)
 # systemd units that start something on their own (deploy/systemd), with the activities they run.
 UNITS = {
     "neuroscifi-webcortex-tick.timer": ("tick.monitors", "tick.prediction_refresh", "tick.curiosity",
-                                        "tick.cache_retention"),
+                                        "tick.cache_retention", "tick.scenarios", "tick.knowledge_recheck",
+                                        "tick.reflection"),
     "neuroscifi-checkpoint.timer": ("instance.sweep", "instance.checkpoint"),
     "neuroscifi-idle.timer": ("resources.idle_unload",),
     "neuroscifi-wake.path": ("resources.wake",),

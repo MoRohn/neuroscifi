@@ -43,6 +43,15 @@ def _stream(db, args, now):
                                   provenance="simulated" if args.simulated else "observed", path=store.resolve_db(args))
 
 
+def _explain(db, epoch):
+    """beliefs.explain, and beside it (ADR-051, display only) each question's exact expected information gain."""
+    out = beliefs.explain(db, epoch)
+    if store.config(db).decision_information:
+        from . import information
+        out["information"] = information.gains(db, epoch)
+    return out
+
+
 def register(sub, *, with_db, run):
     """Add epoch (start, context, stream, match), observe, status, decide, explain, pending, resolve and import-legacy."""
     def command(name, handler, help, *arguments):
@@ -90,7 +99,7 @@ def register(sub, *, with_db, run):
                                                           path=store.resolve_db(a)),
             "choose the next step for an epoch", (("epoch",), {}),
             (("--record",), {"action": "store_true", "help": "record the decision and any open question"}))
-    command("explain", lambda db, a, now: beliefs.explain(db, a.epoch),
+    command("explain", lambda db, a, now: _explain(db, a.epoch),
             "beliefs with supporting evidence, uncertainty, revisions and change detection", (("epoch",), {}))
     command("pending", lambda db, a, now: executive.pending(db, epoch=a.epoch, include_resolved=a.all),
             "open questions", (("--epoch",), {}),

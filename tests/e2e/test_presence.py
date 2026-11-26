@@ -667,6 +667,10 @@ def test_presence_axe(idle_spark, bridge, new_page, theme):
         expect(page.locator(".nsf-presence")).to_be_visible()
         page.locator(".pc-toggle").click()
         page.get_by_label("Theme").select_option(theme)
+        # Pocket's nav links fade their background (style.css `nav a`) while the text colour changes at once: measured
+        # mid-fade, light text sits on a still-light background. Contrast is read once the fades have arrived.
+        page.wait_for_function("""() => !document.getAnimations().some(a => a instanceof CSSTransition
+            && a.playState === 'running' && /color/.test(a.transitionProperty))""", timeout=5000)
         page.add_script_tag(path=str(AXE))
         result = page.evaluate("""axe.run(document,{resultTypes:['violations']}).then(r =>
             r.violations.map(v => ({id:v.id, impact:v.impact, nodes:v.nodes.map(n => n.target.join(' ')).slice(0,5)})))""")
