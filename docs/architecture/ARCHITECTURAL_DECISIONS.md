@@ -3015,3 +3015,131 @@ first figures are kept in the evidence file under `before_review`.
   `a7981e0` (links), `5463dfc` → `f97411e` (family and script), `7218e0f` → `828ca8e` (this ADR, evidence).
 - Not verified: anything on the open web, a live model, a real worker process running the loop for days, or the
   real host's background gate during the loop.
+
+# ADR-061 (draft) What counts as an independent source; the individual's own text is no source; supersession of a stale item, built off and measured. R
+
+Status: draft, Wave 3 lane S (branch `gen3-s`). Amends ADR-035's independence rule (attribution) and ADR-038's
+consolidation (echoes); adds a rule beside ADR-026/038's standing rule without changing it: **contradictions are
+asked, never decided, by default**. Evidence: `docs/quality/evidence/genesis_wave3_s.json` (commit `77df3f4`, clean
+tree, aarch64), `scripts/bench_wave3_s.py`, `src/neuroscifi/acceptance/cognition/cycles_s.py`.
+
+## Context
+
+Step 0 of Wave 3 looked once at withheld learning-cycle worlds and found, in small integer counts per world, two
+safety properties that had held in all 120 held-out runs broken: versions only the individual itself had asserted,
+and versions only a wrong syndicated story stated, became knowledge; a confidence rose from one source; items held
+correctly became wrong later. Lane S reproduced each class on worlds it wrote (`cycles_splits_s.py`, committed alone
+before any mechanism, development seeds 241-243, held-out 341-344) without reading the withheld worlds:
+
+| hole | where it was | reproduced by |
+|---|---|---|
+| a copy that rewords the story and credits its origin inside the sentence ("According to Syndiwire, ...", "..., Syndiwire says.", "... (Syndiwire).", "... via Syndiwire.", "..., as the Syndiwire desk reports.", a mirror republished later) is a second independent source | `claims.independence_groups` joins only same host, near-identical sentences (3-word shingle >= 0.8), attribution LINES and canonical URLs (`origin_keys`) | case `reworded_syndicated_copies_count_once`: 5 groups before, 1 after; census of every held-out look: 407 of 449 wire looks split into several "independent" groups before, 50 after (the 50: the `unattributed` rewording no text rule can see) |
+| one outlet and its reworded copies admitted as corroborated knowledge, and a second row admitted on one origin | same | 262 of 371 one-origin looks split before, 0 after; case `one_origin_never_raises_confidence` (1 new row before, 0 after) |
+| a page repeating a version only the individual's own answer stated is corroboration | consolidation never asked where a value first came from | case `echoed_own_value_is_not_corroboration` (1 row before, 0 after) |
+
+## Decision
+
+1. **Attribution (`attribution_independence`, ON).** `claims.attribution_keys` reads the outlet a sentence credits
+   and `stamp_origins(attribution=True)` adds it to the claim's origin keys, so the copy joins the credited outlet's
+   group (the key an attribution line gives). A credit to the sentence's own subject ("..., the Velmora team says")
+   and indefinite speakers ("Someone says") give no key.
+2. **Echoes (`echo_recognition`, ON).** In consolidation (`_Echoes`, `_without_echoes`), a claim is an echo when it
+   states, for a subject the individual's stored model-written answer names, a specific value that answer stated
+   before any source the individual had read stated it; or repeats that answer's own wording; or credits what it
+   states to an assistant, a chatbot or an AI model (model text never becomes fact). An echo is never evidence FOR a
+   value: it leaves the supporting side of its cluster and the supersession rule never counts it. An echo that only
+   disagrees with the sources stays: that disagreement is still asked, as before. The imagined store is **not** read
+   (ADR-049's quarantine forbids consolidation to read it at all), so a value the individual only imagined and never
+   answered with is not recognised unless the page credits a model.
+3. **Supersession (`supersession`, default `"ask"`; `"independent"` with `supersession_min_sources` K).** In a
+   contested refresh of a held item, the side that conflicts with it replaces it without asking when (i) it is newer
+   by its stated time (`temporal.supersedes`), (ii) it has at least K independent groups, (iii) no owner's answer
+   stands against it (the item accepted or asserted by the owner, the disagreement decided, these values rejected for
+   this key - a reverted replacement is such a rejection), (iv) the value is not one this key held and lost before
+   (no flip-flop), and the side alone passes the bar of a new verified item. The new version is provisional and
+   asked for acceptance like any new item; its verification record says `decided_by: "rule"` and keeps the replaced
+   row's columns; the contradiction question is recorded, answered by the rule, under the new version's scope.
+   `nsf web replacements` lists every replacement with both versions and their sources; `nsf web revert ID` restores
+   the replaced row exactly and rejects the rule's version, so the rule never makes the same replacement again.
+   Forget removes the rule's versions and records; a restore replays the forget. K = 2, chosen on development before
+   any held-out run (K = 3 made 0.33 replacements per development run: not exercised).
+
+## Measured (held-out, 4 seeds per world, means per run; references from the world generator alone)
+
+Fixes against Wave 2's baseline (every Wave 1 setting off, old independence rule), lane S held-out
+(`s-mixed` / `s-wrong-newer` / `s-echo`):
+
+| | baseline | fixes (shipped) |
+|---|---|---|
+| own versions admitted (supported only by echoes) | 1.25 / 0.50 / 3.75 | 0.25 / 0 / 0.25 |
+| syndicated-only versions admitted | 1.50 / 2.25 / 1.00 | 0 / 0 / 0 |
+| confidence rose from one origin | 0 / 0.25 / 0 | 0 / 0 / 0 |
+| rows admitted on one true origin (true / wrong value) | 4.25/2.75, 1.50/2.75, 4.00/4.75 | 0/0.25, 0/0, 0/0.25 |
+| wrong rows admitted (the rest: rumours, independent errors) | 2.75 / 4.25 / 4.75 | 0.25 / 1.25 / 0.25 |
+| held correctly, wrong at the end (retention regressed) | 0.50 / 0.75 / 0.50 | 0 / 0.50 / 0 |
+| `correct` mean over cycles (± sd over seeds) | 0.577±0.084 / 0.394±0.067 / 0.573±0.079 | 0.546±0.046 / 0.375±0.051 / 0.520±0.078 |
+
+The cost: `correct` falls by 0.031, 0.019 and 0.053 (paired per seed: -0.019 -0.053 +0.033 -0.084; -0.011 -0.028 0
+-0.037; -0.097 -0.075 -0.011 -0.029), each within the baseline's sd but negative in all three worlds. Most of it is
+true values the old rule admitted on one outlet counted twice (4.25, 1.50 and 4.00 rows per run), which the stricter
+rule no longer admits: correct by luck, not by evidence. False rejections of honest corroboration: the attribution
+rule merged no honest outlet the old rule kept apart (census: 237 of 9,026 honest outlets merged with another origin
+before and after, all by the old near-duplicate rule); echo recognition removed honest pages 0 / 0.5 / 1.0 times per
+run (prescient answers later stated honestly) against 1.5 / 2.0 / 12.5 echoes removed. References: snapshot 0.601 /
+0.692 / 0.586, blind round robin 0.758 / 0.769 / 0.760, oracle 0.980 / 0.994 / 0.974, no loop 0.526 / 0.406 / 0.494.
+Not closed: an own value that only the imagined store holds, echoed in words that credit no model (0.25 per run in two
+worlds), and an unattributed rewording of a wire story (no text rule sees it; 0 admitted here).
+
+**Why ON.** The addendum's condition: every existing result unchanged, or the change exactly the removal of wrongly
+admitted content. Lane F's development and held-out worlds: every paired difference 0 in every seed for both fixes
+and for the shipped defaults (an earlier version of echo recognition, which also removed echoes that only
+contradicted a held item, changed what curiosity looked at next in 4 held-out runs: narrowed, re-measured, disclosed);
+the offline research benchmark's digest at the shipped defaults equals Wave 0's (`68731d72…`, the equivalence test,
+aarch64); the cognitive benchmark's adversarial family passes every earlier case. On lane S's own worlds the change is
+the removal of rows admitted on one origin or on the individual's own text, listed above. The lower `correct` there
+is stated as the cost.
+
+Supersession K = 2 against the fixes (same world, same seed):
+
+| | s-mixed | s-wrong-newer | s-echo | ho-sparse (lane F) | ho-busy (lane F) |
+|---|---|---|---|---|---|
+| gain in `correct` (reference sd) | +0.008 (0.046) | +0.007 (0.051) | +0.020 (0.078) | +0.016 (0.105) | +0.008 (0.057) |
+| rule replacements per run: true / false / other | 3.00 / 0.25 / 0 | 2.25 / 0.50 / 0.25 | 2.00 / 0 / 0 | 2.00 / 0 / 0 | 1.25 / 0 / 0 |
+| false per seed | 0,0,0,1 | 2,0,0,0 | 0,0,0,0 | 0,0,0,0 | 0,0,0,0 |
+| longest a false replacement stayed wrong | 2 cycles | 5 cycles | - | - | - |
+| stale items kept and asked (missed) | 7.75 -> 3.75 | 7.75 -> 6.00 | 4.75 -> 2.25 | 5.00 -> 2.75 | 5.50 -> 4.25 |
+| owner questions opened / answered by the rule | 45.75 -> 42.00 / 3.25 | 46.50 -> 44.75 / 3.00 | 37.75 -> 37.25 / 2.00 | 38.75 -> 38.25 / 2.00 | 50.75 -> 50.75 / 1.25 |
+| retention regressed | 0 -> 0 | 0.50 -> 0.75 | 0 -> 0 | 0 -> 0 | 0 -> 0 |
+
+Verdict under the pre-registered rule: **no gain beyond the spread** in any world (the smallest gain the rule can see
+is 0.046-0.105), and retention worse in one world. False replacements: 3 of 33 rule replacements on lane S's held-out
+worlds (9 %, pooled, not a claim; per world 1 of 13, 2 of 12 with 1 other, 0 of 8), 0 of 13 on lane F's; they come
+from rumours: two independent outlets wrongly stating a next version, which no independence rule can tell from an
+honest update. Ablations (lane S held-out): independence off (pages counted as sources) admits syndicated versions
+(3.00 / 1.00 / 0.75 per run) and makes 2.50 / 1.25 / 0.75 false replacements; echo recognition off admits own versions
+(1.50 / 0.75 / 4.00); recency off changes nothing in four of five worlds (the no-flip-flop condition and the lagging
+pages' own dates already refuse those cases) and +0.004 in `s-echo`. K = 3: 0.75 / 0.50 / 0.75 rule replacements per
+run, gains 0.001 / -0.001 / 0.002. Cost: no measurable wall time (about 0.5 s per world run either way).
+
+## Alternatives rejected
+
+- Reading the imagined store to recognise echoes of what the individual only imagined: consolidation may not read
+  that store at all (ADR-049), and using imagined content to reject evidence would let it shape belief.
+- Removing echoes from both sides of a cluster: it changed what the owner is asked and what curiosity looks at next on
+  lane F's worlds where no echo was ever admitted (4 held-out runs, both directions).
+- Supersession on by default: no gain beyond the spread and about one false replacement in eleven on worlds with
+  rumours; the owner has not changed the standing rule.
+
+## Consequences
+
+- Defaults: `attribution_independence` on, `echo_recognition` on, `supersession` "ask" (unchanged standing rule),
+  `supersession_min_sources` 2. The owner decides supersession; this ADR does not recommend turning it on.
+- Changed code: `claims.attribution_keys`, `stamp_origins(attribution=)`; `orchestrator` passes the setting;
+  `consolidate._Echoes`, `_without_echoes`, `_rule_side`, `_rule_replacement`, `_replace_by_rule`,
+  `_contested_against(rule=)`; `knowledge.replacements`, `knowledge.revert`; `nsf web replacements`, `nsf web revert`;
+  `WebConfig` and its validation (four fields, appended). No schema change, no new background activity.
+- For the main session's one withheld look (`scripts/bench_learning_cycles.py final --config ...`): `shipped` (this
+  branch: fixes on), `lane-s:fixes-off` (the same with both fixes off: Step 0's behaviour) and `lane-s:supersede-K2`.
+- Not verified: anything on the open web (real syndication, real attribution wording, real echoes of a real answer
+  model), a live model's answers as own outputs, the console and Pocket showing rule-decided replacements (not built:
+  the setting is off; the list and the revert are CLI only).
