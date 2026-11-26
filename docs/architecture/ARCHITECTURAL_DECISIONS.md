@@ -4423,6 +4423,176 @@ traversal, untrusted executable content, prompt injection in documents, and exce
 - Project manifests (`pyproject`, `requirements`, `package-json`, for lane B1) are named only when the exact file name
   AND the bytes agree (TOML that parses, requirement-specifier lines, a JSON object). The name alone never decides.
 
+# ADR-073 The form planner: deciding the form of a result before anything is made, and saying why
+
+Status: built, **not called by anything** (Wave O-0, lane C). No setting, no schema change, no stored state. A pure
+function (`artifacts/forms.py`) and an owner command (`nsf form plan`). The answer path's use of it (`output_forms`
+off/offer/auto) and learning its weights from outcomes are later waves.
+
+## Context
+
+Before OMNIMIND every answer was a list of sentences: nothing chose the form of a result (audit A2, "Answer form
+selection: Unsupported"). The directive (§7) asks for the opposite habit: decide whether to explain, tabulate, chart,
+diagram, step through, simulate, sound out or build, or combine two, and be able to say why. Its two failures are
+equal and opposite and both are measured: too poor (paragraphs where a picture or a table carries what the words
+cannot) and too much (a production where a sentence serves). The examination (lane ZF) contains request pairs with
+the same words and different right answers, so the planner may not be a list of cue words.
+
+## Decision
+
+`forms.plan(request, content, context, adjustments=None) -> FormPlan`, deterministic, no model.
+
+- **Evidence and its strength.** The content's shape (`ContentShape`) is the strong evidence: each kind gives the
+  content's own purposes (a series in time: see change; categories: compare; a network: relation; a model with inputs:
+  try what-if; steps: follow a process; a solid: look at it ...), weight 1.0 shared among its kinds (0.5 for a scalar,
+  records or text, which say little about purpose). The words are weak evidence: a cue gives its purpose weight 0.5
+  (1.5 for hearing, 1.0 for keeping a copy, 0.75 for what-if: these name a sense or an outcome, not a topic); a
+  purpose the content cannot serve is dropped and noted. Strict phrases name a form ("as a table", "make a line
+  chart", "plot it", "read it aloud"); a definite article names content ("in the table" is not a request for one);
+  "no chart" refuses all pictures; wishes for a short answer ("just tell me", "summarise"), a full one ("show me",
+  "in detail") and exact values ("the exact figures") are read.
+- **Forms** are a registry (`FORMS`, `register_form`): prose, spoken summary, table, structured document, data file,
+  line / bar / scatter / histogram / heat map / small-multiples chart, timeline, node-link diagram, tree diagram, flow
+  of steps, step-through, explorable model, animation, sonification, tone, waveform-and-spectrum view, 3D viewer,
+  surface view, picture, animated picture, and every combination of a non-text form with a second form. Each form
+  states the content kinds it can show (a fit), the units it carries without loss (prose about 7 values, 8 steps or
+  3,000 characters; a spoken summary 3 values; a table 20,000 cells in pages of one screen; a line chart 6 series by
+  line style and 2 points per pixel; a bar chart a bar per 12 px and 4 patterns; a node-link diagram about 150 nodes;
+  a flow 20 steps; a sonification 120 tones of 2 voices, the 30-second attention bound), and beyond capacity a floor
+  (what a downsampled or aggregated form still shows) plus the share that fits. Its media, precision, interactivity,
+  base effort, cost class, accessible fallback and generator name (from `make.catalog()`) are declared with it.
+- **Criteria**, each into [0, 1] by a stated rule: clarity (the purpose mix's fit, `PURPOSE_FIT`; a combination
+  serves each purpose with its better form; a predicted problem costs no score: what it loses is counted in carried
+  information (the mean over the content's kinds of fit x coverage; "records" is ignored beside a more specific
+  kind), precision (1 - need x (1 - the form's precision); the need comes from the purposes and rises to 0.8 when
+  exact values are asked for), interactivity fit, effort for the person (base effort plus pages, length, duration,
+  and for words every value or step they must state), feasibility, accessibility, cost (shares of the time and
+  byte budgets). Weights: clarity 0.30, carried 0.26, effort 0.12, precision 0.10, interactivity 0.08, cost 0.08,
+  accessibility 0.06, feasibility 0 (it is a hard constraint).
+- **Hard constraints first**: the device must show every medium of the form (console and Pocket everything; voice
+  speech and sound; the command line and agents text and files); voice only; a screen reader admits a picture only
+  with the text that goes with it; reduced motion removes moving forms; a form with no available generator, or that
+  carries nothing of the content, is removed; budget; forms refused in words or by a preference of -1; a data file
+  only when keeping a copy is a purpose or it is named; the pre-production check rejects a form when the form it
+  would switch to is admitted (a line chart of 19+ series for small multiples), and otherwise adapts it.
+- **Rules over the totals**, in order: an explicit form wins when feasible (the best member of a family named, such
+  as "chart"); when not, the nearest admitted form in kind (`difference`) and the sentence says why. A scalar or a
+  sentence's worth (at most 3 values, or 600 characters) stays words, unless the purpose is to hear a value and a
+  tone can be made. A wish for a short answer is words. When hearing is the main purpose, the best form that is
+  heard. Words that cover less than half of a kind of the content are not chosen while any other form is admitted.
+  The simplest form within 0.03 of the best wins. A non-text form is chosen unasked only when the best beats words
+  by 0.08 (0.03 after "show me"). A combination is admitted only when its first form carries at least half alone,
+  the second adds 0.10 of carried information or (where exact values matter) 0.3 of precision, and the first adds
+  something to the second.
+- **decided_by** compares three runs: the content alone (no words, no context), with the words, with everything. An
+  explicit form decides when named; otherwise the first evidence that changed the choice ("context", then "words",
+  else "content"). The one sentence names it ("A line chart, because there are 365 values in time order and the
+  question is how it changed; a sentence could carry only about 7 of them.").
+- **Divergence and convergence** (`alternatives(plan, n)`): up to n admitted candidates, the choice first, each at
+  least 0.4 apart in kind from those taken (media 0.35, family 0.35, encoding 0.15, interactivity 0.15), so two
+  charts, a timeline and a line chart, or a tree and a node-link diagram never count as different.
+- **Pre-production check** (`foresee(form, shape, context)`): predicted problems from counts (more series than line
+  styles, more bars than fit the width, label overlap from typical label lengths, a sound past the attention bound,
+  a table beyond one screen, points per pixel, nodes past readability ...) and estimated seconds and bytes, all
+  labelled "estimate". Wave O-1 compares them with what validators find.
+- **Learning seam**: `adjustments` maps (content kind, purpose, device), "*" allowed, to criterion weight shifts,
+  at most 256 entries, each criterion's total shift clamped to +-0.10, renormalised; feasibility is never adjustable;
+  `None` or `{}` is the fixed default. Nothing stores or updates it in this wave.
+
+## What it cannot know
+
+Taste; the person's history beyond the preferences handed to it; whether the content is right; how a made form will
+really look (the estimates are arithmetic, not renders); languages other than English in its cue words (other words
+are simply not read: the content still decides). It decides form only, never truth: a plan is made by the system,
+labelled `plan: made by the system, not evidence`, and must never be cited or stored on the evidence side (ADR-049,
+ADR-071).
+
+## Consequences
+
+- Nothing existing calls it: every existing output is byte-identical. Rollback is deleting the module, its command
+  module line in `cli.py` and its tests.
+- On this host today `make.catalog()` is empty until lanes G1/G2 merge, so a real plan chooses words and says
+  "nothing here can make a line chart yet"; `nsf form plan --assume-available` shows the choice once they exist.
+- Choices it makes that are matters of judgment, recorded so they can be argued with: on a voice device a long
+  series is sonified rather than summarised in three spoken values (words that lose most of a series are not chosen
+  while a sound that carries it is admitted); five categories to compare are a bar chart, three are a sentence;
+  steps up to eight are words, more are a flow.
+- Monotonicity (more data never moves the choice toward words) is tested on seeded random shapes at 8 sizes; the
+  rules above were chosen so that it holds by construction for the words-lost rule, and measured elsewhere
+  (`docs/quality/evidence/omnimind_c.json`). It is a measured property, not a proof.
+
+## ADR-073, addendum: rule changes after the development cases
+
+The main session scored commit `8d84f29` blind on the 133 development cases (good 65, good-or-fine 107, bad 26:
+too poor 6, too much 15, unfit 5), then gave lane C the development kit (never the held-out cases). Each failure was
+read as a statement about a rule; no rule names a case's words. Development after the changes: good 113,
+good-or-fine 133, bad 0 (the shape-only reference: good 61, bad 26). These numbers were made by reading the cases
+and are therefore optimistic; the held-out run (the main session's) is the measure.
+
+- **The size of the answer** is read from the question's grammar (`answer_class`): a yes-or-no question (not a polite
+  "can you ..." request), an extreme ("the most", "-est" adjectives), a count ("how many"), one time, person or
+  place ("when did", "who", "where is"), one measurement ("how long is"), or a typical value is answered by a few
+  values picked out of the content, so in words, however large the content, unless the words ask for the whole
+  ("each", "over time", "show me", "how did ... change"). The largest single cause of "too much" was a big content
+  behind a small question.
+- **A sentence's worth** is at most 4 items and 6 values, never a picture, sound, solid, surface or process.
+- **Words and rows carry only measurements** (0.3) of a picture, sound, solid or surface, whatever the counts.
+- **Data heard as tones** (sonification, tone) only when hearing is a purpose or it is named: on a voice device a
+  series is spoken. (This reverses the judgment call above: pitch without values or dates is too poor.)
+- **Cues removed**: "summarise" asks for no less, "figures" for no extra precision.
+- **Explicit forms**: a chart of a few values, named, is honoured ("one bar, their call"); an infeasible one is
+  replaced by the admitted form with the best total less 0.3 x its difference in kind.
+- **Preferences** are followed when the preferred form is admitted.
+- **Budget**: a chart (envelope, keeps 0.6) or a table (rows that fit, keeps 0.3) over the byte budget is cut down
+  instead of removed, when at least 50 points or cells fit.
+- **Screen reader**: any text form may accompany a picture; a table beyond one screen scores 0.3 on accessibility
+  (read cell by cell); with stated needs accessibility weighs three times as much.
+- **Combinations**: only words add carried information to a picture (on kinds it shows poorly); rows add precision.
+- **The caption rule**: a picture, sound or model chosen unasked comes with a sentence on what it shows. It moved 6
+  cases up and 2 down (an explorable model and a 3D viewer the examiner preferred alone).
+- **New capability**: a map form (`map.points`, not built: infeasible on today's catalog, plannable), purposes
+  "decide" and "understand", the accessibility need "no_sound"; code is read to learn how it works and is stepped
+  through only when it runs in steps; a bare hierarchy is outlined by a document at half; an agent keeps data (a
+  file costs it no effort); a picture may be a rendered view of a solid; "the full picture" is an idiom, so a general
+  picture word names a picture only with "a".
+
+Monotonicity still holds by measurement: 0 returns to words in 22,220 checks on 3 x 2000 seeded shapes.
+
+## ADR-073, addendum 2: after the held-out run (final)
+
+The main session's one held-out run of `c5d3230` (138 cases): good 0.659, good-or-fine 0.920, bad 0.080 including
+ONE hard-constraint violation; development had been 0.850, so the last round overfitted (a gap of 0.19); request
+pairs 3/18 (the shape-only table 8/18): reading the words did not help. This round, strictly limited:
+
+- **Hard constraints by construction.** Every form declares a cost floor (seconds, bytes, bytes per value of the
+  content: `COST_FLOORS`, public facts about what any generator of it needs; speech is audio, a table holds every
+  value, a moving picture has frames). Estimates never fall below the floor, admission checks it, and a final gate
+  (`fits`) re-checks every answer, whatever rule chose it, against the media shown and the summed floors; when it
+  fails, the best admitted candidate that fits, else no form. A table is no longer cut down to fit (it would break
+  its floor). A surface view needs interaction (it is turned). Budgets of 0 are accepted. A random search of the
+  benchmark's own rule through the driver found the first violation of `c5d3230` after 11 views (1,140 in 5,000:
+  mostly a spoken summary over a small budget, its cost counted as text instead of audio); after the change 0 in
+  20,000 views on 4 seeds.
+- **Unknown purposes** are any word: one not in PURPOSES is noted and not used (no error).
+- **Rules kept or deleted** (development good 112 -> 107 of 133 after the deletions; bad 0):
+  general and kept: the answer size from the question's grammar; words carry only measurements of pictures and
+  sounds; tones only when hearing is a purpose; a named chart of a few values is honoured; preferences followed;
+  charts cut to fit a budget; screen-reader companions and long tables; only words add carried information to a
+  picture; the map form, decide/understand, no_sound; code is read to learn, stepped only when it runs in steps;
+  characters fall back to items; agents keep data; prepositions before a determiner name content; a picture may
+  render a solid; the cost floors and the gate. Kept, numbers chosen while reading the cases: a sentence's worth of
+  4 items and 6 values, accessibility x3, substitute weight 0.3, stepping/flow/node-link fits for code, a table's
+  fit for places 0.4.
+  deleted as suspected fitting or as word reading that cannot separate request pairs: all topic purpose cues
+  (only hearing and keeping a copy remain, which name a sense or an outcome); the richness wish ("show me");
+  the caption rule (adopted from the development sets' statistics, and against this ADR's own combination rule);
+  the "full picture" idiom rule (one case); the process exclusion from a sentence's worth (one case, no effect);
+  the document-outline rule (one case, no effect).
+- **Still words-driven, and a known risk on request pairs:** the answer-size rule reads only the words, so when the
+  shared words of a pair trigger it, both members get words and at most one can be right. It is kept because it is
+  grammar, not topic, and removing it on development turned 14 good cases into too-much or fine; the held-out pair
+  result may be partly its doing, and nothing here can show whether.
+
 # ADR-075 The OMNIMIND benchmark: an examination written before the mechanisms (lane Z's section)
 
 Status: built and recorded (lane Z, from `omnimind` = main `8f68beb`). No schema change, no setting, no product code

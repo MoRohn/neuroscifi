@@ -1,0 +1,128 @@
+"""`nsf form plan`: print the form planner's plan for a request (ADR-073). Reads nothing but the files named; writes
+nothing; makes nothing. A plan is made by the system and is not evidence."""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+from . import forms
+from .types import ArtifactError, ContentShape, Limits
+
+MAX_SHAPE_JSON = 64 << 10
+_FIELDS = {"kinds": tuple, "n_items": int, "n_series": int, "has_time": bool, "has_space": int,
+           "has_parameters": bool, "duration_s": float, "text_chars": int}
+
+
+def register(sub):
+    form = sub.add_parser("form", help="decide the form of a result (plan only; nothing is made)")
+    ops = form.add_subparsers(dest="form_op", required=True, metavar="OP")
+    p = ops.add_parser("plan", help="print which form a result should take, and why")
+    p.add_argument("--request", required=True, help="the words of the request")
+    group = p.add_mutually_exclusive_group()
+    group.add_argument("--content", nargs="+", type=Path, metavar="FILE",
+                       help="files whose content the result would present (decoded here, never stored)")
+    group.add_argument("--shape", metavar="JSON",
+                       help='the content\'s shape, e.g. {"kinds": ["series"], "n_items": 365, "has_time": true}, '
+                            "or a list of them")
+    p.add_argument("--device", choices=forms.DEVICES, default="console")
+    p.add_argument("--accessibility", action="append", choices=forms.ACCESSIBILITY, default=[],
+                   help="a need to respect (repeatable)")
+    p.add_argument("--form", dest="explicit_form", help="a form the person named (a form name or a plain alias)")
+    p.add_argument("--assume-available", action="store_true",
+                   help="plan as if every generator existed here (to see the choice once they are installed)")
+    p.add_argument("--alternatives", type=int, default=0, metavar="N",
+                   help="also list up to N forms that differ in kind")
+    p.add_argument("--json", action="store_true", help="print the whole plan as JSON")
+    p.set_defaults(handler=_plan)
+
+
+def _fail(message: str) -> int:
+    print(f"nsf form plan: {message}", file=sys.stderr)
+    return 2
+
+
+def shapes_from_json(text: str) -> tuple[ContentShape, ...]:
+    """Parse --shape: one object or a list of objects with ContentShape's fields (missing counts are 0)."""
+    if len(text.encode("utf-8")) > MAX_SHAPE_JSON:
+        raise ValueError("the shape is longer than 64 KiB")
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"the shape is not JSON ({error.msg})") from None
+    items = value if isinstance(value, list) else [value]
+    if not items or len(items) > 64 or not all(isinstance(i, dict) for i in items):
+        raise ValueError("the shape is an object or a list of 1 to 64 objects")
+    shapes = []
+    for item in items:
+        unknown = sorted(set(item) - set(_FIELDS))
+        if unknown:
+            raise ValueError(f"unknown shape field(s): {', '.join(unknown[:5])}")
+        kinds = item.get("kinds", [])
+        if not isinstance(kinds, list) or not all(isinstance(k, str) for k in kinds) or len(kinds) > 18:
+            raise ValueError("kinds is a list of content kinds")
+        args = {"kinds": tuple(kinds)}
+        for name, kind in _FIELDS.items():
+            if name == "kinds":
+                continue
+            raw = item.get(name, kind())
+            if kind is bool:
+                if not isinstance(raw, bool):
+                    raise ValueError(f"{name} is true or false")
+            elif isinstance(raw, bool) or not isinstance(raw, (int, float)):
+                raise ValueError(f"{name} is a number")
+            args[name] = kind(raw)
+        shapes.append(ContentShape(**args))
+    return tuple(shapes)
+
+
+def shapes_from_files(paths, limits: Limits = Limits()) -> tuple[tuple[ContentShape, ...], list[str]]:
+    from . import adapters
+    shapes, notes = [], []
+    for path in paths:
+        size = path.stat().st_size
+        if size > limits.max_bytes:
+            raise ValueError(f"{path.name} is {size} bytes, over the limit of {limits.max_bytes}")
+        decoded = adapters.decode(path.read_bytes(), name=path.name, limits=limits)
+        shape = decoded.representation.shape()
+        if not shape.kinds:
+            notes.append(f"{path.name}: nothing here could decode it ({decoded.detected.format}); planned as words")
+        shapes.append(shape)
+    return tuple(shapes), notes
+
+
+def _plan(a) -> int:
+    notes: list[str] = []
+    try:
+        if a.shape:
+            content = shapes_from_json(a.shape)
+        elif a.content:
+            content, notes = shapes_from_files(a.content)
+        else:
+            content = ()
+        generators = tuple(f.generator for f in forms.FORMS.values() if f.generator) if a.assume_available \
+            else None
+        context = forms.Context(device=a.device, accessibility=tuple(a.accessibility), generators=generators)
+        request = forms.Request(a.request, explicit_form=a.explicit_form)
+        result = forms.plan(request, content, context)
+    except (ArtifactError, ValueError, OSError) as error:
+        return _fail(str(error) if not isinstance(error, OSError) else f"cannot read a file ({error.strerror})")
+    others = forms.alternatives(result, a.alternatives + 1)[1:] if a.alternatives > 0 else ()
+    if a.json:
+        out = result.to_dict()
+        out["input_notes"] = notes
+        out["assumed_available"] = bool(a.assume_available)
+        if a.alternatives > 0:
+            out["alternatives"] = [list(c.forms) for c in others]
+        print(json.dumps(out, indent=1, sort_keys=True))
+        return 0
+    for note in notes:
+        print(f"Note: {note}")
+    if a.assume_available:
+        print("Note: planned as if every generator existed here.")
+    print(forms.describe(result))
+    if others:
+        print("Different kinds of form that would also work:")
+        for cand in others:
+            print(f"  {forms.label_of(cand.forms)} ({cand.total:.2f})")
+    return 0

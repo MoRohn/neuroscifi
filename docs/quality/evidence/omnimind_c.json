@@ -1,0 +1,213 @@
+{
+ "lane": "C (form planner, ADR-073)",
+ "what": "Properties of forms.plan measured by running it; nothing here judges whether a choice is good. Development and held-out case scores are added when the main session provides the development cases (the held-out run is the main session's).",
+ "unit_tests": {
+  "file": "tests/artifacts/test_forms.py (35 tests) and tests/artifacts/test_forms_cli.py (12 tests)",
+  "seeded_random_plans_per_property": {
+   "hard_constraints_never_violated": 600,
+   "deterministic_and_complete_score_sheet": 200,
+   "explicit_honoured_when_feasible_else_explained": 600,
+   "scalar_or_sentence_stays_words": 600,
+   "monotonicity_shapes_x_sizes": "150 x 8",
+   "sentence_names_deciding_evidence": 600,
+   "reachability_probe_plans": 5824,
+   "combination_adds_what_first_lacks": 600,
+   "alternatives_differ_in_kind": 200,
+   "adjustments_default_equality": 100,
+   "adjustments_random_tables": 200
+  },
+  "result": "47 passed"
+ },
+ "wider_sample": {
+  "command": "PYTHONPATH=src python scripts/forms_evidence.py --shapes 2000 --seed {101,202,303}",
+  "sizes": [
+   1,
+   2,
+   4,
+   8,
+   30,
+   200,
+   5000,
+   2000000
+  ],
+  "per_seed": [
+   {
+    "seed": 101,
+    "shapes": 2000,
+    "monotonicity_checks_after_leaving_words": 7467,
+    "returned_to_words": 0,
+    "hard_constraint_or_determinism_violations": 0,
+    "decided_by_share": {
+     "explicit": 0.0,
+     "content": 0.1385,
+     "words": 0.052,
+     "context": 0.8095
+    },
+    "mean_ms_per_plan": 2.9
+   },
+   {
+    "seed": 202,
+    "shapes": 2000,
+    "monotonicity_checks_after_leaving_words": 7534,
+    "returned_to_words": 0,
+    "hard_constraint_or_determinism_violations": 0,
+    "decided_by_share": {
+     "explicit": 0.0,
+     "content": 0.14,
+     "words": 0.0485,
+     "context": 0.8115
+    },
+    "mean_ms_per_plan": 2.88
+   },
+   {
+    "seed": 303,
+    "shapes": 2000,
+    "monotonicity_checks_after_leaving_words": 7540,
+    "returned_to_words": 0,
+    "hard_constraint_or_determinism_violations": 0,
+    "decided_by_share": {
+     "explicit": 0.0,
+     "content": 0.1425,
+     "words": 0.044,
+     "context": 0.8135
+    },
+    "mean_ms_per_plan": 2.86
+   }
+  ],
+  "note": "decided_by shares are over random contexts (random generator subsets, budgets and accessibility needs), so 'context' dominates by construction; they describe the sample, not real use. Timing on the shared aarch64 host, under load from other lanes."
+ },
+ "development_cases": {
+  "kit": "the main session's development-only kit (133 cases, held-out removed) and driver scripts/omni_forms_driver.py",
+  "blind_8d84f29": {
+   "good": 65.0,
+   "good_or_fine": 107.0,
+   "bad": 26.0,
+   "too_poor": 6.0,
+   "too_much": 15.0,
+   "unfit": 5.0,
+   "violation": 0,
+   "explicit_feasible_honoured": 9.0,
+   "explicit_infeasible_handled": 3.0,
+   "pairs_both_good": 6.0,
+   "twins_both_good": 0.0,
+   "cue:content (n=77) good": 40.0,
+   "cue:words (n=36) good": 10.0,
+   "cue:conflict (n=5) good": 3.0,
+   "cue:explicit (n=15) good": 12.0,
+   "tag:less (n=3) good": 3.0,
+   "tag:access (n=11) good": 4.0,
+   "tag:budget (n=4) good": 1.0,
+   "tag:prefs (n=2) good": 0,
+   "tag:ex72 (n=7) good": 1.0,
+   "tag:counter72 (n=7) good": 5.0,
+   "prose_is_right good": 35.0,
+   "prose_is_not_right good": 30.0
+  },
+  "after_rule_changes": {
+   "good": 113.0,
+   "good_or_fine": 133.0,
+   "bad": 0,
+   "too_poor": 0,
+   "too_much": 0,
+   "unfit": 0,
+   "violation": 0,
+   "explicit_feasible_honoured": 10.0,
+   "explicit_infeasible_handled": 5.0,
+   "pairs_both_good": 14.0,
+   "twins_both_good": 8.0,
+   "cue:content (n=77) good": 65.0,
+   "cue:words (n=36) good": 28.0,
+   "cue:conflict (n=5) good": 5.0,
+   "cue:explicit (n=15) good": 15.0,
+   "tag:less (n=3) good": 3.0,
+   "tag:access (n=11) good": 8.0,
+   "tag:budget (n=4) good": 4.0,
+   "tag:prefs (n=2) good": 2.0,
+   "tag:ex72 (n=7) good": 6.0,
+   "tag:counter72 (n=7) good": 7.0,
+   "prose_is_right good": 59.0,
+   "prose_is_not_right good": 54.0
+  },
+  "references_on_development": {
+   "today_always_prose": {
+    "good": 53,
+    "good_or_fine": 97,
+    "bad": 36
+   },
+   "shape_only": {
+    "good": 61,
+    "good_or_fine": 107,
+    "bad": 26
+   },
+   "richest": {
+    "good": 9,
+    "good_or_fine": 12,
+    "bad": 121
+   }
+  },
+  "caution": "every rule change was made after reading these cases; the development numbers are therefore optimistic. The held-out run is the main session's and is the number that counts.",
+  "held_out_c5d3230_main_session": {
+   "good_share": 0.659,
+   "good_or_fine_share": 0.92,
+   "bad_share": 0.08,
+   "too_poor": 4,
+   "too_much": 5,
+   "unfit": 1,
+   "violation": 1,
+   "pairs_both_good": "3/18",
+   "twins_both_good": "2/10",
+   "words_good": "16/34",
+   "note": "the one held-out run, taken by the main session; aggregate only"
+  },
+  "final_after_deletions": {
+   "good": 107.0,
+   "good_or_fine": 133.0,
+   "bad": 0,
+   "explicit_feasible_honoured": 10.0,
+   "explicit_infeasible_handled": 4.0,
+   "pairs_both_good": 13.0,
+   "twins_both_good": 9.0,
+   "cue:content (n=77) good": 63.0,
+   "cue:words (n=36) good": 27.0,
+   "cue:conflict (n=5) good": 3.0,
+   "cue:explicit (n=15) good": 14.0
+  },
+  "deleted_rules": [
+   "topic purpose cues (all but hear and keep)",
+   "the richness wish ('show me', 'in detail')",
+   "the caption rule",
+   "the 'full picture' idiom rule",
+   "the process exclusion from a sentence's worth",
+   "the document-outline rule",
+   "table cut-down to fit the budget (conflicts with a table's cost floor)"
+  ]
+ },
+ "size_note": "summary only; this file is under 8 KiB",
+ "hard_constraint_search": {
+  "command": "python scripts/omni_forms_violation_check.py 5000 SEED (benchmark violation() through the driver)",
+  "at_c5d3230": {
+   "views": 5000,
+   "violations": 1140,
+   "first_at_view": 11,
+   "classes": {
+    "spoken over a small budget (speech costed as text, not audio)": 1034,
+    "table bytes per value": 83,
+    "data_file bytes per value": 13,
+    "surface view shown without interaction": 3,
+    "animation seconds": 2,
+    "solid viewer budget": 2,
+    "picture with spoken over budget": 3
+   }
+  },
+  "final": {
+   "views": 20000,
+   "seeds": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "violations": 0
+  }
+ }
+}
