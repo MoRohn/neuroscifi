@@ -31,6 +31,9 @@ is not built; it is the first next step (§6).
   (checked exactly on 12 of 12 held-out questions, `genesis_frontdoor.json`); a last test on unseen questions is
   pending.
 - Background research started by the worker when idle now stops at your daily task limit, as the timer's always did.
+- One web page that claims to have been first published by two different sites can no longer stop a true fact
+  those two sites report from being confirmed (a defect older than Wave 3, found by the last security check;
+  [ADR-063](../architecture/ARCHITECTURAL_DECISIONS.md); nothing the benchmarks measure moved).
 - The console overview and Pocket no longer rebuild their buttons when nothing changed, so the keyboard stays put.
 - Two read-only aids: predictive regulation "in shadow" writes down what it would have done, without doing it, and
   `nsf readiness` counts how many real outcomes each learning part still needs.

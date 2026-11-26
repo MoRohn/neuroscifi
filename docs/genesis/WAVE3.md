@@ -376,6 +376,19 @@ of 40 were over the bound. The test is right; making it deterministic needs that
 - The read-ahead accounting race (§3.9): fixed by the fix lane.
 - The shadow report's definitions (H-1, H-2): changed by the fix lane; a host week is still to be run by the owner.
 - Lane C's adversarial front-door cases and the sampled-trap test: staged with stated moments by the fix lane.
+- The security check of the fix round (review3b) found ten more items; the second fix lane (`gen3-fix2`) fixed each
+  with a test: one page naming two honest outlets as its origins no longer joins them into one source at the shipped
+  defaults (N1, older than Wave 3; ADR-063: the offline digest, lane F's cycles and lane S's family unchanged); a
+  forget no longer scans every answer inside its write transaction (N2: 0.15–0.25 s held at 10,000 answers of 20 kB,
+  against 6.9–39.6 s) and marks only answers about the forgotten subject (N9); the re-check checks the day's task
+  count inside its own transaction (N5); attribution's credits attach one way and in an order-free way (N3, N10); echo
+  recognition shares its value cap per claim and names and logs every claim it did not check (N4); a forget replaces
+  the forgotten sentence in contradiction questions (N6); verdicts the shadow record could not take are counted and
+  reported (N7); a damaged bar of an opt-in rule turns the rule off instead of loosening it, logged once, and the
+  console lists damaged settings (N8). Still open: on a very large individual one page can still use up the echo
+  checks' 2 s budget (now visible in `echo_skipped` and the log); a checkpoint restore still scans the answers once
+  inside its own transaction (1.5–1.7 s at 10,000 answers of 20 kB); saved settings outside the five Wave 3 ones are
+  not checked when read (older); `requeue`, an owner surface, inserts without the day's task count (older).
 - Coverage is limited by the allowance: a share of the allowance for reaching uncovered subjects would have to be
   chosen on development and tested on worlds no lane has seen. Not built.
 - Everything above is offline and simulated: nothing here was measured on the open web, with a live answer model, or
