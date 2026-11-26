@@ -244,7 +244,7 @@ a wording ("repeats a value that only this system's own earlier answer had state
 echo page reached that path in the worlds, so the fixed behaviour is shown only by staged cases. And the worlds do not
 exercise the fix lane's restrictions: every answer there is an owner's plain assertion made 1 to 11 days before its
 echoes. Since the fix, Wave 3's `echo_recognition` also sends a disagreeing echo to that path (held-out
-`suppressed_contested` 71 → 73); ADR-061 does not say so.
+`suppressed_contested` 71 → 73); a note in ADR-061 now says so.
 
 **What it cannot see:** echoes of an answer that had a source; an echo of a value only imagined (Wave 3 lane S's
 worlds plant own values there, so they barely exercise it: own-only versions 5 / 2 / 13 → 5 / 2 / 11 on its held-out);
@@ -461,9 +461,10 @@ fails open; the rule ships off); `nsf web config --forget-own-text` leaves no tr
 older checkpoint brings the fingerprints back (**low**). Notes: `nsf config --repair-fixed` accepts any in-range value
 and the creation value is recorded nowhere (so the only number offered is the loosest default; not an escalation, it
 needs write access to the file); `caution_detail` is not carried across a restore; an agent's refused call names the
-damaged setting (the pattern predates Wave 4); ADR-066's title still says "a TRADE, and OFF" and setting
-`source_derivation` true gives no warning. **Verdict: may merge after two wording corrections in ADR-067** (the
-measured miss of the assertion reader; the restore caveat of `--forget-own-text`), **no code change needed**; the
+damaged setting (the pattern predates Wave 4); ADR-066's title said "a TRADE, and OFF" (retitled in this
+documentation pass) and setting `source_derivation` true gives no warning. **Verdict: may merge after two wording
+corrections in ADR-067** (the measured miss of the assertion reader; the restore caveat of `--forget-own-text`; both
+made in this documentation pass, `cf36847`), **no code change needed**; the
 expiry defect and the mention forms block any recommendation to turn the own-text rule on and any "effective" claim
 at the withheld look.
 
@@ -478,9 +479,12 @@ honest pages, with a wording false for them; the worlds do not exercise the H3 r
 behaviour changed (71 → 73 contested); the curiosity tie-break's views and the `infovalue` family were not compared
 field by field; FINAL_EVALUATION.md's "holds for W3" overstates (WAVE3.md's "likely" is at the edge). Wording left in
 ADR-066 and ADR-067 at pre-fix values without a label ("9, on 4 looks", "2 suppressed looks", "0.64 % → 0.34 %",
-ADR-066's per-shape table, "tested with a stand-in only", "on the next task"); `wave4:both` has no record in any ADR.
-**Verdict: every finding fixed or reworded accurately in its main point; Wave 4 may merge**; the wording defects do
-not block the merge but block publishing the withheld look's interpretation until corrected. Its conditions for the
+ADR-066's per-shape table, "656", "tested with a stand-in only", "on the next task"); `wave4:both` had no record in any
+ADR. **Verdict: every finding fixed or reworded accurately in its main point; Wave 4 may merge**; the wording defects do
+not block the merge but block publishing the withheld look's interpretation until corrected. This documentation pass
+labelled or corrected each of them in ADR-061, ADR-064, ADR-066 and ADR-067 (`cf36847`), added a note beside
+FINAL_EVALUATION.md's merged W3 sentence (kept as merged) and recorded `wave4:both` in ADR-067; a reviewer has not
+re-read those edits. Its conditions for the
 look are summarised under "The rule for the withheld look".
 
 **What the reviews changed in this wave's conclusions.** The derivation rule's measured recall and its share of
@@ -538,16 +542,14 @@ defaults and all off; the default-path comparison 2,052,099, 0 different; the ca
   (only read roots) is not computed.
 - **The own-text rule**: the 30-day expiry hides a fresh emission behind an expired first one (security second pass,
   medium, fails open); `--forget-own-text` is undone by restoring an older checkpoint (low); mentions and some
-  denials still record (3 of 18 staged forms in the fix lane's probe, 9 of 18 in the second pass's); ADR-067's
-  sentences on denials, on backing out, and its pre-fix false-rejection figures need correcting; the normaliser undoes exactly the
+  denials still record (3 of 18 staged forms in the fix lane's probe, 9 of 18 in the second pass's); the normaliser undoes exactly the
   generator's reformats; undated honest pages unmeasured; adversarial escapes (NFKC, format characters); a full store
   records nothing more; echoes of sourced answers; the false rejection of a value stated wrong first; backdated
   pages; `nsf ask` and voice conversation not recorded; its emission scan is linear in claims (at a few million it
   would hit its 1 s budget and the rule would silently do nothing; extrapolated by the security review, not measured);
   the real rate of unsourced answers is unknown.
-- **`wave4:both`**: no verdict rule written for the pair; not claimed; no ADR records it.
-- **The derivation rule's record**: ADR-066's title still reads "a TRADE, and OFF", and setting it true gives no
-  warning (security second pass, low).
+- **`wave4:both`**: no verdict rule written for the pair; not claimed.
+- **The derivation rule**: setting it true gives no warning (security second pass, low).
 - **Settings**: `nsf config --repair-fixed` accepts any in-range value, and the value chosen at creation is recorded
   nowhere, so the refusal can offer only the loosest default; `caution_detail` is not carried across a restore.
 - **The caution**: "Only one source" is also shown on the project's own site (F07, F20), which the product treats as
