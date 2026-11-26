@@ -931,6 +931,109 @@ CASES = CASES + CASES_WAVE2
 ORIGIN["added_wave2"] = tuple(EXPECTED_WAVE2)
 
 
+# ---- Wave 3, lane C (front-door adjustment in the causal engine, ADR-059): what each added case expects, written and
+# committed BEFORE the cases and before the mechanism. Origin `added_wave3_c`, reported apart and never added up with
+# the other origins. Each case stages graphs that look front-door identifiable (a hidden common cause of the cause X
+# and the outcome Y, an observed child M of X on the way to Y) but are not, on five worlds of
+# frontdoor_splits.generate (seeds 7991-7995, outside both of its splits). id -> (the directive's item, expectation).
+FRONT_DOOR_SEEDS = (7991, 7992, 7993, 7994, 7995)
+EXPECTED_WAVE3_C = {
+    "front_door_declined_when_the_hidden_cause_reaches_the_mediator": (
+        "Incorrect simulated assumptions",
+        "with the hidden common cause also acting on the mediator (X -> M -> Y; U -> X, M, Y), the causal engine "
+        "declines do(X) on Y on each of the five worlds (value None, not identified, a reason given); the case also "
+        "reports what a front-door formula through M would have answered and its error against the truth from the "
+        "equations"),
+    "front_door_declined_when_the_hidden_cause_reaches_cause_and_mediator": (
+        "Incorrect simulated assumptions",
+        "with the hidden cause acting on X and M only (X -> M -> Y; U -> X, M), the engine declines on each of the "
+        "five worlds (value None, not identified, a reason given), and reports the front-door formula's error"),
+    "front_door_declined_with_a_path_around_the_mediator": (
+        "Incorrect simulated assumptions",
+        "with a direct edge X -> Y beside X -> M -> Y (U -> X, Y), the engine declines on each of the five worlds "
+        "(value None, not identified, a reason given), and reports the front-door formula's error"),
+    "front_door_declined_when_the_mediator_is_not_observed": (
+        "Incorrect simulated assumptions",
+        "with M in the graph but absent from the observational means and covariance (X -> M -> Y; U -> X, Y), the "
+        "engine declines on each of the five worlds (value None, not identified, a reason given), never answers from "
+        "X and Y alone, and raises no error"),
+    "front_door_declined_when_an_observed_cause_reaches_mediator_and_outcome": (
+        "Incorrect simulated assumptions",
+        "with an observed W -> M and W -> Y (X -> M -> Y; U -> X, Y), where the plain front-door criterion fails "
+        "(M has a back-door path to Y that X does not block), the engine declines on each of the five worlds "
+        "(value None, not identified, a reason given), and reports the front-door formula's error"),
+}
+
+
+def _front_door_formula(query):
+    """What a front-door formula through X's observed children would answer from the query's moments (linear:
+    E[Y] + b(Y ~ M | X) . b(M ~ X) (x - E[X])), or None when a child has no data. Only to show that a trap is real."""
+    import numpy as np
+    x, y = next(iter(query["do"])), query["ask"]
+    mean, cov = query["observational_mean"], query["observational_covariance"]
+    m = [v for v, parents in query["graph"].items() if x in parents and v != y]
+    if not m or any(v not in mean for v in m):
+        return None
+    names = [*m, x]
+    sxx = np.array([[cov[a][b] for b in names] for a in names])
+    beta = np.linalg.solve(sxx, np.array([cov[a][y] for a in names]))[:len(m)]
+    slope = np.array([cov[v][x] / cov[x][x] for v in m])
+    return float(mean[y] + beta @ slope * (query["do"][x] - mean[x]))
+
+
+def _front_door_trap(case_id, kind):
+    from ... import causal
+    from . import frontdoor_splits
+    declined, seen = 0, []
+    for seed in FRONT_DOOR_SEEDS:
+        world = frontdoor_splits.generate(kind, seed)
+        try:
+            out = causal.answer(world["query"])
+        except Exception as error:        # an error is not a decline
+            seen.append(f"seed {seed}: {type(error).__name__}")
+            continue
+        ok = out["value"] is None and out["identified"] is False and bool(out["why"])
+        declined += ok
+        naive = _front_door_formula(world["query"])
+        miss = "no data for M" if naive is None else f"{abs(naive - world['truth']) / world['scale']:.3f} x sd(Y)"
+        seen.append(f"seed {seed}: {'declined' if ok else 'ANSWERED ' + repr(out['value'])} "
+                    f"(why: {(out.get('why') or '')[:240]}); a front-door formula through M would miss by {miss}")
+    directive, expected = EXPECTED_WAVE3_C[case_id]
+    return _result(case_id, directive, expected, f"{declined} of {len(FRONT_DOOR_SEEDS)} declined; " + "; ".join(seen),
+                   declined == len(FRONT_DOOR_SEEDS))
+
+
+def front_door_declined_when_the_hidden_cause_reaches_the_mediator():
+    return _front_door_trap("front_door_declined_when_the_hidden_cause_reaches_the_mediator", "confounded_mediator")
+
+
+def front_door_declined_when_the_hidden_cause_reaches_cause_and_mediator():
+    return _front_door_trap("front_door_declined_when_the_hidden_cause_reaches_cause_and_mediator", "cause_mediator")
+
+
+def front_door_declined_with_a_path_around_the_mediator():
+    return _front_door_trap("front_door_declined_with_a_path_around_the_mediator", "direct_path")
+
+
+def front_door_declined_when_the_mediator_is_not_observed():
+    return _front_door_trap("front_door_declined_when_the_mediator_is_not_observed", "unobserved_mediator")
+
+
+def front_door_declined_when_an_observed_cause_reaches_mediator_and_outcome():
+    return _front_door_trap("front_door_declined_when_an_observed_cause_reaches_mediator_and_outcome",
+                            "mediator_outcome")
+
+
+CASES_WAVE3_C = (front_door_declined_when_the_hidden_cause_reaches_the_mediator,
+                 front_door_declined_when_the_hidden_cause_reaches_cause_and_mediator,
+                 front_door_declined_with_a_path_around_the_mediator,
+                 front_door_declined_when_the_mediator_is_not_observed,
+                 front_door_declined_when_an_observed_cause_reaches_mediator_and_outcome)
+assert [c.__name__ for c in CASES_WAVE3_C] == list(EXPECTED_WAVE3_C)
+CASES = CASES + CASES_WAVE3_C
+ORIGIN["added_wave3_c"] = tuple(EXPECTED_WAVE3_C)
+
+
 def run() -> dict:
     results = []
     for case in CASES:

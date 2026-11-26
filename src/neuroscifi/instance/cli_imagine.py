@@ -1,6 +1,7 @@
 """`nsf imagine ...`: exact what-ifs, the value of the next reading, retrospection, graph forecasts, a declared causal
 model, and the Web Cortex's scenario records (ADR-052). Every answer is labelled imagined, not evidence; only --keep
 (and the scenario records) write, and only to the imagined store."""
+import argparse
 import json
 
 from .errors import ValidationError
@@ -82,7 +83,7 @@ def _scm(args):
     except RecursionError:
         raise ValidationError(f"{args.file} is nested too deeply to be read") from None
     try:
-        return causal.answer(query)
+        return causal.answer(query, front_door=args.front_door)
     except ValueError as error:
         raise ValidationError(str(error)) from None
     except (KeyError, TypeError, AttributeError, IndexError, ZeroDivisionError, RecursionError,
@@ -151,6 +152,9 @@ def register(sub, *, with_db, run):
     q = isub.add_parser("scm", help="answer a question about a declared linear causal model (JSON file): what is "
                                     "seen, what a change would do, what would have happened")
     q.add_argument("file", type=Path)
+    q.add_argument("--front-door", action=argparse.BooleanOptionalAction, default=True,
+                   help="when a hidden common cause acts on the cause, answer by front-door adjustment where the "
+                        "criterion holds, saying so (default: on; --no-front-door declines those questions)")
     q.set_defaults(handler=run(_scm))
 
     q = isub.add_parser("scenarios", help="the Web Cortex's scenario records: their prediction errors, or the "
