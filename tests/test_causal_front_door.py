@@ -141,12 +141,40 @@ def test_exact_moments_every_answer_world_exact_and_no_false_answer(split):
     assert exact == len(frontdoor_splits.ANSWER_KINDS) * len(spec["seeds"])
 
 
-def test_sampled_moments_never_turn_a_trap_into_an_answer():
-    """The criterion is a property of the declared graph: estimated moments cannot make a trap answerable."""
+def test_sampled_moments_never_turn_a_trap_into_an_answer(monkeypatch):
+    """The criterion is a property of the declared graph: estimated moments cannot make a trap answerable. Staged with
+    the sample size stated and the usefulness bound lifted (review3 C: without them every question was declined by
+    the moments rule, whatever the criterion said), and the decline must be the criterion's."""
+    monkeypatch.setattr(causal, "USEFUL", 1e9)
     for kind in frontdoor_splits.DECLINE_KINDS:
         for seed in frontdoor_splits.FRONT_DOOR["development"]["seeds"][:5]:
             world = frontdoor_splits.generate(kind, seed)
-            assert causal.answer(frontdoor_splits.sampled(world, 500))["value"] is None
+            out = causal.answer(frontdoor_splits.sampled(world, 500) | {"samples": 500})
+            assert out["value"] is None and not out["why"].startswith(adversarial.MOMENTS_UNSTATED), out["why"]
+
+
+def _broken_separation(monkeypatch):
+    """The review's broken engine: every d-separation holds and the direct X -> Y edge is not looked at."""
+    monkeypatch.setattr(causal, "_d_separated", lambda *a, **k: True)
+    real = causal._frontdoor
+
+    def frontdoor(query):
+        graph = {v: [p for p in ps if not (v == query["ask"] and p == next(iter(query["do"])))]
+                 for v, ps in query["graph"].items()}
+        return real(query | {"graph": graph})
+    monkeypatch.setattr(causal, "_frontdoor", frontdoor)
+
+
+def test_the_trap_cases_and_the_sampled_test_fail_when_the_separation_check_is_removed(monkeypatch):
+    """review3 C: the five adversarial cases and the test above can now see a broken criterion."""
+    _broken_separation(monkeypatch)
+    assert not all(case()["pass"] for case in adversarial.CASES_WAVE3_C)
+    monkeypatch.setattr(causal, "USEFUL", 1e9)
+    answered = sum(causal.answer(frontdoor_splits.sampled(frontdoor_splits.generate(kind, seed), 500) |
+                                 {"samples": 500})["value"] is not None
+                   for kind in frontdoor_splits.DECLINE_KINDS
+                   for seed in frontdoor_splits.FRONT_DOOR["development"]["seeds"][:5])
+    assert answered > 0
 
 
 def _random_world(rng):

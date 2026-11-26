@@ -982,18 +982,25 @@ def _front_door_formula(query):
     return float(mean[y] + beta @ slope * (query["do"][x] - mean[x]))
 
 
+MOMENTS_UNSTATED = "the question does not say whether the means and covariance"   # causal._regime's decline
+
+
 def _front_door_trap(case_id, kind):
     from ... import causal
     from . import frontdoor_splits
     declined, seen = 0, []
     for seed in FRONT_DOOR_SEEDS:
         world = frontdoor_splits.generate(kind, seed)
+        # review3 (C): staged with the moments declared exact, so the decline is the criterion's; a question that
+        # does not say where its moments come from is declined whatever the graph (the moments rule), and a decline
+        # for that reason does not count here
         try:
-            out = causal.answer(world["query"])
+            out = causal.answer(world["query"] | {"moments": "population"})
         except Exception as error:        # an error is not a decline
             seen.append(f"seed {seed}: {type(error).__name__}")
             continue
-        ok = out["value"] is None and out["identified"] is False and bool(out["why"])
+        ok = out["value"] is None and out["identified"] is False and bool(out["why"]) and \
+            not out["why"].startswith(MOMENTS_UNSTATED)
         declined += ok
         naive = _front_door_formula(world["query"])
         miss = "no data for M" if naive is None else f"{abs(naive - world['truth']) / world['scale']:.3f} x sd(Y)"
