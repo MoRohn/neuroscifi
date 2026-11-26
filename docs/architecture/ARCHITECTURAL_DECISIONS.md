@@ -4081,3 +4081,120 @@ counted as a pass: the family scores every staged case as a pass or failure of a
   rollback test). Claims read while it was set keep their mark, so a grouping made only of them (an older stored
   cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
   it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).
+
+# ADR-071 (draft) The artifact store, and what a made artifact is: bytes beside the individual, an index inside it, never evidence. R (H for the schema)
+
+## Context
+
+OMNIMIND (the owner's directive §6.3, §6.4, §12.1, §16) asks NeuroSciFi to keep the files it is given and the things
+it makes: original references, native representations, cross-modal links, provenance, transformation history,
+generated derivatives, "references and structured indexes" rather than large files in conversational memory, and
+content-addressed storage. The Phase I audit of cognition found no unit of memory for an attachment (audit-cognition
+§(a)), fourteen contracts a new record type must keep (C1–C14), and three hazards that bite as soon as bytes arrive:
+bytes inside the instance file ride into every checkpoint and switch imagination's sandbox off (Hazard 4);
+forget-by-text is a hand list of text columns and the canaries miss encoded or compressed bytes (Hazards 1 and 2); and
+a durable table of things the system generated breaks ADR-049's rule that quarantined content lives only in the
+imagined store (Hazard 3). The lane K kernel (ADR-072) supplies detection, the adapter registry and the
+representations; this decision is where their output is kept, how it is forgotten, and what a made artifact is.
+
+## Decision
+
+1. **Bytes outside, index inside.** The bytes live in a sidecar `<stem>.artifacts.sqlite` beside the individual's
+   file (`artifacts/store.py`, after `webcortex/cache.py`): content-addressed by sha256, in rows of at most 1 MiB so a
+   read or an export streams with bounded memory, mode 0600 whatever the umask, WAL, `secure_delete`, a corrupt file
+   renamed aside and replaced by an empty one (the index then shows the bytes missing). The hash is verified on every
+   read; a mismatch marks the row `corrupt` and nothing is exported. Identical bytes are stored once; the index rows
+   naming a hash are its reference count. The sidecar is never part of a checkpoint. It also holds each artifact's
+   text layer (its own words as its decoder returned them, at most 256 KiB) and a made artifact's specification.
+2. **One migration (schema 20).** `artifacts` (seq, id `artifact-` + 32 hex digits, sha256, size, family, format,
+   media type, origin `given`|`fetched`|`made`, maker, label, a JSON index of at most 32 KiB holding the
+   representation's `describe()` and what was detected, scope, the injection flag, created_at, state
+   `stored`|`missing`|`corrupt`; identity never rewritten by trigger), `artifact_links` (between artifacts only in this
+   wave; relations `derived_from`, `contains`, `describes`, `same_subject`, `same_time`, `consistent_with`,
+   `contradicts`; `how` a machine-readable basis), `artifact_events` (ids, hashes, sizes, kinds and times; append-only:
+   no UPDATE ever, and a DELETE only once the artifact is gone), `artifact_forgotten` (payload-free salted digests) and
+   `artifact_gaps` (how often a format ended undecoded). IF NOT EXISTS throughout.
+3. **A given artifact** is a record of what the owner handed over: EVIDENCE only in the sense that the owner reported
+   it, unverified, and read by no evidence, claim, knowledge or belief path. **A made artifact is its own quarantined
+   class, `provenance.MADE`**: what the system produced from a specification by a fixed generator is never evidence and
+   never knowledge, whatever it renders, even when every number in it came from evidence (the evidence stays where it
+   is; a picture of it is not a second copy of it). It lives only in the artifact store's `made` rows; every listing
+   labels it `provenance.MADE_NOT_EVIDENCE` ("made by the system, not evidence"); its specification is kept as its
+   editable source and every source artifact gets a `derived_from` link. `provenance.QUARANTINED` stays the imagined
+   store's three kinds (ADR-049 is not weakened: nothing imagined moves out of the imagined store); `never_evidence()`
+   covers both. The provenance mapping gains two rows, additively.
+4. **Nothing on the evidence side may name an artifact.** Schema 20 adds, for every reference column ADR-049 protects
+   (`schema._NO_IMAGINED`), triggers that refuse an artifact id in the same forms (case, padding, JSON escapes in id
+   lists); free text is not tested. `tests/instance/test_artifact_references.py` runs test_imagined's reference-column
+   cases with artifact ids.
+5. **Intake.** `store.add(db, bytes | path, name=, origin="given", scope="owner")`: a regular file only (no FIFO,
+   device or directory; checked on the opened descriptor), a symbolic link followed only when the caller says the
+   owner named that path (`nsf artifact add` does: the owner typed it; the API default refuses), read once and bounded
+   by `artifact_max_bytes`; the store total by `artifact_store_max_bytes`; over a cap is a named refusal and nothing
+   is written. The write regulator applies and the free space must hold the file above the reserve. The kernel's
+   `adapters.decode` runs under limits from the settings; a decode failure or an unknown format still stores the
+   artifact with what was established; a safety refusal (`Refused`: pickle, nesting, resources) stores nothing. The
+   text layer passes `webcortex.safety.scan_injection`; a flagged artifact is stored and marked, and
+   `text_for_model` refuses its text: the gate a later wave must use before any artifact text reaches a model (there
+   is no model path in this wave).
+6. **Forget.** `forget_artifact` removes the artifact and, transitively, every artifact made from it (`derived_from`)
+   or contained in it (`contains`): rows, links, events, text layers, specifications, and the bytes no remaining row
+   names (secure_delete, the sidecar's WAL folded back); a tombstone each; one deletion-log row (kind `artifact`,
+   target `#<digest>`, no id); the state version; checkpoints written since the oldest of them stale, and the kind is
+   rewritable in place. **The forget of a root** (`governance.forget_partner`, `forget_camera`) removes every artifact
+   whose label, index, text layer, specification or bytes name it: `scan_root` runs before the forget's write
+   transaction (no lock held while 2 GiB are read), `forget_found` inside it scans what was added since (by seq) and
+   removes, `finish` sweeps the sidecar after the commit. The byte scan looks for the name with the scrubber's
+   boundary rule in UTF-8, UTF-16LE and UTF-16BE, for its base64 (each alignment, both alphabets, names of at least
+   five bytes), and the same inside every gzip, zip (deflate), zlib (PNG text chunks, PDF streams), bzip2, xz and
+   Zstandard stream found in the bytes, nested up to `Limits.max_depth`, within `Limits.max_decoded_bytes` per
+   artifact (an artifact whose streams were not all searched is counted in the deletion-log row as `budget_reached`).
+7. **Restore.** The live tombstones are read with the other forgets; `_replay` removes those artifacts (and what was
+   made from or contained in them) from the archive's copy; the restored copy gets its own sidecar
+   (`<dest stem>.artifacts.sqlite`) holding the bytes, text layers and specifications its remaining rows name, copied
+   from the live sidecar; rows whose bytes are not there are marked `missing`, anything no row names is swept. A copy
+   with no artifact gets no sidecar and its restore result no new key. `reconcile` does the same check on the live
+   store (sweeping only rows older than an hour, so an add in flight is not swept) and runs at `nsf artifact list`.
+8. **Settings** (owner, instance): `artifact_max_bytes` (64 MiB; 1 KiB to 1 GiB), `artifact_store_max_bytes`
+   (2 GiB; 0 to 1 TiB), `artifact_adapters` (`[]`: the external adapters, by entry-point name, the owner approves;
+   a change acts on the next call, and an approval withdrawn unloads the adapter). Checked on set and on load (a
+   damaged value reads as the default, an adapter list as none), named by `setting_problems`, carried by a restore.
+   `CARRIED_SETTINGS` is now tested equal to `_SETTABLE` (audit Hazard 6).
+9. **Owner surface.** `nsf artifact add FILE… | list | show ID | facts ID | export ID PATH | forget ID | gaps |
+   adapters`, plain words or `--json`. `facts` re-decodes the verified bytes and prints measurements (counts, sizes,
+   ranges, means and standard deviations of numeric columns, duration, bounds), each with how it was computed; no
+   interpretation. `export` never overwrites and writes 0600, published only after the hash matched.
+10. **Default.** Nothing stores an artifact unless the owner asks: no background activity, no route, no model path.
+    With no artifact held, a forget of a partner or camera costs one indexed read more; a restore, nothing.
+
+## What the forget scan cannot find
+
+Text drawn as pixels (no OCR exists here); a name split by a format's own structure (a PDF text operator per letter,
+a word broken across XML runs, unless an adapter's text layer joins it); encodings it does not undo (UTF-32,
+quoted-printable, percent-encoding, HTML or XML character references, base64 broken across lines, LZW, an encrypted
+or password-protected member); a compressed stream the scan does not find by a signature or a container header (a
+bare zlib stream elsewhere than a PNG text chunk or after a PDF `stream` keyword, a raw deflate stream outside a zip);
+anything past the decompressed-size budget; case variants (the match is exact, as governance's scrubber is). A root
+forgotten as a side effect of another forget (its last evidence expired, or was forgotten by event or epoch) scrubs
+the text tables but does not scan artifacts: only the owner's forget of the partner or camera does.
+
+## Contracts (audit-cognition §(c))
+
+C1 append-only migration: yes (schema 20, IF NOT EXISTS). C2 one owner module: `artifacts/store.py` writes the five
+tables. C3 provenance declared: given = EVIDENCE as reported, made = MADE (decision 3). C4 never evidence: decision 4.
+C5 forget: decision 6. C6 lineage of imagined records: not applicable (no imagined record derives from an artifact
+in this wave; adding the kind needs a rebuild of `imagined_refs`'s CHECK). C7 restore replay: decision 7. C8 settings:
+decision 8. C9 background: none. C10 writes pass `store.require_write_allowed`. C11 vocabularies tied to types: the new
+tables' CHECKs are the store's constants. C12 model-facing content: no model path; `text_for_model` refuses flagged
+text. C13 labels: decision 3. C14 the memory envelope: not exposed through `memory.retrieve` in this wave.
+
+## Consequences
+
+- An owner can hand files over and get them back byte for byte, see what was established about each, and forget
+  them, with the forget reaching bytes outside the instance file, their compressed copies and restored archives.
+- Lanes B1/B2 (decoders) fill the index and the text layer through the registry without touching the store; lanes
+  G1/G2 store what they make with `add_made`. Their tests must not register adapters globally without the fixture
+  pattern of `tests/artifacts`.
+- Rollback: `artifact_adapters` back to `[]` stops any external adapter on the next call; the store can be emptied
+  with `nsf artifact forget`; the schema stays (forward-only), and software before schema 20 refuses the file (a
+  restore of the pre-upgrade checkpoint is the rollback, as for every schema change).

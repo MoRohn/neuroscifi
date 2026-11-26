@@ -186,7 +186,11 @@ class Sidecar:
     def _open(self):
         old = os.umask(0o077)
         try:
-            fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+            try:
+                fd = os.open(self.path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+            except OSError as error:        # a link planted in its place, a folder without write access, ...
+                raise StoreRefused(f"the artifact store file cannot be opened ({type(error).__name__})",
+                                   rule="sidecar") from None
             os.close(fd)
             os.chmod(self.path, 0o600)
             self.db = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False, timeout=30)
@@ -1261,8 +1265,12 @@ def _search(buf, needles, budget, depth, max_depth, max_members) -> tuple[bool, 
 
 
 def _artifact_names(db, side, row, matcher, needles, lim, cache, scan) -> bool:
-    """Whether one artifact (row: seq, id, sha256, size, label, index_json) names the root anywhere."""
-    _, artifact_id, sha, size, label, index_json = row
+    """Whether one artifact (row: seq, id, sha256, size) names the root anywhere."""
+    _, artifact_id, sha, size = row
+    found = db.execute("SELECT label, index_json FROM artifacts WHERE id=?", (artifact_id,)).fetchone()
+    if found is None:           # forgotten meanwhile
+        return False
+    label, index_json = found
     if matcher.search(label):
         return True
     try:
@@ -1314,8 +1322,8 @@ def scan_root(db, root) -> RootScan:
     if not present(db) or not root:
         return scan
     scan.mark = db.execute("SELECT coalesce(max(seq),0) FROM artifacts").fetchone()[0]
-    rows = db.execute("SELECT seq, id, sha256, size, label, index_json FROM artifacts WHERE seq<=? ORDER BY seq",
-                      (scan.mark,))
+    # ids first (small), the label and index one row at a time: no read transaction stays open during the scan
+    rows = db.execute("SELECT seq, id, sha256, size FROM artifacts WHERE seq<=? ORDER BY seq", (scan.mark,)).fetchall()
     _scan(db, scan.root, rows, scan, scan.cache)
     return scan
 
@@ -1328,8 +1336,7 @@ def forget_found(db, scan, now, effects, label) -> dict | None:
     from ..instance import store
     if scan is None or not present(db):
         return effects
-    later = db.execute("SELECT seq, id, sha256, size, label, index_json FROM artifacts WHERE seq>? ORDER BY seq",
-                       (scan.mark,)).fetchall()
+    later = db.execute("SELECT seq, id, sha256, size FROM artifacts WHERE seq>? ORDER BY seq", (scan.mark,)).fetchall()
     if later:
         _scan(db, scan.root, later, scan, scan.cache)
     hits = [h for h in dict.fromkeys(scan.hits)

@@ -468,3 +468,12 @@ def test_b64_cores_find_the_name_at_every_alignment():
         encoded = base64.b64encode(b"x" * pad + b"say Rosalind-qq4 twice" + b"y" * pad)
         assert needles.found(encoded), pad
     assert not needles.found(base64.b64encode(b"nothing of the kind here at all"))
+
+
+def test_a_link_planted_where_the_sidecar_goes_is_refused(individual, tmp_path):
+    db, path = individual
+    elsewhere = tmp_path / "elsewhere.sqlite"
+    side_path(path).symlink_to(elsewhere)
+    with pytest.raises(A.StoreRefused) as refused:
+        A.add(db, b"x", name="x.bin", now=T0)
+    assert refused.value.rule == "sidecar" and not elsewhere.exists() and count(db, "artifacts") == 0

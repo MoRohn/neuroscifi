@@ -88,6 +88,7 @@ def seed_named(db):
                        name="readings.json", now=T0).id,
         "text": A.add(db, sentence + b"\n", name="note.txt", now=T0).id,
         "utf16": A.add(db, NOISE + ROOT.encode("utf-16-le") + NOISE, name="u16.bin", now=T0).id,
+        "utf16be": A.add(db, NOISE + b"\0 " + ROOT.encode("utf-16-be") + b"\0." + NOISE, name="u16be.bin", now=T0).id,
         "base64": A.add(db, b"data:" + base64.b64encode(b"..." + sentence) + b";" + NOISE, name="b64.bin", now=T0).id,
         "zip>gzip": A.add(db, zip_holding_a_gzip(sentence * 20), name="bundle.zip", now=T0).id,
         "zstd": A.add(db, NOISE + zstandard.ZstdCompressor().compress(WORDS + sentence), name="z.bin", now=T0).id,
