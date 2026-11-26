@@ -124,6 +124,31 @@ def test_the_arbitration_record_is_attached_to_the_winners_task_and_launches_not
     assert autonomy._recent(db, T0 + 1, 86400.0) == set()
 
 
+def _c(key, record, priority):
+    return {"key": key, "salience": record, "priority": priority, "owner": False}
+
+
+@pytest.mark.parametrize("bad", [{"error": "could not be made (ValueError)"}, {"score": "high"},
+                                 {"score": float("nan")}, {"score": None}, {"score": True}, {"score": float("inf")}],
+                         ids=["error-record", "string", "nan", "none", "bool", "inf"])
+def test_salience_order_falls_back_to_priority_unless_every_score_is_finite(bad):
+    """Lane Y (M2): a failed salience record (lane U's guard stores {"error": ...}), a string, a NaN or another
+    non-finite score is never ordered "by salience": the priority order stands and the record says so."""
+    chosen = [_c("a", bad, 0.9), _c("b", {"score": 0.1}, 0.5), _c("c", {"score": 0.6}, 0.1)]
+    ordered, record = salience.order(chosen)
+    assert [c["key"] for c in ordered] == ["a", "b", "c"]
+    assert record["by"] == "priority" and "priority_rank" not in ordered[0]
+
+
+def test_salience_order_is_stable_under_any_permutation_of_its_input():
+    import itertools
+    chosen = [_c("a", {"score": 0.4}, 0.9), _c("b", {"score": 0.6}, 0.5), _c("c", {"score": 0.6}, 0.7),
+              _c("d", {"score": 0.6}, 0.7)]
+    orders = {tuple(c["key"] for c in salience.order(list(p))[0]) for p in itertools.permutations(chosen)}
+    assert orders == {("c", "d", "b", "a")}
+    assert salience.order(chosen)[1]["by"] == "salience"
+
+
 def _recheck_takes(db, monkeypatch, item, *, task="recheck-task"):
     """The knowledge re-check queues `item` in this pass (its decision event names the subject, so curiosity's
     cooldown refuses it afterwards), as recheck.run does."""
