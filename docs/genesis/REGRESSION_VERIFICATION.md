@@ -1,6 +1,6 @@
 # Regression verification and cognitive UAT (deliverable H)
 
-Status: 2026-11-25 (§10, Wave 3's settings, added 2026-11-26). Wave 2, lane U, branch `gen2-u` from `main` at `3559069` (Wave 1 merged). Deliverable H of the
+Status: 2026-11-25 (§10, Wave 3's settings, and §11, Wave 4's with placeholder rows for its final validation, added 2026-11-26). Wave 2, lane U, branch `gen2-u` from `main` at `3559069` (Wave 1 merged). Deliverable H of the
 directive's §13 for its §12 ("Phase X"): evidence that the original and the enhanced functionality both work end to
 end, and that the system "must remain controllable and functionally reliable even when new cognitive mechanisms
 fail". Everything here was run offline on this host (aarch64, Python 3.12) with no model, GPU, phone, second account
@@ -307,3 +307,54 @@ pattern, fix them: 28 of 28 pass.
 
 Note: Wave 3's two source rules were on by default on `f0a1f09` and ship off since the fix lane; the fault-injection cases turn
 them on explicitly, so the count and the result do not depend on that default.
+
+## 11. Wave 4: the new settings in the regression suite, and the final validation (placeholder)
+
+Record: [WAVE4.md](WAVE4.md). Read from the tests on `3032cf6`; the counts below are from the lanes' and the fix
+lane's reports, not re-run for this section.
+
+**Setting lists.** `tests/uat/test_uat_setting_lists.py::test_every_wave4_setting_is_rolled_back_and_made_to_fail`
+(`WAVE4_FIELDS`: `source_derivation`, `own_text_provenance`, `allowance_division`; `reach_share` is a bound) and
+`::test_every_wave4_lane_a_setting_is_rolled_back_and_made_to_fail`: each is a `WebConfig` field, has a rollback
+test and a fault-injection entry, is in the Wave 0 equivalence list, and its default equals its value there; lane D
+made every `WebConfig` field checked on load (`CHECKED_ON_LOAD`). The Wave 0 equivalence test switches
+`source_derivation`, `own_text_provenance`, `caution_detail` off and `allowance_division` to `"race"`.
+
+**Rollback** (`tests/uat/test_uat_rollback.py`): `test_own_text_provenance`, `test_source_derivation`,
+`test_allowance_division`, `test_caution_detail` (on the next call, no restart).
+
+**Fault injection** (`tests/uat/test_uat_fault_injection.py`, raise / time out / return garbage, and a failure
+message naming a subject): `emitted.prepare` and `emitted.Echoes` with `own_text_provenance` on among every Wave 3
+setting (8 cases, lane E); `claims._derivation_edges` with `source_derivation` on (`WAVE4_S_ENTRIES`, lane S);
+`autonomy.division` with `allowance_division` `"reserve"` (`WAVE4A_ENTRIES`, 4 cases, lane A). Each leaves the owner in
+control, the failure visible by its type, and the message in no log or record (the lanes' reports: all pass).
+
+**Other Wave 4 checks** (the lanes' and the fix lane's tests): every web, instance and voice setting × 19 junk values
+(`tests/acceptance/test_wave4_d.py`); the settings fixed at `nsf init` pause writes when damaged and the owner repairs
+them with the named command; the refusal for a damaged network limit names the repair (`tests/acceptance/test_wave4_fix.py`);
+`requeue` within the day's count and the restore's scan outside its transaction (`test_wave4_d.py`); the caution
+imported only by views, the family scope never shown the own-answer flag (`test_wave4_d.py`,
+`tests/console/test_console_caution.py`, `tests/e2e/test_caution_e2e.py`, `tests/e2e/test_pocket_caution_e2e.py`);
+runs with the idle investigation identical whatever the task ids
+(`tests/acceptance/test_learning_cycles_division.py::test_the_same_history_gives_the_same_run_whatever_the_task_ids`);
+the default-path comparison's power (`test_wave4_fix.py::test_the_default_path_comparison_catches_an_injected_regression_and_the_rule_turned_on`);
+adversarial origin `added_wave4_s` (5 cases; 60 of 60 scored cases pass with each Wave 4 setting forced on and at
+the defaults, development and held-out, on `d4931c0`).
+
+**The final validation (placeholder: the main session's runs on the final tree are recorded in
+[WAVE4.md](WAVE4.md), "Validation", and copied here):**
+
+| Check | Result |
+|---|---|
+| Quality gate (`bash scripts/check.sh`: ruff, the non-e2e suite, the JS checks, the numerical reproduction) | *pending* |
+| Browser suite (`scripts/e2e.sh`) | *pending* |
+| `nsf acceptance --all` | *pending* |
+| Sentence guard (`scripts/guard_differential.py compare`) | *pending* (the fix lane's run: 1,937 compared, 0 different) |
+| Two accounts (`scripts/two_account_check.py`) | *pending* |
+| Offline research benchmark, every setting off and as shipped | *pending* (the fix lane's run: `68731d7235cb…`, portable `d87dbb4fb77f…`, both regimes) |
+| The default path of `claims.py` (`scripts/compare_source_derivation.py`) | *pending* (the fix lane's run: 2,052,099 comparisons, 0 different) |
+| Cognitive benchmark, retention and adversarial, development and held-out | *pending* |
+| `tests/uat` counts by file | *pending* (not counted for this section) |
+
+Unverified here, as in §7: the open web, a live answer model, real hardware, a real second account, systemd, a week on
+the host.
