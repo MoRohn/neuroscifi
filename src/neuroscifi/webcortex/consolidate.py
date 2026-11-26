@@ -292,7 +292,11 @@ def _without_adversarial(cluster, adversarial_urls):
 # itself a source's (no claim read before it within claims.SUPPORT_TEXT_SHINGLE). A page published before the output
 # is never its echo (the output may rest on it); a structured record (an API document, a metadata claim) is never one.
 # Own outputs are found by the specific values the claim asserts (at most ECHO_MAX_VALUES per claim and ECHO_MAX_TOKENS
-# per consolidation; one scan over web_tasks.result, the newest ECHO_MAX_ROWS model-written answers holding any of them),
+# per consolidation, shared out claim by claim: every claim's first value before any claim's second (review3b N4: one
+# page's many values took the whole cap in claim order and the claims after it went unchecked without trace); one scan
+# over web_tasks.result, the newest ECHO_MAX_ROWS model-written answers holding any of them; when that scan fills its
+# ECHO_MAX_ROWS, each claim is looked up again among the answers that name its own subject, so other subjects' rows
+# cannot crowd its subject out), a claim whose values were not all looked up is not checked,
 # and a value counts as stated by a source only when a claim read before the output states it about the same subject
 # (subject names filtered in SQL, so the bound counts that subject's claims only; security review M2). Every check is
 # made once per consolidation BEFORE the write transaction (security review M4), within ECHO_SECONDS: a claim not
@@ -378,38 +382,63 @@ class _Echoes:
         seconds = ECHO_SECONDS if seconds is None else seconds
         self.db, self.sourced, self.worded, self.seen, self.skipped = db, {}, {}, {}, []
         claims = [c for c in claims if c is not None]
-        tokens = []
+        wanted = {}
         for c in claims:
-            for v in _checked_values(c):
-                tokens += _DIGITS.findall(v)
+            wanted.setdefault(c.id, list(dict.fromkeys(tok for v in _checked_values(c) for tok in _DIGITS.findall(v))))
+        tokens, depth = [], 0               # review3b N4: each claim its share of the cap, first values first
+        while len(tokens) < ECHO_MAX_TOKENS and any(depth < len(t) for t in wanted.values()):
+            for t in wanted.values():
+                if depth < len(t) and t[depth] not in tokens and len(tokens) < ECHO_MAX_TOKENS:
+                    tokens.append(t[depth])
+            depth += 1
+        indexed = set(tokens)
         deadline = clock() + seconds
         # every read below stops at the deadline (a query interrupted there leaves its claims unchecked: not echoes)
         db.set_progress_handler(lambda: 1 if clock() > deadline else 0, 10_000)
         try:
-            self.own = _interruptible(self._index, list(dict.fromkeys(tokens))[:ECHO_MAX_TOKENS])
+            self.own = _interruptible(self._index, tokens)
+            full = self.own is not _SKIPPED and self._rows >= ECHO_MAX_ROWS
             for c in claims:
                 if c.id in self.seen:
                     continue
                 if _MODEL_CREDIT.search(c.text or "") and c.kind != "metadata" and not _claims.is_primary(c):
                     self.seen[c.id] = "model"
                     continue
-                found = _interruptible(self._of, c) if self.own is not _SKIPPED and clock() <= deadline \
-                    else _SKIPPED
+                if c.kind == "metadata" or _claims.is_primary(c) or not wanted[c.id]:
+                    self.seen[c.id] = None              # never an echo (_of): nothing to check, nothing skipped
+                    continue
+                if not set(wanted[c.id]) <= indexed or self.own is _SKIPPED or clock() > deadline:
+                    found = _SKIPPED
+                elif full and wanted[c.id]:     # the newest rows of all subjects filled the bound: its own subject's
+                    own = _interruptible(lambda x: self._index(x, _name_set(c.text)), wanted[c.id])
+                    found = _SKIPPED if own is _SKIPPED else _interruptible(lambda x: self._of(x, own), c)
+                else:
+                    found = _interruptible(self._of, c)
                 self.seen[c.id] = None if found is _SKIPPED else found
                 if found is _SKIPPED:
                     self.skipped.append(c.id)
         finally:
             db.set_progress_handler(None, 0)
+        if self.skipped:            # review3b N4: once per consolidation, counts and claim ids only
+            import logging
+            logging.getLogger(__name__).warning("echo checks: %d claim(s) not checked (time budget, value cap or row "
+                                                "bound); they count as not echoes: %s", len(self.skipped),
+                                                ",".join(self.skipped[:20]))
 
-    def _index(self, tokens):
-        """[(at, sentence, values, names)] of the own-output sentences holding any token: one scan."""
+    def _index(self, tokens, names=None):
+        """[(at, sentence, values, names)] of the own-output sentences holding any token: one scan (of the answers
+        naming one of `names`, lower-cased, when given)."""
         from . import text as T
         if not tokens:
+            self._rows = 0
             return []
+        names = sorted(n for n in names or () if n)
+        subject = (" AND (" + " OR ".join("instr(lower(result), ?) > 0" for _ in names) + ")") if names else ""
         rows = self.db.execute(
             "SELECT coalesce(finished_at, updated_at, created_at), result FROM web_tasks WHERE result LIKE "
-            "'%model:%' AND (" + " OR ".join("instr(result, ?) > 0" for _ in tokens) + ") ORDER BY updated_at "
-            "DESC LIMIT ?", (*tokens, ECHO_MAX_ROWS)).fetchall()
+            "'%model:%' AND (" + " OR ".join("instr(result, ?) > 0" for _ in tokens) + ")" + subject +
+            " ORDER BY updated_at DESC LIMIT ?", (*tokens, *names, ECHO_MAX_ROWS)).fetchall()
+        self._rows = len(rows)
         out = []
         for at, raw in rows:
             if state.finite(at) is None:
@@ -452,7 +481,7 @@ class _Echoes:
         claim not checked in time, or not among the claims the checks were made for, is not an echo)."""
         return self.seen.get(claim.id)
 
-    def _of(self, claim) -> str | None:
+    def _of(self, claim, own=None) -> str | None:
         from . import text as T
         if claim.kind == "metadata" or _claims.is_primary(claim):
             return None
@@ -463,7 +492,7 @@ class _Echoes:
         names = _name_set(claim.text)
         tokens = list(dict.fromkeys(tok for v in values for tok in _DIGITS.findall(v)))
         mine = None
-        for at, sentence, own_values, own_names in self.own:
+        for at, sentence, own_values, own_names in (self.own if own is None else own):
             if not any(tok in sentence for tok in tokens):
                 continue
             if at >= read or (published is not None and published < at) or not names & own_names:
