@@ -435,6 +435,16 @@ def _shared_config(path):
         raise InstanceError(f"the Web Cortex configuration is malformed: {error}"[:300]) from None
     if not isinstance(raw, dict):
         raise InstanceError("the Web Cortex configuration is not an object")
+    # WebConfig.from_json reads a damaged value as its cautious one (Wave 4 lane D); this account says what is wrong
+    # instead, as before: the two values it acts on are checked as saved
+    if not isinstance(raw.get("enabled", False), bool) or not isinstance(raw.get("searxng_url", ""), str):
+        raise InstanceError("the Web Cortex configuration is malformed: enabled or searxng_url has the wrong type")
+    if wconfig.damaged("searxng_url", raw.get("searxng_url", "")):
+        try:
+            from .state import _validate
+            _validate("searxng_url", raw["searxng_url"])
+        except ValidationError as error:
+            raise ValidationError(f"searxng_url is not usable: {error}"[:300]) from None
     try:
         cfg = wconfig.WebConfig.from_json(json.dumps(raw))
     except (TypeError, ValueError) as error:
