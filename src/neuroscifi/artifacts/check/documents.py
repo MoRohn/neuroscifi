@@ -231,31 +231,36 @@ def table_findings(table: Node, source: dict | None, options: dict) -> list[Find
                        else "the table lacks a caption or scoped column headers"))
     if source is None:
         return out
-    cols = source["columns"]
-    want_heads = [f"{c['name']} ({c['unit']})" if c.get("unit") else str(c["name"]) for c in cols]
-    got_heads = [" ".join(n.all_text().split()) for n in head_cells]
-    same = got_heads == [" ".join(h.split()) for h in want_heads]
-    out.append(Finding("headers_match", same, "every column header names its column and unit" if same else
-                       "the column headers differ from the source"))
     body_rows = [n for n in table.iter() if n.tag == "tr" and any(a.tag == "tbody" for a in _ancestors(n))]
+    rows = [[(c.all_text().strip(), "missing" in c.classes()) for c in r.children
+             if isinstance(c, Node) and c.tag in ("td", "th")] for r in body_rows]
+    return out + compare_cells([" ".join(n.all_text().split()) for n in head_cells], rows, source,
+                               options.get("decimals"))
+
+
+def compare_cells(heads: list[str], rows: list[list[tuple[str, bool]]], source: dict, decimals) -> list[Finding]:
+    """Headers and every cell against the source columns. A cell is (text, marked_missing)."""
+    cols = source["columns"]
+    want_heads = [" ".join((f"{c['name']} ({c['unit']})" if c.get("unit") else str(c["name"])).split())
+                  for c in cols]
+    same = heads == want_heads
+    out = [Finding("headers_match", same, "every column header names its column and unit" if same else
+                   "the column headers differ from the source")]
     n_rows = len(cols[0]["values"]) if cols else 0
-    decimals = options.get("decimals")
     good = total = 0
     for r in range(n_rows):
-        cells = [c for c in body_rows[r].children if isinstance(c, Node) and c.tag in ("td", "th")] \
-            if r < len(body_rows) else []
+        cells = rows[r] if r < len(rows) else []
         for i, col in enumerate(cols):
             total += 1
             if i >= len(cells):
                 continue
-            cell = cells[i]
+            text, missing = cells[i]
             value = col["values"][r]
-            text = cell.all_text().strip()
             if value is None:
-                good += "missing" in cell.classes()
-            elif "missing" not in cell.classes() and _cell_matches(col["kind"], text, value, decimals):
+                good += missing
+            elif not missing and _cell_matches(col["kind"], text, value, decimals):
                 good += 1
-    extra_rows = max(0, len(body_rows) - n_rows)
+    extra_rows = max(0, len(rows) - n_rows)
     out.append(Finding("cells_match", good == total and extra_rows == 0,
                        f"{good} of {total} cells match the source" + (f"; {extra_rows} extra row(s)" if extra_rows
                                                                       else ""), good / total if total else 1.0))
@@ -362,7 +367,29 @@ def check_html(data: bytes, form: str | None, source: dict | None, options: dict
                              else "no section says what the document is based on"))
     for t in tables:
         style.extend(f for f in table_findings(t, None, {}) if not f.passed)
+    technical += _document_tables(tables, source, lambda t, data: table_findings(t, data, {}))
     return technical, style
+
+
+def _document_tables(tables, source, compare) -> list[Finding]:
+    """With the document's spec data: the n-th table holds the n-th table block's data, cell for cell."""
+    if not isinstance(source, dict) or "blocks" not in source:
+        return []
+    blocks = [b["table"] for b in source["blocks"] if b.get("kind") == "table" and "table" in b]
+    good = total = 0
+    heads_ok = len(tables) == len(blocks)
+    for t, data in zip(tables, blocks):
+        for f in compare(t, data):
+            if f.rule == "cells_match":
+                n = sum(len(c["values"]) for c in data["columns"])
+                total += n
+                good += round((f.measure or 0) * n)
+            elif f.rule == "headers_match" and not f.passed:
+                heads_ok = False
+    total += sum(sum(len(c["values"]) for c in data["columns"]) for data in blocks[len(tables):])
+    return [Finding("cells_match", good == total and heads_ok,
+                    f"{good} of {total} table cells match the specification across {len(blocks)} table(s)"
+                    + ("" if heads_ok else "; headers or table count differ"), good / total if total else 1.0)]
 
 
 def _visible_text(root: Node) -> str:
@@ -423,7 +450,7 @@ _RAW_TAG = re.compile(r"(?<!\\)<(?:/?[A-Za-z][A-Za-z0-9-]*|!--|\?)")
 _CODE_SPAN = re.compile(r"(`+)(?:(?!\1).)*?\1")
 
 
-def check_markdown(data: bytes) -> tuple[list, list]:
+def check_markdown(data: bytes, source: dict | None = None) -> tuple[list, list]:
     if len(data) > MAX_BYTES:
         raise Refused(f"the document is over {MAX_BYTES} bytes", rule="max_bytes", reason="too_large")
     try:
@@ -495,7 +522,53 @@ def check_markdown(data: bytes) -> tuple[list, list]:
                              else "no section says what the document is based on"))
     if svgs:
         technical += _svg_findings(svgs)
+    technical += _document_tables(_md_tables(lines), source, _md_compare)
     return technical, []
+
+
+def _md_unescape(text: str) -> str:
+    return re.sub(r"\\([!-/:-@\[-`{-~])", r"\1", text)
+
+
+def _md_split(line: str) -> list[str]:
+    cells, cur, i = [], [], 0
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    if body.endswith("|") and not body.endswith("\\|"):
+        body = body[:-1]
+    while i < len(body):
+        if body[i] == "\\" and i + 1 < len(body):
+            cur.append(body[i:i + 2])
+            i += 2
+            continue
+        if body[i] == "|":
+            cells.append("".join(cur))
+            cur = []
+        else:
+            cur.append(body[i])
+        i += 1
+    cells.append("".join(cur))
+    return [_md_unescape(c.strip()) for c in cells]
+
+
+def _md_tables(lines: list[str]):
+    """Pipe tables: (header cells, body rows) for each run of lines starting with '|'."""
+    out, run = [], []
+    for line in lines + [""]:
+        if line.startswith("|"):
+            run.append(line)
+            continue
+        if len(run) >= 2 and re.fullmatch(r"\|(?:\s*:?-{3,}:?\s*\|)+", run[1].strip()):
+            out.append((_md_split(run[0]), [_md_split(r) for r in run[2:]]))
+        run = []
+    return out
+
+
+def _md_compare(table, data):
+    heads, rows = table
+    return compare_cells([" ".join(h.split()) for h in heads],
+                         [[(c, c == "–") for c in r] for r in rows], data, None)
 
 
 __all__ = ["check_html", "check_markdown", "parse_html", "table_findings"]

@@ -292,8 +292,8 @@ def _md_table(caption: str, data: dict) -> list[str]:
     out = [f"*{md_escape(caption)}*", "", "| " + " | ".join(cell(header_text(c)) for c in cols) + " |",
            "|" + "|".join("---:" if c["kind"] in ("number", "integer") else "---" for c in cols) + "|"]
     for r in range(n):
-        out.append("| " + " | ".join(cell(cell_text(c, c["values"][r], None, dates[i]) or "–")
-                                     for i, c in enumerate(cols)) + " |")
+        texts = [cell_text(c, c["values"][r], None, dates[i]) for i, c in enumerate(cols)]
+        out.append("| " + " | ".join("–" if t is None else cell(t) for t in texts) + " |")     # – : missing
     return out
 
 

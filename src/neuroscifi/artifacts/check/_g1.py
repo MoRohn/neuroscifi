@@ -66,16 +66,16 @@ def check_html(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
     form, sdata, options = spec_parts(spec, source)
     if _foreign(form, HTML_FORMS):
         return Verdict((), (), False)
-    technical, style = run(data, form, sdata if form == "table_html" or isinstance(source, dict) else None, options)
+    technical, style = run(data, form, sdata, options)
     return Verdict.of(technical, style)
 
 
 def check_markdown(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
     from .documents import check_markdown as run
-    form, _sdata, _options = spec_parts(spec, source)
+    form, sdata, _options = spec_parts(spec, source)
     if _foreign(form, MD_FORMS):
         return Verdict((), (), False)
-    technical, style = run(data)
+    technical, style = run(data, sdata)
     return Verdict.of(technical, style)
 
 

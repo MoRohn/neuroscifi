@@ -622,6 +622,10 @@ def carried_hist(scope: Elem, data: dict, options: dict) -> list:
     bins = sorted((ax.value(b[0]), ax.value(b[2]), ay.value(b[1]) - ay.value(b[3]))
                   for p in plots for s in plot_marks(p) for b in s.boxes)
     eps = ax.tol() * 0.02
+    # Adjacent bins share one edge: the next bin's left edge (x + width of one rect and x of the next differ by
+    # rounding, and a value on that edge must fall in exactly one bin).
+    bins = [(a, bins[i + 1][0] if i + 1 < len(bins) and abs(bins[i + 1][0] - b) <= ax.tol() else b, c)
+            for i, (a, b, c) in enumerate(bins)]
     import bisect
     found = stray = 0
     counted = 0
