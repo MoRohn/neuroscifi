@@ -563,3 +563,75 @@ idle investigator run before the timer's pass** gives +0.013 / +0.042 / +0.052 (
 with fewer subjects lost; the look cannot promote it, and dividing the daily allowance between refreshing and
 reaching is the next thing to measure. **The front door stays on** (12 of 12 front-door questions exact; every
 other figure equal to the run without it).
+
+## Wave 4: the source-independence family
+
+**Purpose.** At the shipped defaults the individual cannot tell independent sources from copies beyond near-identical
+text and single named origins (WAVE3.md). The learning-cycles worlds measure that only through version-number
+counters and contain few of the shapes in which it fails. This family measures it directly: worlds whose ground truth
+is a DERIVATION GRAPH (for every page, whether it reports first-hand, derives from which other page(s), or repeats the
+individual's own earlier answer), written before any source rule, on which every later source rule is judged
+(`scripts/bench_sources.py`; harness `src/neuroscifi/acceptance/cognition/sources.py`).
+
+**The worlds.** `sources_splits_dev.py` (development, seeds 8301-8303, two worlds) and `sources_splits_heldout.py`
+(held-out, seeds 8401-8404, three worlds), each committed alone (`cda7271`, `6480b12`) before the withheld worlds,
+the harness and any rule; seeds disjoint from every seed in the repository outside the withheld files. Fictional
+projects whose latest release changes (and is sometimes pulled), outlets, wires, aggregators, round-up sites, forums
+and the projects' own release pages, all under `.example`. Each look the world schedules (births, then a blind
+rotation of revisits: the same looks in the same order in every configuration) stages one of thirteen shapes:
+honest independent corroboration (the commonest, so a rule is judged on not breaking it), outlets restating the
+project's release page, honest outlets that checked the value and still credit another outlet, reworded syndicated
+copies crediting their origin, copies crediting nobody, a page naming two origins, copies naming their origin and an
+irrelevant contributor, hosts named like wire services (independent outlets and copiers), round-ups citing several
+outlets, mirrors with later dates (some with a canonical link), corrections and corrections of corrections, stale
+pages (dated when the old value was true, or re-dated), and echoes of the individual's own earlier answer (verbatim,
+paraphrased, number reformatted, crediting a model or not; its value right or wrong). Wrong stories are neighbouring
+values or far ones; no value carries a mark of where it came from. The credit and echo wording comes from documented
+sources, listed in the development file's docstring (Wikipedia's MOS:SAID verbs, the AP and Reuters datelines,
+ProPublica's and The Conversation's republication lines, the AP and Reuters credit lines, the Curator's Code, the NYT
+and Reuters correction forms, the APA model citation), not from any parser's pattern list, and no page was run
+through the product before the worlds were committed. The proportions are stated in the files with their reasons;
+the real web's shares are not measured anywhere in this project. What the worlds cannot show: the open web, real
+syndication rates, a real answer model.
+
+**The withheld worlds** (`sources_withheld.py`, seeds 8501-8504, committed alone `5ce7868`): worlds no rule is written
+or tuned on, with different proportions and with shapes and surface forms the development and held-out worlds do not
+have. Their contents are not described here; no lane reads, prints, imports or runs them.
+
+**Metrics** (fixed before any rule; per world, seed and shape; `sources.py` docstring): `wrongly_admitted` (knowledge
+rows written whose value's independent first-hand support in the look is below the bar: fewer than 2 roots and not
+the project's own release page), `own_admitted` (rows whose value only echoes of the individual's own answer state),
+`suppressed` of `eligible` (looks whose true value meets the bar after which the subject's newest held item does not
+state it; `suppressed_contested`: the look opened a contradiction question), `dependent_rises` (a held item's
+confidence rose in a look that stated its value with no root not already behind it), grouping precision and recall
+of "same source" over pairs of read pages that yielded a claim (the pipeline's `claims.independence_groups` over each
+cluster against "their roots intersect"), `correct` over time (share of subjects whose newest held item states the
+value true now; `mean_correct` over cycles 1..N), and cost (wall seconds, seconds inside `consolidate.run`, pages,
+rows, file bytes). Values are compared as numbers ("2.4" = "v2.4.0"); no metric reads a version-number convention.
+Each configuration reads its settings back (`config_read_back`, `config_same_every_seed`) and records what it did
+(`looks_changed_vs_shipped`: looks whose grouping, admitted values or questions differ from `shipped`'s).
+
+**References** (same looks, from the graph alone): `oracle` (the true roots), `every_page`, `same_value` (every page
+stating one value is one source) and `todays_rule` (the product's grouping at the defaults, and no other product
+code); each admits the value whose count reaches the bar and is above every other, and is scored by the same metrics.
+They bound what a rule can gain in each direction; they model no other rule of the product, so their `correct` is not
+the product's ceiling.
+
+**The guard.** Only `sources.final()` loads the withheld worlds; `scripts/bench_sources.py final --note TEXT --out
+FILE [--config NAME]` is its command. Refused before the ledger line: another tree's source, an `--out` inside the
+checkout, in a missing or unwritable directory or that is a directory, a blank note, an unknown configuration, a tree
+that is dirty, uncommitted or whose state git cannot give, and a withheld file or development file (whose generator
+the withheld worlds use) whose bytes do not hash to the SHA-256 pinned in `sources.WITHHELD_SHA256` /
+`sources.DEV_SHA256` (also pinned by `tests/acceptance/test_sources_bench.py`, which tests each refusal without
+loading the worlds). The line goes to `docs/quality/evidence/genesis_final_uses.jsonl` (family `sources_withheld`)
+before anything is loaded or scored. `run --split` accepts only `development` and `held_out`.
+
+**The look rule (written before the held-out runs and the look).** Wave 4 step 0 takes one look, on its final clean
+tree: `final` with the default configuration (`shipped`) and the four references, nothing else (the opt-in rules get
+their look with Wave 4's mechanisms at the end). It decides nothing: no setting changes with it. Reported from the
+output, per world and summed over the four seeds: `totals_sum` and `by_shape_sum` (`wrongly_admitted`,
+`wrongly_admitted_false`, `own_admitted`, `eligible`, `suppressed`, `suppressed_contested`, `dependent_rises`,
+`precision`, `recall`), `mean_correct` (mean and sd over seeds), `config_read_back` and `config_same_every_seed` (a
+read-back other than the shipped defaults with `enabled` true voids the look), `world_digests`, and the same fields
+for each reference. The evidence file is a summary per world, seed and shape. It names shapes the other splits do
+not have, so only the main session reads it.
