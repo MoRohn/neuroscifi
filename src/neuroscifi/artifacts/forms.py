@@ -291,6 +291,11 @@ class Form:
     min_items: int = 0                  # fewer items than this: the form carries nothing
     second_for: tuple[str, ...] = ()    # only when one of these purposes is present (alone or second), unless named
 
+    @property
+    def devices(self) -> tuple[str, ...]:
+        """The devices whose default media show this form."""
+        return tuple(d for d in DEVICES if set(self.media) <= set(DEVICE_SHOWS[d]))
+
     def carried_kinds(self, shape: ContentShape, display: Display | None = None) -> dict:
         """Per content kind: fit x coverage. Records is ignored when the shape has a more specific kind."""
         display = display or resolve_display(Context())
@@ -933,7 +938,8 @@ _NOUNS = (
     (r"maps?", ("image", "scatter_chart")),
     (r"(?:pictures?|images?|visuals?|visuali[sz]ations?|graphics?|infographics?|illustrations?|drawings?)", None),
     (r"diagrams?", DIAGRAMS),
-    (r"charts?|plots?|graphs?", CHARTS + ("node_link", "tree_diagram")),
+    (r"charts?|plots?", CHARTS),
+    (r"graphs?", CHARTS + ("node_link", "tree_diagram")),
     (r"tables?|tabular form", ("table",)),
     (r"spreadsheets?|csv(?: file)?s?|tsv|data files?|excel(?: file)?", ("data_file",)),
     (r"(?:a |the )?file", ("data_file",)),
@@ -967,7 +973,7 @@ _CLAUSE_START = r"(?:^|[.;:!?,]\s*|\b(?:please|can you|could you|would you|will 
 _VERB_RE = [(re.compile(_CLAUSE_START + r"(?:" + pattern + r")\b"), forms) for pattern, forms in _FORM_VERBS]
 _ALOUD = re.compile(r"\b(?:out loud|aloud)\b")
 _NEGATION = re.compile(r"\b(?:no|not|without|don't|do not|never|skip|avoid|rather than|instead of|nothing like)\s+"
-                       r"(?:(?:an?|the|any|more|another|some)\s+)?(?:[a-z0-9-]+\s+){0,1}$")
+                       r"(?:[a-z0-9'-]+\s+){0,3}$")
 
 _SIMPLE = re.compile(r"\b(?:just (?:tell|say|give)|briefly|in brief|in (?:a|one) (?:word|sentence|line)|"
                      r"short answer|quick(?:ly)? (?:answer|question)|tl;?dr|keep it (?:short|simple)|simply put|"

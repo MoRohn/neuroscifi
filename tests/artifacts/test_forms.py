@@ -172,6 +172,11 @@ def test_explicit_forms_named_in_words():
     assert read("Which chart topped the charts in 1990?").explicit is None
     no = read("No chart please, just the trend")
     assert no.explicit is None and "line_chart" in no.refused and "node_link" in no.refused
+    assert read("I don't want a chart").explicit is None and "bar_chart" in read("I don't want a chart").refused
+    swap = read("give me a table, not a chart")
+    assert swap.explicit == ("table",) and "line_chart" in swap.refused and "table" not in swap.refused
+    assert read("No, put it in a table").explicit == ("table",)
+    assert read("not now, make a chart").explicit == F.CHARTS
 
 
 def test_a_family_named_takes_its_best_feasible_member_or_explains():
@@ -329,6 +334,18 @@ def test_every_registered_form_is_reachable_unasked_and_none_carries_nothing():
                     assert F.FORMS[name].carried(content, display) > 0, (name, content)
                 reached.update(result.chosen)
     assert reached >= set(F.FORMS), sorted(set(F.FORMS) - reached)
+
+
+def test_each_form_declares_what_it_needs():
+    for name, form in F.FORMS.items():
+        assert form.rule and form.label and form.media and form.kinds
+        assert form.generator is None or form.generator in ALL
+        assert form.fallback is None or form.fallback in F.FORMS
+        assert form.cost_class in ("none", "low", "medium", "high")
+    assert F.FORMS["line_chart"].devices == ("console", "pocket")
+    assert F.FORMS["spoken"].devices == ("console", "pocket", "voice")
+    assert F.FORMS["data_file"].devices == ("console", "pocket", "cli", "agent")
+    assert F.FORMS["prose"].generator is None and F.FORMS["spoken"].generator is None
 
 
 def test_carried_follows_the_stated_counting_rules():
