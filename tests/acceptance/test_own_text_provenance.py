@@ -18,8 +18,14 @@ EXPECTATIONS = {
                                                  "echo, even when it is read after it",
     "other_subject_unaffected": "an emitted value of one subject never discards a page stating the same value of "
                                 "another subject",
-    "disagreeing_echo_still_counts_against": "an echo that disagrees with what the sources say stays on the "
-                                             "contradicting side (counts against a held value only as today)",
+    # (renamed by the Wave 4 fix lane, review4 H2 = measurement H1: lane E's entry here read "an echo that disagrees
+    # ... stays on the contradicting side (counts against a held value only as today)"; that was the defect: kept
+    # whole, the echoes counted FOR their value and superseded a verified one)
+    "disagreeing_echo_is_asked_never_evidence": "an echo that disagrees with a held value is no evidence on either "
+                                                "side: nothing is admitted from it, the held value is neither "
+                                                "superseded nor weakened, and the disagreement is asked as a "
+                                                "contradiction question; with own_text_provenance alone, with Wave "
+                                                "3's echo_recognition beside it and with source_derivation beside it",
     "template_answer_is_not_own_text": "an extractive (template) answer quotes sources: nothing of it is recorded",
     # security
     "hostile_quote_cannot_discard_real_evidence": "a page that quotes the individual's own answer, or any text, cannot "
@@ -167,18 +173,28 @@ def test_other_subject_unaffected():
         assert [echoes.of(c) for c in found] == [None, None, "emitted"]
 
 
-def test_disagreeing_echo_still_counts_against():
-    seen = {}
+@pytest.mark.parametrize("beside", [{}, {"echo_recognition": True}, {"source_derivation": True}])
+def test_disagreeing_echo_is_asked_never_evidence(beside):
+    """Two echoes of the individual's unsourced 9.4.0 against the held, verified 1.4.0 (review4 s/p4, m/q7): before
+    the fix they were kept whole and superseded it. The control (setting off, no echo rule): the same pages supersede
+    it. Wave 3's echo_recognition alone protects the held value as before and now asks too."""
     for on in (True, False):
-        with _own(f"against-{on}", on=on) as (db, _):
+        with _own(f"against-{on}-{sorted(beside)}", on=on, **beside) as (db, _):
             kid = adv._s_item(db, T0)
+            held = adv._s_live(db, kid)
             _answer(db, T0 + DAY)
-            out = adv._s_look(db, T0 + 2 * DAY, [("relnotes.example", f"{N} 1.4.0 is the latest {N} release.",
-                                                  T0 + DAY + 3600, "/again"),
-                                                 ("askboard.example", TWO[0], T0 + DAY + 3600,
-                                                  None)])
-            seen[on] = (bool(out["contested"]), adv._s_live(db, kid)["status"], out.get("echoes") or [])
-    assert seen[True][:2] == seen[False][:2] and seen[True][0] and seen[True][2] == []
+            out = adv._s_look(db, T0 + 2 * DAY, _pages(TWO, T0 + DAY + 3600))
+            now = adv._s_live(db, kid)
+            if not on and not beside.get("echo_recognition"):
+                assert now["status"] == "superseded" and _rows(db, "9.4.0") == ["provisional"], beside
+                continue
+            assert _rows(db, "9.4.0") == [] and not out["superseded"] and not out["provisional"], beside
+            assert (now["status"], now["confidence"], now["contradicting"]) == \
+                (held["status"], held["confidence"], held["contradicting"]), beside
+            asked = [c for c in out["contested"] if c.get("knowledge_id") == kid and c.get("echo")]
+            assert len(asked) == 1 and asked[0]["pending_id"] is not None, (beside, out["contested"])
+            question = db.execute("SELECT question FROM pending WHERE id=?", (asked[0]["pending_id"],)).fetchone()[0]
+            assert "own earlier answer" in question and "Keep it as knowledge?" in question
 
 
 def test_template_answer_is_not_own_text():

@@ -526,17 +526,60 @@ def _without_echoes(echoes, cluster, *, now, freshness, ttl_overrides):
     return cluster, gone
 
 
-def _against_held(db, cluster, echoed) -> bool:
-    """ADR-067 (own_text_provenance on): whether an echo found in `cluster` (before its removal) disagrees with the
-    held item the cluster is compared with. Such a cluster is kept whole: the echo is never evidence FOR its value (a
-    disagreement is asked and never writes knowledge; the supersession rule never counts an echo), and it counts
-    against the held value exactly as it does without the setting."""
+def _against_held(db, cluster, echoes):
+    """(the held item, [the echo claims of `cluster` whose values conflict with it], {the ids of every claim of
+    `cluster` the checks mark}) when a claim the echo checks mark
+    (either check: Wave 3's echo_recognition, ADR-067's own_text_provenance) disagrees with the held item the cluster
+    is compared with; (None, []) otherwise. Wave 4 fix (review4 H2 = measurement H1): such echoes are no evidence on
+    EITHER side: they never support their value, never supersede and never weaken the held item, and the
+    disagreement is asked (_echo_disagreement). Before the fix the cluster was kept whole, so the echoes counted FOR
+    their value and could supersede a verified one."""
+    marked = [c for c in cluster.claims if echoes.of(c)]
+    if not marked:
+        return None, [], set()
+    if not cluster.key:     # scored without its echoes (source_derivation's hook): the claims' own key finds the item
+        from dataclasses import replace
+        cluster = replace(cluster, key=next((c.key for c in marked if c.key), ""))
     item = _existing(db, cluster)
     if item is None:
-        return False
-    gone = set(echoed)
-    return any(_compare(list(c.values or []), -1 if c.polarity < 0 else 1, item)[0] == "conflict"
-               for c in cluster.claims if c.id in gone)
+        return None, [], set()
+    against = [c for c in marked if _compare(list(c.values or []), -1 if c.polarity < 0 else 1, item)[0] == "conflict"]
+    return (item, against, {c.id for c in marked}) if against else (None, [], set())
+
+
+def _without_claims(cluster, ids, *, now, freshness, ttl_overrides):
+    """The cluster without the claims `ids`, re-scored as _without_echoes re-scores (unchanged when none is in it)."""
+    from dataclasses import replace
+    kept = [c for c in cluster.claims if c.id not in ids]
+    if len(kept) == len(cluster.claims):
+        return cluster
+    if not kept:
+        return replace(cluster, claims=[])
+    return _claims.score(replace(cluster, claims=kept), now=now, freshness_class=freshness,
+                         ttl_overrides=ttl_overrides)
+
+
+ECHO_REASON = ("it repeats a value that only this system's own earlier answer had stated, without a source, so it is "
+               "not counted as evidence and the known statement was not changed")
+
+
+def _echo_disagreement(db, task_id, cluster, item, against, now, summary, questions):
+    """Pages repeating a value only the individual's own earlier answer stated, without a source, disagree with a
+    held item (_against_held): asked, never acted on. The item is not superseded, and its confidence and its list of
+    contradicting claims stay as they are (an echo is no evidence against it either); the owner is asked whether it
+    still holds, in the item's own question scope. Caller owns the transaction."""
+    head = against[0]
+    pid = questions.ask(
+        f"web:knowledge:{item['id']}",
+        f"A page now disagrees with known «{knowledge.quote(item['statement'])}»: «{knowledge.quote(safe_text(head))}» "
+        f"({ECHO_REASON}). Keep it as knowledge?", now)
+    confidence = state.finite(item["confidence"], 0.0)
+    _feedback(db, task_id, item["id"], item["key"], "unchanged", confidence, confidence,
+              {"contested": True, "echo": True, "reason": ECHO_REASON, "claim": head.id}, now)
+    summary["contested"].append({"key": cluster.key or item["key"], "knowledge_id": item["id"], "pending_id": pid,
+                                 "reason": ECHO_REASON, "claim": head.id, "echo": True})
+    if pid is not None:
+        summary["pending"].append(pid)
 
 
 def _eligibility(db, task_id, cluster, removed=0):
@@ -1779,15 +1822,18 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                     if not (isinstance(found, tuple) and len(found) == 2 and isinstance(found[1], list)
                             and isinstance(getattr(found[0], "claims", None), list)):
                         raise TypeError(f"the echo check returned {type(found).__name__}, not (cluster, ids)")
+                    held_item, against, marked = _against_held(db, cluster, echoes)
                 except Exception as exc:          # noqa: BLE001 - the task's "error" event (its type only)
                     state.log_event(db, task_id, "error", {"stage": "consolidating: echoes of the individual's own "
                                                                     "text", "error": type(exc).__name__}, now)
-                    found = (cluster, [])
+                    found, held_item, against, marked = (cluster, []), None, [], set()
                 whole, (cluster, echoed) = cluster, found
-                if echoed and cfg.own_text_provenance and _against_held(db, whole, echoed):
-                    cluster, echoed = whole, []     # ADR-067: it still counts against a held value, as today
                 if echoed:
                     summary.setdefault("echoes", []).extend(echoed)
+                if held_item is not None:   # Wave 4 fix (review4 H2, H4): no evidence on either side; asked
+                    cluster = _without_claims(cluster, marked, now=now, freshness=freshness,
+                                              ttl_overrides=cfg.freshness_ttl or None)
+                    _echo_disagreement(db, task_id, whole, held_item, against, now, summary, questions)
                 if whole.claims and not cluster.claims:
                     summary["held"].append(_held(whole, ["every claim repeats what only the individual's own output "
                                                          "had stated (an echo of its own text, never evidence)"]))
