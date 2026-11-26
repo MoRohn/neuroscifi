@@ -12,7 +12,7 @@ from b2_fixtures import b2_registered  # noqa: F401
 from neuroscifi.artifacts import adapters
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters import _b2, video_containers
-from neuroscifi.artifacts.safe_b2 import HeaderOnly
+from neuroscifi.artifacts.types import HeaderOnly
 
 
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import math
 
-from ..safe import Deadline, column_from_values
+from ..safe import Deadline
 from ..types import Decoded, Detected, Limits, Malformed, Node, Refused, Table, Tree
 from . import Adapter
 from .plain import decode_text
@@ -90,8 +90,10 @@ def element_bound(data: bytes) -> int:
 
 def as_table(tree: Tree, *, title: str | None = None) -> Table | None:
     """The records as a Table when the root is an array of objects whose members are all scalars; else None.
-    Columns are the union of keys in first-seen order (at most TABLE_MAX_COLUMNS); a record without a key is a
-    missing cell. Kinds come from `safe.column_from_values` (no guessing)."""
+    The table is built by lane B1's `tables.table_from_records` (the one set of rules for JSON records: columns
+    in first-seen order, a record without a key is a missing cell, kinds by the same string rules as delimited
+    text), so a JSON array of records reads the same here and as NDJSON."""
+    from .tables import table_from_records
     root = tree.root
     if root.attrs.get("type") != "array" or not root.children:
         return None
@@ -105,9 +107,8 @@ def as_table(tree: Tree, *, title: str | None = None) -> Table | None:
             keys.setdefault(cell.name, None)
             if len(keys) > TABLE_MAX_COLUMNS:
                 return None
-    rows = [{c.name: c.value for c in record.children} for record in root.children]
-    columns = tuple(column_from_values(k, [r.get(k) for r in rows]) for k in keys)
-    return Table(columns, len(rows), title)
+    records = [{c.name: c.value for c in record.children} for record in root.children]
+    return table_from_records(records, title=title)[0]
 
 
 class JsonTree(Adapter):

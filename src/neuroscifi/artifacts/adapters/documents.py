@@ -21,8 +21,8 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 
-from ..safe import Deadline
-from ..safe_b1 import DecodeBudget, decode_text, injection_notes
+from ..safe import Deadline, injection_notes
+from ..safe_b1 import DecodeBudget, decode_text
 from ..types import Block, Decoded, Document, Limits, Malformed, Refused
 from . import Adapter
 from .tables import table_from_rows

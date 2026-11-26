@@ -19,8 +19,8 @@ import zlib
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe import Deadline
-from ..safe_b2 import Reader, inflate, members, need, screen_words
+from ..safe import Deadline, injection_notes
+from ..safe_b2 import Reader, inflate, members, need
 from .. import types as T
 from ..types import Decoded, Detected, Limits, Malformed
 from . import Adapter
@@ -318,7 +318,7 @@ class PNGAdapter(Adapter):
         if ctype == 0 and trns is not None:
             notes.append("grey image with a transparent key value represented as RGBA")
         text = "\n".join(words)
-        notes.extend(screen_words(text))
+        notes.extend(injection_notes(text))
         samples = _decode_image(b"".join(idat), w, h, bits, ctype, interlace, deadline)
         pixels, mode, out_bits = _to_raster_array(samples, ctype, bits, palette, trns)
         if not frames or actl is None:

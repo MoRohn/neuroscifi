@@ -11,12 +11,13 @@ import pytest
 
 @pytest.fixture(autouse=True, scope="module")
 def b2_registered():
-    """Register lane B2's adapters and detection for one test module, and remove them afterwards, so that other
-    lanes' tests in the same session see the registry as they expect."""
-    from neuroscifi.artifacts.adapters import _b2
-    _b2.register_all()
+    """Lane B2's adapters and detection for one test module. They are built-ins of the registry now, so this
+    registers (and afterwards removes) only what a test removed before it."""
+    from neuroscifi.artifacts.adapters import _b2, unregister
+    newly = _b2.register_all()      # [] since B2 is one of the registry's built-ins: nothing to undo then
     yield
-    _b2.unregister_all()
+    for name in newly:
+        unregister(name)
 
 # ---------------------------------------------------------------------------------------------------------------- PNG
 

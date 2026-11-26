@@ -16,7 +16,7 @@ import re
 import sys
 from pathlib import Path
 
-from .types import ArtifactError, Limits
+from .types import ArtifactError, HeaderOnly, Limits, bounded
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]")
 
@@ -34,16 +34,27 @@ def _clean(text) -> str:
     return _CONTROL.sub("?", str(text))
 
 
+def _detected(d) -> dict:
+    return {"family": d.family, "format": d.format, "media_type": d.media_type, "basis": d.basis,
+            "container": d.container, "reasons": list(d.reasons)}
+
+
 def report(data: bytes, name: str | None) -> dict:
+    """What `nsf inspect` prints. A header-only format (HeaderOnly) is a read file too: its header facts are the
+    structure, `header_only` says the content was not decoded, and its words are counted (never printed)."""
     from . import adapters
-    decoded = adapters.decode(data, name=name, limits=Limits())
+    from .detect import detect
+    try:
+        decoded = adapters.decode(data, name=name, limits=Limits())
+    except HeaderOnly as error:
+        d = detect(data[:64 << 10], name=name, size=len(data))
+        return {"size": len(data), "detected": _detected(d), "representation": error.opaque.describe(),
+                "header": bounded(error.facts), "words_chars": len(error.words), "notes": [str(error)],
+                "partial": False, "decoded": False, "header_only": True}
     rep = decoded.representation
-    d = decoded.detected
-    return {"size": len(data),
-            "detected": {"family": d.family, "format": d.format, "media_type": d.media_type, "basis": d.basis,
-                         "container": d.container, "reasons": list(d.reasons)},
+    return {"size": len(data), "detected": _detected(decoded.detected),
             "representation": rep.describe(), "notes": list(decoded.notes), "partial": decoded.partial,
-            "decoded": rep.kind != "opaque"}
+            "decoded": rep.kind != "opaque", "header_only": False}
 
 
 _BASIS = {"signature": "its signature (magic number)", "structure": "its structure",
@@ -60,7 +71,13 @@ def _plain(name: str, out: dict) -> str:
         lines.append(f"Identified as: {d['format']} ({d['family']}, {d['media_type']}){inside}, "
                      f"by {_BASIS[d['basis']]}")
     lines += ["Why:"] + [f"  - {_clean(r)}" for r in d["reasons"]]
-    if out["decoded"]:
+    if out.get("header_only"):
+        lines.append("Read as: its header only (the content is not decoded here)")
+        lines += ["What the header says:"] + [f"  - {_clean(k)}: {_clean(v)}" for k, v in out["header"].items()]
+        if out["words_chars"]:
+            lines.append(f"  - it carries {out['words_chars']} characters of its own text (metadata; not shown)")
+        lines += ["What would be needed:"] + [f"  - {_clean(n)}" for n in out["representation"].get("needs", [])]
+    elif out["decoded"]:
         lines.append(f"Read as: {rep['kind']}" + (" (partly: a limit stopped the decode)" if out["partial"] else ""))
         lines.append("Structure (measured, not interpreted):")
         lines += ["  " + _clean(line) for line in json.dumps(rep, indent=2, ensure_ascii=False).splitlines()]

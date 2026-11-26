@@ -27,8 +27,8 @@ from __future__ import annotations
 import posixpath
 import re
 
-from ..safe import Deadline, SafeZip, parse_xml
-from ..safe_b1 import DecodeBudget, charge_xml, decode_text, element_limits, local
+from ..safe import Deadline, SafeZip, local, parse_xml
+from ..safe_b1 import DecodeBudget, charge_xml, decode_text, element_limits
 from ..types import Block, Malformed, Refused
 from . import Adapter
 from .documents import _figure, _finish, html_blocks

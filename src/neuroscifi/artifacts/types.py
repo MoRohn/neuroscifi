@@ -803,6 +803,20 @@ class Opaque:
 REPRESENTATIONS = (Table, Signal, Raster, Frames, Drawing, Mesh, Features, Tree, Graph, Document, Bundle, Opaque)
 
 
+class HeaderOnly(Unsupported):
+    """The format was identified and its header read, but its content is not decoded here (JPEG pixels, MP3
+    samples, ...). An addition to DESIGN §2 (ADR-072, integration): `facts` is a JSON-able dict of what the header
+    established, `words` the plain-text metadata it carries (untrusted, possibly ""), `opaque` the same facts as an
+    `Opaque` with what would be needed. Consumers (the store's index and text layer, `nsf inspect`, `facts`) keep all
+    three: a header-only file is never reported as nothing."""
+
+    def __init__(self, message: str, *, facts: dict, needs: tuple[str, ...], size: int, words: str = ""):
+        super().__init__(message, needs=needs)
+        self.facts = dict(facts)
+        self.words = _bounded_text([words]) if words else ""
+        self.opaque = Opaque(size, tuple(f"{k}: {v}" for k, v in self.facts.items()), (), tuple(needs))
+
+
 @dataclass(frozen=True)
 class Decoded:
     detected: Detected
@@ -818,6 +832,6 @@ class Decoded:
 
 __all__ = ["ArtifactError", "BASES", "BLOCK_KINDS", "Block", "Bundle", "COLUMN_KINDS", "Column", "ContentShape",
            "DESCRIBE_MAX_BYTES", "Decoded", "Detected", "Document", "Drawing", "ERROR_REASONS", "Edge", "FAMILIES",
-           "Feature", "Features", "Frames", "GNode", "Graph", "Limits", "Malformed", "Member", "Mesh", "Node",
+           "Feature", "Features", "Frames", "GNode", "Graph", "HeaderOnly", "Limits", "Malformed", "Member", "Mesh", "Node",
            "Opaque", "REPRESENTATIONS", "Raster", "Refused", "SHAPE_KINDS", "Shape", "Signal", "TEXT_MAX_CHARS",
            "Table", "Tree", "Unsupported", "bounded"]

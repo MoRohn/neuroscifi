@@ -13,6 +13,7 @@ from neuroscifi import cli
 from neuroscifi.artifacts import adapters
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters.jsontree import as_table
+from neuroscifi.artifacts.types import Unsupported
 from neuroscifi.artifacts.unknown import inspect_unknown
 
 
@@ -177,9 +178,15 @@ def test_unknown_reports_embedded_signatures_and_no_text_content():
 
 
 def test_identified_but_undecodable_names_the_missing_adapter():
-    d = adapters.decode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
-    assert d.detected.format == "png" and d.representation.kind == "opaque"
-    assert "an adapter for png" in d.representation.needs
+    # JPEG: identified and its header read (lane B2), but no decoder of its pixels exists here
+    sof = b"\xff\xc0" + struct.pack(">HBHHB", 17, 8, 2, 3, 3) + b"\x01\x11\x00\x02\x11\x00\x03\x11\x00"
+    with pytest.raises(Unsupported) as e:
+        adapters.decode(b"\xff\xd8" + sof + b"\xff\xd9")
+    assert e.value.needs == ("a JPEG decoder",) and e.value.facts["width"] == 3
+    # Parquet: identified by its signature, and no adapter claims it at all
+    d = adapters.decode(b"PAR1" + b"\x00" * 40 + b"PAR1")
+    assert d.detected.format == "parquet" and d.representation.kind == "opaque"
+    assert "an adapter for parquet" in d.representation.needs
 
 
 def test_empty_input():

@@ -22,8 +22,8 @@ import sqlite3
 import struct
 import time
 
-from ..safe import Deadline
-from ..safe_b1 import DecodeBudget, injection_notes
+from ..safe import Deadline, injection_notes
+from ..safe_b1 import DecodeBudget
 from ..types import Bundle, Decoded, Detected, Malformed, Member, Refused
 from . import Adapter
 from .tables import table_from_rows

@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import struct
 
-from ..safe_b2 import HeaderOnly, Reader
-from ..types import Decoded, Detected, Limits, Malformed
+from ..safe_b2 import Reader
+from ..types import Decoded, Detected, HeaderOnly, Limits, Malformed
 from . import Adapter
 
 MP3_BITRATES = {  # (version 1?, layer) -> kbit/s by index
@@ -331,6 +331,7 @@ def _raise(fmt: str, facts: dict, words: list[str], notes: list[str], needs: str
 
 class MP3Adapter(Adapter):
     name = "b2-mp3"
+    reads = "header"
     formats = ("mp3",)
     families = ("audio",)
 
@@ -341,6 +342,7 @@ class MP3Adapter(Adapter):
 
 class AACAdapter(Adapter):
     name = "b2-aac"
+    reads = "header"
     formats = ("aac",)
     families = ("audio",)
 
@@ -351,6 +353,7 @@ class AACAdapter(Adapter):
 
 class FLACAdapter(Adapter):
     name = "b2-flac"
+    reads = "header"
     formats = ("flac",)
     families = ("audio",)
 
@@ -363,6 +366,7 @@ class FLACAdapter(Adapter):
 
 class OggAdapter(Adapter):
     name = "b2-ogg"
+    reads = "header"
     formats = ("ogg", "opus", "vorbis", "ogv")
     families = ("audio",)
 
@@ -376,6 +380,7 @@ class OggAdapter(Adapter):
 
 class M4AAdapter(Adapter):
     name = "b2-m4a"
+    reads = "header"
     formats = ("m4a",)
     families = ("audio",)
 

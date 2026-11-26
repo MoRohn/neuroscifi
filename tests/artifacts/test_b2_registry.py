@@ -13,7 +13,7 @@ from b2_corpus import samples
 from neuroscifi.artifacts import adapters, detect
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters import _b2
-from neuroscifi.artifacts.safe_b2 import HeaderOnly
+from neuroscifi.artifacts.types import HeaderOnly
 
 SAMPLES = samples()
 HEADER_ONLY = {"jpeg", "webp", "heic", "psd", "mp3", "flac", "opus", "aac", "m4a"}

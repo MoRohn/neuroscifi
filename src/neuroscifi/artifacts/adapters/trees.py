@@ -22,9 +22,8 @@ import datetime as _dt
 import re
 import tomllib
 
-from ..safe import Deadline, parse_xml
-from ..safe_b1 import XML_NODE_COST, DecodeBudget, decode_text, element_limits, injection_notes, local, \
-    strip_plist_doctype
+from ..safe import Deadline, injection_notes, local, parse_xml
+from ..safe_b1 import XML_NODE_COST, DecodeBudget, decode_text, element_limits, strip_plist_doctype
 from ..types import Decoded, Malformed, Node, Refused, Tree, Unsupported
 from . import Adapter
 from .tables import load_json
@@ -199,6 +198,7 @@ PlistAdapter = _adapter("b1-plist", ("plist",), read_plist)
 TomlAdapter = _adapter("b1-toml", ("toml",), read_toml)
 IniAdapter = _adapter("b1-ini", ("ini", "cfg"), read_ini)
 YamlAdapter = _adapter("b1-yaml", ("yaml", "yml"), read_yaml)
+YamlAdapter.reads = "content or header"        # only the JSON subset of YAML is read
 
 ADAPTERS = (XmlAdapter, PlistAdapter, TomlAdapter, IniAdapter, YamlAdapter)
 

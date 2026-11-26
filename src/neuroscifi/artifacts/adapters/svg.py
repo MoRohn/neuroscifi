@@ -21,8 +21,8 @@ import re
 
 import numpy as np
 
-from ..safe import Deadline
-from ..safe_b2 import count, local, parse_xml, screen_words
+from ..safe import Deadline, injection_notes, local
+from ..safe_b2 import count, parse_xml
 from ..types import Decoded, Drawing, Malformed, Refused, Shape
 from . import Adapter
 
@@ -374,7 +374,7 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
     if refused:
         notes.append("refused and not kept: " + ", ".join(f"{n} x {k}" for k, n in sorted(refused.items())))
     drawing = Drawing(float(width or 0.0), float(height or 0.0), tuple(shapes))
-    notes.extend(screen_words(drawing.text()))
+    notes.extend(injection_notes(drawing.text()))
     return Decoded(detected, drawing, tuple(dict.fromkeys(notes)), False)
 
 

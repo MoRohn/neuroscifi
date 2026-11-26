@@ -17,9 +17,9 @@ import struct
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe import Deadline
-from ..safe_b2 import HeaderOnly, Reader, members, screen_words
-from ..types import Column, Decoded, Limits, Malformed, Node, Table, Tree
+from ..safe import Deadline, injection_notes
+from ..safe_b2 import Reader, members
+from ..types import Column, Decoded, HeaderOnly, Limits, Malformed, Node, Table, Tree
 from . import Adapter
 
 MAX_NODES = 20_000
@@ -520,7 +520,7 @@ def tracks_table(tree: Tree) -> Table:
 
 def _decoded(detected, fmt, info, structure) -> Decoded:
     text = "\n".join(info["words"])
-    notes = [NO_FRAMES] + info["notes"] + list(screen_words(text))
+    notes = [NO_FRAMES] + info["notes"] + list(injection_notes(text))
     if text:
         notes.append(f"{len(info['words'])} title/name/tag field(s) read as the artifact's own words: " +
                      "they are listed in the tree only by count")
@@ -535,6 +535,7 @@ def audio_only_iso(info: dict) -> bool:
 
 class ISOAdapter(Adapter):
     name = "b2-isobmff"
+    reads = "structure"
     formats = ("mp4", "mov", "3gp")
     families = ("video",)
 
@@ -545,6 +546,7 @@ class ISOAdapter(Adapter):
 
 class MatroskaAdapter(Adapter):
     name = "b2-matroska"
+    reads = "structure"
     formats = ("mkv", "webm")
     families = ("video",)
 
@@ -560,6 +562,7 @@ class MatroskaAdapter(Adapter):
 
 class AVIAdapter(Adapter):
     name = "b2-avi"
+    reads = "structure"
     formats = ("avi",)
     families = ("video",)
 

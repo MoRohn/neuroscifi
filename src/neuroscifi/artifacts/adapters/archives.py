@@ -264,6 +264,7 @@ class TarAdapter(Adapter):
 
 class UnreadArchiveAdapter(Adapter):
     name = "b1-7z-rar"
+    reads = "identity"
     formats = ("7z", "rar")
     families = ("archive",)
 

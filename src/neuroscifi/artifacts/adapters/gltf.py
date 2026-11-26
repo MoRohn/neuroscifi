@@ -17,8 +17,8 @@ import json
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe import Deadline
-from ..safe_b2 import Reader, count, need, screen_words
+from ..safe import Deadline, injection_notes
+from ..safe_b2 import Reader, count, need
 from ..types import Decoded, Detected, Edge, GNode, Graph, Limits, Malformed
 from . import Adapter
 
@@ -275,7 +275,7 @@ def decode_gltf_doc(doc: dict, binary: bytes | None, detected: Detected, limits:
     graph = scene_graph_of(doc)
     notes.append(f"scene graph: {len(graph.nodes)} node(s), {len(graph.edges)} edge(s) (gltf.scene_graph)")
     notes.append("glTF positions are in metres by the specification; the unit is stated as 'm'")
-    notes.extend(screen_words(text))
+    notes.extend(injection_notes(text))
     return Decoded(detected, R.Mesh(v, f, "m", words=text), tuple(notes), False)
 
 

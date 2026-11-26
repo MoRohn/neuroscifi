@@ -20,8 +20,8 @@ from array import array
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe import Deadline
-from ..safe_b2 import Reader, count, need, screen_words
+from ..safe import Deadline, injection_notes
+from ..safe_b2 import Reader, count, need
 from ..types import Decoded, Detected, Limits, Malformed, Unsupported
 from . import Adapter
 
@@ -47,7 +47,7 @@ def _mesh(vertices, faces, words, notes, detected, limits) -> Decoded:
     if f.size and (f.min() < 0 or f.max() >= len(v)):
         raise Malformed("a face refers to a vertex that does not exist")
     text = "\n".join(dict.fromkeys(w for w in words if w))
-    notes = list(notes) + [NO_UNIT] + list(screen_words(text))
+    notes = list(notes) + [NO_UNIT] + list(injection_notes(text))
     return Decoded(detected, R.Mesh(v, f, None, words=text), tuple(notes), False)
 
 

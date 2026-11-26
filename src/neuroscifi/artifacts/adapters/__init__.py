@@ -13,7 +13,8 @@ Detect -> Inspect -> Identify -> Resolve -> Decode -> Validate -> Represent:
 - `catalog()` is the live capability list and the only thing that may be quoted as "supported".
 - External adapters are discovered through the entry-point group `neuroscifi.artifact_adapters` (metadata only:
   nothing is imported) and are loaded only when the owner names them: `load_external(approved_names)`. Discovered
-  but unnamed adapters appear in `catalog()` as "found, not approved".
+  but unnamed adapters appear in `catalog()` as "found, not approved"; `unload_external(approved_names)` removes a
+  loaded one the owner no longer names.
 - `on_gap(callback)`: called as `callback(detected, outcome)` with outcome "opaque" or "unsupported" for every
   decode that ends there (lane A counts them by format).
 """
@@ -39,12 +40,17 @@ REFUSED_FORMATS = {
 class Adapter:
     """Base class for adapters. Subclasses set `name`, `formats`, `families`, `needs` and implement `decode`.
 
-    `needs` lists optional modules the adapter imports lazily; `available()` checks them without importing them."""
+    `needs` lists optional modules the adapter imports lazily; `available()` checks them without importing them.
+    `reads` says how far the adapter gets, so that the catalog never calls a header reader a decoder: "content" (the
+    format's content is decoded), "content or header" (some variants decoded, the others header only), "header"
+    (identified and its header read, nothing else: `HeaderOnly`), "structure" (a container's structure and tracks,
+    no frame or sample), "identity" (identified, nothing read)."""
 
     name: str = ""
     formats: tuple[str, ...] = ()
     families: tuple[str, ...] = ()
     needs: tuple[str, ...] = ()
+    reads: str = "content"
 
     def available(self) -> tuple[bool, str]:
         missing = [m for m in self.needs if importlib.util.find_spec(m) is None]
@@ -134,6 +140,19 @@ def load_external(approved: Iterable[str]) -> list[str]:
     return loaded
 
 
+def unload_external(approved: Iterable[str]) -> list[str]:
+    """Unregister every loaded external adapter whose entry-point name is not in `approved` (the owner withdrew it);
+    it is listed again as "found, not approved". Returns the entry-point names unloaded now."""
+    approved = {str(n) for n in approved}
+    unloaded = []
+    for ep_name, state in list(_EXTERNAL.items()):
+        if state.get("state") == "loaded" and ep_name not in approved:
+            unregister(state.get("adapter", ""))
+            _EXTERNAL[ep_name] = {"state": "found", "reason": "found, not approved"}
+            unloaded.append(ep_name)
+    return unloaded
+
+
 def catalog() -> list[dict]:
     """The live capability list: one row per adapter (name, formats, families, available, reason, source) and one
     per discovered-but-unloaded external adapter. Nothing else may be quoted as "supported"."""
@@ -142,16 +161,16 @@ def catalog() -> list[dict]:
     for adapter in _ADAPTERS:
         ok, reason = _available(adapter)
         rows.append({"name": adapter.name, "formats": list(adapter.formats), "families": list(adapter.families),
-                     "available": ok, "reason": reason,
+                     "available": ok, "reason": reason, "reads": str(getattr(adapter, "reads", "content")),
                      "source": "external" if adapter.name in external_names else "builtin"})
     for ep in _discover():
         state = _EXTERNAL.get(ep.name, {"state": "found", "reason": "found, not approved"})
         if state["state"] != "loaded":
             rows.append({"name": ep.name, "formats": [], "families": [], "available": False,
-                         "reason": state["reason"], "source": "external"})
+                         "reason": state["reason"], "reads": "nothing", "source": "external"})
     for format_name, why in REFUSED_FORMATS.items():
         rows.append({"name": f"refuse-{format_name}", "formats": [format_name], "families": [], "available": False,
-                     "reason": "refused: " + why, "source": "builtin"})
+                     "reason": "refused: " + why, "reads": "nothing", "source": "builtin"})
     return rows
 
 
@@ -230,14 +249,20 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
 
 
 def _register_builtins() -> None:
+    """The kernel's generic adapters first, then lane B1's and lane B2's specific ones (`resolve` takes the most
+    recently registered, so a specific adapter wins over a generic one: B1's notebook over K's JSON tree, B2's
+    GeoJSON over K's JSON tree). B2's registration also installs its detection."""
+    from . import _b1, _b2
     from .compressed import CompressedStream
     from .jsontree import JsonTree
     from .plain import PlainText
     for adapter in (PlainText(), JsonTree(), CompressedStream()):
         register(adapter)
+    _b1.register_all()
+    _b2.register_all()
 
 
 _register_builtins()
 
 __all__ = ["Adapter", "ENTRY_POINT_GROUP", "REFUSED_FORMATS", "catalog", "decode", "inspect_unknown",
-           "load_external", "nested", "on_gap", "register", "resolve", "unregister"]
+           "load_external", "nested", "on_gap", "register", "resolve", "unload_external", "unregister"]

@@ -12,6 +12,9 @@ committed: declared sizes in the input are never trusted.
   paths), with member count, per-member ratio, total size, encryption and method checks, and CRC verification.
 - `parse_xml(data, limits)`: expat with every DOCTYPE/entity declaration refused (the technique of
   `webcortex/safety.safe_xml_parse`) plus bounds on element count, depth and text size.
+- `local(tag)`: the local part of a namespaced ElementTree tag.
+- `injection_notes(text)`: the one note every adapter adds when an artifact's own words are flagged by
+  `webcortex.safety.scan_injection`.
 - `parse_number`, `parse_bool`, `parse_time`, `column_from_values`: typed-cell parsing for tables, with no guessing
   beyond what the strings say (a value that does not parse is text, not a number).
 """
@@ -320,6 +323,9 @@ class SafeZip:
             infos = self._zip.infolist()
         except (zipfile.BadZipFile, zipfile.LargeZipFile, ValueError, EOFError, OSError) as error:
             raise Malformed(f"the ZIP directory cannot be read ({type(error).__name__})") from None
+        except NotImplementedError:     # zipfile's answer to an archive that spans several disks
+            raise Malformed("the ZIP archive spans several disks (volumes); only single-volume archives are read") \
+                from None
         if len(infos) > limits.max_members:
             raise Refused(f"the archive lists {len(infos)} members, more than {limits.max_members}",
                           rule="max_members")
@@ -432,6 +438,34 @@ def parse_xml(data: bytes, limits: Limits, *, deadline: Deadline | None = None) 
         raise Refused("the XML nests too deeply", rule="xml_depth") from None
 
 
+def local(tag: str) -> str:
+    """The local part of an ElementTree tag ('{uri}svg' -> 'svg')."""
+    return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# An artifact's own words
+
+
+def injection_notes(text: str) -> tuple[str, ...]:
+    """A note when `webcortex.safety.scan_injection` flags passages of an artifact's own words that are addressed to
+    an AI agent; empty otherwise. The words stay in `text()` either way (untrusted): whoever sends them to a model
+    screens them again (the store's `text_for_model` refuses flagged text)."""
+    if not text:
+        return ()
+    try:
+        from ..webcortex.safety import scan_injection
+        found = scan_injection(text[:1 << 20])
+    except Exception as error:   # the screen is advisory here; its failure is named, not hidden
+        return (f"the injection screen could not run ({type(error).__name__}); the words are untrusted",)
+    if not found:
+        return ()
+    kinds = sorted({f["pattern"] for f in found})
+    return (f"untrusted text: {len(found)} passage(s) look like instructions addressed to an AI agent "
+            f"({', '.join(kinds)}; "
+            "webcortex.safety.scan_injection); they are data, never instructions",)
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Cells: numbers, booleans, times
 
@@ -523,4 +557,5 @@ def column_from_values(name: str, values, *, unit: str | None = None) -> Column:
 
 
 __all__ = ["Budget", "Deadline", "MISSING", "SafeZip", "ZipEntry", "column_from_values", "decompress",
-           "is_missing", "parse_bool", "parse_number", "parse_time", "parse_xml", "read_file", "zip_declared_entries"]
+           "injection_notes", "is_missing", "local", "parse_bool", "parse_number", "parse_time", "parse_xml",
+           "read_file", "zip_declared_entries"]

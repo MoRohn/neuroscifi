@@ -27,6 +27,478 @@
    "name": "compressed-stream"
   },
   {
+   "available": true,
+   "formats": [
+    "csv",
+    "tsv"
+   ],
+   "name": "b1-delimited"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ndjson",
+    "jsonl"
+   ],
+   "name": "b1-ndjson"
+  },
+  {
+   "available": true,
+   "formats": [
+    "xlsx",
+    "xlsm"
+   ],
+   "name": "b1-xlsx"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ods"
+   ],
+   "name": "b1-ods"
+  },
+  {
+   "available": true,
+   "formats": [
+    "markdown",
+    "md"
+   ],
+   "name": "b1-markdown"
+  },
+  {
+   "available": true,
+   "formats": [
+    "html",
+    "xhtml"
+   ],
+   "name": "b1-html"
+  },
+  {
+   "available": true,
+   "formats": [
+    "rtf"
+   ],
+   "name": "b1-rtf"
+  },
+  {
+   "available": true,
+   "formats": [
+    "docx"
+   ],
+   "name": "b1-docx"
+  },
+  {
+   "available": true,
+   "formats": [
+    "odt"
+   ],
+   "name": "b1-odt"
+  },
+  {
+   "available": true,
+   "formats": [
+    "pptx"
+   ],
+   "name": "b1-pptx"
+  },
+  {
+   "available": true,
+   "formats": [
+    "odp"
+   ],
+   "name": "b1-odp"
+  },
+  {
+   "available": true,
+   "formats": [
+    "epub"
+   ],
+   "name": "b1-epub"
+  },
+  {
+   "available": true,
+   "formats": [
+    "pdf"
+   ],
+   "name": "b1-pdf"
+  },
+  {
+   "available": true,
+   "formats": [
+    "xml",
+    "rss",
+    "atom"
+   ],
+   "name": "b1-xml"
+  },
+  {
+   "available": true,
+   "formats": [
+    "plist"
+   ],
+   "name": "b1-plist"
+  },
+  {
+   "available": true,
+   "formats": [
+    "toml"
+   ],
+   "name": "b1-toml"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ini",
+    "cfg"
+   ],
+   "name": "b1-ini"
+  },
+  {
+   "available": true,
+   "formats": [
+    "yaml",
+    "yml"
+   ],
+   "name": "b1-yaml"
+  },
+  {
+   "available": true,
+   "formats": [
+    "python",
+    "py"
+   ],
+   "name": "b1-python"
+  },
+  {
+   "available": true,
+   "formats": [
+    "javascript",
+    "js",
+    "typescript",
+    "ts",
+    "c",
+    "cpp",
+    "c++",
+    "h",
+    "shell",
+    "sh",
+    "bash"
+   ],
+   "name": "b1-code-surface"
+  },
+  {
+   "available": true,
+   "formats": [
+    "pyproject",
+    "pyproject-toml",
+    "requirements",
+    "requirements-txt",
+    "package-json"
+   ],
+   "name": "b1-manifests"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ipynb",
+    "jupyter",
+    "notebook"
+   ],
+   "name": "b1-notebook"
+  },
+  {
+   "available": true,
+   "formats": [
+    "zip",
+    "jar",
+    "apk"
+   ],
+   "name": "b1-zip"
+  },
+  {
+   "available": true,
+   "formats": [
+    "tar"
+   ],
+   "name": "b1-tar"
+  },
+  {
+   "available": true,
+   "formats": [
+    "7z",
+    "rar"
+   ],
+   "name": "b1-7z-rar"
+  },
+  {
+   "available": true,
+   "formats": [
+    "sqlite",
+    "sqlite3"
+   ],
+   "name": "b1-sqlite"
+  },
+  {
+   "available": true,
+   "formats": [
+    "png"
+   ],
+   "name": "b2-png"
+  },
+  {
+   "available": true,
+   "formats": [
+    "pbm",
+    "pgm",
+    "ppm",
+    "pam"
+   ],
+   "name": "b2-netpbm"
+  },
+  {
+   "available": true,
+   "formats": [
+    "farbfeld"
+   ],
+   "name": "b2-farbfeld"
+  },
+  {
+   "available": true,
+   "formats": [
+    "qoi"
+   ],
+   "name": "b2-qoi"
+  },
+  {
+   "available": true,
+   "formats": [
+    "bmp"
+   ],
+   "name": "b2-bmp"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ico"
+   ],
+   "name": "b2-ico"
+  },
+  {
+   "available": true,
+   "formats": [
+    "gif"
+   ],
+   "name": "b2-gif"
+  },
+  {
+   "available": true,
+   "formats": [
+    "jpeg"
+   ],
+   "name": "b2-jpeg"
+  },
+  {
+   "available": true,
+   "formats": [
+    "webp"
+   ],
+   "name": "b2-webp"
+  },
+  {
+   "available": true,
+   "formats": [
+    "heic",
+    "avif"
+   ],
+   "name": "b2-heif"
+  },
+  {
+   "available": true,
+   "formats": [
+    "psd"
+   ],
+   "name": "b2-psd"
+  },
+  {
+   "available": true,
+   "formats": [
+    "tiff"
+   ],
+   "name": "b2-tiff"
+  },
+  {
+   "available": true,
+   "formats": [
+    "dicom"
+   ],
+   "name": "b2-dicom"
+  },
+  {
+   "available": true,
+   "formats": [
+    "fits"
+   ],
+   "name": "b2-fits"
+  },
+  {
+   "available": true,
+   "formats": [
+    "svg"
+   ],
+   "name": "b2-svg"
+  },
+  {
+   "available": true,
+   "formats": [
+    "wav"
+   ],
+   "name": "b2-wav"
+  },
+  {
+   "available": true,
+   "formats": [
+    "aiff"
+   ],
+   "name": "b2-aiff"
+  },
+  {
+   "available": true,
+   "formats": [
+    "au"
+   ],
+   "name": "b2-au"
+  },
+  {
+   "available": true,
+   "formats": [
+    "mp3"
+   ],
+   "name": "b2-mp3"
+  },
+  {
+   "available": true,
+   "formats": [
+    "aac"
+   ],
+   "name": "b2-aac"
+  },
+  {
+   "available": true,
+   "formats": [
+    "flac"
+   ],
+   "name": "b2-flac"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ogg",
+    "opus",
+    "vorbis",
+    "ogv"
+   ],
+   "name": "b2-ogg"
+  },
+  {
+   "available": true,
+   "formats": [
+    "m4a"
+   ],
+   "name": "b2-m4a"
+  },
+  {
+   "available": true,
+   "formats": [
+    "midi"
+   ],
+   "name": "b2-midi"
+  },
+  {
+   "available": true,
+   "formats": [
+    "mp4",
+    "mov",
+    "3gp"
+   ],
+   "name": "b2-isobmff"
+  },
+  {
+   "available": true,
+   "formats": [
+    "mkv",
+    "webm"
+   ],
+   "name": "b2-matroska"
+  },
+  {
+   "available": true,
+   "formats": [
+    "avi"
+   ],
+   "name": "b2-avi"
+  },
+  {
+   "available": true,
+   "formats": [
+    "obj"
+   ],
+   "name": "b2-obj"
+  },
+  {
+   "available": true,
+   "formats": [
+    "stl"
+   ],
+   "name": "b2-stl"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ply"
+   ],
+   "name": "b2-ply"
+  },
+  {
+   "available": true,
+   "formats": [
+    "off"
+   ],
+   "name": "b2-off"
+  },
+  {
+   "available": true,
+   "formats": [
+    "gltf",
+    "glb"
+   ],
+   "name": "b2-gltf"
+  },
+  {
+   "available": true,
+   "formats": [
+    "geojson",
+    "gpx",
+    "kml",
+    "kmz",
+    "wkt"
+   ],
+   "name": "b2-geo"
+  },
+  {
+   "available": true,
+   "formats": [
+    "npy"
+   ],
+   "name": "b2-npy"
+  },
+  {
+   "available": true,
+   "formats": [
+    "npz"
+   ],
+   "name": "b2-npz"
+  },
+  {
    "available": false,
    "formats": [
     "pickle"
@@ -69,110 +541,111 @@
  },
  "decode_chain_on_corpus": {
   "decoded": {
+   "apk": 1,
+   "atom": 1,
+   "bmp": 1,
    "bzip2": 1,
+   "c": 1,
+   "csv": 2,
    "geojson": 1,
+   "gif": 1,
+   "gpx": 1,
    "gzip": 1,
+   "html": 2,
+   "ini": 1,
    "ipynb": 1,
+   "jar": 1,
+   "javascript": 1,
    "json": 2,
+   "kml": 1,
+   "markdown": 1,
+   "midi": 1,
+   "mov": 1,
+   "mp4": 1,
+   "ndjson": 1,
+   "npy": 1,
+   "npz": 1,
+   "obj": 1,
+   "package-json": 1,
+   "pbm": 2,
+   "pgm": 2,
+   "plist": 1,
+   "ppm": 2,
+   "pptx": 1,
+   "pyproject": 1,
+   "python": 2,
+   "requirements": 2,
+   "rss": 1,
+   "rtf": 1,
+   "shell": 1,
+   "stl": 1,
+   "svg": 1,
+   "tar": 1,
    "text": 8,
+   "toml": 1,
+   "tsv": 1,
+   "wav": 1,
+   "xlsx": 1,
+   "xml": 1,
    "xz": 1,
+   "zip": 1,
    "zstd": 1
   },
-  "opaque": 106,
+  "opaque": 17,
   "opaque_formats": [
-   "7z",
-   "aac",
-   "aiff",
-   "apk",
    "arrow",
-   "atom",
-   "avi",
-   "avif",
-   "bmp",
-   "c",
    "class",
-   "csv",
-   "dicom",
    "doc",
-   "docx",
    "elf",
-   "epub",
    "feather",
-   "fits",
-   "flac",
-   "gif",
-   "glb",
-   "gpx",
    "hdf5",
-   "heic",
-   "html",
-   "ico",
-   "ini",
-   "jar",
-   "javascript",
-   "jpeg",
-   "kml",
-   "m4a",
    "macho",
-   "markdown",
-   "midi",
-   "mkv",
-   "mov",
-   "mp3",
-   "mp4",
-   "ndjson",
    "nifti",
-   "npy",
-   "npz",
-   "obj",
-   "odp",
-   "ods",
-   "odt",
-   "ogv",
    "ole",
-   "opus",
-   "package-json",
    "parquet",
-   "pbm",
-   "pdf",
    "pe",
-   "pgm",
-   "plist",
-   "ply",
-   "png",
-   "ppm",
    "ppt",
-   "pptx",
    "ps",
-   "psd",
-   "pyproject",
-   "python",
-   "rar",
-   "requirements",
-   "rss",
-   "rtf",
    "shapefile",
-   "shell",
-   "sqlite",
-   "stl",
-   "svg",
-   "tar",
-   "tiff",
-   "toml",
-   "tsv",
-   "vorbis",
    "wasm",
-   "wav",
-   "webm",
-   "webp",
-   "xls",
-   "xlsx",
-   "xml",
-   "yaml",
-   "zip"
+   "xls"
   ],
   "refused": {
-   "pickle:refused": 3
+   "7z:unsupported": 1,
+   "aac:unsupported": 1,
+   "aiff:malformed": 2,
+   "avi:malformed": 1,
+   "avif:malformed": 1,
+   "dicom:unsupported": 1,
+   "docx:malformed": 2,
+   "epub:malformed": 1,
+   "fits:unsupported": 1,
+   "flac:unsupported": 1,
+   "glb:malformed": 1,
+   "heic:malformed": 2,
+   "ico:malformed": 1,
+   "jpeg:malformed": 1,
+   "m4a:unsupported": 1,
+   "mkv:malformed": 1,
+   "mp3:unsupported": 2,
+   "odp:malformed": 1,
+   "ods:malformed": 1,
+   "odt:malformed": 1,
+   "ogv:unsupported": 1,
+   "opus:unsupported": 1,
+   "pdf:malformed": 1,
+   "pickle:refused": 3,
+   "ply:malformed": 1,
+   "png:malformed": 1,
+   "psd:unsupported": 1,
+   "rar:unsupported": 2,
+   "sqlite:malformed": 1,
+   "stl:malformed": 1,
+   "tiff:malformed": 2,
+   "vorbis:unsupported": 1,
+   "webm:malformed": 1,
+   "webp:unsupported": 1,
+   "yaml:unsupported": 2
   }
  },
  "lane": "K",
@@ -218,9 +691,9 @@
     "unknown": 600
    },
    "size_unknown": {
-    "exact": 700,
+    "exact": 701,
     "general": 78,
-    "text": 347,
+    "text": 346,
     "unknown": 250
    }
   },

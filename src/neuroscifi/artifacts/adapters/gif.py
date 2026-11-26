@@ -15,8 +15,8 @@ from __future__ import annotations
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe import Deadline
-from ..safe_b2 import Reader, members, need, screen_words
+from ..safe import Deadline, injection_notes
+from ..safe_b2 import Reader, members, need
 from ..types import Decoded, Detected, Limits, Malformed, Raster
 from . import Adapter
 
@@ -195,7 +195,7 @@ def decode_gif(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     if bad_index:
         notes.append(f"{bad_index} pixel(s) refer to colours beyond the colour table and are shown black")
     text = "\n".join(w for w in words if w)
-    notes.extend(screen_words(text))
+    notes.extend(injection_notes(text))
     if len(frames) == 1:
         px = frames[0].pixels
         if any_transparent:

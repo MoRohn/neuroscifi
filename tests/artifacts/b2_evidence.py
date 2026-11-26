@@ -174,7 +174,7 @@ def cases(rng):
 def corruption(samples, seeds=4, per=400):
     from neuroscifi.artifacts import adapters
     from neuroscifi.artifacts import types as T
-    from neuroscifi.artifacts.safe_b2 import HeaderOnly
+    from neuroscifi.artifacts.types import HeaderOnly
     stats = collections.defaultdict(collections.Counter)
     for seed in range(seeds):
         for name, (fmt, good) in sorted(samples.items()):
@@ -209,7 +209,7 @@ def main():
     from b2_corpus import samples
     from neuroscifi.artifacts import adapters
     from neuroscifi.artifacts.adapters import _b2
-    from neuroscifi.artifacts.safe_b2 import HeaderOnly
+    from neuroscifi.artifacts.types import HeaderOnly
     _b2.register_all()
     rng = np.random.default_rng(20261126)
     corpus = samples()

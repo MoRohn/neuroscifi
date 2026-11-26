@@ -73,7 +73,7 @@ from .. import provenance
 from ..instance.errors import NotFound
 from . import adapters
 from .detect import detect
-from .types import ArtifactError, Limits, Malformed, Refused, bounded
+from .types import ArtifactError, HeaderOnly, Limits, Malformed, Refused, bounded
 
 CHUNK = 1 << 20                  # bytes per sidecar row
 TEXT_MAX_BYTES = 256 << 10       # the text layer, UTF-8
@@ -423,15 +423,15 @@ def apply_adapter_setting(approved) -> list[str]:
     owner no longer approves, so a change of the setting acts on the next call. Returns the names loaded now."""
     approved = {str(n) for n in approved}
     loaded = adapters.load_external(approved)
-    for name, state in list(adapters._EXTERNAL.items()):      # lane K's registry has no public unload yet
-        if state.get("state") == "loaded" and name not in approved:
-            adapters.unregister(state.get("adapter", ""))
-            adapters._EXTERNAL[name] = {"state": "found", "reason": "found, not approved"}
+    adapters.unload_external(approved)
     return loaded
 
 
 def _decode(data: bytes, *, name, declared, lim: Limits):
-    """(decoded or None, error or None, [(format, outcome)] gaps) for these bytes. A safety refusal propagates."""
+    """(decoded or None, error or None, [(format, outcome)] gaps) for these bytes. A safety refusal propagates.
+    A header-only format (`HeaderOnly`) is an error that still established something: its `facts` go into the error
+    record, and its `words` (untrusted metadata) into the record's "words", which the caller moves to the text
+    layer (never into the index)."""
     gaps, me = [], threading.get_ident()
 
     def hook(detected, outcome):
@@ -444,8 +444,11 @@ def _decode(data: bytes, *, name, declared, lim: Limits):
         except Refused:
             raise
         except ArtifactError as error:
-            return None, {"reason": error.reason, "message": str(error)[:300],
-                          "needs": list(getattr(error, "needs", ()))[:16]}, gaps
+            record = {"reason": error.reason, "message": str(error)[:300],
+                      "needs": list(getattr(error, "needs", ()))[:16]}
+            if isinstance(error, HeaderOnly):
+                record |= {"header_only": True, "facts": bounded(error.facts), "words": error.words}
+            return None, record, gaps
     finally:
         remove()
 
@@ -565,6 +568,8 @@ def _store(db, data: bytes, *, label, origin, maker, scope, name_hint, declared,
             text = decoded.representation.text() or ""
         except Exception:
             text = ""
+    elif error is not None:
+        text = error.pop("words", "") or ""          # a header-only format's own words: text layer, not index
     text, truncated = _text_layer(text)
     injection = _injection(text)
     index, index_text = _index(detected, decoded, error, text_chars=len(text), text_truncated=truncated,
@@ -958,8 +963,11 @@ def facts(db, artifact_id, *, viewer="owner") -> dict:
     out = {"id": record.id, "origin": record.origin, "provenance": record.provenance, "size": record.size,
            "format": record.format}
     if decoded is None:
+        error.pop("words", None)
+        header = [_fact(k, v, "read from the file's header; the content is not decoded here")
+                  for k, v in (error.get("facts") or {}).items()]
         return out | {"decoded": False, "error": error,
-                      "facts": [_fact("size", record.size, "bytes stored")]}
+                      "facts": [_fact("size", record.size, "bytes stored")] + header}
     return out | {"decoded": True, "kind": decoded.representation.kind, "partial": decoded.partial,
                   "notes": list(decoded.notes), "facts": facts_of(decoded.representation)}
 

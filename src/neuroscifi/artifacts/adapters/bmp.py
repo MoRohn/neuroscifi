@@ -15,8 +15,8 @@ import struct
 import numpy as np
 
 from ..safe import Deadline
-from ..safe_b2 import HeaderOnly, Reader, members, need
-from ..types import Decoded, Detected, Limits, Malformed, Raster
+from ..safe_b2 import Reader, members, need
+from ..types import Decoded, Detected, HeaderOnly, Limits, Malformed, Raster
 from . import Adapter
 from .png import PNGAdapter, unpack_samples
 

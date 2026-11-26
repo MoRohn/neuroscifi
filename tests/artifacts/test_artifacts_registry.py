@@ -43,7 +43,7 @@ def test_register_resolve_catalog(registry):
     assert registry.resolve(T.Detected("text", "text", "text/plain", "structure", None, ())) is None
     rows = {r["name"]: r for r in registry.catalog()}
     assert rows["fake-png"] == {"name": "fake-png", "formats": ["png"], "families": ["image"], "available": True,
-                                "reason": "ready", "source": "builtin"}
+                                "reason": "ready", "reads": "content", "source": "builtin"}
     assert rows["refuse-pickle"]["available"] is False
     with pytest.raises(ValueError):
         registry.register(Fake())
@@ -139,6 +139,12 @@ def test_external_adapters_load_only_when_named(registry, monkeypatch):
     assert rows["ext-adapter"]["source"] == "external" and rows["ext-adapter"]["available"] is True
     assert rows["unasked"]["reason"] == "found, not approved"
     assert registry.load_external(["ext-adapter"]) == []   # idempotent
+    # the owner withdraws the name: the adapter is unloaded and listed as found again, through the public call
+    assert registry.unload_external(["something-else"]) == ["ext-adapter"]
+    rows = {r["name"]: r for r in registry.catalog()}
+    assert rows["ext-adapter"]["reason"] == "found, not approved" and rows["ext-adapter"]["available"] is False
+    assert all(a.name != "ext-adapter" for a in adapters._ADAPTERS)
+    assert registry.unload_external([]) == []
 
 
 def test_external_adapter_that_fails_to_load_is_listed(registry, monkeypatch):

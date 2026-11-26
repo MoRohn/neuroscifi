@@ -71,21 +71,21 @@ def _text(head: bytes):
 
 
 def b2_structure(head: bytes, size=None):
-    """(format, reasons, container) for glTF JSON, OFF and WKT text, or None."""
+    """(format, reasons, container, "structure") for glTF JSON, OFF and WKT text, or None (the basis is structure)."""
     text = _text(head[:65536])
     if text is None:
         return None
     s = text.lstrip("\ufeff \t\r\n")
     if s.startswith("{") and _GLTF.search(s):
-        return "gltf", ["structure: a JSON object with an 'asset' member holding a 'version' (glTF)"], None
+        return "gltf", ["structure: a JSON object with an 'asset' member holding a 'version' (glTF)"], None, "structure"
     if s.startswith("{") and (m := _GEOMETRY.search(s[:4096])) and re.search(r'"(coordinates|geometries)"\s*:',
                                                                             s[:65536]):
-        return "geojson", [f"structure: a JSON object whose 'type' is the GeoJSON geometry '{m.group(1)}'"], None
+        return "geojson", [f"structure: a JSON object whose 'type' is the GeoJSON geometry '{m.group(1)}'"], None, "structure"
     raw = s.encode("utf-8")
     if _OFF.match(raw[:1024]):
-        return "off", ["structure: the first line is 'OFF' followed by the vertex and face counts"], None
+        return "off", ["structure: the first line is 'OFF' followed by the vertex and face counts"], None, "structure"
     if _WKT.match(raw[:256]):
-        return "wkt", ["structure: text that starts with a WKT geometry keyword and '(' or EMPTY"], None
+        return "wkt", ["structure: text that starts with a WKT geometry keyword and '(' or EMPTY"], None, "structure"
     return None
 
 

@@ -86,3 +86,6 @@ def check(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
 
 
 __all__ = ["Finding", "Validator", "Verdict", "catalog", "check", "register", "unregister"]
+
+# The built-in validators (lane G2), registered by media type. Imported last: they register through `register`.
+from . import _g2  # noqa: E402,F401

@@ -4423,6 +4423,93 @@ traversal, untrusted executable content, prompt injection in documents, and exce
 - Project manifests (`pyproject`, `requirements`, `package-json`, for lane B1) are named only when the exact file name
   AND the bytes agree (TOML that parses, requirement-specifier lines, a JSON object). The name alone never decides.
 
+## ADR-072, lane B1: documents, tables, trees, code, notebooks, archives and databases
+
+Lane B1's adapters read the following formats, with the standard library and numpy on the default path (pypdf
+optional and lazy):
+- delimited text and NDJSON into `Table`, by stated rules for delimiters, headers, units, missing cells and column
+  kinds;
+- XLSX and ODS into a `Bundle` of `Table`s, never evaluating formulas (cached values are used and counted);
+- Markdown, HTML, DOCX, ODT, PPTX/ODP (slides as headed sections with speaker notes) and EPUB (spine order) into
+  `Document`, with tables as `Table` and embedded media as figure blocks naming their member;
+- RTF as text and paragraphs only;
+- PDF as its text layer through pypdf under a deadline guard that really stops it, or `Unsupported(needs=pypdf)`
+  with the header facts;
+- XML, XML property lists, TOML and INI into `Tree`, with YAML only as its JSON subset;
+- Python through `ast` into a `Graph` of modules, classes, functions, imports and name-resolved calls (never
+  imported or run);
+- JavaScript, C and shell as a stated surface reading;
+- dependency manifests into dependency graphs;
+- notebooks into `Document` without execution;
+- ZIP and TAR (also compressed) into `Bundle` with in-memory recursive decoding under nested limits;
+- SQLite into a `Bundle` of sampled `Table`s, through an in-memory, defensive, query-only, authorizer-limited
+  connection with untrusted schema and a deadline, where views and triggers are never evaluated.
+
+The following are identified and answered `Unsupported` with what would be needed: 7z, RAR, binary plists, YAML
+beyond JSON. Nothing is extracted to disk. Member names are data. DTDs and entities are refused; a plist's DOCTYPE
+that only names Apple's DTD is accepted and never loaded. Every allocation is charged to `Limits` before or as it is
+made. What is not recovered is said in each result's notes: layout, formulas' evaluation, hidden or scripted content,
+scanned pages, embedded media's content, and calls that need type inference.
+
+## ADR-072, lane B2: images, sound, video containers, meshes, maps and arrays
+
+Lane B2 adds decoders for images, sound, video containers, meshes, maps and arrays, written in Python and numpy
+only. A format is either decoded to a representation, with a test that recovers a reference built byte by byte
+(PNG/APNG, GIF, BMP with RLE, ICO, NetPBM, farbfeld, QOI, baseline TIFF, uncompressed DICOM, FITS 8/16, SVG,
+WAV/AIFF/AU, MIDI, OBJ/STL/PLY/OFF, glTF/GLB, GeoJSON/GPX/KML/KMZ/WKT, .npy/.npz), or identified and read for its
+header only and answered with `HeaderOnly`, an `Unsupported` that carries the header facts, the plain-text
+metadata as untrusted words, and the missing decoder (JPEG, WebP, HEIF, PSD, compressed TIFF, MP3, AAC, FLAC, Ogg,
+M4A). Video containers are read for their structure and tracks; no frame is decoded. Every size is checked against
+the limits before memory is committed, including the measured cost of Python's parser objects; streams are
+inflated to at most their declared size; XML with a DTD is refused; nothing is fetched, executed or unpickled.
+Measurements on decoded content (image statistics, signal spectra and onsets, mesh topology, geographic lengths)
+are named functions with stated methods; none of them claims what an image depicts or what a sound is.
+
+## ADR-072, integration: one registry, one set of helpers, and the three deviations of lane B2
+
+Status: built by the integration lane. No setting, no schema change.
+
+1. **One registry.** The registry's built-ins are the kernel's generic adapters (plain text, JSON tree, compressed
+   streams), then lane B1's, then lane B2's (whose registration also installs B2's detection). `resolve` takes the
+   most recently registered available adapter, so the specific ones win (B1's notebook and B2's GeoJSON over the
+   kernel's JSON tree). `make` and `check` import lane G2's generators and validators as their built-ins. A test
+   (`tests/artifacts/test_capability_catalog.py`) pins all three catalogs (names, formats, what each reads,
+   availability), so a capability can neither vanish nor appear silently; `nsf artifact adapters` and
+   `nsf artifact forms` print them in plain words. Each adapter now states how far it gets (`reads`: "content",
+   "content or header", "header", "structure", "identity"), so the catalog never lists a header reader as a
+   decoder: JPEG, WebP, HEIF, PSD, MP3, AAC, FLAC, Ogg and M4A are "header", the video containers "structure", 7z and
+   RAR "identity".
+2. **A detector added by a lane may state its basis.** B2's structure test (glTF JSON, OFF, WKT, bare GeoJSON
+   geometries) runs through `detect.SIGNATURES`, whose answers were all labelled "signature"; a fourth element now
+   names the basis, so these say "structure", as their reasons always did.
+3. **One set of helpers.** General helpers live in `safe.py`: `local` (was in both lane modules) and
+   `injection_notes` (B1's `injection_notes` and B2's `screen_words` were the same note in two wordings; one wording
+   now, with B2's guard for a failing screen). `SafeZip` names a multi-disk archive (zipfile's `NotImplementedError`)
+   as `Malformed`, so B2's `open_zip` wrapper is gone. What stays in `safe_b1.py` and `safe_b2.py` is lane-specific,
+   each with its reason in the module's docstring: B1's two-quantity `DecodeBudget` (stops early and reports partial
+   where `safe.Budget` can only refuse), `ZipReader` (partial listings, unix modes for link refusal, per-member
+   encryption), the plist DOCTYPE rule and XML node costs; B2's declared-size `inflate`, bounded `Reader` and the
+   one-shot `need`/`count`/`members` checks. The kernel's `jsontree.as_table` builds its table with B1's
+   `tables.table_from_records`, so a JSON array of records reads by the same rules as NDJSON. `adapters.
+   unload_external(approved)` is public; the store no longer reaches into the registry's private state.
+4. **Lane B2's three deviations, decided.**
+   - *Representation subclasses carrying `words`* (`repr_b2.Raster`, `Signal`, `Mesh`, `Tree`, `Frames`, `Table`):
+     **blessed where they are.** They are subclasses, so `isinstance` holds, and the words reach every consumer
+     through the one interface the contract already has, `text()`. Adding a field to the base classes would change
+     every kernel constructor for no consumer's benefit.
+   - *`HeaderOnly(Unsupported)` carrying header facts and words*: **moved into `types.py`** as an addition to
+     DESIGN §2. It is an outcome every consumer must recognise without importing a lane's helper module: the store
+     keeps its facts in the index's error record and its words in the text layer (never the index), `nsf artifact
+     facts` lists the header facts, and `nsf inspect` prints them and exits 0 (the file was read, its content was
+     not decoded).
+   - *One representation per `Decoded`, with helpers for a second view* (`video_containers.tracks_table`,
+     `gltf.scene_graph`, `jsontree.as_table`, `shapes_b1.content_shapes`): **blessed.** DESIGN's `Decoded` has one
+     representation; a second view is derived on demand from the first (or from the bytes) by a named function.
+5. **Every representation's words reach the store's text layer and its forget-by-text scan**, proven per family by
+   `tests/artifacts/test_integration_words.py`: a PNG text chunk, a WAV LIST chunk, a DOCX paragraph, an XLSX cell, a
+   ZIP member, and an Exif description in a JPEG that is only identified (before this, a header-only file kept no
+   words at all).
+
 # ADR-073 The form planner: deciding the form of a result before anything is made, and saying why
 
 Status: built, **not called by anything** (Wave O-0, lane C). No setting, no schema change, no stored state. A pure

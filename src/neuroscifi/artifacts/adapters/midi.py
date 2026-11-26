@@ -16,8 +16,8 @@ from __future__ import annotations
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe import Deadline
-from ..safe_b2 import Reader, count, members, need, screen_words
+from ..safe import Deadline, injection_notes
+from ..safe_b2 import Reader, count, members, need
 from ..types import Column, Decoded, Malformed, Table
 from . import Adapter
 
@@ -197,7 +197,7 @@ class MIDIAdapter(Adapter):
     def decode(self, data, detected, limits):
         table, words, notes = decode_midi_bytes(data, limits)
         text = "\n".join(w for w in words if w)
-        notes = notes + list(screen_words(text))
+        notes = notes + list(injection_notes(text))
         rep = R.Table(table.columns, table.n_rows, table.title, words=text)
         return Decoded(detected, rep, tuple(notes), False)
 

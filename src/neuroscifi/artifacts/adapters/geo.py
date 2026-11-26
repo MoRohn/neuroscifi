@@ -25,8 +25,8 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from ..safe import Deadline
-from ..safe_b2 import count, local, need, open_zip, parse_xml, screen_words
+from ..safe import Deadline, SafeZip, injection_notes, local
+from ..safe_b2 import count, need, parse_xml
 from ..types import Decoded, Feature, Features, Malformed, Refused
 from . import Adapter
 
@@ -344,7 +344,7 @@ def decode_kml(data: bytes, limits):
 
 
 def decode_kmz(data: bytes, limits):
-    archive = open_zip(data, limits)
+    archive = SafeZip(data, limits)
     kml = [e for e in archive.entries if e.name.lower().endswith(".kml") and not e.is_dir]
     if not kml:
         raise Malformed("the KMZ archive holds no .kml document")
@@ -505,7 +505,7 @@ class GeoAdapter(Adapter):
     def decode(self, data, detected, limits):
         features, crs, notes = DECODERS[detected.format](data, limits)
         rep = Features(tuple(features), crs)
-        notes = list(notes) + list(screen_words(rep.text()))
+        notes = list(notes) + list(injection_notes(rep.text()))
         return Decoded(detected, rep, tuple(notes), False)
 
 

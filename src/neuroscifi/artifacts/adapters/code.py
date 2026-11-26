@@ -31,8 +31,8 @@ import re
 import tomllib
 from collections.abc import Mapping
 
-from ..safe import Deadline
-from ..safe_b1 import DecodeBudget, decode_text, injection_notes
+from ..safe import Deadline, injection_notes
+from ..safe_b1 import DecodeBudget, decode_text
 from ..types import Block, Decoded, Document, Edge, GNode, Graph, Malformed, Refused
 from . import Adapter
 

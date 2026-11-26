@@ -820,7 +820,10 @@ def _identify(head: bytes, size: int | None) -> tuple[str, list[str], str | None
         except (struct.error, IndexError, ValueError):
             found = None
         if found is not None:
-            return found[0], list(found[1]), found[2], "signature"
+            # a detector added by a lane (B2's structure test for glTF, OFF, WKT, bare GeoJSON geometries) may say
+            # that its answer rests on structure, not on a signature: a fourth element names the basis
+            basis = found[3] if len(found) > 3 and found[3] in ("signature", "structure") else "signature"
+            return found[0], list(found[1]), found[2], basis
     complete = (size is not None and len(head) >= size) or (size is None and len(head) < HEAD_MAX)
     if size is not None and not complete and len(head) < MIN_STRUCTURE_PREFIX:
         return None   # a few bytes of a longer input say nothing about its structure

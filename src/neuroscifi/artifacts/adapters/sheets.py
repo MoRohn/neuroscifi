@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 
-from ..safe_b1 import injection_notes, local
+from ..safe import injection_notes, local
 from ..types import Decoded, Detected, Malformed, Member, Refused, Bundle
 from . import Adapter
 from .office import OFFICE, TABLE, Package, odf_table_cells

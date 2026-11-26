@@ -109,3 +109,7 @@ def make(spec: Spec | dict, limits: Limits = Limits()) -> Made:
 
 
 __all__ = ["Generator", "Made", "catalog", "make", "register", "unregister"]
+
+# The built-in generators (lane G2: sound, solids, raster images, explorable documents). Imported last: each module
+# registers through the functions defined above.
+from . import _g2  # noqa: E402,F401

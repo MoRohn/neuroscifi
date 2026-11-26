@@ -18,9 +18,9 @@ import struct
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe import Deadline
-from ..safe_b2 import HeaderOnly, Reader, members, need, screen_words
-from ..types import Decoded, Detected, Limits, Malformed
+from ..safe import Deadline, injection_notes
+from ..safe_b2 import Reader, members, need
+from ..types import Decoded, Detected, HeaderOnly, Limits, Malformed
 from . import Adapter
 
 WAV_TAGS = {1: "pcm", 3: "float", 6: "alaw", 7: "mulaw", 0xFFFE: "extensible"}
@@ -215,7 +215,7 @@ def _decode_wav(data: bytes, detected: Detected, limits: Limits) -> Decoded:
         if len(named) == channels:
             names = tuple(named)
     text = "\n".join(words)
-    notes.extend(screen_words(text))
+    notes.extend(injection_notes(text))
     return Decoded(detected, R.Signal(samples, float(rate), names, words=text), tuple(notes), partial)
 
 
@@ -312,7 +312,7 @@ def _decode_aiff(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     if encoding == "pcm" and bits % 8:
         notes.append(f"{bits}-bit samples stored in {width * 8}-bit containers: scaled at the container width")
     text = "\n".join(words)
-    notes.extend(screen_words(text))
+    notes.extend(injection_notes(text))
     return Decoded(detected, R.Signal(samples, float(rate), default_names(channels), words=text), tuple(notes),
                    partial)
 
@@ -351,7 +351,7 @@ def _decode_au(data: bytes, detected: Detected, limits: Limits) -> Decoded:
         samples = (np.frombuffer(raw[:n], np.int8).astype(np.float32) / 128.0).reshape(-1, channels)
     else:
         samples = to_float(raw, encoding=encoding, bits=bits, channels=channels, endian=">", notes=notes)
-    notes.extend(screen_words(words))
+    notes.extend(injection_notes(words))
     return Decoded(detected, R.Signal(samples, float(rate), default_names(channels), words=words), tuple(notes),
                    partial)
 

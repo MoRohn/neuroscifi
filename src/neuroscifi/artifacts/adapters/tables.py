@@ -36,8 +36,8 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from ..safe import Deadline
-from ..safe_b1 import DecodeBudget, decode_text, injection_notes
+from ..safe import Deadline, injection_notes
+from ..safe_b1 import DecodeBudget, decode_text
 from ..types import Column, Decoded, Detected, Limits, Malformed, Refused, Table
 from . import Adapter
 

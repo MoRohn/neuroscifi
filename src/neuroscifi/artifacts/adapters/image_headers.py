@@ -25,9 +25,9 @@ import struct
 import numpy as np
 
 from .. import repr_b2 as R
-from ..safe import Deadline
-from ..safe_b2 import HeaderOnly, Reader, inflate, local, need, parse_xml, screen_words
-from ..types import Decoded, Detected, Limits, Malformed, Raster
+from ..safe import Deadline, injection_notes, local
+from ..safe_b2 import Reader, inflate, need, parse_xml
+from ..types import Decoded, Detected, HeaderOnly, Limits, Malformed, Raster
 from . import Adapter
 from .png import unpack_samples
 
@@ -225,7 +225,7 @@ def decode_tiff(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     else:
         rep = Raster(np.ascontiguousarray(px), "rgb" if ch == 3 else "rgba", b)
     text = "\n".join(words)
-    notes.extend(screen_words(text))
+    notes.extend(injection_notes(text))
     return Decoded(detected, R.Raster(rep.pixels, rep.mode, rep.bits, words=text), tuple(notes), False)
 
 
@@ -583,7 +583,7 @@ def decode_fits(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     if bzero not in (0, 32768) and bitpix == 8:
         notes.append(f"BZERO {bzero:g} is not applied")
     notes.append("FITS rows are stored bottom-up by convention; the first stored row is row 0 here")
-    notes.extend(screen_words(text))
+    notes.extend(injection_notes(text))
     return Decoded(detected, R.Raster(px, "gray", bits, words=text), tuple(notes), False)
 
 
@@ -592,6 +592,7 @@ def decode_fits(data: bytes, detected: Detected, limits: Limits) -> Decoded:
 
 class JPEGAdapter(Adapter):
     name = "b2-jpeg"
+    reads = "header"
     formats = ("jpeg",)
     families = ("image",)
 
@@ -602,6 +603,7 @@ class JPEGAdapter(Adapter):
 
 class WebPAdapter(Adapter):
     name = "b2-webp"
+    reads = "header"
     formats = ("webp",)
     families = ("image",)
 
@@ -613,6 +615,7 @@ class WebPAdapter(Adapter):
 
 class HEIFAdapter(Adapter):
     name = "b2-heif"
+    reads = "header"
     formats = ("heic", "avif")
     families = ("image",)
 
@@ -627,6 +630,7 @@ class HEIFAdapter(Adapter):
 
 class PSDAdapter(Adapter):
     name = "b2-psd"
+    reads = "header"
     formats = ("psd",)
     families = ("image",)
 
@@ -636,6 +640,7 @@ class PSDAdapter(Adapter):
 
 class TIFFAdapter(Adapter):
     name = "b2-tiff"
+    reads = "content or header"
     formats = ("tiff",)
     families = ("image",)
 
@@ -645,6 +650,7 @@ class TIFFAdapter(Adapter):
 
 class DICOMAdapter(Adapter):
     name = "b2-dicom"
+    reads = "content or header"
     formats = ("dicom",)
     families = ("image",)
 
@@ -654,6 +660,7 @@ class DICOMAdapter(Adapter):
 
 class FITSAdapter(Adapter):
     name = "b2-fits"
+    reads = "content or header"
     formats = ("fits",)
     families = ("image",)
 

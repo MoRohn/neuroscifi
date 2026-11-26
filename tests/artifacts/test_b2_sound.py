@@ -10,7 +10,7 @@ from b2_fixtures import fmt_chunk, riff, b2_registered  # noqa: F401
 from neuroscifi.artifacts import adapters, measure_audio
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters import _b2
-from neuroscifi.artifacts.safe_b2 import HeaderOnly
+from neuroscifi.artifacts.types import HeaderOnly
 
 
 REF = [0, 1000, -1000, 32767, -32768, 12345]           # 16-bit reference samples, interleaved stereo
