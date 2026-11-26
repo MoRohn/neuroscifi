@@ -3938,6 +3938,20 @@ tested on worlds no lane has seen, since these held-out worlds have now been use
   - An owner who answers.
   - The withheld worlds.
 
+## The withheld looks (added 2026-11-26 by the Wave 4 record lane)
+
+Wave 3's look (WAVE3.md, "The withheld looks", ledger line 5) gave `idle-first` − `baseline` +0.013 / +0.042 / +0.052
+and `shipped+idle` − `shipped` +0.006 / +0.035 / +0.024 on the three withheld learning-cycle worlds, single runs of code
+whose idle runs were later found not repeatable (ADR-064, "Follow-up"). Wave 4's look (ledger line 10, clean tree
+`e812a8e`, the tie-breaks fixed; WAVE4.md, "The withheld looks", look 2; `genesis_wave4_look_analysis.json`) re-ran
+the same four configurations on the same worlds, four seeds: the references' means (0.465 / 0.286 / 0.323) and all
+six gains equal Wave 3's to three decimals. Against this look's sd of the reference (0.064 / 0.039 / 0.035):
+`idle-first` is **reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a
+small margin in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.376 against
+0.636 / 0.541 / 0.537); within the spread in W1, with one seed negative in W1 and one in W2. `shipped+idle` is within
+the spread in all three worlds. No default changes: autonomy stays opt-in and neither configuration had a held-out
+gain (above).
+
 # ADR-063 How a page that names its origin counts: the shipped grouping is unchanged; the one-way rule is built and OFF
 
 Status: built, **OFF** (`origin_grouping`, default `"transitive"`). Wave 3, third fix lane (`gen3-fix3`), after the
