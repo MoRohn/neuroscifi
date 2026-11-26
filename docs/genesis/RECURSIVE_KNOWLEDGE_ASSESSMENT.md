@@ -434,7 +434,7 @@ looks"); W3's (+0.052 against 0.035) likely stands. Seed 2704's move (WAVE3.md ย
 look re-ran `baseline`, `idle-first`, `shipped` and `shipped+idle` on Wave 3's withheld worlds with the fix in (ledger
 line 10; WAVE4.md, "The withheld looks"): the references' means and all six gains equal Wave 3's to three decimals.
 `idle-first` is reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a
-small margin in W2; it cannot be promoted and remains below the blind schedule (0.478 / 0.328 / 0.376 against 0.636 /
+small margin in W2; it cannot be promoted and remains below the blind schedule (0.478 / 0.328 / 0.3755 against 0.636 /
 0.541 / 0.537).
 
 **Unverified**, as in ยง8: the open web, a live model, an owner who answers, real change rates, the real interleaving
