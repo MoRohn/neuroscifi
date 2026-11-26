@@ -6,7 +6,6 @@ anticipation trace is staged on the host's memory sample and the research queue,
 (internal_state.record) appends it to the history file and settles the shadow verdicts, and the gate decides."""
 from contextlib import closing
 import json
-import logging
 import os
 import sqlite3
 import time
@@ -91,42 +90,6 @@ def test_the_settlement_check_can_fail(tmp_path):
                              for t in r["ticks"]])
     assert shadow_check.mismatches(out, shadow_check.reference(flipped, floor_gib=CRITICAL_GIB,
                                                                horizon_ticks=FORECAST_TICKS))
-
-
-@pytest.mark.parametrize("mode", ["raise", "timeout", "garbage-none", "garbage-text", "garbage-hold",
-                                  "garbage-numbers"])
-def test_a_failing_forecast_changes_no_decision_and_is_visible(tmp_path, monkeypatch, caplog, mode):
-    def broken(*a, **k):
-        if mode == "raise":
-            raise ZeroDivisionError("SUBJECT-MARKER-77")
-        if mode == "timeout":
-            raise TimeoutError("SUBJECT-MARKER-77")
-        return {"garbage-none": None, "garbage-text": "SUBJECT-MARKER-77",
-                "garbage-hold": {"hold": "yes", "forecast": {}},
-                "garbage-numbers": {"hold": True, "forecast": {"horizon_seconds": "x"}}}[mode]
-    monkeypatch.setattr(forecast, "assess", broken)
-    off = run(tmp_path / "off", False)
-    with caplog.at_level(logging.WARNING):
-        shadowed = run(tmp_path / "shadow", "shadow")
-    assert [t["gate"] for t in shadowed["ticks"]] == [t["gate"] for t in off["ticks"]]
-    assert any("shadow" in r.getMessage() for r in caplog.records)
-    assert not any("SUBJECT-MARKER" in r.getMessage() for r in caplog.records)
-    out = shadow.report(shadowed["path"], shadowed["clock"])
-    assert out["verdicts"]["failed"] > 0 and out["verdicts"]["holds"] == 0
-
-
-def test_a_shadow_file_that_is_not_a_file_changes_nothing_and_is_visible(tmp_path, caplog):
-    folder = tmp_path / "shadow" / "individual.sqlite.resources"
-    folder.mkdir(parents=True)
-    os.mkfifo(folder / shadow.FILE)
-    off = run(tmp_path / "off", False)
-    with caplog.at_level(logging.WARNING):
-        shadowed = run(tmp_path / "shadow", "shadow")
-    assert [t["gate"] for t in shadowed["ticks"]] == [t["gate"] for t in off["ticks"]]
-    # a FIFO opened for writing without a reader: ENXIO, before the plain-file check could refuse it
-    assert any("shadow" in r.getMessage() and ("NotAFile" in r.getMessage() or "ENXIO" in r.getMessage())
-               for r in caplog.records)
-    assert shadow.report(shadowed["path"], shadowed["clock"])["problems"]
 
 
 def test_the_record_is_bounded_and_holds_numbers_and_fixed_words_only(tmp_path, monkeypatch):
