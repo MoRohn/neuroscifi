@@ -2,7 +2,7 @@
 
 ## 1. How the instance database is versioned
 
-The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (19 in this release; 13 in 0.7.0).
+The instance database (one SQLite file per individual) stores its schema version in `PRAGMA user_version`. The software holds an append-only list of migrations in `src/neuroscifi/instance/schema.py`; the current schema version is the length of that list (20 with OMNIMIND's artifact store; 19 before it; 13 in 0.7.0).
 
 - **Forward only.** Opening an instance with `nsf` applies every pending migration in order, each in one transaction that also sets `user_version`. The version is read again under the write lock, so two processes opening an old file at once apply each migration once; a migration that fails is rolled back. There are no down-migrations. A released migration is never edited; changes arrive as a new migration.
 - **Newer than the software is refused.** If `user_version` is greater than the software's version, the command stops with "Instance schema N is newer than this software (M)" and changes nothing. Do not run older software on a database an upgrade has opened.
@@ -73,6 +73,14 @@ predictions and findings, the selective broadcast's hourly count, the autonomy w
 decision reads (measured: Presence derive at 500,000 web events 41.15 → 0.15 ms; one more index costs about 10 % per
 web-event insert, 5.39 → 5.94 µs; `genesis_fix1a.json`). No setting comes with it and nothing changes at the defaults.
 Software of an earlier schema refuses a version-19 file; rollback is a restore of the pre-upgrade checkpoint.
+
+**Version 20 (the artifact store's index, OMNIMIND lane A, ADR-071).** Five tables, IF NOT EXISTS throughout:
+`artifacts`, `artifact_links`, `artifact_events` (append-only by trigger), `artifact_forgotten` (tombstones) and
+`artifact_gaps`, plus, on every reference column ADR-049 protects, triggers that refuse an artifact id
+(`schema.NO_ARTIFACT_TRIGGERS`). It reads and writes no existing row; it takes milliseconds. The bytes are not in the
+file: they live in `<stem>.artifacts.sqlite` beside it, which no checkpoint holds and a restore rebuilds for the copy.
+Nothing writes to the tables unless the owner runs `nsf artifact add`. Software of an earlier schema refuses a
+version-20 file; rollback is a restore of the pre-upgrade checkpoint.
 
 ## 2. Upgrade procedure
 

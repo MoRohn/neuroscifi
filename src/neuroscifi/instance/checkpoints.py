@@ -186,6 +186,7 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
                         counts = _replay(copy, forgets, now)
                 else:
                     counts = _replay(copy, None, now)
+                counts |= _artifact_store().after_restore(db, copy, dest, now)   # {} without artifacts
             staged.chmod(0o600)
             try:
                 os.link(staged, dest)
@@ -206,7 +207,7 @@ CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_ep
                     "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet",
                     "internal_state_history", "predictive_regulation", "executive_rule", "decision_information",
                     *store.IMAGINE_SWITCHES, "imagine_max_seconds", "imagine_max_bytes",
-                    "broadcast", "broadcast_threshold")
+                    "broadcast", "broadcast_threshold", *store.ARTIFACT_SETTINGS)
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
@@ -368,6 +369,11 @@ def _live_reverts(db):
                       "l.decided_by='owner' ORDER BY l.id").fetchall()
 
 
+def _artifact_store():
+    from ..artifacts import store as artifact_store      # lazy, as governance imports it (ADR-071)
+    return artifact_store
+
+
 def _read_forgets(db, now, wanted=None):
     from ..webcortex.signing import FRESH_SECONDS
     settings, warnings = _live_settings(db)
@@ -406,6 +412,8 @@ def _read_forgets(db, now, wanted=None):
         # Imagined records the live file removed (purged, forgotten with a source, expired, evicted; ADR-049).
         "imagined": db.execute("SELECT digest,reason,forgotten_at FROM imagined_forgotten").fetchall()
         if imagined.present(db) else [],
+        # Artifacts the live file forgot (ADR-071): their index rows go from the copy too (artifacts/store.py).
+        "artifacts": _artifact_store().read_forgotten(db),
         # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
         "streams": set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()),
         # Retained raw audio likewise: a row the live instance no longer holds was forgotten, swept or expired.
@@ -611,6 +619,7 @@ def _replay(copy, forgets, now):
     # Then, as the live forget did, those whose text holds a root forgotten above (governance._imagined_cascade):
     # what the live tombstones already removed is gone, so this finds only what they do not name.
     imagined_removed += imagined.remove_naming(copy, named, now)[0]
+    artifacts_removed = _artifact_store().replay(copy, forgets.get("artifacts", []) if forgets else [], now)
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
@@ -623,7 +632,8 @@ def _replay(copy, forgets, now):
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked,
-            "imagined_removed": imagined_removed}
+            "imagined_removed": imagined_removed,
+            **({"artifacts_removed": artifacts_removed} if artifacts_removed else {})}
 
 
 # ---- rewrite in place after a forget ------------------------------------------------------------------------------
@@ -632,7 +642,8 @@ def _replay(copy, forgets, now):
 # without the forgotten rows and is valid again. Other kinds (evidence, epoch, partner, dataset, expiry) leave derived
 # rows the replay does not reach, and an archive made stale while it was written has no recorded cause: those stay
 # stale until `rebuild` replaces them.
-REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND})
+REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND,
+                              "artifact"})       # artifacts/store.py DELETION_KIND: replay() is its whole cascade
 JOURNAL_SUFFIX = ".rewrite"
 
 

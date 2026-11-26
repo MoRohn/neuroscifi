@@ -9,12 +9,13 @@ Contract shared by every instance module:
   The birth record never changes; `set_config(db, changes)` changes the few settings the owner may change later.
 """
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 import glob
 import json
 import logging
 import math
 import os
+import re
 from pathlib import Path
 import shutil
 import sqlite3
@@ -131,6 +132,13 @@ class InstanceConfig:
     # finding; "on" = only findings at or above broadcast_threshold (and within broadcast.MAX_PER_HOUR) go out.
     broadcast: str = "off"
     broadcast_threshold: float = 0.5
+    # The artifact store (OMNIMIND, ADR-071; artifacts/store.py): the largest file `nsf artifact add` keeps, the most
+    # bytes the store beside this file (<stem>.artifacts.sqlite) may hold in all, and the external adapters (entry
+    # points of neuroscifi.artifact_adapters) the owner approved; none by default, and an unnamed one is never loaded.
+    # Explicit owner commands only: nothing stores an artifact unasked.
+    artifact_max_bytes: int = 64 * 1024 * 1024
+    artifact_store_max_bytes: int = 2 * 1024 ** 3
+    artifact_adapters: list = field(default_factory=list)
 
     @classmethod
     def from_json(cls, text):
@@ -179,10 +187,18 @@ class InstanceConfig:
         for name in ("broadcast", "broadcast_threshold"):
             if name in values and not _SETTABLE[name](values[name]):
                 del values[name]
+        # The artifact store: a damaged bound reads as its default, a damaged adapter list as none approved (nothing
+        # external is loaded on a value the owner cannot have set).
+        for name in ARTIFACT_SETTINGS:
+            if name in values and not _SETTABLE[name](values[name]):
+                del values[name]
+        if "artifact_adapters" in values:
+            values["artifact_adapters"] = list(values["artifact_adapters"])
         return cls(**values)
 
 
 MAX_ROW_LIMIT = 10**12
+_ADAPTER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")    # an entry-point name the owner may approve
 CONSOLIDATION_WARN_SHARE = 0.8      # of max_consolidated_rows: from here the owner is warned
 
 
@@ -346,6 +362,11 @@ _SETTABLE = {
                                       and 0.1 <= v <= 600),
     "imagine_max_bytes": lambda v: isinstance(v, int) and not isinstance(v, bool) and 1 << 20 <= v <= 64 << 30,
     "broadcast": lambda v: v in ("off", "log", "on"),
+    "artifact_max_bytes": lambda v: isinstance(v, int) and not isinstance(v, bool) and 1 << 10 <= v <= 1 << 30,
+    "artifact_store_max_bytes": lambda v: isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 1 << 40,
+    "artifact_adapters": lambda v: (isinstance(v, (list, tuple)) and len(v) <= 64
+                                    and all(isinstance(n, str) and _ADAPTER_NAME.fullmatch(n) for n in v)
+                                    and len(set(v)) == len(v)),
     "broadcast_threshold": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                                       and 0 <= v <= 1),
 }
@@ -355,6 +376,7 @@ RULE_VERSIONS = ("rules-v1", "information-v1")
 MAX_IMAGINED_ROWS = 100_000
 MAX_IMAGINED_LIFETIME = 365 * 86400    # also how long an imagined tombstone is kept (imagined.expire)
 IMAGINE_SWITCHES = ("imagine_what_if", "imagine_forecast", "imagine_retrospect", "imagine_scenarios")
+ARTIFACT_SETTINGS = ("artifact_max_bytes", "artifact_store_max_bytes", "artifact_adapters")
 
 
 SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
@@ -400,7 +422,13 @@ def setting_problems(db):
              "imagine_max_seconds": "; the default of 10 seconds applies until it is set with "
                                     "`nsf config --imagine-max-seconds S`",
              "imagine_max_bytes": "; the default of 512 MiB applies until it is set with "
-                                  "`nsf config --imagine-max-mib M`"}
+                                  "`nsf config --imagine-max-mib M`",
+             "artifact_max_bytes": "; the default of 64 MiB per file applies until it is set with "
+                                   "`nsf config --artifact-max-mib M`",
+             "artifact_store_max_bytes": "; the default of 2 GiB in all applies until it is set with "
+                                         "`nsf config --artifact-store-max-mib M`",
+             "artifact_adapters": "; no external adapter is loaded until the list is set with "
+                                  "`nsf config --artifact-adapters NAME,...`"}
     return [f"the saved {name} ({raw[name]!r}) is not a valid value" + notes.get(name, "")
             for name in sorted(_SETTABLE) if name in raw and not _SETTABLE[name](raw[name])]
 

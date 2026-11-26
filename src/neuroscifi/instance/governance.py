@@ -426,6 +426,13 @@ def _remove(db, where, params, now, *, reason, cause, kind, target, drop_epoch=N
     return effects
 
 
+def _artifacts():
+    """The artifact store (OMNIMIND, ADR-071), imported when a forget of a root needs it: it removes every artifact
+    whose label, index, text layer or bytes name the root (artifacts/store.py scan_root, forget_found, finish)."""
+    from ..artifacts import store as artifact_store
+    return artifact_store
+
+
 def _imagined_cascade(db, effects, now, forms=()):
     """Remove the imagined records (ADR-049) derived from anything this forget removed and then, a record being
     never rewritten, those whose text holds a forgotten root (`forms`: naming_forms), as stored or inside a base64,
@@ -497,13 +504,15 @@ def forget_epoch(db, epoch, now):
 def forget_partner(db, root, now):
     if not isinstance(root, str) or not root:
         raise ValidationError("partner root must be a non-empty string")
+    found = _artifacts().scan_root(db, root)        # the artifacts naming it, found outside the transaction
     with store.write(db):
         # The root is the partner's payload, so the log keeps only its instance-salted label.
         label = "partner:#" + root_digest(store.birth(db)["instance_id"], root)
         effects = _remove(db, "channel='word' AND root=?", (root,), now, reason="partner_forgotten",
                           cause=f"forget:{label}", kind="partner", target=label,
                           consolidated=("channel='word' AND root=?", (root,)), scopes=(f"partner:{root}",))
-    return _result(db, effects)
+        effects = _artifacts().forget_found(db, found, now, effects, label)
+    return _artifacts().finish(db, found, _result(db, effects))
 
 
 def replay_scope_forgets(copy, forgets, version):
@@ -551,12 +560,14 @@ def forget_camera(db, root, now):
     """
     if not isinstance(root, str) or not root:
         raise ValidationError("camera root must be a non-empty string")
+    found = _artifacts().scan_root(db, root)        # the artifacts naming it, found outside the transaction
     with store.write(db):
         label = "camera:#" + root_digest(store.birth(db)["instance_id"], root)
         effects = _remove(db, "channel='camera' AND root=?", (root,), now, reason="forgotten",
                           cause=f"forget:{label}", kind="camera", target=label,
                           consolidated=("channel='camera' AND root=?", (root,)), scopes=(f"camera:{root}",))
-    return _result(db, effects)
+        effects = _artifacts().forget_found(db, found, now, effects, label)
+    return _artifacts().finish(db, found, _result(db, effects))
 
 
 def forget_consolidated(db, seq, now):
