@@ -13,7 +13,11 @@ scores on synthetic and fictional worlds with known answers, driven offline thro
   142 of 612 well-supported true values not held. No rule built against it is supported: the derivation rule trades
   fewer bad rows (99) for more true values not held (207) and a lower `correct` in every world, and its signal is the
   test generator's convention; the own-text rule is "effective" by its own rule but small (own answers 4 → 1) and off.
-  Dividing the daily allowance gains nothing. All ship off; the hole is open at the shipped defaults.
+  Dividing the daily allowance gains nothing. All ship off; the hole is open at the shipped defaults. The withheld
+  looks at the end (ledger lines 9 and 10): on unseen source worlds the own-text rule reads "effective" on a base of
+  two own answers admitted (2 → 1; Wave 3's `echo_recognition` 2 → 0), each with 14 honest pages set aside and the
+  hole untouched (110 rows below the bar → 108 / 107): not shown better than the older rule; on Wave 3's withheld
+  learning-cycle worlds the idle investigation's six figures reproduce Wave 3's to three decimals on repeatable code.
 - **Wave 3 (2026-11-26, [WAVE3.md](WAVE3.md), §12 below).** On unseen learning-cycle worlds the unchanged loop
   admitted versions only its own outputs or a copied wrong story stated (4 / 6 / 6 and 2 / 17 / 12 over 4 seeds),
   where 120 held-out runs never had (`docs/quality/COGNITIVE_BENCHMARK.md`, step 0). The two rules built against it
@@ -500,11 +504,24 @@ rule was written for it. **The one look at the withheld source worlds** (step 0,
 not recomputed here): 110 rows admitted below the bar (26 false), 2 own answers, 129 of 356 eligible not held,
 `correct` 0.535 and 0.489 against the oracle's 0.610 and 0.657.
 
+**The withheld looks at the end of Wave 4** (taken once each on `e812a8e` by the main session, ledger lines 9 and 10;
+from `genesis_wave4_look_analysis.json`, the main session's reading by the committed rule; the full look files are
+read by no lane; WAVE4.md, "The withheld looks"). *Sources* (two worlds × 4 seeds, 576 looks, 356 eligible): `shipped`
+reproduces step 0's look in every compared key (0 differences). Summed: `shipped` 110 (26) / 2 / 129;
+`own_text_provenance` 108 / 1 / 128, honest pages set aside 14, echo pages 12, "effective"; `echo_recognition` 107 /
+0 / 128, honest 14, echo 15, "effective"; grouping unchanged under both; `correct` unchanged in one world and 0.489 →
+0.493 in the other under both. The word "effective" rests on a base of two own answers; the hole is untouched; the new
+rule is not shown better than the older one; the owner's question load is not recorded. *Learning cycles* (Wave 3's
+three withheld worlds, 4 seeds, repeatable code): `idle-first` − `baseline` +0.013 / +0.042 / +0.052 against this
+look's spread 0.064 / 0.039 / 0.035 (within; beyond by 0.003; beyond by 0.017); `shipped+idle` − `shipped` +0.006 /
++0.035 / +0.024 (within in all three); the references' means 0.465 / 0.286 / 0.323 and all six gains equal Wave 3's to
+three decimals; blind round-robin 0.636 / 0.541 / 0.537 against `idle-first`'s 0.478 / 0.328 / 0.376. Nothing changes.
+
 | Category | Result | Evidence |
 |---|---|---|
 | Knowledge accuracy: what counts as a source (lanes S, E) | above: no rule supported for turning on; the derivation rule's signal is the generator's naming convention (31 of 34 cast names, 10 of 10 outlets); the own-text rule's "effective" is small (4 own answers per split at shipped) with a measured false rejection, and two review defects fixed | `genesis_wave4_s.json`, `genesis_wave4_e.json`, `genesis_wave4_fix.json`, ADR-066, ADR-067 |
 | Autonomy / coverage: dividing the allowance (lane A) | held-out, paired against `shipped+idle`: every candidate −0.024 to +0.026, none beyond the spread (0.034–0.054); every candidate "unsafe" or "harm"; the reference and every candidate 0.09–0.26 below the blind round-robin (`shipped+idle-first` up to 0.28) | `genesis_wave4_a_held_out.json`, ADR-064 |
-| Reliability: reproducibility (lane A) | runs with the idle investigation were not repeatable (a world's mean paired gain moved up to 0.015 between repeats); two product tie-breaks fixed; after: 0 variation; Wave 3's withheld `idle-first` W2 (+0.042 against 0.039) no longer established beyond the spread | `genesis_wave4_a_repeatability.json`, ADR-064 |
+| Reliability: reproducibility (lane A) | runs with the idle investigation were not repeatable (a world's mean paired gain moved up to 0.015 between repeats); two product tie-breaks fixed; after: 0 variation; Wave 3's withheld `idle-first` W2 (+0.042 against 0.039) no longer established beyond the spread. *Corrected after Wave 4's withheld look (record lane, 2026-11-26):* the look reproduces all six of Wave 3's figures to three decimals on the fixed code, so `idle-first` is reproduced on a repeatable run, beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds (a small margin in W2); it cannot be promoted and remains below the blind schedule | `genesis_wave4_a_repeatability.json`, ADR-064; `genesis_wave4_look_analysis.json` |
 | Metacognition shown to the owner: the caution (lane D) | display only; the one-source trigger carried 3 of 3 wrong development answers; held-out not exercised (0 wrong); the copy trigger and own-answer flag mislead about three times in ten and are not shown by default | `genesis_wave4_d_caution.json`, ADR-065 |
 | Reliability: settings, budgets, the restore | every saved setting checked on load (fixed settings and network limits fail closed); `requeue` within the day's count; a restore's write transaction 0.14–0.15 s instead of 1.64–1.82 s at 10,000 answers of 20 kB | lane D's report; WAVE4.md §1.5 |
-| Regression | the default path of `claims.py`: 2,052,099 comparisons, 0 different; offline digest `68731d7235cb…` at the defaults and all off; final validation pending (WAVE4.md, "Validation") | `genesis_wave4_s.json` (`default_path_comparison`) |
+| Regression | the default path of `claims.py`: 2,052,099 comparisons, 0 different (the second fix round's run); final validation on `81474e5`: quality gate 6,397 passed, 22 skipped; browser suite 216 passed, 1 skipped; `nsf acceptance --all` 7 of 7; guard differential 0 different of 1,937; two accounts 55 of 55; offline digest `68731d7235cb…` (portable `d87dbb4fb77f…`) at the defaults and all off (WAVE4.md, "Validation") | `genesis_wave4_s.json` (`default_path_comparison`); the main session's validation |
