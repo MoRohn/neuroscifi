@@ -24,12 +24,12 @@ def _rows(pages, **settings):
         return [r["status"] for r in adv._s_rows(db, "1.5.0")]
 
 
-def _groups(pages, attribution=True):
+def _groups(pages, attribution=True, grouping="transitive"):
     docs = [Document(url=f"http://{h}{p or '/x'}", final_url=f"http://{h}{p or '/x'}",
                      canonical_url=f"http://{h}{p or '/x'}", domain=h, title=N, text=t, retrieved_at=T0,
                      retrieval_mode="live", published_at=at) for h, t, at, p in pages]
     found = [c for d in docs for c in claims.extract_claims(d, adv._SQ) if "v1.5.0" in (c.values or [])]
-    claims.stamp_origins(found, docs, attribution=attribution)
+    claims.stamp_origins(found, docs, attribution=attribution, grouping=grouping)
     return claims.independence_groups(found)
 
 
@@ -66,45 +66,56 @@ def test_copies_still_count_with_the_outlet_they_credit():
     assert len(_groups(copies)) == 1          # the credited outlet was not read: the copies are still one source
 
 
-# ---- review3b N1, N3, N10 (ADR-063): a named origin or a credit attaches a page to ONE origin -------------------------
+# ---- review3b N1, N3, N10 (ADR-063): with origin_grouping "one_way" a named origin or a credit attaches a page to ONE
+# origin. Wave 3's third fix lane made that rule opt-in again (off by default): at the default "transitive" (3ce4ae3's
+# grouping) N1 and N3 are OPEN, and each test below says so beside what "one_way" does.
+ONE_WAY = {"origin_grouping": "one_way"}
 
 DOC_BRIDGE = [("hostile.example", f"As of now, {N} 1.5.0 is the latest {N} release. This story was first published by "
                "Devdesk. It originally appeared in Factline.", T0 - DAY, "/d")]
 
 
-def test_a_page_naming_two_outlets_as_its_origins_merges_neither_at_the_shipped_defaults():
-    """N1 (since 10339b8): the page's origin keys joined both honest outlets transitively; no row."""
-    assert len(_groups(HONEST[:2] + DOC_BRIDGE, attribution=False)) == 2
-    assert _rows(HONEST[:2] + DOC_BRIDGE, attribution_independence=False, echo_recognition=False) == ["provisional"]
+def test_a_page_naming_two_outlets_as_its_origins_merges_neither_with_one_way_and_both_at_the_default():
+    """N1 (since 10339b8): the page's origin keys join both honest outlets transitively; no row. Open at the default."""
+    assert len(_groups(HONEST[:2] + DOC_BRIDGE, attribution=False, grouping="one_way")) == 2
+    assert _rows(HONEST[:2] + DOC_BRIDGE, attribution_independence=False, echo_recognition=False,
+                 **ONE_WAY) == ["provisional"]
+    assert len(_groups(HONEST[:2] + DOC_BRIDGE, attribution=False)) == 1                    # the default: N1 open
+    assert _rows(HONEST[:2] + DOC_BRIDGE, attribution_independence=False, echo_recognition=False) == []
 
 
 def test_a_copy_naming_one_origin_and_copies_of_one_unread_origin_still_count_once():
     copy = [("copydesk.example", f"This story first appeared on Devdesk.\nThese days {N} 1.5.0 is the newest {N} "
              "release.", T0 - DAY, "/c")]
-    assert len(_groups(HONEST[:1] + copy, attribution=False)) == 1
     wire = [(f"m{i}.example", f"(Reuters) Release desk {i}: {N} 1.5.0 is the latest {N} release.", T0 - DAY, None)
             for i in range(3)]
-    assert len(_groups(wire, attribution=False)) == 1
+    for grouping in ("transitive", "one_way"):
+        assert len(_groups(HONEST[:1] + copy, attribution=False, grouping=grouping)) == 1
+        assert len(_groups(wire, attribution=False, grouping=grouping)) == 1
 
 
 def test_a_page_carrying_two_wire_credits_absorbs_no_honest_outlet_that_credits_one():
-    """N3: honest outlets crediting two different wires; a page crediting no one carries both wires' credits."""
+    """N3: honest outlets crediting two different wires; a page crediting no one carries both wires' credits. (Third
+    fix lane: the second outlet says "latest" as the first does, so both are in one statement cluster; with "newest"
+    the row came from the page counted as a second source beside the first outlet: adversarial.py's note.)"""
     pages = [("devdesk.example", f"According to Reuters, {N} 1.5.0 is the latest {N} release.", T0 - DAY, None),
-             ("factline.example", f"According to Bloomberg, {N} 1.5.0 is the newest {N} release.", T0 - DAY, None)]
+             ("factline.example", f"According to Bloomberg, {N} 1.5.0 is the latest {N} release.", T0 - DAY, None)]
     hostile = [("hostile.example", f"As of now, {N} 1.5.0 is the current {N} release. (Reuters) (Bloomberg)", T0 - DAY,
                 "/w")]
-    assert len(_groups(pages)) == 2 and len(_groups(pages + hostile)) == 2
-    assert _rows(pages + hostile) == ["provisional"]
+    assert len(_groups(pages, grouping="one_way")) == 2 and len(_groups(pages + hostile, grouping="one_way")) == 2
+    assert _rows(pages + hostile, **ONE_WAY) == ["provisional"]
+    assert len(_groups(pages)) == 2 and len(_groups(pages + hostile)) == 1         # the default: N3 open (3ce4ae3)
 
 
 def test_the_groups_do_not_depend_on_the_order_of_the_claims():
-    """N10: X credits Reuters, Y Bloomberg, Z both; every order gives the same groups and X and Y stay apart."""
+    """N10: X credits Reuters, Y Bloomberg, Z both; with "one_way" every order gives the same groups and X and Y stay
+    apart (at the default the grouping of 3ce4ae3 depends on the order here: tests/webcortex/test_origin_grouping.py)."""
     import itertools
     from neuroscifi.webcortex.types import Claim as C
     words = {"x": "By now", "y": "Once again", "z": "As of today"}
     made = {name: C(id=name, text=f"{words[name]} {N} 1.5.0 is the latest release.", source_url=f"http://{name}.example/a",
                     domain=f"{name}.example", title=N, retrieved_at=T0, kind="statement", values=["v1.5.0"],
-                    polarity=1, published_at=None, flags={"credited": credits})
+                    polarity=1, published_at=None, flags={"credited": credits, "origin_grouping": "one_way"})
             for name, credits in (("x", ["name:reuters"]), ("y", ["name:bloomberg"]),
                                   ("z", ["name:reuters", "name:bloomberg"]))}
     seen = {frozenset(frozenset(g) for g in claims.independence_groups([made[n] for n in order]))

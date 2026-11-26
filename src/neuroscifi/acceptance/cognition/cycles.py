@@ -254,7 +254,8 @@ def investigate(db, task, docs, now, *, answer=None) -> dict:
             source_ids[d.canonical_url] = state.save_source(db, tid, d, now)
     for d in docs:
         found += claims.extract_claims(d, task["objective"])
-    origins = claims.stamp_origins(found, docs, attribution=state.get_config(db).attribution_independence)
+    cfg = state.get_config(db)
+    origins = claims.stamp_origins(found, docs, attribution=cfg.attribution_independence, grouping=cfg.origin_grouping)
     clusters = [claims.score(c, now=now, freshness_class=freshness, origins=origins)
                 for c in claims.cluster(found)] if found else []
     with store.write(db):

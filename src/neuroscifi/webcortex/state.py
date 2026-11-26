@@ -134,6 +134,11 @@ def _validate(name, value):
             raise ValidationError("supersession must be 'ask' (contradictions are asked, never decided) or "
                                   "'independent' (a newer value from enough independent sources replaces the item)")
         return value
+    if name == "origin_grouping":
+        if value not in ("transitive", "one_way"):
+            raise ValidationError("origin_grouping must be 'transitive' (a page naming its origin joins it and what it "
+                                  "names, as before ADR-063) or 'one_way' (it attaches to one origin)")
+        return value
     if name == "supersession_min_sources":
         if not _is_int(value) or not 2 <= value <= 10:
             raise ValidationError("supersession_min_sources must be an integer between 2 and 10")
