@@ -1,0 +1,50 @@
+{
+ "lane": "OMNIMIND S",
+ "measurement": "cost of the forget-by-text scan of the imagined store (imagined.remove_naming)",
+ "command": "PYTHONPATH=src python scripts/bench_omnimind_s_forget.py",
+ "method": "imagined.remove_naming over the whole store, inside a BEGIN IMMEDIATE write transaction (rolled back), 3 runs each, nothing matching (every record fully scanned)",
+ "host": "aarch64",
+ "python": "3.12.16",
+ "date": "2026-11-26",
+ "machine_load": "shared host, other suites running (unquiet)",
+ "results": [
+  {
+   "case": "10,000 records of imagined.example payloads",
+   "records": 10000,
+   "file_bytes": 2809856,
+   "seconds_median": 0.117,
+   "seconds_runs": [
+    0.118,
+    0.117,
+    0.117
+   ]
+  },
+  {
+   "case": "10,000 records, each a 4 KiB base64 PNG with a zTXt chunk",
+   "records": 10000,
+   "file_bytes": 47472640,
+   "seconds_median": 0.516,
+   "seconds_runs": [
+    0.519,
+    0.516,
+    0.515
+   ]
+  },
+  {
+   "case": "1,000 records, each a 40 KiB base64 PNG with a zTXt chunk",
+   "records": 1000,
+   "file_bytes": 40636416,
+   "seconds_median": 0.358,
+   "seconds_runs": [
+    0.36,
+    0.358,
+    0.358
+   ]
+  }
+ ],
+ "bounds": {
+  "decode_max_depth": 4,
+  "decode_max_bytes_per_record": 8388608,
+  "decode_min_chars": 16
+ }
+}
