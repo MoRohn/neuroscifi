@@ -1,0 +1,2914 @@
+{
+ "lane": "K (Wave 1, ADR-055), re-run by Wave 2 lane Y after the benchmark-integrity review (H3)",
+ "label": "simulated worlds driven through the real modules; offline; no answer model",
+ "why": "lane K's harness drew the truth changes, the arrivals and every research outcome from one random stream (knowledge._World.rng; strategy selection: the offers and the outcomes), so two policies that investigate different subjects can meet different later worlds and draw different outcomes for the same subject. The decoupled draw keys the truth changes by (world, seed, step) and each outcome by (world, seed, step, subject) (strategy: offers by (world, seed, step), outcomes by (world, seed, step, candidate)), so the policies are compared on the same world with common random numbers",
+ "draw": "decoupled (scripts/bench_genesis_knowledge.py --decoupled); the default draw stays the recorded one",
+ "commit": "f15bef1",
+ "worlds": "src/neuroscifi/acceptance/cognition/knowledge_splits.py, unchanged (frozen; sha256 checked by tests/acceptance/test_genesis_knowledge_bench.py)",
+ "recorded_draw_reproduced": "the default (recorded) draw re-run on this tree: 0 of 635 held-out and 0 of 633 development compared values differ from genesis_knowledge.json (recheck_and_strategy; wall seconds excepted)",
+ "observation": "under the recorded draw the re-check worlds' truth trajectories were already the same for the due order and the re-check on every development world and seed checked (every policy fills its budget each step, so the stream stays aligned); what differed was which outcome draw met which subject. Strategy selection's offers diverged from step 1-3 on every development world and seed",
+ "held_out_rerun_disclosure": "held-out re-run with the decoupled draw because the harness's draw changed; nothing chosen on held-out; no default changed",
+ "splits": {
+  "held_out": {
+   "seeds": [
+    101,
+    102,
+    103,
+    104
+   ],
+   "retention_under_change": {
+    "policies_mean_correct": {
+     "baseline": {
+      "decoupled": 0.67335,
+      "recorded": 0.693119
+     },
+     "recheck": {
+      "decoupled": 0.681699,
+      "recorded": 0.695035
+     },
+     "random": {
+      "decoupled": 0.664799,
+      "recorded": 0.663135
+     },
+     "oracle": {
+      "decoupled": 0.764464,
+      "recorded": 0.802662
+     },
+     "recheck-no-importance": {
+      "decoupled": 0.672937,
+      "recorded": 0.69248
+     },
+     "recheck-no-marks": {
+      "decoupled": 0.681699,
+      "recorded": 0.695035
+     },
+     "recheck-with-dependents": {
+      "decoupled": 0.679971,
+      "recorded": 0.695062
+     }
+    },
+    "per_world": {
+     "ho-sparse-budget": {
+      "baseline": {
+       "mean": 0.608769,
+       "sd": 0.054117,
+       "min": 0.565987,
+       "max": 0.687305,
+       "n": 4
+      },
+      "recheck": {
+       "mean": 0.61175,
+       "sd": 0.065928,
+       "min": 0.538257,
+       "max": 0.697968,
+       "n": 4
+      },
+      "recheck_vs_baseline_paired": {
+       "mean_difference": 0.00298024999999999,
+       "sd": 0.020562263597425277,
+       "n": 4,
+       "higher": 3,
+       "lower": 1,
+       "equal": 0
+      },
+      "recorded": {
+       "baseline": {
+        "mean": 0.632899,
+        "sd": 0.096785,
+        "min": 0.496616,
+        "max": 0.708626,
+        "n": 4
+       },
+       "recheck": {
+        "mean": 0.62415,
+        "sd": 0.104458,
+        "min": 0.484188,
+        "max": 0.731839,
+        "n": 4
+       }
+      }
+     },
+     "ho-busy": {
+      "baseline": {
+       "mean": 0.737931,
+       "sd": 0.074835,
+       "min": 0.640263,
+       "max": 0.815632,
+       "n": 4
+      },
+      "recheck": {
+       "mean": 0.751648,
+       "sd": 0.051676,
+       "min": 0.707101,
+       "max": 0.822219,
+       "n": 4
+      },
+      "recheck_vs_baseline_paired": {
+       "mean_difference": 0.013717500000000021,
+       "sd": 0.03632937797889375,
+       "n": 4,
+       "higher": 2,
+       "lower": 2,
+       "equal": 0
+      },
+      "recorded": {
+       "baseline": {
+        "mean": 0.75334,
+        "sd": 0.039647,
+        "min": 0.721859,
+        "max": 0.809797,
+        "n": 4
+       },
+       "recheck": {
+        "mean": 0.76592,
+        "sd": 0.036415,
+        "min": 0.734438,
+        "max": 0.812846,
+        "n": 4
+       }
+      }
+     }
+    }
+   },
+   "strategy_selection": {
+    "thompson": {
+     "verified_per_investigation": 0.3475,
+     "inflator_share": 0.0875
+    },
+    "incumbent": {
+     "verified_per_investigation": 0.2675,
+     "inflator_share": 0.2325
+    },
+    "recorded": {
+     "thompson": {
+      "verified_per_investigation": 0.395,
+      "inflator_share": 0.105
+     },
+     "incumbent": {
+      "verified_per_investigation": 0.265,
+      "inflator_share": 0.2525
+     }
+    },
+    "per_world": {
+     "ho-quick-wins": {
+      "verified_per_investigation": {
+       "mean_difference": 0.13499999999999998,
+       "sd": 0.10503967504392488,
+       "n": 4,
+       "higher": 3,
+       "lower": 1,
+       "equal": 0
+      },
+      "inflator_share": {
+       "mean_difference": -0.175,
+       "sd": 0.07187952884282607,
+       "n": 4,
+       "higher": 0,
+       "lower": 4,
+       "equal": 0
+      }
+     },
+     "ho-flat": {
+      "verified_per_investigation": {
+       "mean_difference": 0.025,
+       "sd": 0.0754983443527075,
+       "n": 4,
+       "higher": 2,
+       "lower": 1,
+       "equal": 1
+      },
+      "inflator_share": {
+       "mean_difference": -0.11499999999999999,
+       "sd": 0.05972157622389638,
+       "n": 4,
+       "higher": 0,
+       "lower": 4,
+       "equal": 0
+      }
+     }
+    }
+   },
+   "full": {
+    "recheck": {
+     "split": "held_out",
+     "seeds": [
+      101,
+      102,
+      103,
+      104
+     ],
+     "policies": {
+      "baseline": {
+       "worlds": {
+        "ho-sparse-budget": {
+         "mean_correct": {
+          "mean": 0.608769,
+          "sd": 0.054117,
+          "min": 0.565987,
+          "max": 0.687305,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.607674,
+          "sd": 0.053466,
+          "min": 0.570518,
+          "max": 0.684627,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.568892,
+          "sd": 0.097764,
+          "min": 0.471591,
+          "max": 0.698864,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.571883,
+          "sd": 0.094594,
+          "min": 0.472515,
+          "max": 0.69924,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.751781,
+          "sd": 0.110663,
+          "min": 0.622531,
+          "max": 0.870022,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.506579,
+          "sd": 0.039474,
+          "min": 0.447368,
+          "max": 0.526316,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.46875,
+          "sd": 0.108253,
+          "min": 0.3125,
+          "max": 0.5625,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 16.0,
+         "wall_seconds": 0.139474,
+         "per_seed": {
+          "mean_correct": [
+           0.565987,
+           0.582269,
+           0.687305,
+           0.599517
+          ],
+          "final_correct": [
+           0.526316,
+           0.447368,
+           0.526316,
+           0.526316
+          ],
+          "caught_per_investigation": [
+           0.5625,
+           0.5,
+           0.3125,
+           0.5
+          ]
+         }
+        },
+        "ho-busy": {
+         "mean_correct": {
+          "mean": 0.737931,
+          "sd": 0.074835,
+          "min": 0.640263,
+          "max": 0.815632,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.730486,
+          "sd": 0.080128,
+          "min": 0.631253,
+          "max": 0.822153,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.71875,
+          "sd": 0.039893,
+          "min": 0.666667,
+          "max": 0.75,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.709323,
+          "sd": 0.044763,
+          "min": 0.658793,
+          "max": 0.755515,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.759032,
+          "sd": 0.096282,
+          "min": 0.641738,
+          "max": 0.861259,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.581731,
+          "sd": 0.104597,
+          "min": 0.5,
+          "max": 0.730769,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.34375,
+          "sd": 0.052429,
+          "min": 0.291667,
+          "max": 0.416667,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.150209,
+         "per_seed": {
+          "mean_correct": [
+           0.725275,
+           0.640263,
+           0.815632,
+           0.770554
+          ],
+          "final_correct": [
+           0.5,
+           0.519231,
+           0.730769,
+           0.576923
+          ],
+          "caught_per_investigation": [
+           0.291667,
+           0.333333,
+           0.333333,
+           0.416667
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.67335,
+        "mean_correct_weighted": 0.66908,
+        "mean_correct_old": 0.643821,
+        "mean_correct_old_weighted": 0.640603,
+        "mean_correct_new": 0.755406,
+        "final_correct": 0.544155,
+        "caught_per_investigation": 0.40625
+       }
+      },
+      "recheck": {
+       "worlds": {
+        "ho-sparse-budget": {
+         "mean_correct": {
+          "mean": 0.61175,
+          "sd": 0.065928,
+          "min": 0.538257,
+          "max": 0.697968,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.611257,
+          "sd": 0.067949,
+          "min": 0.537592,
+          "max": 0.699976,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.572443,
+          "sd": 0.119284,
+          "min": 0.431818,
+          "max": 0.715909,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.575756,
+          "sd": 0.122448,
+          "min": 0.424322,
+          "max": 0.72203,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.751781,
+          "sd": 0.110663,
+          "min": 0.622531,
+          "max": 0.870022,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.519737,
+          "sd": 0.044943,
+          "min": 0.473684,
+          "max": 0.578947,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.5625,
+          "sd": 0.135015,
+          "min": 0.4375,
+          "max": 0.75,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 16.0,
+         "wall_seconds": 0.28859,
+         "per_seed": {
+          "mean_correct": [
+           0.538257,
+           0.597519,
+           0.697968,
+           0.613255
+          ],
+          "final_correct": [
+           0.5,
+           0.473684,
+           0.578947,
+           0.526316
+          ],
+          "caught_per_investigation": [
+           0.5,
+           0.5625,
+           0.4375,
+           0.75
+          ]
+         }
+        },
+        "ho-busy": {
+         "mean_correct": {
+          "mean": 0.751648,
+          "sd": 0.051676,
+          "min": 0.707101,
+          "max": 0.822219,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.747986,
+          "sd": 0.058521,
+          "min": 0.703253,
+          "max": 0.830627,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.74349,
+          "sd": 0.055017,
+          "min": 0.6875,
+          "max": 0.8125,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.738714,
+          "sd": 0.064511,
+          "min": 0.680147,
+          "max": 0.816929,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.75933,
+          "sd": 0.097772,
+          "min": 0.644263,
+          "max": 0.855956,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.591346,
+          "sd": 0.089342,
+          "min": 0.5,
+          "max": 0.711538,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.375,
+          "sd": 0.068041,
+          "min": 0.291667,
+          "max": 0.458333,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.299513,
+         "per_seed": {
+          "mean_correct": [
+           0.719825,
+           0.707101,
+           0.822219,
+           0.757449
+          ],
+          "final_correct": [
+           0.5,
+           0.557692,
+           0.711538,
+           0.596154
+          ],
+          "caught_per_investigation": [
+           0.291667,
+           0.458333,
+           0.375,
+           0.375
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.681699,
+        "mean_correct_weighted": 0.679621,
+        "mean_correct_old": 0.657966,
+        "mean_correct_old_weighted": 0.657235,
+        "mean_correct_new": 0.755555,
+        "final_correct": 0.555541,
+        "caught_per_investigation": 0.46875
+       }
+      },
+      "random": {
+       "worlds": {
+        "ho-sparse-budget": {
+         "mean_correct": {
+          "mean": 0.608466,
+          "sd": 0.061811,
+          "min": 0.561758,
+          "max": 0.699064,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.609598,
+          "sd": 0.064177,
+          "min": 0.563943,
+          "max": 0.700977,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.560369,
+          "sd": 0.103095,
+          "min": 0.460227,
+          "max": 0.701705,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.56736,
+          "sd": 0.104373,
+          "min": 0.460843,
+          "max": 0.710981,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.766117,
+          "sd": 0.095997,
+          "min": 0.649251,
+          "max": 0.870022,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.526316,
+          "sd": 0.077472,
+          "min": 0.447368,
+          "max": 0.605263,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.46875,
+          "sd": 0.036084,
+          "min": 0.4375,
+          "max": 0.5,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 16.0,
+         "wall_seconds": 0.124107,
+         "per_seed": {
+          "mean_correct": [
+           0.561758,
+           0.579147,
+           0.699064,
+           0.593893
+          ],
+          "final_correct": [
+           0.473684,
+           0.447368,
+           0.605263,
+           0.578947
+          ],
+          "caught_per_investigation": [
+           0.4375,
+           0.5,
+           0.5,
+           0.4375
+          ]
+         }
+        },
+        "ho-busy": {
+         "mean_correct": {
+          "mean": 0.721133,
+          "sd": 0.044926,
+          "min": 0.658281,
+          "max": 0.764687,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.716721,
+          "sd": 0.045622,
+          "min": 0.656886,
+          "max": 0.767636,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.640625,
+          "sd": 0.044194,
+          "min": 0.609375,
+          "max": 0.703125,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.636704,
+          "sd": 0.038627,
+          "min": 0.604331,
+          "max": 0.690647,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.783827,
+          "sd": 0.070873,
+          "min": 0.710315,
+          "max": 0.858482,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.557692,
+          "sd": 0.102964,
+          "min": 0.5,
+          "max": 0.711538,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.3125,
+          "sd": 0.079786,
+          "min": 0.208333,
+          "max": 0.375,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.148075,
+         "per_seed": {
+          "mean_correct": [
+           0.734053,
+           0.658281,
+           0.764687,
+           0.727513
+          ],
+          "final_correct": [
+           0.5,
+           0.519231,
+           0.711538,
+           0.5
+          ],
+          "caught_per_investigation": [
+           0.375,
+           0.375,
+           0.291667,
+           0.208333
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.664799,
+        "mean_correct_weighted": 0.663159,
+        "mean_correct_old": 0.600497,
+        "mean_correct_old_weighted": 0.602032,
+        "mean_correct_new": 0.774972,
+        "final_correct": 0.542004,
+        "caught_per_investigation": 0.390625
+       }
+      },
+      "oracle": {
+       "worlds": {
+        "ho-sparse-budget": {
+         "mean_correct": {
+          "mean": 0.664715,
+          "sd": 0.094311,
+          "min": 0.589213,
+          "max": 0.802374,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.687364,
+          "sd": 0.094938,
+          "min": 0.616434,
+          "max": 0.825851,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.629972,
+          "sd": 0.136962,
+          "min": 0.488636,
+          "max": 0.8125,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.663691,
+          "sd": 0.131776,
+          "min": 0.519955,
+          "max": 0.838398,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.782831,
+          "sd": 0.113756,
+          "min": 0.622531,
+          "max": 0.891273,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.552632,
+          "sd": 0.077472,
+          "min": 0.473684,
+          "max": 0.657895,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.90625,
+          "sd": 0.036084,
+          "min": 0.875,
+          "max": 0.9375,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 16.0,
+         "wall_seconds": 0.128633,
+         "per_seed": {
+          "mean_correct": [
+           0.589213,
+           0.62651,
+           0.802374,
+           0.640763
+          ],
+          "final_correct": [
+           0.552632,
+           0.473684,
+           0.657895,
+           0.526316
+          ],
+          "caught_per_investigation": [
+           0.875,
+           0.9375,
+           0.9375,
+           0.875
+          ]
+         }
+        },
+        "ho-busy": {
+         "mean_correct": {
+          "mean": 0.864212,
+          "sd": 0.065467,
+          "min": 0.792717,
+          "max": 0.919862,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.876692,
+          "sd": 0.06046,
+          "min": 0.817825,
+          "max": 0.931259,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.888021,
+          "sd": 0.072481,
+          "min": 0.796875,
+          "max": 0.958333,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.900904,
+          "sd": 0.065246,
+          "min": 0.820866,
+          "max": 0.965686,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.848663,
+          "sd": 0.056375,
+          "min": 0.797323,
+          "max": 0.899864,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.716346,
+          "sd": 0.119968,
+          "min": 0.557692,
+          "max": 0.846154,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.88704,
+          "sd": 0.061093,
+          "min": 0.809524,
+          "max": 0.954545,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 22.25,
+         "wall_seconds": 0.153774,
+         "per_seed": {
+          "mean_correct": [
+           0.824577,
+           0.792717,
+           0.919694,
+           0.919862
+          ],
+          "final_correct": [
+           0.557692,
+           0.711538,
+           0.846154,
+           0.75
+          ],
+          "caught_per_investigation": [
+           0.809524,
+           0.875,
+           0.909091,
+           0.954545
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.764464,
+        "mean_correct_weighted": 0.782028,
+        "mean_correct_old": 0.758996,
+        "mean_correct_old_weighted": 0.782298,
+        "mean_correct_new": 0.815747,
+        "final_correct": 0.634489,
+        "caught_per_investigation": 0.896645
+       }
+      },
+      "recheck-no-importance": {
+       "worlds": {
+        "ho-sparse-budget": {
+         "mean_correct": {
+          "mean": 0.608769,
+          "sd": 0.054117,
+          "min": 0.565987,
+          "max": 0.687305,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.607674,
+          "sd": 0.053466,
+          "min": 0.570518,
+          "max": 0.684627,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.568892,
+          "sd": 0.097764,
+          "min": 0.471591,
+          "max": 0.698864,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.571883,
+          "sd": 0.094594,
+          "min": 0.472515,
+          "max": 0.69924,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.751781,
+          "sd": 0.110663,
+          "min": 0.622531,
+          "max": 0.870022,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.506579,
+          "sd": 0.039474,
+          "min": 0.447368,
+          "max": 0.526316,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.46875,
+          "sd": 0.108253,
+          "min": 0.3125,
+          "max": 0.5625,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 16.0,
+         "wall_seconds": 0.288041,
+         "per_seed": {
+          "mean_correct": [
+           0.565987,
+           0.582269,
+           0.687305,
+           0.599517
+          ],
+          "final_correct": [
+           0.526316,
+           0.447368,
+           0.526316,
+           0.526316
+          ],
+          "caught_per_investigation": [
+           0.5625,
+           0.5,
+           0.3125,
+           0.5
+          ]
+         }
+        },
+        "ho-busy": {
+         "mean_correct": {
+          "mean": 0.737105,
+          "sd": 0.073702,
+          "min": 0.640263,
+          "max": 0.812329,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.729502,
+          "sd": 0.078638,
+          "min": 0.631253,
+          "max": 0.818219,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.716146,
+          "sd": 0.037437,
+          "min": 0.666667,
+          "max": 0.75,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.706259,
+          "sd": 0.040791,
+          "min": 0.658793,
+          "max": 0.74326,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.759032,
+          "sd": 0.096282,
+          "min": 0.641738,
+          "max": 0.861259,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.576923,
+          "sd": 0.095511,
+          "min": 0.5,
+          "max": 0.711538,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.333333,
+          "sd": 0.058926,
+          "min": 0.291667,
+          "max": 0.416667,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.294341,
+         "per_seed": {
+          "mean_correct": [
+           0.725275,
+           0.640263,
+           0.812329,
+           0.770554
+          ],
+          "final_correct": [
+           0.5,
+           0.519231,
+           0.711538,
+           0.576923
+          ],
+          "caught_per_investigation": [
+           0.291667,
+           0.333333,
+           0.291667,
+           0.416667
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.672937,
+        "mean_correct_weighted": 0.668588,
+        "mean_correct_old": 0.642519,
+        "mean_correct_old_weighted": 0.639071,
+        "mean_correct_new": 0.755406,
+        "final_correct": 0.541751,
+        "caught_per_investigation": 0.401042
+       }
+      },
+      "recheck-no-marks": {
+       "worlds": {
+        "ho-sparse-budget": {
+         "mean_correct": {
+          "mean": 0.61175,
+          "sd": 0.065928,
+          "min": 0.538257,
+          "max": 0.697968,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.611257,
+          "sd": 0.067949,
+          "min": 0.537592,
+          "max": 0.699976,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.572443,
+          "sd": 0.119284,
+          "min": 0.431818,
+          "max": 0.715909,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.575756,
+          "sd": 0.122448,
+          "min": 0.424322,
+          "max": 0.72203,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.751781,
+          "sd": 0.110663,
+          "min": 0.622531,
+          "max": 0.870022,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.519737,
+          "sd": 0.044943,
+          "min": 0.473684,
+          "max": 0.578947,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.5625,
+          "sd": 0.135015,
+          "min": 0.4375,
+          "max": 0.75,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 16.0,
+         "wall_seconds": 0.286595,
+         "per_seed": {
+          "mean_correct": [
+           0.538257,
+           0.597519,
+           0.697968,
+           0.613255
+          ],
+          "final_correct": [
+           0.5,
+           0.473684,
+           0.578947,
+           0.526316
+          ],
+          "caught_per_investigation": [
+           0.5,
+           0.5625,
+           0.4375,
+           0.75
+          ]
+         }
+        },
+        "ho-busy": {
+         "mean_correct": {
+          "mean": 0.751648,
+          "sd": 0.051676,
+          "min": 0.707101,
+          "max": 0.822219,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.747986,
+          "sd": 0.058521,
+          "min": 0.703253,
+          "max": 0.830627,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.74349,
+          "sd": 0.055017,
+          "min": 0.6875,
+          "max": 0.8125,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.738714,
+          "sd": 0.064511,
+          "min": 0.680147,
+          "max": 0.816929,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.75933,
+          "sd": 0.097772,
+          "min": 0.644263,
+          "max": 0.855956,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.591346,
+          "sd": 0.089342,
+          "min": 0.5,
+          "max": 0.711538,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.375,
+          "sd": 0.068041,
+          "min": 0.291667,
+          "max": 0.458333,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.292324,
+         "per_seed": {
+          "mean_correct": [
+           0.719825,
+           0.707101,
+           0.822219,
+           0.757449
+          ],
+          "final_correct": [
+           0.5,
+           0.557692,
+           0.711538,
+           0.596154
+          ],
+          "caught_per_investigation": [
+           0.291667,
+           0.458333,
+           0.375,
+           0.375
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.681699,
+        "mean_correct_weighted": 0.679621,
+        "mean_correct_old": 0.657966,
+        "mean_correct_old_weighted": 0.657235,
+        "mean_correct_new": 0.755555,
+        "final_correct": 0.555541,
+        "caught_per_investigation": 0.46875
+       }
+      },
+      "recheck-with-dependents": {
+       "worlds": {
+        "ho-sparse-budget": {
+         "mean_correct": {
+          "mean": 0.602803,
+          "sd": 0.057377,
+          "min": 0.5525,
+          "max": 0.684307,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.602688,
+          "sd": 0.056024,
+          "min": 0.558182,
+          "max": 0.681137,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.560369,
+          "sd": 0.103978,
+          "min": 0.448864,
+          "max": 0.696023,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.564665,
+          "sd": 0.100007,
+          "min": 0.451431,
+          "max": 0.694751,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.751781,
+          "sd": 0.110663,
+          "min": 0.622531,
+          "max": 0.870022,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.506579,
+          "sd": 0.072468,
+          "min": 0.421053,
+          "max": 0.578947,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.4375,
+          "sd": 0.088388,
+          "min": 0.375,
+          "max": 0.5625,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 16.0,
+         "wall_seconds": 0.289216,
+         "per_seed": {
+          "mean_correct": [
+           0.5525,
+           0.576805,
+           0.684307,
+           0.597599
+          ],
+          "final_correct": [
+           0.473684,
+           0.421053,
+           0.578947,
+           0.552632
+          ],
+          "caught_per_investigation": [
+           0.4375,
+           0.375,
+           0.375,
+           0.5625
+          ]
+         }
+        },
+        "ho-busy": {
+         "mean_correct": {
+          "mean": 0.757138,
+          "sd": 0.044057,
+          "min": 0.720461,
+          "max": 0.819705,
+          "n": 4
+         },
+         "mean_correct_weighted": {
+          "mean": 0.751339,
+          "sd": 0.052664,
+          "min": 0.708751,
+          "max": 0.827313,
+          "n": 4
+         },
+         "mean_correct_old": {
+          "mean": 0.746094,
+          "sd": 0.050742,
+          "min": 0.692708,
+          "max": 0.796875,
+          "n": 4
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.740018,
+          "sd": 0.057818,
+          "min": 0.689951,
+          "max": 0.793307,
+          "n": 4
+         },
+         "mean_correct_new": {
+          "mean": 0.771709,
+          "sd": 0.07532,
+          "min": 0.703579,
+          "max": 0.851327,
+          "n": 4
+         },
+         "final_correct": {
+          "mean": 0.576923,
+          "sd": 0.111029,
+          "min": 0.442308,
+          "max": 0.711538,
+          "n": 4
+         },
+         "caught_per_investigation": {
+          "mean": 0.395833,
+          "sd": 0.138193,
+          "min": 0.25,
+          "max": 0.583333,
+          "n": 4
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.297529,
+         "per_seed": {
+          "mean_correct": [
+           0.720461,
+           0.733516,
+           0.819705,
+           0.754871
+          ],
+          "final_correct": [
+           0.442308,
+           0.596154,
+           0.711538,
+           0.557692
+          ],
+          "caught_per_investigation": [
+           0.25,
+           0.583333,
+           0.375,
+           0.375
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.679971,
+        "mean_correct_weighted": 0.677014,
+        "mean_correct_old": 0.653232,
+        "mean_correct_old_weighted": 0.652341,
+        "mean_correct_new": 0.761745,
+        "final_correct": 0.541751,
+        "caught_per_investigation": 0.416667
+       }
+      }
+     },
+     "draw": "decoupled (Wave 2 lane Y, after the benchmark-integrity review): truth changes keyed by (world, seed, step), research outcomes by (world, seed, step, subject); the same world trajectory under every policy"
+    },
+    "strategy": {
+     "split": "held_out",
+     "seeds": [
+      201,
+      202,
+      203,
+      204
+     ],
+     "mechanism": {
+      "worlds": {
+       "ho-quick-wins": {
+        "verified_per_investigation": {
+         "mean": 0.415,
+         "sd": 0.078951,
+         "min": 0.3,
+         "max": 0.48,
+         "n": 4
+        },
+        "inflator_share": {
+         "mean": 0.065,
+         "sd": 0.019149,
+         "min": 0.04,
+         "max": 0.08,
+         "n": 4
+        },
+        "per_seed": {
+         "verified_per_investigation": [
+          0.44,
+          0.48,
+          0.3,
+          0.44
+         ],
+         "inflator_share": [
+          0.08,
+          0.08,
+          0.04,
+          0.06
+         ]
+        }
+       },
+       "ho-flat": {
+        "verified_per_investigation": {
+         "mean": 0.28,
+         "sd": 0.01633,
+         "min": 0.26,
+         "max": 0.3,
+         "n": 4
+        },
+        "inflator_share": {
+         "mean": 0.11,
+         "sd": 0.02582,
+         "min": 0.08,
+         "max": 0.14,
+         "n": 4
+        },
+        "per_seed": {
+         "verified_per_investigation": [
+          0.28,
+          0.28,
+          0.3,
+          0.26
+         ],
+         "inflator_share": [
+          0.08,
+          0.14,
+          0.1,
+          0.12
+         ]
+        }
+       }
+      },
+      "verified_per_investigation": 0.3475,
+      "inflator_share": 0.0875
+     },
+     "incumbent": {
+      "worlds": {
+       "ho-quick-wins": {
+        "verified_per_investigation": {
+         "mean": 0.28,
+         "sd": 0.03266,
+         "min": 0.24,
+         "max": 0.32,
+         "n": 4
+        },
+        "inflator_share": {
+         "mean": 0.24,
+         "sd": 0.084853,
+         "min": 0.16,
+         "max": 0.36,
+         "n": 4
+        },
+        "per_seed": {
+         "verified_per_investigation": [
+          0.24,
+          0.28,
+          0.32,
+          0.28
+         ],
+         "inflator_share": [
+          0.22,
+          0.36,
+          0.16,
+          0.22
+         ]
+        }
+       },
+       "ho-flat": {
+        "verified_per_investigation": {
+         "mean": 0.255,
+         "sd": 0.07,
+         "min": 0.18,
+         "max": 0.34,
+         "n": 4
+        },
+        "inflator_share": {
+         "mean": 0.225,
+         "sd": 0.066081,
+         "min": 0.14,
+         "max": 0.3,
+         "n": 4
+        },
+        "per_seed": {
+         "verified_per_investigation": [
+          0.34,
+          0.28,
+          0.18,
+          0.22
+         ],
+         "inflator_share": [
+          0.14,
+          0.24,
+          0.3,
+          0.22
+         ]
+        }
+       }
+      },
+      "verified_per_investigation": 0.2675,
+      "inflator_share": 0.2325
+     },
+     "draw": "decoupled (Wave 2 lane Y, after the benchmark-integrity review): truth changes keyed by (world, seed, step), research outcomes by (world, seed, step, subject); the same world trajectory under every policy"
+    }
+   }
+  },
+  "development": {
+   "seeds": [
+    11,
+    12,
+    13
+   ],
+   "retention_under_change": {
+    "policies_mean_correct": {
+     "baseline": {
+      "decoupled": 0.70792,
+      "recorded": 0.716311
+     },
+     "recheck": {
+      "decoupled": 0.704731,
+      "recorded": 0.723289
+     },
+     "random": {
+      "decoupled": 0.671201,
+      "recorded": 0.674307
+     },
+     "oracle": {
+      "decoupled": 0.797032,
+      "recorded": 0.824473
+     },
+     "recheck-no-importance": {
+      "decoupled": 0.70792,
+      "recorded": 0.716311
+     },
+     "recheck-no-marks": {
+      "decoupled": 0.704731,
+      "recorded": 0.723289
+     },
+     "recheck-with-dependents": {
+      "decoupled": 0.71199,
+      "recorded": 0.707286
+     }
+    },
+    "per_world": {
+     "dev-steady": {
+      "baseline": {
+       "mean": 0.746131,
+       "sd": 0.068312,
+       "min": 0.696391,
+       "max": 0.82402,
+       "n": 3
+      },
+      "recheck": {
+       "mean": 0.742993,
+       "sd": 0.080576,
+       "min": 0.683693,
+       "max": 0.834732,
+       "n": 3
+      },
+      "recheck_vs_baseline_paired": {
+       "mean_difference": -0.003137999999999974,
+       "sd": 0.012280476375124891,
+       "n": 3,
+       "higher": 1,
+       "lower": 2,
+       "equal": 0
+      },
+      "recorded": {
+       "baseline": {
+        "mean": 0.744801,
+        "sd": 0.055548,
+        "min": 0.690303,
+        "max": 0.801344,
+        "n": 3
+       },
+       "recheck": {
+        "mean": 0.752031,
+        "sd": 0.038864,
+        "min": 0.720668,
+        "max": 0.79551,
+        "n": 3
+       }
+      }
+     },
+     "dev-volatile": {
+      "baseline": {
+       "mean": 0.669708,
+       "sd": 0.017654,
+       "min": 0.650132,
+       "max": 0.68442,
+       "n": 3
+      },
+      "recheck": {
+       "mean": 0.666468,
+       "sd": 0.02568,
+       "min": 0.641531,
+       "max": 0.692832,
+       "n": 3
+      },
+      "recheck_vs_baseline_paired": {
+       "mean_difference": -0.0032400000000000206,
+       "sd": 0.01010163615460386,
+       "n": 3,
+       "higher": 1,
+       "lower": 2,
+       "equal": 0
+      },
+      "recorded": {
+       "baseline": {
+        "mean": 0.68782,
+        "sd": 0.00797,
+        "min": 0.678699,
+        "max": 0.693441,
+        "n": 3
+       },
+       "recheck": {
+        "mean": 0.694546,
+        "sd": 0.022855,
+        "min": 0.670147,
+        "max": 0.715456,
+        "n": 3
+       }
+      }
+     }
+    }
+   },
+   "strategy_selection": {
+    "thompson": {
+     "verified_per_investigation": 0.325,
+     "inflator_share": 0.120833
+    },
+    "incumbent": {
+     "verified_per_investigation": 0.25,
+     "inflator_share": 0.245833
+    },
+    "recorded": {
+     "thompson": {
+      "verified_per_investigation": 0.354167,
+      "inflator_share": 0.166667
+     },
+     "incumbent": {
+      "verified_per_investigation": 0.325,
+      "inflator_share": 0.245833
+     }
+    },
+    "per_world": {
+     "dev-two-good": {
+      "verified_per_investigation": {
+       "mean_difference": 0.075,
+       "sd": 0.114564392373896,
+       "n": 3,
+       "higher": 2,
+       "lower": 1,
+       "equal": 0
+      },
+      "inflator_share": {
+       "mean_difference": -0.12499999999999999,
+       "sd": 0.12499999999999999,
+       "n": 3,
+       "higher": 0,
+       "lower": 2,
+       "equal": 1
+      }
+     },
+     "dev-close": {
+      "verified_per_investigation": {
+       "mean_difference": 0.075,
+       "sd": 0.09013878188659974,
+       "n": 3,
+       "higher": 2,
+       "lower": 0,
+       "equal": 1
+      },
+      "inflator_share": {
+       "mean_difference": -0.125,
+       "sd": 0.08660254037844387,
+       "n": 3,
+       "higher": 0,
+       "lower": 3,
+       "equal": 0
+      }
+     }
+    }
+   },
+   "full": {
+    "recheck": {
+     "split": "development",
+     "seeds": [
+      11,
+      12,
+      13
+     ],
+     "policies": {
+      "baseline": {
+       "worlds": {
+        "dev-steady": {
+         "mean_correct": {
+          "mean": 0.746131,
+          "sd": 0.068312,
+          "min": 0.696391,
+          "max": 0.82402,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.75707,
+          "sd": 0.064089,
+          "min": 0.702818,
+          "max": 0.827785,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.740741,
+          "sd": 0.068311,
+          "min": 0.686508,
+          "max": 0.81746,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.754175,
+          "sd": 0.057345,
+          "min": 0.70922,
+          "max": 0.818756,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.7734,
+          "sd": 0.110175,
+          "min": 0.656964,
+          "max": 0.876009,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.604167,
+          "sd": 0.078644,
+          "min": 0.53125,
+          "max": 0.6875,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.404762,
+          "sd": 0.041239,
+          "min": 0.357143,
+          "max": 0.428571,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 14.0,
+         "wall_seconds": 0.114512,
+         "per_seed": {
+          "mean_correct": [
+           0.717983,
+           0.82402,
+           0.696391
+          ],
+          "final_correct": [
+           0.59375,
+           0.6875,
+           0.53125
+          ],
+          "caught_per_investigation": [
+           0.428571,
+           0.428571,
+           0.357143
+          ]
+         }
+        },
+        "dev-volatile": {
+         "mean_correct": {
+          "mean": 0.669708,
+          "sd": 0.017654,
+          "min": 0.650132,
+          "max": 0.68442,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.666328,
+          "sd": 0.024744,
+          "min": 0.63776,
+          "max": 0.681052,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.593254,
+          "sd": 0.038268,
+          "min": 0.565476,
+          "max": 0.636905,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.585739,
+          "sd": 0.048639,
+          "min": 0.544399,
+          "max": 0.639333,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.758156,
+          "sd": 0.0559,
+          "min": 0.695028,
+          "max": 0.801377,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.578947,
+          "sd": 0.04558,
+          "min": 0.552632,
+          "max": 0.631579,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.527778,
+          "sd": 0.024056,
+          "min": 0.5,
+          "max": 0.541667,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.134216,
+         "per_seed": {
+          "mean_correct": [
+           0.650132,
+           0.674572,
+           0.68442
+          ],
+          "final_correct": [
+           0.631579,
+           0.552632,
+           0.552632
+          ],
+          "caught_per_investigation": [
+           0.5,
+           0.541667,
+           0.541667
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.70792,
+        "mean_correct_weighted": 0.711699,
+        "mean_correct_old": 0.666997,
+        "mean_correct_old_weighted": 0.669957,
+        "mean_correct_new": 0.765778,
+        "final_correct": 0.591557,
+        "caught_per_investigation": 0.46627
+       }
+      },
+      "recheck": {
+       "worlds": {
+        "dev-steady": {
+         "mean_correct": {
+          "mean": 0.742993,
+          "sd": 0.080576,
+          "min": 0.683693,
+          "max": 0.834732,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.757724,
+          "sd": 0.076523,
+          "min": 0.693314,
+          "max": 0.842315,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.73545,
+          "sd": 0.085602,
+          "min": 0.674603,
+          "max": 0.833333,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.754723,
+          "sd": 0.073941,
+          "min": 0.704661,
+          "max": 0.83965,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.7734,
+          "sd": 0.110175,
+          "min": 0.656964,
+          "max": 0.876009,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.604167,
+          "sd": 0.109746,
+          "min": 0.5,
+          "max": 0.71875,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.428571,
+          "sd": 0.071429,
+          "min": 0.357143,
+          "max": 0.5,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 14.0,
+         "wall_seconds": 0.207329,
+         "per_seed": {
+          "mean_correct": [
+           0.710555,
+           0.834732,
+           0.683693
+          ],
+          "final_correct": [
+           0.59375,
+           0.71875,
+           0.5
+          ],
+          "caught_per_investigation": [
+           0.428571,
+           0.5,
+           0.357143
+          ]
+         }
+        },
+        "dev-volatile": {
+         "mean_correct": {
+          "mean": 0.666468,
+          "sd": 0.02568,
+          "min": 0.641531,
+          "max": 0.692832,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.667711,
+          "sd": 0.0322,
+          "min": 0.63221,
+          "max": 0.695032,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.605159,
+          "sd": 0.074425,
+          "min": 0.553571,
+          "max": 0.690476,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.604679,
+          "sd": 0.08166,
+          "min": 0.536885,
+          "max": 0.695333,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.747518,
+          "sd": 0.067641,
+          "min": 0.669596,
+          "max": 0.791108,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.578947,
+          "sd": 0.078947,
+          "min": 0.5,
+          "max": 0.657895,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.541667,
+          "sd": 0.083333,
+          "min": 0.458333,
+          "max": 0.625,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.23905,
+         "per_seed": {
+          "mean_correct": [
+           0.641531,
+           0.665041,
+           0.692832
+          ],
+          "final_correct": [
+           0.657895,
+           0.5,
+           0.578947
+          ],
+          "caught_per_investigation": [
+           0.541667,
+           0.458333,
+           0.625
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.704731,
+        "mean_correct_weighted": 0.712718,
+        "mean_correct_old": 0.670304,
+        "mean_correct_old_weighted": 0.679701,
+        "mean_correct_new": 0.760459,
+        "final_correct": 0.591557,
+        "caught_per_investigation": 0.485119
+       }
+      },
+      "random": {
+       "worlds": {
+        "dev-steady": {
+         "mean_correct": {
+          "mean": 0.722875,
+          "sd": 0.08375,
+          "min": 0.652947,
+          "max": 0.815689,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.744516,
+          "sd": 0.079412,
+          "min": 0.685133,
+          "max": 0.834718,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.699735,
+          "sd": 0.100494,
+          "min": 0.59127,
+          "max": 0.789683,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.729759,
+          "sd": 0.093768,
+          "min": 0.628673,
+          "max": 0.813897,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.782448,
+          "sd": 0.112575,
+          "min": 0.66756,
+          "max": 0.892558,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.583333,
+          "sd": 0.065052,
+          "min": 0.53125,
+          "max": 0.65625,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.238095,
+          "sd": 0.082479,
+          "min": 0.142857,
+          "max": 0.285714,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 14.0,
+         "wall_seconds": 0.092987,
+         "per_seed": {
+          "mean_correct": [
+           0.652947,
+           0.815689,
+           0.69999
+          ],
+          "final_correct": [
+           0.53125,
+           0.65625,
+           0.5625
+          ],
+          "caught_per_investigation": [
+           0.142857,
+           0.285714,
+           0.285714
+          ]
+         }
+        },
+        "dev-volatile": {
+         "mean_correct": {
+          "mean": 0.619526,
+          "sd": 0.03757,
+          "min": 0.578156,
+          "max": 0.651521,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.622203,
+          "sd": 0.039844,
+          "min": 0.580082,
+          "max": 0.659292,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.490079,
+          "sd": 0.072739,
+          "min": 0.410714,
+          "max": 0.553571,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.497856,
+          "sd": 0.070282,
+          "min": 0.420082,
+          "max": 0.556818,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.764063,
+          "sd": 0.040118,
+          "min": 0.717844,
+          "max": 0.789869,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.491228,
+          "sd": 0.054781,
+          "min": 0.447368,
+          "max": 0.552632,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.361111,
+          "sd": 0.024056,
+          "min": 0.333333,
+          "max": 0.375,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.128066,
+         "per_seed": {
+          "mean_correct": [
+           0.578156,
+           0.651521,
+           0.628902
+          ],
+          "final_correct": [
+           0.552632,
+           0.473684,
+           0.447368
+          ],
+          "caught_per_investigation": [
+           0.375,
+           0.375,
+           0.333333
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.671201,
+        "mean_correct_weighted": 0.683359,
+        "mean_correct_old": 0.594907,
+        "mean_correct_old_weighted": 0.613807,
+        "mean_correct_new": 0.773255,
+        "final_correct": 0.537281,
+        "caught_per_investigation": 0.299603
+       }
+      },
+      "oracle": {
+       "worlds": {
+        "dev-steady": {
+         "mean_correct": {
+          "mean": 0.86764,
+          "sd": 0.087235,
+          "min": 0.787271,
+          "max": 0.960413,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.882501,
+          "sd": 0.078312,
+          "min": 0.810731,
+          "max": 0.966026,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.875661,
+          "sd": 0.093598,
+          "min": 0.777778,
+          "max": 0.964286,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.889323,
+          "sd": 0.084259,
+          "min": 0.801418,
+          "max": 0.969388,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.860234,
+          "sd": 0.098219,
+          "min": 0.792328,
+          "max": 0.972855,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.770833,
+          "sd": 0.126295,
+          "min": 0.65625,
+          "max": 0.90625,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.948413,
+          "sd": 0.045071,
+          "min": 0.916667,
+          "max": 1.0,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 13.0,
+         "wall_seconds": 0.097815,
+         "per_seed": {
+          "mean_correct": [
+           0.855235,
+           0.960413,
+           0.787271
+          ],
+          "final_correct": [
+           0.75,
+           0.90625,
+           0.65625
+          ],
+          "caught_per_investigation": [
+           0.928571,
+           1.0,
+           0.916667
+          ]
+         }
+        },
+        "dev-volatile": {
+         "mean_correct": {
+          "mean": 0.726424,
+          "sd": 0.040444,
+          "min": 0.684033,
+          "max": 0.76459,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.746265,
+          "sd": 0.032226,
+          "min": 0.709154,
+          "max": 0.767198,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.694444,
+          "sd": 0.106535,
+          "min": 0.577381,
+          "max": 0.785714,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.730705,
+          "sd": 0.103835,
+          "min": 0.612121,
+          "max": 0.805328,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.7721,
+          "sd": 0.05374,
+          "min": 0.721119,
+          "max": 0.828229,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.605263,
+          "sd": 0.078947,
+          "min": 0.526316,
+          "max": 0.684211,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.844093,
+          "sd": 0.155475,
+          "min": 0.666667,
+          "max": 0.956522,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 23.0,
+         "wall_seconds": 0.13409,
+         "per_seed": {
+          "mean_correct": [
+           0.76459,
+           0.684033,
+           0.730649
+          ],
+          "final_correct": [
+           0.684211,
+           0.526316,
+           0.605263
+          ],
+          "caught_per_investigation": [
+           0.956522,
+           0.666667,
+           0.909091
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.797032,
+        "mean_correct_weighted": 0.814383,
+        "mean_correct_old": 0.785053,
+        "mean_correct_old_weighted": 0.810014,
+        "mean_correct_new": 0.816167,
+        "final_correct": 0.688048,
+        "caught_per_investigation": 0.896253
+       }
+      },
+      "recheck-no-importance": {
+       "worlds": {
+        "dev-steady": {
+         "mean_correct": {
+          "mean": 0.746131,
+          "sd": 0.068312,
+          "min": 0.696391,
+          "max": 0.82402,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.75707,
+          "sd": 0.064089,
+          "min": 0.702818,
+          "max": 0.827785,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.740741,
+          "sd": 0.068311,
+          "min": 0.686508,
+          "max": 0.81746,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.754175,
+          "sd": 0.057345,
+          "min": 0.70922,
+          "max": 0.818756,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.7734,
+          "sd": 0.110175,
+          "min": 0.656964,
+          "max": 0.876009,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.604167,
+          "sd": 0.078644,
+          "min": 0.53125,
+          "max": 0.6875,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.404762,
+          "sd": 0.041239,
+          "min": 0.357143,
+          "max": 0.428571,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 14.0,
+         "wall_seconds": 0.203882,
+         "per_seed": {
+          "mean_correct": [
+           0.717983,
+           0.82402,
+           0.696391
+          ],
+          "final_correct": [
+           0.59375,
+           0.6875,
+           0.53125
+          ],
+          "caught_per_investigation": [
+           0.428571,
+           0.428571,
+           0.357143
+          ]
+         }
+        },
+        "dev-volatile": {
+         "mean_correct": {
+          "mean": 0.669708,
+          "sd": 0.017654,
+          "min": 0.650132,
+          "max": 0.68442,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.666328,
+          "sd": 0.024744,
+          "min": 0.63776,
+          "max": 0.681052,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.593254,
+          "sd": 0.038268,
+          "min": 0.565476,
+          "max": 0.636905,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.585739,
+          "sd": 0.048639,
+          "min": 0.544399,
+          "max": 0.639333,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.758156,
+          "sd": 0.0559,
+          "min": 0.695028,
+          "max": 0.801377,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.578947,
+          "sd": 0.04558,
+          "min": 0.552632,
+          "max": 0.631579,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.527778,
+          "sd": 0.024056,
+          "min": 0.5,
+          "max": 0.541667,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.239096,
+         "per_seed": {
+          "mean_correct": [
+           0.650132,
+           0.674572,
+           0.68442
+          ],
+          "final_correct": [
+           0.631579,
+           0.552632,
+           0.552632
+          ],
+          "caught_per_investigation": [
+           0.5,
+           0.541667,
+           0.541667
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.70792,
+        "mean_correct_weighted": 0.711699,
+        "mean_correct_old": 0.666997,
+        "mean_correct_old_weighted": 0.669957,
+        "mean_correct_new": 0.765778,
+        "final_correct": 0.591557,
+        "caught_per_investigation": 0.46627
+       }
+      },
+      "recheck-no-marks": {
+       "worlds": {
+        "dev-steady": {
+         "mean_correct": {
+          "mean": 0.742993,
+          "sd": 0.080576,
+          "min": 0.683693,
+          "max": 0.834732,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.757724,
+          "sd": 0.076523,
+          "min": 0.693314,
+          "max": 0.842315,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.73545,
+          "sd": 0.085602,
+          "min": 0.674603,
+          "max": 0.833333,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.754723,
+          "sd": 0.073941,
+          "min": 0.704661,
+          "max": 0.83965,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.7734,
+          "sd": 0.110175,
+          "min": 0.656964,
+          "max": 0.876009,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.604167,
+          "sd": 0.109746,
+          "min": 0.5,
+          "max": 0.71875,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.428571,
+          "sd": 0.071429,
+          "min": 0.357143,
+          "max": 0.5,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 14.0,
+         "wall_seconds": 0.203023,
+         "per_seed": {
+          "mean_correct": [
+           0.710555,
+           0.834732,
+           0.683693
+          ],
+          "final_correct": [
+           0.59375,
+           0.71875,
+           0.5
+          ],
+          "caught_per_investigation": [
+           0.428571,
+           0.5,
+           0.357143
+          ]
+         }
+        },
+        "dev-volatile": {
+         "mean_correct": {
+          "mean": 0.666468,
+          "sd": 0.02568,
+          "min": 0.641531,
+          "max": 0.692832,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.667711,
+          "sd": 0.0322,
+          "min": 0.63221,
+          "max": 0.695032,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.605159,
+          "sd": 0.074425,
+          "min": 0.553571,
+          "max": 0.690476,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.604679,
+          "sd": 0.08166,
+          "min": 0.536885,
+          "max": 0.695333,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.747518,
+          "sd": 0.067641,
+          "min": 0.669596,
+          "max": 0.791108,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.578947,
+          "sd": 0.078947,
+          "min": 0.5,
+          "max": 0.657895,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.541667,
+          "sd": 0.083333,
+          "min": 0.458333,
+          "max": 0.625,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.239215,
+         "per_seed": {
+          "mean_correct": [
+           0.641531,
+           0.665041,
+           0.692832
+          ],
+          "final_correct": [
+           0.657895,
+           0.5,
+           0.578947
+          ],
+          "caught_per_investigation": [
+           0.541667,
+           0.458333,
+           0.625
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.704731,
+        "mean_correct_weighted": 0.712718,
+        "mean_correct_old": 0.670304,
+        "mean_correct_old_weighted": 0.679701,
+        "mean_correct_new": 0.760459,
+        "final_correct": 0.591557,
+        "caught_per_investigation": 0.485119
+       }
+      },
+      "recheck-with-dependents": {
+       "worlds": {
+        "dev-steady": {
+         "mean_correct": {
+          "mean": 0.763663,
+          "sd": 0.05786,
+          "min": 0.700332,
+          "max": 0.813756,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.772847,
+          "sd": 0.058838,
+          "min": 0.706324,
+          "max": 0.818059,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.768519,
+          "sd": 0.038542,
+          "min": 0.72619,
+          "max": 0.801587,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.779211,
+          "sd": 0.033032,
+          "min": 0.741641,
+          "max": 0.803693,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.7734,
+          "sd": 0.110175,
+          "min": 0.656964,
+          "max": 0.876009,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.635417,
+          "sd": 0.065052,
+          "min": 0.5625,
+          "max": 0.6875,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.47619,
+          "sd": 0.14869,
+          "min": 0.357143,
+          "max": 0.642857,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 14.0,
+         "wall_seconds": 0.204493,
+         "per_seed": {
+          "mean_correct": [
+           0.776902,
+           0.813756,
+           0.700332
+          ],
+          "final_correct": [
+           0.6875,
+           0.65625,
+           0.5625
+          ],
+          "caught_per_investigation": [
+           0.642857,
+           0.357143,
+           0.428571
+          ]
+         }
+        },
+        "dev-volatile": {
+         "mean_correct": {
+          "mean": 0.660316,
+          "sd": 0.037733,
+          "min": 0.622707,
+          "max": 0.698171,
+          "n": 3
+         },
+         "mean_correct_weighted": {
+          "mean": 0.657072,
+          "sd": 0.03593,
+          "min": 0.619723,
+          "max": 0.691392,
+          "n": 3
+         },
+         "mean_correct_old": {
+          "mean": 0.585317,
+          "sd": 0.046235,
+          "min": 0.547619,
+          "max": 0.636905,
+          "n": 3
+         },
+         "mean_correct_old_weighted": {
+          "mean": 0.58266,
+          "sd": 0.042459,
+          "min": 0.549333,
+          "max": 0.630464,
+          "n": 3
+         },
+         "mean_correct_new": {
+          "mean": 0.743253,
+          "sd": 0.069064,
+          "min": 0.663546,
+          "max": 0.785323,
+          "n": 3
+         },
+         "final_correct": {
+          "mean": 0.54386,
+          "sd": 0.09963,
+          "min": 0.473684,
+          "max": 0.657895,
+          "n": 3
+         },
+         "caught_per_investigation": {
+          "mean": 0.555556,
+          "sd": 0.086736,
+          "min": 0.458333,
+          "max": 0.625,
+          "n": 3
+         },
+         "lost": 0,
+         "belief_writes": 0,
+         "investigations": 24.0,
+         "wall_seconds": 0.239042,
+         "per_seed": {
+          "mean_correct": [
+           0.698171,
+           0.66007,
+           0.622707
+          ],
+          "final_correct": [
+           0.657895,
+           0.473684,
+           0.5
+          ],
+          "caught_per_investigation": [
+           0.625,
+           0.458333,
+           0.583333
+          ]
+         }
+        }
+       },
+       "mean": {
+        "mean_correct": 0.71199,
+        "mean_correct_weighted": 0.71496,
+        "mean_correct_old": 0.676918,
+        "mean_correct_old_weighted": 0.680936,
+        "mean_correct_new": 0.758327,
+        "final_correct": 0.589638,
+        "caught_per_investigation": 0.515873
+       }
+      }
+     },
+     "draw": "decoupled (Wave 2 lane Y, after the benchmark-integrity review): truth changes keyed by (world, seed, step), research outcomes by (world, seed, step, subject); the same world trajectory under every policy"
+    },
+    "strategy": {
+     "split": "development",
+     "seeds": [
+      21,
+      22,
+      23
+     ],
+     "mechanism": {
+      "worlds": {
+       "dev-two-good": {
+        "verified_per_investigation": {
+         "mean": 0.316667,
+         "sd": 0.104083,
+         "min": 0.2,
+         "max": 0.4,
+         "n": 3
+        },
+        "inflator_share": {
+         "mean": 0.116667,
+         "sd": 0.028868,
+         "min": 0.1,
+         "max": 0.15,
+         "n": 3
+        },
+        "per_seed": {
+         "verified_per_investigation": [
+          0.4,
+          0.35,
+          0.2
+         ],
+         "inflator_share": [
+          0.1,
+          0.1,
+          0.15
+         ]
+        }
+       },
+       "dev-close": {
+        "verified_per_investigation": {
+         "mean": 0.333333,
+         "sd": 0.057735,
+         "min": 0.3,
+         "max": 0.4,
+         "n": 3
+        },
+        "inflator_share": {
+         "mean": 0.125,
+         "sd": 0.025,
+         "min": 0.1,
+         "max": 0.15,
+         "n": 3
+        },
+        "per_seed": {
+         "verified_per_investigation": [
+          0.3,
+          0.3,
+          0.4
+         ],
+         "inflator_share": [
+          0.125,
+          0.15,
+          0.1
+         ]
+        }
+       }
+      },
+      "verified_per_investigation": 0.325,
+      "inflator_share": 0.120833
+     },
+     "incumbent": {
+      "worlds": {
+       "dev-two-good": {
+        "verified_per_investigation": {
+         "mean": 0.241667,
+         "sd": 0.014434,
+         "min": 0.225,
+         "max": 0.25,
+         "n": 3
+        },
+        "inflator_share": {
+         "mean": 0.241667,
+         "sd": 0.101036,
+         "min": 0.15,
+         "max": 0.35,
+         "n": 3
+        },
+        "per_seed": {
+         "verified_per_investigation": [
+          0.225,
+          0.25,
+          0.25
+         ],
+         "inflator_share": [
+          0.35,
+          0.225,
+          0.15
+         ]
+        }
+       },
+       "dev-close": {
+        "verified_per_investigation": {
+         "mean": 0.258333,
+         "sd": 0.038188,
+         "min": 0.225,
+         "max": 0.3,
+         "n": 3
+        },
+        "inflator_share": {
+         "mean": 0.25,
+         "sd": 0.066144,
+         "min": 0.2,
+         "max": 0.325,
+         "n": 3
+        },
+        "per_seed": {
+         "verified_per_investigation": [
+          0.25,
+          0.3,
+          0.225
+         ],
+         "inflator_share": [
+          0.2,
+          0.225,
+          0.325
+         ]
+        }
+       }
+      },
+      "verified_per_investigation": 0.25,
+      "inflator_share": 0.245833
+     },
+     "draw": "decoupled (Wave 2 lane Y, after the benchmark-integrity review): truth changes keyed by (world, seed, step), research outcomes by (world, seed, step, subject); the same world trajectory under every policy"
+    }
+   }
+  }
+ }
+}
