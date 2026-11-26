@@ -4509,6 +4509,23 @@ Status: built by the integration lane. No setting, no schema change.
    `tests/artifacts/test_integration_words.py`: a PNG text chunk, a WAV LIST chunk, a DOCX paragraph, an XLSX cell, a
    ZIP member, and an Exif description in a JPEG that is only identified (before this, a header-only file kept no
    words at all).
+6. **Files from real producers** (`tests/artifacts/test_integration_reality.py`; each test skips with a plain reason
+   where its tool is absent, as in CI). This host's LibreOffice 26.8, ImageMagick 7.1 and ffmpeg 9 made DOCX, ODT,
+   PDF, XLSX, ODS, PPTX, ODP, PNG (8-bit, 16-bit, interlaced, palette), GIF, BMP, TIFF (none, Deflate, LZW) and WAV
+   (16- and 24-bit stereo) from content the test writes (a report with two headings, two sentences and a table; a
+   three-row table; two slides; a gray gradient; a two-tone sine). The tools only make test inputs; product code
+   never calls them. Recovered exactly: headings, paragraphs and table cells of DOCX and ODT; the PDF's text layer
+   and title; every cell of XLSX and ODS; slide texts in order; every pixel of the PNGs, BMP and uncompressed and
+   Deflate TIFFs; a palette PNG's and a GIF's pixels as ImageMagick itself reads them back (it quantizes the gradient
+   to 256 colours); every WAV sample within 1.5 quantization steps.
+   - Found and fixed: LibreOffice writes a heading that carries a page style as `text:p` with an automatic style
+     whose parent is "Heading_20_1"; lane B1's ODT reader took only `text:h` as headings, so the document's first
+     heading was read as a paragraph. A paragraph whose style (or a style it inherits from) has
+     `style:default-outline-level` or is named "Heading N" is now a heading of that level.
+   - Limits, as the owner meets them: an LZW-compressed TIFF is identified and its header read, never its pixels;
+     `nsf inspect` says "Read as: its header only (the content is not decoded here)", lists width, height,
+     compression and mode, and "What would be needed: a TIFF LZW decoder". Slides made without title placeholders
+     are headed "Slide 1", "Slide 2" (the files hold no title, and none is invented).
 
 # ADR-073 The form planner: deciding the form of a result before anything is made, and saying why
 

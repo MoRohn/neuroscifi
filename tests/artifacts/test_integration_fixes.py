@@ -80,3 +80,34 @@ def test_a_member_nested_past_max_depth_is_refused_by_name():
         rep = member.inner
     (member,) = rep.members
     assert member.inner is None and member.note.startswith("refused:") and "max_depth" in member.note
+
+
+# ---- an ODT heading written as a styled paragraph (LibreOffice's real files: the reality check found it) --------
+
+def test_an_odt_paragraph_in_a_heading_style_is_a_heading():
+    ns = ('xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+          'xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" '
+          'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"')
+    content = (f'<?xml version="1.0"?><office:document-content {ns}><office:automatic-styles>'
+               '<style:style style:name="P1" style:family="paragraph" style:parent-style-name="Heading_20_1"/>'
+               '<style:style style:name="P2" style:family="paragraph" style:parent-style-name="Lead"/>'
+               '</office:automatic-styles><office:body><office:text>'
+               '<text:p text:style-name="P1">Harbour survey</text:p>'
+               '<text:p text:style-name="P2">A lead paragraph under a custom outline style.</text:p>'
+               '<text:p text:style-name="Standard">Plain words.</text:p>'
+               '<text:h text:outline-level="2">Readings</text:h>'
+               '</office:text></office:body></office:document-content>')
+    styles = (f'<?xml version="1.0"?><office:document-styles {ns}><office:styles>'
+              '<style:style style:name="Heading_20_1" style:display-name="Heading 1" style:family="paragraph"/>'
+              '<style:style style:name="Lead" style:family="paragraph" style:default-outline-level="3"/>'
+              '<style:style style:name="Standard" style:family="paragraph"/>'
+              '</office:styles></office:document-styles>')
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as z:
+        z.writestr("mimetype", "application/vnd.oasis.opendocument.text", compress_type=zipfile.ZIP_STORED)
+        z.writestr("content.xml", content)
+        z.writestr("styles.xml", styles)
+    doc = adapters.decode(out.getvalue(), name="r.odt").representation
+    assert [(b.kind, b.level, b.text) for b in doc.blocks] == [
+        ("heading", 1, "Harbour survey"), ("heading", 3, "A lead paragraph under a custom outline style."),
+        ("paragraph", 0, "Plain words."), ("heading", 2, "Readings")]

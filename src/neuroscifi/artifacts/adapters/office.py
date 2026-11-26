@@ -44,6 +44,7 @@ TEXT = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
 TABLE = "{urn:oasis:names:tc:opendocument:xmlns:table:1.0}"
 DRAW = "{urn:oasis:names:tc:opendocument:xmlns:drawing:1.0}"
 OFFICE = "{urn:oasis:names:tc:opendocument:xmlns:office:1.0}"
+STYLE = "{urn:oasis:names:tc:opendocument:xmlns:style:1.0}"
 XLINK = "{http://www.w3.org/1999/xlink}"
 SVG = "{urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0}"
 PRES = "{urn:oasis:names:tc:opendocument:xmlns:presentation:1.0}"
@@ -60,6 +61,7 @@ class Package:
         self.zip = SafeZip(data, limits, deadline=self.deadline)
         self.notes: list[str] = []
         self.partial = False
+        self.heading_styles: dict[str, int] = {}    # ODF paragraph style name -> heading level (odf_heading_styles)
         self.sizes = {e.name: e.size for e in self.zip.entries}
         names = set(self.sizes)
         if any(n.lower().endswith("vbaproject.bin") for n in names) or any(n.startswith("Basic/") for n in names):
@@ -380,6 +382,40 @@ def odf_table_cells(table, budget: DecodeBudget, notes: list[str], *, typed: boo
     return rows
 
 
+_HEADING_NAME = re.compile(r"Heading(?:_20_| )(\d{1,2})")
+
+
+def odf_heading_styles(*roots) -> dict[str, int]:
+    """Paragraph style name -> heading level, for ODF paragraphs written as `text:p` with a heading style (as
+    LibreOffice writes a heading that carries a page style: an automatic style whose parent is "Heading_20_1"). A
+    style is a heading when it, or a style it inherits from (at most 8 steps), has `style:default-outline-level` or
+    is named "Heading N" / "Heading_20_N"."""
+    parent, level = {}, {}
+    for root in roots:
+        if root is None:
+            continue
+        for st in root.iter(STYLE + "style"):
+            if st.get(STYLE + "family") != "paragraph" or not st.get(STYLE + "name"):
+                continue
+            name = st.get(STYLE + "name")
+            parent[name] = st.get(STYLE + "parent-style-name")
+            outline = st.get(STYLE + "default-outline-level") or ""
+            named = _HEADING_NAME.fullmatch(name) or _HEADING_NAME.fullmatch(st.get(STYLE + "display-name") or "")
+            if outline.isdigit() and int(outline) > 0:
+                level[name] = int(outline)
+            elif named:
+                level[name] = int(named.group(1))
+    out = {}
+    for name in parent:
+        seen, cur = 0, name
+        while cur is not None and seen < 8:
+            if cur in level:
+                out[name] = level[cur]
+                break
+            cur, seen = parent.get(cur), seen + 1
+    return out
+
+
 def _odf_frame(pkg, frame, blocks, folder="") -> None:
     title = frame.find(SVG + "title")
     desc = frame.find(SVG + "desc")
@@ -408,7 +444,10 @@ def _odf_body(pkg, el, blocks, list_level=0, depth=0) -> None:
                 _odf_frame(pkg, frame, blocks)
         elif tag == TEXT + "p":
             text = odf_text(child).strip()
-            if text:
+            heading = pkg.heading_styles.get(child.get(TEXT + "style-name") or "") if not list_level else None
+            if text and heading:
+                pkg.emit(blocks, Block("heading", heading, text))
+            elif text:
                 pkg.emit(blocks, Block("list_item" if list_level else "paragraph", list_level, text))
             for frame in child.iter(DRAW + "frame"):
                 _odf_frame(pkg, frame, blocks)
@@ -434,6 +473,7 @@ def read_odt(data, detected, limits):
     if text is None:
         raise Malformed("content.xml has no office:text body")
     blocks: list[Block] = []
+    pkg.heading_styles = odf_heading_styles(root, pkg.xml("styles.xml", required=False))
     _odf_body(pkg, text, blocks)
     meta = pkg.xml("meta.xml", required=False)
     title = None
