@@ -252,6 +252,31 @@ def test_quiet_and_enabled_settings_are_unaffected(tmp_path):
         db.close()
 
 
+# ---- Wave 3 fix lane: review3 H-1 (what the forecast adds) and H-2 ----------------------------------------------------
+
+def test_the_report_separates_what_the_forecast_adds_from_holds_the_gate_already_made(tmp_path):
+    r = run(tmp_path, "shadow")
+    out = shadow.report(r["path"], r["clock"])
+    settled, breaches, added = out["settled"], out["breaches"], out["settled"]["added"]
+    holds = settled["hits"] + settled["false_alarms"]
+    assert settled["holds_gate_refused"] > 0                         # holds the real gate was already making
+    assert added["hits"] + added["false_alarms"] <= out["work"]["holds_the_gate_allowed"]
+    assert added["hits"] + added["false_alarms"] + settled["holds_gate_refused"] <= holds
+    assert added["hits"] < settled["hits"]                           # some hits were the gate's own refusals
+    assert breaches["preceded_before_start"] <= breaches["preceded"]
+    assert sum(breaches["lead_seconds_distribution"].values()) == breaches["preceded"]
+    assert breaches["lead_seconds_distribution"]["over 180"] == 0    # the lead is capped by the horizon
+    assert out["guide"]["supports_on"] is None and "4 in 5" in out["guide"]["rule"]   # one run: not enough data
+
+
+def test_the_staged_check_compares_breach_reports_false_alarms_too(tmp_path):
+    r = run(tmp_path, "shadow")
+    report = shadow.report(r["path"], r["clock"])
+    ref = shadow_check.reference(r, floor_gib=CRITICAL_GIB, horizon_ticks=FORECAST_TICKS)
+    assert "false_alarm_ticks" in ref and shadow_check.mismatches(report, ref) == {}
+    assert shadow_check.mismatches(report, ref | {"false_alarm_ticks": ref["false_alarm_ticks"] + 1})
+
+
 # ---- Wave 3 fix lane: the security review's L4 and L5 ----------------------------------------------------------------
 
 def _held(path):
