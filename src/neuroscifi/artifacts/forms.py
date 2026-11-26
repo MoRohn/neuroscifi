@@ -72,7 +72,9 @@ COMBO_CARRIED_GAIN = 0.10   # a second form must add at least this share of carr
 COMBO_PRECISION_NEED = 0.5  # ... or, where precise values are needed at least this much,
 COMBO_PRECISION_GAIN = 0.3  # ... add at least this much precision
 ATTENTION_S = 30.0          # the attention bound for a sound or an animation, in seconds
-SMALL_VALUES = 3            # at most this many values is a sentence's worth
+SMALL_VALUES = 6            # at most this many values ...
+SMALL_ITEMS = 4             # ... of at most this many items (rows, steps, nodes, events) is a sentence's worth
+MEASUREMENTS_ONLY = 0.3     # how much of a picture, sound, solid or surface words or rows carry: its measurements
 SMALL_CHARS = 600           # at most this many characters of text is a sentence's worth (a short paragraph)
 KIND_DIFFERENCE = 0.4       # forms at least this far apart (`difference`) differ in kind
 MAX_ADJUST = 0.10           # the most an adjustment can move one weight
@@ -289,7 +291,8 @@ class Form:
     cover: Callable | None = None       # (kind, shape, display) -> coverage in [0, 1], or None for the generic rule
     check: Callable | None = None       # (shape, display) -> list[Problem]
     min_items: int = 0                  # fewer items than this: the form carries nothing
-    second_for: tuple[str, ...] = ()    # only when one of these purposes is present (alone or second), unless named
+    second_for: tuple[str, ...] = ()    # only when one of these purposes is present (alone or second), unless
+    #                                     named (a data file is also always admitted for an agent: a program reads it)
 
     @property
     def devices(self) -> tuple[str, ...]:
@@ -377,6 +380,8 @@ def _generic_coverage(form: Form, kind: str, shape: ContentShape) -> float:
     cap = form.capacity.get(unit)
     if cap is None:
         return 1.0      # the form shows this kind as a whole
+    if cap == 0:
+        return MEASUREMENTS_ONLY    # it can state measurements of the thing, never show the thing
     floor = form.floor
     if unit == "chars" and form.text_like:
         floor = max(floor, 0.3)     # words keep their own words' gist when they run long
@@ -452,6 +457,12 @@ def _cover_sonify(kind, shape, display):
         return 0.0      # a recording is already a sound: it is not turned into tones
     voices = min(1.0, SOUND_VOICES / max(1, shape.n_series))
     return voices * _within(_count(kind, shape), ATTENTION_S * 4, 0.3)
+
+
+def _cover_document(kind, shape, display):
+    if kind == "hierarchy" and "prose" not in shape.kinds:
+        return 0.5 * _within(max(1, shape.n_items), 2000, 0.5)    # an outline of names, not headings over text
+    return None
 
 
 def _cover_motion(kind, shape, display):
@@ -679,7 +690,7 @@ _form("prose", "a sentence or two", "words", "words", ("text",),
       {"scalar": 1, "series": 1, "categories": 1, "distribution": 1, "relation": 0.8, "records": 1,
        "hierarchy": 0.7, "network": 0.6, "sequence": 1, "timeline": 1, "process": 0.6, "surface": 0.3, "solid": 0.3,
        "map": 0.5, "image": 0.3, "sound": 0.3, "prose": 1, "code": 0.8},
-      capacity={"values": 7, "dist": 7, "items": 8, "chars": 3000, "samples": 7}, floor=0.0,
+      capacity={"values": 7, "dist": 7, "items": 8, "chars": 3000, "samples": 0}, floor=0.0,
       rule="about 7 values, 8 steps or items, or 3,000 characters; of a picture, sound or solid about 7 of its "
            "measurements",
       generator=None, precision=0.9, interactivity=0.0, effort=0.05, complexity=0, cost_class="none",
@@ -689,7 +700,7 @@ _form("spoken", "a spoken summary", "words", "words", ("speech",),
       {"scalar": 1, "series": 1, "categories": 1, "distribution": 1, "relation": 0.7, "records": 1,
        "hierarchy": 0.5, "network": 0.4, "sequence": 1, "timeline": 1, "process": 0.5, "surface": 0.2, "solid": 0.2,
        "map": 0.4, "image": 0.2, "sound": 0.3, "prose": 1, "code": 0.2},
-      capacity={"values": 3, "dist": 3, "items": 4, "chars": 900, "samples": 3}, floor=0.0,
+      capacity={"values": 3, "dist": 3, "items": 4, "chars": 900, "samples": 0}, floor=0.0,
       rule="about 3 values, 4 steps or 900 characters (a minute of speech)",
       generator=None, precision=0.7, interactivity=0.0, effort=0.1, complexity=0, cost_class="none",
       fallback=None, base_bytes=300, secondary=True, text_like=True,
@@ -698,7 +709,7 @@ _form("table", "a table", "table", "grid", ("text",),
       {"scalar": 1, "series": 1, "categories": 1, "distribution": 1, "relation": 0.8, "records": 1,
        "hierarchy": 0.5, "network": 0.6, "sequence": 0.8, "timeline": 0.9, "process": 0.4, "surface": 0.6,
        "solid": 0.2, "map": 0.6, "image": 0.1, "sound": 0.1, "prose": 0.2, "code": 0.1},
-      capacity={"values": 20_000, "dist": 20_000, "items": 2000, "chars": 20_000, "samples": 20_000}, floor=0.3,
+      capacity={"values": 20_000, "dist": 20_000, "items": 2000, "chars": 20_000, "samples": 0}, floor=0.3,
       rule="every cell up to 20,000 (in pages of one screen); beyond that 0.3 plus the share that fits",
       generator="table.html", precision=1.0, interactivity=0.0, effort=0.1, complexity=1, cost_class="low",
       fallback=None, bytes_per_unit=24, base_bytes=2000, secondary=True, text_like=True, check=_check_table)
@@ -706,10 +717,11 @@ _form("document", "a structured document", "document", "words", ("text",),
       {"prose": 1, "hierarchy": 1, "code": 1, "records": 0.8, "sequence": 0.8, "scalar": 1, "series": 0.6,
        "categories": 0.8, "distribution": 0.5, "relation": 0.5, "network": 0.4, "timeline": 0.8, "process": 0.4,
        "map": 0.3, "image": 0.2, "sound": 0.1, "surface": 0.2, "solid": 0.1},
-      capacity={"values": 5000, "dist": 5000, "items": 2000, "chars": 500_000, "samples": 5000}, floor=0.5,
+      capacity={"values": 5000, "dist": 5000, "items": 2000, "chars": 500_000, "samples": 0}, floor=0.5,
       rule="headings, paragraphs and tables: 500,000 characters, 5,000 table cells, 2,000 items",
       generator="document.html", precision=0.9, interactivity=0.0, effort=0.2, complexity=2, cost_class="low",
-      fallback=None, bytes_per_unit=1.2, base_bytes=4000, text_like=True, check=_check_document)
+      fallback=None, bytes_per_unit=1.2, base_bytes=4000, text_like=True, check=_check_document,
+      cover=_cover_document)
 _form("data_file", "a data file", "file", "file", ("file",),
       {"scalar": 1, "series": 1, "categories": 1, "distribution": 1, "relation": 1, "records": 1, "surface": 1,
        "timeline": 1, "network": 0.9, "hierarchy": 0.6, "sequence": 0.8, "map": 0.9, "process": 0.3},
@@ -761,7 +773,7 @@ _form("timeline", "a timeline", "diagram", "position", ("picture",),
       fallback="table", bytes_per_unit=200, base_bytes=3000, cover=_cover_timeline, check=_check_timeline,
       min_items=2)
 _form("node_link", "a node-link diagram", "diagram", "links", ("picture",),
-      {"network": 1, "relation": 0.8, "hierarchy": 0.8, "sequence": 0.3, "process": 0.4, "records": 0.1},
+      {"network": 1, "relation": 0.8, "hierarchy": 0.8, "sequence": 0.3, "process": 0.4, "records": 0.1, "code": 0.5},
       capacity={"items": 150, "values": 150}, floor=0.3,
       rule="every node and link up to about 150 nodes; beyond that 0.3 plus the share",
       generator="graph.nodelink", precision=0.6, interactivity=0.0, effort=0.3, complexity=3, cost_class="medium",
@@ -773,14 +785,14 @@ _form("tree_diagram", "a tree diagram", "diagram", "links", ("picture",),
       generator="graph.tree", precision=0.7, interactivity=0.0, effort=0.2, complexity=2, cost_class="low",
       fallback="document", bytes_per_unit=120, base_bytes=3000, check=_check_tree, min_items=2)
 _form("flow_steps", "a flow of steps", "diagram", "order", ("picture",),
-      {"sequence": 1, "process": 0.6, "hierarchy": 0.2, "timeline": 0.4, "network": 0.3},
+      {"sequence": 1, "process": 0.6, "hierarchy": 0.2, "timeline": 0.4, "network": 0.3, "code": 0.6},
       capacity={"items": 20}, floor=0.3,
       rule="every step up to 20; beyond that 0.3 plus the share",
       generator="flow.steps", precision=0.8, interactivity=0.0, effort=0.15, complexity=2, cost_class="low",
       fallback="prose", bytes_per_unit=300, base_bytes=3000, check=_check_flow, min_items=2)
 _form("step_through", "a step-through", "stepper", "order", ("picture", "interactive"),
       {"sequence": 0.9, "process": 0.9, "series": 0.4, "timeline": 0.5, "network": 0.4, "hierarchy": 0.4,
-       "records": 0.3, "code": 0.6},
+       "records": 0.3, "code": 0.9},
       capacity={"items": 500, "values": 500, "chars": 50_000}, floor=0.5,
       rule="one state per step up to 500 steps; beyond that 0.5 plus the share",
       generator="explorable.steps", precision=0.7, interactivity=0.6, effort=0.35, complexity=4,
@@ -803,17 +815,18 @@ _form("sonification", "a sonification (the values as pitch)", "sound", "pitch", 
       {"series": 1, "distribution": 0.3, "records": 0.3, "timeline": 0.2},
       rule="one tone per value of up to 2 series for 30 s (120 tones); beyond that 0.3 plus the share",
       generator="sound.sonify", precision=0.15, interactivity=0.2, effort=0.35, complexity=3, cost_class="medium",
-      fallback="table", cover=_cover_sonify, check=_check_sonify, min_items=2, secondary=True)
+      fallback="table", cover=_cover_sonify, check=_check_sonify, min_items=2, secondary=True,
+      second_for=("hear",))
 _form("tone", "a short tone", "sound", "pitch", ("sound",),
       {"scalar": 1},
       rule="one value heard as a tone of that pitch (a series is a sonification)",
       generator="sound.tone", precision=0.4, interactivity=0.2, effort=0.15, complexity=2, cost_class="low",
-      fallback="prose", base_bytes=44_144, check=_check_tone, secondary=True)
+      fallback="prose", base_bytes=44_144, check=_check_tone, secondary=True, second_for=("hear",))
 _form("sound_view", "a waveform and spectrum view", "chart", "position", ("picture",),
       {"sound": 1, "series": 0.3},
       rule="the whole sound as a waveform envelope and its spectrum",
       generator="chart.line", precision=0.4, interactivity=0.2, effort=0.3, complexity=3, cost_class="medium",
-      fallback="table", base_bytes=16_000, min_items=2)
+      fallback="table", base_bytes=16_000)
 _form("solid_view", "a 3D viewer", "spatial", "space", ("3d", "interactive"),
       {"solid": 1, "surface": 0.8, "map": 0.3},
       capacity={"samples": 2_000_000, "items": 2_000_000}, floor=0.5,
@@ -827,7 +840,7 @@ _form("surface_view", "a surface view", "spatial", "space", ("3d",),
       generator="surface.grid", precision=0.35, interactivity=0.6, effort=0.3, complexity=4, cost_class="medium",
       fallback="table", bytes_per_unit=30, base_bytes=8000, check=_check_solid)
 _form("image", "a picture", "raster", "pixels", ("picture",),
-      {"image": 1, "map": 0.6, "surface": 0.6},
+      {"image": 1, "map": 0.6, "surface": 0.6, "solid": 0.5},
       rule="every pixel up to 16 million when the content has two spatial dimensions",
       generator="image.raster", precision=0.3, interactivity=0.0, effort=0.1, complexity=2, cost_class="medium",
       fallback="prose", bytes_per_unit=1.0, base_bytes=1000, cover=_cover_image, check=_check_raster)
@@ -949,7 +962,11 @@ _NOUNS = (
 _NOUN_RE = [(re.compile(r"\b(?:" + pattern + r")\b"), forms) for pattern, forms in _NOUNS]
 # A noun names the output when a production cue comes just before it. Prepositions need an indefinite article or
 # none ("as a table", "in a chart"; not "in the table", which names content). Verbs take any determiner.
-_PREP_CUE = re.compile(r"\b(?:as|in|into|with|via|using|to)\s+(?:an?\s+|one\s+|some\s+)?(?:[a-z0-9-]+\s+){0,2}$")
+_DETERMINER = r"(?:the|this|that|these|those|its|his|her|their|my|your|our|his)"
+# Free words between a cue and a noun are adjectives ("as a simple table"), never a determiner or possessive: "to its
+# file" or "in their table" names content.
+_FREE = r"(?:(?!" + _DETERMINER + r"\s)[a-z0-9-]+\s+){0,2}"
+_PREP_CUE = re.compile(r"\b(?:as|in|into|with|via|using)\s+(?:an?\s+|one\s+|some\s+)?" + _FREE + "$")
 _VERB_CUE = re.compile(r"\b(?:make|draw|plot|show|give|create|generate|build|render|want|need|produce|export|put|"
                        r"turn|convert|prefer|sketch|use|get|send|save|do|try|prepare|display|sonify|play|write|"
                        r"see|like|would like|rather have)\s+(?:(?:me|us|it|this|that|them|these|those)\s+)?"
@@ -977,9 +994,9 @@ _NEGATION = re.compile(r"\b(?:no|not|without|don't|do not|never|skip|avoid|rathe
 
 _SIMPLE = re.compile(r"\b(?:just (?:tell|say|give)|briefly|in brief|in (?:a|one) (?:word|sentence|line)|"
                      r"short answer|quick(?:ly)? (?:answer|question)|tl;?dr|keep it (?:short|simple)|simply put|"
-                     r"the gist|bottom line|in short|one-liner|yes or no|summar(?:y|ise|ize)|in a nutshell)\b")
+                     r"the gist|bottom line|in short|one-liner|in a nutshell)\b")
 _PRECISE = re.compile(r"\b(?:exact(?:ly)?|precise(?:ly)?|to the (?:cent|digit|decimal)|the (?:actual|exact) "
-                      r"(?:figures|numbers|values)|figures|decimal places)\b")
+                      r"(?:figures|numbers|values)|decimal places)\b")
 _RICH = re.compile(r"\b(?:in detail|detailed|show me|let me (?:see|explore|play|try)|walk me through|explore|"
                    r"everything|all (?:the|of the) (?:values|data|numbers|points|rows)|in full|full picture|"
                    r"deep dive|visuali[sz]e|interactive)\b")
@@ -1028,6 +1045,7 @@ class Reading:
     rich: bool
     evidence: tuple[str, ...]
     precise: bool = False
+    selective: str | None = None     # the question asks for a few values picked out of the content (its class)
 
 
 def _explicit_set(name: str) -> tuple[str, ...] | None:
@@ -1104,8 +1122,55 @@ def read_request(request: Request) -> Reading:
     precise = bool(_PRECISE.search(low))
     if precise:
         evidence.append("asked for exact values")
+    selective = answer_class(low)
+    if selective:
+        evidence.append(f"the question picks out {SELECTIVE_PHRASE[selective]}")
     return Reading(explicit, explicit_cue, tuple(refused), MappingProxyType(purposes), simple and not rich,
-                   rich and not simple, tuple(evidence), precise)
+                   rich and not simple, tuple(evidence), precise, selective)
+
+
+# The size of the answer, read from the question's grammar (not from topic words): a yes-or-no question, an extreme
+# ("the warmest", "the most"), a count ("how many"), one time, person or place ("when did", "who won", "where is"),
+# one measure ("how long is"), a typical value. Such a question is answered by a few values picked out of the
+# content, however large the content is, unless the words ask for the whole ("each day", "over time", "show me").
+_WHOLE = re.compile(r"\b(?:each|every|all (?:the|of)|throughout|over time|over the (?:years?|months?|weeks?|days?|"
+                    r"course)|across|trends?|patterns?|course of|day by day|month by month|year by year|show me|"
+                    r"walk me through|explain|list (?:all|every|the)|overview|full picture|in detail|"
+                    r"how (?:did|does|do|has|have) .{0,40}\b(?:change|go|move|develop|evolve|vary))\b")
+_POLAR = re.compile(r"(?:^|[.!?;]\s+)(?:so,?\s+|and\s+|but\s+)?(?!(?:can|could|will|would) you\b)"
+                    r"(?:is|are|was|were|do|does|did|has|have|had|can|could|will|would|should|any)\b")
+_NOT_SUPERLATIVE = frozenset("interest test rest west forest honest request contest suggest invest harvest protest "
+                             "digest chest guest nest modest manifest arrest quest conquest priest crest vest pest zest "
+                             "attest detest inquest unrest midwest southwest northwest northeast southeast earnest "
+                             "biggest".split()) - {"biggest"}
+_SUPERLATIVE = re.compile(r"\b(?:most|least|top|peak|maximum|minimum|best|worst|first|last time|[a-z]{3,}est)\b")
+_COUNT = re.compile(r"\bhow (?:many|much)\b")
+_ONE_WH = re.compile(r"(?:^|[.!?;,]\s*|\b(?:tell me|show me|know|find out|say|ask)\s+)(?:when|what time|what date|"
+                     r"who|whose|where (?:is|was|did|does))\b")
+_ONE_MEASURE = re.compile(r"\bhow (?:long|loud|high|tall|big|heavy|far|old|deep|wide|fast|large|small|warm|cold|hot|"
+                          r"strong|bright|sharp) (?:is|was|did|does)\b")
+_TYPICAL = re.compile(r"\b(?:typical|average|median|usual)\b")
+SELECTIVE_PHRASE = {"yes_or_no": "a yes or a no", "extreme": "the largest or smallest", "count": "a count",
+                    "one_of": "one time, person or place", "measure": "one measurement", "typical": "a typical value"}
+
+
+def answer_class(low: str) -> str | None:
+    """The class of a question whose answer is a few values picked out of the content, or None."""
+    if not low or _WHOLE.search(low):
+        return None
+    if _POLAR.search(low):
+        return "yes_or_no"
+    if any(m.group(0) not in _NOT_SUPERLATIVE for m in _SUPERLATIVE.finditer(low)):
+        return "extreme"
+    if _COUNT.search(low):
+        return "count"
+    if _ONE_MEASURE.search(low):
+        return "measure"
+    if _ONE_WH.search(low):
+        return "one_of"
+    if _TYPICAL.search(low):
+        return "typical"
+    return None
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1203,15 +1268,19 @@ def serves(purpose: str, shape: ContentShape | None, n_pieces: int = 1) -> bool:
 
 
 def _sentence_worth(shape: ContentShape | None) -> bool:
-    """A scalar or a sentence's worth: at most SMALL_VALUES values of plain value kinds, or a short text."""
+    """A scalar or a sentence's worth: at most SMALL_ITEMS items and SMALL_VALUES values, or a short text. Never a
+    picture, a sound, a solid or a surface (words cannot show them), nor a process (states that change are seen
+    changing), whatever their counts."""
     if shape is None or not shape.kinds:
         return True
     kinds = set(_specific_kinds(shape))
+    if kinds & {"image", "sound", "solid", "surface", "process"}:
+        return False
     if kinds <= {"prose"}:
         return shape.text_chars <= SMALL_CHARS
-    if kinds <= set(VALUE_KINDS) | {"prose"}:
-        return _values(shape) <= SMALL_VALUES and shape.text_chars <= SMALL_CHARS
-    return shape.n_items <= 1 and shape.text_chars <= SMALL_CHARS
+    if "scalar" in kinds and kinds <= {"scalar", "prose"}:
+        return shape.text_chars <= SMALL_CHARS
+    return shape.n_items <= SMALL_ITEMS and _values(shape) <= SMALL_VALUES and shape.text_chars <= SMALL_CHARS
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1354,9 +1423,10 @@ def _effort_of(form: Form, shape: ContentShape | None, display: Display) -> floa
     return min(1.0, effort)
 
 
-def _accessibility(forms, needs) -> float:
-    """1 without stated needs. With a screen reader: text forms 1, a picture 0.3 alone (it is only admitted with its
-    text), sound 0.6, interactive 0.5. With reduced motion: moving forms 0 (they are removed anyway)."""
+def _accessibility(forms, needs, shape=None, display=None) -> float:
+    """1 without stated needs. With a screen reader: words 1; a table 1 within one screen of rows, 0.3 beyond (it is
+    read cell by cell); a picture 0.3 alone (it is only admitted with its text), sound 0.6, interactive 0.5. With
+    reduced motion: moving forms 0 (they are removed anyway). A combination takes its better part."""
     if not needs:
         return 1.0
     best = 0.0
@@ -1364,7 +1434,10 @@ def _accessibility(forms, needs) -> float:
         form = FORMS[name]
         score = 1.0
         if "screen_reader" in needs:
-            if form.text_like or "speech" in form.media:
+            if name in ("table", "data_file") and shape is not None and display is not None and \
+                    _rows(shape) > max(display.screen_rows, 1):
+                score = min(score, 0.3)
+            elif form.text_like or "speech" in form.media:
                 score = min(score, 1.0)
             elif "interactive" in form.media:
                 score = min(score, 0.5)
@@ -1442,6 +1515,11 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
     need_interaction = sum(INTERACTION_NEED.get(p, 0.0) * w for p, w in purposes.items()) / (
         sum(purposes.values()) or 1)
     needs = () if relaxed else context.accessibility
+    if needs:   # with stated needs, how well a form serves them counts three times as much
+        weights = dict(weights)
+        weights["accessibility"] *= ACCESS_FACTOR
+        total_w = sum(weights.values())
+        weights = {c: w / total_w for c, w in weights.items()}
     refused = set(reading.refused) if use_words else set()
     explicit = reading.explicit if use_words else None
     words_form = "prose" if "text" in display.shows else "spoken"
@@ -1454,7 +1532,7 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
         carried = sum(per.values()) / len(per) if per else (1.0 if form.text_like and name != "data_file"
                                                              else 0.0)
         seen = foresee(form, shape_, Context(device=display.device, width_px=display.width_px))
-        excluded = None
+        excluded, budget_fit, est = None, False, dict(seen.estimates)
         missing = [m for m in form.media if m not in display.shows]
         if missing:
             excluded = _why_media(form, missing, context, relaxed)
@@ -1462,18 +1540,30 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
             excluded = "moving pictures are off for reduced motion"
         elif not relaxed and not feasible_here(form, generators):
             excluded = f"nothing here can make {form.label} yet"
-        elif carried <= 0.0:
+        elif carried <= 0.0 and not (explicit and name in explicit and _sentence_worth(shape) and
+                                     any(k in form.kinds for k in VALUE_KINDS)):
+            # a chart of one or a few values, named by the person, is their call ("one bar")
             excluded = f"{form.label} cannot carry this content"
         elif name in refused:
             excluded = f"you said you did not want {form.label}"
         elif not relaxed and _preference((name,), context) <= -1.0:
             excluded = f"you said you never want {form.label}"
-        elif not relaxed and (seen.estimates["seconds"] > context.budget_s or
-                              seen.estimates["bytes"] > context.budget_bytes):
-            excluded = f"{form.label} would take more than the budget allows"
-        elif form.second_for and not any(p in purposes for p in form.second_for) and not (
+        elif form.second_for and not any(p in purposes for p in form.second_for) and \
+                not (name == "data_file" and display.device == "agent") and not (
                 explicit and name in explicit):
             excluded = f"{form.label} is made only when it is asked for"
+        elif not relaxed and (seen.estimates["seconds"] > context.budget_s or
+                              seen.estimates["bytes"] > context.budget_bytes):
+            fit = _units_within_budget(form, context)
+            if seen.estimates["seconds"] <= context.budget_s and fit is not None:
+                # a chart or a table is made smaller to fit (fewer points, fewer rows), keeping what DOWNSAMPLED says
+                shown = max(1.0, (seen.estimates["bytes"] - form.base_bytes) / form.bytes_per_unit)
+                keep = DOWNSAMPLED[name]
+                carried *= keep + (1.0 - keep) * min(1.0, fit / shown)
+                budget_fit = True
+                est["bytes"] = float(min(seen.estimates["bytes"], int(form.base_bytes + fit * form.bytes_per_unit)))
+            else:
+                excluded = f"{form.label} would take more than the budget allows"
         scores = {
             "clarity": _clarity((name,), purposes),
             "carried": carried,
@@ -1481,13 +1571,14 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
             "interactivity": _interactivity((name,), need_interaction),
             "effort": 1.0 - _effort_of(form, shape, display),
             "feasibility": 1.0 if relaxed or feasible_here(form, generators) else 0.0,
-            "accessibility": _accessibility((name,), needs),
+            "accessibility": _accessibility((name,), needs, shape_, display),
             "cost": _cost(seen.estimates["seconds"], seen.estimates["bytes"], context if not relaxed else
                           Context(budget_s=1e9, budget_bytes=1 << 60)),
         }
+        fixes = tuple(p.fix for p in seen.problems if p.fix) + (("downsample to fit the budget",) if budget_fit else ())
         singles[name] = Candidate((name,), {c: round(min(1.0, max(0.0, v)), 4) for c, v in scores.items()}, 0.0, excluded,
-                                  tuple(p.fix for p in seen.problems if p.fix),
-                                  tuple(p.text for p in seen.problems), MappingProxyType(dict(seen.estimates)))
+                                  fixes,
+                                  tuple(p.text for p in seen.problems), MappingProxyType(est))
     # The pre-production check rejects a form when the form it would switch to is admitted here.
     for name, cand in list(singles.items()):
         if cand.excluded:
@@ -1526,7 +1617,8 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
             per_p, per_s = carried_kinds[name], carried_kinds[second]
             kinds = set(per_p) | set(per_s)
             carried = sum(max(per_p.get(k, 0.0), per_s.get(k, 0.0)) for k in kinds) / len(kinds) if kinds else 0.0
-            forced = "screen_reader" in needs and second == _fallback_text(form) and \
+            # a screen reader needs words or rows beside a picture: any text form may be that companion
+            forced = "screen_reader" in needs and FORMS[second].text_like and second != "data_file" and \
                 not form.text_like and "sound" not in form.media
             excluded = None
             primary_excl = cand.excluded if not (cand.excluded or "").startswith("a screen reader") or not forced \
@@ -1538,8 +1630,10 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
             else:
                 # what the second adds on the kinds the first shows poorly (below half): a diagram's missing words,
                 # not a share of a kind the first already shows
+                # Only words add what a picture lacks this way ("a diagram plus two sentences"); rows add precision.
                 gain_carried = sum(max(0.0, per_s.get(k, 0.0) - per_p.get(k, 0.0)) for k in kinds
-                                   if per_p.get(k, 0.0) < COMBO_PRIMARY_CARRIED) / len(kinds) if kinds else 0.0
+                                   if per_p.get(k, 0.0) < COMBO_PRIMARY_CARRIED) / len(kinds) \
+                    if kinds and second in WORDS else 0.0
                 gain_precision = _precision(pair, 1.0, other.scores["carried"]) - _precision((name,), 1.0)
                 if not forced and cand.scores["carried"] < COMBO_PRIMARY_CARRIED:
                     excluded = f"{form.label} carries too little of this content to lead"
@@ -1562,7 +1656,7 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
                 "interactivity": _interactivity(pair, need_interaction),
                 "effort": 1.0 - effort,
                 "feasibility": min(cand.scores["feasibility"], other.scores["feasibility"]),
-                "accessibility": _accessibility(pair, needs),
+                "accessibility": _accessibility(pair, needs, shape_, display),
                 "cost": _cost(seconds_, bytes_, context if not relaxed else Context(budget_s=1e9,
                                                                                     budget_bytes=1 << 60)),
             }
@@ -1595,9 +1689,17 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
     hear = max(purposes, key=lambda p: (purposes[p], p)) == "hear" and bool(heard)
     if _sentence_worth(shape) and words_cands and not hear:
         return _Run((words_form,), ranked(), None, "small")
-    # A stated wish for a short answer is honoured with words whenever words can be given.
-    if use_words and reading.simple and words_cands:
+    # A stated wish for a short answer is honoured with words whenever words can be given; so is a question whose
+    # answer is a few values picked out of the content (a yes or no, an extreme, a count, one time or name).
+    if use_words and (reading.simple or reading.selective) and words_cands:
         return _Run((words_form,), ranked(), None, "words")
+    # A stated preference is followed: the best admitted form the person prefers (words included: a person who prefers
+    # the simplest answer gets it). Not in the content-only and words-only runs, so it is "context" that decided.
+    if not relaxed:
+        preferred = [c for c in by_total if len(c.forms) == 1 and _preference(c.forms, context) > 0]
+        if preferred:
+            top = max(preferred, key=lambda c: (_preference(c.forms, context), c.total))
+            return _Run(top.forms, ranked(), None, "preference")
     # Rule 3: to hear is to hear: when hearing is the main purpose, the best admitted form that is heard wins.
     if hear:
         return _Run(heard[0].forms, ranked(), None, "hear")
@@ -1686,12 +1788,35 @@ def difference(a: str, b: str) -> float:
                  0.15 * abs(fa.interactivity - fb.interactivity), 4)
 
 
+MIN_FIT_UNITS = 50          # a downsampled form must still show at least this many points, bars or cells
+
+
+# Forms that can be made smaller to fit a byte budget, and what they still carry when cut down: a chart drawn from an
+# envelope of fewer points keeps the shape (0.6); a table cut to the rows that fit keeps a summary (0.3).
+DOWNSAMPLED = {"line_chart": 0.6, "scatter_chart": 0.6, "heatmap": 0.6, "small_multiples": 0.6,
+               "sonification": 0.6, "table": 0.3}
+
+
+def _units_within_budget(form: Form, context: Context) -> float | None:
+    """How many points or cells of a form that can be cut down fit the byte budget, or None if too few."""
+    if form.name not in DOWNSAMPLED or form.bytes_per_unit <= 0:
+        return None
+    fit = (context.budget_bytes - form.base_bytes) / form.bytes_per_unit
+    return fit if fit >= MIN_FIT_UNITS else None
+
+
+ACCESS_FACTOR = 3.0         # the accessibility weight's multiple when the person has stated needs
+NEAREST_WEIGHT = 0.3        # how much difference in kind from the named form counts against a substitute's total
+
+
 def _nearest(explicit, by_total) -> Candidate | None:
-    """The admitted single form closest in kind to the forms named, then by total."""
+    """The admitted single form that best balances its total against its difference in kind from the forms named
+    (total - NEAREST_WEIGHT x difference): close in kind, and good for this content."""
     singles = [c for c in by_total if len(c.forms) == 1]
     if not singles:
         return None
-    return min(singles, key=lambda c: (min(difference(c.forms[0], e) for e in explicit), -c.total, c.forms))
+    return min(singles, key=lambda c: (NEAREST_WEIGHT * min(difference(c.forms[0], e) for e in explicit) - c.total,
+                                       c.forms))
 
 
 def _purpose_mix(shape, n_pieces, reading: Reading | None) -> tuple[dict, list]:
@@ -1839,6 +1964,8 @@ def _reason(run2: _Run, run1: _Run, run0: _Run, decided_by, reading: Reading, sh
         if reading.simple:
             other = label_of(run0.chosen)
             return f"{label}, because you asked for a short answer; {other} could show more of it."
+        if reading.selective and run2.chosen and run2.chosen[0] in WORDS:
+            return f"{label}, because you asked for {SELECTIVE_PHRASE[reading.selective]}, which a sentence gives."
         if run0.chosen[0] in reading.refused:
             return f"{label}, because you said you did not want {label_of(run0.chosen[:1])}; {content_phrase(shape)}."
         if reading.precise and len(run2.chosen) == 2:

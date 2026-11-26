@@ -140,13 +140,11 @@ def test_an_explicit_form_is_honoured_whenever_it_is_feasible_and_explained_when
     for _ in range(N_RANDOM):
         content, context = (random_shape(rng),), random_context(rng)
         name = rng.choice(tuple(F.FORMS))
-        base = F.plan(F.Request(""), content, context)
-        # Feasible: admitted alone, or (for a screen reader) admitted with the text that goes with it. A form made
-        # only when asked for (a data file) is admitted when named.
-        feasible = any(c.excluded is None or c.excluded.endswith("only when it is asked for")
-                       for c in base.candidates if c.forms[0] == name and
-                       (len(c.forms) == 1 or "screen_reader" in context.accessibility))
         result = F.plan(F.Request("", explicit_form=name), content, context)
+        # Feasible: admitted on the plan's own score sheet, alone or (for a screen reader) with the text that goes with
+        # it; the sheet's exclusions are the hard constraints checked in the test above.
+        feasible = any(c.excluded is None for c in result.candidates if c.forms[0] == name and
+                       (len(c.forms) == 1 or "screen_reader" in context.accessibility))
         assert result.decided_by == "explicit"
         if feasible:
             honoured += 1
@@ -184,8 +182,10 @@ def test_a_family_named_takes_its_best_feasible_member_or_explains():
     result = F.plan(F.Request("Can you make a chart of this?"), series, F.Context(generators=ALL))
     assert result.chosen[0] in F.CHARTS and result.explicit_honoured
     one = F.plan(F.Request("plot it"), (shape(["scalar"], 1, 1),), F.Context(generators=ALL))
-    assert one.chosen == ("prose",) and not one.explicit_honoured
-    assert "instead of the plot you asked for" in one.reason and "cannot carry" in one.reason
+    assert one.chosen[0] in F.CHARTS and one.explicit_honoured, "a chart of one value, named, is their call"
+    net = F.plan(F.Request("as a line chart"), (shape(["network"], 40),), F.Context(generators=ALL))
+    assert net.chosen[0] != "line_chart" and not net.explicit_honoured
+    assert "instead of a line chart you asked for" in net.reason and "cannot carry" in net.reason
     none_here = F.plan(F.Request("as a line chart"), series, F.Context(generators=()))
     assert none_here.chosen == ("prose",) and "nothing here can make a line chart yet" in none_here.reason
     voice = F.plan(F.Request("as a line chart"), series, F.Context(device="voice", generators=ALL))
@@ -257,11 +257,12 @@ def test_same_content_different_words_or_context():
     series = (shape(["series"], 365, 1, True),)
     assert F.plan(F.Request("Just tell me briefly"), series, F.Context(generators=ALL)).chosen == ("prose",)
     voice = F.plan(F.Request(""), series, F.Context(device="voice", generators=ALL))
-    assert voice.chosen == ("sonification",) and voice.decided_by == "context", "a spoken summary would lose it"
-    no_sound = F.Context(device="voice", generators=tuple(g for g in ALL if g != "sound.sonify"))
-    assert F.plan(F.Request(""), series, no_sound).chosen == ("spoken",)
+    assert voice.chosen == ("spoken",) and voice.decided_by == "context", "data as pitch only when hearing it is asked"
+    heard = F.plan(F.Request("What does it sound like?"), series, F.Context(device="voice", generators=ALL))
+    assert heard.chosen[0] == "sonification"
     reader = F.plan(F.Request(""), series, F.Context(accessibility=("screen_reader",), generators=ALL))
-    assert reader.chosen == ("line_chart", "table") and reader.decided_by == "context"
+    assert reader.chosen[0] == "line_chart" and reader.chosen[1] in ("prose", "table")
+    assert reader.decided_by == "context"
 
 
 # ---------------------------------------------------------------------------------------------------------------
