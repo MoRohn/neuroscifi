@@ -580,7 +580,8 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
             report["skipped"].append({"prediction_id": action["prediction_id"], "reason": action["reason"]})
         if action["action"] != "refresh_submitted":
             continue
-        if queue:
+        if queue:       # a queued refresh is a task of this pass: it counts against max_tasks as a run one does
+            budget_left -= 1
             report["queued"].append({"task_id": action["task_id"], "origin": "refresh"})
             continue
         cap = _over_cap(db, now, cfg, ignore_tasks=True)

@@ -629,3 +629,28 @@ def test_a_value_appearing_under_a_shared_record_template_key_is_not_a_change():
                               "groups": 1, "relevance": 0.9}
     out = compare(baseline, current)
     assert [c["key"] for c in out["changed_values"]] == ["k"] and out["meaningful"] is True
+
+
+@pytest.mark.parametrize("max_tasks", [1, 2])
+def test_a_refresh_queued_by_the_timer_counts_against_the_pass_budget(individual, monkeypatch, max_tasks):
+    """Lane Y's open item (Wave 2 reconciliation): with queue=True (the timer's service) a queued due refresh did not
+    reduce the pass's budget, so curiosity could queue max_tasks more in the same pass. Every task the pass queues
+    counts once: a refresh, then curiosity only while budget is left."""
+    from neuroscifi.webcortex import autonomy, curiosity
+    from test_background import ranked
+    db, _ = individual
+    items = ((1, "ostra basin area", "The Ostra basin covers 9,400 square kilometres of lowland.", 0.5),
+             (2, "varnel river length", "The Varnel River is 412 kilometres long and drains the Ostra basin.", 0.3))
+    with store.write(db):
+        for kid, key, statement, _ in items:
+            db.execute("INSERT INTO web_knowledge(id,key,version,statement,status,confidence,uncertainty,"
+                       "freshness_class,first_verified_at,last_verified_at,created_at,updated_at) "
+                       "VALUES(?,?,1,?,'provisional',0.6,0.2,'stable',1,1,1,1)", (kid, key, statement))
+    monkeypatch.setattr(curiosity, "rank", ranked(*items))
+    refresh = [{"prediction_id": 1, "action": "refresh_submitted", "task_id": "refresh-task", "knowledge_id": 99}]
+    monkeypatch.setattr(predictions, "check_due", lambda *a, **k: refresh)
+    autonomy.enable(db, T0)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=max_tasks)
+    origins = [q["origin"] for q in report["queued"]]
+    assert origins == ["refresh"] + ["curiosity"] * (max_tasks - 1)
+    assert any(s.get("reason") == f"max_tasks {max_tasks} reached" for s in report["skipped"])
