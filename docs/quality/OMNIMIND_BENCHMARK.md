@@ -223,3 +223,32 @@ Only a refusal is right; "cannot" is safe but abstained; any answer is wrong.
   files; these files have no such parts.
 - The today driver's mapping of a file to a web response is a modelling choice: today's system has no file intake
   at all, so its numbers say what its existing extractors would do if handed these bytes.
+
+## The withheld split as written (lane ZW)
+
+Written by lane ZW without reading any product code; counts and rules only here. Nobody else opens a
+`withheld_*.py` file or `tests/acceptance/test_omni_withheld_cases.py`.
+
+- `acceptance/omni/withheld_cases.py`: the seven families' withheld tables, 172 cases with seeds from 9100-9599, none
+  of whose names, files or parameters repeat development or held-out. Tasks: intake 358, honest 55, unknown 111
+  (22 disguised cases, 12 truly unknown), compound 66, hostile 35, made 16, transform 11 (652 in all). Abstention
+  floor: honest 20, unknown 21, hostile 35. Of the 35 hostile tasks, 8 are constructions of classes that neither
+  development nor held-out has; the rest are new constructions of their classes.
+- Truths are known by construction and re-derived in `test_omni_withheld_cases.py` by the independent oracle, the
+  header parsers, the reference maker and the reference transforms of the earlier tests; every family's generated
+  identity (task count and digest) is pinned there.
+- **The look.** `scripts/bench_omni.py final --family F|all --subject S --note TEXT --out FILE [--scratch DIR]` is the
+  only way to score it (`acceptance/omni/final.py` is the only code that imports a withheld module, inside its
+  functions; `tests/acceptance/test_omni_final.py` checks the import statements of every source, script and test).
+  It refuses a missing or blank note, an `--out` inside the checkout or not writable, another tree's source, a dirty
+  or uncommitted tree (`git status --porcelain --untracked-files=all`, the ledger excepted) and a withheld file whose
+  SHA-256 is not the one pinned in `final.py` (and in the test). Then it appends one line per family to
+  `docs/quality/evidence/omnimind_final_uses.jsonl` (time, commit, family, subject, note, script, withheld file and
+  its SHA-256) BEFORE it imports or scores anything, so a look that crashes still counts; its output is summaries
+  only (no task ids, no case names). `run --split withheld` is refused.
+- This supersedes two details of the rules above: the ledger is `omnimind_final_uses.jsonl` (not
+  `omnimind_withheld_uses.jsonl`), and `bench_omni.py` now has the `final` subcommand that rule 2 said it lacked.
+  The rest stands: one look per mechanism, by the main session, at the end, after a pass rule is committed.
+- The ledger's first lines are lane ZW's machinery check, every one noted "machinery check: references only": the
+  unchanged system (`today`) on the seven families and the references of the forms, cross and learn families. No
+  product subject has looked.

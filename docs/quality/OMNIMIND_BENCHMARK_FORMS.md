@@ -270,3 +270,38 @@ seldom give feedback at all. The people, their habits and their reaction rates a
   measure of intelligence, creativity or understanding.
 - `today` in `forms` and `learn` is a stand-in for the unchanged system (it has no form choice: it always answers in
   sentences); in `cross` it is literal (there is no such function).
+
+## The withheld split (lane ZW)
+
+Written by lane ZW without reading any product code, one case at a time; counts and rules only here. Nobody else
+opens `withheld_forms.py`, `withheld_cross.py`, `withheld_learn.py` or `tests/acceptance/test_omni_withheld_cases.py`.
+
+| forms (withheld) | |
+|---|---|
+| cases | 150 |
+| prose or spoken is good / prose alone is good | 78 (52%) / 66 (44%) |
+| cue pairs (same words, different content, disjoint good sets) / twins (same content and context, different words) | 40 / 25 |
+| explicit requests (infeasible / asking for less) | 12 (5 / 3) |
+| accessibility (screen reader / voice only / reduced motion / no sound) / tight budgets | 18 / 7 / 5 / 3 / 18 |
+| cases with a budget or access need under which the content's obvious form (the shape-only reference's) is a violation | 42 |
+| cases whose `purpose` word appears in no development or held-out case | 17 (16 words) |
+| devices console / pocket / voice / cli / agent | 72 / 62 / 5 / 7 / 4 |
+| content kinds | all 18 |
+
+No request equals or nearly equals (token Jaccard 0.4 or more) a development or held-out request, no pair reuses an
+earlier pair's cue words, and no number in a request appears in an earlier request (`test_omni_withheld_cases.py`
+checks all three). Cue-word purity over the withheld requests (words in at least six of them) stays below 0.9.
+
+- `cross`: 39 pairs (78 cases), each kind of the earlier splits plus 3 kinds of pairing they do not have; truths are
+  re-derived from the bytes, and the twins differ in exactly one value. `learn`: 6 SIMULATED people whose preference
+  maps no earlier person has, 10 seeds from the withheld range, the same cycles and reaction model.
+- **The look.** `scripts/bench_omni_forms.py final --family forms|cross|learn --subject S --note TEXT --out FILE`, with
+  the same refusals, ledger (`docs/quality/evidence/omnimind_final_uses.jsonl`, one line per family before anything
+  is loaded) and summaries-only output as `bench_omni.py final` (OMNIMIND_BENCHMARK.md, "The withheld split as
+  written"); a reference subject must exist in every family named, and a product subject is looked at one family at a
+  time. `run --split withheld` is refused. The measures are the families' own (`forms.label` and the slices and pair
+  counts, the cross blocks by kind, the learn kept shares), plus the withheld-only slices "purpose given" and "kinds
+  only in this split".
+- One look per mechanism, by the main session, at the end, after a pass rule is committed. The ledger's first lines
+  are lane ZW's machinery check with the references only; the forms file was reworded once, before any product look,
+  so four of those lines name its earlier digest.
