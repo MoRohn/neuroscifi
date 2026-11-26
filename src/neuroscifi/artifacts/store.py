@@ -24,8 +24,11 @@ Rules
   `artifact_max_bytes` before anything is allocated beyond it; over a cap is a named refusal, never a partial write.
   The write regulator's free-space reserve applies (instance store.require_write_allowed) and the free space must
   also hold the file. Decoding runs under `Limits` derived from the settings. A decoder that fails or knows nothing of
-  the format still leaves the artifact stored with what was established (the owner gave it); a SAFETY refusal
-  (`Refused`: pickle, nesting, resources) stores nothing.
+  the format still leaves the artifact stored with what was established (the owner gave it), and so does a decode a
+  SIZE bound stopped (`Refused` with reason "too_large": a recording or picture too large to decode within
+  `max_decoded_bytes`, an archive member past its ratio; the bytes are within the owner's own `artifact_max_bytes`
+  and are never expanded beyond the limits); any other SAFETY refusal (`Refused`: pickle, a polyglot, a DTD, nesting,
+  resources) stores nothing.
 - The text layer passes `webcortex.safety.scan_injection`; a flagged artifact is stored and marked `flagged`, and
   `text_for_model` refuses its text: the gate a later wave that shows artifact text to a model must go through.
 - Made artifacts (`add_made`) have origin 'made', a maker (generator@version), their spec as the editable source and
@@ -441,8 +444,10 @@ def _decode(data: bytes, *, name, declared, lim: Limits):
     try:
         try:
             return adapters.decode(data, name=name, declared=declared, limits=lim), None, gaps
-        except Refused:
-            raise
+        except Refused as error:
+            if error.reason != "too_large":
+                raise
+            return None, {"reason": error.reason, "rule": error.rule, "message": str(error)[:300], "needs": []}, gaps
         except ArtifactError as error:
             record = {"reason": error.reason, "message": str(error)[:300],
                       "needs": list(getattr(error, "needs", ()))[:16]}
@@ -547,7 +552,7 @@ def _count_gaps(db, gaps, now):
 
 
 def _store(db, data: bytes, *, label, origin, maker, scope, name_hint, declared, now, extra_index=None,
-           extra_layers=(), links=(), action="added") -> ArtifactRecord:
+           extra_layers=(), links=(), action="added", media_type=None) -> ArtifactRecord:
     from ..instance import store
     cfg = store.config(db)
     if len(data) > cfg.artifact_max_bytes:
@@ -586,7 +591,8 @@ def _store(db, data: bytes, *, label, origin, maker, scope, name_hint, declared,
                         raise NotHeld("a source artifact is not held (forgotten meanwhile?)")
                 db.execute(f"INSERT INTO artifacts({','.join(_COLUMNS)}) VALUES({','.join('?' * len(_COLUMNS))})",
                            (artifact_id, sha, len(data), detected.family, detected.format[:64],
-                            detected.media_type[:128], origin, maker, label, scope, int(injection["flagged"]), now,
+                            (media_type or detected.media_type)[:128], origin, maker, label, scope,
+                            int(injection["flagged"]), now,
                             "stored", index_text))
                 _event(db, artifact_id, action, now, sha=sha, size=len(data), kind=detected.format[:64])
                 for relation, dst in links:
@@ -662,6 +668,9 @@ def add_made(db, made, spec, sources=(), *, now=None) -> ArtifactRecord:
              "made_notes": [str(n)[:200] for n in tuple(getattr(made, "notes", ()))[:16]]}
     return _store(db, data, label=_label(spec.title or spec.spec), origin="made", maker=maker, scope="owner",
                   name_hint=None, declared=str(getattr(made, "media_type", "") or "") or None, now=now,
+                  # the generator's own media type is kept: detection cannot tell lane G2's explorable document
+                  # (application/vnd.neuroscifi.explorable+html, one pinned script) from a plain HTML page
+                  media_type=str(getattr(made, "media_type", "") or "") or None,
                   extra_index=extra, extra_layers=[("spec", text)], links=[("derived_from", s) for s in sources],
                   action="made")
 
@@ -802,13 +811,41 @@ def spec_of(db, artifact_id, *, viewer="owner") -> dict | None:
     return json.loads(text) if text else None
 
 
+# Extensions for media types whose usual extension is not the first one detection lists, or that detection does not
+# know (the made-artifact types of lanes G1 and G2).
+EXPORT_EXTENSIONS = {"application/vnd.neuroscifi.explorable+html": ".html", "text/html": ".html",
+                     "image/apng": ".png", "image/png": ".png", "image/jpeg": ".jpg", "image/svg+xml": ".svg",
+                     "audio/wav": ".wav", "audio/x-wav": ".wav", "model/stl": ".stl", "model/obj": ".obj",
+                     "text/plain": ".txt", "text/markdown": ".md", "text/csv": ".csv", "application/json": ".json",
+                     "application/pdf": ".pdf", "application/zip": ".zip", "application/octet-stream": ".bin"}
+
+
+def extension_for(media_type: str) -> str:
+    """The file extension an exported artifact of this media type gets: the table above, else the first extension
+    detection maps to a format of that media type, else ".bin"."""
+    from .detect import EXTENSIONS, FORMATS
+    media = (media_type or "").split(";")[0].strip().lower()
+    if media in EXPORT_EXTENSIONS:
+        return EXPORT_EXTENSIONS[media]
+    for ext, fmt in EXTENSIONS.items():
+        if FORMATS.get(fmt, ("", ""))[1] == media:
+            return ext
+    return ".bin"
+
+
 def export(db, artifact_id, path, *, viewer="owner", now=None) -> dict:
     """Write the artifact's bytes to a NEW file at `path` (never overwrites), mode 0600, streamed in chunks and
-    published only once the hash matched."""
+    published only once the hash matched. A `path` that is an existing folder gets a file named by the artifact's
+    id; a name without an extension gets the one its media type has (`extension_for`): the explorable document's
+    vendor type exports as .html."""
     from ..instance import store
     now = _now(now)
     record = get(db, artifact_id, viewer=viewer)
     target = Path(path)
+    if target.is_dir() and not target.is_symlink():
+        target = target / (record.id + extension_for(record.media_type))
+    elif not target.suffix:
+        target = target.with_name(target.name + extension_for(record.media_type))
     if target.exists() or target.is_symlink():
         raise StoreRefused("export never overwrites: the target exists", rule="exists")
     if not target.parent.is_dir():
@@ -1495,7 +1532,8 @@ def after_restore(live_db, copy, dest, now) -> dict:
 
 __all__ = ["ArtifactRecord", "CHUNK", "DELETION_KIND", "GIVEN_LABEL", "INDEX_MAX_BYTES", "MADE_LABEL", "NotHeld",
            "RELATIONS", "RootScan", "Sidecar", "StoreRefused", "TEXT_MAX_BYTES", "add", "add_made",
-           "adapter_catalog", "after_restore", "apply_adapter_setting", "digest", "export", "facts", "facts_of",
+           "EXPORT_EXTENSIONS", "adapter_catalog", "after_restore", "apply_adapter_setting", "digest", "export",
+           "extension_for", "facts", "facts_of",
            "finish", "forget_artifact", "forget_found", "gaps", "get", "limits", "link", "listing", "present",
            "read_bytes", "read_forgotten", "reconcile", "replay", "scan_root", "show", "sidecar_path", "spec_of",
            "text_for_model"]
