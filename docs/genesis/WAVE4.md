@@ -5,7 +5,9 @@ took one look at them with the unchanged system; lanes D, E and S were merged on
 `97f7abc`, `23243b1`), wired together by the integration lane (`gen4-int`, `d4931c0`); two independent reviews read
 that tree (security, measurement); the fix lane (`gen4-fix`) acted on their findings under the main session's rulings
 and merged lane A (`9ba3263`); this record is written on `3032cf6`; the second fix round (`gen4-fix2`) acted on the
-reviews' second passes ("Reviews and fixes"). Sources: ADR-064 to ADR-067 in
+reviews' second passes ("Reviews and fixes"); both reviewers' third checks passed (`81474e5`); the main session's final
+validation ran on `81474e5` ("Validation"), and the two withheld looks were taken once each on `e812a8e`, after the
+rule for them ("The withheld looks"; written into this record by the record lane `gen4-rec`). Sources: ADR-064 to ADR-067 in
 [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md), the Wave 4 sections of
 [COGNITIVE_BENCHMARK.md](../quality/COGNITIVE_BENCHMARK.md), the evidence files named beside each number, the lanes'
 reports and the two reviews ("Reviews and fixes", below). Nothing here is a claim of consciousness, awareness or
@@ -43,7 +45,11 @@ COGNITIVE_BENCHMARK.md).
   value hiding a fresh one (fixed in the second fix round). It **stays off**, with limits that remain: its value
   normaliser undoes exactly the reformats the worlds' generator writes, and every world page is dated, so the false
   rejection of undated honest pages is not measured at all; its "effective" verdict holds at zero margin in one
-  held-out world.
+  held-out world. **On the withheld worlds** (one look, "The withheld looks") it again reads "effective", but on a
+  base of TWO events: as shipped, 2 of the individual's own answers became knowledge there; the rule stopped one of
+  them, and Wave 3's older `echo_recognition` stopped both, each at the cost of 14 honest pages set aside. The hole
+  itself is untouched by either: 110 rows admitted below the bar as shipped (26 of them false), 108 with the new rule,
+  107 with the older one. The new rule is not shown to be better than the older one. Both stay off.
 - **Dividing the day's allowance** between refreshing and reaching (`allowance_division`, lane A, ADR-064) shows no
   gain beyond the spread in any held-out world and is "unsafe" or "harm" under the rule written before the run; it
   stays off. Tracing why its runs were noisy found **two tie-breaks in the product that followed random task ids**,
@@ -52,6 +58,12 @@ COGNITIVE_BENCHMARK.md).
   spread in W2" is not established**; W3 (+0.052 against 0.035, margin 0.017, only 0.002 more than that swing) is
   not shown to fail and not established (not verifiable without the withheld worlds); W1 (+0.013) was within its
   spread either way. Wave 3's "beyond the spread in two worlds" becomes "in one at most, W3, unverified".
+  *Correction, 2026-11-26 (record lane, after the withheld look; the sentences above are kept as they were).* The
+  withheld look re-ran Wave 3's four configurations with the tie-breaks fixed: all six of Wave 3's figures reproduce
+  to three decimals (`idle-first` +0.013 / +0.042 / +0.052, `shipped+idle` +0.006 / +0.035 / +0.024). So `idle-first`
+  is **reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a small margin
+  in W2; it cannot be promoted and remains below the blind schedule** (0.478 / 0.328 / 0.376 against 0.636 / 0.541 /
+  0.537). `shipped+idle` is within the spread in all three worlds.
 
 **What ships and changes behaviour at the shipped defaults:**
 - **Damaged saved settings fail closed and say how to repair them.** Every saved web, instance and voice setting is
@@ -79,6 +91,16 @@ COGNITIVE_BENCHMARK.md).
 - Built and off, each the owner's opt-in: `source_derivation` (not recommended), `own_text_provenance`,
   `allowance_division` (`"race"`), and `caution_detail` (shows two more caution triggers that the measurement found
   misleading about three times in ten).
+
+**The withheld looks** (taken once each on `e812a8e`, ledger lines 9 and 10; "The withheld looks"). On unseen source
+worlds `shipped` reproduces step 0's look exactly (0 differences), so the look is valid; both own-text rules read
+"effective" on a base of two own answers admitted, the hole stays as large (110 → 108 and 107 rows below the bar;
+129 → 128 of 356 true values not held), and nothing changes. On Wave 3's withheld learning-cycle worlds, the idle
+investigation's figures reproduce Wave 3's exactly, now from code that is repeatable; nothing changes.
+
+**Validation** (the main session, on `81474e5`): the quality gate passed (6,397 tests passed, 22 skipped), the browser
+suite 216 passed, acceptance 7 of 7, the guard differential 0 different, two accounts 55 of 55, the offline digest
+unchanged at the defaults and with everything off ("Validation").
 
 **The hole stays open at the shipped defaults.** No default that decides what counts as a source changed in Wave 4.
 
@@ -150,7 +172,7 @@ against the oracle's 0.610 and 0.657, dependent confidence rises 0. It decided n
 
 No schema change (version 19), no migration, no new background activity, no dependency. New evidence: about 2.0 MB
 in the eleven files above, plus the look's 234 kB; the harnesses now write summaries, so Wave 3's 45 MB did not
-repeat.
+repeat. The final looks added three more ("The withheld looks"): 377 kB, 428 kB and the 5 kB analysis.
 
 ### 1.1 Lane S: `source_derivation` (ADR-066)
 
@@ -340,7 +362,12 @@ re-run here): `idle-first` W2 +0.042 against its spread 0.039, a margin of 0.003
 swing, which comes from only the 4 public worlds that varied at all (a single seed swung by 0.056): not shown to fail,
 not established, unverified on those worlds (review4 measurement, second pass; WAVE3.md says "likely stands", stronger
 than this; FINAL_EVALUATION.md's merged correction said "holds" and was corrected in the second fix round); `shipped+idle` did not vary anywhere. The
-correction is written into WAVE3.md, FINAL_EVALUATION.md and COGNITIVE_BENCHMARK.md. It does not explain Wave 3's
+correction is written into WAVE3.md, FINAL_EVALUATION.md and COGNITIVE_BENCHMARK.md. *Correction, 2026-11-26 (record
+lane, after Wave 4's withheld look; the sentences above are kept).* The look re-ran `baseline`, `idle-first`,
+`shipped` and `shipped+idle` on those worlds with the tie-breaks fixed, and every one of Wave 3's six figures
+reproduces to three decimals. `idle-first` is therefore reproduced on a repeatable run, beyond the spread by 0.003 in
+W2 and 0.017 in W3 on four seeds (a small margin in W2); it cannot be promoted and remains below the blind schedule
+("The withheld looks", look 2). It does not explain Wave 3's
 untraced seed-2704 move. Not compared field by field after the fix: the views and the family that read
 `curiosity.rank` and `search_terms` at the defaults (the console overview's curiosity list, `nsf web curiosity`, the
 cognitive benchmark's `infovalue` family; covered only by `nsf acceptance --all`'s pass); where claims tie on their
@@ -394,7 +421,8 @@ time, they now show the claim stored last.
 
 - **Indirect import.** Importing `neuroscifi.acceptance.cognition`, as every harness does, imports `withheld.py`;
   nothing of it is used. No lane, reviewer or this documentation lane opened, printed or ran a withheld file or passed
-  `--final` / ran a `final` subcommand, except step 0's one look (ledger line 8).
+  `--final` / ran a `final` subcommand, except step 0's one look (ledger line 8) and the main session's two looks at
+  the end (ledger lines 9 and 10, "The withheld looks").
 - **Bytes hashed.** `tests/acceptance/test_sources_bench.py`'s frozen-files test hashes `sources_withheld.py`'s bytes;
   lane S ran that file whole three times, the integration lane once (nothing read or printed).
 - **Collected.** Step 0's first full-suite run started without deselecting the two withheld-byte tests and was
@@ -414,6 +442,18 @@ time, they now show the claim stored last.
   the repeatability file).
 - **This record's reads.** The documentation lane read the ledger's `commit`, `dirty` and `at` fields only, and listed
   the evidence directory with withheld names filtered out; the step-0 look's figures above are COGNITIVE_BENCHMARK.md's.
+  The record lane (`gen4-rec`, which wrote the looks and the validation in) read, by the one exception its brief
+  granted, `genesis_wave4_look_analysis.json` (the main session's reading of both looks by the rule), and of the
+  ledger the `commit`, `dirty` and `at` fields of every line and the `configurations`, `mechanism`, `ablate` and
+  `families` fields of lines 9 and 10. It did not open `genesis_wave4_look_sources.json`,
+  `genesis_wave4_look_cycles.json`, any older look file or any withheld file, and ran no `final`. It saw the first
+  lines of `scripts/analyse_wave4_looks.py` that open files (a search for `open` and `json`), which name the look's
+  output and step 0's withheld baseline; it did not run it. The numbers of the looks below are the analysis file's
+  and the main session's; the validation's are the main session's (not re-run here).
+- **The looks' tree and the validation's tree.** The validation ran on `81474e5`; the looks on `e812a8e`, which
+  changed this document only. The commit that records the looks (`4a4686c`) adds the two ledger lines, the three look
+  files and `scripts/analyse_wave4_looks.py` (58 lines), which no validation run covers (`ruff check .` passes on
+  this record's tree).
 
 ## Reviews and fixes
 
@@ -538,6 +578,34 @@ comparisons (worlds and scenarios 2,038,936, offline 13,163), 0 different; the o
 `68731d7235cb…` (portable `d87dbb4fb77f…`) at the defaults and with every setting off; the comparison's power probe
 0 / 619 / 640 of 1,768; the guard differential 0 different (1,937 compared).
 
+**Third checks** (the same two reviewers, read-only, on `81474e5`; neither ran the test suite or a benchmark, since
+the final validation was running in that checkout; no withheld file opened; `review4/findings-security-3.md`,
+`review4/findings-measure-3.md`).
+
+Security, on the second fix round: the expiry hiding a fresh emission **fixed** (the second pass's probe re-run:
+2 echoes recognised on day 42, where it had found 0); `--forget-own-text` undone by a restore **fixed** (a new probe
+through the command's own path: the removal recorded in `deletion_log`, the checkpoint marked stale, an older archive
+restored holds 0 fingerprints, a newer one keeps its later emission), and the new row and stale marking open nothing
+(a row without a state version is replayed on every restore, which errs toward removing); `--repair-fixed` **fixed,
+stated honestly** (any in-range value is still accepted, owner only, and that is said); an agent's refused call
+**fixed**, with one remainder at note level: a task paused mid-run writes the reason into its report, which an agent
+can read with `full_report` (a setting's name and the repair command, no secret; listed in "What stays open"); the
+warning when an unsupported rule is set on **fixed**. ADR-067's two wording items **met**; no remaining overstatement
+found in ADR-064 to ADR-067 or this document. **No new finding above note level. Merge: yes.**
+
+Measurement, on the wording corrections and the look rule: every wording item of the second pass **OK** (ADR-066's
+title, its power figures 0 / 619 / 640 and the default-path re-run; ADR-067's post-fix cost labelled, the zero margin,
+what "effective" now means, the H3 restrictions not exercised, the record for `wave4:both`; FINAL_EVALUATION.md's W3
+sentence; ADR-064's 0.09–0.26 scope, recomputed). The look rule: decided before the fact, no claim beyond the look,
+but **two corrections required before either look**. Look 1 named a count of echo questions the harness does not
+record, and the control's key set had to be named (step 0's keys only, plus `world_digests`; not `config_read_back`).
+Look 2 as first written ran `shipped+idle-first` against `shipped` but used `baseline`'s spread from step 0, so it
+would not have replaced Wave 3's figures like for like. Also: "the same worlds give the same result on every run" is
+measured on 18 public worlds, not on the withheld ones. **Looks may proceed once both corrections are committed.**
+Both were made by the main session in `e812a8e`, before either look (the echo-question count dropped and said so;
+the control's keys named; look 2 changed to Wave 3's own four configurations against Wave 3's references with this
+look's spread). This record holds no review of `e812a8e` itself.
+
 **What the reviews changed in this wave's conclusions.** The derivation rule's measured recall and its share of
 copies among flagged pairs are an upper bound set by the generator, and its suppression is partly the metric's; it is
 recorded as not supported. The own-text rule's "effective" says nothing about the case it exists for when the
@@ -616,13 +684,125 @@ division is in it: nothing was chosen on development (ADR-064), so nothing can b
   unseen worlds once the result is repeatable. It cannot make either a default: no held-out gain was shown for them
   (ADR-062), and Wave 3's look rule already said the look cannot promote them.
 
+## The withheld looks
+
+Taken once each by the main session on 2026-11-26, on the clean committed tree `e812a8e` (the rule above in its
+corrected form), after the final validation below, with the output outside the tree; one ledger line each in
+`docs/quality/evidence/genesis_final_uses.jsonl`: line 9 (sources) and line 10 (learning cycles), both
+`"dirty": false` at `e812a8e`; recorded in `4a4686c`. Nothing was tuned or re-run afterwards. Evidence:
+`genesis_wave4_look_sources.json` (377 kB) and `genesis_wave4_look_cycles.json` (428 kB), which name the withheld
+worlds and, like every look file, are opened by no lane; `genesis_wave4_look_analysis.json` (5 kB), the main
+session's reading of both looks by the rule above, from which every number here is taken. Worlds are named here by
+letter (look 1) or by their order in the file (look 2), not by name. **No setting changes: every Wave 4 rule stays
+OFF, and turning one on is the owner's decision.**
+
+### Look 1: source independence (ledger line 9)
+
+Two withheld worlds (A, B), seeds 8501–8504: 576 looks, 1,831 pages, 356 eligible true values. Configurations
+`shipped`, `own_text_provenance`, `echo_recognition` and the four references from the graph alone (`oracle`,
+`every_page`, `same_value`, `todays_rule`).
+
+**Control: the look is valid.** `shipped` reproduces step 0's withheld baseline (ledger line 8) in every compared
+key: the world digests of both worlds, and per world the 18 keys of `totals_sum` (step 0's sixteen counts with
+`precision` and `recall`) and the 5 values of `mean_correct`: **0 differences**.
+
+Summed over both worlds and four seeds; per world (A / B) where it differs:
+
+| | `shipped` | `own_text_provenance` (Wave 4) | `echo_recognition` (Wave 3), beside it |
+|---|---|---|---|
+| own answers admitted | 2 (0 / 2) | 1 (0 / 1) | 0 (0 / 0) |
+| wrongly admitted (below the bar of 2 roots) | 110 (54 / 56), 26 of them false | 108 (54 / 54) | 107 (54 / 53) |
+| eligible true values not held, of 356 | 129 (56 / 73) | 128 (56 / 72) | 128 (56 / 72) |
+| honest pages set aside | 0 | 14 (4 / 10) | 14 (4 / 10) |
+| echo pages set aside | 0 | 12 (4 / 8) | 15 (4 / 11) |
+| grouping `tp`, `fp`, `fn` | 281, 68, 984 | unchanged | unchanged |
+| `mean_correct` (A / B; `shipped`'s sd) | 0.535 (0.042) / 0.489 (0.062) | 0.535 / 0.493 | 0.535 / 0.493 |
+| verdict under `sources.own_verdict` | — | **"effective"** (A1, A2, S1, C1, G all hold) | **"effective"** (all hold) |
+
+How many of the 108 and 107 rows are false is not in the analysis file. Of the 129 values not held as shipped, 66
+are on contested looks.
+
+**What it means, read honestly.**
+- The verdict word "effective" rests on a base of **two** events: as shipped, 2 of the individual's own answers
+  became knowledge on these worlds, both in world B. The new rule stopped one of them; Wave 3's older rule stopped
+  both. Each did so at the cost of **14 honest pages set aside** (4 in A, 10 in B); the count of true values not
+  held did not rise for it here (129 → 128 with either).
+- **The hole itself is untouched by either rule**: 110 rows admitted below the bar as shipped (26 of them false), 108
+  with the new rule, 107 with the older one; 129 of 356 well-supported true values not held, 128 with either.
+- In world A neither rule changed any count or `correct`; the 4 honest and 4 echo pages each set aside there moved
+  nothing measured.
+- **The new rule is not shown to be better than the older one**: on these worlds the older one did as much or more
+  (own answers 0 against 1, wrongly admitted 107 against 108, the same 14 honest pages).
+- Not reported: the owner's question load. The harness does not record how many disagreement questions were asked
+  (the rule says so).
+- Not exercised by these worlds, so established by no verdict (the rule's list, repeated beside the verdict): answers
+  that only mention or deny a value (9 of 18 further owner phrasings still record), undated pages, a page author who
+  edits the echo to escape or to suppress, answers given to a family device or an agent, and the 30-day lifetime (a
+  cycle is 24 hours). An "effective" here does NOT mean the rule is safe to turn on.
+- **Nothing changes**: `own_text_provenance` and `echo_recognition` both stay off. `source_derivation` and `wave4:both`
+  were not looked at (the rule says why).
+
+### Look 2: learning cycles, for the record of Wave 3 (ledger line 10)
+
+Wave 3's three withheld learning-cycle worlds (W1, W2, W3 in file order), four seeds, the four configurations of
+Wave 3's own comparisons (`baseline`, `idle-first`, `shipped`, `shipped+idle`), with the tie-breaks fixed.
+
+**Precondition.** The references' mean `mean.correct` (`baseline` and `shipped` alike: 0.465 / 0.286 / 0.323) equals
+Wave 3's to three decimals, and `baseline`'s sd over this look's four seeds (0.064 / 0.039 / 0.035) equals step 0's
+to three decimals. The blind schedule computed from the worlds alone is 0.636 / 0.541 / 0.537, as in Wave 3. Per
+seed, the references were not compared with Wave 3's file here (the analysis file holds the means).
+
+Mean paired difference of `mean.correct`, same world and seed, over four seeds; "beyond" means it exceeds the sd of
+the reference over this look's own four seeds on that world.
+
+| | W1 | W2 | W3 |
+|---|---|---|---|
+| reference (`baseline` = `shipped`), mean; sd in this look | 0.465; 0.064 | 0.286; 0.039 | 0.323; 0.035 |
+| **`idle-first` − `baseline`** | **+0.013**: within | **+0.042**: beyond by 0.003 | **+0.052**: beyond by 0.017 |
+| per seed | +0.0348, +0.0014, +0.0412, −0.0256 | −0.0143, +0.0831, +0.0429, +0.0568 | +0.0191, +0.0547, +0.0640, +0.0706 |
+| **`shipped+idle` − `shipped`** | **+0.006**: within | **+0.035**: within | **+0.024**: within |
+| per seed | +0.0043, +0.0022, +0.0164, 0 | 0, +0.0380, +0.0357, +0.0665 | 0, +0.0494, +0.0418, +0.0044 |
+| Wave 3's single runs (`idle-first`; `shipped+idle`) | +0.013; +0.006 | +0.042; +0.035 | +0.052; +0.024 |
+| `idle-first`'s mean `correct` | 0.478 | 0.328 | 0.376 (0.3755) |
+| blind round-robin, same allowance (from the world alone) | 0.636 | 0.541 | 0.537 |
+
+**What it means.**
+- **All six gains equal Wave 3's figures to three decimals**, and so does each world's count of seeds better. On
+  these worlds the ties that followed random task ids did not move the result: **Wave 3's figures stand**, now from
+  code whose runs were repeatable on the 18 public worlds measured (ADR-064); this look itself was taken once.
+- **`idle-first`: reproduced on a repeatable run; beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a
+  small margin in W2; it cannot be promoted and remains below the blind schedule.** One seed is negative in W1 and
+  one in W2; W1 is within its spread.
+- **`shipped+idle`**: within the spread in all three worlds.
+- **Still far below the blind schedule**: `idle-first` reaches 0.478 / 0.328 / 0.376 against 0.636 / 0.541 / 0.537.
+- This replaces lane A's correction (W2 "not established", W3 "not shown to fail, not established"), which rested on
+  the swing measured on public worlds; those sentences are kept, with a dated correction, in WAVE3.md,
+  FINAL_EVALUATION.md, COGNITIVE_BENCHMARK.md, RECURSIVE_KNOWLEDGE_ASSESSMENT.md, ADR-064 and §1.4 above.
+- **Nothing changes**: neither is a default, and the look cannot make one (no held-out gain, ADR-062).
+
 ## Validation
 
-*Placeholder: the main session's final runs on the final tree (quality gate, browser suite, acceptance, sentence
-guard, two accounts, offline digest in both regimes, the default-path comparison, the cognitive benchmark) are
-recorded here.*
+Run by the main session on `81474e5` (the commit that adds the rule for the looks), 2026-11-26, on this host (shared
+with other work; nothing below is a measurement of the DGX Spark, the open web or a live answer model). The two later
+commits changed documents, the ledger and three evidence files, and added `scripts/analyse_wave4_looks.py`, which no
+run below covers (§3). The code under test is the second fix round's (`c921e9e`; every commit since then to
+`81474e5` changed documents only).
 
-For reference only, not the final validation: the fix lane's runs on its tree (lane-fix report): `ruff check .`
+| Check | Result |
+|---|---|
+| Quality gate (`bash scripts/check.sh`: ruff, the non-e2e suite, the JS checks, the numerical reproduction) | ALL CHECKS PASSED: ruff clean; 6,397 passed, 22 skipped, 35 subtests, in 1,306 s; the JS checks; reproduce verified |
+| Browser suite (`scripts/e2e.sh`) | 216 passed, 1 skipped, in 1,031 s |
+| `nsf acceptance --all` | pass, 7 of 7 scenarios |
+| Sentence guard (`scripts/guard_differential.py compare`) | 1,937 compared: 1,688 identical, 232 stricter, 17 loosened, 0 different |
+| Two accounts (`scripts/two_account_check.py`) | 55 of 55 |
+| Offline research benchmark, as shipped and with every setting off | `68731d7235cb…` (portable `d87dbb4fb77f…`) both |
+| Cognitive benchmark (`scripts/bench_cognition.py run`), development and held-out | completed (its counts are not restated in this record) |
+| The default path of `claims.py` (`scripts/compare_source_derivation.py`) | not re-run in the final validation: the second fix round's run on its code, 2,052,099 comparisons, 0 different |
+
+Not run here: anything on the open web, a live answer model, real hardware, a real second account, or a week on the
+host.
+
+**Earlier runs** (not the final validation), kept for reference: the fix lane's runs on its tree (lane-fix report): `ruff check .`
 clean; `tests/instance` 905 passed; `tests/webcortex` 2,481 passed, 9 skipped; the full non-e2e suite (withheld
 cycle file ignored) on `9954c59` 6,381 passed, 22 skipped, 1 failed (Wave 3's echo case, updated in `3032cf6`, its
 file then 26 passed; the whole suite was not re-run); `node tests/js/*.mjs` 7 of 7; `scripts/reproduce.py` 8 of 8;
@@ -633,7 +813,8 @@ defaults and all off; the default-path comparison 2,052,099, 0 different; the ca
 
 - **Source independence and the individual's own text** (Wave 3's hole): open at the shipped defaults. On unseen
   source worlds the unchanged system admits 110 rows below the bar and does not hold 129 of 356 well-supported true
-  values (step 0's look). N1 (a page naming two honest outlets as its origins joins them) is unchanged.
+  values (step 0's look, reproduced exactly by the final look); with either own-text rule on, 108 or 107 rows and 128
+  values. N1 (a page naming two honest outlets as its origins joins them) is unchanged.
 - **The derivation rule**: these worlds lack the evidence that would separate a copy from an honest credit. Worlds
   that could need, drawn independently of any rule's author (review4 measurement Q2): copy lags, an honest outlet's
   own specifics, errors inherited by copies, links (to origins and to primary sources), honest outlets crediting a
@@ -647,7 +828,9 @@ defaults and all off; the default-path comparison 2,052,099, 0 different; the ca
   records nothing more; echoes of sourced answers; the false rejection of a value stated wrong first; backdated
   pages; `nsf ask` and voice conversation not recorded; its emission scan is linear in claims (at a few million it
   would hit its 1 s budget and the rule would silently do nothing; extrapolated by the security review, not measured);
-  the real rate of unsourced answers is unknown.
+  the real rate of unsourced answers is unknown. Its withheld look reads "effective" on a base of two own answers
+  admitted (2 → 1, against Wave 3's `echo_recognition` 2 → 0, each with 14 honest pages set aside): it is not shown to
+  be better than the older rule, and how many questions it asks the owner is not recorded by the harness.
 - **`wave4:both`**: no verdict rule written for the pair; not claimed.
 - **Settings**: `nsf config --repair-fixed` accepts any value the setting's own check accepts; the value chosen at
   creation is recorded nowhere once its row is damaged (the refusal and the repair now say so, and point to an archive
@@ -660,6 +843,9 @@ defaults and all off; the default-path comparison 2,052,099, 0 different; the ca
   the open-questions view's time at 50 questions with real answers is not measured.
 - **Coverage**: reaching runs out of admitted candidates; a share cannot add candidates. The real interleaving of the
   timer and the worker over a day is not simulated. Wave 3's `idle-first` W3 margin is inferred from public worlds.
+  *(Record lane, after the withheld look: no longer open. The look reproduced Wave 3's figures to three decimals on
+  repeatable code: beyond the spread by 0.003 in W2 and 0.017 in W3 on four seeds, a small margin in W2, below the
+  blind schedule.)*
 - **Settings**: an unreadable web row reads as all cautious, and if the owner then sets one setting the others'
   cautious values are saved; an unreadable instance row still raises; the cautious values are lane D's choices.
 - Seed 2704's move (WAVE3.md §3.8) stays untraced. Whether `forget_partner` / `forget_camera` should reach
@@ -675,15 +861,15 @@ NAME=VALUE`):
 | Decision | Today | Evidence for | Evidence against |
 |---|---|---|---|
 | `source_derivation` | off | fewer badly supported rows (127 → 99, held-out) | the signal is the generator's convention; more true values not held (142 → 207 of 612); `correct` −0.054 to −0.101; one page can merge honest outlets: **do not turn on** |
-| `own_text_provenance` | off | own answers admitted 4 → 1, 30 of 31 echoes of unsourced answers set aside; "effective" under its rule on both splits (at zero margin in one world) | a measured false rejection (14 of 2,670 honest pages set aside; suppressed 142 → 145 of 612); "effective" at zero margin in src-ho-mixed (one more false rejection makes it "trade"); mentions and denials still recorded in 9 of 18 phrasings; undated pages unmeasured; owner's answers only. The security second pass: no recommendation to turn it on while these stand |
-| `echo_recognition` (Wave 3) | off | "effective" under lane E's rule; supported on Wave 3's withheld look | phrase-based; 13 honest pages set aside on held-out; WAVE3.md |
+| `own_text_provenance` | off | own answers admitted 4 → 1, 30 of 31 echoes of unsourced answers set aside; "effective" under its rule on both splits (at zero margin in one world); "effective" on the withheld look, on a base of two (2 → 1) | a measured false rejection (14 of 2,670 honest pages set aside; suppressed 142 → 145 of 612); "effective" at zero margin in src-ho-mixed (one more false rejection makes it "trade"); mentions and denials still recorded in 9 of 18 phrasings; undated pages unmeasured; owner's answers only. The security second pass: no recommendation to turn it on while these stand. The withheld look: 14 honest pages set aside, the hole untouched (110 → 108), not shown better than `echo_recognition` |
+| `echo_recognition` (Wave 3) | off | "effective" under lane E's rule; supported on Wave 3's withheld look; "effective" on Wave 4's withheld source look (own answers 2 → 0, wrongly admitted 110 → 107) | phrase-based; 13 honest pages set aside on held-out, 14 on Wave 4's withheld look; WAVE3.md |
 | `allowance_division` | `"race"` | per look reaching makes more subjects correct | no gain beyond the spread; "unsafe" / "harm" |
 | `caution_detail` | off | shows why pages were counted together and the own-answer flag | wrong about three times in ten on the worlds measured |
 | Wave 3's settings | unchanged | WAVE3.md, FINAL_EVALUATION.md §5 | |
 
 For the main session: whether the assertion reader's remaining mention forms (3 of 18; 9 of another 18) are acceptable, or the
 "record only sourced assertions" fallback (which would make the rule never fire); which configurations the withheld
-look runs; the evidence-files proposal (keep, lane D).
+look runs (decided: "The rule for the withheld look"; taken); the evidence-files proposal (keep, lane D).
 
 ## Backing each piece out
 
