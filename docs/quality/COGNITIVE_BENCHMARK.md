@@ -718,3 +718,29 @@ Y", not "claimed", "commented", "noted", "observed", "explained", "pointed out",
 on", "contributed", "HT", "said" lists or datelines, and no credit to the project itself ("According to the X
 release notes", "the X project said": 80 of 80 such pages of the development worlds give no key, so release-page citation is unseen); it reads the model credits "According to ChatGPT" and "ChatGPT
 said" as an outlet named ChatGPT. Every page of every form yielded a claim through the real extractor.
+
+### The unchanged system's one look (Wave 4 step 0)
+
+Taken once, on the clean tree `d10927f`, after the look rule above (`cd99288`), by `scripts/bench_sources.py final`
+with `shipped` and the four references; ledger line 8 of `genesis_final_uses.jsonl` (family `sources_withheld`),
+written before anything was loaded; 4.7 s. Evidence `docs/quality/evidence/genesis_sources_withheld_baseline.json`
+(234 kB; per world, seed and shape; for the main session only, as it names the withheld shapes). The read-back is the
+shipped defaults with `enabled` true in both worlds and every seed (`config_same_every_seed` true): the look is not
+void. Nothing was tuned before or after; the look decides nothing.
+
+Summed over 4 seeds per world (72 looks per run); shipped / oracle / todays_rule / every_page / same_value:
+
+| | wh-a | wh-b |
+|---|---|---|
+| wrongly admitted (of them false now) | 54 (12) / 0 / 90 (41) / 105 (51) / 0 | 56 (14) / 0 / 119 (66) / 140 (78) / 0 |
+| own answers admitted | 0 / 0 / 1 / 4 / 0 | 2 / 0 / 5 / 6 / 0 |
+| suppressed of eligible (shipped: of them contested) | 56 of 192 (25) / 5 / 30 / 19 / 175 | 73 of 164 (41) / 1 / 53 / 32 / 154 |
+| grouping precision, recall (shipped) | 0.75, 0.19 | 0.84, 0.25 |
+| `correct`: shipped mean ± sd / references | 0.535 ± 0.042 / 0.610 / 0.605 / 0.640 / 0.052 | 0.489 ± 0.062 / 0.657 / 0.519 / 0.600 / 0.052 |
+| confidence raised by dependent pages (shipped) | 0 | 0 |
+
+Reading: on worlds no rule was written for, the shipped system admits 110 knowledge rows whose independent first-hand
+support was below the bar (26 of them false now), 2 of them own answers, and does not hold 129 of 356 true values that
+had enough support (66 of those looks opened a contradiction question); it joins about a fifth of truly same-source
+page pairs. Its `correct` is 0.08 and 0.17 below the oracle's. Wrongly admitted content is of the held-out order (127
+over three worlds there); suppression is higher (29 % and 45 % of eligible looks, against 23 % on held-out).
