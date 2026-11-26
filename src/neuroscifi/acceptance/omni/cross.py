@@ -325,7 +325,7 @@ def _mesh(shape, w, d, h):
 
 def _mesh_bbox(k, rng, matching, change):
     w, d, h = k["size"]
-    ox, oy, oz = k["origin"]
+    ox, oy, oz = k["corner"]
     verts, faces = _mesh(k["shape"], w, d, h)
     verts = [[x + ox, y + oy, z + oz] for x, y, z in verts]
     stated_size = [w, d, h]

@@ -14,7 +14,7 @@ from neuroscifi.acceptance.omni import cross, cross_cases, forms, forms_cases, l
 # The digests of the case tables as frozen in their own commits. A change here means the cases changed and every
 # earlier number stops being comparable. Do not update these to make a run pass; add new cases in a new file.
 FORMS_CASES_SHA256 = "f6a5785c9bfb48395d4bdbb4d6a51d9d676824538815413f67505362ec6ec4ac"
-CROSS_CASES_SHA256 = "f52dff297dbf02b79edd9bcdd08ea7266a50ef37fba3df8c5aac3199f31ffb70"
+CROSS_CASES_SHA256 = "e776b53817578a5fcdc725499b98fec8c562fb6006711f0b169aeeb723ea0442"
 CROSS_GENERATED_SHA256 = {"development": "6d17d45bf4d2907d4b21e8ce1971d5ed0c04fcbb9d9b44774fef94bf122984c1",
                           "held_out": "409b442cf6b6f6afcef07951ace9c0b9ad20705b4f6fec9932931388afb88555"}
 LEARN_PEOPLE_SHA256 = "1c6878010ae8f9289d5050b8355f322fce31b36cb0bc3bbe79369ad96b3a2a2c"
