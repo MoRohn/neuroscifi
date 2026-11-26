@@ -571,6 +571,28 @@ def test_the_look_configurations_read_back_as_named():
     assert seen["idle-first"]["idle_investigation"] == "before the pass"
 
 
+def test_the_look_command_passes_the_twelve_configurations_to_final(monkeypatch, tmp_path):
+    """`bench_learning_cycles.py final --look wave3` (the main session's command) hands cycles.final exactly
+    LOOKS["wave3"]; cycles.final is replaced here, so nothing is recorded or loaded."""
+    import importlib.util
+    from pathlib import Path
+    from neuroscifi.acceptance.cognition import cycles
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("blc_fix", root / "scripts" / "bench_learning_cycles.py")
+    bench = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bench)
+    seen = {}
+    monkeypatch.setattr(cycles, "final", lambda note, *, configs, mechanism: seen.update(
+        note=note, configs=configs, mechanism=mechanism) or {"configurations": {}})
+    assert bench.main(["final", "--look", "wave3", "--mechanism", "wave3", "--note", "a test",
+                       "--out", str(tmp_path / "out.json")]) == 0
+    known = cycles.configurations() | cycles.EXTRA
+    assert list(seen["configs"]) == list(cycles.LOOKS["wave3"]) and len(seen["configs"]) == 12
+    assert all(seen["configs"][k] == known[k] for k in seen["configs"]) and seen["mechanism"] == "wave3"
+    with pytest.raises(SystemExit):                     # --look and --config together are refused
+        bench.main(["final", "--look", "wave3", "--config", "baseline", "--note", "x", "--out", str(tmp_path / "o")])
+
+
 def test_the_new_counters_count_on_development_worlds():
     """On lane S's development world with both fixes off (the holes open), admitted wrong content is counted without a
     version convention; with the rule on, replacements are classified and a false one carries its persistence."""
