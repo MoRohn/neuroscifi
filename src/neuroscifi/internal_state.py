@@ -27,6 +27,7 @@ from __future__ import annotations
 from contextlib import closing
 import fcntl
 import json
+import logging
 import os
 from pathlib import Path
 import sqlite3
@@ -326,9 +327,12 @@ def record(db_path, now=None) -> dict | None:
 def record_quietly(db_path, now=None) -> None:
     """record(), never raising: a status reading must not stop the worker that takes it."""
     try:
-        record(db_path, now)
-    except Exception:          # noqa: BLE001 - telemetry only
-        pass
+        out = record(db_path, now)
+        if out is not None and not isinstance(out, dict):
+            raise TypeError(f"the sample is {type(out).__name__}, not a record")
+    except Exception as exc:   # noqa: BLE001 - telemetry only; logged (Wave 2 lane U: never silent)
+        logging.getLogger(__name__).warning("the internal-state sample was not recorded (%s)",
+                                            type(exc).__name__)
 
 
 FUTURE_SECONDS = 60.0         # a sample dated later than now + this is ignored

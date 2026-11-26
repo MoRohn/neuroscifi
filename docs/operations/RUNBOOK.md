@@ -401,6 +401,14 @@ Settings (owner only; carried by a restore; a damaged value reads as the behavio
 Every Wave 1 setting switched off gives Wave 0's behaviour (cognitive benchmark: 0 differences from the recorded
 baseline). How each piece is backed out: `docs/genesis/WAVE1.md`.
 
+Wave 2, the integration loop (ADR-056): `nsf self` shows, under `doing.cycle`, the latest background investigation
+and how it was admitted, the latest arbitrations between background mechanisms and the predictions settled so far.
+
+| Setting | Default | Turn on (or off) |
+|---|---|---|
+| arbitration record: when the re-check or a due refresh takes the subject the timer's curiosity wanted in the same pass, the winner's task records which mechanism lost and why | on (a record only) | `nsf web config --set arbitration_record=false` |
+| salience attention: of the candidates admission already admitted, the more salient is taken first (needs the salience record) | off | `nsf web config --set salience_attention=true` |
+
 ### Crashed worker
 
 Each lease records the worker's host digest, pid and process start time. On the same host a dead worker is detected at once: `cancel`, `resume` and `requeue` act immediately and the worker service picks the task up from its checkpoint without waiting for the 600 s lease to expire. Task JSON carries `worker_alive` (`true`, `false`, or `null` when no worker holds it or it runs on another host).

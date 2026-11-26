@@ -45,6 +45,7 @@ the one rule above (ADR-050); and the owner's quiet (background.py) holds both.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 import math
 import re
 
@@ -52,6 +53,8 @@ from ..instance import store
 from ..instance.errors import ValidationError
 from . import state
 from .types import TERMINAL_STATES
+
+log = logging.getLogger(__name__)
 
 META_KEY = "webcortex.autonomy"
 LIMIT_KEYS = ("searches", "pages", "seconds", "spend_usd")
@@ -592,7 +595,12 @@ def candidates(db, now, *, limit=10, offered=()) -> dict:
         p = evolution.recalibrate(stated, read["owner" if h["origin"] == "owner" else "hypothesis"])
         gain, gain_as_read, lp = curiosity.info_gain(stated), curiosity.info_gain(p), {}
         if lp_on and h["origin"] != "owner":     # ADR-051: learning progress, never on the owner's own records
-            factor, _, record = curiosity.progress(db, h["key"], gain, now)
+            try:        # Wave 2 lane U: a failing read leaves the gain as with the setting off, said and logged
+                factor, _, record = curiosity.progress(db, h["key"], gain, now)
+                factor = float(factor)
+            except Exception as exc:      # noqa: BLE001 - recorded with the candidate and logged, never silent
+                log.warning("learning progress of hypothesis #%s could not be read (%s)", hid, type(exc).__name__)
+                factor, record = 1.0, {"error": f"could not be read ({type(exc).__name__})"}
             gain, gain_as_read, lp = gain * factor, gain_as_read * factor, {"learning_progress": record}
         add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", gain,
             {"hypothesis": 1.0, "prediction_uncertainty": round(curiosity.entropy(p), 6),
@@ -619,7 +627,13 @@ def candidates(db, now, *, limit=10, offered=()) -> dict:
     salient = salience.enabled(db)
     for item in by_key.values():
         if salient:             # ADR-051: one explainable score per candidate, recorded; it changes no decision
-            item["salience"] = salience.score(db, item, now)
+            try:        # Wave 2 lane U: a record that cannot be made is said in the record and logged
+                item["salience"] = salience.score(db, item, now)
+            except Exception as exc:      # noqa: BLE001 - recorded with the candidate and logged, never silent
+                log.warning("the salience record of a %s candidate (knowledge #%s, hypothesis #%s) could not be "
+                            "made (%s)", item.get("kind"), item.get("knowledge_id"), item.get("hypothesis_id"),
+                            type(exc).__name__)
+                item["salience"] = {"error": f"could not be made ({type(exc).__name__})"}
         mode_cost = curiosity.cost(item["mode"])
         budget = MODE_BUDGETS.get(item["mode"], MODE_BUDGETS["fact_verification"])
         est = budget.max_queries * float(prices.get("search", 0)) + budget.max_pages * float(prices.get("page", 0))
@@ -747,6 +761,7 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
         from . import curiosity
         pool = {c["target"].get("key"): c["kind"] for c in curiosity.rank(db, now, limit=10)
                 if not c["excluded"] and "knowledge_id" in c["target"] and c["kind"] != "prediction"}
+        out["pool"] = dict(pool)        # key -> kind: what the timer's curiosity could launch in this pass
     ranked = candidates(db, now, limit=10 ** 6 if path == "tick" else limit)
     out["min_gain"], out["refused"] = ranked["min_gain"], ranked["refused"]
     for item in ranked["chosen"]:
@@ -765,8 +780,33 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
                                           f"{item['kind']} (the idle investigator's)"})
             continue
         out["chosen"].append(item)
+    from . import salience
+    try:                # Wave 2 lane X: an ordering that fails leaves admission's own order, said and logged
+        attend = salience.attention(db)
+        if not isinstance(attend, bool):
+            raise TypeError(f"salience_attention read as {type(attend).__name__}, not true or false")
+        if attend:      # ADR-056: salience orders what admission admitted; it admits nothing itself
+            ordered = salience.order(out["chosen"])
+            if not (isinstance(ordered, tuple) and len(ordered) == 2 and isinstance(ordered[0], list)
+                    and isinstance(ordered[1], dict) and sorted(str(c.get("key")) for c in ordered[0])
+                    == sorted(str(c.get("key")) for c in out["chosen"])):
+                raise TypeError("the salience order is not a reordering of the admitted candidates")
+            out["chosen"], out["order"] = ordered
+    except Exception as exc:              # noqa: BLE001 - recorded with the admission and logged, never silent
+        log.warning("the salience order could not be applied (%s); the admitted order stands", type(exc).__name__)
+        out["order"] = {"by": "priority", "error": f"the salience order could not be applied ({type(exc).__name__})"}
     from . import strategies
-    if strategies.active(db):       # lane K: ranks the admitted candidates only, once promoted through its gate
+    try:                # Wave 2 lane U: a gate that cannot be read is closed (the admitted order), said and logged
+        active = strategies.active(db)
+    except Exception as exc:              # noqa: BLE001 - recorded with the admission and logged, never silent
+        log.warning("strategy selection's gate could not be read (%s); the admitted order stands",
+                    type(exc).__name__)
+        active, out["strategy"] = False, {"error": f"the gate could not be read ({type(exc).__name__})"}
+    if not isinstance(active, bool):      # Wave 2 lane X: only `True` opens the gate; anything else is a failure
+        log.warning("strategy selection's gate returned %s, not true or false; the admitted order stands",
+                    type(active).__name__)
+        active, out["strategy"] = False, {"error": f"the gate returned {type(active).__name__}, not a boolean"}
+    if active is True:  # lane K: ranks the admitted candidates only, once promoted through its gate
         out["chosen"], out["strategy"] = strategies.rank(db, now, out["chosen"])
     out["chosen"] = out["chosen"][:limit]
     return out
@@ -778,8 +818,11 @@ def decision_inputs(pick, admitted) -> dict:
               if k in pick}
     inputs |= {k: pick[k] for k in ("hypothesis_id", "prediction_id", "knowledge_id", "forecast",
                                     "forecast_as_read", "info_gain_as_read", "owner", "depth", "salience",
-                                    "learning_progress") if k in pick}
-    return inputs | {"admission": {"rule": admitted["rule"], "path": admitted["path"]}}
+                                    "learning_progress", "priority_rank") if k in pick}
+    admission = {"rule": admitted["rule"], "path": admitted["path"]}
+    if admitted.get("order"):           # ADR-056: taken in salience order (salience.order)
+        admission["order"] = admitted["order"]["by"]
+    return inputs | {"admission": admission}
 
 
 # ---- the idle investigator -----------------------------------------------------------------------------------------

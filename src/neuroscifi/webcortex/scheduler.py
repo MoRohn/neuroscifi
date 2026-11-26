@@ -39,6 +39,7 @@ web:finding:<monitor>:<task> within the web question budget.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -49,6 +50,8 @@ from ..instance import store
 from ..instance.errors import Conflict, LeaseHeld, NotFound, ValidationError, WritesPaused
 from . import state
 from .types import MODES, TERMINAL_STATES
+
+log = logging.getLogger(__name__)
 
 MIN_INTERVAL = 3600.0
 DAY = 86400.0
@@ -411,6 +414,63 @@ def _over_cap(db, now, cfg, *, ignore_tasks=False):
 # Under the unified rule a curiosity pick may name the subject a due prediction's refresh queued in the same tick
 # (any version of that knowledge item): one task per subject, the refresh.
 REFRESHED_THIS_TICK = "its due prediction's refresh was queued in this tick"
+# ADR-056: when two background mechanisms want one subject in one pass, the tick's own order decides (the knowledge
+# re-check, then the due refreshes, then curiosity) and, with arbitration_record on, says so on the winner's task.
+TAKEN_BY_RECHECK = "the knowledge re-check queued this subject earlier in this pass (cooldown)"
+
+
+def _arbitrated(db, report, now, winner_task, winner, loser, rule):
+    """Record one arbitration: a decision event on the winner's task naming the mechanism that lost and the rule
+    that decided (never the subject: it is the winner's task's own, and goes with that task). A record only; nothing
+    is admitted, refused or launched here."""
+    if not getattr(state.get_config(db), "arbitration_record", True):
+        return
+    detail = {"arbitration": {"slot": "one investigation per subject per timer pass", "winner": winner,
+                              "loser": loser, "rule": rule}}
+    with store.write(db):
+        state.log_event(db, winner_task, "decision", detail, now)
+    report.setdefault("arbitration", []).append({"task_id": winner_task, **detail["arbitration"]})
+
+
+def _arbitrate(db, report, now, winner_task, winner, loser, rule):
+    """_arbitrated, guarded (Wave 2 lane X: review2 Info 3, and lane U's fault injection extended to lane L): the
+    record is a record only, so when it cannot be made (an error, or a result where it returns nothing) the pass
+    goes on to curiosity's launches and the cache retention; the failure is a report line and a log warning (the
+    error's type and the task id only)."""
+    try:
+        out = _arbitrated(db, report, now, winner_task, winner, loser, rule)
+        if out is not None:
+            raise TypeError(f"the arbitration record returned {type(out).__name__}; it returns nothing")
+    except Exception as exc:              # noqa: BLE001 - reported in the pass and logged, never silent
+        log.warning("the arbitration record of task %s could not be made (%s); the pass goes on", winner_task,
+                    type(exc).__name__)
+        report["skipped"].append({"what": "arbitration record", "task_id": winner_task,
+                                  "reason": f"failed: {type(exc).__name__}"})
+
+
+def _rechecks_queued(db, now) -> list[dict]:
+    """The knowledge re-check's tasks queued at `now` (this pass), read from their decision events (recheck.submit
+    writes the task and its event in one transaction): what a re-check that failed part-way had already queued."""
+    rows = db.execute("SELECT e.task_id, t.origin FROM web_events e JOIN web_tasks t ON t.id=e.task_id WHERE "
+                      "e.kind='decision' AND e.created_at=? AND json_extract(e.detail,'$.autonomy.recheck') IS NOT "
+                      "NULL AND t.origin GLOB 'refresh:*' ORDER BY e.id", (now,)).fetchall()
+    return [{"task_id": tid, "knowledge_id": int(origin.split(":", 1)[1])} for tid, origin in rows]
+
+
+def _wave1_step(report, what, step, fallback=None):
+    """Wave 2 lane U: one Wave 1 step of the timer's pass (scenario records, reflection, knowledge re-check). Its
+    failure (an error, or a result that is not a record) is a line in the pass's report and a log warning; the pass
+    goes on to the work it did before Wave 1 (prediction refreshes, curiosity, cache retention)."""
+    try:
+        out = step()
+        if out is not None and not isinstance(out, dict):
+            raise TypeError(f"{what} returned {type(out).__name__}, not a record")
+        return out if out is not None or fallback is None else fallback
+    except Exception as exc:              # noqa: BLE001 - reported in the pass and logged, never silent
+        # Wave 2 lane X (review2 L1): the error's type only, never its message (it may name a subject)
+        log.warning("the timer's %s failed (%s); the pass goes on", what, type(exc).__name__)
+        report["skipped"].append({"what": what, "reason": f"failed: {type(exc).__name__}"})
+        return fallback
 
 
 def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
@@ -470,11 +530,12 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
                 changes = (state.loads(detail, {}) or {}).get("changes") or {}
                 report["findings"].append({"monitor_id": mid, "task_id": task["id"], "changes": changes})
     from . import scenarios     # ADR-052: scenario records, imagined store only; None while imagine_scenarios is off
-    imagined_report = scenarios.tick(db, now)
+    imagined_report = _wave1_step(report, "scenario records", lambda: scenarios.tick(db, now))
     if imagined_report is not None:
         report["scenarios"] = imagined_report
     from . import recheck, reflection
-    reflected = reflection.scheduled(db, now)    # lane K: the bounded reflection (setting `reflection`, off)
+    # lane K: the bounded reflection (setting `reflection`, off)
+    reflected = _wave1_step(report, "reflection", lambda: reflection.scheduled(db, now))
     if reflected is not None:
         if "skipped" in reflected:
             report["skipped"].append({"what": "reflection", "reason": reflected["skipped"]})
@@ -486,11 +547,15 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
         return _retention(report, services, now)
     # lane K: the re-check of the knowledge most at risk of being stale, before the due-order refreshes (setting
     # `idle_recheck`, off by default; its own share of the daily allowance; recheck.run asks the owner's quiet)
+    taken = {}          # knowledge id -> the re-check's task queued for it in this pass (ADR-056 arbitration)
     if recheck.enabled(db) and budget_left > 0:
-        rechecked = recheck.run(db, now, limit=min(cfg.recheck_per_tick, budget_left),
-                                over_cap=lambda: _over_cap(db, now, cfg))
+        rechecked = _wave1_step(report, "knowledge re-check", lambda: recheck.run(
+            db, now, limit=min(cfg.recheck_per_tick, budget_left), over_cap=lambda: _over_cap(db, now, cfg)))
+        if rechecked is None:   # Wave 2 lane X (review2 L4): failed part-way; what it queued still counts
+            rechecked = {"skipped": [], "submitted": _rechecks_queued(db, now)}
         report["skipped"] += rechecked["skipped"]
         for item in rechecked["submitted"]:
+            taken[item["knowledge_id"]] = item["task_id"]
             budget_left -= 1
             if queue:
                 report["queued"].append({"task_id": item["task_id"], "origin": "recheck"})
@@ -515,7 +580,8 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
             report["skipped"].append({"prediction_id": action["prediction_id"], "reason": action["reason"]})
         if action["action"] != "refresh_submitted":
             continue
-        if queue:
+        if queue:       # a queued refresh is a task of this pass: it counts against max_tasks as a run one does
+            budget_left -= 1
             report["queued"].append({"task_id": action["task_id"], "origin": "refresh"})
             continue
         cap = _over_cap(db, now, cfg, ignore_tasks=True)
@@ -524,7 +590,8 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
             continue
         try:
             done = orchestrator.run(db, action["task_id"], services)
-        except (LeaseHeld, Conflict) as exc:
+        except (LeaseHeld, Conflict) as exc:     # a worker claimed it first: still a task of this pass (review2b N3)
+            budget_left -= 1
             report["queued"].append({"task_id": action["task_id"], "origin": "refresh", "note": str(exc)[:200]})
             continue
         budget_left -= 1
@@ -541,17 +608,35 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     report["admission"] = admitted["rule"]
     if admitted["gate"]:
         report["skipped"].append({"what": "curiosity", "reason": admitted["gate"]})
+    taken_keys = {k: taken[kid] for kid, k in db.execute(f"SELECT id, key FROM web_knowledge WHERE id IN "
+                                                         f"({','.join('?' * len(taken))})", tuple(taken))}
+    pool = admitted.get("pool") or {}
+    room = None         # Wave 2 lane Y (H1): could curiosity have launched anything in this pass? read once, if asked
     for refused in admitted["refused"]:
         report["skipped"].append({"target": refused.get("target") or {"key": refused.get("key"),
                                                                         "knowledge_id": refused.get("knowledge_id")},
                                   "reason": refused["reason"]})
-    refreshed = {a.get("knowledge_id") for a in report["predictions"] if a["action"] == "refresh_submitted"} - {None}
-    refreshed_keys = {k for (k,) in db.execute(f"SELECT key FROM web_knowledge WHERE id IN "
-                                               f"({','.join('?' * len(refreshed))})", tuple(refreshed))}
+        # a real conflict only: the re-check took a subject the timer's curiosity could launch in this pass (in its
+        # pool, as the kind it launches) while budget was left for it; a cooldown refusal alone is not one
+        if refused.get("key") in taken_keys and str(refused.get("reason", "")).startswith("investigated autonomously") \
+                and pool.get(refused["key"]) == refused.get("kind"):
+            if room is None:
+                room = budget_left > 0 and _over_cap(db, now, cfg) is None
+            if room:
+                _arbitrate(db, report, now, taken_keys[refused["key"]], "recheck", "curiosity", TAKEN_BY_RECHECK)
+    refreshes = {a["knowledge_id"]: a["task_id"] for a in report["predictions"]
+                 if a["action"] == "refresh_submitted" and a.get("knowledge_id") is not None}
+    refreshed = set(refreshes)
+    refreshed_keys = {k: refreshes[kid] for kid, k in db.execute(f"SELECT id, key FROM web_knowledge WHERE id IN "
+                                                                 f"({','.join('?' * len(refreshed))})",
+                                                                 tuple(refreshed))}
     for pick in admitted["chosen"]:
         target = pick.get("target") or {"key": pick["key"], "knowledge_id": pick.get("knowledge_id")}
         if admitted["rule"] == "unified" and (pick.get("knowledge_id") in refreshed or pick["key"] in refreshed_keys):
             report["skipped"].append({"target": target, "reason": REFRESHED_THIS_TICK})
+            winner = refreshes.get(pick.get("knowledge_id")) or refreshed_keys.get(pick["key"])
+            if budget_left > 0 and _over_cap(db, now, cfg) is None:     # lane Y (H1): curiosity could have taken it
+                _arbitrate(db, report, now, winner, "refresh", "curiosity", REFRESHED_THIS_TICK)
             continue
         cap = _over_cap(db, now, cfg)
         if cap or budget_left <= 0:

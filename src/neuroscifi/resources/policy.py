@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import json
+import logging
 import os
 from pathlib import Path
 import threading
@@ -31,7 +32,10 @@ import time
 
 from . import monitor, shared
 
-BACKGROUND_MODEL_SLOTS = 2          # background model calls at a time (= the default concurrent autonomy cap)
+log = logging.getLogger(__name__)
+_FORECAST_FAILURES: dict = {}       # forecast failures seen by this process, kind -> count (background_gate)
+
+BACKGROUND_MODEL_SLOTS = 2         # background model calls at a time (= the default concurrent autonomy cap)
 BACKGROUND_MODEL_SLOTS_AUDIO = 1    # ... while a voice session is capturing or speaking
 SLOT_POLL = 0.25
 SLOT_WAIT = 30.0                    # longest wait for a background model slot (bounded further by the deadline)
@@ -203,10 +207,28 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
         from . import forecast
         try:
             now = time.time()          # one clock for reading the history (future samples ignored) and the forecast
-            verdict = forecast.assess(internal_state.history(db_path, now=now), now=now)
-        except Exception:          # noqa: BLE001 - fail open: a forecast may only add a hold, a broken one adds none
+            samples = internal_state.history(db_path, now=now)
+            if not isinstance(samples, list):
+                raise TypeError(f"the history is {type(samples).__name__}, not a list of samples")
+            verdict = forecast.assess(samples, now=now)
+            if not isinstance(verdict, dict):
+                raise TypeError(f"the forecast is {type(verdict).__name__}, not a verdict")
+        except Exception as exc:   # noqa: BLE001 - fail open: a forecast may only add a hold, a broken one adds none
+            # Wave 2 lane U: never silent; logged once per kind of failure in this process (the gate runs often).
+            # Wave 2 lane X (review2 L1): never the message; reconciliation (review2b N5): the kind includes SQLite's
+            # error name or the errno name, and a repeat is logged again with its count at 10, 100, 1000, ...
+            from ..instance.errors import failure_kind
+            seen = failure_kind(exc)
+            if seen not in _FORECAST_FAILURES and len(_FORECAST_FAILURES) > 64:
+                _FORECAST_FAILURES.clear()
+            count = _FORECAST_FAILURES[seen] = _FORECAST_FAILURES.get(seen, 0) + 1
+            if count == 1:
+                log.warning("predictive regulation: the forecast failed (%s); it adds no hold", seen)
+            elif count == 10 ** (len(str(count)) - 1):
+                log.warning("predictive regulation: the forecast failed (%s) %d times in this process; it adds no "
+                            "hold", seen, count)
             verdict = {"hold": False}
-        if verdict["hold"]:
+        if verdict.get("hold"):
             reason, why = verdict["reason"], "forecast"
     return {"allowed": reason is None, "reason": reason, "why": why, "level": s["level"], "audio": audio}
 

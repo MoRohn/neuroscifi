@@ -185,6 +185,15 @@ class WebConfig:
     # just doing": the question as asked, its status and when; the report stays family-scoped and cannot be opened
     # from a phone). Off by default: a pairing family may include devices that are not the owner's.
     pocket_recent: bool = False
+    # ADR-056 (Wave 2 lane L), the integration loop. salience_attention: among the candidates autonomy.admission
+    # already admitted on the idle and timer paths, the one with the higher salience record (salience.py) is taken
+    # first (the owner's own records stay first); it never admits or refuses one, and min_gain, lineage, cooldown,
+    # budgets and quiet decide exactly as before. Needs salience_record. Off by default (ADR-056 has the numbers).
+    # arbitration_record: when two background mechanisms want one subject in one timer pass, the tick's existing
+    # order decides (re-check, then due refreshes, then curiosity; one task per subject) and records a decision event
+    # on the winner's task naming the mechanism that lost and the rule that decided. A record only.
+    salience_attention: bool = False
+    arbitration_record: bool = True
 
     @classmethod
     def from_json(cls, text: str | None) -> "WebConfig":

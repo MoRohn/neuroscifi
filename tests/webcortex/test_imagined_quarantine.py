@@ -86,6 +86,9 @@ WRITERS: dict[str, str] = {
     "acceptance/cognition/adversarial.py": "the cognitive benchmark's adversarial case "
                                           "system_made_content_never_enters_the_journal records one what-if in a "
                                           "temporary individual to check it can never become a reading",
+    "acceptance/cognition/cycles.py": "lane F's learning-cycles experiment plants the individual's own outputs (an "
+                                      "inference asserting a version no source states) in temporary individuals to "
+                                      "measure that they never become knowledge",
 }
 DISPLAYS: dict[str, str] = {
     "console/server.py": "lane W (ADR-053): the console's read-only 'Imagined, not evidence' panel (GET "
@@ -94,6 +97,8 @@ DISPLAYS: dict[str, str] = {
                            "kind, labelled not evidence",
     "presence/aggregator.py": "lane W (ADR-053): Presence shows 'simulating' while records were just made (a count "
                               "and a time, never content)",
+    "acceptance/cognition/integrated.py": "Wave 2 lane L (ADR-056): the integrated benchmark reports how many records "
+                                          "its temporary individual holds (imagined.counts: a number, never content)",
 }
 WRITE_API = {"record", "observe", "example", "written_by", "present", "KINDS", "REF_KINDS", "OBSERVATION_KINDS",
              "MAX_REFS", "NOT_EVIDENCE",

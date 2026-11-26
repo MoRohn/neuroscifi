@@ -352,7 +352,11 @@ def test_adversarial_cases_today():
     out = adversarial.run()
     scored = [c for c in out["cases"] if c["pass"] is not None]
     assert len(scored) == len(adversarial.CASES) and all(isinstance(c["pass"], bool) for c in scored)
+    # Wave 2: lane U's added case `reflection_bounded_when_everything_asks` found a reflection section holding more
+    # than MAX_LINES lines (each section joined up to three queries of MAX_LINES rows); lane X fixed the product
+    # (reflection.report cuts every section at MAX_LINES). Every case passes.
     assert out["failed"] == [], out["failed"]
+    assert out["by_origin"]["added_wave2"] == {"passed": 10, "scored": 10, "failed": []}
     case = next(c for c in out["cases"] if c["id"] == "imagined_reading_moves_no_belief")
     assert "0.500 -> 0.500" in case["observed"] and "move it to 0.99" in case["observed"], case["observed"]
     # reported by origin, never added up into an improvement (Wave 1 review)

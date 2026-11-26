@@ -637,7 +637,8 @@ def focus_report(page, view):
         const all = scope.flatMap(s => [...s.querySelectorAll('button, select, input, summary, a[href]')]).filter(e =>
           !e.disabled && e.checkVisibility() && getComputedStyle(e).visibility === 'visible');
         all.forEach((e, i) => e.dataset.k = i);
-        return {buttons: all.filter(e => e.tagName === 'BUTTON').map(e => e.dataset.k), total: all.length};
+        return {buttons: all.filter(e => e.tagName === 'BUTTON').map(e => e.dataset.k), total: all.length,
+                html: Object.fromEntries(all.map(e => [e.dataset.k, e.outerHTML.slice(0, 90)]))};
     }""", view)
 
 
@@ -650,26 +651,37 @@ def test_keyboard_reaches_every_enabled_button(seeded, new_page, view):
         open_graph(page, 2)
         expect(page.locator("#gPromote")).to_be_enabled()
     page.locator("details").evaluate_all("els => els.forEach(e => e.open = true)")
-    report = focus_report(page, view)
-    assert report["buttons"], view
-    page.evaluate("document.activeElement && document.activeElement.blur()")
-    reached, bad = set(), []
-    for _ in range(report["total"] + 40):
-        page.keyboard.press("Tab")
-        info = page.evaluate("""() => {
-            const e = document.activeElement, s = getComputedStyle(e);
-            return {k: e.dataset.k ?? null, tag: e.tagName, id: e.id, outline: s.outlineStyle,
-                    width: parseFloat(s.outlineWidth), focusVisible: e.matches(':focus-visible')};
-        }""")
-        if info["k"] is None:
-            continue
-        reached.add(info["k"])
-        if not info["focusVisible"] or info["outline"] == "none" or info["width"] < 2:
-            bad.append(info)
-    assert not bad, bad
-    missing = set(report["buttons"]) - reached
-    assert not missing, page.evaluate(
-        "ks => ks.map(k => document.querySelector(`[data-k='${k}']`).outerHTML.slice(0, 90))", sorted(missing))
+    # The controls are tagged, then walked with Tab. A panel that is drawn again during the walk (a response or a
+    # status update arriving) replaces its controls with untagged ones, so a tagged button can be gone from the page
+    # by the time the walk would reach it (CI, Wave 2: the old report then raised on a null element and named
+    # nothing). When that happened the walk is done once more on the page as it then stands; a button that is on the
+    # page and not reached fails at once, and the failure names every control as it was when tagged.
+    for attempt in (1, 2):
+        report = focus_report(page, view)
+        assert report["buttons"], view
+        page.evaluate("document.activeElement && document.activeElement.blur()")
+        reached, bad = set(), []
+        for _ in range(report["total"] + 40):
+            page.keyboard.press("Tab")
+            info = page.evaluate("""() => {
+                const e = document.activeElement, s = getComputedStyle(e);
+                return {k: e.dataset.k ?? null, tag: e.tagName, id: e.id, outline: s.outlineStyle,
+                        width: parseFloat(s.outlineWidth), focusVisible: e.matches(':focus-visible')};
+            }""")
+            if info["k"] is None:
+                continue
+            reached.add(info["k"])
+            if not info["focusVisible"] or info["outline"] == "none" or info["width"] < 2:
+                bad.append(info)
+        assert not bad, bad
+        missing = sorted(set(report["buttons"]) - reached, key=int)
+        gone = page.evaluate("ks => ks.filter(k => !document.querySelector(`[data-k='${k}']`))", missing)
+        unreached = [report["html"][k] for k in missing if k not in gone]
+        assert not unreached, unreached
+        if not gone:
+            break
+        assert attempt == 1, ("controls were replaced during both walks", [report["html"][k] for k in gone])
+        page.evaluate("document.querySelectorAll('[data-k]').forEach(e => delete e.dataset.k)")
     assert not page.problems, page.problems
 
 

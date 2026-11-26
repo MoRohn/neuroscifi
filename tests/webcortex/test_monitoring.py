@@ -156,7 +156,8 @@ def test_a_monitoring_failure_is_logged_and_leaves_the_report_alone(monkeypatch)
     report = {"answer": [], "limitations": ["already here"]}
     orchestrator._monitor(Run(), report)
     assert report == {"answer": [], "limitations": ["already here"]}
-    assert events == [("error", {"stage": "monitoring", "error": "RuntimeError", "detail": "broken record"})]
+    # the type only: a message may name a subject (Wave 2 lane X, review2 L1)
+    assert events == [("error", {"stage": "monitoring", "error": "RuntimeError"})]
 
 
 def test_escalation_needs_a_low_confidence_and_room_in_the_tasks_own_budget():

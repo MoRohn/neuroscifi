@@ -491,6 +491,35 @@ def test_reflection_is_deterministic_traceable_and_bounded(db):
     assert stored["report"] == one | {"period": {"from": T0 - 1.0, "to": T0 + 2 * DAY}}
 
 
+def test_every_section_line_and_text_of_a_reflection_holds_its_documented_bound(db, monkeypatch):
+    """Wave 2 lane X (lane U's adversarial case reflection_bounded_when_everything_asks): a section joins up to three
+    queries of MAX_LINES rows each, and used to hold more than MAX_LINES lines. With MAX_LINES 1 here, `learned`
+    has a verified item and a superseded one (two queries), `missing` an open question and a past-due prediction,
+    and one stored verification state is 5,000 characters long: every section keeps at most MAX_LINES lines (the
+    lines left out are counted), every line at most MAX_LINES refs and MAX_TEXT characters, and there are five
+    sections."""
+    kid, pid, second = _history(db)
+    with store.write(db):
+        db.execute("UPDATE web_knowledge SET verification=json_set(verification,'$.state',?) WHERE id=?",
+                   ("x" * 5000, kid))
+    for n in range(3):
+        knowledge.ask(db, f"web:test:{n}", f"An open question {n}?", T0)
+    late = predictions.record(db, second["provisional"][0] if second.get("provisional") else kid,
+                              "still holds at next refresh", T0 - 3 * DAY, T0 - 4 * DAY)
+    assert late
+    monkeypatch.setattr(reflection, "MAX_LINES", 1)
+    rep = reflection.report(db, T0 - 1, T0 + 2 * DAY)
+    assert {k for k in rep if k not in ("period", "label", "cut")} == set(reflection.SECTIONS)
+    assert {s: len(rep[s]) for s in reflection.SECTIONS if len(rep[s]) > 1} == {}
+    assert rep["cut"]["learned"] >= 1 and rep["cut"]["missing"] >= 1
+    for section in reflection.SECTIONS:
+        for line in rep[section]:
+            assert len(line["refs"]) <= 1 and len(line["text"]) <= reflection.MAX_TEXT
+    monkeypatch.setattr(reflection, "MAX_LINES", 20)
+    full = reflection.report(db, T0 - 1, T0 + 2 * DAY)
+    assert "cut" not in full and any(len(line["text"]) == reflection.MAX_TEXT for line in full["learned"])
+
+
 def test_reflection_actions_queue_re_checks_and_never_change_knowledge(db):
     _, first = consolidated(db, [two_sources(published=T0 - 5 * DAY)])
     kid = first["provisional"][0]
@@ -778,6 +807,27 @@ def test_admission_orders_by_strategy_only_while_active(db, monkeypatch):
     monkeypatch.setattr(strategies, "active", lambda db: True)
     out = autonomy.admission(db, T0, path="idle") if autonomy.enable(db, T0) else None
     assert calls == [1] and out["strategy"]["rule"] == "thompson"
+
+
+@pytest.mark.parametrize("value", [1, "retain", ["retain"], {"decision": "retain"}, 0.5])
+def test_a_truthy_non_boolean_gate_never_ranks_by_strategy(db, monkeypatch, caplog, value):
+    """Wave 2 lane X (lane U's observation): only `True` from strategies.active opens the gate. A truthy value of
+    another type is a failure of the gate: the admitted order stands, the admission says so, a warning is logged, and
+    the self-description does not call strategy selection active."""
+    from neuroscifi import self_description
+    calls = []
+    monkeypatch.setattr(strategies, "rank", lambda db, now, chosen: (calls.append(1) or list(reversed(chosen)),
+                                                                      {"rule": "thompson"}))
+    autonomy.enable(db, T0)
+    reference = autonomy.admission(db, T0, path="idle")
+    monkeypatch.setattr(strategies, "active", lambda db: value)
+    out = autonomy.admission(db, T0, path="idle")
+    assert calls == []
+    assert out["chosen"] == reference["chosen"]
+    assert "not a boolean" in out["strategy"]["error"]
+    assert any("not true or false" in r.getMessage() for r in caplog.records)
+    record = self_description._improvement_ledger(db, T0)
+    assert record["value"]["strategy_selection_active"] is False
 
 
 # ---- background and CLI ------------------------------------------------------------------------------------------------------
