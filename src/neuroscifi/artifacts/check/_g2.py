@@ -3,6 +3,7 @@ Nothing here imports from `make`: every validator re-reads the bytes with its ow
 from __future__ import annotations
 
 from . import register
+from .explorable import check_explorable
 from .meshes import check_mesh
 from .png import check_png
 from .wav import check_wav
@@ -14,6 +15,9 @@ VALIDATORS = (
     ("model/obj", check_mesh, "g2.mesh"),
     ("image/png", check_png, "g2.png"),
     ("image/apng", check_png, "g2.png"),
+    # A vendor type, not text/html: lane G1's documents are text/html and are judged by its own validator; an
+    # explorable document carries a script (the fixed runtime) that a plain document must never hold.
+    ("application/vnd.neuroscifi.explorable+html", check_explorable, "g2.explorable"),
 )
 
 for _media, _validator, _name in VALIDATORS:

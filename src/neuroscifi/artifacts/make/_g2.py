@@ -6,11 +6,13 @@ Form names use underscores (`sound_sonify`, not `sound.sonify`): the envelope's 
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .. import spec as _spec
 from ..spec import Spec
 from ..types import Limits
 from . import Generator, Made, register
-from . import raster, solids, sound
+from . import explorable, raster, solids, sound
 
 GENERATOR_VERSION = 1
 
@@ -23,6 +25,8 @@ class _Form(Generator):
         self._render = render
 
     def make(self, spec: Spec, limits: Limits) -> Made:
+        # the spec a document embeds is the one the registry returns: stamped with the generator that made it
+        spec = replace(spec, made_by={"generator": self.name, "version": self.version})
         data, notes = self._render(spec, limits)
         media = self._media_type(spec) if callable(self._media_type) else self._media_type
         return Made(data, media, spec, tuple(notes))
@@ -46,6 +50,8 @@ for _form in ("solid_box", "solid_extrude", "solid_revolve", "surface_grid", "so
     _add(_form, solids.SCHEMAS[_form], _Form("g2.solids", solids.media_type, solids.render))
 for _form in ("image_raster", "image_apng"):
     _add(_form, raster.SCHEMAS[_form], _Form("g2.raster", raster.media_type, raster.render))
+for _form in ("explorable_model", "explorable_steps", "solid_view"):
+    _add(_form, explorable.SCHEMAS[_form], _Form("g2.explorable", explorable.MEDIA_TYPE, explorable.render))
 
 
 def repair(value: dict, problem) -> dict | None:
