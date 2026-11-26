@@ -53,7 +53,8 @@ and every checkpoint replay of them: governance._forget_research_core) removes i
 a knowledge item removes the fingerprints of its subject names and values (forget_knowledge; also on replay). A
 forgotten source changes nothing here: an emission it supported stays sourced (security review M3) and nothing of the
 source was kept. With the setting off nothing here is read (the fingerprints are inert at once); every fingerprint is
-removed by `nsf web config --forget-own-text` (forget_all).
+removed by `nsf web config --forget-own-text` (remove_all), which is recorded in deletion_log and replayed by every
+restore and rewrite of an archive written before it (replay; Wave 4 second fix round).
 
 WHAT THE STORED VALUES ARE. Digests of (instance id, subject name, value). The instance id is not secret (the owner's
 self-description and the agent scope's self-status show it), so it only keeps two individuals' digests apart: a reader
@@ -85,6 +86,8 @@ EMISSION_LIFETIME = 30 * 86400.0    # an emission counts for this long after it 
 OWNER_ORIGINS = ("console", "cli", "voice")
 OWNER_ORIGIN_PREFIXES = ("refresh-owner:",)
 SOURCED, UNSOURCED, UNKNOWN = 1, 0, 2
+# deletion_log.target_kind of the owner's removal of every fingerprint (remove_all; replayed on restore, replay)
+DELETION_KIND = "own_text"
 _DOTTED = re.compile(r"\d+\.\d+")
 _log = logging.getLogger(__name__)
 
@@ -406,12 +409,51 @@ def forget_knowledge(db, ids) -> int:
 
 
 def forget_all(db) -> int:
-    """Remove every fingerprint and task list (`nsf web config --forget-own-text`; caller owns the transaction). Two
-    ranges of the primary key, no scan. Returns the rows removed."""
+    """Remove every fingerprint and task list (caller owns the transaction). Two ranges of the primary key, no scan.
+    Returns the rows removed. The owner's command records it too: remove_all."""
     removed = 0
     for prefix in (PREFIX, TASK_PREFIX):
         removed += db.execute("DELETE FROM web_strategies WHERE name >= ? AND name < ?",
                               (prefix, prefix[:-1] + chr(ord(prefix[-1]) + 1))).rowcount
+    return removed
+
+
+def remove_all(db, now) -> dict:
+    """`nsf web config --forget-own-text`: forget_all, recorded as a forget is (Wave 4 second fix round, review4
+    security second pass 2b(iii)): a deletion_log row (DELETION_KIND, target "all", the state version it committed
+    at) that every restore and rewrite replays (replay), and, when rows were removed, every valid checkpoint marked
+    stale (they may hold them; checkpoints.after_forget rewrites them without the rows). Caller owns the transaction.
+    Returns the row's effects."""
+    from ..instance import store
+    removed = forget_all(db)
+    stale = [i for (i,) in db.execute("SELECT id FROM checkpoints WHERE status='valid' ORDER BY id")] if removed else []
+    db.executemany("UPDATE checkpoints SET status='stale' WHERE id=?", [(i,) for i in stale])
+    effects = {"own_text_removed": removed, "checkpoints_stale": stale, "state_version": store.bump_state_version(db)}
+    db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+               (DELETION_KIND, "all", now, json.dumps(effects, sort_keys=True)))
+    return effects
+
+
+def replay(copy, removals, version) -> int:
+    """In a restore's or rewrite's copy (checkpoints._replay): when the live file removed every fingerprint after the
+    copy was written (`removals`: the live deletion_log rows of DELETION_KIND as (state version, requested_at,
+    effects JSON), one of them newer than the copy's state `version`), remove them from the copy too, and record the
+    removal there (state version + 1, as an epoch's forget is replayed), so an older archive restored FROM the copy
+    loses them as well; the copy's own listed archives are then stale. Caller owns the transaction. Returns the rows
+    removed."""
+    newer = [r for r in removals if version < r[0]]
+    if not newer:
+        return 0
+    removed = forget_all(copy)
+    for _, requested_at, effects_json in newer:
+        if copy.execute("SELECT 1 FROM deletion_log WHERE target_kind=? AND requested_at=?",
+                        (DELETION_KIND, requested_at)).fetchone():
+            continue
+        carried = {k: v for k, v in json.loads(effects_json).items() if k != "checkpoints_stale"} \
+            | {"state_version": version + 1, "replayed": True}
+        copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                     (DELETION_KIND, "all", requested_at, json.dumps(carried, sort_keys=True)))
+        copy.execute("UPDATE checkpoints SET status='stale' WHERE status='valid'")
     return removed
 
 

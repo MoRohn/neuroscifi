@@ -405,6 +405,11 @@ def _read_forgets(db, now, wanted=None):
                        "SELECT target_id, requested_at, effects FROM deletion_log WHERE target_kind='epoch' "
                        "ORDER BY id")],
         "web": db.execute("SELECT kind,digest,forgotten_at FROM web_forgotten").fetchall(),
+        # The owner's removal of every own-text fingerprint (`nsf web config --forget-own-text`, ADR-067): no tombstone,
+        # so the deletion log is the record, as for epochs above (webcortex.emitted.replay).
+        "own_text": [(json.loads(effects).get("state_version", float("inf")), requested_at, effects)
+                     for requested_at, effects in db.execute(
+                         "SELECT requested_at, effects FROM deletion_log WHERE target_kind='own_text' ORDER BY id")],
         # Imagined records the live file removed (purged, forgotten with a source, expired, evicted; ADR-049).
         "imagined": db.execute("SELECT digest,reason,forgotten_at FROM imagined_forgotten").fetchall()
         if imagined.present(db) else [],
@@ -575,6 +580,10 @@ def _replay(copy, forgets, now):
                              "VALUES('epoch',?,?,?)", (epoch, requested_at, json.dumps(carried, sort_keys=True)))
                 # as the live forget does: the archives the copy lists were written before the forget
                 copy.execute("UPDATE checkpoints SET status='stale' WHERE status='valid'")
+    own_text = forgets.get("own_text") if forgets else None
+    if own_text:
+        from ..webcortex import emitted
+        own_text_removed = emitted.replay(copy, own_text, version)
     if web:
         copy.executemany("INSERT OR IGNORE INTO web_forgotten(kind,digest,forgotten_at) VALUES(?,?,?)", web)
         web_removed = governance.replay_web_forgets(copy, {(k, d) for k, d, _ in web}, now, web_marks)
@@ -622,7 +631,7 @@ def _replay(copy, forgets, now):
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked,
-            "imagined_removed": imagined_removed}
+            "imagined_removed": imagined_removed} | ({"own_text_removed": own_text_removed} if own_text else {})
 
 
 # ---- rewrite in place after a forget ------------------------------------------------------------------------------
@@ -631,7 +640,8 @@ def _replay(copy, forgets, now):
 # without the forgotten rows and is valid again. Other kinds (evidence, epoch, partner, dataset, expiry) leave derived
 # rows the replay does not reach, and an archive made stale while it was written has no recorded cause: those stay
 # stale until `rebuild` replaces them.
-REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND})
+REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND,
+                              "own_text"})      # webcortex.emitted.DELETION_KIND: its replay is the whole removal
 JOURNAL_SUFFIX = ".rewrite"
 
 

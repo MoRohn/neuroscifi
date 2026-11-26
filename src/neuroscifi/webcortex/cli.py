@@ -275,10 +275,16 @@ def _config(db, a, now):
     out = {"config": cfg.to_json(), "changed": sorted(changes)}
     if getattr(a, "forget_own_text", False):     # ADR-067 (Wave 4 fix, review4 L3): remove every fingerprint
         from . import emitted
-        from ..instance import store
-        with store.write(db):
-            out["own_text_removed"] = emitted.forget_all(db)
-            store.bump_state_version(db)
+        from ..instance import checkpoints, store
+        with store.write(db):                    # recorded and replayed on restore (Wave 4 second fix round)
+            effects = emitted.remove_all(db, now)
+        out["own_text_removed"] = effects["own_text_removed"]
+        if effects["checkpoints_stale"]:         # as a forget: the archives that may hold them are rewritten
+            done = checkpoints.after_forget(db, now)
+            out |= done
+            if done["checkpoints_stale"]:
+                from ..instance.governance import REBUILD_HINT
+                out["next_steps"] = [REBUILD_HINT.format(n=len(done["checkpoints_stale"]))]
     problems = state.setting_problems(db)
     if problems:                            # a damaged saved value, read as its default (security review L8)
         out["problems"] = problems

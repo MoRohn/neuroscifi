@@ -54,3 +54,41 @@ def test_expired_emissions_are_dropped_before_the_list_is_cut_to_its_maximum():
         out = adv._s_look(db, T0 + 42 * DAY, _pages(ECHOES, T0 + 42 * DAY - 3600))
         assert len(out.get("echoes") or []) == 2 and _rows(db) == []
 
+
+
+# ---- item 2 (security, second pass, 2b(iii)): `--forget-own-text` is recorded and replayed on restore ---------------
+
+def test_forget_own_text_survives_a_restore_of_an_archive_taken_before_it(tmp_path, capsys):
+    """review4 s/r2/l3_forget_restore: before the fix the removal left no record, every checkpoint stayed valid, and a
+    restore of an older archive brought the fingerprints back. Now it is a deletion_log row (kind own_text) that a
+    restore replays, and the archives taken before it are stale (then rewritten without the rows)."""
+    from contextlib import closing
+    from neuroscifi.cli import main
+    from neuroscifi.instance import checkpoints, store
+    with _own("forget-restore") as (db, path):
+        adv._s_look(db, T0 - 5 * DAY, [], answer=ANSWER)
+        older = checkpoints.create(db, path, tmp_path / "ckpt", T0 - 4.5 * DAY)
+        db.commit()
+        main(["web", "config", "--db", str(path), "--forget-own-text"])
+        out = json.loads(capsys.readouterr().out)
+        assert out["own_text_removed"] == 2 and emitted.stored(db) == 0
+        logged = db.execute("SELECT target_id, effects FROM deletion_log WHERE target_kind=?",
+                            (emitted.DELETION_KIND,)).fetchall()
+        assert len(logged) == 1 and json.loads(logged[0][1])["own_text_removed"] == 2
+        assert older["id"] in json.loads(logged[0][1])["checkpoints_stale"]
+        assert emitted.DELETION_KIND in checkpoints.REWRITABLE_KINDS
+        copy = tmp_path / "restored.sqlite"
+        checkpoints.restore(db, older["id"], copy, T0 - 3 * DAY)
+        with closing(store.connect(copy)) as restored:
+            assert emitted.stored(restored) == 0
+            assert restored.execute("SELECT count(*) FROM web_strategies WHERE name LIKE 'emitted%'").fetchone()[0] == 0
+            # the copy remembers the removal: an older archive restored FROM it loses the rows too
+            assert restored.execute("SELECT count(*) FROM deletion_log WHERE target_kind=?",
+                                    (emitted.DELETION_KIND,)).fetchone()[0] == 1
+        # what the individual emitted AFTER the removal is kept by a restore of an archive taken after it
+        adv._s_look(db, T0 - 2 * DAY, [], answer=ANSWER)
+        newer = checkpoints.create(db, path, tmp_path / "ckpt", T0 - 1.5 * DAY)
+        copy2 = tmp_path / "restored2.sqlite"
+        checkpoints.restore(db, newer["id"], copy2, T0 - DAY)
+        with closing(store.connect(copy2)) as restored:
+            assert emitted.stored(restored) == 1
