@@ -1761,6 +1761,52 @@ CASES = CASES + CASES_WAVE3_FIX3
 ORIGIN["added_wave3_fix3"] = tuple(EXPECTED_WAVE3_FIX3)
 
 
+# ---- Wave 4, lane S (ADR-066): what each added case expects, written and committed BEFORE the rule and the cases.
+# Origin `added_wave4_s`, reported apart. The rule (WebConfig.source_derivation, OFF by default, switched on by each
+# case) joins a page to ONE other page of the same task when it names that page's outlet or links to it; it must never
+# join two pages that each name no other page, and never separate what today's grouping joins.
+EXPECTED_WAVE4_S = {
+    "derivation_never_joins_two_pages_that_name_nothing": (
+        "Persistent misinformation; Hallucinated knowledge (one page suppressing a true fact)",
+        "with source_derivation on (switched on by the case) and every other source rule off, two honest outlets state "
+        "a version in their own words and name no other outlet; a third page on another host states it too, names "
+        "both outlets in its text and links to both: the two honest outlets stay two independent groups and a "
+        "provisional knowledge row states the version, as without the third page"),
+    "a_page_copying_an_outlet_word_for_word_cannot_carry_it_into_another": (
+        "Persistent misinformation; Hallucinated knowledge (one page suppressing a true fact)",
+        "with source_derivation on (switched on by the case), two honest outlets state a version in their own words; a "
+        "third page repeats the first outlet's sentence word for word (so today's grouping joins it with that outlet) "
+        "and names the second outlet: the two honest outlets stay two independent groups and a provisional knowledge "
+        "row states the version"),
+    "copies_naming_a_read_outlet_in_any_wording_count_with_it": (
+        "Persistent misinformation (copies of one story counted as independent sources)",
+        "with source_derivation on (switched on by the case) and every other source rule off, an outlet states a "
+        "version and three reworded copies on other hosts name that outlet in wordings no credit pattern of the "
+        "product reads (\"..., Tech Ledger observed.\", \"As Tech Ledger pointed out, ...\", \"HT: Tech Ledger\"): the "
+        "outlet and its copies are one independent group and no knowledge row states the version from them alone "
+        "(the count with the rule off is reported beside it)"),
+    "derivation_never_splits_what_today_joins": (
+        "Persistent misinformation (copies of one story counted as independent sources)",
+        "with source_derivation on (switched on by the case), copies that today's grouping joins (an attribution line "
+        "naming an outlet that was not read, a wire credit, a near-identical sentence on a third host) stay one "
+        "independent group and no knowledge row states the version from them alone"),
+    "an_echo_marked_page_counts_for_nothing": (
+        "Hallucinated knowledge (the individual's own text taken as a source)",
+        "with source_derivation on and a stand-in for lane E's echo check (Wave 4; the check itself is not this lane's) "
+        "that marks one page as repeating the individual's own answer, one honest outlet and that page state a "
+        "version: the marked page is in no independent group and the cluster has one supporting group (read "
+        "directly from claims.stamp_origins / claims.score: the hook is not wired into the look by this lane); "
+        "without the mark, two"),
+}
+# What the rule cannot tell apart, listed and never counted as a pass: an outlet that checked a value itself and names
+# another outlet read in the same task (a credit, a contributor line) looks exactly like a copy that names its origin.
+NOT_STAGED = NOT_STAGED + (
+    ("TRADE (wave4_s): honest outlets that name another outlet they read beside are joined with it",
+     "with source_derivation on, an outlet that checked a value itself and still names another outlet read in the same "
+     "task (\"..., as Tech Ledger first reported\") counts with that outlet, so a true fact two such outlets state may "
+     "not be verified: the page's text cannot tell a credit from a copy (ADR-066 measures the cost per shape)"),)
+
+
 def run() -> dict:
     results = []
     for case in CASES:
