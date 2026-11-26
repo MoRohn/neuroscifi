@@ -10,8 +10,9 @@
      "kind": "document",
      "partial": false
     },
+    "peak_reset": true,
     "peak_rss_above_baseline_mib": 181.0,
-    "wall_s": 0.33
+    "wall_s": 0.328
    },
    {
     "bytes": 24800024,
@@ -21,8 +22,9 @@
      "kind": "table",
      "partial": true
     },
-    "peak_rss_above_baseline_mib": 174.7,
-    "wall_s": 3.166
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 344.7,
+    "wall_s": 3.165
    },
    {
     "bytes": 154521,
@@ -32,8 +34,9 @@
      "kind": "document",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 50.9,
-    "wall_s": 0.791
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 59.1,
+    "wall_s": 0.798
    },
    {
     "bytes": 48018658,
@@ -43,8 +46,9 @@
      "kind": "raster",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 293.4,
-    "wall_s": 0.493
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 198.1,
+    "wall_s": 0.397
    },
    {
     "bytes": 62914604,
@@ -54,8 +58,9 @@
      "kind": null,
      "partial": null
     },
-    "peak_rss_above_baseline_mib": 0.0,
-    "wall_s": 0.108
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 62.6,
+    "wall_s": 0.111
    },
    {
     "bytes": 60000084,
@@ -65,8 +70,9 @@
      "kind": "mesh",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 138.0,
-    "wall_s": 2.864
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 284.6,
+    "wall_s": 1.188
    },
    {
     "bytes": 13066504,
@@ -76,8 +82,9 @@
      "kind": "features",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 31.5,
-    "wall_s": 0.191
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 115.3,
+    "wall_s": 0.192
    },
    {
     "bytes": 9377808,
@@ -87,8 +94,9 @@
      "kind": "tree",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 294.1,
-    "wall_s": 2.125
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 340.1,
+    "wall_s": 2.119
    },
    {
     "bytes": 332667,
@@ -98,8 +106,9 @@
      "kind": "graph",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 72.5,
-    "wall_s": 0.229
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 73.4,
+    "wall_s": 0.238
    },
    {
     "bytes": 60405802,
@@ -109,8 +118,9 @@
      "kind": "bundle",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 11.5,
-    "wall_s": 2.152
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 10.5,
+    "wall_s": 2.439
    },
    {
     "bytes": 64000128,
@@ -120,8 +130,9 @@
      "kind": "table",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 20.2,
-    "wall_s": 0.143
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 79.6,
+    "wall_s": 0.142
    },
    {
     "bytes": 62914585,
@@ -131,8 +142,9 @@
      "kind": null,
      "partial": null
     },
-    "peak_rss_above_baseline_mib": 0.0,
-    "wall_s": 0.102
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 5.1,
+    "wall_s": 0.103
    },
    {
     "bytes": 66060288,
@@ -142,10 +154,11 @@
      "kind": "opaque",
      "partial": false
     },
-    "peak_rss_above_baseline_mib": 0.0,
-    "wall_s": 0.165
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 12.8,
+    "wall_s": 0.161
    }
   ],
-  "what": "artifacts.store.add per family at the size limits: one run each, a fresh process per case, on a shared loaded host (wall clock; peak RSS above the baseline after imports, VmHWM)"
+  "what": "artifacts.store.add per family at the size limits: one run each, a fresh process per case, on a shared loaded host (wall clock; peak RSS above the RSS just before the add, VmHWM reset after the input was built)"
  }
 }

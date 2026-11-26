@@ -5,9 +5,10 @@
 
 Each case builds one input here (near the 64 MiB input limit, or near the element limit where the decoder's
 element bound comes first), creates a fresh individual in a temporary folder, and runs `artifacts.store.add` on it
-in a FRESH Python process, so that the peak resident memory (VmHWM, Linux) is that one add's. Reported: input bytes,
-wall seconds of the add (hash, sidecar write, decode, index, text layer, commit), peak RSS above the process's
-baseline after imports, and the outcome (representation kind, partial, or the error's reason). One run per case on
+in a FRESH Python process; the peak resident memory (VmHWM, Linux) is reset after the input is built
+(/proc/self/clear_refs), so the peak is that one add's. Reported: input bytes, wall seconds of the add (hash,
+sidecar write, decode, index, text layer, commit), peak RSS above the RSS just before the add (the input itself is
+already resident), and the outcome (representation kind, partial, or the error's reason). One run per case on
 a shared, loaded host: wall clock, not a benchmark of the decoders. The temporary folder is removed afterwards.
 """
 from __future__ import annotations
@@ -30,11 +31,22 @@ sys.path.insert(0, sys.argv[1])
 from neuroscifi.artifacts import store as A
 from neuroscifi.instance import store
 
-def rss():
+def status(key):
     for line in open("/proc/self/status"):
-        if line.startswith("VmHWM:"):
+        if line.startswith(key + ":"):
             return int(line.split()[1]) * 1024
     return 0
+
+
+def reset_peak():
+    # Linux: writing 5 to clear_refs resets the high-water mark VmHWM to the current RSS, so the peak measured after
+    # the add is the add's own, not the input builder's
+    try:
+        with open("/proc/self/clear_refs", "w") as handle:
+            handle.write("5")
+        return True
+    except OSError:
+        return False
 
 def chunk(kind, body):
     return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
@@ -101,7 +113,8 @@ def build(case):
 case, folder = sys.argv[2], sys.argv[3]
 name, data = build(case)
 db = store.create(os.path.join(folder, "individual.sqlite"), 1.8e9)
-base = rss()
+reset = reset_peak()
+base = status("VmRSS")
 start = time.perf_counter()
 try:
     record = A.add(db, data, name=name, now=1.8e9)
@@ -112,8 +125,9 @@ except Exception as error:
     outcome = {"refused": type(error).__name__, "reason": getattr(error, "reason", None),
                "rule": getattr(error, "rule", None)}
 wall = time.perf_counter() - start
-print(json.dumps({"case": case, "bytes": len(data), "wall_s": round(wall, 3),
-                  "peak_rss_above_baseline_mib": round(max(0, rss() - base) / 2**20, 1), "outcome": outcome}))
+print(json.dumps({"case": case, "bytes": len(data), "wall_s": round(wall, 3), "peak_reset": reset,
+                  "peak_rss_above_baseline_mib": round(max(0, status("VmHWM") - base) / 2**20, 1),
+                  "outcome": outcome}))
 """
 
 CASES = ("text", "table", "document", "image", "audio", "mesh", "geo", "tree", "code", "archive", "array",
@@ -139,7 +153,7 @@ def main() -> int:
     value = json.loads(out.read_text()) if out.exists() else {}
     value["add_cost_per_family"] = {
         "what": "artifacts.store.add per family at the size limits: one run each, a fresh process per case, on a "
-                "shared loaded host (wall clock; peak RSS above the baseline after imports, VmHWM)",
+                "shared loaded host (wall clock; peak RSS above the RSS just before the add, VmHWM reset after the input was built)",
         "how": "python scripts/omnimind_int_add_cost.py", "rows": rows}
     text = json.dumps(value, indent=1, sort_keys=True) + "\n"
     out.write_text(text)

@@ -405,8 +405,10 @@ class Raster:
         out = {"kind": self.kind, "width": w, "height": h, "mode": self.mode, "bits": self.bits,
                "dtype": str(self.pixels.dtype)}
         if self.pixels.size:
-            flat = self.pixels.reshape(h * w, -1).astype(np.float64)
-            out["channel_mean"] = [_num(v) for v in flat.mean(axis=0)]
+            # measured in the samples' own type (the mean accumulates in float64): a float64 copy of every sample
+            # would be 8 bytes per sample outside any decode budget (lane B2's finding: 288 MiB for 12 MP RGB)
+            flat = self.pixels.reshape(h * w, -1)
+            out["channel_mean"] = [_num(v) for v in flat.mean(axis=0, dtype=np.float64)]
             out["channel_min"] = [_num(v) for v in flat.min(axis=0)]
             out["channel_max"] = [_num(v) for v in flat.max(axis=0)]
         return bounded(out)
@@ -522,8 +524,13 @@ class Mesh:
             return False
         edges = np.concatenate([self.faces[:, [0, 1]], self.faces[:, [1, 2]], self.faces[:, [2, 0]]])
         edges.sort(axis=1)
-        _, counts = np.unique(edges, axis=0, return_counts=True)
-        return bool((counts == 2).all())
+        # one int64 key per undirected edge (vertex counts are far below 2**31), sorted in place: equal keys are
+        # one edge's uses. np.unique(axis=0) on the pairs needs several copies of them.
+        keys = edges[:, 0] * np.int64(max(1, len(self.vertices))) + edges[:, 1]
+        del edges
+        keys.sort()
+        starts = np.flatnonzero(np.concatenate(([True], keys[1:] != keys[:-1], [True])))
+        return bool((np.diff(starts) == 2).all())
 
     def describe(self) -> dict:
         out = {"kind": self.kind, "n_vertices": len(self.vertices), "n_faces": len(self.faces),

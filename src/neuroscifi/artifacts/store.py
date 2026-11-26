@@ -950,9 +950,10 @@ def facts_of(representation) -> list[dict]:
         out += [_fact("width", w, "pixels"), _fact("height", h, "pixels"), _fact("mode", r.mode, "decoded mode"),
                 _fact("bits", int(r.bits), "bits per sample")]
         if r.pixels.size:
-            flat = r.pixels.reshape(h * w, -1).astype(np.float64)
+            flat = r.pixels.reshape(h * w, -1)          # in the samples' own type: no float64 copy of the image
             out.append(_fact("channel_stats", [{"min": float(flat[:, i].min()), "max": float(flat[:, i].max()),
-                                                "mean": float(flat[:, i].mean())} for i in range(flat.shape[1])],
+                                                "mean": float(flat[:, i].mean(dtype=np.float64))}
+                                               for i in range(flat.shape[1])],
                              "per channel over every pixel"))
     elif kind == "frames":
         out += [_fact("frames", len(r.frames), "frame count"),
