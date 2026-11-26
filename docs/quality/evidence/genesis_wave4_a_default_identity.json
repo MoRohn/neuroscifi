@@ -1,0 +1,349 @@
+{
+ "label": "Wave 4 lane A (ADR-064): the default path (allowance_division 'race') against the tree before the mechanism (f802ba4), every public learning-cycles corpus, configurations reference:no-loop, baseline, shipped, shipped+idle, idle-first; per-seed figures, series means, read-back, task counts and the decomposition compared leaf by leaf (wall seconds excluded)",
+ "old_commit": "f802ba4",
+ "new_commit": "ea83927",
+ "corpora": [
+  "lane F (cycles_splits)",
+  "lane R (cycles_rate_splits)",
+  "lane S (cycles_splits_s)",
+  "lane S variant 'orig' (cycles_splits_s_variants)",
+  "lane A (cycles_reach_splits)"
+ ],
+ "splits": [
+  "development",
+  "held_out"
+ ],
+ "runs_compared": 495,
+ "leaves_compared": 55584,
+ "leaves_differ": 671,
+ "differing_leaves_by_key": {
+  "file_bytes_end": 218,
+  "file_bytes_growth_per_cycle": 218,
+  "held_items": 19,
+  "accuracy": 27,
+  "correct": 19,
+  "gap": 12,
+  "run_ahead": 7,
+  "found_not_revised": 15,
+  "not_looked": 5,
+  "unreadable": 12,
+  "caught": 12,
+  "confirm": 8,
+  "catch_lag_cycles": 6,
+  "pages": 8,
+  "caught_share": 4,
+  "calibration.n": 4,
+  "mean.correct": 6,
+  "final.correct": 4,
+  "calibration.brier": 8,
+  "one_origin_looks": 6,
+  "mean.accuracy": 6,
+  "errors_open_at_end": 3,
+  "calibration.constant_reference": 6,
+  "error_persistence_cycles": 6,
+  "looked_unreadable": 4,
+  "wrong_source": 4,
+  "admitted.wrong": 3,
+  "admitted.wire_only": 1,
+  "admitted.rows": 3,
+  "wire_admitted": 1,
+  "error_episodes": 1,
+  "coverage": 4,
+  "uncovered": 1,
+  "nothing_held": 2,
+  "activity.idle_covered_true": 1,
+  "activity.idle_covered": 1,
+  "activity.idle_uncovered_looks": 1,
+  "mean.coverage": 1,
+  "replacements.true": 1,
+  "admitted.own_only": 1,
+  "self_admitted": 1,
+  "replacements.other": 1
+ },
+ "keys_only_new": [
+  "activity.division_held_cycles",
+  "activity.division_held_places",
+  "activity.division_mean_share",
+  "activity.division_reach_tasks",
+  "activity.division_refresh_idle_tasks",
+  "diagnosis.cycles_allowance_spent",
+  "diagnosis.total.reach.looks",
+  "diagnosis.total.reach.lost",
+  "diagnosis.total.reach.made",
+  "diagnosis.total.refresh.looks",
+  "diagnosis.total.refresh.lost",
+  "diagnosis.total.refresh.made",
+  "division_changed_held_cycles",
+  "division_changed_launch_cycles",
+  "allowance_division",
+  "reach_share"
+ ],
+ "runs_whose_behaviour_differs": [
+  [
+   "lane-a:development:idle-first:rd-covered",
+   1
+  ],
+  [
+   "lane-a:held_out:idle-first:rh-covered",
+   1
+  ],
+  [
+   "lane-a:held_out:idle-first:rh-mixed",
+   3
+  ],
+  [
+   "lane-a:held_out:idle-first:rh-reach",
+   2
+  ],
+  [
+   "lane-a:held_out:idle-first:rh-shift",
+   0
+  ],
+  [
+   "lane-r:held_out:idle-first:ho-rate-uniform",
+   3
+  ],
+  [
+   "lane-s-variant-orig:held_out:idle-first:sv-echo",
+   0
+  ],
+  [
+   "lane-s-variant-orig:held_out:idle-first:sv-mixed",
+   2
+  ]
+ ],
+ "note": "every differing leaf other than database file sizes is in 8 idle-first runs; idle-first runs are not repeatable on the UNCHANGED tree (six repeats each below): every outcome the new tree gave was also given by the old tree",
+ "repeats_of_the_differing_runs_6_each": {
+  "lane-a:development:rd-covered:1": {
+   "old_tree_outcomes": [
+    [
+     0.475218,
+     203,
+     29
+    ],
+    [
+     0.49264,
+     205,
+     30
+    ]
+   ],
+   "new_tree_outcomes": [
+    [
+     0.475218,
+     203,
+     29
+    ],
+    [
+     0.49264,
+     205,
+     30
+    ]
+   ],
+   "every_new_outcome_seen_on_the_old_tree": true
+  },
+  "lane-a:held_out:rh-covered:1": {
+   "old_tree_outcomes": [
+    [
+     0.451016,
+     188,
+     39
+    ],
+    [
+     0.451016,
+     189,
+     39
+    ]
+   ],
+   "new_tree_outcomes": [
+    [
+     0.451016,
+     188,
+     39
+    ],
+    [
+     0.451016,
+     189,
+     39
+    ]
+   ],
+   "every_new_outcome_seen_on_the_old_tree": true
+  },
+  "lane-a:held_out:rh-mixed:3": {
+   "old_tree_outcomes": [
+    [
+     0.615308,
+     259,
+     29
+    ],
+    [
+     0.617954,
+     254,
+     29
+    ]
+   ],
+   "new_tree_outcomes": [
+    [
+     0.615308,
+     259,
+     29
+    ],
+    [
+     0.617954,
+     254,
+     29
+    ]
+   ],
+   "every_new_outcome_seen_on_the_old_tree": true
+  },
+  "lane-a:held_out:rh-reach:2": {
+   "old_tree_outcomes": [
+    [
+     0.592913,
+     320,
+     38
+    ],
+    [
+     0.594793,
+     317,
+     38
+    ]
+   ],
+   "new_tree_outcomes": [
+    [
+     0.592913,
+     320,
+     38
+    ],
+    [
+     0.594793,
+     317,
+     38
+    ]
+   ],
+   "every_new_outcome_seen_on_the_old_tree": true
+  },
+  "lane-a:held_out:rh-shift:0": {
+   "old_tree_outcomes": [
+    [
+     0.565481,
+     295,
+     42
+    ],
+    [
+     0.567267,
+     288,
+     43
+    ]
+   ],
+   "new_tree_outcomes": [
+    [
+     0.565481,
+     295,
+     42
+    ],
+    [
+     0.567267,
+     288,
+     43
+    ]
+   ],
+   "every_new_outcome_seen_on_the_old_tree": true
+  },
+  "lane-r:held_out:ho-rate-uniform:3": {
+   "old_tree_outcomes": [
+    [
+     0.58202,
+     216,
+     45
+    ],
+    [
+     0.58202,
+     219,
+     45
+    ]
+   ],
+   "new_tree_outcomes": [
+    [
+     0.58202,
+     216,
+     45
+    ],
+    [
+     0.58202,
+     219,
+     45
+    ]
+   ],
+   "every_new_outcome_seen_on_the_old_tree": true
+  },
+  "lane-s-variant-orig:held_out:sv-echo:0": {
+   "old_tree_outcomes": [
+    [
+     0.613215,
+     237,
+     33
+    ],
+    [
+     0.632117,
+     237,
+     34
+    ],
+    [
+     0.643803,
+     229,
+     32
+    ]
+   ],
+   "new_tree_outcomes": [
+    [
+     0.613215,
+     237,
+     33
+    ],
+    [
+     0.643803,
+     229,
+     32
+    ]
+   ],
+   "every_new_outcome_seen_on_the_old_tree": true
+  },
+  "lane-s-variant-orig:held_out:sv-mixed:2": {
+   "old_tree_outcomes": [
+    [
+     0.572777,
+     264,
+     32
+    ],
+    [
+     0.572777,
+     265,
+     33
+    ],
+    [
+     0.575422,
+     265,
+     33
+    ]
+   ],
+   "new_tree_outcomes": [
+    [
+     0.572777,
+     265,
+     33
+    ],
+    [
+     0.575422,
+     265,
+     33
+    ]
+   ],
+   "every_new_outcome_seen_on_the_old_tree": true
+  }
+ },
+ "repeat_fields": [
+  "mean.correct",
+  "pages",
+  "admitted.rows"
+ ]
+}

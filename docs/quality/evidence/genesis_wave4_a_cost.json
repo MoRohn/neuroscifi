@@ -1,0 +1,146 @@
+{
+ "rows": {
+  "web_tasks": 10000,
+  "web_events": 500000,
+  "web_knowledge": 10000,
+  "open hypotheses with a prediction": 3000,
+  "autonomous tasks finished in the last 7 days": 300
+ },
+ "division[race]": {
+  "rule": "race",
+  "held": 0
+ },
+ "division[reserve]": {
+  "rule": "reserve",
+  "share": 0.5,
+  "reserve": 50,
+  "reached": 22,
+  "reach_open": true,
+  "held": 28
+ },
+ "division[yield]": {
+  "rule": "yield",
+  "share": 0.544621,
+  "reserve": 54,
+  "reached": 22,
+  "reach_open": true,
+  "held": 32,
+  "yield": {
+   "reach": {
+    "finished": 296,
+    "wrote_knowledge": 296,
+    "yield": 0.996644
+   },
+   "refresh": {
+    "finished": 4,
+    "wrote_knowledge": 4,
+    "yield": 0.833333
+   }
+  }
+ },
+ "idle[race]": "queued",
+ "idle[reserve]": "queued",
+ "timings": {
+  "_reach_tasks (window count)": {
+   "median_seconds": 0.127427,
+   "runs": [
+    0.129582,
+    0.127427,
+    0.126766
+   ]
+  },
+  "_yield_share (7 days of finished tasks)": {
+   "median_seconds": 1.122936,
+   "runs": [
+    1.123775,
+    1.119228,
+    1.122936
+   ]
+  },
+  "_reach_open (the admission rule's candidates)": {
+   "median_seconds": 0.292917,
+   "runs": [
+    0.292917,
+    0.296578,
+    0.291422
+   ]
+  },
+  "candidates (the idle path's own ranking, for comparison)": {
+   "median_seconds": 0.287069,
+   "runs": [
+    0.289232,
+    0.28608,
+    0.287069
+   ]
+  },
+  "division[race] alone": {
+   "runs": [
+    3.9e-05,
+    3.9e-05,
+    3.7e-05
+   ],
+   "median_seconds": 3.9e-05
+  },
+  "division[race] with its setting write": {
+   "median_seconds": 0.000377,
+   "runs": [
+    0.000382,
+    0.000366,
+    0.000377
+   ]
+  },
+  "division[reserve] alone": {
+   "runs": [
+    0.398465,
+    0.407237,
+    0.40201
+   ],
+   "median_seconds": 0.40201
+  },
+  "division[reserve] with its setting write": {
+   "median_seconds": 0.402363,
+   "runs": [
+    0.398789,
+    0.407578,
+    0.402363
+   ]
+  },
+  "division[yield] alone": {
+   "runs": [
+    1.507363,
+    1.506158,
+    1.645157
+   ],
+   "median_seconds": 1.507363
+  },
+  "division[yield] with its setting write": {
+   "median_seconds": 1.507708,
+   "runs": [
+    1.507708,
+    1.506491,
+    1.645495
+   ]
+  },
+  "idle decision[race] (with its setting write)": {
+   "median_seconds": 0.445288,
+   "runs": [
+    0.445288,
+    0.457846,
+    0.438299
+   ]
+  },
+  "idle decision[reserve] (with its setting write)": {
+   "median_seconds": 0.826007,
+   "runs": [
+    0.826007,
+    0.786184,
+    0.959516
+   ]
+  }
+ },
+ "commit": "78540a0",
+ "environment": {
+  "python": "3.12.16",
+  "machine": "aarch64"
+ }
+}

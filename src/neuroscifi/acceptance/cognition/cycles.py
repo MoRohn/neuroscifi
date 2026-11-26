@@ -1563,9 +1563,9 @@ DIVISION_SAFETY = SAFETY + ("admitted.wrong",)
 # The development choice (docs/quality/evidence/genesis_wave4_a_dev.json, commit 39ba9af): every candidate "unsafe"
 # (more wrongly admitted content than shipped+idle in at least one world), so NOTHING is chosen and the rule names no
 # division configuration for the withheld look. The look below holds only the references, should the main session
-# want the existing split measured on unseen worlds; it cannot promote anything.
+# want the existing split measured on unseen worlds; it cannot promote anything. Its pairs are this rule's (every
+# configuration against DIVISION_REFERENCE), not LOOK_PAIRS (Wave 3's look).
 LOOKS["wave4-a"] = ("reference:no-loop", "shipped", "shipped+idle", "shipped+idle-first")
-LOOK_PAIRS.setdefault("shipped+idle-first", DIVISION_REFERENCE)
 
 
 def division_verdicts(result) -> dict:
