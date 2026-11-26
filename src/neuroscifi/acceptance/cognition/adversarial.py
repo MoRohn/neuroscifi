@@ -931,6 +931,40 @@ CASES = CASES + CASES_WAVE2
 ORIGIN["added_wave2"] = tuple(EXPECTED_WAVE2)
 
 
+# ---- Wave 3, lane C (front-door adjustment in the causal engine, ADR-059): what each added case expects, written and
+# committed BEFORE the cases and before the mechanism. Origin `added_wave3_c`, reported apart and never added up with
+# the other origins. Each case stages graphs that look front-door identifiable (a hidden common cause of the cause X
+# and the outcome Y, an observed child M of X on the way to Y) but are not, on five worlds of
+# frontdoor_splits.generate (seeds 7991-7995, outside both of its splits). id -> (the directive's item, expectation).
+FRONT_DOOR_SEEDS = (7991, 7992, 7993, 7994, 7995)
+EXPECTED_WAVE3_C = {
+    "front_door_declined_when_the_hidden_cause_reaches_the_mediator": (
+        "Incorrect simulated assumptions",
+        "with the hidden common cause also acting on the mediator (X -> M -> Y; U -> X, M, Y), the causal engine "
+        "declines do(X) on Y on each of the five worlds (value None, not identified, a reason given); the case also "
+        "reports what a front-door formula through M would have answered and its error against the truth from the "
+        "equations"),
+    "front_door_declined_when_the_hidden_cause_reaches_cause_and_mediator": (
+        "Incorrect simulated assumptions",
+        "with the hidden cause acting on X and M only (X -> M -> Y; U -> X, M), the engine declines on each of the "
+        "five worlds (value None, not identified, a reason given), and reports the front-door formula's error"),
+    "front_door_declined_with_a_path_around_the_mediator": (
+        "Incorrect simulated assumptions",
+        "with a direct edge X -> Y beside X -> M -> Y (U -> X, Y), the engine declines on each of the five worlds "
+        "(value None, not identified, a reason given), and reports the front-door formula's error"),
+    "front_door_declined_when_the_mediator_is_not_observed": (
+        "Incorrect simulated assumptions",
+        "with M in the graph but absent from the observational means and covariance (X -> M -> Y; U -> X, Y), the "
+        "engine declines on each of the five worlds (value None, not identified, a reason given), never answers from "
+        "X and Y alone, and raises no error"),
+    "front_door_declined_when_an_observed_cause_reaches_mediator_and_outcome": (
+        "Incorrect simulated assumptions",
+        "with an observed W -> M and W -> Y (X -> M -> Y; U -> X, Y), where the plain front-door criterion fails "
+        "(M has a back-door path to Y that X does not block), the engine declines on each of the five worlds "
+        "(value None, not identified, a reason given), and reports the front-door formula's error"),
+}
+
+
 def run() -> dict:
     results = []
     for case in CASES:
