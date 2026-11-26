@@ -28,7 +28,13 @@ signal was a convention of the test worlds' generator ("not supported; do not tu
 its worlds but stays off with known limits; dividing the day's allowance shows no gain. What changes at the defaults:
 damaged settings fail closed with a repair command, `requeue` honours the day's task count, a restore's scan runs
 outside its transaction, two tie-breaks that followed random ids are fixed, and a display-only "Only one source says
-this." caution. The hole stays open at the shipped defaults. All ten
+this." caution. The hole stays open at the shipped defaults. Both reviewers' third checks passed; the final
+validation ran on `81474e5` (quality gate 6,397 passed, browser suite 216 passed, acceptance 7 of 7, guard 0
+different); the two withheld looks were taken once each on `e812a8e`. On unseen source worlds the own-text rule reads
+"effective" on a base of two own answers admitted (2 → 1; Wave 3's older echo rule 2 → 0), each with 14 honest pages
+set aside and the hole untouched (110 rows below the bar → 108 / 107): not shown better than the older rule, and both
+stay off. On Wave 3's withheld learning-cycle worlds the idle investigation's figures reproduce Wave 3's exactly on
+repeatable code. All ten
 deliverables (A–J) are written; the final account for the owner is [FINAL_EVALUATION.md](FINAL_EVALUATION.md).
 
 Project Cognitive Genesis is the owner's programme to add measurable cognitive mechanisms to NeuroSciFi on top of the
@@ -70,7 +76,7 @@ outcome.
 | 1, closing | re-review of the fix round, fix lanes D and E, a second check, final validation, the one withheld look | done: [WAVE1.md](WAVE1.md) §6.5, §7, §8; then PR into `main` |
 | 2 | U regression and cognitive UAT; F the recursive knowledge assessment; L the integration loop; X follow-ups; D deliverables E, G, I, J | U, F, L integrated on `genesis-wave2` (`828ca8e`); X and D from it; record in [WAVE2.md](WAVE2.md) |
 | 3 | 0 withheld learning-cycle worlds and one look; P the digest across hosts and the redraw; C the front door; H shadow and readiness; R the re-check's order; S source independence and supersession; V coverage; REC the reconciliation | merged on `genesis-wave3` (`f0a1f09`); two reviews; a fix lane; record in [WAVE3.md](WAVE3.md) |
-| 4 | 0 source-independence worlds and one look; S derivation; E own-text provenance; D settings, budgets, the restore, the caution; A the allowance's division and the tie-breaks; INT the two rules wired; FIX | on `genesis-wave4` (`3032cf6`); two reviews and their second passes (both: may merge); a fix lane; withheld look and final validation pending; record in [WAVE4.md](WAVE4.md) |
+| 4 | 0 source-independence worlds and one look; S derivation; E own-text provenance; D settings, budgets, the restore, the caution; A the allowance's division and the tie-breaks; INT the two rules wired; FIX | on `genesis-wave4`; two reviews, their second passes and third checks (both: may merge); two fix lanes; final validation on `81474e5`; the two withheld looks taken on `e812a8e` (ledger lines 9, 10); record in [WAVE4.md](WAVE4.md) |
 
 ## Documents
 
@@ -90,7 +96,7 @@ outcome.
 | [WAVE1.md](WAVE1.md) | record | What each Wave 1 lane built, the shipped defaults, the benchmark (split and wide seeds), the three reviews' findings and fixes, what stays open, how to back each piece out |
 | [WAVE2.md](WAVE2.md) | record | What each Wave 2 lane built, the two new settings, the integration, learning-cycles and regression results, what stays open, how to back each piece out |
 | [WAVE3.md](WAVE3.md) | record | Step 0's look and its safety counts, what each Wave 3 lane built and its default, results with references, spreads and costs, the reviews' corrections, the disclosures, what stays open, how to back each piece out |
-| [WAVE4.md](WAVE4.md) | record | The source-independence worlds and their look, each Wave 4 lane in both directions with denominators, the reviews and fixes, what stays open, the owner's decisions, how to back each piece out |
+| [WAVE4.md](WAVE4.md) | record | The source-independence worlds and their look, each Wave 4 lane in both directions with denominators, the reviews and fixes, the rule for the withheld looks and the looks, the final validation, what stays open, the owner's decisions, how to back each piece out |
 | [COGNITIVE_BENCHMARK.md](../quality/COGNITIVE_BENCHMARK.md) | instrument | The cognitive benchmark: families, rules for a lane, how to register a mechanism, the baseline |
 | [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md) | decisions | ADR-049 (provenance kinds and the imagined store), ADR-050 (the quiet switch and one admission rule), ADR-051 to ADR-055 (Wave 1), ADR-056 (the integration loop, Wave 2), ADR-058 to ADR-063 (Wave 3), ADR-064 to ADR-067 (Wave 4) |
 
@@ -99,7 +105,7 @@ outcome.
 | File | What it holds |
 |---|---|
 | `docs/quality/evidence/genesis_baseline.json` | the benchmark on the unchanged system: development, held-out, reference policies (`oracle`, `random`, `autonomy` (the idle path), `open`), and the withheld family once |
-| `docs/quality/evidence/genesis_final_uses.jsonl` | the ledger of `--final` runs of the withheld family (eight entries: the baseline's; Wave 1's look, two lines: the baseline re-scored, then the Wave 1 mechanisms; Wave 3 step 0's look at the withheld learning-cycle worlds; Wave 3's final looks, three lines: the cycles look and the front-door pair; and Wave 4 step 0's look at the withheld source-independence worlds) |
+| `docs/quality/evidence/genesis_final_uses.jsonl` | the ledger of `--final` runs of the withheld family (ten entries: the baseline's; Wave 1's look, two lines: the baseline re-scored, then the Wave 1 mechanisms; Wave 3 step 0's look at the withheld learning-cycle worlds; Wave 3's final looks, three lines: the cycles look and the front-door pair; Wave 4 step 0's look at the withheld source-independence worlds; and Wave 4's final looks, two lines: the source worlds, then the learning-cycle worlds) |
 | `docs/quality/evidence/genesis_wave1_withheld.json` | Wave 1's one look at the withheld family: both runs, headline metrics and full results |
 | `docs/quality/evidence/genesis_provenance.json` | the imagined store: safeguards broken one at a time (42 of 42 caught), costs, both review rounds |
 | `docs/quality/evidence/genesis_safety.json` | quiet and admission: honour times, costs, the admission benchmark, safeguards (14 of 14 caught), both review rounds |
@@ -116,9 +122,10 @@ outcome.
 
 | `docs/quality/evidence/genesis_sources_baseline.json`; `genesis_sources_withheld_baseline.json` | Wave 4 step 0: the source-independence family on the unchanged system (development, held-out, references, the form census); its one look at the withheld source worlds (names the worlds: only the main session reads it; its aggregate numbers are in COGNITIVE_BENCHMARK.md) |
 | `docs/quality/evidence/genesis_wave4_{s,s_assess_development,e,d_caution,fix}.json`, `genesis_wave4_a_{dev,held_out,default_identity,cost,repeatability}.json` | Wave 4 lanes S, E, D and A, and the fix lane's re-run of the source-independence family after the reviews |
+| `docs/quality/evidence/genesis_wave4_look_sources.json`, `genesis_wave4_look_cycles.json`; `genesis_wave4_look_analysis.json` | Wave 4's final looks (ledger lines 9 and 10; 377 kB and 428 kB; they name the withheld worlds: no lane opens them); the main session's reading of both by the committed rule (5 kB; its numbers are in WAVE4.md, "The withheld looks") |
 
 The ledger was not extended in Wave 2: no withheld run. Wave 3 step 0 added line 4 (the learning-cycle worlds), Wave 3's
-looks lines 5 to 7, Wave 4 step 0 line 8 (the source-independence worlds).
+looks lines 5 to 7, Wave 4 step 0 line 8 (the source-independence worlds), Wave 4's looks lines 9 and 10.
 
 Reproduce with `scripts/bench_cognition.py`, `scripts/bench_wave1.py`, `scripts/bench_wave2_integration.py`,
 `scripts/bench_learning_cycles.py`, `scripts/bench_sources.py`, `scripts/genesis_provenance.py` and `scripts/bench_genesis_safety.py`;
