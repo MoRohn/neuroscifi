@@ -273,13 +273,15 @@ def rank(db, now, *, limit=10) -> list[dict]:
         record."""
         if not lp_on:
             return factor, futile, {}
+        strict = factor, futile           # the rule with the setting off (refreshes that confirm are no progress)
         factor, futile = _futility(db, key, refresh_is_progress=True)
-        try:            # Wave 2 lane U: a failing learning-progress read leaves the futility rule alone, said and logged
-            lp, note, record = progress(db, key, gain, now)
-            lp = float(lp)
+        try:            # Wave 2 lane U: a failing learning-progress read is said and logged; Wave 2 lane X (review2
+            lp, note, record = progress(db, key, gain, now)     # L2): it falls back to the strict rule of the
+            lp = float(lp)                                      # setting off, never to the gentler one
         except Exception as exc:          # noqa: BLE001 - recorded with the candidate and logged, never silent
-            log.warning("learning progress of %r could not be read (%s: %s)", key, type(exc).__name__, exc)
-            return factor, futile, {"learning_progress": {"error": f"could not be read ({type(exc).__name__})"}}
+            log.warning("learning progress of a curiosity candidate could not be read (%s); the futility rule "
+                        "applies as with the setting off", type(exc).__name__)
+            return (*strict, {"learning_progress": {"error": f"could not be read ({type(exc).__name__})"}})
         if lp >= factor:
             return factor, futile, {"learning_progress": record}
         return lp, note, {"learning_progress": record}

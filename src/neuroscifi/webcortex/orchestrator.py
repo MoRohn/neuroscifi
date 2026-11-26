@@ -1979,7 +1979,7 @@ class _Run:
             if plan is not None and not isinstance(plan, dict):
                 raise TypeError(f"the escalation plan is {type(plan).__name__}, not a record")
         except Exception as exc:  # noqa: BLE001 - the task's "error" event; the report stays as it was
-            self.event("error", {"stage": "escalating", "error": type(exc).__name__, "detail": str(exc)[:300]},
+            self.event("error", {"stage": "escalating", "error": type(exc).__name__},     # no message (review2 L1)
                        "synthesizing")
             plan = None
         self.done("escalating")
@@ -2737,7 +2737,7 @@ def _monitor(run, report):
         report["monitoring"] = record
     except Exception as exc:   # monitoring must never cost the owner the answer
         try:
-            run.event("error", {"stage": "monitoring", "error": type(exc).__name__, "detail": str(exc)[:300]})
+            run.event("error", {"stage": "monitoring", "error": type(exc).__name__})    # no message (review2 L1)
         except Exception:      # noqa: BLE001 - a lost lease is seen by the task's own final update
             pass
 
@@ -2945,8 +2945,8 @@ def _after_run(db, task_id, now):
         scheduler.after_monitor_task(db, task_id, now)
     except Exception as exc:   # change detection is best effort; the run's outcome stands
         with store.write(db):
-            state.log_event(db, task_id, "error", {"stage": "change_detection", "error": type(exc).__name__,
-                                                   "detail": str(exc)[:300]}, now)
+            state.log_event(db, task_id, "error", {"stage": "change_detection", "error": type(exc).__name__},
+                            now)        # the type only: a message may name a subject (Wave 2 lane X, review2 L1)
 
 
 def _prune_cache(db, task_id, services, now):

@@ -215,13 +215,12 @@ def background_gate(db_path=None, *, sample=None, audio=None) -> dict:
                 raise TypeError(f"the forecast is {type(verdict).__name__}, not a verdict")
         except Exception as exc:   # noqa: BLE001 - fail open: a forecast may only add a hold, a broken one adds none
             # Wave 2 lane U: never silent; logged once per kind of failure in this process (the gate runs often)
-            seen = f"{type(exc).__name__}: {exc}"[:200]
+            seen = type(exc).__name__        # Wave 2 lane X (review2 L1): the type only, never the message
             if seen not in _FORECAST_FAILURES:
                 if len(_FORECAST_FAILURES) > 64:
                     _FORECAST_FAILURES.clear()
                 _FORECAST_FAILURES.add(seen)
-                log.warning("predictive regulation: the forecast failed (%s: %s); it adds no hold",
-                            type(exc).__name__, exc)
+                log.warning("predictive regulation: the forecast failed (%s); it adds no hold", seen)
             verdict = {"hold": False}
         if verdict.get("hold"):
             reason, why = verdict["reason"], "forecast"

@@ -599,7 +599,7 @@ def candidates(db, now, *, limit=10, offered=()) -> dict:
                 factor, _, record = curiosity.progress(db, h["key"], gain, now)
                 factor = float(factor)
             except Exception as exc:      # noqa: BLE001 - recorded with the candidate and logged, never silent
-                log.warning("learning progress of %r could not be read (%s: %s)", h["key"], type(exc).__name__, exc)
+                log.warning("learning progress of hypothesis #%s could not be read (%s)", hid, type(exc).__name__)
                 factor, record = 1.0, {"error": f"could not be read ({type(exc).__name__})"}
             gain, gain_as_read, lp = gain * factor, gain_as_read * factor, {"learning_progress": record}
         add("hypothesis_prediction", h["key"], h["statement"], "fact_verification", gain,
@@ -630,8 +630,9 @@ def candidates(db, now, *, limit=10, offered=()) -> dict:
             try:        # Wave 2 lane U: a record that cannot be made is said in the record and logged
                 item["salience"] = salience.score(db, item, now)
             except Exception as exc:      # noqa: BLE001 - recorded with the candidate and logged, never silent
-                log.warning("the salience record of %r could not be made (%s: %s)", item.get("key"),
-                            type(exc).__name__, exc)
+                log.warning("the salience record of a %s candidate (knowledge #%s, hypothesis #%s) could not be "
+                            "made (%s)", item.get("kind"), item.get("knowledge_id"), item.get("hypothesis_id"),
+                            type(exc).__name__)
                 item["salience"] = {"error": f"could not be made ({type(exc).__name__})"}
         mode_cost = curiosity.cost(item["mode"])
         budget = MODE_BUDGETS.get(item["mode"], MODE_BUDGETS["fact_verification"])
@@ -785,8 +786,8 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
     try:                # Wave 2 lane U: a gate that cannot be read is closed (the admitted order), said and logged
         active = strategies.active(db)
     except Exception as exc:              # noqa: BLE001 - recorded with the admission and logged, never silent
-        log.warning("strategy selection's gate could not be read (%s: %s); the admitted order stands",
-                    type(exc).__name__, exc)
+        log.warning("strategy selection's gate could not be read (%s); the admitted order stands",
+                    type(exc).__name__)
         active, out["strategy"] = False, {"error": f"the gate could not be read ({type(exc).__name__})"}
     if not isinstance(active, bool):      # Wave 2 lane X: only `True` opens the gate; anything else is a failure
         log.warning("strategy selection's gate returned %s, not true or false; the admitted order stands",

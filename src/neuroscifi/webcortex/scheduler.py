@@ -427,9 +427,25 @@ def _arbitrated(db, report, now, winner_task, winner, loser, rule):
         return
     detail = {"arbitration": {"slot": "one investigation per subject per timer pass", "winner": winner,
                               "loser": loser, "rule": rule}}
-    with store.write(db):
-        state.log_event(db, winner_task, "decision", detail, now)
+    try:        # Wave 2 lane X (review2 Info 3): a record that cannot be written never costs the rest of the pass
+        with store.write(db):
+            state.log_event(db, winner_task, "decision", detail, now)
+    except Exception as exc:              # noqa: BLE001 - reported in the pass and logged, never silent
+        log.warning("the arbitration record of task %s could not be written (%s); the pass goes on", winner_task,
+                    type(exc).__name__)
+        report["skipped"].append({"what": "arbitration record", "task_id": winner_task,
+                                  "reason": f"failed: {type(exc).__name__}"})
+        return
     report.setdefault("arbitration", []).append({"task_id": winner_task, **detail["arbitration"]})
+
+
+def _rechecks_queued(db, now) -> list[dict]:
+    """The knowledge re-check's tasks queued at `now` (this pass), read from their decision events (recheck.submit
+    writes the task and its event in one transaction): what a re-check that failed part-way had already queued."""
+    rows = db.execute("SELECT e.task_id, t.origin FROM web_events e JOIN web_tasks t ON t.id=e.task_id WHERE "
+                      "e.kind='decision' AND e.created_at=? AND json_extract(e.detail,'$.autonomy.recheck') IS NOT "
+                      "NULL AND t.origin GLOB 'refresh:*' ORDER BY e.id", (now,)).fetchall()
+    return [{"task_id": tid, "knowledge_id": int(origin.split(":", 1)[1])} for tid, origin in rows]
 
 
 def _wave1_step(report, what, step, fallback=None):
@@ -442,8 +458,9 @@ def _wave1_step(report, what, step, fallback=None):
             raise TypeError(f"{what} returned {type(out).__name__}, not a record")
         return out if out is not None or fallback is None else fallback
     except Exception as exc:              # noqa: BLE001 - reported in the pass and logged, never silent
-        log.warning("the timer's %s failed (%s: %s); the pass goes on", what, type(exc).__name__, exc)
-        report["skipped"].append({"what": what, "reason": f"failed: {type(exc).__name__}: {exc}"[:300]})
+        # Wave 2 lane X (review2 L1): the error's type only, never its message (it may name a subject)
+        log.warning("the timer's %s failed (%s); the pass goes on", what, type(exc).__name__)
+        report["skipped"].append({"what": what, "reason": f"failed: {type(exc).__name__}"})
         return fallback
 
 
@@ -524,8 +541,9 @@ def tick(db, now, services, *, max_tasks=None, queue=False) -> dict:
     taken = {}          # knowledge id -> the re-check's task queued for it in this pass (ADR-056 arbitration)
     if recheck.enabled(db) and budget_left > 0:
         rechecked = _wave1_step(report, "knowledge re-check", lambda: recheck.run(
-            db, now, limit=min(cfg.recheck_per_tick, budget_left), over_cap=lambda: _over_cap(db, now, cfg)),
-            fallback={"skipped": [], "submitted": []})
+            db, now, limit=min(cfg.recheck_per_tick, budget_left), over_cap=lambda: _over_cap(db, now, cfg)))
+        if rechecked is None:   # Wave 2 lane X (review2 L4): failed part-way; what it queued still counts
+            rechecked = {"skipped": [], "submitted": _rechecks_queued(db, now)}
         report["skipped"] += rechecked["skipped"]
         for item in rechecked["submitted"]:
             taken[item["knowledge_id"]] = item["task_id"]
