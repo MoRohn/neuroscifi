@@ -361,6 +361,15 @@ answer is cleared only after the 3-hour limit (nothing is lost compared with bef
 session starts on another process first, the answer is written into the asking session's transcript, not spoken
 live there.
 
+**The recorded digest is this host's.** CI's first run on the Wave 2 pull request failed one test,
+`tests/uat/test_uat_wave0_equivalence.py::test_the_offline_research_benchmark_equals_wave0_at_the_shipped_defaults_and_with_every_setting_off`:
+on CI's x86_64 runner the offline research benchmark's digest is `426abca5…`, not the `68731d72…` recorded on the
+development host (aarch64). The test had pinned the recorded value, which no earlier CI run had checked. It now
+asserts, in any environment, that the shipped defaults give the same digest as every setting off, and compares
+the recorded value only on the architecture it was recorded on. Why the two environments differ was **not
+investigated**; every "same digest as Wave 0" in these documents is a statement about runs on the development
+host.
+
 **Wave 2 took no look at the withheld family:** no lane changed a mechanism behind its four interfaces. The ledger
 still holds three lines.
 
