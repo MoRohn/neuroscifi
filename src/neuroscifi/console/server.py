@@ -104,6 +104,9 @@ def _inventory(c, p, q, b):
     measure = q.get("measure") in ("1", "true")   # the overview asks; the header, reloaded
     # after every teaching action, does not
     out = {**store.inventory(c.db), "regulation": store.regulation(c.db, c.path, measure=measure)}
+    if measure:     # the overview (Wave 4 lane D): damaged saved instance and voice settings, as `nsf config` lists them
+        from ..voice import config as voice_config
+        out["setting_problems"] = store.setting_problems(c.db) + voice_config.problems(c.db)
     if q.get("self") in ("1", "true"):        # kept for older pages; the console asks GET /api/self (review1 A1)
         out |= _self_record(c)
     return out

@@ -392,6 +392,8 @@ async function loadOverview() {
     r.reason ? ` · ${r.reason}` : ''),
     r.writes_allowed ? null : h('p', { class: 'sub', text: 'New evidence, research and other writes are refused until this clears. Free disk space, forget evidence or raise the limit.' }),
     (r.warnings ?? []).map((w) => h('p', { class: 'sub', role: 'status' }, badge('Attention', 'warn'), ` ${w}`)),
+    // Wave 4 lane D: a damaged saved setting reads as its cautious value until it is set again (as `nsf config` says)
+    (inv.setting_problems ?? []).map((w) => h('p', { class: 'sub', role: 'status' }, badge('Saved setting', 'warn'), ` ${w}`)),
     kv([
     // The owner's one switch for everything done unasked (ADR-050; `nsf quiet on|off`).
     ['Background work', r.config.quiet ? 'Quiet: nothing runs unless you ask (turn it off with nsf quiet off)'

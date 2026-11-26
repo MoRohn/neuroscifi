@@ -16,6 +16,138 @@ from neuroscifi.webcortex import autonomy, consolidate, orchestrator, scheduler,
 T0, DAY = adv.T0, adv.DAY
 
 
+# ---- item 1: every saved setting is checked when it is read (security review L8, review3b N8: older ones open) ------
+
+JUNK = [None, "x", "", "true", -1, 0, 1, 1.5, 10 ** 13, float("nan"), 1e308, True, False, [], ["a"], {}, {"x": 1},
+        {"tasks": -1}, "http://example.com:3210"]
+
+
+def _with(db, key, change):
+    row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    raw = json.loads(row[0]) if row and not isinstance(change, str) else {}
+    with store.write(db):
+        db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                   (key, change if isinstance(change, str) else json.dumps(raw | change)))
+
+
+def test_every_saved_web_setting_is_checked_and_a_damaged_one_reads_as_its_cautious_value(tmp_path):
+    from dataclasses import fields
+    from neuroscifi.webcortex import config as wconfig
+    db = store.create(tmp_path / "fuzz-web.sqlite", T0, note="wave 4 lane D fuzz")
+    with closing(db):
+        state.set_config(db, {"enabled": True, "autonomous": True, "news_rendering": True}, T0)
+        sound = db.execute("SELECT value FROM meta WHERE key=?", (wconfig.META_KEY,)).fetchone()[0]
+        checked = 0
+        for f in fields(wconfig.WebConfig):
+            for junk in JUNK:
+                _with(db, wconfig.META_KEY, sound)
+                _with(db, wconfig.META_KEY, {f.name: junk})
+                cfg = state.get_config(db)                     # never raises
+                cfg.ceiling(), cfg.budget_for("deep_research")
+                listed = [p for p in state.setting_problems(db) if f"saved {f.name} " in p]
+                if wconfig.damaged(f.name, junk):
+                    cautious = wconfig.CAUTIOUS.get(f.name, getattr(wconfig.WebConfig(), f.name))
+                    assert getattr(cfg, f.name) == cautious, (f.name, junk)
+                    rule, safe = wconfig.FAILS_CLOSED.get(f.name, (None, None))
+                    assert rule is None or getattr(cfg, rule) == safe, (f.name, junk)
+                    assert len(listed) == 1, (f.name, junk)
+                    checked += 1
+                else:
+                    assert getattr(cfg, f.name) == junk and not listed, (f.name, junk)
+        assert checked > 500
+        for row in ("{not json", "[1, 2]", "7"):
+            _with(db, wconfig.META_KEY, row)
+            cfg = state.get_config(db)
+            assert (cfg.enabled, cfg.autonomous, cfg.daily_autonomous["tasks"], cfg.read_ahead) == (False, False, 0, 1)
+            assert len(state.setting_problems(db)) == 1
+
+
+def test_a_damaged_allowance_or_guard_never_reads_looser_than_the_default():
+    from neuroscifi.webcortex import config as wconfig
+    default = wconfig.WebConfig()
+    for name, value in wconfig.CAUTIOUS.items():
+        before = getattr(default, name)
+        if isinstance(before, dict):
+            assert all(value[k] <= before[k] for k in before), name
+        elif name.startswith("auto_provisional") or name == "reflection_interval_days":
+            assert value >= before, name                # a higher bar, a longer interval
+        elif name != "strategy_selection":
+            assert value <= before, name
+    assert set(wconfig.FAILS_CLOSED) >= {"deny_domains", "private_terms", "budget_ceiling"}
+
+
+def test_every_saved_instance_setting_is_checked_and_a_damaged_one_is_listed(tmp_path):
+    from dataclasses import fields
+    from neuroscifi.instance import executive
+    db = store.create(tmp_path / "fuzz-instance.sqlite", T0, note="wave 4 lane D fuzz")
+    with closing(db):
+        sound = db.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0]
+        cautious = {"consolidation": False, "graph_rule_migration": False, "quiet": True,
+                    "internal_state_history": False, "predictive_regulation": False, "decision_information": False,
+                    **{n: False for n in store.IMAGINE_SWITCHES}, "ask_budget_per_epoch": 0}
+        checks = store._SETTABLE | store._FIXED
+        for f in fields(store.InstanceConfig):
+            for junk in JUNK:
+                _with(db, "config", sound)
+                _with(db, "config", {f.name: junk})
+                cfg = store.config(db)                         # never raises
+                listed = [p for p in store.setting_problems(db) if f"saved {f.name} " in p]
+                if checks[f.name](junk):
+                    assert getattr(cfg, f.name) == junk or junk != junk, (f.name, junk)
+                    assert not listed
+                    continue
+                assert len(listed) == 1, (f.name, junk)
+                if f.name == "ask_budget_window_seconds":     # read by the executive, which says so with each decision
+                    window, warning = executive._ask_window(cfg)
+                    assert window == store.InstanceConfig.ask_budget_window_seconds and warning, junk
+                else:
+                    assert getattr(cfg, f.name) == cautious.get(f.name, getattr(store.InstanceConfig, f.name)), \
+                        (f.name, junk)
+
+
+def test_every_saved_voice_setting_is_checked_and_a_damaged_one_reads_as_its_cautious_value(tmp_path):
+    from neuroscifi.voice import config as vconfig
+    db = store.create(tmp_path / "fuzz-voice.sqlite", T0, note="wave 4 lane D fuzz")
+    with closing(db):
+        vconfig.update(db, {"retain_audio": True, "audio_ttl_hours": 48})
+        sound = db.execute("SELECT value FROM meta WHERE key='voice'").fetchone()[0]
+        for name in vconfig.DEFAULTS:
+            for junk in JUNK:
+                _with(db, "voice", sound)
+                _with(db, "voice", {name: junk})
+                cfg = vconfig.get(db)                          # never raises
+                listed = [p for p in vconfig.problems(db) if f" {name} (" in p]
+                if vconfig._sound(name, junk):
+                    assert cfg[name] == junk and not listed, (name, junk)
+                else:
+                    assert cfg[name] == vconfig.CAUTIOUS.get(name, vconfig.DEFAULTS[name]), (name, junk)
+                    assert len(listed) == 1, (name, junk)
+        _with(db, "voice", "{not json")
+        assert vconfig.get(db)["retain_audio"] is False and vconfig.get(db)["consent"] == {}
+        assert len(vconfig.problems(db)) == 1
+        _with(db, "voice_pref:fam", {"speed": "fast", "mode": "text_only"})
+        assert vconfig.effective(db, "fam", owner=False)["speed"] == vconfig.DEFAULTS["speed"]
+
+
+def test_damaged_saved_settings_are_shown_by_the_cli(tmp_path, capsys):
+    from neuroscifi.cli import main
+    from neuroscifi.voice import config as vconfig
+    path = tmp_path / "cli.sqlite"
+    db = store.create(path, T0, note="wave 4 lane D cli")
+    with closing(db):
+        state.set_config(db, {"enabled": True}, T0)
+        _with(db, "webcortex", {"daily_autonomous": "lots"})
+        _with(db, "config", {"min_free_bytes": "none"})
+        vconfig.update(db, {"retain_audio": False})
+        _with(db, "voice", {"audio_ttl_hours": "a week"})
+    for argv, needle in ((["web", "config", "--db", str(path)], "daily_autonomous"),
+                         (["config", "--db", str(path)], "min_free_bytes"),
+                         (["voice", "settings", "--db", str(path)], "audio_ttl_hours")):
+        capsys.readouterr()
+        main(argv)
+        assert needle in capsys.readouterr().out, argv
+
+
 # ---- item 2: requeue honours the day's autonomous task count (review3b L6/N5, (f)) --------------------------------
 
 def _capped(tmp_path, cap):
