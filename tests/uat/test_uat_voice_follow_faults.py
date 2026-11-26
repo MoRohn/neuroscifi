@@ -315,3 +315,166 @@ def test_a_pick_up_failing_part_way_gives_back_its_count_and_slot(instance, monk
         assert any("Picking up" in t for t in notices), notices              # picked up at the next session
     finally:
         close(second)
+
+
+# ---- Wave 2 reconciliation: the check of the fixes (review2b N1, N2, N4) ------------------------------------------
+
+def _claims_fail_in_the_follower_until(gate, calls):
+    """The delivery claim fails (a locked database) in the follower thread until `gate` is set; a claim made anywhere
+    else (a new session's pick-up) and every claim after it are the real one."""
+    import sqlite3
+
+    def claim(db, principal, task_id):
+        if threading.current_thread().name == "nsf-voice-follow" and not gate.is_set():
+            calls.append(1)
+            raise sqlite3.OperationalError("database is locked")
+        calls.append(0)
+        return REAL_CLAIM(db, principal, task_id)
+    return claim
+
+
+@pytest.mark.parametrize("order", ["the_first_hub_recovers_first", "the_second_hub_starts_first"])
+def test_a_new_session_on_another_hub_never_takes_a_follow_whose_follower_still_claims(instance, monkeypatch, order):
+    """review2b N1: the first hub's claim fails and it pauses; the person ends that session and starts one on a
+    second hub (another process). The second hub's pick-up judged the follow stale and cleared it, so the first hub's
+    next claim found nothing and the answer was never given. Now a follow whose follower lives is left to it: the
+    answer is given exactly once, whichever happens first."""
+    monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    monkeypatch.setattr(vhub, "CLAIM_WAITS", (0.1,), raising=False)
+    gate, calls = threading.Event(), []
+    monkeypatch.setattr(tx, "clear_follow", _claims_fail_in_the_follower_until(gate, calls))
+    first = new_hub(instance)
+    second = None
+    try:
+        sid = first.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        task_id = ask(first, sid)
+        with closing(store.connect(instance)) as db:
+            orchestrator.cancel(db, task_id, time.time())
+        wait_for(lambda: calls.count(1) >= 1)                    # the first hub could not claim; it pauses
+        if order == "the_first_hub_recovers_first":
+            gate.set()
+            wait_for(lambda: answers(instance, task_id), timeout=10)
+        time.sleep(0.2)
+        first.stop(sid, OWNER)                                   # the person leaves this session
+        second = VoiceHub(instance, engines_factory=FakeEngines)
+        second.fake = FakeEngines({})
+        other = second.start(OWNER, "pocket:dev9999", "Pocket", "text_only")["session"]
+        if order == "the_second_hub_starts_first":
+            assert awaiting(instance, task_id) == 2             # left to its living follower: the ended session
+            gate.set()                                           # and the new one (which carried it) still await it
+        wait_for(lambda: answers(instance, task_id), timeout=10)
+        time.sleep(0.5)
+        assert len(answers(instance, task_id)) == 1, "the answer was lost or given twice"
+        assert not replies(second, other, "research_result")      # the second hub did not deliver it as well
+        assert awaiting(instance, task_id) == 0
+    finally:
+        close(first)
+        if second is not None:
+            close(second)
+
+
+def test_the_person_hears_once_that_the_answer_is_coming_while_the_claim_is_retried(instance, monkeypatch):
+    """review2b N2: while the claim is asked again, the asking session gets one plain notice, not one per retry."""
+    monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    monkeypatch.setattr(vhub, "CLAIM_WAITS", (0.05,), raising=False)
+    calls = []
+    monkeypatch.setattr(tx, "clear_follow", transient("raise", calls, 5))
+    hub = new_hub(instance)
+    try:
+        sid = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        task_id = ask(hub, sid)
+        with closing(store.connect(instance)) as db:
+            orchestrator.cancel(db, task_id, time.time())
+        wait_for(lambda: replies(hub, sid, "research_result"), timeout=10)
+        notices = [e["text"] for e in hub.events(sid, OWNER, 0, wait=0.1)["events"] if e["type"] == "notice"
+                   and "answer is ready" in e.get("text", "")]
+        assert calls.count(1) == 5 and len(notices) == 1, (calls, notices)
+        assert "claim" not in notices[0] and "database" not in notices[0]     # plain words
+    finally:
+        close(hub)
+
+
+def test_a_failing_follow_write_still_shows_the_acknowledgement(instance, monkeypatch, caplog):
+    """review2b N4 (i): the follow is written before the acknowledgement; a database error on that write used to hide
+    the acknowledgement. It is shown, the failure is logged (its type only), and this process still follows."""
+    import sqlite3
+    caplog.set_level(logging.WARNING)
+    monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    real = tx.update_session
+
+    def update(db, sid, now, **kw):
+        if (kw.get("context") or {}).get("follow_task_id"):
+            raise sqlite3.OperationalError("database is locked")
+        return real(db, sid, now, **kw)
+    monkeypatch.setattr(tx, "update_session", update)
+    hub = new_hub(instance)
+    try:
+        sid = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        task_id = ask(hub, sid)                                   # the acknowledgement was shown
+        assert any("could not be kept" in r.getMessage() for r in caplog.records)
+        assert not any("locked" in r.getMessage() for r in caplog.records)
+        with closing(store.connect(instance)) as db:
+            orchestrator.cancel(db, task_id, time.time())
+        assert wait_for(lambda: replies(hub, sid, "research_result"), timeout=10)
+    finally:
+        close(hub)
+
+
+def _old_task(instance, objective="Zephyr compiler maintainers"):
+    with closing(store.connect(instance)) as db:
+        prepared = orchestrator.prepare(db, objective, time.time() - 60, mode="quick_lookup", origin="console")
+        with store.write(db):
+            return orchestrator.insert(db, prepared, time.time() - 60)
+
+
+def test_a_failure_before_the_follower_starts_gives_back_its_slot_and_count(instance, monkeypatch):
+    """review2b N4 (ii): between taking a follower slot and starting the follower the reply's other actions run; one
+    that fails gives the slot and the follow count back."""
+    from neuroscifi.voice import bridge as vbridge
+    hub = new_hub(instance)
+    try:
+        task_id = _old_task(instance)
+        sid = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        slots = hub._followers._value
+
+        def fail(s, mode):
+            raise RuntimeError("staged: the mode change failed")
+        monkeypatch.setattr(hub, "_apply_mode", fail)
+        reply = vbridge.Reply("research", text="Following it.", task_id=task_id, follow=task_id,
+                              actions=[{"kind": "mode", "mode": "text_only"}])
+        with pytest.raises(RuntimeError):
+            hub._deliver(hub.sessions[sid], reply)
+        assert hub._following.get(task_id) is None and hub._followers._value == slots
+    finally:
+        close(hub)
+
+
+@pytest.mark.parametrize("created", ["before_the_conversation", "in_the_conversation"])
+def test_a_reply_that_follows_a_task_and_forgets_the_conversation(instance, monkeypatch, created):
+    """review2b N4 (iii): the follow is written to the session the same reply then forgets. A task from before the
+    conversation is still followed on the new session and its answer is given once; a task the conversation created
+    is forgotten with it, and nothing of it is written back to any session."""
+    from neuroscifi.voice import bridge as vbridge
+    monkeypatch.setattr(vhub, "FOLLOW_POLL", 0.05)
+    hub = new_hub(instance)
+    try:
+        before = _old_task(instance) if created == "before_the_conversation" else None
+        sid = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+        task_id = before or ask(hub, sid)
+        reply = vbridge.Reply("research", text="Following it.", task_id=task_id, follow=task_id,
+                              actions=[{"kind": "forget_conversation"}])
+        hub._deliver(hub.sessions[sid], reply)
+        if created == "in_the_conversation":
+            with closing(store.connect(instance)) as db:
+                assert db.execute("SELECT count(*) FROM web_tasks WHERE id=?", (task_id,)).fetchone()[0] == 0
+                contexts = [c for (c,) in db.execute("SELECT context FROM voice_sessions")]
+            assert not [c for c in contexts if task_id in (c or "")], contexts
+            return
+        assert awaiting(instance, task_id) == 1                   # kept on the new session
+        with closing(store.connect(instance)) as db:
+            orchestrator.cancel(db, task_id, time.time())
+        wait_for(lambda: answers(instance, task_id), timeout=10)
+        time.sleep(0.3)
+        assert len(answers(instance, task_id)) == 1 and awaiting(instance, task_id) == 0
+    finally:
+        close(hub)

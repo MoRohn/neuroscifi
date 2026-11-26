@@ -226,11 +226,21 @@ def test_a_task_that_finished_before_the_previous_session_ended_is_not_replayed(
         tx.update_session(db, old, time.time(), status="ended")      # after the task finished
     again = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
     time.sleep(0.4)
-    assert not answers(instance, task["id"]) and awaiting(instance, task["id"]) == 0
+    # Wave 2 reconciliation (review2b N1): while its hub lives, a follower may still be asking for the delivery claim,
+    # so the mark is left to it (not cleared) for FOLLOW_MAX after the task finished; it is never replayed
+    assert not answers(instance, task["id"]) and awaiting(instance, task["id"]) == 2
     assert not [e for e in events(hub, again, "notice") if "Picking up" in e.get("text", "")]
-    with closing(store.connect(instance)) as db:            # a hub that is gone, but an answer a day old
-        tx.update_session(db, again, time.time(), context={"follow_task_id": task["id"], "follow_by": "1:0:gone"})
+    with closing(store.connect(instance)) as db:
         tx.update_session(db, again, time.time(), status="ended")
+    monkeypatch.setattr(vhub, "FOLLOW_MAX", 0.0)              # past FOLLOW_MAX no follower can still be claiming it
+    later = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
+    time.sleep(0.4)
+    assert not answers(instance, task["id"]) and awaiting(instance, task["id"]) == 0
+    assert not [e for e in events(hub, later, "notice") if "Picking up" in e.get("text", "")]
+    monkeypatch.setattr(vhub, "FOLLOW_MAX", 3 * 3600.0)
+    with closing(store.connect(instance)) as db:            # a hub that is gone, but an answer a day old
+        tx.update_session(db, later, time.time(), context={"follow_task_id": task["id"], "follow_by": "1:0:gone"})
+        tx.update_session(db, later, time.time(), status="ended")
     monkeypatch.setattr(vhub, "RESUME_MAX_AGE", 0.0)
     third = hub.start(OWNER, "console:dev1234", "Console", "text_only")["session"]
     time.sleep(0.4)
