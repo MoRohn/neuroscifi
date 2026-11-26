@@ -2,10 +2,11 @@
 
 - `TodaySubject` ("today"): what exists on `main` before OMNIMIND. Documents reach the system only as web
   responses, so a file is handed to `webcortex.extract.extract` as the response a server would send with the
-  task's declared media type (a type the fetcher does not accept, `webcortex.net.CONTENT_TYPES`, is "cannot", as
-  the fetcher's unsupported_type would be); arrays reach it through the two commands that call `np.load(allow_pickle=False)`
-  (`nsf graphfile pack` for .npy, `nsf epoch stream` for an .npz holding exactly `states` and `targets`). Every
-  other question is answered "cannot": no detection, no file intake, nothing that makes an artifact.
+  task's declared media type, then through `safety.quarantine` as the orchestrator does (a type the fetcher does
+  not accept, `webcortex.net.CONTENT_TYPES`, is "cannot", as its unsupported_type would be). Arrays reach it
+  through the two commands that call `np.load(allow_pickle=False)` (`nsf graphfile pack` for .npy, `nsf epoch
+  stream` for an .npz holding exactly `states` and `targets`). Every other question is answered "cannot": no
+  detection, no file intake, nothing that makes an artifact.
 - `ArtifactsSubject` ("artifacts"): written against DESIGN.md §2/§3/§6 (`artifacts.adapters.decode`,
   `artifacts.make.make`, `artifacts.check`), importing them lazily; while the package is absent every answer is
   "cannot" with the reason "not built".
@@ -636,7 +637,7 @@ class TodaySubject:
         return Answer(None, "cannot", f"no intake path on main for {measure_name}")
 
     def _document(self, name, data, declared, measure_name, arg) -> Answer:
-        from ...webcortex import extract as wx
+        from ...webcortex import extract as wx, safety
         from ...webcortex.types import FetchError, FetchResult
         key = (name, declared, hash(data))
         if key not in self._cache:
@@ -646,7 +647,7 @@ class TodaySubject:
             result = FetchResult(url=url, final_url=url, status=200, headers={}, content_type=declared or "",
                                  body=data, retrieved_at=0.0)
             try:
-                self._cache[key] = wx.extract(result)
+                self._cache[key] = safety.quarantine(wx.extract(result))   # as the orchestrator does after extract
             except FetchError as error:
                 self._cache[key] = error
         doc = self._cache[key]
@@ -694,7 +695,39 @@ class TodaySubject:
 SUBJECTS = {"today": TodaySubject, "artifacts": ArtifactsSubject}
 
 
+class ProbeSubject:
+    """The harness's own self-test (`probe:<behaviour>`), never a result: refuse, answer, hang, crash, allocate past
+    the memory bound, or write outside its working directory, so tests can prove each failure is caught."""
+
+    def __init__(self, behaviour: str):
+        self.name = f"probe:{behaviour}"
+        self.behaviour = behaviour
+
+    def answer(self, task: Task) -> Answer:
+        b = self.behaviour
+        if b == "refuse":
+            return Answer(None, "refused", "probe")
+        if b == "answer":
+            return Answer(1, "answered")
+        if b == "hang":
+            import time
+            while True:
+                time.sleep(0.05)
+        if b == "crash":
+            raise KeyError("probe")
+        if b == "allocate":
+            block = np.ones(512 << 20, dtype=np.uint8)
+            return Answer(int(block[0]), "answered")
+        if b == "escape":
+            with open("../../omnimind-probe-escape.txt", "w") as out:
+                out.write("x")
+            return Answer(None, "refused", "probe")
+        raise ValueError(b)
+
+
 def get(name: str):
+    if name.startswith("probe:"):
+        return ProbeSubject(name.split(":", 1)[1])
     if name not in SUBJECTS:
         raise ValueError(f"unknown subject {name!r} (one of {', '.join(SUBJECTS)})")
     return SUBJECTS[name]()
