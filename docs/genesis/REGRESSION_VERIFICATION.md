@@ -1,6 +1,6 @@
 # Regression verification and cognitive UAT (deliverable H)
 
-Status: 2026-11-25 (§10, Wave 3's settings, and §11, Wave 4's with placeholder rows for its final validation, added 2026-11-26). Wave 2, lane U, branch `gen2-u` from `main` at `3559069` (Wave 1 merged). Deliverable H of the
+Status: 2026-11-25 (§10, Wave 3's settings, and §11, Wave 4's, added 2026-11-26; its final validation rows filled in by the Wave 4 record lane). Wave 2, lane U, branch `gen2-u` from `main` at `3559069` (Wave 1 merged). Deliverable H of the
 directive's §13 for its §12 ("Phase X"): evidence that the original and the enhanced functionality both work end to
 end, and that the system "must remain controllable and functionally reliable even when new cognitive mechanisms
 fail". Everything here was run offline on this host (aarch64, Python 3.12) with no model, GPU, phone, second account
@@ -308,7 +308,7 @@ pattern, fix them: 28 of 28 pass.
 Note: Wave 3's two source rules were on by default on `f0a1f09` and ship off since the fix lane; the fault-injection cases turn
 them on explicitly, so the count and the result do not depend on that default.
 
-## 11. Wave 4: the new settings in the regression suite, and the final validation (placeholder)
+## 11. Wave 4: the new settings in the regression suite, and the final validation
 
 Record: [WAVE4.md](WAVE4.md). Read from the tests on `3032cf6`; the counts below are from the lanes' and the fix
 lane's reports, not re-run for this section.
@@ -341,20 +341,21 @@ the default-path comparison's power (`test_wave4_fix.py::test_the_default_path_c
 adversarial origin `added_wave4_s` (5 cases; 60 of 60 scored cases pass with each Wave 4 setting forced on and at
 the defaults, development and held-out, on `d4931c0`).
 
-**The final validation (placeholder: the main session's runs on the final tree are recorded in
-[WAVE4.md](WAVE4.md), "Validation", and copied here):**
+**The final validation** (the main session's runs on `81474e5`, 2026-11-26, recorded in [WAVE4.md](WAVE4.md),
+"Validation", and copied here; the rows were placeholders until the Wave 4 record lane filled them; the commits after
+`81474e5` changed documents, the ledger and three evidence files and added `scripts/analyse_wave4_looks.py`):
 
 | Check | Result |
 |---|---|
-| Quality gate (`bash scripts/check.sh`: ruff, the non-e2e suite, the JS checks, the numerical reproduction) | *pending* |
-| Browser suite (`scripts/e2e.sh`) | *pending* |
-| `nsf acceptance --all` | *pending* |
-| Sentence guard (`scripts/guard_differential.py compare`) | *pending* (the fix lane's run: 1,937 compared, 0 different) |
-| Two accounts (`scripts/two_account_check.py`) | *pending* |
-| Offline research benchmark, every setting off and as shipped | *pending* (the fix lane's run: `68731d7235cb…`, portable `d87dbb4fb77f…`, both regimes) |
-| The default path of `claims.py` (`scripts/compare_source_derivation.py`) | *pending* (the fix lane's run: 2,052,099 comparisons, 0 different) |
-| Cognitive benchmark, retention and adversarial, development and held-out | *pending* |
-| `tests/uat` counts by file | *pending* (not counted for this section) |
+| Quality gate (`bash scripts/check.sh`: ruff, the non-e2e suite, the JS checks, the numerical reproduction) | ALL CHECKS PASSED: ruff clean; 6,397 passed, 22 skipped, 35 subtests, in 1,306 s; the JS checks; reproduce verified |
+| Browser suite (`scripts/e2e.sh`) | 216 passed, 1 skipped, in 1,031 s |
+| `nsf acceptance --all` | pass, 7 of 7 scenarios |
+| Sentence guard (`scripts/guard_differential.py compare`) | 1,937 compared: 1,688 identical, 232 stricter, 17 loosened, 0 different |
+| Two accounts (`scripts/two_account_check.py`) | 55 of 55 |
+| Offline research benchmark, every setting off and as shipped | `68731d7235cb…`, portable `d87dbb4fb77f…`, both regimes |
+| The default path of `claims.py` (`scripts/compare_source_derivation.py`) | not re-run in the final validation; the second fix round's run on the same code: 2,052,099 comparisons, 0 different |
+| Cognitive benchmark (`scripts/bench_cognition.py run`), development and held-out | completed; its retention and adversarial counts are not restated in the record |
+| `tests/uat` counts by file | not counted for this section (inside the quality gate's total) |
 
 Unverified here, as in §7: the open web, a live answer model, real hardware, a real second account, systemd, a week on
 the host.
