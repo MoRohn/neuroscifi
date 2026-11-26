@@ -1008,11 +1008,64 @@ def _unreferenced(db, urls, shas):
     return sorted(set(urls) - still), sorted(set(shas) - kept_shas)
 
 
+def _mark_sourced_answers(db, claim_ids):
+    """ADR-061 (security review M3): before claims are forgotten, every stored model-written answer sentence that
+    states a specific value of one of them and was written at or after that claim was read is marked as having had
+    a source (reasoning["sourced"]: indexes of its text's sentences; answer[i]["sourced"]: true). The mark names no
+    forgotten content. Without it, echo recognition would take the answer for the individual's own unsourced text
+    once its source is gone, and later honest pages stating the value would be discarded as its echoes for ever.
+    Caller owns the txn (the live forget and every checkpoint replay). Returns the answers marked."""
+    from ..webcortex import consolidate, text as T
+    since = {}
+    for part in _chunks(sorted(claim_ids)):
+        for values, at in db.execute(f"SELECT claim_values, retrieved_at FROM web_claims WHERE id IN ({_in(part)})",
+                                     part).fetchall():
+            try:
+                listed = json.loads(values or "[]")
+            except ValueError:
+                continue
+            for v in listed if isinstance(listed, list) else ():
+                if isinstance(v, str) and isinstance(at, (int, float)) and consolidate._specific(v):
+                    for token in consolidate._DIGITS.findall(v):
+                        since[token] = min(since.get(token, at), at)
+    marked = set()
+    tokens = sorted(since)
+    for part in _chunks(tokens, 100):
+        rows = db.execute("SELECT rowid, coalesce(finished_at, updated_at, created_at), result FROM web_tasks WHERE "
+                          "result LIKE '%model:%' AND (" + " OR ".join("instr(result, ?) > 0" for _ in part) + ")",
+                          part).fetchall()
+        for rowid, at, raw in rows:
+            try:
+                result = json.loads(raw)
+            except ValueError:
+                continue
+            reasoning = result.get("reasoning") if isinstance(result, dict) else None
+            if not isinstance(reasoning, dict) or not str(reasoning.get("generated_by") or "").startswith("model:"):
+                continue
+            stated = [t for t in part if since[t] <= (at or 0)]
+            changed = False
+            if isinstance(reasoning.get("text"), str):
+                hits = {i for i, s in enumerate(T.sentences(reasoning["text"])) if any(t in s for t in stated)}
+                if hits - set(reasoning.get("sourced") or ()):
+                    reasoning["sourced"] = sorted(hits | set(reasoning.get("sourced") or ()))
+                    changed = True
+            for a in reasoning.get("answer") or ():
+                if isinstance(a, dict) and isinstance(a.get("text"), str) and not a.get("sourced") and \
+                        any(t in a["text"] for t in stated):
+                    a["sourced"] = True
+                    changed = True
+            if changed:
+                db.execute("UPDATE web_tasks SET result=? WHERE rowid=?", (_dump(result), rowid))
+                marked.add(rowid)
+    return len(marked)
+
+
 def _forget_research_core(db, task_id, now):
     """Remove one task and what rested only on it. Caller owns the txn. Returns (effects, cache) or None."""
     if db.execute("SELECT 1 FROM web_tasks WHERE id=?", (task_id,)).fetchone() is None:
         return None
     claim_ids = _ids(db, "SELECT DISTINCT id FROM web_claims WHERE task_id=?", (task_id,))
+    _mark_sourced_answers(db, claim_ids)
     sources = db.execute("SELECT url,final_url,canonical_url,content_sha256 FROM web_sources WHERE task_id=?",
                          (task_id,)).fetchall()
     deleted = {table: db.execute(f"DELETE FROM {table} WHERE task_id=?", (task_id,)).rowcount
@@ -1295,6 +1348,7 @@ def _forget_source_core(db, target, now):
     claim_ids = sorted({r[0] for r in claim_rows})
     if not rows and not claim_ids:
         return None
+    _mark_sourced_answers(db, claim_ids)
     db.execute(f"DELETE FROM web_claims WHERE {claim_where}", params)
     for part in _chunks(source_ids):
         db.execute(f"DELETE FROM web_sources WHERE id IN ({_in(part)})", part)

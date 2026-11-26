@@ -291,19 +291,31 @@ def _without_adversarial(cluster, adversarial_urls):
 # (b) repeats the output's own wording (3-word shingle Jaccard >= claims.DUPLICATE_SHINGLE) where that wording was not
 # itself a source's (no claim read before it within claims.SUPPORT_TEXT_SHINGLE). A page published before the output
 # is never its echo (the output may rest on it); a structured record (an API document, a metadata claim) is never one.
-# Own outputs are found by the digits the claim writes (SQL LIKE over web_tasks.result; at most ECHO_MAX_ROWS rows per
-# token, newest first), so nothing is decoded that cannot match.
+# Own outputs are found by the specific values the claim asserts (at most ECHO_MAX_VALUES per claim and ECHO_MAX_TOKENS
+# per consolidation; one scan over web_tasks.result, the newest ECHO_MAX_ROWS model-written answers holding any of them),
+# and a value counts as stated by a source only when a claim read before the output states it about the same subject
+# (subject names filtered in SQL, so the bound counts that subject's claims only; security review M2). Every check is
+# made once per consolidation BEFORE the write transaction (security review M4), within ECHO_SECONDS: a claim not
+# checked in time is treated as NOT an echo (the behaviour without the setting) and named in the summary
+# (`echo_skipped`). An answer sentence that cites claims had a source when it was written, and a sentence a forget
+# marked as sourced (governance: the claims it rested on were forgotten; the mark keeps no forgotten content) is not
+# an own output either (security review M3).
 # An echo is never evidence FOR a value: it leaves the supporting side of its cluster (and the supersession rule never
 # counts it). An echo that only disagrees with what the sources say stays where it is: the disagreement is still asked,
 # as before, and a disagreement never raises a confidence or writes knowledge. (Removing it there too was measured: it
 # changed what the owner is asked and what curiosity looks at next, on worlds where no echo was ever admitted.)
-# A sentence that credits what it states to an assistant, a chatbot or an AI model ("..., an assistant reported.",
-# "\"...,\" a chatbot told one reader.", "According to an AI model, ...") quotes model-written text, whoever's: by the
-# standing rule (model text never becomes fact) it is treated as an echo too.
+# A sentence that credits what it states explicitly to a model speaker ("..., an assistant reported.", "\"...,\" a
+# chatbot told one reader.", "According to an AI model, ...") quotes model-written text, whoever's: by the standing
+# rule (model text never becomes fact) it is treated as an echo too. The speaker must be a model noun (assistant,
+# chatbot, language model, AI model); "the AI Act", "an AI Index report", "the AI Safety Institute" or "some AI
+# companies" are not (security review M5). This phrase rule is a stop-gap, not the closure of the hole (ADR-061).
 ECHO_MAX_ROWS = 200
+ECHO_MAX_VALUES = 8
+ECHO_MAX_TOKENS = 64
+ECHO_SECONDS = 2.0
 _DIGITS = re.compile(r"\d[\d.,]*\d")
-_MODEL_SPEAKER = r"(?:an?|the|some|one)\s+(?:AI\s+)?(?:assistant|chat\s?bot|language\s+model|AI\s+model|AI)"
-_MODEL_CREDIT = re.compile(r"\baccording\s+to\s+" + _MODEL_SPEAKER + r"\b|\b" + _MODEL_SPEAKER +
+_MODEL_SPEAKER = r"(?:an?|the|some|one)\s+(?:AI\s+)?(?:assistant|chat\s?bot|language\s+model|AI\s+model)"
+_MODEL_CREDIT = re.compile(r"\baccording\s+to\s+" + _MODEL_SPEAKER + r"\b(?!\s+[A-Z])|\b" + _MODEL_SPEAKER +
                            r"\s+(?:reported|said|says|told|answered|wrote|stated|claims|claimed|replied)\b",
                            re.IGNORECASE)
 
@@ -319,85 +331,149 @@ def _specific(value) -> bool:
     return kind not in ("date", "year") and not (kind == "number" and abs(parsed) < 100)
 
 
+def _checked_values(claim) -> list:
+    """The specific values of a claim the echo checks read (at most ECHO_MAX_VALUES)."""
+    return [v for v in dict.fromkeys(_claims.asserted_values(claim)) if _specific(v)][:ECHO_MAX_VALUES]
+
+
+def own_sentences(reasoning) -> list[str]:
+    """The sentences of a stored model-written answer that are the individual's own text: its free text (minus the
+    sentences a forget marked as sourced, reasoning["sourced"]) and the answer sentences that cite no claim. A cited
+    sentence rested on a source when it was written."""
+    from . import text as T
+    if not isinstance(reasoning, dict) or not str(reasoning.get("generated_by") or "").startswith("model:"):
+        return []
+    out = []
+    marked = set(reasoning.get("sourced") or ())
+    if isinstance(reasoning.get("text"), str):
+        out += [s for i, s in enumerate(T.sentences(reasoning["text"])) if i not in marked]
+    for a in reasoning.get("answer") or ():
+        if isinstance(a, dict) and isinstance(a.get("text"), str) and not (a.get("claims") or a.get("citations")) \
+                and not a.get("sourced"):
+            out += T.sentences(a["text"])
+    return [" ".join(s.split()) for s in out]
+
+
+_SKIPPED = object()
+
+
+def _interruptible(read, arg):
+    """read(arg), or _SKIPPED when the echo checks' deadline interrupted its query."""
+    import sqlite3
+    try:
+        return read(arg)
+    except sqlite3.OperationalError as exc:
+        if "interrupt" not in str(exc).lower():
+            raise
+        return _SKIPPED
+
+
 class _Echoes:
-    """The own-output index of one consolidation (see the section comment), filled lazily per digit token."""
+    """The echo verdicts of one consolidation's claims (see the section comment), all made when it is built, before
+    the write transaction; of() only looks them up."""
 
-    def __init__(self, db):
-        self.db, self.by_token, self.sourced, self.worded, self.seen = db, {}, {}, {}, {}
+    def __init__(self, db, claims, *, seconds=None, clock=None):
+        import time
+        clock = clock or time.monotonic
+        seconds = ECHO_SECONDS if seconds is None else seconds
+        self.db, self.sourced, self.worded, self.seen, self.skipped = db, {}, {}, {}, []
+        claims = [c for c in claims if c is not None]
+        tokens = []
+        for c in claims:
+            for v in _checked_values(c):
+                tokens += _DIGITS.findall(v)
+        deadline = clock() + seconds
+        # every read below stops at the deadline (a query interrupted there leaves its claims unchecked: not echoes)
+        db.set_progress_handler(lambda: 1 if clock() > deadline else 0, 10_000)
+        try:
+            self.own = _interruptible(self._index, list(dict.fromkeys(tokens))[:ECHO_MAX_TOKENS])
+            for c in claims:
+                if c.id in self.seen:
+                    continue
+                if _MODEL_CREDIT.search(c.text or "") and c.kind != "metadata" and not _claims.is_primary(c):
+                    self.seen[c.id] = "model"
+                    continue
+                found = _interruptible(self._of, c) if self.own is not _SKIPPED and clock() <= deadline \
+                    else _SKIPPED
+                self.seen[c.id] = None if found is _SKIPPED else found
+                if found is _SKIPPED:
+                    self.skipped.append(c.id)
+        finally:
+            db.set_progress_handler(None, 0)
 
-    def _own(self, token):
+    def _index(self, tokens):
+        """[(at, sentence, values, names)] of the own-output sentences holding any token: one scan."""
         from . import text as T
-        if token in self.by_token:
-            return self.by_token[token]
-        found, pattern = [], f"%{token}%"
-        for at, raw in self.db.execute(
-                "SELECT coalesce(finished_at, updated_at, created_at), result FROM web_tasks WHERE result LIKE ? "
-                "AND result LIKE '%model:%' ORDER BY updated_at DESC LIMIT ?", (pattern, ECHO_MAX_ROWS)):
-            reasoning = (state.loads(raw, {}) or {}).get("reasoning")
-            if not isinstance(reasoning, dict) or not str(reasoning.get("generated_by") or "").startswith("model:"):
-                continue
-            texts = [reasoning.get("text")] + [a.get("text") for a in reasoning.get("answer") or ()
-                                               if isinstance(a, dict)]
-            found += [(at, t) for t in texts if isinstance(t, str)]
+        if not tokens:
+            return []
+        rows = self.db.execute(
+            "SELECT coalesce(finished_at, updated_at, created_at), result FROM web_tasks WHERE result LIKE "
+            "'%model:%' AND (" + " OR ".join("instr(result, ?) > 0" for _ in tokens) + ") ORDER BY updated_at "
+            "DESC LIMIT ?", (*tokens, ECHO_MAX_ROWS)).fetchall()
         out = []
-        for at, text in found:
-            for s in T.sentences(text):
-                s = " ".join(s.split())
-                if token in s and state.finite(at) is not None:
+        for at, raw in rows:
+            if state.finite(at) is None:
+                continue
+            for s in own_sentences((state.loads(raw, {}) or {}).get("reasoning")):
+                if any(tok in s for tok in tokens):
                     out.append((at, s, set(T.values(s)), _name_set(s)))
-        self.by_token[token] = out
         return out
 
-    def _read_before(self, value, at):
-        """(text, names) of claims read at or before `at` stating `value`."""
-        rows = self.db.execute("SELECT text FROM web_claims WHERE retrieved_at <= ? AND claim_values LIKE ? LIMIT ?",
-                               (at, f'%"{value}"%', ECHO_MAX_ROWS)).fetchall()
+    def _read_before(self, value, names, at):
+        """(text, names) of claims read at or before `at` stating `value` about one of `names` (at most
+        ECHO_MAX_ROWS of that subject's, oldest first)."""
+        names = sorted(n for n in names if n)
+        if not names:
+            return []
+        rows = self.db.execute(
+            "SELECT text FROM web_claims WHERE retrieved_at <= ? AND instr(claim_values, ?) > 0 AND (" +
+            " OR ".join("instr(lower(text), ?) > 0" for _ in names) + ") ORDER BY retrieved_at LIMIT ?",
+            (at, f'"{value}"', *names, ECHO_MAX_ROWS)).fetchall()
         return [(t, _name_set(t)) for (t,) in rows]
 
     def _self_originated(self, value, names, at):
         key = (value, frozenset(names), at)
         if key not in self.sourced:
-            self.sourced[key] = not any(names & n for _, n in self._read_before(value, at))
+            self.sourced[key] = not any(names & n for _, n in self._read_before(value, names, at))
         return self.sourced[key]
 
-    def _own_wording(self, sentence, values, at):
+    def _own_wording(self, sentence, values, names, at):
         from . import text as T
         key = (sentence, at)
         if key not in self.worded:
             mine = T.shingles(T.normalise(sentence), _claims.SHINGLE_K)
             self.worded[key] = bool(values) and not any(
                 T.jaccard(mine, T.shingles(T.normalise(t), _claims.SHINGLE_K)) >= _claims.SUPPORT_TEXT_SHINGLE
-                for v in values for t, _ in self._read_before(v, at))
+                for v in values for t, _ in self._read_before(v, names, at))
         return self.worded[key]
 
     def of(self, claim) -> str | None:
-        """'value' or 'wording' when `claim` echoes an own output (see the section comment), else None."""
-        if claim.id not in self.seen:
-            self.seen[claim.id] = self._of(claim)
-        return self.seen[claim.id]
+        """'value', 'wording' or 'model' when `claim` echoes an own output (see the section comment), else None (a
+        claim not checked in time, or not among the claims the checks were made for, is not an echo)."""
+        return self.seen.get(claim.id)
 
     def _of(self, claim) -> str | None:
         from . import text as T
         if claim.kind == "metadata" or _claims.is_primary(claim):
             return None
-        if _MODEL_CREDIT.search(claim.text or ""):
-            return "model"
         read, published = state.finite(claim.retrieved_at), state.finite(claim.published_at)
         if read is None:
             return None
-        values = {v for v in _claims.asserted_values(claim) if _specific(v)}
+        values = set(_checked_values(claim))
         names = _name_set(claim.text)
+        tokens = list(dict.fromkeys(tok for v in values for tok in _DIGITS.findall(v)))
         mine = None
-        for token in dict.fromkeys(_DIGITS.findall(claim.text or "")):
-            for at, sentence, own_values, own_names in self._own(token):
-                if at >= read or (published is not None and published < at) or not names & own_names:
-                    continue
-                if any(self._self_originated(v, names & own_names, at) for v in values & own_values):
-                    return "value"
-                mine = mine or T.shingles(T.normalise(claim.text), _claims.SHINGLE_K)
-                if T.jaccard(mine, T.shingles(T.normalise(sentence), _claims.SHINGLE_K)) >= \
-                        _claims.DUPLICATE_SHINGLE and self._own_wording(sentence, own_values, at):
-                    return "wording"
+        for at, sentence, own_values, own_names in self.own:
+            if not any(tok in sentence for tok in tokens):
+                continue
+            if at >= read or (published is not None and published < at) or not names & own_names:
+                continue
+            if any(self._self_originated(v, names & own_names, at) for v in values & own_values):
+                return "value"
+            mine = mine or T.shingles(T.normalise(claim.text), _claims.SHINGLE_K)
+            if T.jaccard(mine, T.shingles(T.normalise(sentence), _claims.SHINGLE_K)) >= \
+                    _claims.DUPLICATE_SHINGLE and self._own_wording(sentence, own_values, own_names, at):
+                return "wording"
         return None
 
 
@@ -1590,6 +1666,11 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
     if proposals:
         summary["pairing"] = dict(proposals["info"])
         summary["paired_by_meaning"] = []
+    # ADR-061, security review M4: the echo checks read before the file is locked, within their time budget
+    echoes = _Echoes(db, [c for cl in state.load_clusters(db, task_id) for c in cl.claims]) \
+        if cfg.echo_recognition else None
+    if echoes is not None and echoes.skipped:
+        summary["echo_skipped"] = list(echoes.skipped)
     with store.write(db):
         if holder is not None:
             state.require_lease(db, task_id, holder)
@@ -1602,7 +1683,6 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
         focus = _question_focus(task)
         feedback_before = db.execute("SELECT count(*) FROM web_feedback").fetchone()[0]
         adversarial = _adversarial_urls(db, task_id)
-        echoes = _Echoes(db) if cfg.echo_recognition else None
         ids_by_key, cleaned, observed = {}, [], []
         for n, cluster in enumerate(clusters):
             whole, cluster = cluster, _without_set_aside(cluster, set_aside, now=now, freshness=freshness,
