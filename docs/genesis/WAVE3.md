@@ -433,7 +433,105 @@ of 40 were over the bound. The test is right; making it deterministic needs that
 
 ## The rule for the withheld looks (written before them)
 
-<<WAVE3-LOOK-RULE>>
+Wave 3 ends with one look per changed mechanism at worlds no lane could see. What each look may change is fixed
+here, before any is taken; the commit that adds this section precedes the looks' ledger lines. A first version of
+this rule was replaced before any look, after an independent reviewer showed that it named no output fields, decided
+two rules jointly and implied a command that could not produce one of its comparisons; a second reviewer then
+checked this version against the commands' outputs on development and held-out worlds and supplied the exact field
+names below.
+
+**Decided before the looks, from the reviews, and not open to them:** `attribution_independence` and
+`echo_recognition` ship OFF, and `supersession` ships OFF. The looks report each for the owner's decision. No look
+can switch any of them on. Predictive regulation in shadow (ADR-058) has no withheld look: it changes no decision
+(48 of 48 runs).
+
+### Learning-cycle withheld worlds (`cycles_withheld.py`; the unchanged system's look is ledger line 4)
+
+One command, on a clean committed tree, run in the background with at least 10 minutes allowed, its output
+directory created beforehand and outside the tree:
+`scripts/bench_learning_cycles.py final --look wave3 --mechanism wave3 --note "<note>" --out <outside>/cycles.json`.
+It runs, on the same worlds and seeds, the twelve configurations of `cycles.LOOKS["wave3"]`: `reference:no-loop`,
+`baseline`, `shipped`, `lane-s:fixes-off`, `lane-s:echo-only`, `lane-s:attribution-only`, `lane-s:both`,
+`lane-s:supersede-K2`, `recheck:rate+seen+rotation/all`, `recheck:rotation/all`, `shipped+idle`, `idle-first`.
+
+- **Read-back.** Each run reads its settings back (`config_read_back`), and `config_same_every_seed` must be true in
+  every world. Against its reference in `cycles.LOOK_PAIRS`, a configuration may differ only as follows:
+  `lane-s:echo-only`: `echo_recognition` true; `lane-s:attribution-only`: `attribution_independence` true;
+  `lane-s:both`: both true; `shipped`: nothing (it equals `lane-s:fixes-off`); `lane-s:supersede-K2`: `supersession`
+  "independent" with a minimum of 2 sources; `shipped+idle`: the idle investigation after the pass; `idle-first`:
+  before the pass; the two `recheck:…/all`: `idle_recheck` true, the named order, and the per-pass and daily share
+  set to 100; `lane-s:fixes-off` against `baseline`: `salience_record`, `hypothesis_fields`, `premise_recheck` and
+  `answer_monitoring` true and `strategy_selection` "gate"; `reference:no-loop` against `baseline`: `autonomous` and
+  the autonomy switch false. A configuration whose read-back differs otherwise is void, and the record says so.
+- **Same worlds, same system as Step 0?** The look's `world_digests` must equal Step 0's. Then every per-seed figure
+  of `reference:no-loop`, `baseline` and `shipped` that Step 0's file also has (`wall_seconds` excepted) is compared
+  with Step 0's run of the same name, world and seed (worlds in file order, W1–W3). Wave 3 changed things under them
+  (the idle investigator's daily count, the read-ahead fix, the re-check's refactoring): every difference is listed,
+  and the comparisons below are made against the NEW runs, never against Step 0's file.
+- **Each source rule, reported for the owner** (`lane-s:echo-only`, `lane-s:attribution-only`, `lane-s:both`, each
+  against `lane-s:fixes-off`, same world and seed, read from `look.<configuration>.<world>[i]`): (a)
+  `self_admitted + wire_admitted + one_origin_rises`, summed over the three worlds and four seeds, and per world;
+  (b) per world, the mean over the four seeds of the paired difference (configuration minus `lane-s:fixes-off`) of
+  `mean.correct`, beside the sd of `mean.correct` in Step 0's `baseline` run (`COGNITIVE_BENCHMARK.md`: W1 0.064,
+  W2 0.039, W3 0.035, in file order); (c) `retention.lost + retention.regressed` per world and seed. The record
+  calls a rule "supported on unseen worlds" only if (a) is lower in total and in no world higher, (b) is in no world
+  below minus that world's sd, and (c) is in no world and seed higher; otherwise "not supported". The
+  admitted-content counters see only the version ranges the harness marks as own-output and wrong-story versions
+  (the output's `counters`); `admitted.wrong`, `admitted.own_only` and `admitted.wire_only` are reported beside them
+  and decide nothing. Whatever the verdict, both rules stay OFF.
+- **Supersession** (`lane-s:supersede-K2`). In the look it runs on the shipped defaults, with both source rules OFF,
+  which is not the configuration ADR-061 measured. Reported: its paired gain per world against `shipped`;
+  `replacements.true`, `.false`, `.other`, `.by_rule_true`, `.by_rule_false`; for each false replacement the subject,
+  the cycle, `cycles` (split into `wrong` and `none`) and `censored` (the run ended while it was still wrong); and
+  the same counts for `shipped`. Whatever it shows, it stays OFF.
+- **The re-check's order and the idle investigator** (`recheck:…`, `shipped+idle`, `idle-first`): reported against
+  their references in `cycles.LOOK_PAIRS`. Neither showed a held-out gain; the look cannot promote them.
+- Every configuration is reported beside the references computed from the worlds alone (`references.worlds.<w>`:
+  `snapshot`, `round_robin`, `round_robin_perfect`, `oracle`).
+
+### Counterfactual withheld interface (`withheld.py`; Wave 1's look is ledger line 3)
+
+Two runs, on a clean committed tree, outputs outside the tree in a directory created beforehand, both at the same
+commit, nothing committed between them, the commands copied exactly:
+`scripts/bench_cognition.py run --family withheld --mechanism imagination --final --note "<note>: front door on" --out <outside>/fd-on.json`
+and
+`scripts/bench_cognition.py run --family withheld --mechanism imagination --ablate front_door --final --note "<note>: front door off" --out <outside>/fd-off.json`.
+After both runs, before the rule is applied, read back from each output: `ablate` is `[]` and `["front_door"]`, and
+`families.withheld.mechanisms.counterfactual.used == "imagination"` with `fell_back_to_baseline == false`; otherwise
+the look is void and reported as such. `scripts/bench_wave1.py final` is not used for this look: its "baseline" run
+is not the ablation.
+
+- **The front door stays ON** if and only if (a) in the on-run,
+  `families.withheld.result.counterfactual.summary_by_group.front_door.max_relative_error.max` is ≤ 0.1, or is None
+  with `…max_relative_error.n` equal to 0 (a missing `summary_by_group.front_door` voids the look); and (b) every
+  leaf of `families.withheld.result` is equal in the two runs, except: in `counterfactual`, everything under
+  `summary_by_group.front_door` and `by_query_kind["scm:confounded"]`, and the fields `answered_within_tolerance`,
+  `answered_within_strict_tolerance`, `max_relative_error`, `front_door_declined`, `front_door_within_tolerance` and
+  `declined_confounded_share` under `summary` and under each `per_seed[i]`. Run metadata (`generated_at`,
+  `environment`, `final_runs`, `ablate`, `note`, `families.withheld.cost`) is not compared. The comparison is made
+  by `scripts/compare_front_door_look.py`, which was first run on a held-out pair (no `--final`): 47 leaves differed,
+  none outside the exemptions, and deliberate breaks were flagged. If (a) or (b) fails, the front door ships OFF in
+  a commit made after the look.
+- Reported whatever it shows: `front_door`, `front_door_declined` and `front_door_within_tolerance` per seed, and the
+  group's `answered_within_tolerance`. If every front-door question was declined, the record says "not exercised by
+  these worlds", never "no harm shown".
+
+### Disclosed before the looks
+
+- Lane C's search printed two lines of `withheld.py` (a docstring line, and the start of its causal-question spec: a
+  chain and a confounded structure of 5 nodes); the main session had printed the head of that file before Wave 1's
+  look. The front door is exact arithmetic checked on 6,000 random graphs and was not tuned on either, but the
+  counterfactual look is therefore weaker evidence of transfer than a look at unseen worlds.
+- Lanes R, S and V and the fix lanes were told the CATEGORIES in which the unchanged system failed on the
+  learning-cycle withheld worlds, not the worlds. Lane V's `wc -l` showed that file's line count. The fix lane and
+  the second reviewer read a test file that states the withheld cycle seeds (7341–7344); the benchmark document
+  states them too.
+- Lane S's echo rule was changed twice after its own held-out runs, and both source rules were changed again by
+  the fix lane after the reviews, so none of their held-out numbers is clean; the withheld look is their only clean
+  test, and it cannot switch either on.
+- A crash after a look's ledger line is written still spends that look; the record would say so.
+
+Nothing is tuned after a look. Whatever a look shows is reported in full.
 
 ## Reviews and fixes
 
