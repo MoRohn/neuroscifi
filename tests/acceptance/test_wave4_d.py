@@ -134,7 +134,7 @@ def test_every_saved_voice_setting_is_checked_and_a_damaged_one_reads_as_its_cau
 
 
 OWNER_FIXED = {"evidence_ttl_seconds": 86400, "max_evidence_rows": 5000, "min_free_bytes": 1 << 20,
-               "max_thermal_celsius": 70}
+               "max_thermal_celsius": 150}     # sound and above any host reading
 DAMAGED_FIXED = {"evidence_ttl_seconds": "1d", "max_evidence_rows": 5000.0, "min_free_bytes": "10G",
                  "max_thermal_celsius": "70"}
 
