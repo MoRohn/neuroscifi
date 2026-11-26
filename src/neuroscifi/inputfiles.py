@@ -9,6 +9,7 @@ compared with the bytes really there. Every refusal is InputRefused, a ValueErro
 """
 from __future__ import annotations
 
+import errno
 import io
 import math
 import os
@@ -36,18 +37,17 @@ _EOCD_SIG, _ZIP64_LOCATOR_SIG = b"PK\x05\x06", b"PK\x06\x07"
 
 
 def open_regular(path):
-    """The file at `path` opened for binary reading, if it is a plain file; else InputRefused. The open itself never
-    blocks (O_NONBLOCK, cleared once the file is known to be plain), so a FIFO is refused instead of waited on."""
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-    except IsADirectoryError:
-        raise InputRefused(f"{path} is a folder, not a file") from None
+    """The file at `path` opened for binary reading, if it is a plain file; else InputRefused (a folder: the
+    IsADirectoryError reading one always gave). The open itself never blocks (O_NONBLOCK, cleared once the file is
+    known to be plain), so a FIFO is refused instead of waited on."""
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     try:
         mode = os.fstat(fd).st_mode
+        if stat.S_ISDIR(mode):           # as reading a folder always failed: callers report it as before
+            raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR), str(path))
         if not stat.S_ISREG(mode):
-            what = "a folder" if stat.S_ISDIR(mode) else "a FIFO" if stat.S_ISFIFO(mode) else \
-                "a device" if stat.S_ISCHR(mode) or stat.S_ISBLK(mode) else "a socket" if stat.S_ISSOCK(mode) else \
-                "not a plain file"
+            what = "a FIFO" if stat.S_ISFIFO(mode) else "a device" if stat.S_ISCHR(mode) or stat.S_ISBLK(mode) \
+                else "a socket" if stat.S_ISSOCK(mode) else "not a plain file"
             raise InputRefused(f"{path} is {what}, not a plain file")
         os.set_blocking(fd, True)
         return os.fdopen(fd, "rb")
