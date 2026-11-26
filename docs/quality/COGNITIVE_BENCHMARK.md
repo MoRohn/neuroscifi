@@ -838,4 +838,4 @@ the sd of the reference over this look's four seeds (0.064 / 0.039 / 0.035): `id
 worlds the ties that followed random task ids did not move the result, and Wave 3's figures stand, now from code
 whose runs were repeatable on the 18 public worlds measured. `idle-first` is reproduced on a repeatable run; beyond
 the spread by 0.003 in W2 and 0.017 in W3 on four seeds; a small margin in W2; it cannot be promoted and remains below
-the blind schedule (0.478 / 0.328 / 0.376). Nothing changes.
+the blind schedule (0.478 / 0.328 / 0.3755). Nothing changes.
