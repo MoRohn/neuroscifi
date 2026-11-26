@@ -249,8 +249,10 @@ EXPECTED_3CE4AE3 = {
 # this lane's code and checked against review3c's statements: N1's bridge, the second fix lane's bridge page, C2 and
 # N3/N10 keep the honest outlets apart; F1's shapes (C4, C4b, C7, C7b, C9 and p22's credit form) are one source again
 # (under 2c48865's edge choice they were 2-3); F2's reuters.<tld> page no longer owns the name "reuters", so the two
-# honest outlets stay apart (2c48865: one group). "N3 a page crediting both wires and carrying both" is one group under
-# 2c48865 too: its page repeats devdesk's sentence word for word, so it is a copy of devdesk (near-duplicate text).
+# honest outlets stay apart (2c48865: one group). OPEN with "one_way" (as under 2c48865; 3ce4ae3 kept 2 groups): in "N3
+# a page crediting both wires and carrying both" the page repeats devdesk's sentence word for word (a near-duplicate,
+# joined with devdesk transitively) and adds "(Bloomberg)", so the joined group takes its one edge to the Bloomberg
+# key, where factline meets it: the two honest outlets are one group (ADR-063, "What stays open").
 ONE_WAY = {
     'B1 one copy naming its origin': (('copyone', 'devdesk'),),
     'B2 three copies naming one origin': (('copyone', 'copythree', 'copytwo', 'devdesk'),),

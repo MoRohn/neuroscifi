@@ -4032,6 +4032,7 @@ said):
 | F2, datelines: "(Reuters)" and "(Bloomberg)" outlets, a page on reuters.<tld> carrying "(Bloomberg)" | 1 (honest outlets joined) | 1 (joined) | 2 |
 | F2, credits (attribution on): the same with "According to ..." | 2 | 1 (joined) | 2 |
 | N3: a page carrying "(Reuters) (Bloomberg)" beside outlets crediting each (attribution on) | 1 (joined) | 2 | 2 |
+| the same page repeating the first outlet's sentence word for word ("According to Reuters, ... (Reuters) (Bloomberg)") | 2 | **1** (joined) | **1** (joined) |
 | N10: X credits Reuters, Y Bloomberg, Z both (attribution on) | 1 group in 4 of 6 orders, 2 in the other 2 (3 groupings) | 2 in every order | 2 in every order |
 | B1–B4, C1, C3, C3b, C5, C6, C8, C9b, C9c, p22 wire page and copies | equal in all three | | |
 
@@ -4049,6 +4050,11 @@ counted as a pass: the family scores every staged case as a pass or failure of a
 ## What stays open
 
 - **N1 at the shipped defaults** (above), and with `attribution_independence` on, N3 and N10 as at `3ce4ae3`.
+- With the setting on (as at `2c48865`): a page that repeats one honest outlet's sentence word for word (so it joins
+  that outlet as a near-duplicate, a transitive join) and adds another outlet's credit or name takes the joined
+  group's one edge to that other outlet, so the two honest outlets are one group (the table's last N3 row; `3ce4ae3`
+  kept them apart there). The one-edge invariant holds per group, and a near-duplicate copy adds its names to the
+  group it copies.
 - **F2** with the setting on, for names other than the wire names: a page on a host whose site label is the name an
   honest copy credits (not a wire's), naming another outlet, still joins two honest outlets (the one-way rule lets a
   group that itself names an origin own its site label). At the default F2's dateline form joins them too, as at

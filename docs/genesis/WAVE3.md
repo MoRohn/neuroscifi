@@ -392,7 +392,9 @@ of 40 were over the bound. The test is right; making it deterministic needs that
   second origin, "first appeared in the Regional Times. (AP)" beside a plain copy), so the third fix lane
   (`gen3-fix3`) restored the grouping of `3ce4ae3` as the default and put the one-way rule behind `origin_grouping`
   (off; ADR-063). Also open: a page on a host named like an outlet that an honest copy credits, naming another
-  outlet, joins two honest outlets (F2; with the setting on only for names other than the news wires'); "Originally
+  outlet, joins two honest outlets (F2; with the setting on only for names other than the news wires'); with the
+  setting on, a page copying one honest outlet's sentence word for word and naming another outlet joins the two (as
+  under the second fix lane; the default keeps them apart there); "Originally
   published by X" at the start of a sentence gives no origin (F3, the pattern is case-sensitive; not changed, it
   would change the shipped grouping); no benchmark world holds a page naming several origins, so a sound rule needs
   new worlds first (ADR-063 lists them).

@@ -116,9 +116,10 @@ def offline(tally):
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("parts", nargs="*", choices=("worlds", "offline"), default=["worlds", "offline"])
+    p.add_argument("parts", nargs="*", choices=("worlds", "offline"), help="both when none is named")
     p.add_argument("--out")
     a = p.parse_args(argv)
+    a.parts = a.parts or ["worlds", "offline"]
     tally = Tally(old_grouping())
     out = {"compared_with": BEFORE}
     if "worlds" in a.parts:
