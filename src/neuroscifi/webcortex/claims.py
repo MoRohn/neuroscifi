@@ -1281,12 +1281,24 @@ def stamp_origins(claims, documents, *, attribution: bool = False) -> dict[str, 
     `attribution` (WebConfig.attribution_independence, ADR-061) the outlets a sentence credits (attribution_keys)
     are added too: a reworded copy that names the story's origin inside the sentence is that origin."""
     origins = document_origins(documents)
+    failed = None
     for c in claims:
         extra = list(origins.get(c.source_url) or ())
         if attribution:
-            extra += attribution_keys(c.text)
+            try:        # Wave 3 reconciliation (lane U's pattern): a failing read is logged, never the task's end
+                credited = attribution_keys(c.text)
+                if not (isinstance(credited, list) and all(isinstance(k, str) for k in credited)):
+                    raise TypeError(f"the credited outlets are {type(credited).__name__}, not a list of keys")
+                extra += credited
+            except Exception as exc:        # noqa: BLE001 - logged below (its type only), never silent
+                from ..instance.errors import failure_kind
+                failed = failed or failure_kind(exc)
         if extra:
             c.flags = dict(c.flags or {}, origin=list(dict.fromkeys([*((c.flags or {}).get("origin") or ()), *extra])))
+    if failed is not None:
+        import logging
+        logging.getLogger(__name__).warning("the outlets sentences credit could not be read (%s); those claims count "
+                                            "as with attribution_independence off", failed)
     return origins
 
 

@@ -1525,8 +1525,15 @@ def _contested_against(db, task_id, cluster, item, reason, now, summary, questio
     supporting side conflicts with the item, the item is contradicted by it (citing the supporting head).
     `rule` ({cfg, freshness, window, focus}, only with supersession "independent"): first, the supersession rule."""
     if rule is not None:
-        found = _rule_replacement(db, rule["cfg"], cluster, item, now, freshness=rule["freshness"],
-                                  window=rule["window"], focus=rule["focus"], echoes=rule.get("echoes"))
+        try:        # Wave 3 reconciliation (lane U's pattern): a failing rule is the task's "error" event and the
+            found = _rule_replacement(db, rule["cfg"], cluster, item, now, freshness=rule["freshness"],   # owner is
+                                      window=rule["window"], focus=rule["focus"], echoes=rule.get("echoes"))  # asked
+            if found is not None and not (isinstance(found, tuple) and len(found) == 3):
+                raise TypeError(f"the supersession rule returned {type(found).__name__}, not (side, verdict, groups)")
+        except Exception as exc:          # noqa: BLE001 - the task's "error" event (its type only)
+            state.log_event(db, task_id, "error", {"stage": "consolidating: the supersession rule",
+                                                   "error": type(exc).__name__}, now)
+            found = None
         if found is not None:
             _replace_by_rule(db, task_id, rule["cfg"], found, item, rule["freshness"], now, summary, questions,
                              ids_by_key)
@@ -1613,8 +1620,17 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                 continue
             cluster, removed = _without_adversarial(cluster, adversarial)
             if echoes is not None and cluster.claims:       # ADR-061: the individual's own text is no source
-                whole, (cluster, echoed) = cluster, _without_echoes(echoes, cluster, now=now, freshness=freshness,
-                                                                    ttl_overrides=cfg.freshness_ttl or None)
+                try:        # Wave 3 reconciliation (lane U's pattern): a failing echo check is the task's "error"
+                    found = _without_echoes(echoes, cluster, now=now, freshness=freshness,    # event; the cluster
+                                            ttl_overrides=cfg.freshness_ttl or None)          # stays as with it off
+                    if not (isinstance(found, tuple) and len(found) == 2 and isinstance(found[1], list)
+                            and isinstance(getattr(found[0], "claims", None), list)):
+                        raise TypeError(f"the echo check returned {type(found).__name__}, not (cluster, ids)")
+                except Exception as exc:          # noqa: BLE001 - the task's "error" event (its type only)
+                    state.log_event(db, task_id, "error", {"stage": "consolidating: echoes of the individual's own "
+                                                                    "text", "error": type(exc).__name__}, now)
+                    found = (cluster, [])
+                whole, (cluster, echoed) = cluster, found
                 if echoed:
                     summary.setdefault("echoes", []).extend(echoed)
                 if whole.claims and not cluster.claims:

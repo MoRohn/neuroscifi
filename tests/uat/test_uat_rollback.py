@@ -742,6 +742,60 @@ def test_supersession_and_its_records(individual, tmp_path):
     readable_forgettable_restorable(db, path, tmp_path, count, forget)
 
 
+# ---- Wave 3 reconciliation: the third value of predictive_regulation (ADR-058) and the front door (ADR-059) --------
+
+def test_predictive_regulation_shadow(individual):
+    """Off: the gate decides and nothing is recorded; "shadow": the gate decides exactly as off and the forecast's
+    verdict for the newest sample is recorded; off again: the same decision, nothing more recorded. The verdicts
+    recorded while on stay in their file (telemetry like the internal-state history: ADR-051, ADR-058)."""
+    from neuroscifi.resources import shadow
+    db, path = individual
+    start = time.time() - 600
+    memory = _falling_history(path, start)
+    on, off = instance_switch(db, "predictive_regulation", "shadow")
+    verdicts = internal_state.folder(str(path)) / shadow.FILE
+    k = iter(range(1, 100))
+
+    def lines():
+        return len(verdicts.read_text(encoding="utf-8").splitlines()) if verdicts.exists() else 0
+
+    def probe():
+        before = lines()
+        with memory(21):
+            internal_state.record(str(path), now=start + 60 * next(k))       # a new sample: one verdict per sample
+            why = policy.background_gate(str(path))["why"]
+        return why, lines() > before
+    reference, on_, again = cycle(on, off, probe)
+    assert reference == (None, False) and on_ == (None, True)
+    assert_rolls_back(reference, on_, again)
+    assert verdicts.exists()        # what it wrote while on is not removed by turning it off (delete it to discard)
+
+
+def test_front_door(tmp_path):
+    """`nsf imagine scm FILE`: --no-front-door declines a question only the front door identifies, as before ADR-059;
+    the default (--front-door) answers it; --no-front-door again declines it exactly as the first time. The command
+    opens no individual and stores nothing."""
+    from contextlib import redirect_stdout
+    import io
+    from neuroscifi import cli as nsf
+    from test_causal_front_door import worked
+    question = tmp_path / "front-door.json"
+    question.write_text(json.dumps(worked()), encoding="utf-8")
+    flag = ["--no-front-door"]
+
+    def probe():
+        out = io.StringIO()
+        with redirect_stdout(out):
+            assert nsf.main(["imagine", "scm", str(question), *flag]) in (0, None)
+        answer = json.loads(out.getvalue())
+        return answer["value"], answer["identified_by"], answer["why"]
+    on = lambda: flag.__setitem__(slice(None), ["--front-door"])       # noqa: E731
+    off = lambda: flag.__setitem__(slice(None), ["--no-front-door"])   # noqa: E731
+    reference, on_, again = cycle(on, off, probe)
+    assert reference[0] is None and on_[1] == "front_door"
+    assert_rolls_back(reference, on_, again)
+
+
 # Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
 # Wave 1/2 switch of the config classes is here; Wave 2 lane X)
 SWITCHES = {
@@ -763,4 +817,5 @@ SWITCHES = {
     "recheck_order": test_recheck_order,
     "attribution_independence": test_attribution_independence, "echo_recognition": test_echo_recognition,
     "supersession": test_supersession_and_its_records,
+    "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
 }
