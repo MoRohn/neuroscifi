@@ -57,6 +57,7 @@ outcome.
 | [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) | D | Waves and lanes with scope, dependencies, acceptance criteria, settings and defaults, rollback; what is not built and why |
 | [WAVE0.md](WAVE0.md) | record | What Wave 0 delivered, the baseline, both reviews' findings and fixes, validation, what stays open, how to back each piece out |
 | [WAVE1.md](WAVE1.md) | record | What each Wave 1 lane built, the shipped defaults, the benchmark (split and wide seeds), the three reviews' findings and fixes, what stays open, how to back each piece out |
+| [RECURSIVE_KNOWLEDGE_ASSESSMENT.md](RECURSIVE_KNOWLEDGE_ASSESSMENT.md) | F | Directive §7 mapped to the code (built / partial / not built); the learning-cycles experiment (14 daily cycles of a simulated world through the real modules), per-mechanism verdicts, forgetting and overconfidence, what is unverified |
 | [COGNITIVE_BENCHMARK.md](../quality/COGNITIVE_BENCHMARK.md) | instrument | The cognitive benchmark: families, rules for a lane, how to register a mechanism, the baseline |
 | [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md) | decisions | ADR-049 (provenance kinds and the imagined store), ADR-050 (the quiet switch and one admission rule), ADR-051 to ADR-055 (Wave 1) |
 
@@ -75,6 +76,7 @@ ablations, regression verification, updated architecture, the final evaluation) 
 | `docs/quality/evidence/genesis_wave1.json` | Wave 1 on the reconciled tree: every setting off (= the recorded baseline), as shipped, everything on, an ablation per component, both splits; the offline research benchmark and acceptance against Wave 0; regenerated after the re-review of the fix round corrected the counterfactual headline (every answerable question counted) |
 | `docs/quality/evidence/genesis_wave1_wide.json` | the same comparisons on 12 further seeds (5001–5012), supplementary |
 | `docs/quality/evidence/genesis_{instinct,imagination,workspace,monitoring,knowledge}.json`, `genesis_fix1a.json`, `genesis_fix1b.json`, `genesis_baseline_rescored.json` | the lanes' own measurements, the fix lanes' re-measures, the baseline under the review's scoring |
+| `docs/quality/evidence/genesis_learning_cycles.json` | Wave 2 lane F: the learning-cycles experiment, both splits, every configuration, the verdicts, development probes, the cognitive benchmark's retention and adversarial families with lane K on (`scripts/bench_learning_cycles.py`) |
 
 Reproduce with `scripts/bench_cognition.py`, `scripts/bench_wave1.py`, `scripts/genesis_provenance.py` and `scripts/bench_genesis_safety.py`;
 each script's docstring gives the command.

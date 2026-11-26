@@ -147,6 +147,8 @@ RUNNERS = {
     "neuroscifi.acceptance.cognition.adversarial:task_survives_its_worker_disconnecting": "benchmark (Wave 2, lane "
                                                                                           "U): a worker lost "
                                                                                           "mid-task",
+    "neuroscifi.acceptance.cognition.cycles:Run.step": "benchmark (lane F): one cycle's timer pass (scheduler.tick, "
+                                                       "queue only) on a staged temporary individual",
 }
 
 # Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored
