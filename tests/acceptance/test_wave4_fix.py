@@ -271,3 +271,40 @@ def test_the_refusal_for_a_damaged_limit_names_the_repair_not_enable(tmp_path, n
 
 def test_web_access_switched_off_by_the_owner_says_enable():
     assert state.disabled_message([]) == state.DISABLED_MESSAGE and "--enable" in state.DISABLED_MESSAGE
+
+
+# ---- item 7 (measurement L3): the default-path comparison can fail (its power, kept as a test) ----------------------
+
+def test_the_default_path_comparison_catches_an_injected_regression_and_the_rule_turned_on():
+    """review4 m/probe_q4_power: as committed 0 different; a default grouping that merges 3+ groups, or the rule forced
+    on at every stamp_origins call, is caught. A sample of one development world's looks."""
+    import importlib.util
+    from pathlib import Path
+    from unittest import mock
+    from neuroscifi.acceptance.cognition import sources
+    path = Path(__file__).resolve().parents[2] / "scripts" / "compare_source_derivation.py"
+    spec = importlib.util.spec_from_file_location("compare_sd_fix", path)
+    compare = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(compare)
+    old = compare.old_claims()
+    split, generate = sources._public("development")
+    world = split["worlds"][0]
+    looks = sorted(generate(world, split["seeds"][0])["looks"].items())[:40]
+
+    def different():
+        tally = compare.Tally(old)
+        for (name, c), look in looks:
+            now = sources.T0 + c * world["cycle_hours"] * 3600.0
+            tally.pipeline("dev", [sources._document(p, now, world, name) for p in look["pages"]],
+                           f"What is the latest {name} release?")
+        assert sum(tally.n.values()) > 100
+        return sum(tally.differ.values())
+    assert different() == 0
+    real = claims.independence_groups
+    with mock.patch.object(claims, "independence_groups",
+                           lambda cl, *, origins=None: (lambda g: [sum(g, [])] if len(g) > 2 else g)(
+                               real(cl, origins=origins))):
+        assert different() > 0
+    stamp = claims.stamp_origins
+    with mock.patch.object(claims, "stamp_origins", lambda f, d, **kw: stamp(f, d, **(kw | {"derivation": True}))):
+        assert different() > 0
