@@ -254,11 +254,12 @@ def forget_session(db, sid, *, principal=None, now=None, rewrite=True) -> dict:
     archives the forget made stale are rewritten in place without the session (checkpoints.after_forget; the result
     names them). `rewrite=False` leaves that to the caller (the voice hub runs it in the background)."""
     now = time.time() if now is None else now
+    marks = governance.voice_marks(db, sid)         # read only, before the write lock (review3b N2)
     with store.write(db):
         row = db.execute("SELECT principal FROM voice_sessions WHERE id=?", (sid,)).fetchone()
         if row is None or (principal is not None and row[0] != principal):
             raise NotFound("voice session not found")
-        effects = governance.forget_voice_session(db, sid, now)
+        effects = governance.forget_voice_session(db, sid, now, marks)
     store.truncate_wal(db)
     out = {"forgotten": sid, "segments": effects["segments"],
            "research_tasks_forgotten": effects["research_tasks_forgotten"]}

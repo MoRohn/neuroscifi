@@ -129,6 +129,7 @@ def test_spread_and_rounding():
 def test_task_definitions_are_frozen():
     for module, pinned in ((splits, SPLITS_SHA256), (withheld, WITHHELD_SHA256)):
         assert hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest() == pinned, module.__name__
+    assert cognition.WITHHELD_SHA256 == WITHHELD_SHA256         # the pin a final run checks before its ledger line
 
 
 def test_development_held_out_and_withheld_seeds_are_disjoint():

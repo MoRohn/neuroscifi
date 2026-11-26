@@ -66,6 +66,54 @@ def test_copies_still_count_with_the_outlet_they_credit():
     assert len(_groups(copies)) == 1          # the credited outlet was not read: the copies are still one source
 
 
+# ---- review3b N1, N3, N10 (ADR-063): a named origin or a credit attaches a page to ONE origin -------------------------
+
+DOC_BRIDGE = [("hostile.example", f"As of now, {N} 1.5.0 is the latest {N} release. This story was first published by "
+               "Devdesk. It originally appeared in Factline.", T0 - DAY, "/d")]
+
+
+def test_a_page_naming_two_outlets_as_its_origins_merges_neither_at_the_shipped_defaults():
+    """N1 (since 10339b8): the page's origin keys joined both honest outlets transitively; no row."""
+    assert len(_groups(HONEST[:2] + DOC_BRIDGE, attribution=False)) == 2
+    assert _rows(HONEST[:2] + DOC_BRIDGE, attribution_independence=False, echo_recognition=False) == ["provisional"]
+
+
+def test_a_copy_naming_one_origin_and_copies_of_one_unread_origin_still_count_once():
+    copy = [("copydesk.example", f"This story first appeared on Devdesk.\nThese days {N} 1.5.0 is the newest {N} "
+             "release.", T0 - DAY, "/c")]
+    assert len(_groups(HONEST[:1] + copy, attribution=False)) == 1
+    wire = [(f"m{i}.example", f"(Reuters) Release desk {i}: {N} 1.5.0 is the latest {N} release.", T0 - DAY, None)
+            for i in range(3)]
+    assert len(_groups(wire, attribution=False)) == 1
+
+
+def test_a_page_carrying_two_wire_credits_absorbs_no_honest_outlet_that_credits_one():
+    """N3: honest outlets crediting two different wires; a page crediting no one carries both wires' credits."""
+    pages = [("devdesk.example", f"According to Reuters, {N} 1.5.0 is the latest {N} release.", T0 - DAY, None),
+             ("factline.example", f"According to Bloomberg, {N} 1.5.0 is the newest {N} release.", T0 - DAY, None)]
+    hostile = [("hostile.example", f"As of now, {N} 1.5.0 is the current {N} release. (Reuters) (Bloomberg)", T0 - DAY,
+                "/w")]
+    assert len(_groups(pages)) == 2 and len(_groups(pages + hostile)) == 2
+    assert _rows(pages + hostile) == ["provisional"]
+
+
+def test_the_groups_do_not_depend_on_the_order_of_the_claims():
+    """N10: X credits Reuters, Y Bloomberg, Z both; every order gives the same groups and X and Y stay apart."""
+    import itertools
+    from neuroscifi.webcortex.types import Claim as C
+    words = {"x": "By now", "y": "Once again", "z": "As of today"}
+    made = {name: C(id=name, text=f"{words[name]} {N} 1.5.0 is the latest release.", source_url=f"http://{name}.example/a",
+                    domain=f"{name}.example", title=N, retrieved_at=T0, kind="statement", values=["v1.5.0"],
+                    polarity=1, published_at=None, flags={"credited": credits})
+            for name, credits in (("x", ["name:reuters"]), ("y", ["name:bloomberg"]),
+                                  ("z", ["name:reuters", "name:bloomberg"]))}
+    seen = {frozenset(frozenset(g) for g in claims.independence_groups([made[n] for n in order]))
+            for order in itertools.permutations("xyz")}
+    assert len(seen) == 1
+    [groups] = seen
+    assert not any({"x", "y"} <= g for g in groups)
+
+
 # ---- S-3: the possessive credit (a bug fix only; the off-parser residual is measured in genesis_wave3_fix_s.json)
 
 def test_a_possessive_credit_names_the_outlet():
@@ -178,6 +226,84 @@ def test_a_checkpoint_restored_after_the_forget_replays_the_mark(tmp_path):
             assert answers and all(consolidate.own_sentences(r) == [] for r in answers)
 
 
+def _bulk_answers(db, n, size, rnd):
+    """n stored model-written answers of about `size` characters, full of numbers (none about Velmora)."""
+    task = orchestrator.submit(db, adv._SQ, T0 - 2e6, mode="fact_verification", origin="console")
+    cols = [c[1] for c in db.execute("PRAGMA table_info(web_tasks)")]
+    row = dict(zip(cols, db.execute("SELECT * FROM web_tasks WHERE id=?", (task["id"],)).fetchone()))
+    filler = " ".join(f"Item{i} {rnd.randint(100, 99999)}.{rnd.randint(0, 9)} was noted." for i in range(size // 15))
+    result = json.dumps({"reasoning": {"generated_by": "model:x", "text": filler[:size]}})
+    with store.write(db):
+        for i in range(n):
+            r = dict(row, id=f"bulk{i:07d}", result=result, updated_at=T0 - 1e6 + i, finished_at=T0 - 1e6 + i)
+            db.execute(f"INSERT INTO web_tasks({','.join(r)}) VALUES({','.join('?' * len(r))})", tuple(r.values()))
+
+
+def test_a_forget_reads_no_task_result_by_scanning_inside_its_write_transaction(monkeypatch):
+    """review3b N2: the mark's scan of every task result ran inside the forget's write transaction (6.9 s for a
+    1-page domain at 10,000 tasks of 20 kB, 39.6 s for 6 pages), so other writers met their 10 s busy timeout. Now the
+    scan runs before the lock; inside it only the candidate answers and the tasks changed since are read by rowid.
+    At 10,000 answers of 2 kB the transaction stays short (the measured time is in the lane report)."""
+    rnd = random.Random(3)
+    with adv._s_individual("n2") as (db, _):
+        pages = [(f"p{i}.hostile.example", " ".join(f"{N} build {i}{j}.0.0 counted " + ", ".join(
+            str(rnd.randint(100000, 999999)) for _ in range(7)) + " downloads." for j in range(8)), T0 - DAY, f"/{i}")
+            for i in range(6)]
+        adv._s_look(db, T0, pages)
+        _bulk_answers(db, 10_000, 2_000, rnd)
+        inside, scans = [], []
+
+        def trace(sql):
+            if db.in_transaction and "FROM web_tasks" in sql and "model:" in sql and "rowid IN" not in sql:
+                scans.append(sql[:80])
+        real = store.write
+
+        @__import__("contextlib").contextmanager
+        def timed(conn, *a, **k):
+            with real(conn, *a, **k):
+                started = time.perf_counter()
+                yield
+                inside.append(time.perf_counter() - started)
+        monkeypatch.setattr(store, "write", timed)
+        db.set_trace_callback(trace)
+        try:
+            governance.forget_source(db, "hostile.example", T0 + DAY)
+        finally:
+            db.set_trace_callback(None)
+        assert scans == [] and inside and max(inside) < 1.0, (scans, inside)
+        assert db.execute("SELECT count(*) FROM web_claims WHERE domain LIKE '%hostile.example'").fetchone()[0] == 0
+
+
+def test_an_answer_written_between_the_scan_and_the_transaction_is_still_marked():
+    """The scan before the lock remembers every task's version; a task whose result changed after it is read again
+    inside the transaction (review3b N2: no answer escapes the mark)."""
+    with adv._s_individual("n2-race") as (db, _):
+        adv._s_look(db, T0 - 6 * DAY, [("relnotes.example", f"{N} 1.5.0 is the latest {N} release.", T0 - 7 * DAY,
+                                        None)])
+        claim_ids = [r[0] for r in db.execute("SELECT id FROM web_claims WHERE domain='relnotes.example'")]
+        prepared = governance.prepare_sourced_marks(db, claim_ids)
+        adv._s_look(db, T0 - 5 * DAY, [], answer=f"{N} 1.5.0 is the latest {N} release.")     # after the scan
+        assert len(prepared["rows"]) == 1                    # the first look's own stub answer, seen by the scan
+        with store.write(db):
+            assert governance._mark_sourced_answers(db, claim_ids, prepared) == 2
+
+
+def test_forgetting_a_number_heavy_source_marks_no_answer_about_another_subject():
+    """review3b N9: the mark needs a subject name the forgotten claim and the answer sentence share; before, any
+    sentence holding one of the forgotten digit tokens was marked sourced, whatever its subject."""
+    with adv._s_individual("n9") as (db, _):
+        adv._s_look(db, T0 - 6 * DAY, [("zorbnews.example", "Zorbix 9.4.0 is the latest Zorbix release.",
+                                        T0 - 7 * DAY, None)])
+        adv._s_look(db, T0 - 5 * DAY, [], answer=f"{N} 9.4.0 is the latest {N} release.")
+        governance.forget_source(db, "zorbnews.example", T0 - 4 * DAY)
+        answers = [json.loads(r)["reasoning"] for (r,) in db.execute(
+            "SELECT result FROM web_tasks WHERE result LIKE '%model:%'")]
+        about = {r["text"].split()[0]: consolidate.own_sentences(r) for r in answers}
+        assert about["Zorbix"] == [] and about[N]                    # only the answer about the forgotten subject
+        out = adv._s_look(db, T0, _echo_pages("9.4.0"))
+        assert out.get("echoes") and adv._s_rows(db, "9.4.0") == []
+
+
 # ---- M4: the echo checks are bounded, outside the write transaction, and a skip is visible ------------------------------
 
 def test_the_echo_checks_run_before_the_write_transaction(monkeypatch):
@@ -223,6 +349,69 @@ def test_the_echo_checks_take_one_scan_at_ten_thousand_tasks():
         started = time.perf_counter()
         echoes = consolidate._Echoes(db, [claim] * 8)
         assert time.perf_counter() - started < consolidate.ECHO_SECONDS and echoes.skipped == []
+
+
+def _velmora_claim(cid, text, at):
+    return Claim(id=cid, text=text, source_url=f"http://{cid}.example/a", domain=f"{cid}.example", title=N,
+                 retrieved_at=at, kind="statement", values=T.values(text), polarity=1, published_at=None)
+
+
+def test_one_page_with_many_values_cannot_take_the_whole_value_cap_and_what_is_unchecked_is_named(caplog):
+    """review3b N4: 8 claims of 8 values (64 tokens, the whole cap in claim order) before an echo left the echo
+    unchecked and unnamed. Now each claim gets its share, the echo is found, and every claim whose values were not
+    all looked up is named in echo_skipped and logged once (counts and ids only)."""
+    rnd = random.Random(5)
+    with adv._s_individual("n4-cap") as (db, _):
+        adv._s_look(db, T0 - 5 * DAY, [], answer=f"{N} 9.4.0 is the latest {N} release.")
+        hostile = [_velmora_claim(f"h{k}", f"Zorb{k} counts " + ", ".join(
+            f"{rnd.randint(100000, 999999)}.{rnd.randint(1, 9)}" for _ in range(8)) + " units.", T0) for k in range(8)]
+        echo = _velmora_claim("echo", f"Someone says {N} 9.4.0 is now the latest {N} release.", T0)
+        caplog.clear()
+        echoes = consolidate._Echoes(db, hostile + [echo])
+        assert echoes.of(echo) == "value"
+        assert echoes.skipped and set(echoes.skipped) <= {c.id for c in hostile}
+        lines = [m for m in caplog.messages if "echo checks" in m]
+        assert len(lines) == 1 and f"{len(echoes.skipped)} claim(s)" in lines[0] and "9.4.0" not in lines[0]
+
+
+def test_answers_about_other_subjects_cannot_crowd_out_the_answer_an_echo_repeats():
+    """review3b N4: the own-answer index kept the newest 200 answers holding a token; 250 newer answers about other
+    subjects stating the same number evicted the one the echo repeats. Now its subject's answers are looked up."""
+    with adv._s_individual("n4-rows") as (db, _):
+        adv._s_look(db, T0 - 5 * DAY, [], answer=f"{N} 9.4.0 is the latest {N} release.")
+        task = orchestrator.submit(db, adv._SQ, T0 - 4 * DAY, mode="fact_verification", origin="console")
+        cols = [c[1] for c in db.execute("PRAGMA table_info(web_tasks)")]
+        row = dict(zip(cols, db.execute("SELECT * FROM web_tasks WHERE id=?", (task["id"],)).fetchone()))
+        with store.write(db):
+            for i in range(consolidate.ECHO_MAX_ROWS + 50):
+                text = f"Zorb{i} 9.4.0 is the latest Zorb{i} release."
+                r = dict(row, id=f"other{i:05d}", updated_at=T0 - 3 * DAY + i, finished_at=T0 - 3 * DAY + i,
+                         result=json.dumps({"reasoning": {"generated_by": "model:x", "text": text}}))
+                db.execute(f"INSERT INTO web_tasks({','.join(r)}) VALUES({','.join('?' * len(r))})", tuple(r.values()))
+        echo = _velmora_claim("echo", f"Someone says {N} 9.4.0 is now the latest {N} release.", T0)
+        echoes = consolidate._Echoes(db, [echo])
+        assert echoes.of(echo) == "value" and echoes.skipped == []
+
+
+@pytest.mark.parametrize("rule", [False, True])
+def test_forgetting_a_source_removes_its_sentence_from_contradiction_questions(tmp_path, rule):
+    """review3b N6 (older than Wave 3): after forget_source the forgotten page's sentence was still quoted in the
+    contradiction question (the ask path, and the supersession rule's answered question); a restore after the forget
+    must not bring it back either."""
+    quoted = f"As of yesterday, {N} {adv._NEW} is the latest {N} release."
+    with adv._s_individual(f"n6-{rule}", **(adv.RULE_ON if rule else {})) as (db, path):
+        adv._s_item(db)
+        adv._s_refresh(db, T0 + 3 * DAY)
+        assert any(quoted in q for (q,) in db.execute("SELECT question FROM pending"))
+        made = checkpoints.create(db, path, tmp_path / "checkpoints", T0 + 3.5 * DAY)
+        out = governance.forget_source(db, "dailytrack.example", T0 + 4 * DAY)
+        assert out["effects"]["questions_redacted"]
+        assert not any("As of yesterday" in q for (q,) in db.execute("SELECT question FROM pending"))
+        assert any("«#forgotten»" in q for (q,) in db.execute("SELECT question FROM pending"))
+        copy = tmp_path / "restored.sqlite"
+        checkpoints.restore(db, made["id"], copy, T0 + 5 * DAY)
+        with closing(store.connect(copy)) as restored:
+            assert not any("As of yesterday" in q for (q,) in restored.execute("SELECT question FROM pending"))
 
 
 # ---- M6: only the owner's research and refreshes let the supersession rule decide -------------------------------------
@@ -394,7 +583,25 @@ def test_concurrent_autonomous_submissions_never_pass_the_cap(tmp_path):
     assert errors.count("BudgetRefused") == 5, errors
 
 
-# ---- L7: `nsf imagine scm` input robustness ---------------------------------------------------------------------------
+def test_a_recheck_that_saw_room_cannot_take_the_last_place_after_the_idle_investigation(tmp_path):
+    """review3b N5: the re-check pass read the cap (room), the idle investigation then queued the last place, and
+    recheck.submit inserted anyway (3 of a cap of 2). Now its own transaction checks the count."""
+    from neuroscifi.webcortex import autonomy, recheck, scheduler, state
+    with adv._s_individual("n5") as (db, _):
+        kid = adv._s_item(db)
+        now = T0 + 2 * DAY
+        state.set_config(db, {"daily_autonomous": {"tasks": 2, "requests": 1000, "bytes": 10 ** 9}}, now)
+        orchestrator.submit(db, "What is the current Zorbix version?", now, mode="fact_verification", origin="curiosity")
+        assert scheduler._over_cap(db, now, state.get_config(db)) is None          # the re-check pass sees room
+        orchestrator.submit(db, "What is the current Quorvex version?", now, mode="fact_verification",
+                            origin="curiosity")                                   # the idle path takes the last place
+        with pytest.raises(autonomy.BudgetRefused):
+            recheck.submit(db, {"knowledge_id": kid, "key": "k", "value": 1.0}, {"rule": "test", "path": "recheck"},
+                           now)
+        assert scheduler.autonomous_usage(db, now)["tasks"] == 2
+
+
+# ---- L7:`nsf imagine scm` input robustness ---------------------------------------------------------------------------
 
 def _front_door(**extra):
     return {"graph": {"X": [], "M": ["X"], "Y": ["M"]}, "hidden_common_cause": ["X", "Y"], "do": {"X": 1.0},
@@ -452,6 +659,31 @@ def test_a_damaged_saved_wave3_setting_reads_as_its_default(tmp_path, name, bad)
         scheduler.tick(db, T0 + 10, None, queue=True)           # the timer's pass does not raise
 
 
+def test_a_damaged_bar_of_a_rule_that_is_on_turns_the_rule_off_and_is_logged_once(tmp_path, monkeypatch, caplog):
+    """review3b N8: the owner's supersession_min_sources 5 damaged to 5.0 read as 2 while supersession stayed
+    "independent" (a looser rule), and the warning was logged on every read. Now the rule reads as "ask" (off) until
+    the bar is set again, the problem says so, and the warning is logged once per process."""
+    from neuroscifi.webcortex import config, state
+    from neuroscifi.webcortex.config import META_KEY
+    monkeypatch.setattr(config, "_REPORTED", set())
+    db = store.create(tmp_path / "n8.sqlite", T0, note="review3b N8")
+    with closing(db):
+        state.set_config(db, {"enabled": True, "supersession": "independent", "supersession_min_sources": 5}, T0)
+        raw = json.loads(db.execute("SELECT value FROM meta WHERE key=?", (META_KEY,)).fetchone()[0])
+        with store.write(db):
+            db.execute("UPDATE meta SET value=? WHERE key=?", (json.dumps(raw | {"supersession_min_sources": 5.0}),
+                                                               META_KEY))
+        caplog.clear()
+        cfgs = [state.get_config(db) for _ in range(3)]
+        assert all(c.supersession == "ask" for c in cfgs)
+        assert len([m for m in caplog.messages if "supersession_min_sources" in m]) == 1
+        [problem] = state.setting_problems(db)
+        assert "supersession reads as 'ask'" in problem
+        state.set_config(db, {"supersession_min_sources": 5}, T0 + 1)       # set again: the rule is on as the owner set
+        assert (state.get_config(db).supersession, state.get_config(db).supersession_min_sources) == \
+            ("independent", 5)
+
+
 # ---- Q7: the looks' machinery (built and tested on public splits only; nothing here loads the withheld worlds) -------
 
 @pytest.fixture
@@ -461,10 +693,111 @@ def sealed(monkeypatch, tmp_path):
 
     def loader():
         raise AssertionError("the withheld worlds were loaded")
+
+    def family(*args, **kwargs):        # review3b L-7: a broken guard fails here, never scores the withheld family
+        raise AssertionError("the withheld family was scored")
     monkeypatch.setattr(cycles, "_withheld", loader)
+    monkeypatch.setattr(cognition, "_withheld", family)
     ledger = tmp_path / "ledger.jsonl"
     monkeypatch.setattr(cognition, "LEDGER", ledger)
     return ledger
+
+
+def _script(name):
+    import importlib.util
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location(f"{name}_fix2", root / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _clean(monkeypatch):
+    from neuroscifi.acceptance import cognition
+    monkeypatch.setattr(cognition, "environment", lambda: {"git_commit": "0" * 40, "git_dirty": False})
+
+
+def test_both_looks_refuse_an_output_that_cannot_be_written_before_the_ledger(sealed, monkeypatch, tmp_path):
+    """review3b M-1: a missing or unwritable --out directory (or an --out that is a directory) is refused before the
+    ledger line; before the fix both looks wrote their line and failed only when writing the result."""
+    from neuroscifi.acceptance.cognition import cycles
+    _clean(monkeypatch)
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    bad = [tmp_path / "missing" / "out.json", locked / "out.json", tmp_path]
+    cycles_bench, cognition_bench = _script("bench_learning_cycles"), _script("bench_cognition")
+    try:
+        for out in bad:
+            with pytest.raises(SystemExit, match="cannot be written"):
+                cycles_bench.main(["final", "--look", "wave3", "--mechanism", "wave3", "--note", "a test",
+                                   "--out", str(out)])
+            assert cognition_bench.main(["run", "--family", "withheld", "--mechanism", "imagination", "--final",
+                                         "--note", "a test", "--out", str(out)]) == 2
+    finally:
+        locked.chmod(0o700)
+    assert not sealed.exists() and cycles.withheld_digest() == cycles.WITHHELD_SHA256
+
+
+def test_the_counterfactual_look_refuses_a_misspelt_mechanism_an_unknown_ablation_and_no_note(sealed, monkeypatch,
+                                                                                             tmp_path):
+    """review3b M-2, L-2: the mechanism and the ablation are resolved, and the note required, before the ledger line
+    (before the fix a misspelt mechanism silently fell back to the baseline everywhere, and an unknown ablation was
+    refused only after the line). imagination's fall-back for the three interfaces it has no mechanism for stays."""
+    from neuroscifi.acceptance import cognition
+    _clean(monkeypatch)
+    bench = _script("bench_cognition")
+    look = ["run", "--family", "withheld", "--final", "--out", str(tmp_path / "out.json")]
+    assert bench.main(look + ["--mechanism", "imaginaton", "--note", "a test"]) == 2
+    assert bench.main(look + ["--mechanism", "imagination", "--ablate", "front_dor", "--note", "a test"]) == 2
+    assert bench.main(look + ["--mechanism", "imagination"]) == 2                     # no note
+    assert bench.main(look + ["--mechanism", "imagination", "--note", "  "]) == 2
+    with pytest.raises(cognition.Refused, match="misspelt"):
+        cognition.run(["withheld"], mechanism="imaginaton", final=True, note="a test")
+    assert not sealed.exists()
+    # the intended command passes every check and records its line; the stand-in then stops it before any scoring
+    with pytest.raises(AssertionError, match="withheld family was scored"):
+        bench.main(look + ["--mechanism", "imagination", "--ablate", "front_door", "--note", "a test"])
+    [entry] = [json.loads(line) for line in sealed.read_text().splitlines()]
+    assert entry["mechanism"] == "imagination" and entry["ablate"] == ["front_door"]
+
+
+def test_the_counterfactual_look_refuses_a_changed_withheld_file_before_the_ledger(sealed, monkeypatch):
+    """review3b L-6: withheld.py's bytes are hashed against the pin before the ledger line (never read)."""
+    from neuroscifi.acceptance import cognition
+    from neuroscifi.acceptance.cognition import withheld
+    assert cognition.digest(withheld.__file__) == cognition.WITHHELD_SHA256
+    _clean(monkeypatch)
+    monkeypatch.setattr(cognition, "WITHHELD_SHA256", "f" * 64)
+    with pytest.raises(cognition.Refused, match="SHA-256"):
+        cognition.run(["withheld"], mechanism="imagination", final=True, note="a test")
+    assert not sealed.exists()
+
+
+def _front_door_pair(error):
+    on = {"ablate": [], "families": {"counterfactual": {
+        "mechanism": {"used": "imagination", "fell_back_to_baseline": False},
+        "result": {"summary_by_group": {} if error == "missing" else {"front_door": {"max_relative_error": error}},
+                   "per_seed": [{"front_door": 2, "front_door_declined": 0, "front_door_within_tolerance": 2}]}}}}
+    off = json.loads(json.dumps(on))
+    off["ablate"] = ["front_door"]
+    return on, off
+
+
+@pytest.mark.parametrize("error, a_holds, void", [
+    ({"max": 0.0, "n": 2}, True, False),
+    ({"max": None, "n": 0}, True, False),          # none answered
+    ({"max": None, "n": 2}, False, False),         # answered, yet no maximum: not a pass
+    ({"max": 0.2, "n": 2}, False, False),
+    ("missing", False, True),
+    (0.0, False, True),                            # malformed
+])
+def test_the_front_door_condition_a_does_not_fail_open(error, a_holds, void):
+    """review3b M-3: max None passes only with n == 0; a missing or malformed front_door group is VOID (exit 2)."""
+    compare = _script("compare_front_door_look")
+    out = compare.compare(*_front_door_pair(error))
+    assert out["a_holds"] is a_holds and bool(out["void"]) is void
 
 
 @pytest.mark.parametrize("failure", ["timeout", "exit 128", "oserror"])

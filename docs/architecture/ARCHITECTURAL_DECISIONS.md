@@ -3128,6 +3128,12 @@ each is. Both additions here record or read; neither changes what the individual
 - **Files and locks (security L4, L5).** The sampler's settlement and the internal-state history take their locks
   without waiting: a lock another process holds skips that pass (logged by kind). Nothing is appended to a verdict
   file another account owns; the roll-up drops days later than tomorrow and lead values beyond the maximum horizon.
+- **Verdicts dropped while the record is busy (second fix lane, review3b N7).** While another process holds the shadow
+  lock, the gate's verdict is not recorded (the gate never waits). Such drops were neither counted nor logged, so a
+  member of the folder's group could choose which verdicts reach the evidence. Now each drop is counted, the next
+  verdict recorded carries the count (`busy_before`), the roll-up keeps it per day, and `nsf internal-state
+  --shadow-report` shows `verdicts.not_recorded_busy` and says "N verdict(s) were not recorded because the record was
+  busy"; the warning is logged at the 1st, 10th, 100th, ... drop with the count only. The gate's decision is unchanged.
 
 # ADR-059 (draft) Front-door adjustment in the linear causal engine: a decline becomes a labelled answer only where the criterion holds. R
 
@@ -3482,7 +3488,8 @@ can read as corroboration. The settings, their code and their tests stay, made s
 to turn on; this ADR does not recommend it. Under this lane's own pre-registered rule (`cycles_s.verdict`, (s1) and
 (s3)) the fixes do NOT qualify for ON: own versions are still admitted in 2 of 4 held-out seeds of two worlds and in 2
 of 3 development seeds of sd-wrong-newer, and on development sd-wrong-newer loses 0.114 against a spread of 0.066; the
-verdict is "unsafe" for `fixes` and `shipped` on development and held-out. Every lane S held-out figure below is
+verdict is "unsafe" for `fixes` (both rules on), and for `shipped` too (now both off: the holes are open), on
+development and held-out. Every lane S held-out figure below is
 development evidence: the echo rule changed twice after held-out runs and lane S's held-out was seen three times; the
 withheld look is the test. Fix-lane evidence: `genesis_wave3_fix_s.json`, `genesis_wave3_fix_s_variants.json`
 (section "Fix lane" at the end).
@@ -3503,7 +3510,7 @@ before any mechanism, development seeds 241-243, held-out 341-344) without readi
 
 | hole | where it was | reproduced by |
 |---|---|---|
-| a copy that rewords the story and credits its origin inside the sentence ("According to Syndiwire, ...", "..., Syndiwire says.", "... (Syndiwire).", "... via Syndiwire.", "..., as the Syndiwire desk reports.", a mirror republished later) is a second independent source | `claims.independence_groups` joins only same host, near-identical sentences (3-word shingle >= 0.8), attribution LINES and canonical URLs (`origin_keys`) | case `reworded_syndicated_copies_count_once`: 5 groups before, 1 after; census of every held-out look: 407 of 449 wire looks split into several "independent" groups before, 50 after (the 50: the `unattributed` rewording no text rule can see) |
+| a copy that rewords the story and credits its origin inside the sentence ("According to Syndiwire, ...", "..., Syndiwire says.", "... (Syndiwire).", "... via Syndiwire.", "..., as the Syndiwire desk reports.", a mirror republished later) is a second independent source | `claims.independence_groups` joins only same host, near-identical sentences (3-word shingle >= 0.8), attribution LINES and canonical URLs (`origin_keys`) | case `reworded_syndicated_copies_count_once`: 5 groups before, 1 after; census of every held-out look: 407 of 449 wire looks split into several "independent" groups before, 50 after (the 50: the `unattributed` rewording; 19 of 27 other credit phrasings are not read either, review S-3) |
 | one outlet and its reworded copies admitted as corroborated knowledge, and a second row admitted on one origin | same | 262 of 371 one-origin looks split before, 0 after; case `one_origin_never_raises_confidence` (1 new row before, 0 after) |
 | a page repeating a version only the individual's own answer stated is corroboration | consolidation never asked where a value first came from | case `echoed_own_value_is_not_corroboration` (1 row before, 0 after) |
 
@@ -3512,8 +3519,11 @@ before any mechanism, development seeds 241-243, held-out 341-344) without readi
 1. **Attribution (`attribution_independence`, OFF since the fix lane).** `claims.attribution_keys` reads the outlet a sentence credits
    and `stamp_origins(attribution=True)` records it in `flags["credited"]` (since the fix lane; it was an origin key,
    which let one sentence crediting two honest outlets join them, security H1): a group made only of crediting claims
-   counts with the first group of an outlet it credits, the rest of such groups are one group per credited outlet, and
-   a group holding a claim that credits no one never moves, so a credit never joins two of them. A credit to the sentence's own subject ("..., the Velmora team says")
+   counts with ONE outlet it credits, and a group holding a claim that credits no one never moves on a credit, so a
+   credit never joins two of them. Since the second fix lane (ADR-063, review3b N3, N10) the outlet is chosen from the
+   group's own content (the smallest credited key that names a group read; else the smallest credited key, where
+   copies of one unread outlet meet), not by the order of the claims, and a page that credits no one but carries two
+   outlets' keys ("(Reuters) (Bloomberg)") no longer absorbs two honest outlets that credit them. A credit to the sentence's own subject ("..., the Velmora team says")
    and indefinite speakers ("Someone says") give no key.
 2. **Echoes (`echo_recognition`, OFF since the fix lane).** In consolidation (`_Echoes`, `_without_echoes`), a claim is an echo when it
    states, for a subject the individual's stored model-written answer names, a specific value that answer stated
@@ -3538,10 +3548,10 @@ before any mechanism, development seeds 241-243, held-out 341-344) without readi
 
 ## Measured (held-out, 4 seeds per world, means per run; references from the world generator alone)
 
-Fixes against Wave 2's baseline (every Wave 1 setting off, old independence rule), lane S held-out
+Both rules on, against Wave 2's baseline (every Wave 1 setting off, old independence rule), lane S held-out
 (`s-mixed` / `s-wrong-newer` / `s-echo`):
 
-| | baseline | fixes (shipped) |
+| | baseline | both rules on (not shipped) |
 |---|---|---|
 | own versions admitted (supported only by echoes) | 1.25 / 0.50 / 3.75 | 0.25 / 0 / 0.25 |
 | syndicated-only versions admitted | 1.50 / 2.25 / 1.00 | 0 / 0 / 0 |
@@ -3557,7 +3567,9 @@ true values the old rule admitted on one outlet counted twice (4.25, 1.50 and 4.
 rule no longer admits: correct by luck, not by evidence. False rejections of honest corroboration: the attribution
 rule merged no honest outlet the old rule kept apart (census: 237 of 9,026 honest outlets merged with another origin
 before and after, all by the old near-duplicate rule); echo recognition removed honest pages 0 / 0.5 / 1.0 times per
-run (prescient answers later stated honestly) against 1.5 / 2.0 / 12.5 echoes removed. References: snapshot 0.601 /
+run (prescient answers later stated honestly) against 1.5 / 2.0 / 12.5 echoes removed, and claims from rumour or wire
+pages removed as echoes (`echo_false_other`) 0 in every configuration, world and seed of the fix lane's
+re-measurement (`genesis_wave3_fix_s.json`, both families, both splits). References: snapshot 0.601 /
 0.692 / 0.586, blind round robin 0.758 / 0.769 / 0.760, oracle 0.980 / 0.994 / 0.974, no loop 0.526 / 0.406 / 0.494.
 In these worlds the individual's own values live only in the imagined store, which echo recognition may not read.
 The fall in own versions comes from the rule that a sentence crediting an assistant, chatbot or AI model is model
@@ -3578,27 +3590,37 @@ them (H1, M2-M5, fixed since). On lane F's worlds both act only where the earlie
 keys coincide with attribution lines; 0-2 echoes removed per run, none admitted before): unchanged, not tested
 (review S-7). The withheld look reports each separately for the owner's decision and cannot switch either on.
 
-Supersession K = 2 against the fixes (same world, same seed):
+Supersession K = 2 against the fixes (both rules on; same world, same seed). The first two rows are the fix lane's
+re-measurement on the combined tree (`genesis_wave3_fix_s.json`, `ad6fc8a`), which replaces lane S's figures; the
+rows marked "lane S" are lane S's evidence (`genesis_wave3_s.json`, before the fix lane's changes to echo
+recognition), kept for the counts the re-measurement table does not repeat:
 
 | | s-mixed | s-wrong-newer | s-echo | ho-sparse (lane F) | ho-busy (lane F) |
 |---|---|---|---|---|---|
-| gain in `correct` (reference sd) | +0.008 (0.046) | +0.007 (0.051) | +0.020 (0.078) | +0.016 (0.105) | +0.008 (0.057) |
-| rule replacements per run: true / false / other | 3.00 / 0.25 / 0 | 2.25 / 0.50 / 0.25 | 2.00 / 0 / 0 | 2.00 / 0 / 0 | 1.25 / 0 / 0 |
-| false per seed | 0,0,0,1 | 2,0,0,0 | 0,0,0,0 | 0,0,0,0 | 0,0,0,0 |
-| longest a false replacement stayed wrong (per-seed maximum; censored: still wrong at run end) | 8 cycles | at least 10 (censored) | - | - | - |
-| stale items kept and asked (missed) | 7.75 -> 3.75 | 7.75 -> 6.00 | 4.75 -> 2.25 | 5.00 -> 2.75 | 5.50 -> 4.25 |
-| owner questions opened / answered by the rule | 45.75 -> 42.00 / 3.25 | 46.50 -> 44.75 / 3.00 | 37.75 -> 37.25 / 2.00 | 38.75 -> 38.25 / 2.00 | 50.75 -> 50.75 / 1.25 |
-| retention regressed | 0 -> 0 | 0.50 -> 0.75 | 0 -> 0 | 0 -> 0 | 0 -> 0 |
+| gain in `correct` (reference sd), re-measured | +0.001 (0.046) | −0.002 (0.051) | +0.016 (0.078) | +0.016 (0.105) | +0.005 (0.057) |
+| rule replacements per run: true / false, re-measured | 2.50 / 0.25 | 1.25 / 0.50 | 1.25 / 0 | 2.00 / 0 | 0.75 / 0 |
+| lane S: gain in `correct` (reference sd) | +0.008 (0.046) | +0.007 (0.051) | +0.020 (0.078) | +0.016 (0.105) | +0.008 (0.057) |
+| lane S: rule replacements per run: true / false / other | 3.00 / 0.25 / 0 | 2.25 / 0.50 / 0.25 | 2.00 / 0 / 0 | 2.00 / 0 / 0 | 1.25 / 0 / 0 |
+| false per seed (both) | 0,0,0,1 | 2,0,0,0 | 0,0,0,0 | 0,0,0,0 | 0,0,0,0 |
+| longest a false replacement stayed wrong (per-seed maximum; censored: still wrong at run end), re-measured | 8 cycles | at least 10 (censored) | - | - | - |
+| lane S: stale items kept and asked (missed) | 7.75 -> 3.75 | 7.75 -> 6.00 | 4.75 -> 2.25 | 5.00 -> 2.75 | 5.50 -> 4.25 |
+| lane S: owner questions opened / answered by the rule | 45.75 -> 42.00 / 3.25 | 46.50 -> 44.75 / 3.00 | 37.75 -> 37.25 / 2.00 | 38.75 -> 38.25 / 2.00 | 50.75 -> 50.75 / 1.25 |
+| retention regressed (both) | 0 -> 0 | 0.50 -> 0.75 | 0 -> 0 | 0 -> 0 | 0 -> 0 |
 
 Verdict under the pre-registered rule: **no gain beyond the spread** in any world (the smallest gain the rule can see
-is 0.046-0.105), and retention worse in one world. False replacements: 3 of 33 rule replacements on lane S's held-out
-worlds (9 %, pooled, not a claim; per world 1 of 13, 2 of 12 with 1 other, 0 of 8), 0 of 13 on lane F's; they come
+is 0.046-0.105), and retention worse in one world. False replacements, re-measured (`genesis_wave3_fix_s.json`): 3 of
+23 rule replacements on lane S's held-out worlds (13 %, about one in eight, pooled, not a claim; per world 1 of 11, 2
+of 7, 0 of 5), 0 of 11 on lane F's (lane S's own figures were 3 of 33 and 0 of 13); they come
 from rumours: two independent outlets wrongly stating a next version, which no independence rule can tell from an
-honest update. Ablations (lane S held-out): independence off (pages counted as sources) admits syndicated versions
-(3.00 / 1.00 / 0.75 per run) and makes 2.50 / 1.25 / 0.75 false replacements; echo recognition off admits own versions
-(1.50 / 0.75 / 4.00); recency off changes nothing in four of five worlds (the no-flip-flop condition and the lagging
-pages' own dates already refuse those cases) and +0.004 in `s-echo`. K = 3: 0.75 / 0.50 / 0.75 rule replacements per
-run, gains 0.001 / -0.001 / 0.002. Cost: no measurable wall time (about 0.5 s per world run either way).
+honest update. Ablations (lane S held-out, lane S's figures): independence off (pages counted as sources) admits
+syndicated versions (3.00 / 1.00 / 0.75 per run) and makes 2.50 / 1.25 / 0.75 false replacements; echo recognition off
+admits own versions (1.50 / 0.75 / 4.00); recency off changes nothing in four of five worlds (the no-flip-flop
+condition and the lagging pages' own dates already refuse those cases) and +0.004 in `s-echo`. K = 3: 0.75 / 0.50 /
+0.75 rule replacements per run, gains 0.001 / -0.001 / 0.002. Re-measured by the fix lane (`genesis_wave3_fix_s.json`,
+per run): independence off admits syndicated versions 1.50 / 0.75 / 0.50 and makes 1.25 / 1.50 / 0.50 false
+replacements (1.25 / 1.00 / 0.50 by the rule); echo recognition off admits own versions 1.25 / 0.50 / 3.75; recency
+off changes nothing in any of the five worlds; K = 3: 0 / 0.25 / 0.25 rule replacements, gains 0.000 / +0.001 /
++0.001. Cost: no measurable wall time (about 0.5 s per world run either way).
 
 ## Alternatives rejected
 
@@ -3606,8 +3628,8 @@ run, gains 0.001 / -0.001 / 0.002. Cost: no measurable wall time (about 0.5 s pe
   that store at all (ADR-049), and using imagined content to reject evidence would let it shape belief.
 - Removing echoes from both sides of a cluster: it changed what the owner is asked and what curiosity looks at next on
   lane F's worlds where no echo was ever admitted (4 held-out runs, both directions).
-- Supersession on by default: no gain beyond the spread and about one false replacement in eleven on worlds with
-  rumours; the owner has not changed the standing rule.
+- Supersession on by default: no gain beyond the spread and about one false replacement in eight (3 of 23,
+  re-measured) on worlds with rumours; the owner has not changed the standing rule.
 
 ## Consequences
 
@@ -3626,6 +3648,13 @@ run, gains 0.001 / -0.001 / 0.002. Cost: no measurable wall time (about 0.5 s pe
   `retention.regressed`, `admitted.wrong` / `own_only` / `wire_only`, replacements true / false with each false one's
   persistence and censoring; `COUNTERS` says what each counter can see: `self_admitted` and `wire_admitted` count only
   9.x and 7.x versions and cannot see a plausible syndicated error or an echo of a 1.x value).
+  `lane-s:supersede-K2` there is supersession on the shipped defaults, with both source rules OFF: not the
+  configuration this ADR's supersession figures measured (those had both rules on). The second measurement review
+  (review3b) rehearsed that configuration through the look's harness on lane S's development worlds: 31 replacements
+  (true or false), 7 of them false, all by the rule and every one still wrong when its run ended (censored); paired gain
+  against `shipped` +0.005 / −0.021 (sd-mixed / sd-wrong-newer); `shipped` made no false replacement. These are the
+  reviewer's figures (`review3b/bench/c/s-dev-rehearsal.json`, a scratch file outside the repository), development
+  only.
 - Not verified: anything on the open web (real syndication, real attribution wording, real echoes of a real answer
   model), a live model's answers as own outputs, the console and Pocket showing rule-decided replacements (not built:
   the setting is off; the list and the revert are CLI only).
@@ -3637,15 +3666,29 @@ not closed. Evidence measured by `scripts/bench_wave3_s.py` on the combined tree
 `genesis_wave3_fix_s.json`; variants at `8f72f27`, source of the measured code committed, an unrelated file
 uncommitted: `genesis_wave3_fix_s_variants.json`). Development and held-out only; nothing withheld.
 
+Order of the commits (review3b L-1): the variant worlds (`cycles_splits_s_variants.py`) were committed alone in
+`1aaa75b`, after the fix lane's first mechanism commits (H1's first version `8bd1673`, M2-M5 `98109d7`) and before the
+harness that scores them (`e4bbe32`). H1's refinement (`df238c8`: crediting claims keep the ties they had without
+credits) came after the variant worlds, about two minutes after them (04:37:01 and 04:38:54 by the commit times) and
+seconds before that harness (04:39:01). The S-4 figures "after the H1 fix" are therefore for an H1 committed after the
+variant worlds existed; the commit order alone cannot show whether it was tuned on them.
+
 **Security fixes, so the opt-in settings are sound** (each with a test that fails without it,
 `tests/acceptance/test_wave3_fix.py`): H1 a credit never joins two groups (2 honest outlets + one sentence crediting
 both: admitted; 4 honest + one sentence crediting all four: 4 groups); M2 the source check filters the subject in
 SQL (250 other subjects stating the value no longer make a sourced answer look self-originated); M3 before claims are
 forgotten, the answer sentences that stated their values are marked sourced (indexes only), so a forgotten source no
-longer blocks a subject for ever (live forget, `forget_research`, and the checkpoint replay); M4 the echo checks run
+longer blocks a subject for ever (live forget, `forget_research`, and the checkpoint replay; since the second fix lane
+the scan of the answers runs before the forget's write transaction, which then reads only the candidate answers and
+the tasks changed since: 0.15 s and 0.25 s held for a 1-page and a 6-page domain at 10,000 answers of 20 kB, against
+6.9 s and 39.6 s, review3b N2; and a sentence is marked only when it names a subject the forgotten claim named, N9); M4 the echo checks run
 once per consolidation before the write transaction, bounded (8 values per claim, 64 per consolidation, one scan,
 2 s), a claim not checked in time is not an echo and is named in `echo_skipped` (0.94 s at 10,000 tasks of 20 kB,
-against 9.8 s inside the lock for one claim); M5 the model-credit phrase needs a model noun ("the AI Act", "an AI
+against 9.8 s inside the lock for one claim; since the second fix lane, review3b N4: the 64 are shared out claim by
+claim, every claim whose values were not all looked up is named in `echo_skipped`, the skip is logged once per
+consolidation with counts and claim ids only, and when the scan fills its 200 rows each claim is looked up again
+among the answers naming its own subject; one page can still use up the 2 s budget on a large individual, now
+visibly); M5 the model-credit phrase needs a model noun ("the AI Act", "an AI
 Index report", "the AI Safety Institute" no longer match; this phrase rule is a stop-gap, not the closure of the
 hole); M1 the rule's record keeps only the replaced row's changed scalar columns, a revert writes back nothing
 forgotten since, and forgetting the replaced version removes the quoted statement; M6 only the owner's own research
@@ -3653,7 +3696,12 @@ forgotten since, and forgetting the replaced version removes the quoted statemen
 curiosity always asks (two colluding pages can still replace a true item in the owner's research or a refresh: the
 measured false-replacement risk, not solved); L1 a revert reopens the questions the rule closed and marks its links;
 L2/L3 documented (the attribution rule is wording-deep; its cost is quadratic in one claim's credits, at most 80
-words); L8 a damaged stored value reads as its default and is reported.
+words); L8 a damaged stored value reads as its default and is reported (since the second fix lane, review3b N8: a
+damaged `supersession_min_sources` turns supersession itself to "ask" until it is set again, never a looser bar; the
+warning is logged once per process; the console's web status lists the problems too; a change of another setting
+keeps the damaged value and the owner's rule as they were saved). Forgetting a source also replaces its sentence by
+«#forgotten» in the contradiction questions that quoted it, the ask path's and the rule's answered one (review3b N6,
+older than Wave 3; a restore replays it).
 
 **Per fix, lane S's worlds (re-measured; equal to lane S's evidence where both exist).** `correct` paired gain against
 baseline (baseline sd) / own versions admitted / syndicated-only admitted per run, held-out s-mixed, s-wrong-newer,
@@ -3704,8 +3752,9 @@ at 100 %. The phrase lists were not lengthened (a longer list is the same weakne
 Beside its benefit (syndicated-only versions 1.50 / 2.50 / 0.75 -> 0 in lane S's phrasings), attribution costs
 `correct` beyond the spread in two of three held-out worlds already on these seeds without any credit between honest
 outlets, and more with them; the H1 fix reduces that cost (30 %: -0.125 -> -0.081 in sv-mixed) without removing it.
-Primary-source credits ("according to GitHub", "PyPI says", in 30 % of honest pages): the same cost as orig
-(-0.066 / -0.021 / -0.066) and no more honest outlets merged in this staging (486 of 9,027 before and after), because
+Primary-source credits ("according to GitHub", "PyPI says", in 30 % of honest pages): about orig's cost in two worlds
+and more in the third (-0.066 / -0.021 / -0.066 against orig's -0.068 / -0.021 / -0.056,
+`genesis_wave3_fix_s_variants.json`) and no more honest outlets merged in this staging (486 of 9,027 before and after), because
 two outlets rarely credited the same primary source in one look here; on the real web every outlet citing one release
 page would share one credited key (not measured).
 
@@ -3721,7 +3770,7 @@ development and tested on worlds no lane has seen.
 not censored); s-wrong-newer 10, 0, 10, 0 (seed 341: 3 false replacements, all still wrong at the run's end, censored;
 seed 343: 1 censored); s-echo none. Development sd-wrong-newer 0, 0, 11 (3 censored). The path that existed before
 Wave 3 also makes false replacements with supersession "ask": baseline and `fixes` on s-wrong-newer 9, 9, 10, 0 and
-9, 0, 10, 0 cycles (each still wrong at the run's end). Rule replacements held-out: true 2.50 / 1.25 / 1.25, false
+9, 0, 10, 0 cycles (each still wrong at the run's end); baseline also on s-mixed 0, 2, 0, 0 (seed 342, censored). Rule replacements held-out: true 2.50 / 1.25 / 1.25, false
 0.25 / 0.50 / 0 per run. In owner words: some wrong replacements stayed wrong for over a week of simulated days, until
 the test ended.
 
@@ -3798,7 +3847,9 @@ Held-out: mean `correct` over 4 seeds. Each change is the paired gain against th
   holes (Step 0), so this does not show it safe where those holes exist.
 - **Cost:** wall time +0 to +13 % with `idle` and +39 to +72 % with `idle-first` (0.39–0.47 s to 0.61–0.69 s per
   run). No extra looks beyond the allowance in any run: tested; enforced by the harness's own stop, and the product
-  now enforces the same count (since the fix lane inside submit's write transaction, security L6).
+  now enforces the same count (since the fix lane inside submit's write transaction, security L6; since the second fix
+  lane also inside the knowledge re-check's own transaction, which inserted past the cap when the idle investigation
+  took the last place in between: 3 tasks of a cap of 2, review3b N5).
 - **On the merged tree, and after the fix lane.** Measured on `0ee88fe`, before lane S's rules (ADR-061). On the
   merged tree `f0a1f09` echo recognition changed some of these runs (2 of 30 development and 3 of 30 held-out runs
   checked by the review, by up to ±0.021 per seed, both up and down, no wrong content either way). After the fix lane
@@ -3878,3 +3929,64 @@ tested on worlds no lane has seen, since these held-out worlds have now been use
   - Timer passes more often than once a simulated day.
   - An owner who answers.
   - The withheld worlds.
+
+# ADR-063 A page's named origin attaches it to one origin; it never joins two others into one source
+
+Status: Wave 3, second fix lane (`gen3-fix2`), after the security review of the fix round (review3b N1, N3, N10).
+Changes the shipped behaviour of `claims.independence_groups`; measured below. No setting, no schema change.
+
+## Context
+
+`claims.origin_keys` reads the origin a republished page names: a canonical URL on another host (`site:`), an
+attribution line ("first appeared on", "originally published by", ...) or a wire credit ("(Reuters)", "By Reuters")
+(`name:`). Since `10339b8` (ADR-035, before Wave 3) every claim of the page carries those keys, and
+`independence_groups` joined two claims whenever one's keys met the other's keys or its own site, transitively. One
+page that names two honest outlets as its origins ("This story was first published by Devdesk. It originally appeared
+in Factline.") therefore joined both outlets into one source, and their true value was never verified (review3b N1,
+probe `p10i_docbridge.py`, at the shipped defaults; the same suppression the fix lane closed for sentence credits,
+security H1, through another path). With `attribution_independence` on, a page crediting no one but carrying two wire
+credits ("(Reuters) (Bloomberg)") absorbed two honest outlets that credited those wires (N3), and the merge of
+crediting groups depended on the order of the claims (N10).
+
+## Decision
+
+- Claims are first grouped by what makes them one source in any case: the same host, near-identical sentences
+  (3-word shingle Jaccard >= 0.8), and copies of one document (`doc:` keys of `document_origins`). That join stays
+  transitive.
+- A named origin (`name:`, `site:`) and, with `attribution_independence`, the outlets a group made only of crediting
+  claims credits, attach that group ONE WAY: each group takes at most one edge, to the group read on the named site or
+  under the named site label (the smallest such key in sort order; of several groups owning it, the one whose hosts
+  sort first), or, when no group read is that origin, to the smallest named key itself, where copies of one unread
+  origin meet. A group holding a claim that credits no one moves only on its pages' named origins, never on a credit.
+- Because every group has at most one such edge, a component holds at most one group that names nothing: a page that
+  names several origins counts with one of them (deterministically, by the content, not the order of the claims) and
+  never joins two honest outlets. A syndicated copy that names one origin counts with it exactly as before, and copies
+  naming one unread origin are one source, as before.
+
+Adversarial expectations committed first (`3257261`), then the cases (`3cdfeb0`, two of three failing on the code
+before the fix), then the fix: origin `added_wave3_fix2` in `acceptance/cognition/
+adversarial.py` (a page naming two outlets as its origins merges neither; a copy naming one origin still counts with
+it; a page carrying two wire credits absorbs no honest outlet). Unit tests in `tests/acceptance/test_wave3_fix.py`
+(N1, N3, N10: every order of three crediting claims gives the same groups).
+
+## What moved (measured on this tree, before and after the change, everything else equal)
+
+- Offline research benchmark (`scripts/bench_wave1.py offline`): `68731d7235cb…` at the shipped defaults and with every
+  setting off, before and after (portable `d87dbb4fb77f…`); 0 differing leaves (`scripts/diff_deterministic.py`).
+- Lane F's learning cycles (`scripts/bench_learning_cycles.py run`, development and held-out): 0 of 5,490 and 0 of
+  7,320 per-seed values differ; identical to the fix lane's evidence `genesis_wave3_fix_cycles.json`.
+- Lane S's family (`scripts/bench_wave3_s.py run`, every configuration, both families and splits, 352 runs): 0 of
+  29,920 per-seed values differ; the census and the verdicts are equal.
+- None of these worlds has a page naming two origins, so nothing there was a wrongly merged group: the change removes
+  the suppression where it occurs and moves nothing the benchmarks measure.
+- After the change (with the second fix lane's other fixes): cognitive benchmark, both splits: retention all retained; adversarial 52 of 52 scored cases pass (57 cases; 13 / 4 /
+  1 / 10 / 5 / 16 / 3 by origin). The guard differential: 1,937 compared, 0 different. The claim-dependence tests
+  pass unchanged (none loosened).
+
+## Consequences
+
+- At the shipped defaults one page can no longer stop a true fact from being verified by naming two honest outlets
+  as its origins. A page that names an origin falsely still counts with the outlet it names (it is not a second
+  source); a value stated by two independent honest outlets is admitted whatever a third page says it copied.
+- Not changed: copies that name no origin and reword the story still look independent (wording is not provenance;
+  ADR-061). Real-web prevalence of either wording is not measured.

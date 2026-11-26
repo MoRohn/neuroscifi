@@ -81,7 +81,7 @@ outcome.
 | [WAVE2.md](WAVE2.md) | record | What each Wave 2 lane built, the two new settings, the integration, learning-cycles and regression results, what stays open, how to back each piece out |
 | [WAVE3.md](WAVE3.md) | record | Step 0's look and its safety counts, what each Wave 3 lane built and its default, results with references, spreads and costs, the reviews' corrections, the disclosures, what stays open, how to back each piece out |
 | [COGNITIVE_BENCHMARK.md](../quality/COGNITIVE_BENCHMARK.md) | instrument | The cognitive benchmark: families, rules for a lane, how to register a mechanism, the baseline |
-| [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md) | decisions | ADR-049 (provenance kinds and the imagined store), ADR-050 (the quiet switch and one admission rule), ADR-051 to ADR-055 (Wave 1), ADR-056 (the integration loop, Wave 2), ADR-058 to ADR-062 (Wave 3) |
+| [ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md) | decisions | ADR-049 (provenance kinds and the imagined store), ADR-050 (the quiet switch and one admission rule), ADR-051 to ADR-055 (Wave 1), ADR-056 (the integration loop, Wave 2), ADR-058 to ADR-063 (Wave 3) |
 
 ## Evidence
 

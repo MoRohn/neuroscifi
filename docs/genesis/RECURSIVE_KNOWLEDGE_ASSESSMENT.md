@@ -387,10 +387,10 @@ limited by the allowance, not by candidates.**
   S's own worlds, but only for the phrasings those worlds were written with; they returned "unsafe" under their own
   pre-registered rule, merged honest outlets that credit each other, and discarded honest pages; their held-out
   figures are development evidence (WAVE3.md §3.1). They ship off (fix lane). **At the shipped defaults the loop
-  admits own-text echoes that credit no model and reworded syndicated copies exactly as at step 0.** A rule that
+  admits own-text echoes (crediting a model or not) and reworded syndicated copies exactly as at step 0.** A rule that
   decides dependence by publication order and derivation, or by the owner's confirmation, is not built.
-- Supersession (off): gains below the spread; 3 of 33 replacements false on lane S's held-out (pooled, not a
-  claim); a false one stayed wrong 8 and at least 10 cycles, still wrong when the run ended (censored; WAVE3.md §3.2).
+- Supersession (off): gains below the spread; 3 of 23 rule replacements false on lane S's held-out (pooled, not a
+  claim; re-measured, `genesis_wave3_fix_s.json`); a false one stayed wrong 8 and at least 10 cycles, still wrong when the run ended (censored; WAVE3.md §3.2).
 
 **Unverified**, as in §8: the open web, a live model, an owner who answers, real change rates. The withheld looks of
 Wave 3's mechanisms are recorded in WAVE3.md, "The withheld looks".

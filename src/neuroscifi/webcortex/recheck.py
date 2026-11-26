@@ -237,6 +237,9 @@ def submit(db, pick, admitted, now) -> dict:
         found = premises.open_mark(db, "knowledge", kid)
         if orchestrator.duplicate(db, prepared) is not None or (found is not None and found["status"] == "queued"):
             raise Conflict(f"the re-verification of knowledge #{kid} is already queued")
+        # review3b N5 (completes security review L6): the day's autonomous task count is checked here, inside the
+        # transaction that inserts, so a re-check and the idle investigation cannot both take the last place
+        orchestrator._within_task_count(db, now)
         task_id = orchestrator.insert(db, prepared, now)
         state.log_event(db, task_id, "decision", {"autonomy": inputs}, now)
         db.execute("UPDATE web_predictions SET task_id=? WHERE knowledge_id=? AND outcome IS NULL AND task_id IS NULL "

@@ -21,8 +21,8 @@ with, and miss others; one of them merges honest outlets that credit each other;
 a large individual and treats ordinary sentences about "the AI Act" as model text. **Both rules ship OFF** (fix lane, decisions D1 and D2; the settings stay, the defects the security review found in
 them are fixed, and the owner may turn either on).
 At Wave 3's shipped defaults the individual treats sources exactly as it did at step 0: a reworded copy of a story can
-still count as an independent source, and a page repeating the individual's own answer without crediting a model can
-still read as corroboration. Reading the wording of a sentence does not decide where a fact came from; what would is a
+still count as an independent source, and a page repeating the individual's own answer can still read as
+corroboration, whether or not it credits a model (that check is part of `echo_recognition`, off). Reading the wording of a sentence does not decide where a fact came from; what would is a
 different kind of rule (which page published a value first and which pages derive from it, or the owner's
 confirmation). It is not built. It is the first of the next directions (FINAL_EVALUATION.md §6).
 
@@ -42,9 +42,9 @@ confirmation). It is not built. It is the first of the next directions (FINAL_EV
   what limits the loop (lane R, ADR-060).
 - The worker's idle investigation does not close the gap to a blind schedule within the same allowance. Given the
   allowance first it reaches more subjects, but it stays below the blind schedule in every world (lane V, ADR-062).
-- Supersession gains less than the spread, and on lane S's held-out worlds about one replacement in eleven was wrong;
-  a wrong one stayed wrong for 8 cycles in one world and at least 10 in another, still wrong when the run ended
-  (review S-5; re-measured by the fix lane with the censoring recorded).
+- Supersession gains less than the spread, and on lane S's held-out worlds 3 of its 23 replacements (about one in
+  eight) were wrong; a wrong one stayed wrong for 8 cycles in one world and at least 10 in another, still wrong when
+  the run ended (review S-5; re-measured by the fix lane with the censoring recorded, `genesis_wave3_fix_s.json`).
 - Lane S's held-out numbers are development evidence: its echo rule was changed twice after held-out runs.
 
 ## Why Wave 3 exists
@@ -56,7 +56,7 @@ specific limit: the loop's shortfall (lanes R and V), what counts as a source (l
 declined (lane C), the missing real outcomes and the untested forecast on the host (lane H), and two things CI showed
 (lane P). A measured "no gain" is a valid result. Nothing ships on without a held-out gain beyond the baseline's
 spread, an ablation that removes it, retention intact and no adversarial regression; lane S's two rules were turned
-on against this and are being turned off (§3.1).
+on against this and are off since the fix lane (§3.1).
 
 ## Step 0: the one look at the unchanged system, safety counts first
 
@@ -159,16 +159,20 @@ pattern (M5).
 
 **What remains true.** The census of reworded wire copies that credit their origin in a phrasing the parser reads
 (407 of 449 split before, 50 after) and the tests of the 16 adversarial cases (`added_wave3_s`, 16 of 16 pass) show
-the parser does what it was written to do. They do not show that the hole is closed. **Both rules ship OFF** [fix
-lane]; each is reported at its withheld look for the owner's information and cannot be switched on by it.
+the parser does what it was written to do. They do not show that the hole is closed. **Both rules ship OFF** (fix
+lane, D1 and D2); each is reported at its withheld look for the owner's information and cannot be switched on by it.
 
 ### 3.2 Supersession (ADR-061; off)
 
 Supersession, when the owner turns it on, lets a newer version stated by at least two independent sources replace a
-held item without asking. Gain against the fixes, held-out (reference sd in brackets): +0.008 (0.046), +0.007
-(0.051), +0.020 (0.078) on lane S's worlds; +0.016 (0.105), +0.008 (0.057) on lane F's. No gain beyond the spread in
-any world; retention worse in one (s-wrong-newer 0.50 → 0.75 regressed per run). Rule replacements on lane S
-held-out: 3 of 33 false (9 %, pooled, not a claim; per world 1 of 13, 2 of 12, 0 of 8) (`genesis_wave3_s.json`).
+held item without asking. Gain against the fixes (both rules on), held-out (reference sd in brackets), as the fix lane
+re-measured it (`genesis_wave3_fix_s.json`): +0.001 (0.046), −0.002 (0.051), +0.016 (0.078) on lane S's worlds;
++0.016 (0.105), +0.005 (0.057) on lane F's. No gain beyond the spread in any world; retention worse in one
+(s-wrong-newer 0.50 → 0.75 regressed per run). Rule replacements on lane S held-out: 3 of 23 false (13 %, about one in
+eight, pooled, not a claim; per world 1 of 11, 2 of 7, 0 of 5); 0 of 11 on lane F's. (Lane S's own figures,
+`genesis_wave3_s.json`, before the fix lane's changes to echo recognition, were +0.008 / +0.007 / +0.020 and 3 of 33.)
+The withheld look's `lane-s:supersede-K2` is supersession on the shipped defaults, with both rules off: not this
+configuration (ADR-061, Consequences, has the second measurement review's development rehearsal of it).
 The longest a false replacement stayed wrong: 8 cycles in s-mixed; at least 10 cycles in s-wrong-newer, still wrong
 when the run ended (review S-5, per-seed maxima; the lane reported the mean of the maxima, 2 and 5; the fix lane's re-measurement records
 per seed s-mixed 0, 0, 0, 8 and s-wrong-newer 10 (3 censored), 0, 10 (1 censored), 0).
@@ -372,6 +376,19 @@ of 40 were over the bound. The test is right; making it deterministic needs that
 - The read-ahead accounting race (§3.9): fixed by the fix lane.
 - The shadow report's definitions (H-1, H-2): changed by the fix lane; a host week is still to be run by the owner.
 - Lane C's adversarial front-door cases and the sampled-trap test: staged with stated moments by the fix lane.
+- The security check of the fix round (review3b) found ten more items; the second fix lane (`gen3-fix2`) fixed each
+  with a test: one page naming two honest outlets as its origins no longer joins them into one source at the shipped
+  defaults (N1, older than Wave 3; ADR-063: the offline digest, lane F's cycles and lane S's family unchanged); a
+  forget no longer scans every answer inside its write transaction (N2: 0.15–0.25 s held at 10,000 answers of 20 kB,
+  against 6.9–39.6 s) and marks only answers about the forgotten subject (N9); the re-check checks the day's task
+  count inside its own transaction (N5); attribution's credits attach one way and in an order-free way (N3, N10); echo
+  recognition shares its value cap per claim and names and logs every claim it did not check (N4); a forget replaces
+  the forgotten sentence in contradiction questions (N6); verdicts the shadow record could not take are counted and
+  reported (N7); a damaged bar of an opt-in rule turns the rule off instead of loosening it, logged once, and the
+  console lists damaged settings (N8). Still open: on a very large individual one page can still use up the echo
+  checks' 2 s budget (now visible in `echo_skipped` and the log); a checkpoint restore still scans the answers once
+  inside its own transaction (1.5–1.7 s at 10,000 answers of 20 kB); saved settings outside the five Wave 3 ones are
+  not checked when read (older); `requeue`, an owner surface, inserts without the day's task count (older).
 - Coverage is limited by the allowance: a share of the allowance for reaching uncovered subjects would have to be
   chosen on development and tested on worlds no lane has seen. Not built.
 - Everything above is offline and simulated: nothing here was measured on the open web, with a live answer model, or

@@ -1,6 +1,6 @@
 # Implemented enhancements (deliverable E)
 
-Status: 2026-11-26; Waves 0–2 on `828ca8e`, Wave 3 (§5) on `f0a1f09` (branch `genesis-wave3`). Deliverable E of the
+Status: 2026-11-26; Waves 0–2 on `828ca8e`, Wave 3 (§5) on `3ce4ae3` (branch `genesis-wave3`, after the fix lane). Deliverable E of the
 directive's §13: an index of what Project Cognitive Genesis actually built in Waves 0, 1 and 2, one row per mechanism,
 with where the code is, the setting and the value a new individual gets, the decision record, the tests, the evidence
 and how to take it back out. Nothing here is a claim of consciousness, awareness or general intelligence; every name
@@ -139,8 +139,10 @@ From [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) §6 and the Wave 2 l
 
 ## 5. Wave 3: sources, the re-check's order, coverage, the front door, host evidence (lanes P, C, H, R, S, V)
 
-Record: [WAVE3.md](WAVE3.md). Defaults read from the code on `gen3-rec` (merged tree `f0a1f09`): `WebConfig` in
-`src/neuroscifi/webcortex/config.py`, `InstanceConfig` in `src/neuroscifi/instance/store.py`, `FRONT_DOOR` in
+Record: [WAVE3.md](WAVE3.md). Defaults read again from the code on `3ce4ae3` (after the fix lane): `WebConfig` in
+`src/neuroscifi/webcortex/config.py` (`recheck_order` "staleness", `attribution_independence` false,
+`echo_recognition` false, `supersession` "ask", `supersession_min_sources` 2), `InstanceConfig` in
+`src/neuroscifi/instance/store.py` (`predictive_regulation` false), `FRONT_DOOR` True and `USEFUL` 0.1 in
 `src/neuroscifi/causal.py`. Where the fix lane changed a default the row says so. No schema change.
 
 | Mechanism | Module(s) | Setting: default | ADR | Tests | Evidence | How to back it out |
@@ -153,6 +155,8 @@ Record: [WAVE3.md](WAVE3.md). Defaults read from the code on `gen3-rec` (merged 
 | A page repeating the individual's own text, or crediting a model, is no evidence for it | `webcortex/consolidate.py` (`_Echoes`, `_without_echoes`) | `echo_recognition`: `true` at `f0a1f09`, ships `false` (fix lane) (web) | ADR-061 | as above | `genesis_wave3_s.json`; review S-2, S-8, security M2–M5 | `nsf web config --set echo_recognition=false` |
 | Supersession of a stale item by enough independent sources; `nsf web replacements`, `nsf web revert ID` | `webcortex/consolidate.py`, `webcortex/knowledge.py` | `supersession` `"ask"` (off), `supersession_min_sources` 2 (web) | ADR-061 | `tests/acceptance/test_wave3_s.py`, `tests/uat/test_uat_rollback.py::test_supersession_and_its_records` | `genesis_wave3_s.json` | leave at `"ask"`; revert each replacement |
 | `autonomy.idle` honours the day's autonomous task count | `webcortex/autonomy.py` (`_tasks_spent`) | always (a budget fix) | ADR-062 | `tests/webcortex/test_autonomy.py::test_idle_shares_the_days_autonomous_task_count_with_the_timer` | `genesis_idle_coverage.json` | revert `41198b3` |
+| The day's autonomous task count checked again inside submit's write transaction, so the timer and the idle investigation together never queue past the owner's cap (fix lane, security review L6; a behaviour change at the defaults: the second of two deciders that both saw room is refused, `BudgetRefused`) | `webcortex/orchestrator.py` (`_within_task_count`) | always (a budget fix) | ADR-062 | `tests/acceptance/test_wave3_fix.py::test_two_deciders_that_both_saw_room_cannot_both_take_the_last_place`, `::test_concurrent_autonomous_submissions_never_pass_the_cap` | the fix lane's report (8 threads, cap 3: exactly 3 queued, 5 refused) | revert `7969153` (with the fix lane's other L2–L8 fixes) |
+| A page's named origin (attribution line, wire credit, canonical URL elsewhere) attaches it to one origin and never joins two others into one source (second fix lane, review3b N1, N3, N10; a behaviour change at the defaults, older defect since `10339b8`) | `webcortex/claims.py` (`independence_groups`, `_one_way`) | always (a fix) | ADR-063 | `tests/acceptance/test_wave3_fix.py` (N1, N3, N10), adversarial origin `added_wave3_fix2` | ADR-063: offline digest, lane F's cycles and lane S's family unchanged | revert the second fix lane's claims.py commit |
 | Panels redrawn only on change, focus kept (console overview, Pocket lists) | `console/web/console.js`, `pocket/web/field-ui.mjs`, `research-ui.mjs` | always (a fix) | — | `tests/e2e/test_focus_kept.py` | lane P's report | revert `81edd00` |
 | The offline digest across hosts: `portable_sha256`, `--deterministic-out`, `scripts/diff_deterministic.py`, a CI artifact | `scripts/bench_wave1.py`, `.github/workflows/ci.yml` | — (benchmark) | — | `tests/test_offline_digest_hosts.py` | `offline_deterministic_aarch64.json` | revert `abb493f` |
 | Three guards (reconciliation): a failing attribution read, echo check or supersession rule leaves the claim, the cluster or the question as with the setting off; the failure is a WARNING or the task's "error" event, its type only | `webcortex/claims.py`, `webcortex/consolidate.py` | always (act only on failure) | — | `tests/uat/test_uat_fault_injection.py` (28 Wave 3 cases; 12 fail without the guards) | WAVE3.md §3.9 | revert `ce5a432` |

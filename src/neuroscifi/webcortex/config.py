@@ -47,6 +47,13 @@ CHECKED_ON_LOAD = ("recheck_order", "attribution_independence", "echo_recognitio
                    "supersession_min_sources")
 
 
+# review3b N8: a damaged value of a setting that tunes an opt-in rule never loosens that rule: the rule itself reads as
+# off (its safe value) until the owner sets the setting again (a damaged supersession_min_sources read as 2 while the
+# owner had set 5 and supersession stayed "independent"). {damaged setting: (the rule, its safe value)}
+FAILS_CLOSED = {"supersession_min_sources": ("supersession", "ask")}
+_REPORTED: set = set()
+
+
 def damaged(name, value) -> bool:
     """Whether a stored value of a CHECKED_ON_LOAD setting is one set_config would refuse."""
     from .state import _validate         # lazy: state imports this module
@@ -248,9 +255,14 @@ class WebConfig:
         # warning is logged with the setting's name only.
         for name in sorted(set(values) & set(CHECKED_ON_LOAD)):
             if damaged(name, values[name]):
-                logging.getLogger(__name__).warning("the saved Web Cortex setting %s is not a valid value; its "
-                                                    "default is used", name)
+                if name not in _REPORTED:           # review3b N8: once per process and setting, not on every read
+                    _REPORTED.add(name)
+                    logging.getLogger(__name__).warning("the saved Web Cortex setting %s is not a valid value; "
+                                                        "its default is used", name)
                 del values[name]
+                if name in FAILS_CLOSED and values.get(FAILS_CLOSED[name][0], FAILS_CLOSED[name][1]) != \
+                        FAILS_CLOSED[name][1]:
+                    values[FAILS_CLOSED[name][0]] = FAILS_CLOSED[name][1]
         return cls(**values)
 
     def to_json(self) -> dict:

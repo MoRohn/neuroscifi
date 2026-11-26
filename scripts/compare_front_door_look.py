@@ -11,7 +11,8 @@ counterfactual --split held_out`, the check that the comparison is mechanical an
 Read back first (otherwise the look is VOID, exit 2): ON's `ablate` is [] and OFF's ["front_door"]; the counterfactual
 part ran `imagination` without falling back to the baseline in both; for a withheld pair, both runs name the same
 commit and a clean tree. Then:
-  (a) reported: in ON, summary_by_group.front_door.max_relative_error.max <= 0.1 (or None: none answered), and per seed
+  (a) reported: in ON, summary_by_group.front_door.max_relative_error.max <= 0.1 (or None with its n equal to 0: none
+      answered; a missing or malformed front_door group is VOID), and per seed
       front_door, front_door_declined and front_door_within_tolerance; "not exercised by these worlds" when every
       front-door question was declined.
   (b) every leaf of the result (families.withheld.result, or families.counterfactual.result) is equal in the two runs
@@ -88,14 +89,19 @@ def compare(on, off) -> dict:
             void.append("the two runs do not name the same commit")
         if any(e.get("git_dirty") is not False for e in envs):
             void.append("a run was not taken on a clean tree")
-    group = (cf_on.get("summary_by_group") or {}).get("front_door") or {}
-    worst = (group.get("max_relative_error") or {}).get("max") if isinstance(group.get("max_relative_error"),
-                                                                              dict) else None
+    groups = cf_on.get("summary_by_group")
+    group = groups.get("front_door") if isinstance(groups, dict) else None
+    error = group.get("max_relative_error") if isinstance(group, dict) else None
+    if not isinstance(error, dict):         # review3b M-3: a missing or malformed group is void, never a pass
+        void.append("ON's summary_by_group.front_door.max_relative_error is missing or malformed")
+        group, error = (group if isinstance(group, dict) else {}), {}
+    worst = error.get("max")
     per_seed = [{k: row.get(k) for k in ("front_door", "front_door_declined", "front_door_within_tolerance")}
                 for row in cf_on.get("per_seed") or ()]
     asked = sum(r["front_door"] or 0 for r in per_seed)
     declined = sum(r["front_door_declined"] or 0 for r in per_seed)
-    a = worst is None or worst <= TOLERANCE + 1e-12
+    # None passes only when no front-door question was answered (n == 0), never when the maximum is merely absent
+    a = (isinstance(worst, (int, float)) and worst <= TOLERANCE + 1e-12) or (worst is None and error.get("n") == 0)
     a_on, a_off = leaves(result_on), leaves(result_off)
     differ = []
     for path in sorted(set(a_on) | set(a_off)):

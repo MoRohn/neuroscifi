@@ -315,6 +315,30 @@ def test_a_held_shadow_lock_skips_the_settlement_without_waiting(tmp_path, caplo
     shadow.settle_due(r["path"], r["clock"] + 1)          # released: the next pass settles (it does not raise)
 
 
+def test_verdicts_dropped_while_the_record_is_busy_are_counted_and_reported(tmp_path, monkeypatch, caplog):
+    """review3b N7: while another process holds the shadow lock, the gate's verdicts were dropped with no count and no
+    log. Now each is counted, carried by the next verdict recorded, and the report says how many."""
+    monkeypatch.setattr(shadow, "_busy", {})
+    monkeypatch.setattr(shadow, "_busy_total", {})
+    r = run(tmp_path, "shadow")
+    folder = tmp_path / "individual.sqlite.resources"
+    before = shadow.report(r["path"], r["clock"])
+    assert before["verdicts"]["not_recorded_busy"] == 0 and "busy" not in before["statement"]
+    fd = _held(folder / shadow.LOCK_FILE)
+    try:
+        for _ in range(3):
+            shadow._seen.clear()
+            assert shadow.observe(r["path"], r["clock"], None) is None
+    finally:
+        os.close(fd)
+    assert any("3 verdict" not in m and "not recorded" in m for m in caplog.messages)       # logged at 1 (counts only)
+    shadow._seen.clear()
+    recorded = shadow.observe(r["path"], r["clock"], None)
+    assert recorded is not None and recorded["busy_before"] == 3
+    out = shadow.report(r["path"], r["clock"] + 1)
+    assert out["verdicts"]["not_recorded_busy"] == 3 and "3 verdict(s) were not recorded" in out["statement"]
+
+
 def test_a_record_file_of_another_account_is_not_appended_to(tmp_path, monkeypatch):
     r = run(tmp_path, "shadow")
     folder = tmp_path / "individual.sqlite.resources"

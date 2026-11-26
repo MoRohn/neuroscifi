@@ -448,6 +448,9 @@ Leave it on for at least a week of normal use with the research worker running a
   running **with web research enabled**, or the shortages of that time count as unseen.
 - `work.starts_after_a_hold`: background tasks that started while it would have held, out of `background_starts`:
   the research it would have postponed.
+- `verdicts.not_recorded_busy`: notes that could not be written because another program held the notes file at that
+  moment (the `statement` then says "N verdict(s) were not recorded because the record was busy"). The gate decided as
+  usual for them. Many of these mean the notes are incomplete; find which program keeps the file busy.
 
 If the hits and warning time are worth the postponed research and the false alarms, turn it on with
 `nsf config --predictive-regulation`; that is your decision. The notes are numbers only (no questions, no text):
@@ -483,7 +486,9 @@ after the reviews; you can turn either on):
 - `echo_recognition`: a page that repeats what NeuroSciFi itself answered, or says "an assistant reported", is not
   taken as proof. It only catches repeats that name a model or copy a number NeuroSciFi said first. The fix lane made
   it safe to turn on: it no longer throws away honest pages on a large individual, a forgotten source no longer
-  blocks a subject for ever, it no longer slows writes, and "the AI Act" is no longer read as AI text.
+  blocks a subject for ever, it no longer slows writes, and "the AI Act" is no longer read as AI text. While it is off
+  (the default), such a page counts like any other page, also when it says an assistant or an AI wrote it: that check
+  is part of this rule.
 
 To check or change them (`DB` is the individual's file):
 
@@ -494,6 +499,11 @@ nsf web config --db DB --set attribution_independence=false --set echo_recogniti
 
 Turning them on is not recommended on the present evidence. What they write: nothing of their own; they only change
 which pages count.
+
+If a saved value of one of these settings is damaged, `nsf web config` lists it under `problems` (the console's web
+settings summary shows the same as "Saved settings"), and the setting reads as its default until you set it again. A
+damaged `supersession_min_sources` also turns `supersession` itself to `"ask"` until you set the number again: a
+damaged bar never lets the rule replace facts more easily.
 
 **Replacing an out-of-date fact without asking you (`supersession`, off).** Today, when a refresh finds a newer
 version that disagrees with what NeuroSciFi holds, it asks you and changes nothing until you answer. With
@@ -508,7 +518,7 @@ nsf web config --db DB --set 'supersession="ask"'            # back to asking yo
 ```
 
 Measured in Wave 3 on simulated worlds, it asked fewer questions but did not make knowledge measurably more correct,
-and about one replacement in eleven was wrong (two outlets repeating the same rumour); some wrong replacements stayed
+and about one replacement in eight was wrong (two outlets repeating the same rumour); some wrong replacements stayed
 wrong for over a week of simulated days, until the test ended. Two outlets repeating the same rumour can still
 replace a correct fact in your own research or a refresh. Since the fix lane only your own research and refreshes
 can let it decide (a question asked from Pocket or by an agent is always asked of you), forgetting a source also
@@ -527,7 +537,7 @@ Each lease records the worker's host digest, pid and process start time. On the 
 | A knowledge item and every version of it | `nsfs forget knowledge ID` (or `nsfs web forget ID`) |
 | A source URL (as requested, original or final) or every source of a domain, also from the public cache | `nsfs forget source URL_OR_DOMAIN` |
 
-Forgetting a knowledge item also forgets its queued or running refresh tasks (their objective is the forgotten statement); the result lists them in `refresh_tasks_forgotten`. Every forget result whose checkpoints became stale carries `next_steps` naming `nsf checkpoint rebuild`.
+Forgetting a knowledge item also forgets its queued or running refresh tasks (their objective is the forgotten statement); the result lists them in `refresh_tasks_forgotten`. Forgetting a source or a research task also replaces the forgotten sentence by «#forgotten» in the questions that quoted it ("Sources now contradict known ...: «...»"); such a question keeps its state, and the result lists the questions changed in `questions_redacted`. Every forget result whose checkpoints became stale carries `next_steps` naming `nsf checkpoint rebuild`.
 
 Each web forget records a payload-free tombstone (`web_forgotten`, an instance-salted digest), marks every checkpoint stale and logs only a digest label for a URL or domain in `deletion_log`. `checkpoint restore` replays those tombstones on the restored copy, so a forgotten task, knowledge version or source never comes back. Then follow the erasure steps of section 6 (`checkpoint rebuild`). Forgetting a partner (`nsfs forget partner NAME`) also replaces the name in research objectives, reports, events, claims and knowledge.
 
