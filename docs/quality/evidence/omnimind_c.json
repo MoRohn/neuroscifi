@@ -2,7 +2,7 @@
  "lane": "C (form planner, ADR-073)",
  "what": "Properties of forms.plan measured by running it; nothing here judges whether a choice is good. Development and held-out case scores are added when the main session provides the development cases (the held-out run is the main session's).",
  "unit_tests": {
-  "file": "tests/artifacts/test_forms.py (29 tests) and tests/artifacts/test_forms_cli.py (12 tests)",
+  "file": "tests/artifacts/test_forms.py (30 tests) and tests/artifacts/test_forms_cli.py (12 tests)",
   "seeded_random_plans_per_property": {
    "hard_constraints_never_violated": 600,
    "deterministic_and_complete_score_sheet": 200,
@@ -16,7 +16,7 @@
    "adjustments_default_equality": 100,
    "adjustments_random_tables": 200
   },
-  "result": "41 passed"
+  "result": "42 passed"
  },
  "wider_sample": {
   "command": "PYTHONPATH=src python scripts/forms_evidence.py --shapes 2000 --seed {101,202,303}",
