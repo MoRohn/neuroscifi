@@ -1,5 +1,6 @@
 """The learning-cycles experiment (Wave 2 lane F; directive §7 "recursive knowledge evolution", deliverable F;
-scripts/bench_learning_cycles.py). Worlds are frozen in cycles_splits.py, committed before this harness.
+scripts/bench_learning_cycles.py). Worlds are frozen in cycles_splits.py, committed before this harness. The withheld
+worlds (cycles_withheld.py, Wave 3 step 0) are loaded and scored only by final(), one recorded look per run.
 
 One run: a real Web Cortex individual (a temporary file) lives through the world's cycles. Before cycle 1 it holds
 what the owner researched (the world's cycle-0 subjects). Each cycle (one simulated day), in this order:
@@ -85,6 +86,15 @@ ON = {"hypothesis_fields": {"hypothesis_fields": True},
 
 
 NO_LOOP = "-autonomy"     # the trivial reference: autonomous research off (no refresh, no curiosity, no re-check)
+# Wave 3 step 0: every setting as a new individual has it; nothing is forced but what the run itself needs (enabled,
+# autonomous, the daily allowance). Read back inside each run (Run.config).
+SHIPPED = "=shipped-defaults"
+EXTRA = {"shipped": frozenset({SHIPPED})}      # configurations outside the default set of `run`
+WITHHELD = "withheld"     # the split of cycles_withheld.py: scored only by final()
+# Settings read back from the individual inside each run, to show which mechanisms were on (review: read the
+# configuration back inside a run).
+READ_BACK = tuple(WAVE1_OFF_WEB) + ("salience_attention", "arbitration_record", "calibrated_forecasts",
+                                    "tick_admission", "enabled", "autonomous")
 
 
 def configurations() -> dict:
@@ -98,10 +108,20 @@ def configurations() -> dict:
     return out
 
 
+def _allowance(budget) -> dict:
+    return {"tasks": int(budget), "requests": 400, "bytes": 80_000_000}
+
+
+def budget_at(spec, cycle) -> int:
+    """The daily autonomous allowance (tasks) in `cycle`: the world's budget_schedule where it has one, else budget."""
+    schedule = spec.get("budget_schedule")
+    return int(schedule[cycle]) if schedule else int(spec["budget"])
+
+
 def _settings(mechanisms, budget) -> dict:
-    cfg = dict(WAVE1_OFF_WEB) | {"enabled": True, "autonomous": NO_LOOP not in mechanisms,
-                                 "daily_autonomous": {"tasks": int(budget), "requests": 400, "bytes": 80_000_000}}
-    for m in set(mechanisms) - {NO_LOOP}:
+    base = {} if SHIPPED in mechanisms else dict(WAVE1_OFF_WEB)
+    cfg = base | {"enabled": True, "autonomous": NO_LOOP not in mechanisms, "daily_autonomous": _allowance(budget)}
+    for m in set(mechanisms) - {NO_LOOP, SHIPPED}:
         cfg |= ON[m]
     return cfg
 
@@ -179,9 +199,9 @@ class _StubGateway:
 
 
 class Run:
-    def __init__(self, spec, seed, mechanisms, db):
+    def __init__(self, spec, seed, mechanisms, db, generate=None):
         self.spec, self.seed, self.mechanisms, self.db = spec, seed, frozenset(mechanisms), db
-        self.world = worlds.generate(spec, seed)
+        self.world = (generate or worlds.generate)(spec, seed)
         self.names = {s["name"]: s for s in self.world["subjects"]}
         self.pattern = re.compile(r"\b(" + "|".join(sorted(self.names, key=len, reverse=True)) + r")\b")
         self.cycle = 0
@@ -197,6 +217,8 @@ class Run:
         self.self_now = []
         self.launches = []                # (cycle, kind, subject) of every non-owner task executed (lane Y, M1)
         self.strategy = {"calls": 0, "changed": 0}    # strategies.rank calls / those that changed the order
+        self.config = {}                  # READ_BACK as the individual holds them after start()
+        self.allowance = []               # the daily autonomous tasks the individual held in each cycle 1..N
 
     # ---- the world ----------------------------------------------------------------------------------------------
     def subject_in(self, text):
@@ -261,7 +283,7 @@ class Run:
         self.pages += len(docs)
         before = {r[0]: r[2] for rows in self.held().values() for r in rows}
         single = None
-        if look["kind"] in ("one_origin", "wire_only") and docs:
+        if look["kind"] in ("one_origin", "wire_only", "echo_only") and docs:
             self.one_origin_looks += 1
             single = one_origin_confidence(db, task, docs[0], now)
         stated = [s["value"] for s in self.self_now if s["subject"] == name]
@@ -317,9 +339,12 @@ class Run:
                     self.forgotten.add(name)
 
     def step(self):
-        from ...webcortex import scheduler
+        from ...webcortex import scheduler, state
         self.cycle += 1
         self.now = T0 + self.cycle * self.spec["cycle_hours"] * 3600.0
+        if self.spec.get("budget_schedule"):       # a world whose allowance changes from cycle to cycle
+            state.set_config(self.db, {"daily_autonomous": _allowance(budget_at(self.spec, self.cycle))}, self.now)
+        self.allowance.append(state.get_config(self.db).daily_autonomous.get("tasks"))
         self.forget()
         self.plant_self()
         for name in sorted(n for n, s in self.names.items() if s["born"] == self.cycle):
@@ -333,6 +358,8 @@ class Run:
         state.set_config(self.db, _settings(self.mechanisms, self.spec["budget"]), T0 - 30 * DAY)
         if NO_LOOP not in self.mechanisms:          # the owner's recorded enable (it also sets `autonomous` on)
             autonomy.enable(self.db, T0 - 30 * DAY)
+        cfg = state.get_config(self.db)
+        self.config = {k: getattr(cfg, k) for k in READ_BACK}
         if "strategy_selection" in self.mechanisms:
             strategies.record(self.db, capability=strategies.CAPABILITY, level=3,
                               change="learning-cycles experiment: in force without the real gate",
@@ -444,6 +471,7 @@ class Run:
                          "recheck_tasks": self.tasks["recheck"], "strategy_rank_calls": self.strategy["calls"],
                          "strategy_rank_changed": self.strategy["changed"]},
             "launches": list(self.launches), "history": {n: list(h) for n, h in self.history.items()},
+            "config": dict(self.config), "allowance": list(self.allowance),
         }
 
 
@@ -472,8 +500,9 @@ def _environment(run_ref):
         yield
 
 
-def run_world(spec, seed, mechanisms=frozenset(), *, cycles=None) -> dict:
-    """One run of one world and seed with the given lane K mechanisms on; `cycles` shortens the run (tests)."""
+def run_world(spec, seed, mechanisms=frozenset(), *, cycles=None, generate=None) -> dict:
+    """One run of one world and seed with the given lane K mechanisms on; `cycles` shortens the run (tests);
+    `generate` is the world's generator (default cycles_splits.generate)."""
     started = time.perf_counter()
     spec = dict(spec) | ({"cycles": int(cycles)} if cycles is not None else {})
     with tempfile.TemporaryDirectory(prefix="nsf-genesis-f-") as directory:
@@ -481,7 +510,7 @@ def run_world(spec, seed, mechanisms=frozenset(), *, cycles=None) -> dict:
         with closing(db):
             ref = [None]
             with _environment(ref):
-                run = Run(spec, seed, mechanisms, db)
+                run = Run(spec, seed, mechanisms, db, generate)
                 ref[0] = run
                 run.start()
                 for _ in range(spec["cycles"]):
@@ -531,11 +560,25 @@ def _changed(row, base) -> tuple[int, int]:
     return launch, len(held_cycles)
 
 
+def _public(split) -> dict:
+    """A split of cycles_splits.py. The withheld worlds are reached only through final()."""
+    if split == WITHHELD:
+        from . import Refused
+        raise Refused("the withheld learning-cycles worlds are scored only by cycles.final() (scripts/"
+                      "bench_learning_cycles.py final), which records the run in the ledger first. Do not look at "
+                      "them while developing.")
+    return worlds.CYCLES[split]
+
+
 def run_split(split, *, configs=None, cycles=None, seeds=None) -> dict:
-    spec = worlds.CYCLES[split]
+    return _run_split(split, _public(split), None, configs=configs, cycles=cycles, seeds=seeds)
+
+
+def _run_split(split, spec, generate, *, configs=None, cycles=None, seeds=None) -> dict:
     configs = configs or configurations()
     seeds = tuple(seeds or spec["seeds"])
-    raw = {(name, world["name"]): [run_world(world, seed, mechanisms, cycles=cycles) for seed in seeds]
+    raw = {(name, world["name"]): [run_world(world, seed, mechanisms, cycles=cycles, generate=generate)
+                                   for seed in seeds]
            for name, mechanisms in configs.items() for world in spec["worlds"]}
     for (name, world), rows in raw.items():
         base = raw.get(("baseline", world))
@@ -553,7 +596,11 @@ def run_split(split, *, configs=None, cycles=None, seeds=None) -> dict:
                 "series_mean": [{k: scoring.spread([r["series"][i][k] for r in rows])["mean"]
                                  for k in ("accuracy", "coverage", "correct", "held_items", "open_marks")}
                                 | {"cycle": rows[0]["series"][i]["cycle"]} for i in range(len(rows[0]["series"]))],
-                "tasks": {k: scoring.spread([r["tasks"][k] for r in rows])["mean"] for k in rows[0]["tasks"]}}
+                "tasks": {k: scoring.spread([r["tasks"][k] for r in rows])["mean"] for k in rows[0]["tasks"]},
+                # the settings as the individual held them, and its daily allowance per cycle (Wave 3 step 0)
+                "config_read_back": rows[0]["config"],
+                "config_same_every_seed": all(r["config"] == rows[0]["config"] for r in rows),
+                "allowance": rows[0]["allowance"]}
         out[name] = {"mechanisms": sorted(mechanisms), "worlds": per_world}
     return {"split": split, "seeds": list(seeds), "configurations": out,
             "strategy_selection_note": "in force without passing the real gate (a 'retain' row written into each "
@@ -592,10 +639,11 @@ def _look_majority(world, name, cycle):
     return best[0] if len(best) == 1 else None
 
 
-def references(spec, seed) -> dict:
-    """{reference: [correct at cycle 0..N]} and the world's changes per cycle (see REFERENCES)."""
-    world = worlds.generate(spec, seed)
-    subjects, n, budget = world["subjects"], spec["cycles"], spec["budget"]
+def references(spec, seed, generate=None) -> dict:
+    """{reference: [correct at cycle 0..N]} and the world's changes per cycle (see REFERENCES); the budget is the
+    run's in each cycle (budget_at)."""
+    world = (generate or worlds.generate)(spec, seed)
+    subjects, n = world["subjects"], spec["cycles"]
     out = {}
     for ref in REFERENCES:
         held, last, series = {}, {}, []
@@ -605,6 +653,7 @@ def references(spec, seed) -> dict:
                     held[s["name"]] = _look_majority(world, s["name"], c) if ref == "round_robin" else s["truth"][c]
                     last[s["name"]] = c
             if c >= 1 and ref != "snapshot":
+                budget = budget_at(spec, c)
                 older = [s for s in subjects if s["born"] < c]
                 if ref == "oracle":
                     pick = [s for s in older if held[s["name"]] != s["truth"][c]][:budget]
@@ -625,12 +674,16 @@ def references(spec, seed) -> dict:
 def run_references(split, *, seeds=None) -> dict:
     """Per world: budget, changes per cycle, and per reference the mean of `correct` over cycles 1..N (spread over
     seeds, as PRIMARY), at cycle 0 and at cycle N, and the per-cycle mean series."""
-    spec = worlds.CYCLES[split]
+    return _run_references(split, _public(split), None, seeds=seeds)
+
+
+def _run_references(split, spec, generate, *, seeds=None) -> dict:
     seeds = tuple(seeds or spec["seeds"])
     out = {}
     for world in spec["worlds"]:
-        rows = [references(world, seed) for seed in seeds]
+        rows = [references(world, seed, generate) for seed in seeds]
         entry = {"budget": world["budget"], "cycles": world["cycles"],
+                 "budget_schedule": list(world["budget_schedule"]) if world.get("budget_schedule") else None,
                  "changes_per_cycle": scoring.spread([r["changes_per_cycle"] for r in rows])}
         for ref in REFERENCES:
             series = [r["series"][ref] for r in rows]
@@ -644,6 +697,63 @@ def run_references(split, *, seeds=None) -> dict:
     return {"split": split, "seeds": list(seeds), "references": list(REFERENCES), "worlds": out,
             "code": "src/neuroscifi/acceptance/cognition/cycles.py: references, run_references (from cycles_splits."
                     "generate alone; no product code)"}
+
+
+# ---- the withheld worlds (Wave 3 step 0): one look each, recorded before it scores ---------------------------------------
+#
+# cycles_withheld.py holds worlds no lane may tune on. final() is the only code that loads them: it refuses without a
+# note and on a tree that is dirty or not committed (the ledger itself excepted, as cognition.environment() reads it),
+# then appends its line to the ledger of final runs (cognition.LEDGER) BEFORE it loads or scores anything, so a run
+# that crashes still counts as a look. scripts/bench_learning_cycles.py final also refuses an output path inside the
+# checkout and another tree's source. The ledger line names the family "learning_cycles_withheld" (not "withheld",
+# the cognitive benchmark's family, which strategies.gate reads).
+FINAL_FAMILY = "learning_cycles_withheld"
+FINAL_CONFIGS = ("reference:no-loop", "baseline", "shipped")      # the unchanged system's look (step 0)
+
+
+def _withheld():
+    """(the withheld split, its generator): loaded here only, and only by final()."""
+    from . import cycles_withheld
+    return cycles_withheld.CYCLES[cycles_withheld.SPLIT], cycles_withheld.generate
+
+
+def world_digest(world) -> str:
+    """sha256 of everything a world says (truth, pages, own outputs, forgets, acceptances): two runs that report the
+    same digest met the same world."""
+    import hashlib
+    body = {"subjects": world["subjects"], "self": {str(c): v for c, v in world["self"].items()},
+            "looks": sorted([name, c, look] for (name, c), look in world["looks"].items()),
+            "forgets": {str(c): v for c, v in world["forgets"].items()}, "accepted": world["accepted"]}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def final(note, *, configs=None, mechanism="baseline") -> dict:
+    """THE look at the withheld worlds for `configs` ({name: mechanisms}; default FINAL_CONFIGS), recorded in the
+    ledger as `mechanism` before anything is loaded or scored. Returns run_split's result for the split, the
+    references from the generator alone and each world's digest per seed."""
+    from datetime import datetime, timezone
+    from .. import cognition
+    if not note:
+        raise cognition.Refused("final: a note is required (it is the ledger line's reason)")
+    known = configurations() | EXTRA
+    configs = configs or {k: known[k] for k in FINAL_CONFIGS}
+    env = cognition.environment()
+    if env["git_dirty"] or not env["git_commit"]:
+        raise cognition.Refused("final: the tree must be clean and committed, so the ledger line names the code it "
+                                "measured")
+    at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entry = {"at": at, "commit": env["git_commit"], "dirty": env["git_dirty"], "mechanism": mechanism, "ablate": [],
+             "families": [FINAL_FAMILY], "configurations": sorted(configs), "note": note}
+    lines = cognition._record_final(cognition.LEDGER, entry)
+    spec, generate = _withheld()
+    out = {"generated_at": at, "environment": env, "ledger_line": len(lines), "ledger_entry": entry}
+    out |= _run_split(WITHHELD, spec, generate, configs=configs)
+    out["references"] = _run_references(WITHHELD, spec, generate) | {
+        "code": "src/neuroscifi/acceptance/cognition/cycles.py: references, _run_references (from the withheld "
+                "generator alone; no product code)"}
+    out["world_digests"] = {w["name"]: {str(seed): world_digest(generate(w, seed)) for seed in spec["seeds"]}
+                            for w in spec["worlds"]}
+    return out
 
 
 # ---- the verdict, written before the held-out run (roadmap §2 applied to this experiment) -----------------------------

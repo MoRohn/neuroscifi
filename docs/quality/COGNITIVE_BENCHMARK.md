@@ -451,3 +451,29 @@ share on the self-reporting arm 0.105 / 0.253 → 0.088 / 0.233. Lane L: baselin
 0.726, paired −0.003 (4 higher, 4 lower) → +0.008 (sd 0.015; 6 higher, 2 lower), the re-check's, below the
 baseline's per-world sd of 0.047 and 0.071. No verdict and no default changed. Lane F's learning-cycles worlds
 (`cycles_splits.py`) are written whole before a run (`generate`), so they never had this coupling.
+
+## Wave 3: withheld worlds for the learning cycles
+
+**Purpose.** The learning-cycles experiment (`scripts/bench_learning_cycles.py`; harness
+`src/neuroscifi/acceptance/cognition/cycles.py`) had a development and a held-out split, both from one kind of world,
+and no withheld world, so a change to the knowledge loop could never be judged on transfer (FINAL_EVALUATION §6,
+direction 5). `src/neuroscifi/acceptance/cognition/cycles_withheld.py` holds three such worlds, of kinds that neither
+split has, with four seeds each (7341-7344, disjoint from every split and benchmark seed). They were written and
+committed alone (`26409bc`), before their guard and before any Wave 3 mechanism. They contain what a supersession rule
+and a change-rate-aware refresh order need in order to be judged fairly, without being shaped around either. Their
+contents are not described here: no lane may read, import, generate or score them (the file's docstring says what is
+forbidden), and nothing may be tuned on them.
+
+**The guard.** Only `cycles.final()` loads the worlds; `scripts/bench_learning_cycles.py final --note TEXT --out FILE`
+is its command line. `run --split` does not accept them, and `cycles.run_split` / `run_references` refuse them. A final
+run refuses a missing note and a tree that is dirty or not committed (the ledger of final runs is excluded from the
+dirty check, as `cognition.environment()` does). It appends its line to
+`docs/quality/evidence/genesis_final_uses.jsonl` (commit, clean flag, mechanism, `"ablate": []`, the family
+`learning_cycles_withheld`, the configurations, the note) **before** it loads or scores anything, so a crash still
+counts as a look. The script also refuses another tree's source and an `--out` inside the checkout. The file's SHA-256
+is pinned by `tests/acceptance/test_learning_cycles_withheld.py`, which tests each refusal without loading the worlds.
+Each result records every world's digest per seed (`world_digests`). Two looks met the same worlds when their digests
+are equal. The settings each individual held are read back in every run (`config_read_back`).
+
+**Who looks.** Wave 3 step 0 took the unchanged system's one look (below). After that, only the main session looks,
+once, at the end of Wave 3, with the mechanisms under test beside `baseline`.
