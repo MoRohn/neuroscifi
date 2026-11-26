@@ -171,7 +171,7 @@ and selective numbers stand as Wave 1 measured them ([WAVE1.md](WAVE1.md) §4); 
 |---|---|---|
 | The arbitration record | `nsf web config --set arbitration_record=false` | the decision events already written (a task forget removes them) |
 | Salience attention | leave off (`nsf web config --set salience_attention=false`) | — |
-| `doing.cycle` | revert lane L's commit `a7981e0` before the merge into `main` | — |
+| `doing.cycle` | revert lane L's commit `a7981e0` before the merge into `main` (the same commit carries the arbitration record and salience attention) | — |
 | Lane U's guards | revert `314ab80` and `9a7796f` before the merge (the failures they catch come back) | — |
 | The benchmarks and tests (integrated family, learning cycles, UAT, `added_wave2` cases) | revert their commits; nothing in the product reads them | — |
 | Any Wave 2 code | revert its commits on `genesis-wave2` before the merge into `main` | no schema change, so nothing in a file |
