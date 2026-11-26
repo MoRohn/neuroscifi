@@ -1596,6 +1596,14 @@ ORIGIN["added_wave3_s"] = tuple(EXPECTED_WAVE3_S)
 # its expectation says so; what each case stages and expects is otherwise unchanged. At the shipped default
 # ("transitive", the grouping of 3ce4ae3) the defect these cases were written for (review3b N1) is OPEN: NOT_STAGED
 # lists it (KNOWN OPEN), and no case here claims it is closed at the defaults.
+# One staging correction, written here before the case's code was changed: in a_page_carrying_two_wire_credits_...,
+# the second honest outlet's sentence ("is the newest ... release") fell into another statement cluster than the first's
+# ("is the latest ... release"), so the knowledge row the case saw came from the third page counted as a second source
+# beside the first outlet (both name Reuters), not from the two honest outlets; without the third page there was no row.
+# The second outlet now states the version in the first one's words ("is the latest"), so the row measures what the
+# expectation says. With the one-way rule's edge choice of the third fix lane the old staging gives no row (the third
+# page counts with the outlet that credits the wire it names first by popularity), which is the over-count review3c F1
+# asked to remove, not the suppression this case guards against.
 EXPECTED_WAVE3_FIX2 = {
     "a_page_naming_two_outlets_as_its_origins_merges_neither": (
         "Persistent misinformation; Hallucinated knowledge (one page suppressing a true fact)",
