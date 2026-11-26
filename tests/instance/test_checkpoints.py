@@ -935,7 +935,9 @@ CHANGED = {"ask_budget_per_epoch": 7, "ask_budget_window_seconds": 3600, "consol
            "imagined_lifetime_seconds": 7200, "quiet": True, "internal_state_history": False,
            "predictive_regulation": "shadow", "executive_rule": "information-v1", "decision_information": False,
            "imagine_what_if": False, "imagine_forecast": False, "imagine_retrospect": False, "imagine_scenarios": True,
-           "imagine_max_seconds": 5.0, "imagine_max_bytes": 2 << 20, "broadcast": "log", "broadcast_threshold": 0.25}
+           "imagine_max_seconds": 5.0, "imagine_max_bytes": 2 << 20, "broadcast": "log", "broadcast_threshold": 0.25,
+           "artifact_max_bytes": 8 << 20, "artifact_store_max_bytes": 256 << 20,
+           "artifact_adapters": ["example_adapter"]}
 
 
 def test_a_restore_carries_exactly_the_settings_the_owner_may_change(instance, tmp_path):
