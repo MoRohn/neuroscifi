@@ -26,9 +26,11 @@ independent support is below its own bar (40 of them false) and leaves 142 of 61
   supported; do not turn it on** (ADR-066).
 - A rule that remembers what NeuroSciFi itself answered, and when, does recognise its own answers coming back (30 of
   31 such pages set aside; own answers taken as knowledge 4 → 1). Two reviews found it could let such an echo replace
-  a fact NeuroSciFi had verified, and let a family device or an agent block a fact for you; both are fixed. It stays
-  **off**: the counts are small, it sometimes sets aside honest pages (a value it first stated wrongly that later
-  became true), and parts of it are untested (pages without a date) (ADR-067).
+  a fact NeuroSciFi had verified, and let a family device or an agent block a fact for you; the first is fixed, the
+  second only in part (some of your own answers that merely mention a version are still recorded), and the last check
+  found that its 30-day limit can hide a fresh answer behind an old one. It stays **off**: the counts are small, it
+  sometimes sets aside honest pages (a value it first stated wrongly that later became true), and parts of it are
+  untested (pages without a date) (ADR-067; WAVE4.md, "Reviews and fixes").
 - Reserving part of the daily budget for subjects NeuroSciFi knows nothing about yet showed no gain and stays off
   (ADR-064). Tracing why its runs were noisy found two places where the product picked among equal records by a random
   id; now fixed. That weakens one figure of Wave 3's last test: the "run the idle worker first" gain on its second
@@ -113,7 +115,9 @@ is the next thing to measure. *Correction, 2026-11-26 (Wave 4 lane A).* The idle
 +0.042 / +0.052) are single runs of code whose idle runs were not repeatable (a pick among equal records followed
 random task ids; fixed in Wave 4, ADR-064). On public worlds a world's mean gain moved by up to 0.015 between repeats,
 so "beyond the spread" holds for W3 (margin 0.017) but is not established for W2 (margin 0.003); the held-out figures
-of ADR-062 are exactly repeatable. **The front door stays on** (12 of 12 front-door questions exact; every other
+of ADR-062 are exactly repeatable. (Note, Wave 4 record: the second measurement pass reads "holds for W3" as stronger
+than the evidence: W3's margin exceeds the largest swing measured by 0.002, on only four public worlds that varied;
+not shown to fail, not verified on those worlds; WAVE4.md §1.4.) **The front door stays on** (12 of 12 front-door questions exact; every other
 figure equal to the run without it).
 
 ## One page, in plain words (Wave 2)
@@ -260,7 +264,7 @@ Each with the command an owner would run (from [REGRESSION_VERIFICATION.md](REGR
 | `origin_grouping` (built in Wave 3's second fix lane, off since the third: a page naming its origin attaches to one origin only) | `"transitive"`: the grouping of `3ce4ae3` (for a page's named origins, as before Wave 3); a page naming two honest outlets as its origins joins them (review3b N1, open) | closes N1 on staged pages; with the reviewer's edge choice, copies naming several origins count once on every staged case | as first shipped it counted such copies as 2–3 sources (review3c F1); F2 open for names other than the news wires'; no benchmark world holds a page naming several origins, so neither direction is measured (ADR-063) | worlds with multi-origin copies and pages naming two honest outlets, written by someone other than the rule's author and committed first (§6, rank 1) |
 | the two source rules (`attribution_independence`, `echo_recognition`) | off (fix lane) | none that survived review | read only their worlds' phrasings; merge honest outlets; discard honest pages (WAVE3.md §3.1) | a different kind of rule (§6, rank 1) |
 | `source_derivation` (Wave 4) | off | fewer badly supported rows (held-out 127 → 99) | its signal is the generator's convention; more true facts not held (142 → 207 of 612); one page can merge honest outlets; **not recommended** (ADR-066) | worlds that hold what separates a copy from an honest credit (§6, rank 1) |
-| `own_text_provenance` (Wave 4) | off | own answers admitted 4 → 1 (held-out); "effective" under its rule | a measured false rejection (honest pages 14 of 2,670); undated pages unmeasured; mentions still recorded in 3 of 18 forms (ADR-067) | its withheld look; undated pages in the worlds |
+| `own_text_provenance` (Wave 4) | off | own answers admitted 4 → 1 (held-out); "effective" under its rule (at zero margin in one world) | a measured false rejection (honest pages 14 of 2,670); undated pages unmeasured; mentions and some denials still recorded (9 of 18 phrasings, the second security pass); its 30-day expiry hides fresh emissions (ADR-067, WAVE4.md) | the expiry fixed; its withheld look; undated pages in the worlds |
 | `allowance_division` (Wave 4) | `"race"` | none on held-out | "unsafe" / "harm"; no gain beyond the spread (ADR-064) | none planned: reaching runs out of candidates |
 | `caution_detail` (Wave 4, display) | off | says why pages count together and flags own answers | wrong about three times in ten on the worlds measured (ADR-065) | a measurement where the triggers line up |
 | `predictive_regulation` | off; `"shadow"` gathers evidence without acting (Wave 3) | simulated plant: 0.80 of memory breaches avoided held-out, 0.83 withheld | costs work given up (0.044 → 0.106) and false alarms (0.009 → 0.043); the plant's constants are declared; the shadow report counts what the forecast adds separately since the fix lane (staged held-out: 198 added false alarms against 78 added hits) | a week of shadow on the host: `nsf config --predictive-regulation-shadow`, then `nsf internal-state --shadow-report` |
