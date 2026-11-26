@@ -24,6 +24,9 @@ Questions are MEASUREMENTS from a fixed vocabulary (subject.MEASURES) that a dri
 that scoring is exact comparison within a tolerance, never a judgment. A question may name a member first:
 `data/values.csv::table.n_rows` (members nest: `inner.zip::a.csv::table.n_rows`).
 
+`abstention_floor` in every summary is the number of tasks where an abstention is the right answer: a subject that
+says "cannot" to everything scores exactly that many. Read `right` against it.
+
 Three outcomes per task, all reported with their denominators (score_task):
   right      the expected answer within tolerance, or the expected abstention ("cannot" / "refused")
   abstained  an honest "cannot" or "refused" where an answer was expected (no credit, no harm)
@@ -246,8 +249,10 @@ def summarise(family: str, split: str, subject: Subject, rows: list[tuple[Task, 
         k = by_kind.setdefault(task.kind, {o: 0 for o in OUTCOMES})
         k[result.outcome] += 1
     n = len(rows)
+    floor = sum(1 for task, _ in rows if task.kind in ("cannot", "cannot_or_value", "refuse"))
     out = {"family": family, "split": split, "subject": subject.name, "n": n, **counts,
            "score": round(counts["right"] / n, 4) if n else None,
+           "abstention_floor": floor,
            "fabrication": counts["wrong"],
            "fabrication_rate": round(counts["wrong"] / n, 4) if n else None,
            "by_kind": by_kind,

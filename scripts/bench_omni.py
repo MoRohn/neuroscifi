@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""The OMNIMIND benchmark (lane Z): run a subject on a split, print the frozen-task hashes, list what is measured.
+
+    bench_omni.py run --split development|held_out|both [--subject today|artifacts] [--family F ...] --out FILE
+                      [--evidence] [--scratch DIR]
+    bench_omni.py hash [--split development|held_out]
+    bench_omni.py list
+
+`run` writes a summary (per family: counts with denominators, the fabrication count on its own, per-task outcomes,
+cost) and refuses to write inside the repository unless --evidence is given (the recorded baseline is
+docs/quality/evidence/omnimind_baseline.json). Hostile tasks run each in their own process under a scratch
+directory (--scratch, default the system's temporary directory). docs/quality/OMNIMIND_BENCHMARK.md explains the
+families, the measures, the outcomes and the rules for the withheld split.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+from pathlib import Path
+import platform
+import subprocess
+import sys
+import time
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "src"))
+
+from neuroscifi.acceptance import omni  # noqa: E402
+from neuroscifi.acceptance.omni import cases, subject  # noqa: E402
+
+
+def _commit() -> str:
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO, capture_output=True, text=True,
+                              timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def _totals(families: dict) -> dict:
+    keys = ("n", "right", "abstained", "wrong", "failed", "abstention_floor")
+    out = {k: sum(f[k] for f in families.values()) for k in keys}
+    out["score"] = round(out["right"] / out["n"], 4) if out["n"] else None
+    out["fabrication"] = out["wrong"]
+    return out
+
+
+def cmd_run(args) -> int:
+    out_path = Path(args.out).resolve()
+    if REPO in out_path.parents and not args.evidence:
+        print(f"refused: {out_path} is inside the repository; pass --evidence to record it there", file=sys.stderr)
+        return 2
+    families = tuple(args.family) if args.family else omni.FAMILIES
+    for name in families:
+        omni.family(name)
+    splits = omni.SPLITS if args.split == "both" else (args.split,)
+    subj = subject.get(args.subject)
+    available = subj.available() if hasattr(subj, "available") else (True, "")
+    report = {"label": omni.LABEL, "subject": subj.name, "subject_available": list(available),
+              "commit": _commit(), "python": platform.python_version(), "machine": platform.machine(),
+              "recorded": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+              "cases_sha256": hashlib.sha256(Path(cases.__file__).read_bytes()).hexdigest(), "splits": {}}
+    for split in splits:
+        start = time.perf_counter()
+        results = {}
+        for name in families:
+            fam = omni.family(name)
+            results[name] = fam.score(subj, split, scratch=args.scratch) if name == "hostile" else \
+                fam.score(subj, split)
+            r = results[name]
+            print(f"{split:12s} {name:10s} n={r['n']:4d} right={r['right']:4d} abstained={r['abstained']:4d} "
+                  f"wrong={r['wrong']:3d} failed={r['failed']:3d} ({r['wall_s']:.1f}s)", flush=True)
+        report["splits"][split] = {"families": results, "totals": _totals(results),
+                                   "frozen": omni.digests(split, families),
+                                   "wall_s": round(time.perf_counter() - start, 1)}
+    text = json.dumps(report, indent=1, sort_keys=True) + "\n"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(text)
+    print(f"wrote {out_path} ({len(text.encode())} bytes)")
+    return 0
+
+
+def cmd_hash(args) -> int:
+    print(f"cases.py sha256 {hashlib.sha256(Path(cases.__file__).read_bytes()).hexdigest()}")
+    for split in (omni.SPLITS if args.split is None else (args.split,)):
+        for name, d in omni.digests(split).items():
+            print(f"{split:12s} {name:10s} n={d['n']:4d} {d['sha256']}")
+    return 0
+
+
+def cmd_list(args) -> int:
+    for name in omni.FAMILIES:
+        doc = (omni.family(name).__doc__ or "").strip().splitlines()[0]
+        print(f"{name:10s} {doc}")
+    print()
+    for measure, meaning in subject.MEASURES.items():
+        print(f"  {measure:30s} {meaning}")
+    return 0
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = parser.add_subparsers(dest="command", required=True)
+    run = sub.add_parser("run")
+    run.add_argument("--split", choices=(*omni.SPLITS, "both"), required=True)
+    run.add_argument("--subject", default="today", choices=tuple(subject.SUBJECTS))
+    run.add_argument("--family", action="append", choices=omni.FAMILIES)
+    run.add_argument("--out", required=True)
+    run.add_argument("--evidence", action="store_true", help="allow writing inside the repository")
+    run.add_argument("--scratch", default=None, help="directory for the hostile family's per-task folders")
+    run.set_defaults(func=cmd_run)
+    h = sub.add_parser("hash")
+    h.add_argument("--split", choices=omni.SPLITS)
+    h.set_defaults(func=cmd_hash)
+    lst = sub.add_parser("list")
+    lst.set_defaults(func=cmd_list)
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
