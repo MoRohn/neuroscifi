@@ -142,6 +142,19 @@ def test_forms_requests_repeat_no_earlier_request():
     assert len(set(requests)) == len(requests)
 
 
+def test_forms_no_frequent_word_decides_the_form():
+    """For every word in at least six withheld requests, the largest share of them for which one same form is good
+    (what the best rule "this word -> that form" would score) stays below 0.9, as forms.wording() asks of the earlier
+    splits."""
+    by_word = defaultdict(list)
+    for c in WF.WITHHELD:
+        for word in forms.tokens(c["request"]):
+            by_word[word].append(c)
+    shares = [Counter(f for c in m for f in forms._good_forms(c)).most_common(1)[0][1] / len(m)
+              for m in by_word.values() if len(m) >= 6]
+    assert shares and max(shares) < 0.9
+
+
 def test_forms_view_hides_the_judgement():
     from neuroscifi.acceptance.omni import final
     for task in final.forms_tasks():
