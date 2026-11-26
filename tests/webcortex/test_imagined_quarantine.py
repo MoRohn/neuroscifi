@@ -86,6 +86,9 @@ WRITERS: dict[str, str] = {
     "acceptance/cognition/adversarial.py": "the cognitive benchmark's adversarial case "
                                           "system_made_content_never_enters_the_journal records one what-if in a "
                                           "temporary individual to check it can never become a reading",
+    "acceptance/cognition/cycles.py": "lane F's learning-cycles experiment plants the individual's own outputs (an "
+                                      "inference asserting a version no source states) in temporary individuals to "
+                                      "measure that they never become knowledge",
 }
 DISPLAYS: dict[str, str] = {
     "console/server.py": "lane W (ADR-053): the console's read-only 'Imagined, not evidence' panel (GET "
