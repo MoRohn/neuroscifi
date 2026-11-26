@@ -11,8 +11,9 @@ its numeric parts with trailing zero parts dropped, as PEP 440 compares release 
 its day; money, percentages and quantities by the existing normaliser's group and base-unit value, "41 m" = "4100 cm";
 a year or a whole number below 100 is not specific enough and is not read). For each pair, at most MAX_PER_ANSWER per
 answer, the emission records: its time, and whether a claim the individual had read at or before that time (this task's
-first, then earlier ones naming the subject, at most SUPPORT_ROWS, within SUPPORT_SECONDS) states that value about that
-subject: 1 sourced, 0 not, 2 not known in time (counted as sourced: never an echo). No text is recorded, no source's
+first, then ONE pass over the earlier ones naming a subject still unsourced, at most SUPPORT_ROWS per name, the whole
+within SUPPORT_SECONDS) states that value about that subject: 1 sourced, 0 not, 2 not known (the bound reached or the
+time up; counted as sourced: never an echo, and logged with counts and the task id only). No text is recorded, no source's
 name or URL: only salted digests (the instance's id is the salt), the time, the flag and a count of the distinct
 sources (domains) found stating it (`n`, at most MAX_GROUPS; a count, so a forgotten source leaves nothing of itself).
 
@@ -62,7 +63,7 @@ TASK_PREFIX = "emitted-task:"
 MAX_PER_ANSWER = 16
 MAX_EMISSIONS = 3
 MAX_GROUPS = 8
-MAX_FINGERPRINTS = 50_000
+MAX_FINGERPRINTS = 200_000          # about 140 bytes a row: some 28 MB at most
 MAX_LOOKUPS = 512
 MAX_KEYS_PER_CLAIM = 32
 SUPPORT_ROWS = 2000
@@ -168,37 +169,57 @@ def stored(db) -> int:
 
 # ---- emission ----------------------------------------------------------------------------------------------------------
 
-def _support(db, task_id, name, key, at, deadline, clock) -> tuple[int, int]:
-    """(SOURCED / UNSOURCED / UNKNOWN, the number of distinct domains found stating it) for one pair at `at`."""
+def _token(key) -> str | None:
+    """A substring every stored form of the value holds (a version's numeric parts "9.4" are in "v9.4.0" and "9.4", a
+    date's day is its ISO form), to narrow the pass; None for other kinds (their stored forms differ: "12,345", units)."""
+    kind, _, rest = key.partition(":")
+    if kind == "version":
+        return rest.split("-")[0]
+    if kind == "date":
+        return rest
+    return None
+
+
+def _support(db, task_id, found, at) -> dict:
+    """{(name, key): (SOURCED / UNSOURCED / UNKNOWN, the number of distinct domains found stating it)} at `at`: this
+    task's claims first (its primary key), then ONE bounded pass over the earlier claims naming any subject still
+    unsourced (at most SUPPORT_ROWS per name; when that bound is reached, a pair still without a source is UNKNOWN).
+    A query the deadline interrupts leaves its pairs UNKNOWN."""
     import sqlite3
-    found = set()
-    queries = (("SELECT claim_values, text, domain FROM web_claims WHERE task_id=? AND retrieved_at <= ?",
-                (task_id, at)),
-               ("SELECT claim_values, text, domain FROM web_claims WHERE retrieved_at <= ? AND instr(lower(text), ?) > 0 "
-                "LIMIT ?", (at, name, SUPPORT_ROWS)))
-    for n, (sql, params) in enumerate(queries):
-        if clock() > deadline:
-            return UNKNOWN, len(found)
-        try:
-            rows = db.execute(sql, params).fetchall()
-        except sqlite3.OperationalError as exc:
-            if "interrupt" not in str(exc).lower():
-                raise
-            return UNKNOWN, len(found)
+    domains = {p: set() for p in found}
+
+    def read(sql, params) -> int:
+        rows = db.execute(sql, params).fetchall()
         for values, text, domain in rows:
             try:
                 listed = json.loads(values or "[]")
             except ValueError:
                 continue
-            if name in names(text) and key in {value_key(v) for v in listed if isinstance(v, str)}:
-                found.add(str(domain or "").lower())
-                if len(found) >= MAX_GROUPS:
-                    break
-        if found:
-            return SOURCED, len(found)
-        if n == 1 and len(rows) >= SUPPORT_ROWS:
-            return UNKNOWN, 0
-    return UNSOURCED, 0
+            said = names(text)
+            keys = {value_key(v) for v in listed if isinstance(v, str)} if said else set()
+            for name, key in found:
+                if name in said and key in keys and len(domains[(name, key)]) < MAX_GROUPS:
+                    domains[(name, key)].add(str(domain or "").lower())
+        return len(rows)
+    out = {}
+    try:
+        read("SELECT claim_values, text, domain FROM web_claims WHERE task_id=? AND retrieved_at <= ?", (task_id, at))
+        left = sorted({(n, _token(k)) for n, k in found if not domains[(n, k)]}, key=lambda p: (p[0], p[1] or ""))
+        full = False
+        if left:
+            bound = SUPPORT_ROWS * len(left)
+            where = " OR ".join("(instr(lower(text), ?) > 0" + (" AND instr(claim_values, ?) > 0)" if t else ")")
+                                for _, t in left)
+            params = [x for n, t in left for x in ((n, t) if t else (n,))]
+            full = read(f"SELECT claim_values, text, domain FROM web_claims WHERE retrieved_at <= ? AND ({where}) "
+                        "LIMIT ?", (at, *params, bound)) >= bound
+    except sqlite3.OperationalError as exc:
+        if "interrupt" not in str(exc).lower():
+            raise
+        return {p: (SOURCED, len(d)) if d else (UNKNOWN, 0) for p, d in domains.items()}
+    for p, d in domains.items():
+        out[p] = (SOURCED, len(d)) if d else (UNKNOWN, 0) if full else (UNSOURCED, 0)
+    return out
 
 
 def prepare(db, task_id, report, now, *, cfg=None, clock=None, seconds=None) -> dict | None:
@@ -221,11 +242,12 @@ def prepare(db, task_id, report, now, *, cfg=None, clock=None, seconds=None) -> 
            "full": stored(db) >= MAX_FINGERPRINTS, "rows": []}
     db.set_progress_handler(lambda: 1 if clock() > deadline else 0, 10_000)
     try:
-        for name, key in found:
-            sourced, n = _support(db, task_id, name, key, now, deadline, clock)
-            out["rows"].append((fingerprint(salt, name, key), sourced, n))
+        support = _support(db, task_id, found, now)
     finally:
         db.set_progress_handler(None, 0)
+    if clock() > deadline:              # past the budget, even where no query was interrupted: not settled
+        support = {p: (s if s == SOURCED else UNKNOWN, n) for p, (s, n) in support.items()}
+    out["rows"] = [(fingerprint(salt, name, key), *support[(name, key)]) for name, key in found]
     unknown = sum(1 for _, s, _ in out["rows"] if s == UNKNOWN)
     if unknown:
         _log.warning("own-text provenance: %d of %d emitted value(s) of task %s not checked for a source in time; "

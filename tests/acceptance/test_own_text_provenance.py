@@ -266,6 +266,25 @@ def test_lookup_is_bounded_and_outside_the_write_transaction(monkeypatch, caplog
     assert "not checked" in logged and N not in logged and "9.4" not in logged
 
 
+@pytest.mark.parametrize("bound", ("rows", "time"))
+def test_a_source_check_that_cannot_finish_counts_as_sourced(monkeypatch, caplog, bound):
+    """lookup_is_bounded...: the emission's source check is bounded (rows per subject name, seconds); a pair it could
+    not settle is recorded as not known, which is never an echo, and the log names counts and the task id only."""
+    if bound == "rows":
+        monkeypatch.setattr(emitted, "SUPPORT_ROWS", 1)
+    else:
+        monkeypatch.setattr(emitted, "SUPPORT_SECONDS", -1.0)
+    with caplog.at_level(logging.WARNING), _own(f"unknown-{bound}") as (db, _):
+        adv._s_look(db, T0 - 9 * DAY, [(f"old{i}.example", f"{N} 9.4.{i + 1} was listed in an older {N} release "
+                                        f"note.", T0 - 10 * DAY, None) for i in range(3)])
+        _answer(db, T0 - 5 * DAY)
+        out = adv._s_look(db, T0, _pages(TWO, T0 - 3600))
+        assert not out.get("echoes") and _rows(db, "9.4.0") == ["provisional"]
+        assert {e[1] for fp in _fingerprints(db).values() for e in fp.get("e", [])} >= {emitted.UNKNOWN}
+    logged = " ".join(r.getMessage() for r in caplog.records if r.name == emitted.__name__)
+    assert "not checked for a source" in logged and N not in logged and "9.4" not in logged
+
+
 def test_the_checks_are_point_lookups_at_ten_thousand_answers():
     """10,000 stored answers' fingerprints (16 each) and 2,000 claims about the subject: the consolidation's check of
     eight claims is point lookups; the emission's source check stays inside its budget."""
