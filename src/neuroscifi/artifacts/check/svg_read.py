@@ -920,12 +920,12 @@ def outline_order(nodes, edges) -> list[str] | None:
     if len(roots) != 1:
         return None
     children: dict[int, list[int]] = {}
-    dx = dy = 0.0
+    dx = dy = 0.0          # signed: the growth direction adds up, the spread of siblings across it cancels out
     for a, b, *_rest in edges:
         children.setdefault(a, []).append(b)
-        dx += abs(nodes[b][2][0] - nodes[a][2][0])
-        dy += abs(nodes[b][2][1] - nodes[a][2][1])
-    across = 0 if dy >= dx else 1
+        dx += nodes[b][2][0] - nodes[a][2][0]
+        dy += nodes[b][2][1] - nodes[a][2][1]
+    across = 0 if abs(dy) >= abs(dx) else 1
     out, stack, seen = [], [roots[0]], set()
     while stack:
         u = stack.pop()
@@ -933,7 +933,7 @@ def outline_order(nodes, edges) -> list[str] | None:
             continue
         seen.add(u)
         out.append(nodes[u][0])
-        stack.extend(sorted(children.get(u, []), key=lambda c: nodes[c][2][across], reverse=True))
+        stack.extend(reversed(sorted(children.get(u, []), key=lambda c: nodes[c][2][across])))
     return out
 
 

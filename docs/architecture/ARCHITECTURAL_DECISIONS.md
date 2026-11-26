@@ -4322,8 +4322,10 @@ to zero), recorded in `options.history`, at most three rounds, never a change of
 ## Evidence
 
 `docs/quality/evidence/omnimind_g1.json` (`scripts/omni_g1_evidence.py`): five specs per form, 80 of 80 pass their
-independent check, carried information 1.0 on every form, 485 of 485 deliberately wrong artifacts caught (mutations
-written by this lane, stated as such in the file, with what its first run found). Tests: `tests/artifacts/test_g1_*.py`.
+independent check, carried information 1.0 on every form, 482 of 482 deliberately wrong artifacts caught (mutations
+written by this lane, stated as such in the file, with what its first run found, and what the run after the
+reading-contract alignment found: a checker defect in reading the growth direction of wide trees, fixed).
+Tests: `tests/artifacts/test_g1_*.py`.
 
 ## What stays open
 

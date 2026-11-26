@@ -126,6 +126,13 @@ def test_tree_outline_reads_depth_first_in_source_order():
     s = case("tree")
     v = S.verdict(S.made(s).bytes, s)
     assert v.ok and S.finding(v, "outline_order").passed
+    # A wide tree (lines spread further sideways than down): it still grows downwards, siblings read left to right.
+    wide = {"nodes": [{"id": "r", "label": "root", "parent": None}, {"id": "a", "label": "A", "parent": "r"},
+                      {"id": "b", "label": "B", "parent": "r"}]
+            + [{"id": f"a{i}", "label": f"leaf {i}", "parent": "a"} for i in range(10)]}
+    s = S.spec("graph.tree", "Wide", wide)
+    v = S.verdict(S.made(s).bytes, s)
+    assert v.ok and S.finding(v, "outline_order").passed, S.failed(v)
 
 
 def test_force_layout_differs_by_seed_and_keeps_nodes_apart():

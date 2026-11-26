@@ -109,8 +109,9 @@ def specs_for(form, k):
         links = [{"from": f"s{i}", "to": f"s{i + 1}"} for i in range(n - 1)] + \
                 [{"from": f"s{i}", "to": f"s{max(0, i - 2)}", "label": "again"} for i in range(2, n, 3)]
         return spec(form, f"Flow {k}", {"steps": steps, "links": links})
-    if form in ("table.html", "data.csv", "data.json"):
-        return spec(form, f"Table {k}", table(r, k))
+    if form in ("table.html", "data.csv", "data.json"):     # CSV: the formula guard asked for in specs 0, 2, 4
+        guard = {"formula_guard": True} if form == "data.csv" and k % 2 == 0 else None
+        return spec(form, f"Table {k}", table(r, k), guard)
     if form in ("document.html", "document.md"):
         blocks = []
         for s in range(1 + k):
@@ -312,6 +313,12 @@ def main(argv=None):
                             "position (no fault: excluded) and 'moved_mark' on a diagram nudged an edge end inside "
                             "its own node (no fault: now the edge is detached). The mutations were changed after "
                             "seeing that run."),
+              "follow_up": ("after the dotted form names and the alignment with the examiner's reading rules "
+                            "(2026-11-26) the first run had 78 of 80 specs passing: two wide trees failed the new "
+                            "outline_order finding because the checker took the axis with the larger sum of absolute "
+                            "offsets as the growth direction (fixed: signed sums, so siblings spread across it cancel "
+                            "out). The specs are seeded by form name, so the rename changed their random data; the "
+                            "CSV formula-guard mutation applies only where the spec asks for the guard (specs 0, 2, 4)."),
               "specs_per_form": PER_FORM, "python": sys.version.split()[0],
               "forms": {form: measure(form) for form in forms}}
     caught = sum(f["wrong_artifacts"]["caught"] for f in result["forms"].values())
