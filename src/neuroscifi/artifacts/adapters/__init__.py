@@ -87,9 +87,10 @@ def _available(adapter: Adapter) -> tuple[bool, str]:
 
 
 def resolve(detected: Detected) -> Adapter | None:
-    """The first registered adapter for `detected.format` that is available here; else the first one that claims the
-    format but is unavailable (so the caller can say what it needs); else None."""
-    claiming = [a for a in _ADAPTERS if detected.format in a.formats]
+    """The most recently registered adapter for `detected.format` that is available here (so a lane's specific
+    adapter registered after the kernel's built-ins takes precedence); else the latest one that claims the format but
+    is unavailable (so the caller can say what it needs); else None."""
+    claiming = [a for a in reversed(_ADAPTERS) if detected.format in a.formats]
     for adapter in claiming:
         if _available(adapter)[0]:
             return adapter
@@ -173,10 +174,12 @@ def _gap(detected: Detected, outcome: str) -> None:
             log.warning("artifact gap hook failed (%s)", type(error).__name__)
 
 
-def nested(limits: Limits, used_bytes: int = 0) -> Limits:
-    """Limits for a decode nested one container deeper, after `used_bytes` were materialised at this level."""
+def nested(limits: Limits, used_bytes: int = 0, elapsed_s: float = 0.0) -> Limits:
+    """Limits for a decode nested one container deeper, after `used_bytes` were materialised and `elapsed_s` seconds
+    spent at this level: the inner decode gets one level less, and only what is left of the bytes and the time."""
     return replace(limits, max_depth=limits.max_depth - 1,
-                   max_decoded_bytes=max(0, limits.max_decoded_bytes - int(used_bytes)))
+                   max_decoded_bytes=max(0, limits.max_decoded_bytes - int(used_bytes)),
+                   max_seconds=max(0.0, limits.max_seconds - float(elapsed_s)))
 
 
 def inspect_unknown(data: bytes, detected: Detected | None = None) -> Opaque:
@@ -225,6 +228,16 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         raise Malformed(f"the {adapter.name} adapter returned {type(result).__name__}, not Decoded")
     return result
 
+
+def _register_builtins() -> None:
+    from .compressed import CompressedStream
+    from .jsontree import JsonTree
+    from .plain import PlainText
+    for adapter in (PlainText(), JsonTree(), CompressedStream()):
+        register(adapter)
+
+
+_register_builtins()
 
 __all__ = ["Adapter", "ENTRY_POINT_GROUP", "REFUSED_FORMATS", "catalog", "decode", "inspect_unknown",
            "load_external", "nested", "on_gap", "register", "resolve", "unregister"]
