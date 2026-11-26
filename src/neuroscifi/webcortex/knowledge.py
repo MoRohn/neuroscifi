@@ -842,8 +842,10 @@ def replacements(db, *, limit=100) -> list[dict]:
 
 
 def revert(db, knowledge_id, now) -> dict:
-    """Undo one replacement of the supersession rule: the replaced version gets back every column it had before
-    (consolidate.RESTORE_COLUMNS, kept in the rule's record), and the rule's version becomes 'rejected' (the owner's
+    """Undo one replacement of the supersession rule: the replaced version gets back the columns the replacement
+    changed (consolidate.RESTORE_COLUMNS, kept in the rule's record; every other column is its live value, so what a
+    forget removed since stays removed), the questions the rule closed are reopened, the rule's "supersedes" links are
+    marked reverted, and the rule's version becomes 'rejected' (the owner's
     rejection: consolidation never proposes those values for this key again, so the rule cannot make the same
     replacement again). Both stay in history; forget removes them as any version. Conflict when the item is not a
     replacement the rule made, is already reverted, or was itself replaced since."""
@@ -861,12 +863,25 @@ def revert(db, knowledge_id, now) -> dict:
         if old["superseded_by"] != item["id"]:
             raise Conflict(f"Knowledge item {old['id']} is no longer replaced by #{item['id']}")
         previous = record.get("previous") or {}
+        # only the columns the replacement changed (an older record may hold more: never written back, so nothing
+        # forgotten since, such as a source or a supporting claim, returns: security review M1)
         columns = [c for c in RESTORE_COLUMNS if c in previous]
         db.execute(f"UPDATE web_knowledge SET {', '.join(f'{c}=?' for c in columns)} WHERE id=?",
                    (*[previous[c] for c in columns], old["id"]))
         db.execute("UPDATE web_knowledge SET status='rejected', note=?, updated_at=? WHERE id=?",
                    (f"replacement of #{old['id']} reverted by the owner", now, item["id"]))
         closed = _close_questions(db, f"web:knowledge:{item['id']}", "reverted by the owner", now)
+        # security review L1: the replaced item's questions the rule closed are open again (unless a forget rewrote
+        # them since), and the rule's "supersedes" links are marked reverted (kept: the lineage shows what happened)
+        reopened = []
+        for pid in record.get("closed_questions") or ():
+            if db.execute("UPDATE pending SET resolved_at=NULL, resolution=NULL WHERE id=? AND scope=? AND "
+                          "resolution=?", (pid, f"web:knowledge:{old['id']}", f"replaced by knowledge #{item['id']} "
+                                           "(supersession rule)")).rowcount:
+                reopened.append(pid)
+        db.execute("UPDATE web_claim_links SET detail=json_set(detail, '$.reverted', json('true')) WHERE "
+                   "kind='supersedes' AND json_extract(detail, '$.by')='rule' AND ((src_kind='knowledge' AND src=?) "
+                   "OR json_extract(detail, '$.new')=?)", (str(item["id"]), item["id"]))
         for pid, resolution in db.execute("SELECT id, resolution FROM pending WHERE scope=? AND resolved_at IS NOT "
                                           "NULL AND resolution LIKE 'answered by the supersession rule%'",
                                           (f"web:knowledge:{item['id']}",)).fetchall():
@@ -879,4 +894,4 @@ def revert(db, knowledge_id, now) -> dict:
         store.bump(db, "teacher_interventions")
         version = store.bump_state_version(db)
     return {"id": item["id"], "status": "rejected", "restored": old["id"], "pending_closed": closed,
-            "state_version": version}
+            "pending_reopened": reopened, "state_version": version}

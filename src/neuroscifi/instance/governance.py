@@ -925,9 +925,39 @@ def _drop_knowledge(db, ids, now):
         db.execute(f"DELETE FROM web_mentions WHERE knowledge_id IN ({marks})", part)
         db.execute(f"DELETE FROM web_events WHERE json_extract(detail,'$.knowledge_id') IN ({marks})", part)
     closed = _forget_pending(db, [f"web:knowledge:{k}" for k in ids], [], now)
+    _forget_replaced_statements(db, ids)
     _drop_in_process_copies()
     return {"knowledge_deleted": ids, "versions_restored": sorted(restored), "versions_relinked": sorted(relinked),
             "pending_closed": closed}
+
+
+def _forget_replaced_statements(db, ids):
+    """ADR-061 (security review M1): the supersession rule's question, recorded under the NEW version's scope, quotes
+    the statement it replaced. When that replaced version is forgotten, the question loses its text (the record
+    keeps only the replaced id, a number). Caller owns the txn."""
+    for part in _chunks(sorted(set(ids))):
+        for (kid,) in db.execute("SELECT id FROM web_knowledge WHERE json_extract(verification, "
+                                 f"'$.supersession.replaced') IN ({_in(part)})", part).fetchall():
+            db.execute("UPDATE pending SET question=? WHERE scope=? AND resolution LIKE 'answered by the supersession "
+                       "rule%'", (_WEB_QUESTION, f"web:knowledge:{kid}"))
+
+
+def _scrub_rule_records(db):
+    """ADR-061 (security review M1): a supersession record written before the fix lane kept the replaced row's
+    sources and supporting claims; every web forget (live or replayed) cuts such a record down to the columns the
+    replacement changed (consolidate.RESTORE_COLUMNS), so a forgotten source is neither kept there nor written back by
+    a revert. Caller owns the txn. Returns the records changed."""
+    from ..webcortex.consolidate import RESTORE_COLUMNS
+    changed = 0
+    for kid, raw in db.execute("SELECT id, verification FROM web_knowledge WHERE json_extract(verification, "
+                               "'$.supersession.previous') IS NOT NULL").fetchall():
+        value = json.loads(raw)
+        previous = value["supersession"]["previous"]
+        if isinstance(previous, dict) and set(previous) - set(RESTORE_COLUMNS):
+            value["supersession"]["previous"] = {k: v for k, v in previous.items() if k in RESTORE_COLUMNS}
+            db.execute("UPDATE web_knowledge SET verification=? WHERE id=?", (_dump(value), kid))
+            changed += 1
+    return changed
 
 
 def _web_cascade(db, removed_claims, now):
@@ -984,6 +1014,7 @@ def _premise_cascade(db, effects, now):
 def _web_finish(db, kind, target, effects, now):
     """Stale checkpoints, state version and deletion_log. Caller owns the txn. `target` is persisted: it must
     not carry forgotten payload (a URL or domain goes in as its digest label)."""
+    _scrub_rule_records(db)
     _premise_cascade(db, effects, now)
     _imagined_cascade(db, effects, now)
     effects["checkpoints_stale"] = _stale_all(db)
@@ -1428,6 +1459,7 @@ def replay_web_forgets(db, forgotten, now):
         if wanted("source_domain", domain) and _forget_source_core(db, domain, now) is not None:
             out["sources"] += 1
     if any(out.values()):
+        _scrub_rule_records(db)
         _premise_cascade(db, {}, now)       # lane K: premises and re-check marks of what the replay removed
     return out
 

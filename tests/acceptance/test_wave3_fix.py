@@ -223,3 +223,119 @@ def test_the_echo_checks_take_one_scan_at_ten_thousand_tasks():
         started = time.perf_counter()
         echoes = consolidate._Echoes(db, [claim] * 8)
         assert time.perf_counter() - started < consolidate.ECHO_SECONDS and echoes.skipped == []
+
+
+# ---- M6: only the owner's research and refreshes let the supersession rule decide -------------------------------------
+
+def _origin_look(db, at, origin, family=None):
+    from neuroscifi.acceptance.cognition import cycles
+    task = orchestrator.submit(db, adv._SQ, at, mode="fact_verification", origin=origin,
+                               **({"family": family} if family else {}))
+    pages = [("devdesk.example", f"By now {N} 1.6.0 is the latest {N} release.", at - DAY, "/a"),
+             ("factline.example", f"Once again {N} 1.6.0 is the latest {N} release.", at - DAY, "/b"),
+             ("relnotes.example", f"{N} 1.4.0 is the latest {N} release.", T0 - DAY, "/old")]
+    docs = [Document(url=f"http://{h}{p}", final_url=f"http://{h}{p}", canonical_url=f"http://{h}{p}", domain=h,
+                     title=N, text=t, retrieved_at=at, retrieval_mode="live", published_at=pub) for h, t, pub, p in pages]
+    return cycles.investigate(db, task, docs, at)
+
+
+@pytest.mark.parametrize("origin, family, decides", [
+    ("pocket", "f" * 64, False), ("mcp", None, False), ("voice", None, False), ("curiosity", None, False),
+    ("console", None, True), ("cli", None, True)])
+def test_a_family_or_agent_task_never_lets_the_rule_replace_the_owners_item(origin, family, decides):
+    with adv._s_individual(f"m6-{origin}", **adv.RULE_ON) as (db, _):
+        kid = adv._s_item(db)
+        out = _origin_look(db, T0 + 2 * DAY, origin, family)
+        by_rule = [s for s in out["superseded"] if s.get("by") == "rule"]
+        assert bool(by_rule) is decides
+        assert adv._s_live(db, kid)["status"] == ("superseded" if decides else "provisional")
+
+
+def test_refreshes_let_the_rule_decide():
+    assert consolidate.rule_may_decide({"origin": "refresh:12"}) and \
+        consolidate.rule_may_decide({"origin": "refresh-owner:12"})
+    assert not any(consolidate.rule_may_decide({"origin": o}) for o in ("pocket", "mcp", "voice", "curiosity",
+                                                                        "monitor:3", "", None))
+
+
+# ---- M1 and L1: forget reaches the rule's records; a revert restores nothing forgotten and reopens what it closed -----
+
+def _replaced(db):
+    kid = adv._s_item(db)
+    out = adv._s_refresh(db, T0 + 3 * DAY)
+    new = next(s["new"] for s in out["superseded"] if s.get("by") == "rule")
+    return kid, new
+
+
+def test_a_revert_after_forgetting_a_source_of_the_replaced_item_does_not_write_it_back():
+    from neuroscifi.webcortex import knowledge
+    with adv._s_individual("m1-source", **adv.RULE_ON) as (db, _):
+        kid, new = _replaced(db)
+        governance.forget_source(db, "pkgwatch.example", T0 + 4 * DAY)
+        assert db.execute("SELECT count(*) FROM web_knowledge WHERE verification LIKE '%pkgwatch%' OR sources LIKE "
+                          "'%pkgwatch%'").fetchone()[0] == 0
+        live = knowledge.row(db, kid)
+        knowledge.revert(db, new, T0 + 5 * DAY)
+        old = knowledge.row(db, kid)
+        assert old["status"] == "provisional" and old["superseded_by"] is None
+        assert not any("pkgwatch" in (s.get("url") or "") for s in old["sources"])
+        assert (old["sources"], old["supporting"]) == (live["sources"], live["supporting"])
+        gone = set(old["supporting"]) - {r[0] for r in db.execute("SELECT id FROM web_claims")}
+        assert gone == set()
+
+
+def test_a_record_written_before_the_fix_is_cut_down_by_a_forget_and_never_written_back():
+    from neuroscifi.webcortex import knowledge
+    with adv._s_individual("m1-legacy", **adv.RULE_ON) as (db, _):
+        kid, new = _replaced(db)
+        legacy = {"sources": json.dumps([{"url": "http://pkgwatch.example/velmora"}]), "supporting": '["gone"]',
+                  "note": "old"}
+        with store.write(db):
+            db.execute("UPDATE web_knowledge SET verification=json_set(verification, '$.supersession.previous', "
+                       "json(?)) WHERE id=?", (json.dumps(json.loads(db.execute(
+                           "SELECT json_extract(verification, '$.supersession.previous') FROM web_knowledge WHERE "
+                           "id=?", (new,)).fetchone()[0]) | legacy), new))
+        live = knowledge.row(db, kid)
+        knowledge.revert(db, new, T0 + 5 * DAY)
+        assert (knowledge.row(db, kid)["sources"], knowledge.row(db, kid)["supporting"]) == \
+            (live["sources"], live["supporting"])
+    with adv._s_individual("m1-legacy-forget", **adv.RULE_ON) as (db, _):
+        kid, new = _replaced(db)
+        with store.write(db):
+            db.execute("UPDATE web_knowledge SET verification=json_set(verification, '$.supersession.previous.sources',"
+                       " ?) WHERE id=?", ('[{"url": "http://pkgwatch.example/velmora"}]', new))
+        governance.forget_source(db, "unrelated.example", T0 + 4 * DAY)    # any web forget scrubs the record
+        governance.forget_source(db, "pkgwatch.example", T0 + 4 * DAY)
+        record = knowledge.row(db, new)["verification"]["supersession"]["previous"]
+        assert set(record) <= set(consolidate.RESTORE_COLUMNS)
+
+
+def test_forgetting_the_replaced_items_research_leaves_no_trace_in_the_rules_records():
+    from neuroscifi.webcortex import knowledge
+    with adv._s_individual("m1-research", **adv.RULE_ON) as (db, _):
+        kid, new = _replaced(db)
+        task = knowledge.row(db, kid)["task_id"]
+        governance.forget_research(db, task, T0 + 4 * DAY)
+        assert db.execute("SELECT count(*) FROM web_knowledge WHERE id=?", (kid,)).fetchone()[0] == 0
+        assert "pkgwatch" not in json.dumps(knowledge.row(db, new)["verification"])
+        assert db.execute("SELECT count(*) FROM pending WHERE question LIKE ?", (f"%{N} 1.4.0%",)).fetchone()[0] == 0
+
+
+def test_a_revert_reopens_the_questions_the_rule_closed_and_marks_its_links():
+    from neuroscifi.webcortex import knowledge
+    with adv._s_individual("l1", **adv.RULE_ON) as (db, _):
+        kid = adv._s_item(db)
+        scope = f"web:knowledge:{kid}"
+        before = sorted(r[0] for r in db.execute("SELECT id FROM pending WHERE scope=? AND resolved_at IS NULL",
+                                                  (scope,)))
+        assert before, "the staging must leave the held item an open question"
+        out = adv._s_refresh(db, T0 + 3 * DAY)
+        new = next(s["new"] for s in out["superseded"] if s.get("by") == "rule")
+        assert db.execute("SELECT count(*) FROM pending WHERE scope=? AND resolved_at IS NULL", (scope,)
+                          ).fetchone()[0] == 0
+        result = knowledge.revert(db, new, T0 + 4 * DAY)
+        after = sorted(r[0] for r in db.execute("SELECT id FROM pending WHERE scope=? AND resolved_at IS NULL",
+                                                 (scope,)))
+        assert after == before and result["pending_reopened"] == before
+        links = [json.loads(d) for (d,) in db.execute("SELECT detail FROM web_claim_links WHERE kind='supersedes'")]
+        assert links and all(d.get("reverted") is True for d in links if d.get("by") == "rule")

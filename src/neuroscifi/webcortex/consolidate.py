@@ -1499,13 +1499,27 @@ def _sides(cluster) -> list[str]:
 #   and the side alone passes the bar of a newly verified item (evolution.cluster_verdict 'supported', _meets_bar,
 #   a well-formed claim). The new version's confidence is the side's own posterior (claims.score), never higher
 #   because of the replacement. It is provisional and asked for acceptance as every new item is; its verification
-#   record says decided_by "rule" and keeps the replaced row's columns as they were, so `knowledge.revert` restores
-#   them exactly. The contradiction question is recorded, answered by the rule, under the new version's scope (so
-#   forgetting the new version forgets it too; the replaced item's open questions are closed). Anything else
-#   stays "ask".
+#   record says decided_by "rule" and keeps the columns the replacement changed in the replaced row, as they were
+#   (RESTORE_COLUMNS: scalars only, never its sources or supporting claims: security review M1), so `knowledge.revert`
+#   restores them exactly and every other column is the live row's own (a forget since then stays forgotten). The
+#   contradiction question is recorded, answered by the rule, under the new version's scope (so forgetting the new
+#   version forgets it too; the replaced item's open questions are closed, their ids kept so a revert reopens them).
+#   Anything else stays "ask".
+# Who may let the rule decide (security review M6): only the owner's own research (console, CLI) and refreshes
+# (the owner's, and the background refresh and re-check the owner enabled). A Pocket family task, an MCP agent task,
+# voice, a monitor or curiosity always asks, as before lane S. Two colluding pages stating a newer value can still
+# replace a true item in the owner's own research or a refresh: the measured false-replacement risk (ADR-061), not
+# solved by this.
 RULE = "supersession-v1"
-RESTORE_COLUMNS = ("status", "valid_until", "superseded_by", "confidence", "uncertainty", "supporting",
-                   "contradicting", "sources", "note", "pending_id", "last_verified_at", "updated_at")
+RESTORE_COLUMNS = ("status", "valid_until", "superseded_by", "updated_at")
+RULE_ORIGINS = ("console", "cli")
+RULE_ORIGIN_PREFIXES = ("refresh:", "refresh-owner:")
+
+
+def rule_may_decide(task) -> bool:
+    """True when the supersession rule may decide inside this task's consolidation (see the section comment)."""
+    origin = str((task or {}).get("origin") or "")
+    return origin in RULE_ORIGINS or origin.startswith(RULE_ORIGIN_PREFIXES)
 
 
 def _rule_side(cluster, item, echoes=None):
@@ -1572,8 +1586,11 @@ def _replace_by_rule(db, task_id, cfg, found, item, freshness, now, summary, que
                                         verdict=verdict | record)
     db.execute("UPDATE web_knowledge SET status='superseded', valid_until=?, superseded_by=?, updated_at=? WHERE id=?",
                (valid_from, kid, now, item["id"]))
-    knowledge.close_questions(db, f"web:knowledge:{item['id']}", f"replaced by knowledge #{kid} (supersession rule)",
-                              now)
+    closed = knowledge.close_questions(db, f"web:knowledge:{item['id']}",
+                                       f"replaced by knowledge #{kid} (supersession rule)", now)
+    if closed:          # security review L1: a revert reopens them
+        db.execute("UPDATE web_knowledge SET verification=json_set(verification, '$.supersession.closed_questions', "
+                   "json(?)) WHERE id=?", (state.dumps(closed), kid))
     pid = db.execute("INSERT INTO pending(epoch,kind,scope,question,created_at,resolved_at,resolution) "
                      "VALUES(NULL,'ask',?,?,?,?,?)",
                      (f"web:knowledge:{kid}",       # the new version's scope: forgetting it forgets this record
@@ -1720,7 +1737,7 @@ def run(db, task_id, now, *, holder=None, set_aside=None) -> dict:
                     _contested_against(db, task_id, cluster, item, reason, now, summary, questions, ids_by_key,
                                        rule={"cfg": cfg, "freshness": freshness, "window": window, "focus": focus,
                                              "echoes": echoes}
-                                       if cfg.supersession == "independent" else None)
+                                       if cfg.supersession == "independent" and rule_may_decide(task) else None)
                     continue
                 described = "; ".join(sorted({c.get("description") or c.get("reason") or ""
                                               for c in cluster.contradicting} - {""})) or "the sources disagree"
