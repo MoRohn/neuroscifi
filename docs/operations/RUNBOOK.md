@@ -489,6 +489,17 @@ after the reviews; you can turn either on):
   blocks a subject for ever, it no longer slows writes, and "the AI Act" is no longer read as AI text. While it is off
   (the default), such a page counts like any other page, also when it says an assistant or an AI wrote it: that check
   is part of this rule.
+- `origin_grouping` (ADR-063), **off** (`"transitive"`): a known weakness stays at the default. One page that says a
+  story "was first published by" one honest site and "originally appeared in" another makes those two sites count as
+  one source, so a fact both report is not confirmed. Setting it to `"one_way"` makes such a page count with only one
+  of the sites it names. It is off because, as first built, it made some copies of one story count as several sources
+  (the worse mistake), and no test world contains such pages, so neither choice is measured. It applies to pages read
+  after you change it:
+
+  ```sh
+  nsf web config --db DB --set 'origin_grouping="one_way"'      # opt in (your decision; not recommended on this evidence)
+  nsf web config --db DB --set 'origin_grouping="transitive"'   # back to the default
+  ```
 
 To check or change them (`DB` is the individual's file):
 

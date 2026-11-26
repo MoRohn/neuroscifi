@@ -25,15 +25,17 @@ story that are reworded can still count as separate confirmations, and pages rep
 still count as proof, also when they say an AI wrote it (that check belongs to the echo rule, which is off). Reading the wording of a sentence cannot tell where a fact came
 from; a sound rule would look at which page published a value first and which pages copied it, or ask you. That rule
 is not built; it is the first next step (§6).
+Also still there, older than Wave 3: **one web page that claims a story was first published by two different sites
+joins those two sites into one source**, so a true fact they both report is not confirmed. A fix was built and is
+**off**: the last check found it made some copies of one story count as several confirmations, which is the worse
+mistake, and none of the test worlds contains such pages, so neither way could be measured
+([ADR-063](../architecture/ARCHITECTURAL_DECISIONS.md); the setting `origin_grouping`, which you can turn on).
 
 **What Wave 3 did change for you:**
 - `nsf imagine scm` now answers a kind of causal question it used to decline, and says how it got the answer
   (checked exactly on 12 of 12 held-out questions, `genesis_frontdoor.json`); a last test on unseen questions is
   pending.
 - Background research started by the worker when idle now stops at your daily task limit, as the timer's always did.
-- One web page that claims to have been first published by two different sites can no longer stop a true fact
-  those two sites report from being confirmed (a defect older than Wave 3, found by the last security check;
-  [ADR-063](../architecture/ARCHITECTURAL_DECISIONS.md); nothing the benchmarks measure moved).
 - The console overview and Pocket no longer rebuild their buttons when nothing changed, so the keyboard stays put.
 - Two read-only aids: predictive regulation "in shadow" writes down what it would have done, without doing it, and
   `nsf readiness` counts how many real outcomes each learning part still needs.
@@ -149,7 +151,12 @@ Nothing lost: the offline research benchmark's digest at the shipped defaults is
   adjustment answers them (the group 0 → 1.000, 12 of 12; pooled 0.875 → 1.000, `genesis_frontdoor.json`, ADR-059),
   on exact or stated moments only; its withheld look is pending.
 - **Source independence is decided by wording, not by origin** (Wave 3): the hole the withheld learning-cycle look
-  found is open at the shipped defaults ([WAVE3.md](WAVE3.md)).
+  found is open at the shipped defaults ([WAVE3.md](WAVE3.md)). So is an older defect of the same rule: one page
+  naming two honest outlets as its origins joins them into one source and their true fact is not verified (review3b
+  N1). The one-way rule that closes it on staged pages is built and off (`origin_grouping`, ADR-063): as first shipped
+  it made copies naming several origins count as several sources (review3c F1); a page on a host named like an
+  outlet can still join two honest outlets (F2), and "Originally published by X" at the start of a sentence is not
+  read (F3). No benchmark world holds a page naming several origins.
 - **Everything measured is synthetic**: fictional worlds through the real code, offline; the anticipation plant's
   constants are declared.
 - **Open findings** from Wave 2 (the review findings are all fixed, WAVE2.md §4): reflections are kept without a cap
@@ -178,6 +185,7 @@ Each with the command an owner would run (from [REGRESSION_VERIFICATION.md](REGR
 | Decision | Today | Evidence for | Evidence against | What would settle it |
 |---|---|---|---|---|
 | **Automatic supersession of a stale item** (`supersession`, built in Wave 3, off: a newer version stated by at least two independent sources replaces the older one without asking) | `"ask"`: contradictions are asked, never decided (ADR-026, ADR-038) | it asks fewer questions and catches stale items sooner (lane S) | gain below the spread in every world; 3 of 23 rule replacements false on lane S's held-out; of the 5 false replacements in those runs (3 by the rule, 2 by the path that existed before), 4 still wrong when the run ended, the longest at least 10 cycles (`genesis_wave3_fix_s.json`); development evidence only; forget and revert, and family or agent tasks triggering it, fixed by the fix lane; two colluding pages can still replace a true item | its withheld look (supersession on the shipped defaults, both source rules off: not the configuration measured here; reported, cannot switch it on); a sound source-independence rule first (§6, rank 1) |
+| `origin_grouping` (built in Wave 3's second fix lane, off since the third: a page naming its origin attaches to one origin only) | `"transitive"`: as before Wave 3's fix lanes; a page naming two honest outlets as its origins joins them (review3b N1, open) | closes N1 on staged pages; with the reviewer's edge choice, copies naming several origins count once on every staged case | as first shipped it counted such copies as 2–3 sources (review3c F1); F2 open for names other than the news wires'; no benchmark world holds a page naming several origins, so neither direction is measured (ADR-063) | worlds with multi-origin copies and pages naming two honest outlets, written by someone other than the rule's author and committed first (§6, rank 1) |
 | the two source rules (`attribution_independence`, `echo_recognition`) | off (fix lane) | none that survived review | read only their worlds' phrasings; merge honest outlets; discard honest pages (WAVE3.md §3.1) | a different kind of rule (§6, rank 1) |
 | `predictive_regulation` | off; `"shadow"` gathers evidence without acting (Wave 3) | simulated plant: 0.80 of memory breaches avoided held-out, 0.83 withheld | costs work given up (0.044 → 0.106) and false alarms (0.009 → 0.043); the plant's constants are declared; the shadow report counts what the forecast adds separately since the fix lane (staged held-out: 198 added false alarms against 78 added hits) | a week of shadow on the host: `nsf config --predictive-regulation-shadow`, then `nsf internal-state --shadow-report` |
 | `recheck_order` | `"staleness"` | none on held-out | every order "no evidence" (ADR-060) | none planned |
@@ -201,7 +209,7 @@ withheld world for the knowledge loop (step 0), re-checking by observed change (
 
 | Rank | Direction | Why (the measurement behind it) | How to test it fairly |
 |---|---|---|---|
-| 1 | **A sound rule for source independence and for the individual's own text** | the withheld look (step 0) admitted own-text and copied-story versions and raised a confidence on one source, where 120 held-out runs never had; lane S's phrase-parsing rules did not close it: they read only the five credit forms and two model credits their worlds were written with (19 of 27 common credits missed; echoes that credit no model pass at 67–100 %), and merged honest outlets that credit each other (review S-1 to S-4, security H1, M2–M5). What Wave 3 learned: the wording of a sentence does not say where its value came from | decide dependence by derivation, not wording: which page stated a value first (publication order, the individual's own answers by time) and which pages share its text or value afterwards; or ask the owner. New worlds written by someone other than the rule's author, with honest outlets that credit each other and copies in many phrasings, committed first; false rejections counted as carefully as false admissions; then one withheld look |
+| 1 | **A sound rule for source independence and for the individual's own text** | the withheld look (step 0) admitted own-text and copied-story versions and raised a confidence on one source, where 120 held-out runs never had; lane S's phrase-parsing rules did not close it: they read only the five credit forms and two model credits their worlds were written with (19 of 27 common credits missed; echoes that credit no model pass at 67–100 %), and merged honest outlets that credit each other (review S-1 to S-4, security H1, M2–M5). What Wave 3 learned: the wording of a sentence does not say where its value came from. Three known failure shapes of today's rule, each staged in a test: reworded copies that name no origin count as independent; a page naming two honest outlets as its origins joins them (review3b N1, open at the defaults); copies naming several origins count as several sources under a one-way rule (review3c F1, `origin_grouping`, off; ADR-063) | decide dependence by derivation, not wording: which page stated a value first (publication order, the individual's own answers by time) and which pages share its text or value afterwards; or ask the owner. New worlds written by someone other than the rule's author, with honest outlets that credit each other, copies in many phrasings, pages naming two honest outlets as their origins, copies carrying a second origin line ("(AP)" plus "first appeared in X") or naming each other, and a host named like a wire or an outlet, committed first; false rejections counted as carefully as false admissions; then one withheld look |
 | 2 | **A share of the allowance for never-covered subjects** | coverage is limited by the allowance, not by candidates: with the timer first the idle path gets 0.25–5.75 looks per run against tens of admitted, unreached subject-cycles; taking the allowance first removes 51–83 % of the uncovered part but displaces due refreshes (ADR-062) | choose the share on development; test on worlds no lane has seen |
 | 3 | **Gather real settled outcomes**, with the owner's consent | every learner of real outcomes is starved; `nsf readiness` now counts how far each is from its minimum (ADR-058) | weeks of normal use; fit and test only on a split written before the fit |
 | 4 | **Measure the one instinct gain on the host** | predictive regulation's 0.80 is from a plant with declared constants | a week of shadow (ADR-058), read by `settled.added` and the `guide` committed before any host data |

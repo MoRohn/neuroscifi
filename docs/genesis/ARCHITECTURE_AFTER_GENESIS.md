@@ -221,12 +221,17 @@ to 20 lines. The line numbers in §4 are this tree's.
 
 ## 8. After Wave 3 (2026-11-26; [WAVE3.md](WAVE3.md))
 
-Read from the merged tree `f0a1f09`, the reconciliation branch and the fix lane (`gen3-fix`); ADR-058 to ADR-062.
+Read from the merged tree `f0a1f09`, the reconciliation branch and the fix lanes (`gen3-fix`, `gen3-fix2`,
+`gen3-fix3`); ADR-058 to ADR-063.
 
 **What counts as an independent source.** Consolidation counts the independent groups of a cluster's claims with
 `claims.independence_groups`: claims join one group when they share a host, a near-identical sentence, an attribution
 line ("first appeared on …") or a canonical URL (`claims.stamp_origins` writes those origins into each claim's flags,
-so stored clusters keep them). That is the rule at the shipped defaults, as at step 0. With
+so stored clusters keep them), transitively. That is the rule at the shipped defaults, as at step 0
+(`origin_grouping` "transitive"; the code of `3ce4ae3`, unchanged). Its known defect: one page naming two honest
+outlets as its origins joins them into one source (review3b N1, open). With `origin_grouping` "one_way" (off; ADR-063)
+such a page attaches to one origin only (`claims._one_way_groups`, the edge chosen by content), on claims stamped
+while it is set (`flags["origin_grouping"]`); it is checked on staged pages only. With
 `attribution_independence` on (it ships off since the fix lane; the owner may turn it on), `claims.attribution_keys` also reads an outlet the sentence
 credits ("According to X, …", "…, X says.", "… (X).", "… via X.", "…, the X desk reports") as that claim's origin;
 it reads only those forms, and a sentence crediting two outlets joins them (security review H1). The rule cannot see a
@@ -271,6 +276,7 @@ imagined, never evidence; nothing stored; the command opens no individual.
 | `attribution_independence` (web) | off (fix lane) | absent |
 | `echo_recognition` (web) | off (fix lane) | absent |
 | `supersession` (web), `supersession_min_sources` | `"ask"`, 2 | absent (contradictions asked) |
+| `origin_grouping` (web, third fix lane) | `"transitive"` | absent (the grouping of `3ce4ae3`; N1 open) |
 | `recheck_order` (web) | `"staleness"` | real only with `idle_recheck` on (off) |
 | `predictive_regulation` (instance) third value `"shadow"` | `false` | absent; display-only when set |
 | front door (`nsf imagine scm`) | on | real for the owner's command (an answer shown, nothing stored) |

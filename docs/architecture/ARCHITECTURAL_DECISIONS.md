@@ -3520,10 +3520,11 @@ before any mechanism, development seeds 241-243, held-out 341-344) without readi
    and `stamp_origins(attribution=True)` records it in `flags["credited"]` (since the fix lane; it was an origin key,
    which let one sentence crediting two honest outlets join them, security H1): a group made only of crediting claims
    counts with ONE outlet it credits, and a group holding a claim that credits no one never moves on a credit, so a
-   credit never joins two of them. Since the second fix lane (ADR-063, review3b N3, N10) the outlet is chosen from the
-   group's own content (the smallest credited key that names a group read; else the smallest credited key, where
-   copies of one unread outlet meet), not by the order of the claims, and a page that credits no one but carries two
-   outlets' keys ("(Reuters) (Bloomberg)") no longer absorbs two honest outlets that credit them. A credit to the sentence's own subject ("..., the Velmora team says")
+   credit never joins two of them. With `origin_grouping` "one_way" (ADR-063; off by default) the outlet is chosen
+   from the group's own content, not by the order of the claims, and a page that credits no one but carries two
+   outlets' keys ("(Reuters) (Bloomberg)") does not absorb two honest outlets that credit them; at the default
+   ("transitive", the grouping of `3ce4ae3`) both stay open with this rule on (review3b N3, N10: the merge of crediting
+   groups depends on their order, and such a page joins the two outlets). A credit to the sentence's own subject ("..., the Velmora team says")
    and indefinite speakers ("Someone says") give no key.
 2. **Echoes (`echo_recognition`, OFF since the fix lane).** In consolidation (`_Echoes`, `_without_echoes`), a claim is an echo when it
    states, for a subject the individual's stored model-written answer names, a specific value that answer stated
@@ -3930,63 +3931,147 @@ tested on worlds no lane has seen, since these held-out worlds have now been use
   - An owner who answers.
   - The withheld worlds.
 
-# ADR-063 A page's named origin attaches it to one origin; it never joins two others into one source
+# ADR-063 How a page that names its origin counts: the shipped grouping is unchanged; the one-way rule is built and OFF
 
-Status: Wave 3, second fix lane (`gen3-fix2`), after the security review of the fix round (review3b N1, N3, N10).
-Changes the shipped behaviour of `claims.independence_groups`; measured below. No setting, no schema change.
+Status: built, **OFF** (`origin_grouping`, default `"transitive"`). Wave 3, third fix lane (`gen3-fix3`), after the
+final verification (review3c F1–F5). Supersedes this ADR's earlier text (second fix lane, `gen3-fix2`), which had made
+the one-way rule the shipped behaviour. No schema change; one new web setting.
+
+**The defect this ADR is about is OPEN at the shipped defaults** (review3b N1, older than Wave 3, since `10339b8`): one
+page that names two honest outlets as its origins ("This story was first published by Devdesk. It originally appeared
+in Factline.") joins them into one independent source, so the version they both state is not verified.
 
 ## Context
 
 `claims.origin_keys` reads the origin a republished page names: a canonical URL on another host (`site:`), an
 attribution line ("first appeared on", "originally published by", ...) or a wire credit ("(Reuters)", "By Reuters")
-(`name:`). Since `10339b8` (ADR-035, before Wave 3) every claim of the page carries those keys, and
-`independence_groups` joined two claims whenever one's keys met the other's keys or its own site, transitively. One
-page that names two honest outlets as its origins ("This story was first published by Devdesk. It originally appeared
-in Factline.") therefore joined both outlets into one source, and their true value was never verified (review3b N1,
-probe `p10i_docbridge.py`, at the shipped defaults; the same suppression the fix lane closed for sentence credits,
-security H1, through another path). With `attribution_independence` on, a page crediting no one but carrying two wire
-credits ("(Reuters) (Bloomberg)") absorbed two honest outlets that credited those wires (N3), and the merge of
-crediting groups depended on the order of the claims (N10).
+(`name:`). Since `10339b8` (ADR-035) every claim of the page carries those keys, and `claims.independence_groups`
+joins two claims whenever one's keys meet the other's keys or its own site or site label, transitively. That is what
+makes copies of one story count once. It is also what lets one page join two honest outlets (N1). With
+`attribution_independence` on (off by default), a page crediting no one but carrying two wire credits ("(Reuters)
+(Bloomberg)") joined two honest outlets that credited those wires (N3), and the grouping of crediting claims depended
+on the order of the claims (N10).
+
+The second fix lane changed the shipped grouping to a one-way rule (each page attaches to ONE origin; `fe82ac1`) to
+close N1, N3 and N10. The final verification (review3c) found that this made copies of one story count as SEVERAL
+sources where they had counted as one (F1): copies that name the origin and each other; copies of an origin that was
+not read, each adding a different second origin that sorts first; an honest "first appeared in the Regional Times.
+(AP)" beside a plain copy of the same story. And no benchmark world holds a page naming two origins (review3c item
+1(e): 0 such pages in lane F's and lane S's development and held-out worlds; 2 of 61 offline-corpus pages carry one
+origin key each), so neither direction of the change was measured. Counting copies as independent is the more
+dangerous error for this system (it is how a wrong, copied story becomes knowledge); failing to verify a true fact is
+the safer one. The main session decided not to change the shipped grouping in Wave 3.
 
 ## Decision
 
-- Claims are first grouped by what makes them one source in any case: the same host, near-identical sentences
-  (3-word shingle Jaccard >= 0.8), and copies of one document (`doc:` keys of `document_origins`). That join stays
-  transitive.
-- A named origin (`name:`, `site:`) and, with `attribution_independence`, the outlets a group made only of crediting
-  claims credits, attach that group ONE WAY: each group takes at most one edge, to the group read on the named site or
-  under the named site label (the smallest such key in sort order; of several groups owning it, the one whose hosts
-  sort first), or, when no group read is that origin, to the smallest named key itself, where copies of one unread
-  origin meet. A group holding a claim that credits no one moves only on its pages' named origins, never on a credit.
-- Because every group has at most one such edge, a component holds at most one group that names nothing: a page that
-  names several origins counts with one of them (deterministically, by the content, not the order of the claims) and
-  never joins two honest outlets. A syndicated copy that names one origin counts with it exactly as before, and copies
-  naming one unread origin are one source, as before.
+- `WebConfig.origin_grouping` (web, owner-set like every web setting, validated, checked when read: a damaged value
+  reads as `"transitive"` and is listed by `setting_problems`):
+  - `"transitive"` (the default): `independence_groups` is the code of `3ce4ae3`, unchanged (its `independence_groups`
+    and `_groups_with_credits`): same groups for every input and in every order of the input as at `3ce4ae3`. N1 is
+    open; with `attribution_independence` on, the credit grouping is the fix lane's (security H1 closed) and N3 and
+    N10 are open as they were at `3ce4ae3`.
+  - `"one_way"`: the second fix lane's rule with the reviewer's edge choice (`claims._one_way_groups`, `_one_way`).
+    Same host, near-identical sentences and copies of one document stay a transitive join. A page naming an origin,
+    and with `attribution_independence` a group made only of crediting claims, takes ONE edge, chosen from content
+    only: to a group read on a named site or under a named site label that names nothing itself (an original); else
+    to any group read there; else to the named key no group read owns that the most groups name (copies of one unread
+    origin meet there, whatever else each names); ties by key, then by the owner's sorted hosts. A wire's name (the
+    names of `_WIRES`) is owned only by that wire's own site (`_WIRE_SITES`: reuters.com, apnews.com, ap.org, afp.com,
+    dpa.com, pa.media, upi.com, ansa.it, efe.com, kyodonews.net, xinhuanet.com, news.cn, bloomberg.com, and their
+    subdomains), never by another host whose site label is that name (review3c F2's narrower fix).
+- How the setting reaches the grouping: `claims.stamp_origins(..., grouping=cfg.origin_grouping)` (the orchestrator's
+  two calls, the learning-cycles harness) marks each claim it stamps `flags["origin_grouping"] = "one_way"`, or removes
+  the mark; `independence_groups` uses the one-way rule only when EVERY claim it is given carries the mark, so the
+  rule follows the claims into scoring, the report, consolidation and stored clusters. A grouping that includes one
+  claim read with the setting off uses the default; a claim never marked is left exactly as it was (at the default no
+  stored claim changes). A one-way grouping that fails is logged (its type only) and the default decides.
+- Not done (decided against): the reviewer's "roots-only" ownership (only a page that names nothing owns its keys). It
+  closes F2 for every name but splits reworded copy-of-copy chains (review3c: B3 3 groups instead of 1).
 
-Adversarial expectations committed first (`3257261`), then the cases (`3cdfeb0`, two of three failing on the code
-before the fix), then the fix: origin `added_wave3_fix2` in `acceptance/cognition/
-adversarial.py` (a page naming two outlets as its origins merges neither; a copy naming one origin still counts with
-it; a page carrying two wire credits absorbs no honest outlet). Unit tests in `tests/acceptance/test_wave3_fix.py`
-(N1, N3, N10: every order of three crediting claims gives the same groups).
+## The proof that the default is the grouping of 3ce4ae3
 
-## What moved (measured on this tree, before and after the change, everything else equal)
+- `tests/webcortex/test_origin_grouping.py`: 32 scenarios, every page order of each (496 orders): every one of
+  review3c's probes (`p20_n1_purpose`: B1–B4, C1–C9c and N1's bridge; `p22_credits`; `p25_label_owner`: F2's pages,
+  datelines and credits; `p10b`/`p10_h1_variants`: N3, N10) and the second fix lane's three adversarial pages. The
+  groups `3ce4ae3`'s code gives were computed once with review3c's `oldgroups.py` (the two functions of `3ce4ae3`,
+  exec'd over the claims module) and are embedded as literals; the default must give exactly those in every order
+  (N10's grouping depended on the order at `3ce4ae3` and is given per order). Comparing the full output lists of the
+  two codes on the same 496 inputs: 0 differ.
+- `scripts/compare_origin_grouping.py` (reads `3ce4ae3`'s functions from git and compares output lists, group and id
+  order included):
+  - worlds: every look of lane F (`cycles_splits`), lane S (`cycles_splits_s`), lane S's variant worlds (every
+    variant), lane R (`cycles_rate_splits`), development and held-out (never the withheld worlds), all claims of a look
+    and each value's side, reading order and reversed, `attribution_independence` off and on: **614,988 inputs, 0
+    differ**;
+  - offline research benchmark: every call the product makes to `independence_groups` during one run at the shipped
+    defaults and one with every setting off, also answered by `3ce4ae3`'s code: **8,437 calls, 0 differ**; the digest
+    of those runs `68731d7235cb…` (portable `d87dbb4fb77f…`) in both regimes.
+- At the shipped defaults on this lane's code (`860db86`): the offline research digest `68731d7235cb…` (portable
+  `d87dbb4fb77f…`), as at `3ce4ae3`; `nsf acceptance --all` 7 of 7; the sentence guard's differential 1,937
+  compared, 1,688 identical, 232 stricter, 17 loosened, 0 different; `scripts/reproduce.py` 8 of 8 verified; the
+  cognitive benchmark's retention family all retained and all scenarios pass on both splits, and its adversarial
+  family 55 of 55 scored cases pass on both splits (61 lines: 55 cases and 6 "not staged" lines, one of them the
+  KNOWN OPEN item below; by origin 13 / 4 / 1 / 10 / 5 / 16 / 3 / 3).
 
-- Offline research benchmark (`scripts/bench_wave1.py offline`): `68731d7235cb…` at the shipped defaults and with every
-  setting off, before and after (portable `d87dbb4fb77f…`); 0 differing leaves (`scripts/diff_deterministic.py`).
-- Lane F's learning cycles (`scripts/bench_learning_cycles.py run`, development and held-out): 0 of 5,490 and 0 of
-  7,320 per-seed values differ; identical to the fix lane's evidence `genesis_wave3_fix_cycles.json`.
-- Lane S's family (`scripts/bench_wave3_s.py run`, every configuration, both families and splits, 352 runs): 0 of
-  29,920 per-seed values differ; the census and the verdicts are equal.
-- None of these worlds has a page naming two origins, so nothing there was a wrongly merged group: the change removes
-  the suppression where it occurs and moves nothing the benchmarks measure.
-- After the change (with the second fix lane's other fixes): cognitive benchmark, both splits: retention all retained; adversarial 52 of 52 scored cases pass (57 cases; 13 / 4 /
-  1 / 10 / 5 / 16 / 3 by origin). The guard differential: 1,937 compared, 0 different. The claim-dependence tests
-  pass unchanged (none loosened).
+## What "one_way" does on review3c's scenarios
+
+Groups per scenario (the number of independent sources; every order gives one grouping for both rules except where
+said):
+
+| scenario | default = `3ce4ae3` | one-way as shipped at `2c48865` | `"one_way"` now |
+|---|---|---|---|
+| N1 bridge: two honest outlets and a page naming both | 1 (honest outlets joined) | 2 | 2 |
+| the second fix lane's bridge page (adversarial case) | 1 | 2 | 2 |
+| C2: a copy naming its origin and a second, read, honest outlet | 1 (honest outlets joined) | 2 | 2 |
+| C4: two copies naming the origin and each other | 1 | **2** | 1 |
+| C4b: four copies, two mutual pairs | 1 | **3** | 1 |
+| C7: "first appeared in the Regional Times. (AP)" beside a plain copy (origin not read) | 1 | **2** | 1 |
+| C7b: copies naming {Kappa Wire, Zeta Wire}, {Zeta Wire}, {Zeta Wire} | 1 | **2** | 1 |
+| C9: copies of an unread wire, each adding a distinct second origin sorting first | 1 | **3** | 1 |
+| p22: the credit form of C9 (attribution on) | 1 | **3** | 1 |
+| F2, datelines: "(Reuters)" and "(Bloomberg)" outlets, a page on reuters.<tld> carrying "(Bloomberg)" | 1 (honest outlets joined) | 1 (joined) | 2 |
+| F2, credits (attribution on): the same with "According to ..." | 2 | 1 (joined) | 2 |
+| N3: a page carrying "(Reuters) (Bloomberg)" beside outlets crediting each (attribution on) | 1 (joined) | 2 | 2 |
+| N10: X credits Reuters, Y Bloomberg, Z both (attribution on) | 1 group in 4 of 6 orders, 2 in the other 2 (3 groupings) | 2 in every order | 2 in every order |
+| B1–B4, C1, C3, C3b, C5, C6, C8, C9b, C9c, p22 wire page and copies | equal in all three | | |
+
+With the setting on, every F1 scenario is one source again and N1's bridge stays closed; adversarial cases (origin
+`added_wave3_fix3`, expectations committed first, `a9b41d5`) stage C9, C7 and C4 through the real look: one group and
+no knowledge row each with the setting on; with `2c48865`'s edge choice patched in they fail (3, 2 and 2 groups, a
+row each). The second fix lane's three cases (`added_wave3_fix2`) now switch the setting on themselves and their
+expectations say so. Its third case was re-staged (recorded first, `147cfe9`): its second honest outlet's sentence
+("is the newest") fell into another statement cluster than the first's, so the knowledge row it saw came from the
+third page counted as a second source beside the first outlet; with the new edge choice that page counts with the
+outlet crediting the wire it names (no row), which is F1's correction, not the suppression the case guards against.
+At the default, the defect is listed as KNOWN OPEN in the family's "not staged" list (`known_open_wave3`), never
+counted as a pass: the family scores every staged case as a pass or failure of a safety property.
+
+## What stays open
+
+- **N1 at the shipped defaults** (above), and with `attribution_independence` on, N3 and N10 as at `3ce4ae3`.
+- **F2** with the setting on, for names other than the wire names: a page on a host whose site label is the name an
+  honest copy credits (not a wire's), naming another outlet, still joins two honest outlets (the one-way rule lets a
+  group that itself names an origin own its site label). At the default F2's dateline form joins them too, as at
+  `3ce4ae3`.
+- **F3**: the attribution pattern is case-sensitive, so "Originally published by X" or "Republished from X" at the
+  start of a sentence gives no origin and such copies look independent. Not changed: it would change the shipped
+  grouping.
+- **No benchmark world exercises a page naming several origins**, so neither rule is measured on anything but staged
+  pages, and the real-web prevalence of either shape is unknown. A real fix needs worlds, written by someone other
+  than the rule's author and committed first, in which some wire copies carry a second origin line ("(AP)" plus
+  "first appeared in X"), copies name each other, honest outlets are named together on one page, and a host is
+  labelled like a wire or an outlet; scored for false admissions (copies counted apart) and false rejections (honest
+  outlets joined) alike.
+- Wording is not provenance (ADR-061): copies that reword a story and name no origin look independent under either
+  rule.
 
 ## Consequences
 
-- At the shipped defaults one page can no longer stop a true fact from being verified by naming two honest outlets
-  as its origins. A page that names an origin falsely still counts with the outlet it names (it is not a second
-  source); a value stated by two independent honest outlets is admitted whatever a third page says it copied.
-- Not changed: copies that name no origin and reword the story still look independent (wording is not provenance;
-  ADR-061). Real-web prevalence of either wording is not measured.
+- At the shipped defaults nothing moved against `3ce4ae3`: the measurements above. The second fix lane's change of the
+  shipped grouping is undone; its other fixes (N2–N9) are untouched.
+- An owner who sets `origin_grouping` to `"one_way"` (`nsf web config --db DB --set 'origin_grouping="one_way"'`)
+  trades a known suppression (N1) for an unmeasured risk: the edge choice is checked only on staged pages. It applies
+  to claims read while it is set; setting it back to `"transitive"` returns the default grouping on the next task (the
+  rollback test). Claims read while it was set keep their mark, so a grouping made only of them (an older stored
+  cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
+  it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).
