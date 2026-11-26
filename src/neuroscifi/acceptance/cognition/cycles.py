@@ -1126,7 +1126,7 @@ def final(note, *, configs=None, mechanism="baseline") -> dict:
     references from the generator alone and each world's digest per seed."""
     from datetime import datetime, timezone
     from .. import cognition
-    if not note:
+    if not (note or "").strip():         # review3c F5: a note of only spaces is no reason either
         raise cognition.Refused("final: a note is required (it is the ledger line's reason)")
     known = configurations() | EXTRA
     configs = configs or {k: known[k] for k in FINAL_CONFIGS}

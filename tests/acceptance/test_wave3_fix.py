@@ -786,6 +786,48 @@ def test_the_counterfactual_look_refuses_a_changed_withheld_file_before_the_ledg
     assert not sealed.exists()
 
 
+def test_the_cycles_look_refuses_a_note_of_only_spaces_before_the_ledger(sealed):
+    """review3c F5: cycles.final checked `not note`, so "   " passed where cognition.run(final=True) refuses it."""
+    from neuroscifi.acceptance import cognition
+    from neuroscifi.acceptance.cognition import cycles
+    for note in ("", "   ", "\t\n"):
+        with pytest.raises(cognition.Refused, match="note"):
+            cycles.final(note)
+    assert not sealed.exists()
+
+
+def test_the_baseline_command_refuses_an_output_a_look_may_not_write_before_running_anything(sealed, monkeypatch,
+                                                                                           tmp_path):
+    """review3c F4: `bench_cognition.py baseline` takes a withheld look (cognition.run(["withheld"], final=True)) but
+    had none of run --final's --out checks; it now refuses the same outputs before running any family, and a refusal
+    from the look itself is an exit code, not a traceback."""
+    from pathlib import Path
+    from neuroscifi.acceptance import cognition
+    calls = []
+
+    def fake_run(families=None, *, split=None, mechanism="baseline", final=False, note="", **kwargs):
+        calls.append((tuple(families or ()), split, mechanism, final))
+        if final:
+            raise cognition.Refused("staged: the look's own checks")
+        return {"families": {f: {} for f in (families or ())}}
+    monkeypatch.setattr(cognition, "run", fake_run)
+    bench = _script("bench_cognition")
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    inside = Path(__file__).resolve().parents[2] / "baseline-out.json"
+    try:
+        for out in ([], ["--out", str(inside)], ["--out", str(tmp_path / "missing" / "b.json")],
+                    ["--out", str(locked / "b.json")], ["--out", str(tmp_path)]):
+            assert bench.main(["baseline", *out]) == 2, out
+        assert calls == [] and not inside.exists()
+    finally:
+        locked.chmod(0o700)
+    assert bench.main(["baseline", "--out", str(tmp_path / "b.json")]) == 2       # refused by the look's own checks
+    assert calls[-1] == (("withheld",), None, "baseline", True) and not (tmp_path / "b.json").exists()
+    assert not sealed.exists()
+
+
 def _front_door_pair(error):
     on = {"ablate": [], "families": {"counterfactual": {
         "mechanism": {"used": "imagination", "fell_back_to_baseline": False},
