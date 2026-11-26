@@ -71,6 +71,8 @@ def main(argv=None) -> int:
                     "model; search, fetching and the owner substituted",
            "commit": _commit(), "environment": {"python": platform.python_version(), "machine": platform.machine()}}
     out |= cycles.run_split(a.split, configs=configs, cycles=a.cycles)
+    if a.cycles is None:        # lane Y (H4): the references, from the world generator alone (no product code)
+        out["references"] = cycles.run_references(a.split)
     out["wall_seconds"] = time.perf_counter() - started
     _write(out, a.out)
     return 0
