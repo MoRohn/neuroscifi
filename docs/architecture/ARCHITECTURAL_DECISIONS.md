@@ -3055,7 +3055,8 @@ each is. Both additions here record or read; neither changes what the individual
    kind (`evolution._KIND_SQL`) and month, open, and settled-but-forgotten; answers (completed or partial tasks)
    with a later verdict (a prediction on knowledge the task produced, settled confirmed or error: no record pairs an
    answer with a verdict on the answer itself); hypotheses by status; re-checks that found a change, none,
-   undecided, closed by another path, dropped, open; scenario records settled. Each learner with its minimum read
+   undecided, closed by another path, dropped, open; scenario records settled (through `scenarios.errors`, the
+   mechanism's own report: this module never touches the imagined store). Each learner with its minimum read
    from its module at run time (`evolution.RECALIBRATION_MINIMUM` per kind, `monitoring.MIN_ITEMS` and
    `MIN_BLOCKS` with the shipped maps' items and blocks), what is missing, the rate over the last 90 days (or since
    the first) and the earliest date at that rate ("unknown" at rate zero, "met"); scenario records, hypothesis
@@ -3082,7 +3083,7 @@ each is. Both additions here record or read; neither changes what the individual
   after a new sample (the forecast computed, a line appended; at most once per sample per process): mean 1,041 →
   1,751 µs (development) and 795 → 1,320 µs (held-out), p95 up to 3.3 ms; the "off" figure includes re-reading the
   setting because the staged file changes every tick. `nsf readiness` at 10,000 knowledge items, 500,000 events,
-  20,000 predictions, 10,000 tasks: median 31 ms (5 runs).
+  20,000 predictions, 10,000 tasks, 1,000 scenario records: median 36 ms (5 runs, commit `a8de711`).
 - **Fault injection** (`tests/uat/test_uat_shadow_faults.py`): a forecast that raises, times out or returns garbage,
   a failing history read, a FIFO in place of the record, a roll-up that cannot be written: the gate's decisions equal
   those with the setting off on every tick, a WARNING names the kind (never the message), the report counts the
