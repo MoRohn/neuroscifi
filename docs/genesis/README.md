@@ -70,7 +70,7 @@ outcome.
 | 1, closing | re-review of the fix round, fix lanes D and E, a second check, final validation, the one withheld look | done: [WAVE1.md](WAVE1.md) §6.5, §7, §8; then PR into `main` |
 | 2 | U regression and cognitive UAT; F the recursive knowledge assessment; L the integration loop; X follow-ups; D deliverables E, G, I, J | U, F, L integrated on `genesis-wave2` (`828ca8e`); X and D from it; record in [WAVE2.md](WAVE2.md) |
 | 3 | 0 withheld learning-cycle worlds and one look; P the digest across hosts and the redraw; C the front door; H shadow and readiness; R the re-check's order; S source independence and supersession; V coverage; REC the reconciliation | merged on `genesis-wave3` (`f0a1f09`); two reviews; a fix lane; record in [WAVE3.md](WAVE3.md) |
-| 4 | 0 source-independence worlds and one look; S derivation; E own-text provenance; D settings, budgets, the restore, the caution; A the allowance's division and the tie-breaks; INT the two rules wired; FIX | on `genesis-wave4` (`3032cf6`); two reviews (second passes pending); a fix lane; withheld look and final validation pending; record in [WAVE4.md](WAVE4.md) |
+| 4 | 0 source-independence worlds and one look; S derivation; E own-text provenance; D settings, budgets, the restore, the caution; A the allowance's division and the tie-breaks; INT the two rules wired; FIX | on `genesis-wave4` (`3032cf6`); two reviews and their second passes (both: may merge); a fix lane; withheld look and final validation pending; record in [WAVE4.md](WAVE4.md) |
 
 ## Documents
 
