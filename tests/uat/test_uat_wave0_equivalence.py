@@ -26,7 +26,8 @@ DAY = 86_400.0
 # the config classes is missing here.
 OFF_INSTANCE = {"internal_state_history": False, "predictive_regulation": False, "executive_rule": "rules-v1",
                 "decision_information": False, "imagine_what_if": False, "imagine_forecast": False,
-                "imagine_retrospect": False, "imagine_scenarios": False, "broadcast": "off"}
+                "imagine_retrospect": False, "imagine_scenarios": False, "broadcast": "off",
+                "artifact_adapters": []}            # OMNIMIND lane A (ADR-071): no external file reader approved
 OFF_WEB = {"curiosity_learning_progress": False, "salience_record": False, "hypothesis_fields": False,
            "hypothesis_abandon": False, "premise_recheck": False, "idle_recheck": False, "reflection": False,
            "reflection_model_summary": False, "strategy_selection": "off", "answer_monitoring": False,

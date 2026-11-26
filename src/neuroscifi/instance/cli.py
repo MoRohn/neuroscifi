@@ -206,6 +206,12 @@ def _config(db, args, now):
         changes["broadcast"] = args.broadcast
     if args.broadcast_threshold is not None:
         changes["broadcast_threshold"] = args.broadcast_threshold
+    if args.artifact_max_mib is not None:
+        changes["artifact_max_bytes"] = args.artifact_max_mib * 1024 * 1024
+    if args.artifact_store_max_mib is not None:
+        changes["artifact_store_max_bytes"] = args.artifact_store_max_mib * 1024 * 1024
+    if args.artifact_adapters is not None:
+        changes["artifact_adapters"] = [n for n in (p.strip() for p in args.artifact_adapters.split(",")) if n]
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
@@ -320,6 +326,13 @@ def register(sub):
                         "above --broadcast-threshold become questions, the others stay in their task's record")
     p.add_argument("--broadcast-threshold", type=unit_interval,
                    help="the salience (0 to 1) a finding needs to be broadcast while --broadcast is on (default 0.5)")
+    p.add_argument("--artifact-max-mib", type=bounded_int(1, 1024),
+                   help="the largest file `nsf artifact add` keeps, in MiB (default 64)")
+    p.add_argument("--artifact-store-max-mib", type=bounded_int(0, 1024 * 1024),
+                   help="the most the artifact store beside the individual may hold in all, in MiB (default 2048)")
+    p.add_argument("--artifact-adapters", metavar="NAME,...",
+                   help="external file readers you approve, by name, comma-separated (`nsf artifact adapters` lists "
+                        "those found); an empty value approves none (the default)")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("self", help="what this individual is doing, knows, is unsure of and can do next, each with "

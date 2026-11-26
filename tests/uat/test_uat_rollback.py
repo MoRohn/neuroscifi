@@ -818,6 +818,39 @@ def test_front_door(tmp_path):
     assert_rolls_back(reference, on_, again)
 
 
+def test_artifact_adapters(individual, monkeypatch):
+    """OMNIMIND lane A (ADR-071): with no external adapter approved (the default) a file nothing here reads is kept as
+    measured bytes; with the owner's approval of one ("artifact_adapters") that adapter reads it; with the approval
+    withdrawn it is not used on the next call. What was kept while it was approved stays held and readable."""
+    db, _ = individual
+    from neuroscifi.artifacts import adapters, store as artifact_store, types as T
+
+    class Reader(adapters.Adapter):
+        name, formats, families = "uat-reader", ("unknown",), ("unknown",)
+
+        def decode(self, data, detected, limits):
+            return T.Decoded(detected, T.Document((T.Block("paragraph", 0, "read"),), None))
+
+    class Ep:
+        name = "uat-reader"
+
+        def load(self):
+            return Reader
+
+    monkeypatch.setattr(adapters, "_DISCOVERED", [Ep()])
+    monkeypatch.setattr(adapters, "_EXTERNAL", {})
+    monkeypatch.setattr(adapters, "_ADAPTERS", list(adapters._ADAPTERS))
+    on, off = instance_switch(db, "artifact_adapters", ["uat-reader"], [])
+    kept = []
+
+    def probe():
+        record = artifact_store.add(db, bytes(range(256)), name="u.bin")
+        kept.append(record.id)
+        return record.index["representation"]["kind"]
+    assert_rolls_back(*cycle(on, off, probe))
+    assert [artifact_store.read_bytes(db, i) for i in kept] == [bytes(range(256))] * 3
+
+
 # Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
 # Wave 1/2 switch of the config classes is here; Wave 2 lane X)
 SWITCHES = {
@@ -840,4 +873,5 @@ SWITCHES = {
     "attribution_independence": test_attribution_independence, "echo_recognition": test_echo_recognition,
     "supersession": test_supersession_and_its_records, "origin_grouping": test_origin_grouping,
     "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
+    "artifact_adapters": test_artifact_adapters,
 }
