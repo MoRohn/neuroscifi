@@ -148,6 +148,107 @@ def test_damaged_saved_settings_are_shown_by_the_cli(tmp_path, capsys):
         assert needle in capsys.readouterr().out, argv
 
 
+# ---- item 6: the caution shown to the owner (ADR-065; display only) --------------------------------------------------
+
+def _claims_of(db, *hosts, value=None):
+    rows = [dict(zip(state.CLAIM_COLUMNS, r)) for r in db.execute(
+        f"SELECT {','.join(state.CLAIM_COLUMNS)} FROM web_claims ORDER BY rowid")]
+    return [r for r in rows if r["domain"] in hosts and (value is None or value in (r["claim_values"] or ""))]
+
+
+def test_the_caution_says_when_pages_look_like_copies_and_when_only_one_source_says_it():
+    from neuroscifi.webcortex import caution
+    n = adv._SN
+    with adv._s_individual("caution-copies", **adv.LANE_S_OFF) as (db, _):
+        adv._s_look(db, T0, [("relnotes.example", f"{n} 1.5.0 is the latest {n} release.", T0 - DAY, None),
+                             ("mirror.example", f"{n} 1.5.0 is the latest {n} release.", T0 - DAY, None),
+                             ("pkgwatch.example", f"As of this week, the newest {n} release is {n} 1.5.0, its notes "
+                                                  "say.", T0 - DAY, None)])
+        copies = caution.view(db, _claims_of(db, "relnotes.example", "mirror.example", "pkgwatch.example",
+                                             value="1.5.0"))
+        assert (copies["pages"], copies["groups"], copies["joined"]) == (3, 2, ["near_duplicate"])
+        assert "count as 2 sources" in copies["text"] and "nearly the same wording" in copies["text"]
+        assert "reworded copy" in copies["text"] and copies["own_answer"] is False
+        one = caution.view(db, _claims_of(db, "pkgwatch.example", value="1.5.0"))
+        assert one["text"].startswith("Only one source says this.") and one["brief"]
+        two = caution.facts(db, _claims_of(db, "relnotes.example", "pkgwatch.example", value="1.5.0"))
+        assert (two["pages"], two["groups"]) == (2, 2) and not caution.shown(two)
+        assert caution.view(db, _claims_of(db, "relnotes.example", "pkgwatch.example", value="1.5.0")) is None
+
+
+def test_the_own_answer_flag_is_shown_to_the_owner_only_and_decides_nothing():
+    from neuroscifi.webcortex import caution, knowledge
+    n = adv._SN
+    with adv._s_individual("caution-own", **adv.LANE_S_OFF) as (db, _):
+        adv._s_look(db, T0 - 5 * DAY, [], answer=f"{n} 9.4.0 is the latest {n} release.")
+        before = [(r["id"], r["status"], r["confidence"]) for r in knowledge.rows(db)]
+        out = adv._s_look(db, T0, [
+            ("askboard.example", f"Someone on the forum says {n} 9.4.0 is now the latest {n} release.", T0 - 3600,
+             None),
+            ("answer-roundup.example", f"Answers roundup: {n} 9.4.0 is the latest {n} release.", T0 - 3600, None)])
+        rows = _claims_of(db, "askboard.example", "answer-roundup.example", value="9.4.0")
+        owner = caution.view(db, rows)
+        assert owner["own_answer"] is True and "said earlier" in owner["text"]
+        assert owner["brief"] == "Careful: a source may just repeat something I said before."
+        family = caution.view(db, rows, own_check=False)
+        assert family is None or ("said earlier" not in family["text"] and family["own_answer"] is None)
+        # the shipped defaults admitted it (echo_recognition off): the caution changed nothing it could
+        assert out["provisional"] and [(r["id"], r["status"], r["confidence"]) for r in knowledge.rows(db)
+                                       if r["id"] in {b[0] for b in before}] == before
+        [shown] = caution.for_knowledge(db, [knowledge.row(db, out["provisional"][0])])
+        assert shown["own_answer"] is True
+
+
+def test_the_caution_is_display_only_no_other_module_reads_it():
+    """Only the views import webcortex/caution.py; nothing that decides (consolidation, claims, autonomy, the
+    orchestrator, knowledge, MCP) does."""
+    allowed = {"console/server.py", "webcortex/cli.py", "pocket/server.py", "voice/hub.py", "voice/bridge.py"}
+    src = ROOT / "src" / "neuroscifi"
+    found = set()
+    for path in src.rglob("*.py"):
+        if "withheld" in path.name:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "import caution" in text or "caution import" in text or "webcortex.caution" in text:
+            found.add(str(path.relative_to(src)))
+    assert found == allowed, found
+
+
+def _staged_report_task(db):
+    """A finished task whose report quotes a statement three pages support, two of them copies."""
+    n = adv._SN
+    adv._s_look(db, T0, [("relnotes.example", f"{n} 1.5.0 is the latest {n} release.", T0 - DAY, None),
+                         ("mirror.example", f"{n} 1.5.0 is the latest {n} release.", T0 - DAY, None),
+                         ("pkgwatch.example", f"As of this week, the newest {n} release is {n} 1.5.0, its notes say.",
+                          T0 - DAY, None)])
+    rows = _claims_of(db, "relnotes.example", "mirror.example", "pkgwatch.example", value="1.5.0")
+    task_id = rows[0]["task_id"]
+    sources = [{"n": i + 1, "url": r["source_url"], "domain": r["domain"], "title": n, "cited": True}
+               for i, r in enumerate(rows)]
+    report = {"answer": [{"type": "quote", "text": rows[0]["text"], "citations": [1, 2], "corroborating": [3],
+                          "status": "corroborated", "confidence": 0.8, "copies": 2, "independent_sources": 2}],
+              "findings": [{"statement": rows[0]["text"], "claims": [r["id"] for r in rows]}], "sources": sources}
+    with store.write(db):
+        db.execute("UPDATE web_tasks SET status='completed', result=? WHERE id=?", (json.dumps(report), task_id))
+    return task_id
+
+
+def test_the_console_cli_and_pocket_show_the_caution_and_pocket_never_the_own_answer_flag(tmp_path, capsys):
+    from neuroscifi.cli import main
+    from neuroscifi.pocket import server as pocket
+    with adv._s_individual("caution-views", **adv.LANE_S_OFF) as (db, path):
+        task_id = _staged_report_task(db)
+        task = orchestrator.get(db, task_id)
+        detail = pocket.task_detail(task, db)
+        assert "count as 2 sources" in detail["report"]["caution"]["answer"][0]
+        assert "own_answer" not in json.dumps(detail) and "said earlier" not in json.dumps(detail)
+        assert "caution" not in pocket.task_detail(task)["report"]           # no database: nothing computed
+        capsys.readouterr()
+        main(["web", "show", task_id, "--db", str(path)])
+        shown = json.loads(capsys.readouterr().out)
+        assert "count as 2 sources" in shown["caution"]["answer"][0]["text"]
+
+
 # ---- item 2: requeue honours the day's autonomous task count (review3b L6/N5, (f)) --------------------------------
 
 def _capped(tmp_path, cap):

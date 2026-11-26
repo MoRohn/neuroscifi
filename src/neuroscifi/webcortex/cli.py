@@ -734,7 +734,17 @@ def _ask(db, a, now):
                       authorization=orchestrator.AUTHORIZED_DISCLOSURE if a.allow_private_terms else None)
     if a.queue:
         return task | {"note": "queued for the worker (nsf web work)"}
-    return _run_task(db, a, task["id"])
+    return _with_caution(db, _run_task(db, a, task["id"]))
+
+
+def _with_caution(db, task):
+    """ADR-065 (Wave 4 lane D): a finished task's report with the owner's caution where a statement rests on sources
+    that cannot be shown independent (display only; computed for this output)."""
+    from . import caution
+    from .types import TERMINAL_STATES
+    if isinstance(task, dict) and isinstance(task.get("result"), dict) and task.get("status") in TERMINAL_STATES:
+        return task | {"caution": caution.for_report(db, task["id"], task["result"])}
+    return task
 
 
 def _tasks(db, a, now):
@@ -744,7 +754,7 @@ def _tasks(db, a, now):
 
 def _show(db, a, now):
     from . import orchestrator
-    return orchestrator.get(db, a.task)
+    return _with_caution(db, orchestrator.get(db, a.task))
 
 
 def _evidence(db, a, now):
@@ -854,14 +864,19 @@ def _cache(db, a, now):
 
 
 def _knowledge(db, a, now):
-    from . import knowledge, state
+    from . import caution, knowledge, state
     if a.topic:
-        return knowledge.query(db, a.topic, now, limit=a.limit)
-    statuses = [a.status] if a.status else list(state.LIVE_KNOWLEDGE)
-    cfg = state.get_config(db)
-    items = knowledge.rows(db, f"status IN ({','.join('?' * len(statuses))})", tuple(statuses))
-    return {"as_of": now, "statuses": statuses, "count": len(items),
-            "items": [knowledge.describe(db, item, now, cfg) for item in items[-a.limit:]]}
+        out = knowledge.query(db, a.topic, now, limit=a.limit)
+    else:
+        statuses = [a.status] if a.status else list(state.LIVE_KNOWLEDGE)
+        cfg = state.get_config(db)
+        items = knowledge.rows(db, f"status IN ({','.join('?' * len(statuses))})", tuple(statuses))
+        out = {"as_of": now, "statuses": statuses, "count": len(items),
+               "items": [knowledge.describe(db, item, now, cfg) for item in items[-a.limit:]]}
+    for item, shown in zip(out["items"], caution.for_knowledge(db, out["items"])):   # ADR-065: display only
+        if shown:
+            item["caution"] = shown
+    return out
 
 
 def _memory(db, a, now):

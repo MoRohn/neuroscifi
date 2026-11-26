@@ -4081,3 +4081,43 @@ counted as a pass: the family scores every staged case as a pass or failure of a
   rollback test). Claims read while it was set keep their mark, so a grouping made only of them (an older stored
   cluster on its own, as consolidation reads it) still uses the one-way rule; one claim read after the switch makes
   it the default (the same holds for `flags["credited"]` and `attribution_independence`, ADR-061).
+
+# ADR-065 Uncertainty shown to the owner: a caution where an answer rests on sources that cannot be shown independent
+
+Status: built, **display only** (no setting: it changes nothing but what the owner reads). Wave 4 lane D (`gen4-d`).
+No schema change; nothing stored.
+
+## Context
+
+At the shipped defaults the individual cannot tell independent sources from copies beyond near-identical text and
+single named origins: a reworded copy counts as independent, and a page repeating the individual's own answer reads as
+corroboration (WAVE3.md, "On one screen"; ADR-061, ADR-063). Wave 3's rules against this ship off. The owner was not
+told, where it matters, that an answer rests on sources the system cannot show to be independent.
+
+## Decision
+
+`webcortex/caution.py` computes, when a view is drawn and from facts the records already hold, for each quoted answer,
+each fact check's verdict and each knowledge item (and so each contradiction question about one): the pages whose
+claims support the statement, how many independent sources they count as under today's rule
+(`claims.independence_groups` over the stored supporting claims, unchanged), why pages were counted together (same
+site, nearly the same wording, a named origin), and whether a supporting page repeats an earlier answer of the
+individual's own (`consolidate._Echoes`, read only, 0.5 s per view; a flag computed for display, never a rule).
+
+A caution is shown (rule written before it was measured): when the statement rests on at most one source that can be
+told apart; when some of its pages were counted together as copies (copying is present, and a reworded copy is not
+caught); or when a supporting page repeats an earlier answer of the individual's own. The words say what is known and
+what is not ("3 pages say this; some look like copies (some have nearly the same wording), so they count as 2 sources.
+A reworded copy cannot be told from an independent report, so there may be fewer."); they never say the statement is
+wrong. Where it is shown: the answer's support line and the verdict (console, `nsf web show`, Pocket), the knowledge
+view (console, `nsf web knowledge`) and the contradiction question about a knowledge item (console's questions); the
+voice reply says it once, briefly. Pocket (family scope) and the voice of a Pocket device never compute or show the
+own-answer flag: it would tell a family member about the owner's own answers. The MCP tools (agent scope) are
+unchanged.
+
+**Display only, by construction:** nothing in the product reads the caution to decide anything (no state, confidence,
+answer, knowledge item, question, budget or research step); only the views import the module (a test scans `src`).
+The offline research benchmark's digest is unchanged by it (the caution is not part of a report).
+
+## Measured (scripts/bench_caution.py; the rule in its docstring, committed before the run)
+
+Filled in after the run: see `docs/quality/evidence/genesis_wave4_d_caution.json` and the section below.

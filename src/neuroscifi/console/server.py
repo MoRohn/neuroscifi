@@ -188,7 +188,33 @@ def _observe(c, p, q, b):
 
 def _pending(c, p, q, b):
     q = _query(q, ("epoch", "all"))
-    return executive.pending(c.db, epoch=q.get("epoch") or None, include_resolved=q.get("all") in ("1", "true"))
+    out = executive.pending(c.db, epoch=q.get("epoch") or None, include_resolved=q.get("all") in ("1", "true"))
+    # ADR-065 (Wave 4 lane D): an open question about a knowledge item (a candidate or a contradiction) carries the
+    # item's caution; display only, computed for this view
+    asked, contested = {}, {}
+    for row in out:
+        scope = str(row.get("scope") or "")
+        if row.get("resolved_at") is None and scope.startswith("web:knowledge:") and scope[14:].isdigit():
+            asked[row["id"]] = int(scope[14:])
+        elif row.get("resolved_at") is None and scope.startswith("web:contested:") and scope.count(":") == 3:
+            contested[row["id"]] = scope.split(":")[2]
+    if (asked or contested) and wstate.has_tables(c.db):
+        from ..instance.errors import NotFound
+        from ..webcortex import caution, knowledge
+        for row in out:
+            if row["id"] in contested:
+                row["caution_sides"] = caution.for_contested(c.db, contested[row["id"]], row["id"])
+        items = {}
+        for kid in set(asked.values()):
+            try:
+                items[kid] = knowledge.row(c.db, kid)
+            except NotFound:
+                continue
+        shown = dict(zip(items, caution.for_knowledge(c.db, list(items.values()))))
+        for row in out:
+            if asked.get(row["id"]) in shown:
+                row["caution"] = shown[asked[row["id"]]]
+    return out
 
 
 def _resolve(c, p, q, b):
@@ -534,8 +560,13 @@ def _web_submit(c, p, q, b):
 
 
 def _web_task(c, p, q, b):
-    from ..webcortex import orchestrator
-    return orchestrator.get(c.db, _task_id(p[0]))
+    from ..webcortex import caution, orchestrator
+    out = orchestrator.get(c.db, _task_id(p[0]))
+    if isinstance(out.get("result"), dict) and out["status"] in TERMINAL_STATES:
+        # ADR-065 (Wave 4 lane D): the owner's caution where the answer rests on sources that cannot be shown
+        # independent; computed for this view, display only
+        out["caution"] = caution.for_report(c.db, out["id"], out["result"])
+    return out
 
 
 def _web_evidence(c, p, q, b):
@@ -574,6 +605,9 @@ def _web_knowledge(c, p, q, b):
         out = {"topic": None, "as_of": c.now, "items": items, "matched": len(items)}
     for item in out["items"]:
         item["feedback"] = knowledge.feedback(c.db, item["key"], limit=5)
+    from ..webcortex import caution         # ADR-065: display only, computed for this view
+    for item, shown in zip(out["items"], caution.for_knowledge(c.db, out["items"])):
+        item["caution"] = shown
     return out
 
 
