@@ -1560,6 +1560,12 @@ def idle_verdicts(result) -> dict:
 # allowance_division ships "race" (off): turning it on is the owner's decision.
 DIVISION_CANDIDATES = tuple(f"division:{rule}" for rule in DIVISION_RULES)
 DIVISION_SAFETY = SAFETY + ("admitted.wrong",)
+# The development choice (docs/quality/evidence/genesis_wave4_a_dev.json, commit 39ba9af): every candidate "unsafe"
+# (more wrongly admitted content than shipped+idle in at least one world), so NOTHING is chosen and the rule names no
+# division configuration for the withheld look. The look below holds only the references, should the main session
+# want the existing split measured on unseen worlds; it cannot promote anything.
+LOOKS["wave4-a"] = ("reference:no-loop", "shipped", "shipped+idle", "shipped+idle-first")
+LOOK_PAIRS.setdefault("shipped+idle-first", DIVISION_REFERENCE)
 
 
 def division_verdicts(result) -> dict:
