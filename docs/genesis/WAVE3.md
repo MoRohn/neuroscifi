@@ -259,8 +259,10 @@ over one pass per table without an index (same counts; 0.035 s against 42–55 s
 **The digest.** CI's x86_64 runner gave `426abca5…` for the offline research benchmark where this host gives
 `68731d72…` ([WAVE2.md](WAVE2.md) §5). The difference is one hashed leaf that names the browser's file path
 (`probes.content.js_shell.render.availability`), not behaviour: setting only that leaf to CI's Playwright path gives
-CI's digest (`tests/test_offline_digest_hosts.py`; the 12-digit prefix comes from a CI log that is not archived,
-review P-1). A `portable_sha256` (`d87dbb4f…` here) is now reported beside the unchanged `sha256`. The Wave 0
+CI's digest (`tests/test_offline_digest_hosts.py`). The whole digest CI printed, read by the fix lane from the Wave 2
+pull request's run 45759723830 with read-only `gh`, is
+`426abca5d803349df0953045bd233495d2c23363a3107aea16de66151de46f6c`, and the one-leaf substitution gives exactly it
+(the test now pins all 64 characters; review P-1). A `portable_sha256` (`d87dbb4f…` here) is now reported beside the unchanged `sha256`. The Wave 0
 equivalence test still compares `sha256` on aarch64 only, and depends on `/usr/bin/chromium` and on `NSF_CHROMIUM`
 being unset.
 
