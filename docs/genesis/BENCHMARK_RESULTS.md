@@ -8,6 +8,12 @@ scores on synthetic and fictional worlds with known answers, driven offline thro
 
 ## In plain words (the first screen)
 
+- **Wave 4 (2026-11-26, [WAVE4.md](WAVE4.md), §13 below).** A new family measures source independence directly, on
+  worlds whose truth is which page copied which: as shipped, held-out, 127 rows admitted below the bar (40 false) and
+  142 of 612 well-supported true values not held. No rule built against it is supported: the derivation rule trades
+  fewer bad rows (99) for more true values not held (207) and a lower `correct` in every world, and its signal is the
+  test generator's convention; the own-text rule is "effective" by its own rule but small (own answers 4 → 1) and off.
+  Dividing the daily allowance gains nothing. All ship off; the hole is open at the shipped defaults.
 - **Wave 3 (2026-11-26, [WAVE3.md](WAVE3.md), §12 below).** On unseen learning-cycle worlds the unchanged loop
   admitted versions only its own outputs or a copied wrong story stated (4 / 6 / 6 and 2 / 17 / 12 over 4 seeds),
   where 120 held-out runs never had (`docs/quality/COGNITIVE_BENCHMARK.md`, step 0). The two rules built against it
@@ -459,3 +465,46 @@ The fix lane's re-measurement (`genesis_wave3_fix_*.json`) is in ADR-061's secti
 | Anticipation on the host (lane H) | shadow decides as off on every tick of 48 staged runs; no host week run; its report counted holds the gate already made as hits; since the fix lane it counts what the forecast adds (staged: development 62 added hits against 60 added false alarms; held-out 78 against 198) | `genesis_h.json`, ADR-058 |
 | Reliability | 7 Wave 3 entry points × 3 failure modes + a marked message: 12 of 28 failed on `f0a1f09`, 28 of 28 with three guards; the lanes' benchmarks re-run together: no verdict changed (before the fix lane) | `tests/uat/test_uat_fault_injection.py`, `genesis_wave3_combined_*.json` |
 | Reliability: adversarial cases, by origin | 54 cases, 49 scored: original 13, Wave 1 4, restored 1, Wave 2 10, lane C 5, lane S 16, all pass on both splits on `f0a1f09` | `genesis_wave3_combined_checks.json` |
+
+## 13. Wave 4 (2026-11-26; [WAVE4.md](WAVE4.md))
+
+Every figure below is from the evidence file named and was recomputed from it for this section (pooled over worlds
+and seeds where said: pooled, not a claim). All worlds are simulated (fictional software releases read through the
+real modules, offline, no model).
+
+**The source-independence family** (new in Wave 4, step 0; `scripts/bench_sources.py`; COGNITIVE_BENCHMARK.md,
+"Wave 4: the source-independence family"). Development 2 worlds × 3 seeds (360 looks, 233 eligible), held-out 3 worlds ×
+4 seeds (864 looks, 612 eligible). Each cell: wrongly admitted (of them false now) / own answers admitted /
+suppressed of eligible / grouping precision, recall. Shipped and Wave 3's settings from `genesis_sources_baseline.json`
+(`cd99288`); the Wave 4 rules after the fix lane from `genesis_wave4_fix.json` (`842ef8b`; shipped there is identical
+field by field to step 0's).
+
+| configuration | development | held-out | `correct`, paired against shipped, development; held-out |
+|---|---|---|---|
+| **shipped** | 64 (21) / 4 / 39 / 0.87, 0.20 | 127 (40) / 4 / 142 / 0.81, 0.20 | 0.704 ± 0.064, 0.579 ± 0.050; 0.601 ± 0.064, 0.627 ± 0.064, 0.656 ± 0.073 |
+| `attribution_independence` (Wave 3, off) | 56 (20) / 3 / 49 / 0.86, 0.27 | 118 (37) / 4 / 153 / 0.81, 0.27 | −0.023, −0.058; −0.008, −0.009, −0.027 |
+| `echo_recognition` (Wave 3, off) | 58 (18) / 0 / 39 / 0.87, 0.20 | 123 (37) / 1 / 145 / 0.81, 0.20 | 0, −0.011; −0.004, +0.002, 0 |
+| `origin_grouping` "one_way" (Wave 3, off) | identical to shipped (0 looks changed) | identical | not exercised |
+| `source_derivation` (Wave 4, off; not supported) | 55 (17) / 4 / 65 / 0.84, 0.36 | 99 (31) / 4 / 207 / 0.78, 0.35 | −0.083, −0.093; −0.064, −0.054, −0.101 (beyond the spread in two of three) |
+| `own_text_provenance` (Wave 4, off) | 60 (20) / 2 / 39 / 0.87, 0.20 | 123 (37) / 1 / 145 / 0.81, 0.20 | 0, −0.011; −0.004, +0.002, 0 |
+| `wave4:both` (no verdict rule; not claimed) | 51 (16) / 2 / 64 / 0.84, 0.35 | 96 (29) / 1 / 209 / 0.78, 0.35 | −0.083, −0.102; −0.067, −0.056, −0.101 |
+| reference: oracle | 0 / 0 / 2 | 0 / 0 / 4 | 0.762, 0.633; 0.713, 0.718, 0.709 (absolute) |
+| reference: todays_rule / every_page | 114 / 9 / 25; 137 / 11 / 22 | 232 (121) / 13 / 82; 287 (152) / 14 / 70 | — |
+
+Pages set aside as echoes of the individual's own answer, of those read (development; held-out): `echo_recognition`
+18 of 29, honest 7 of 1,091; 29 of 41, honest 13 of 2,670. `own_text_provenance` 18 of 29, honest 8 of 1,091; 30 of
+41, honest 14 of 2,670. `wave4:both` 18, honest 8; 30, honest 16. Verdicts under the rules committed before held-out:
+`source_derivation` "trade" on both splits (`sources.verdict_derivation`); `own_text_provenance` and `echo_recognition`
+"effective" on both (`sources.own_verdict`); `wave4:both` "trade" under the first, "unsafe" under the second, and no
+rule was written for it. **The one look at the withheld source worlds** (step 0, shipped only; COGNITIVE_BENCHMARK.md,
+not recomputed here): 110 rows admitted below the bar (26 false), 2 own answers, 129 of 356 eligible not held,
+`correct` 0.535 and 0.489 against the oracle's 0.610 and 0.657.
+
+| Category | Result | Evidence |
+|---|---|---|
+| Knowledge accuracy: what counts as a source (lanes S, E) | above: no rule supported for turning on; the derivation rule's signal is the generator's naming convention (31 of 34 cast names, 10 of 10 outlets); the own-text rule's "effective" is small (4 own answers per split at shipped) with a measured false rejection, and two review defects fixed | `genesis_wave4_s.json`, `genesis_wave4_e.json`, `genesis_wave4_fix.json`, ADR-066, ADR-067 |
+| Autonomy / coverage: dividing the allowance (lane A) | held-out, paired against `shipped+idle`: every candidate −0.024 to +0.026, none beyond the spread (0.034–0.054); every candidate "unsafe" or "harm"; 0.09–0.26 below the blind round-robin | `genesis_wave4_a_held_out.json`, ADR-064 |
+| Reliability: reproducibility (lane A) | runs with the idle investigation were not repeatable (a world's mean paired gain moved up to 0.015 between repeats); two product tie-breaks fixed; after: 0 variation; Wave 3's withheld `idle-first` W2 (+0.042 against 0.039) no longer established beyond the spread | `genesis_wave4_a_repeatability.json`, ADR-064 |
+| Metacognition shown to the owner: the caution (lane D) | display only; the one-source trigger carried 3 of 3 wrong development answers; held-out not exercised (0 wrong); the copy trigger and own-answer flag mislead about three times in ten and are not shown by default | `genesis_wave4_d_caution.json`, ADR-065 |
+| Reliability: settings, budgets, the restore | every saved setting checked on load (fixed settings and network limits fail closed); `requeue` within the day's count; a restore's write transaction 0.14–0.15 s instead of 1.64–1.82 s at 10,000 answers of 20 kB | lane D's report; WAVE4.md §1.5 |
+| Regression | the default path of `claims.py`: 2,052,099 comparisons, 0 different; offline digest `68731d7235cb…` at the defaults and all off; final validation pending (WAVE4.md, "Validation") | `genesis_wave4_s.json` (`default_path_comparison`) |
