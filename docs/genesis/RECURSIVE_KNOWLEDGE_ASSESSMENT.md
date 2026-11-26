@@ -1,6 +1,6 @@
 # Recursive knowledge engine assessment (deliverable F)
 
-Status: 2026-11-25, Wave 2 lane F (a dated Wave 3 section, §10, added 2026-11-26), branch `gen2-f` from `main` at `3559069`; integrated on `genesis-wave2`
+Status: 2026-11-25, Wave 2 lane F (dated Wave 3 and Wave 4 sections, §10 and §11, added 2026-11-26), branch `gen2-f` from `main` at `3559069`; integrated on `genesis-wave2`
 (`4d8a60c`); revised by Wave 2 lane Y (branch `gen2-y`) after the benchmark-integrity review: references for the
 decay (§3), what each mechanism did (§4), the smallest gain the rule can see (§4), the loop's scope (§2, §8), the
 commits on the integrated tree (§2) and the cognitive benchmark on that tree (§6). Directive §7 ("recursive knowledge
@@ -394,3 +394,41 @@ limited by the allowance, not by candidates.**
 
 **Unverified**, as in §8: the open web, a live model, an owner who answers, real change rates. The withheld looks of
 Wave 3's mechanisms are recorded in WAVE3.md, "The withheld looks".
+
+## 11. Wave 4 (2026-11-26): nothing that improves knowledge across cycles; the runs were not repeatable
+
+Record: [WAVE4.md](WAVE4.md); ADR-064 to ADR-067.
+
+**Nothing in Wave 4 improves knowledge across cycles at the shipped defaults.** Its two source rules ship off (the
+derivation rule "not supported; do not turn on", ADR-066; own-text provenance off, ADR-067), and the one mechanism
+aimed at the loop itself, a division of the day's allowance between refreshing held items and reaching subjects that
+hold nothing (ADR-064, lane A), gains nothing: on held-out reach worlds every candidate's paired gain against the
+shipped loop with the idle investigation lies between −0.024 and +0.026, below the spread (0.034–0.054) in every
+world, and every candidate is "unsafe" (more wrong content in one world) or "harm" (retention) under the rule written
+before the run (`genesis_wave4_a_held_out.json`). The loop with or without a division stays 0.09–0.26 below a blind
+round-robin of the same allowance. The diagnosis (development): per look, reaching made more subjects correct than
+refreshing, but reaching runs out of admitted candidates after the first cycles (gaps inside their 7-day window, open
+hypotheses), so a share cannot add what the admission rule does not offer. Wave 3's "coverage is limited by the
+allowance" becomes: by the allowance and, once divided, by the candidates.
+
+**On the learning-cycle worlds** (Wave 3's lane S worlds, `cycles_s`): own-text provenance barely acts there, because
+those worlds plant the individual's own values only in its imagined store, which the rule may not read (own-only
+versions on its held-out 5 / 2 / 13 → 5 / 2 / 11; Wave 3's `echo_recognition` 1 / 0 / 2); the derivation rule removes
+the syndicated-only versions (6 / 9 / 4 → 0) at a cost in `correct` (−0.039 / −0.019 / −0.073). Lane F's worlds:
+neither rule changes anything (not exercised). Retention: no subject lost in any of these runs; regressed subjects
+equal or fewer with own-text provenance, and with the derivation rule one more in s-echo (2 → 3, summed over seeds;
+`genesis_wave4_s.json`, `cycles_wave3_lane_s`, recomputed).
+
+**The repeatability finding.** The learning-cycle runs that use the worker's idle investigation were not repeatable:
+two choices among equal records followed the random task ids (`autonomy._lineage` walked a set of ids;
+`curiosity.search_terms` and `rank` broke ties among claims stored at one instant by id). Over 10 repeats of 18 public
+worlds on Wave 3's final code, `baseline` and `shipped+idle` never varied; `idle-first` varied in 4 worlds, a world's
+mean paired gain by up to 0.015 (`genesis_wave4_a_repeatability.json`). Both choices now follow creation order and the
+runs are identical; the timer-only configurations, which every verdict of §4 and §10 rests on, did not vary before
+and do not move with the fix (594 runs, only database file sizes differ). Consequences for the record: ADR-062's
+held-out figures reproduce exactly; Wave 3's withheld `idle-first` gain in W2 (+0.042 against a spread of 0.039) is
+not established beyond the spread by a single run of that code (WAVE3.md, the correction under "The withheld
+looks"); W3's (+0.052 against 0.035) likely stands. Seed 2704's move (WAVE3.md §3.8) is not explained by this.
+
+**Unverified**, as in §8: the open web, a live model, an owner who answers, real change rates, the real interleaving
+of the timer and the worker over a day.
