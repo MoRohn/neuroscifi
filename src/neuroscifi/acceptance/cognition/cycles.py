@@ -372,10 +372,10 @@ class Run:
         lineage are autonomy.idle's own; nothing here chooses a subject.
         The allowance: the day's autonomous tasks, WebConfig.daily_autonomous.tasks (the world's budget), counted as
         the timer counts them (scheduler.autonomous_usage: curiosity and refresh tasks of the last 24 h, the idle
-        investigation's included). autonomy.idle itself does not read that count in the product (it is bounded by
-        the D4 budgets and the request/byte allowance, which these tasks do not reach), so the harness stops asking
-        when the count reaches the allowance: the timer and the idle investigation together never use more looks
-        than the budget the references are given."""
+        investigation's included). The harness stops asking when the count reaches the allowance, so the timer and
+        the idle investigation together never use more looks than the budget the references are given. (Measured at
+        0ee88fe, when autonomy.idle did not read that count itself and was bounded only by the D4 budgets and the
+        request/byte allowance; since ADR-062 it refuses at the count too, autonomy._tasks_spent.)"""
         from ...webcortex import autonomy, scheduler, state
         cap = int(state.get_config(self.db).daily_autonomous.get("tasks", 0))
         for k in range(cap + 1):          # each queued decision adds one task to the count: at most `cap` rounds

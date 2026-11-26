@@ -850,6 +850,17 @@ def _decide(db, now, detail, task_id=None, *, worker=None):
         _write_meta(db, raw)
 
 
+def _tasks_spent(db, now) -> str | None:
+    """Wave 3 lane V (ADR-062): why the day's autonomous task count (WebConfig.daily_autonomous.tasks, the rolling 24 h
+    of curiosity and refresh tasks the timer counts, scheduler.autonomous_usage) leaves no room for one more idle
+    investigation, else None. The idle investigation shares that allowance with the timer (RESEARCH_POLICY §2: the
+    rolling caps apply in addition to the D4 budgets); before, it read only the requests and bytes of it."""
+    from . import scheduler
+    cap = int(state.get_config(db).daily_autonomous.get("tasks", 0))
+    used = scheduler.autonomous_usage(db, now)["tasks"]
+    return f"daily autonomous cap reached: tasks {used} of {cap}" if used >= cap else None
+
+
 def idle(db, now, *, worker=None) -> dict:
     """One idle-investigation decision of a worker with nothing queued: when autonomy is enabled (recorded), the
     budget has room, fewer than `concurrent` investigations run and the best candidate clears min_gain, queue it
@@ -868,7 +879,7 @@ def idle(db, now, *, worker=None) -> dict:
     last = state.finite((_meta(db).get("idle_at") or {}).get(worker))
     if last is not None and now - last < float(pol["idle_interval"]):
         return {"action": "waiting", "next_at": last + float(pol["idle_interval"])}
-    reason = refusal(db, "autonomous", now)
+    reason = refusal(db, "autonomous", now) or _tasks_spent(db, now)
     if reason:
         _decide(db, now, {"autonomy": "refused", "reason": reason}, worker=worker)
         return {"action": "refused", "reason": reason}

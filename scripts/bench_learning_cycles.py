@@ -15,6 +15,7 @@ Wave 3 lane R (ADR-060), the re-check orders on lane R's worlds (cycles_rate_spl
 Wave 3 lane V (ADR-062), the worker's idle investigation in the same daily allowance as the timer:
   python scripts/bench_learning_cycles.py run --split rate:held_out --idle --out idle_rate_held.json
   python scripts/bench_learning_cycles.py verdict --idle idle_rate_held.json
+  python scripts/bench_learning_cycles.py idle --out idle.json        # every public split, references and verdicts
 
 Offline and deterministic per seed (apart from wall seconds); no model is called and no connection is made. The worlds
 are frozen in src/neuroscifi/acceptance/cognition/cycles_splits.py (committed before this harness); what is measured,
@@ -83,7 +84,13 @@ def main(argv=None) -> int:
     f.add_argument("--out", required=True, help="a path OUTSIDE this checkout; copy it in afterwards")
     f.add_argument("--config", action="append", help=f"repeatable; default {', '.join(cycles.FINAL_CONFIGS)}")
     f.add_argument("--mechanism", default="baseline", help="the name the ledger line records")
+    i = sub.add_parser("idle", help="lane V's measurement in one command: every public split with "
+                                    "cycles.idle_configurations(), its references and cycles.idle_verdicts")
+    i.add_argument("--out", required=True)
+    i.add_argument("--split", action="append", choices=cycles.SPLITS, help="repeatable; default every public split")
     a = ap.parse_args(argv)
+    if a.command == "idle":
+        return idle(a)
     if a.command == "verdict":
         rule = cycles.order_verdicts if a.orders else cycles.idle_verdicts if a.idle else cycles.verdicts
         _write(rule(json.loads(Path(a.result).read_text(encoding="utf-8"))), a.out)
@@ -106,6 +113,27 @@ def main(argv=None) -> int:
     out |= cycles.run_split(a.split, configs=configs, cycles=a.cycles)
     if a.cycles is None:        # lane Y (H4): the references, from the world generator alone (no product code)
         out["references"] = cycles.run_references(a.split)
+    out["wall_seconds"] = time.perf_counter() - started
+    _write(out, a.out)
+    return 0
+
+
+def idle(a) -> int:
+    """Wave 3 lane V (ADR-062): the idle investigation on every public split (development first), each with its
+    references and the verdict rule; the safety counts of every run summed per split."""
+    started = time.perf_counter()
+    out = {"label": "Wave 3 lane V: the worker's idle investigation in the learning cycles, inside the timer's daily "
+                    "allowance; simulated worlds through the real modules; offline; no model",
+           "commit": _commit(), "environment": {"python": platform.python_version(), "machine": platform.machine()},
+           "runs": {}, "verdicts": {}, "safety_all_runs": {}}
+    for split in a.split or ("development", cycles.RATE + "development", "held_out", cycles.RATE + "held_out"):
+        run = cycles.run_split(split, configs=cycles.idle_configurations())
+        run["references"] = cycles.run_references(split)
+        out["runs"][split] = run
+        out["verdicts"][split] = cycles.idle_verdicts(run)
+        rows = [r for c in run["configurations"].values() for w in c["worlds"].values() for r in w["per_seed"]]
+        out["safety_all_runs"][split] = {"runs": len(rows)} | {k: sum(r[k] or 0 for r in rows)
+                                                               for k in cycles.SAFETY + cycles.LOSSES}
     out["wall_seconds"] = time.perf_counter() - started
     _write(out, a.out)
     return 0

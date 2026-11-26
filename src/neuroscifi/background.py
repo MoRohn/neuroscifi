@@ -154,6 +154,10 @@ RUNNERS = {
     "neuroscifi.acceptance.cognition.shadow_check:staged_run": "benchmark (Wave 3 lane H, ADR-058): two staged "
                                                                "background tasks whose status follows an anticipation "
                                                                "trace while the real gate decides; nothing is run",
+    "neuroscifi.acceptance.cognition.cycles:Run.idle_investigations": "benchmark (Wave 3 lane V, ADR-062): the "
+                                                                      "worker's idle investigation on a staged "
+                                                                      "temporary individual, inside the day's "
+                                                                      "allowance",
 }
 
 # Functions that pass on an origin they did not write out: one an owner surface gave them, or one read from a stored

@@ -1,6 +1,10 @@
 """Wave 3 lane V (ADR-062): the worker's idle investigation (autonomy.idle) in the learning-cycles harness, inside the
 same daily allowance as the timer, and its verdict rule."""
 from collections import Counter
+import functools
+import importlib.util
+import json
+from pathlib import Path
 
 from neuroscifi.acceptance.cognition import cycles, cycles_rate_splits as rate, cycles_splits
 
@@ -53,3 +57,17 @@ def test_the_idle_verdict_pairs_each_configuration_with_the_same_one_without_it(
                                - rows["baseline"]["worlds"][world]["per_seed"][0][cycles.PRIMARY]]
     assert set(entry["safety"]) == set(cycles.SAFETY) and verdicts["idle-first"]["verdict"] in (
         "gain", "revise", "no evidence", "not exercised")
+
+
+def test_the_one_command_rerun_writes_runs_references_verdicts_and_safety_sums(monkeypatch, tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("bench_learning_cycles", root / "scripts" / "bench_learning_cycles.py")
+    bench = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bench)
+    monkeypatch.setattr(cycles, "run_split", functools.partial(cycles.run_split, cycles=2, seeds=(41,)))
+    out = tmp_path / "idle.json"
+    assert bench.main(["idle", "--split", "development", "--out", str(out)]) == 0
+    value = json.loads(out.read_text())
+    assert set(value["runs"]) == set(value["verdicts"]) == set(value["safety_all_runs"]) == {"development"}
+    assert set(value["runs"]["development"]["configurations"]) == set(CONFIGS)
+    assert "references" in value["runs"]["development"] and value["safety_all_runs"]["development"]["runs"] == 12
