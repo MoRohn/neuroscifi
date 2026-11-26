@@ -760,6 +760,7 @@ def admission(db, now, *, path, rule="unified", limit=5, offered=()) -> dict:
         from . import curiosity
         pool = {c["target"].get("key"): c["kind"] for c in curiosity.rank(db, now, limit=10)
                 if not c["excluded"] and "knowledge_id" in c["target"] and c["kind"] != "prediction"}
+        out["pool"] = dict(pool)        # key -> kind: what the timer's curiosity could launch in this pass
     ranked = candidates(db, now, limit=10 ** 6 if path == "tick" else limit)
     out["min_gain"], out["refused"] = ranked["min_gain"], ranked["refused"]
     for item in ranked["chosen"]:

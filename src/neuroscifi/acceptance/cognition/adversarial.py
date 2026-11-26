@@ -882,7 +882,12 @@ def broken_model_summary_leaves_the_reflection():
 
 def salience_never_reorders_admission():
     """Two subsystems rank the same candidates: the salience record (webcortex.salience, ADR-051) and admission's
-    priority (autonomy.admission). Staged on a web world with a noisy, a stale and a gap subject."""
+    priority (autonomy.admission). Staged on a web world with a noisy, a stale and a gap subject.
+    It holds with `salience_attention` off (the default): the record alone never reorders what is admitted. ADR-056's
+    opt-in `salience_attention` orders the admitted by salience, by design; under the "integrated" mechanism (which
+    forces salience_attention and salience_record on) both of this case's runs have the record on, and the timer's
+    path admits one candidate here, so the case says nothing about that setting (Wave 2 lane Y, review L4; the case
+    id and its pre-registered expectation are unchanged)."""
     from . import infovalue
     from ...webcortex import autonomy, state
     spec = {"name": "adversarial salience", "budget": 3, "step_hours": 30.0,

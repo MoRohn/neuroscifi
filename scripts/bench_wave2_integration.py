@@ -72,6 +72,7 @@ def families(split) -> dict:
                      "headline": {d: cognition.headline_value(res, d) for d, _ in cognition.HEADLINES[family]}}
             if family == "adversarial":
                 entry["cases"] = {c["id"]: c["pass"] for c in res.get("cases") or []}
+                entry["observed"] = {c["id"]: str(c.get("observed"))[:300] for c in res.get("cases") or []}
                 entry["failed"] = res.get("failed")
             if family == "retention":
                 entry["all_retained"] = res.get("all_retained")
@@ -89,19 +90,28 @@ def run(splits, *, with_families=True) -> dict:
     out = {"benchmark": "cognition, Wave 2 lane L: the integration loop", "environment": cognition.environment(),
            "label": cognition.LABEL, "links": {k: {"web": v[0], "instance": v[1]} for k, v in integrated.LINKS.items()},
            "worlds_file": "src/neuroscifi/acceptance/cognition/integrated_splits.py", "splits": {}}
-    for split in splits:
+    best = None             # lane Y (L2): the best single link is chosen on development, never on held-out
+    for split in sorted(splits, key=lambda s: s != "development"):
         started = time.perf_counter()
         result = integrated.run(split)
         configs = result["configurations"]
         singles = [n for n in configs if n.startswith("alone:")]
-        best = max(singles, key=lambda n: configs[n]["mean"]["correct_mean"])
-        section = {"seeds": result["seeds"], "reference": result["reference"],
+        top = max(configs[n]["mean"]["correct_mean"] for n in singles)
+        ties = [n for n in singles if abs(configs[n]["mean"]["correct_mean"] - top) < 1e-9]
+        if split == "development":
+            best = max(singles, key=lambda n: configs[n]["mean"]["correct_mean"])
+        section = {"seeds": result["seeds"], "reference": result["reference"], "draw": result["draw"],
                    "headline": {n: {m: c["mean"][m] for m in HEADLINE} for n, c in configs.items()},
+                   "activity": {n: {m: c["mean"][m] for m in integrated.ACTIVITY + (
+                       "changed_launch_steps", "changed_held_steps", "marks_rows", "premise_rows", "imagined_rows",
+                       "arbitrations")} for n, c in configs.items()},
                    "baseline_spread": {w: {m: rows[m] for m in PAIRED}
                                        for w, rows in configs["baseline"]["worlds"].items()},
                    "integrated_vs_baseline": paired(result, "baseline", "integrated"),
-                   "best_single_link": best,
-                   "integrated_vs_best_single_link": paired(result, best, "integrated"),
+                   "alone_vs_baseline": {n: paired(result, "baseline", n)["correct_mean"] for n in singles},
+                   "best_single_link_on_this_split": ties if len(ties) > 1 else ties[0],
+                   "best_single_link": best, "best_single_link_chosen_on": "development" if best else None,
+                   "integrated_vs_best_single_link": paired(result, best, "integrated") if best else None,
                    "full": result, "run_seconds": round(time.perf_counter() - started, 2)}
         if with_families:
             section["families"] = families(split)

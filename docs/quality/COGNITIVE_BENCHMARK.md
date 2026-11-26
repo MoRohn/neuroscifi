@@ -427,3 +427,27 @@ said otherwise.
 | retention holds | Other | holds for the shipped defaults; the first build of information-v1 failed `asks_only_while_partner_ambiguous`; amended after the review (it asks a partner only while its meaning is ambiguous), it passes with everything on (reconciled tree, both splits) |
 | adversarial 12 → 17 of 17 | Other: not an improvement | 13 of the original 13 under the redefinition in ADR-052 §6; 4 new invariant cases pass in every regime (they pass with every Wave 1 setting off); 1 restored case passes in every regime |
 | frozen worlds for re-checking and strategy selection, `knowledge_splits.py` (own digest, pinned in its test) | K | a new file; `splits.py` and `withheld.py` and their pinned digests are unchanged |
+
+## Wave 2: how the knowledge worlds draw, after the benchmark-integrity review
+
+Lane K's knowledge worlds (`knowledge.py`, Wave 1) and lane L's integration worlds (`integrated.py`, Wave 2), which
+reuse lane K's staging, drew the world's truth changes, the arrivals and every research outcome from **one** random
+stream (strategy selection: the offers and the outcomes). Two configurations that investigate different subjects can
+then meet different later worlds, so their per-seed differences are not paired on the same world. Wave 2 lane Y
+added a **decoupled draw** (`knowledge._World(decoupled=True)`): truth changes keyed by (world, seed, step), each
+research outcome by (world, seed, step, subject); strategy selection's offers by (world, seed, step) and its
+outcomes by (world, seed, step, candidate). The worlds files are unchanged; only how the harness draws from them.
+
+| Family | Default draw | Evidence |
+|---|---|---|
+| lane K, retention under change and strategy selection (`scripts/bench_genesis_knowledge.py`) | the recorded one-stream draw, so the recorded baseline reproduces (0 of 635 held-out and 633 development values differ on the integrated tree); `--decoupled` is the draw documented for paired comparisons | recorded: `genesis_knowledge.json` (unchanged); decoupled: `genesis_knowledge_decoupled.json` |
+| lane L, the integration loop (`scripts/bench_wave2_integration.py`) | decoupled (`decoupled=False` reproduces the first run) | `genesis_integration.json`; the first figures under `before_review` |
+
+What moved (held-out, decoupled against recorded): lane K's retention under change, due order 0.693 → 0.673 and the
+re-check 0.695 → 0.682 (paired re-check − due order +0.003 and +0.014 per world, sd 0.021 and 0.036, against a
+baseline sd of 0.054 and 0.075: still within noise); strategy selection, Thompson against the incumbent 0.395 /
+0.265 → 0.348 / 0.268 verified items per investigation (the gain shrinks from +0.130 to +0.080, still positive),
+share on the self-reporting arm 0.105 / 0.253 → 0.088 / 0.233. Lane L: baseline 0.713 → 0.718, integrated 0.710 →
+0.726, paired −0.003 (4 higher, 4 lower) → +0.008 (sd 0.015; 6 higher, 2 lower), the re-check's, below the
+baseline's per-world sd of 0.047 and 0.071. No verdict and no default changed. Lane F's learning-cycles worlds
+(`cycles_splits.py`) are written whole before a run (`generate`), so they never had this coupling.

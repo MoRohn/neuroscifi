@@ -6,8 +6,9 @@ stored records:
 
   internal observation and salience   the knowledge item's "still holds" prediction falls due; the item is stale
   admission (the one rule)            the timer's knowledge re-check admits it through autonomy.admission, with the
-                                      salience record in its decision event; the timer's curiosity, which wanted the
-                                      same subject, loses, and the arbitration record names it
+                                      salience record in its decision event; curiosity's cooldown then refuses the
+                                      subject, but it is a due prediction, never in the timer's curiosity pool, so
+                                      no arbitration is recorded (lane Y, H1: only a real conflict is one)
   imagined store                      the timer's scenario records imagine the prediction's three futures (kind
                                       simulation, quarantined) before anything is observed
   the real observation                the re-check runs as a real research task on the fixture web, whose pages now say
@@ -108,9 +109,10 @@ def test_a_stimulus_travels_the_loop_and_each_hand_over_is_on_the_records(indivi
     picked = next(d["autonomy"] for d in decisions(db, recheck_task) if isinstance(d.get("autonomy"), dict))
     assert picked["admission"] == {"rule": "unified", "path": "recheck"} and picked["knowledge_id"] == kid
     assert picked["salience"]["signals"]["staleness"] > 0 and picked["salience"]["explanation"].startswith("salience")
+    # the subject is a due prediction: the timer's curiosity never launches one (its pool is empty here), so the
+    # cooldown refusal is no conflict and nothing names curiosity as a loser (lane Y, H1)
     lost = [d["arbitration"] for d in decisions(db, recheck_task) if "arbitration" in d]
-    assert lost == [{"slot": "one investigation per subject per timer pass", "winner": "recheck",
-                     "loser": "curiosity", "rule": scheduler.TAKEN_BY_RECHECK}]
+    assert lost == [] and "arbitration" not in first
     assert db.execute("SELECT task_id FROM web_predictions WHERE id=?", (pred["id"],)).fetchone()[0] == recheck_task
 
     # 2. the real observation arrives (the re-check runs as research on the fixture web); monitoring records support
@@ -177,9 +179,7 @@ def test_a_stimulus_travels_the_loop_and_each_hand_over_is_on_the_records(indivi
     last = cycle["last_investigation"]
     assert last["task_id"] == recheck_task and last["admitted"]["path"] == "recheck"
     assert last["admitted"]["salience"] == picked["salience"]["score"]
-    assert cycle["arbitration"][0] | {"at": None} == {"task_id": recheck_task, "winner": "recheck",
-                                                      "loser": "curiosity", "rule": scheduler.TAKEN_BY_RECHECK,
-                                                      "at": None}
+    assert cycle["arbitration"] == []          # no real conflict happened (a real one: test_integration_arbitration)
     assert cycle["predictions"]["errors"] == 1 and cycle["predictions"]["latest"]["prediction_id"] == pred["id"]
     assert sd.value(rec, "uncertain.to_recheck")["open"] >= 2
     assert any("re-check of something that may be out of date" in s and "1 turned out wrong" in s

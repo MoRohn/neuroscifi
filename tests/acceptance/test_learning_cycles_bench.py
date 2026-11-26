@@ -61,6 +61,50 @@ def test_nothing_learned_and_still_true_is_lost_over_the_cycles():
         assert out["retention"]["lost"] == out["retention"]["regressed"] == 0, out["retention"]
 
 
+def test_the_references_come_from_the_world_generator_alone(monkeypatch):
+    """Lane Y (H4): the decay has references from the same worlds and budget, computed without any product code (the
+    consolidation is made to fail: the references never reach it)."""
+    from neuroscifi.webcortex import consolidate
+    monkeypatch.setattr(consolidate, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("product code")))
+    out = cycles.references(DEV, 41)
+    world = cycles_splits.generate(DEV, 41)
+    changes = sum(1 for s in world["subjects"] for c in range(s["born"] + 1, DEV["cycles"] + 1)
+                  if s["truth"][c] != s["truth"][c - 1])
+    assert out["changes_per_cycle"] == changes / DEV["cycles"]
+    series = out["series"]
+    assert set(series) == set(cycles.REFERENCES) and all(len(s) == DEV["cycles"] + 1 for s in series.values())
+    assert series["snapshot"][0] == series["oracle"][0] == series["round_robin_perfect"][0] == 1.0
+
+    def mean(s):
+        return sum(s[1:]) / len(s[1:])
+    assert mean(series["oracle"]) >= mean(series["round_robin_perfect"]) >= mean(series["snapshot"])
+    assert mean(series["round_robin_perfect"]) >= mean(series["round_robin"])
+
+
+def test_a_look_teaches_the_blind_reference_its_majority_and_a_tie_teaches_nothing():
+    pages = [{"kind": "honest", "text": "Vel 1.5.0 is the latest Vel release."},
+             {"kind": "lag", "text": "As of now, Vel 1.4.0 is the latest Vel release."},
+             {"kind": "wire", "text": "Vel 7.2.0 is the latest Vel release, the Syndiwire desk reports."}]
+    world = {"looks": {("Vel", 1): {"pages": pages}, ("Vel", 2): {"pages": pages + [dict(pages[0])]}}}
+    assert cycles._look_majority(world, "Vel", 1) is None              # one honest, one lagging: a tie
+    assert cycles._look_majority(world, "Vel", 2) == 5
+    assert cycles._look_majority(world, "Vel", 3) is None              # no look
+
+
+def test_each_run_counts_what_the_mechanisms_did_and_whether_it_changed_a_launch_or_a_held_item():
+    """Lane Y (M1): a mechanism that acted but changed nothing investigated or held is 'not exercised by this world',
+    which needs these counts beside the metric."""
+    configs = {"baseline": frozenset(), "only:hypothesis_fields": frozenset({"hypothesis_fields"}),
+               "reference:no-loop": frozenset({cycles.NO_LOOP})}
+    result = cycles.run_split("development", configs=configs, cycles=3, seeds=(41,))
+    rows = {name: result["configurations"][name]["worlds"][DEV["name"]]["per_seed"][0] for name in configs}
+    assert rows["baseline"]["changed_launch_cycles"] == rows["baseline"]["changed_held_cycles"] == 0
+    assert rows["only:hypothesis_fields"]["activity.hypothesis_detail_rows"] > 0
+    assert rows["baseline"]["activity.hypothesis_detail_rows"] == 0
+    assert rows["only:hypothesis_fields"]["changed_launch_cycles"] == 0      # it wrote rows; nothing read them
+    assert rows["reference:no-loop"]["changed_launch_cycles"] > 0             # no autonomous task at all
+
+
 def test_the_verdict_rule_reads_paired_seeds_and_calls_display_only_mechanisms_no_evidence():
     result = cycles.run_split("development", cycles=1, seeds=(41,))
     verdicts = cycles.verdicts(result)

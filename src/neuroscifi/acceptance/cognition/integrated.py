@@ -38,6 +38,15 @@ used as ground truth):
   self_probes                    self-description probes on the loop against the world's own bookkeeping: PLUMBING
                                  checks (they compare a stored value with the surface that shows it), never a claim
   cost                           wall seconds, tasks, scenario records written
+  activity (lane Y, M1)          what each link DID (_activity: admissions with two or more candidates, salience
+                                 orders and how often they changed the first candidate, the timer's largest curiosity
+                                 pool, learning-progress factors other than 1, re-check marks and premise rows) and,
+                                 against the baseline's run of the same world and seed, the steps at which what was
+                                 investigated (changed_launch_steps) or what is held (changed_held_steps) differ: a
+                                 link that acted but changed neither is "not exercised by this world"
+The draw (lane Y, H3; knowledge._World): decoupled by default, so every configuration meets the same world trajectory
+(truth changes keyed by world, seed and step; research outcomes by world, seed, step and subject). Lane L's first
+evidence was made with the one-stream draw (decoupled=False); the worlds file is the same for both.
 What it cannot show: that real subjects change like these, that real sources are this reliable, the open web, the
 answer model, or the real host's resources (the gate is read as allowed).
 """
@@ -114,17 +123,20 @@ def _host_gate_allowed():
 
 
 class World(knowledge._World):
-    """knowledge._World's staging, with the loop run by the real timer pass and idle investigator."""
+    """knowledge._World's staging, with the loop run by the real timer pass and idle investigator.
 
-    def __init__(self, spec, seed, db, web, inst):
-        super().__init__(spec, seed, db, "integrated")
-        from ...webcortex import state
+    Lane Y (after the benchmark-integrity review): the configuration's settings are applied BEFORE the staging (L1;
+    before, the staging ran at the shipped defaults and wrote premise and hypothesis-detail rows in every
+    configuration), and the draw is decoupled by default (H3; knowledge._World's class doc): the world's truth
+    changes do not depend on what a configuration investigated, so configurations are compared on the same world.
+    `decoupled=False` is the draw of lane L's first evidence (kept under `before_review` in its evidence file)."""
+
+    def __init__(self, spec, seed, db, web, inst, *, decoupled=True):
         # the re-check's share as shipped (knowledge._World widens it for lane K's own worlds)
         defaults = WEB_DEFAULTS
-        state.set_config(db, {"recheck_per_tick": defaults.recheck_per_tick,
-                              "recheck_daily": defaults.recheck_daily} | web, T0)
-        if inst:
-            store.set_config(db, inst, T0)
+        super().__init__(spec, seed, db, "integrated", web={"recheck_per_tick": defaults.recheck_per_tick,
+                                                            "recheck_daily": defaults.recheck_daily} | web,
+                         inst=inst, decoupled=decoupled)
         self.executed = []          # (step, task id, origin, subject or None)
 
     def subject_of_task(self, task) -> str | None:
@@ -152,7 +164,7 @@ class World(knowledge._World):
             clusters = [self._noise_cluster(sid, self.now)]
         elif sid is not None and sid in self.truth:
             before = self.stored_version(sid)
-            reported = self.truth[sid] if self.rng.random() < self.spec["reliability"] else before
+            reported = self.truth[sid] if self.outcome_rng(sid).random() < self.spec["reliability"] else before
             clusters = [self._agree(sid, reported if reported is not None else self.truth[sid], self.now)]
         else:
             clusters = []
@@ -174,7 +186,8 @@ class World(knowledge._World):
         return caught
 
     def _noise_cluster(self, sid, at):
-        a_val, b_val = self.rng.randint(10, 49), self.rng.randint(50, 99)
+        rng = self.outcome_rng(sid)
+        a_val, b_val = rng.randint(10, 49), rng.randint(50, 99)
         h = self._hosts(2)
         name = knowledge._name(sid)["name"]
         a = self._claim(h[0], sid, f"The {name} index stands at {a_val} points today.", None, at)
@@ -213,20 +226,65 @@ def self_probes(db, world, now) -> list[dict]:
             for name, got, want in probes]
 
 
-def run_world(spec, seed, links, *, defaults=False) -> dict:
+@contextmanager
+def _activity(counts):
+    """What each link DID in a run (lane Y, M1), counted from the real calls' own results; the calls pass through
+    unchanged (a counting wrapper, nothing decided or altered here):
+      admissions / admissions_multi   autonomy.admission calls on the timer and idle paths / those that admitted
+                                      two or more candidates (the only ones an order can change)
+      tick_pool_max                   the largest timer curiosity pool of the run (subjects it could launch)
+      salience_ordered / salience_first_changed   admissions taken in salience order / of those, how many took
+                                      first another candidate than the priority order would have
+      lp_factors_not_1                curiosity.rank entries whose learning-progress factor was not 1"""
+    from ...webcortex import autonomy, curiosity
+    real_admission, real_rank = autonomy.admission, curiosity.rank
+
+    def admission(*a, **k):
+        out = real_admission(*a, **k)
+        if k.get("path") in ("tick", "idle"):
+            counts["admissions"] += 1
+            counts["admissions_multi"] += len(out.get("chosen") or []) >= 2
+            if "pool" in out:
+                counts["tick_pool_max"] = max(counts["tick_pool_max"], len(out["pool"]))
+            order = out.get("order") or {}
+            if order.get("by") == "salience":
+                counts["salience_ordered"] += 1
+                counts["salience_first_changed"] += order.get("priority_rank_of_first") not in (0, None)
+        return out
+
+    def rank(*a, **k):
+        out = real_rank(*a, **k)
+        for entry in out:
+            factor = (entry.get("learning_progress") or {}).get("factor") \
+                if isinstance(entry.get("learning_progress"), dict) else None
+            counts["lp_factors_not_1"] += isinstance(factor, (int, float)) and abs(factor - 1.0) > 1e-12
+        return out
+    with mock.patch.object(autonomy, "admission", admission), mock.patch.object(curiosity, "rank", rank):
+        yield
+
+
+ACTIVITY = ("admissions", "admissions_multi", "tick_pool_max", "salience_ordered", "salience_first_changed",
+            "lp_factors_not_1")
+
+
+def run_world(spec, seed, links, *, defaults=False, decoupled=True) -> dict:
     from ...webcortex import autonomy, scenarios, scheduler
     from ...webcortex import state as wstate
     started = time.perf_counter()
     web, inst = config(links, defaults=defaults)
+    counts = dict.fromkeys(ACTIVITY, 0)
     with tempfile.TemporaryDirectory(prefix="nsf-genesis-l-") as directory, ExitStack() as stack:
         stack.enter_context(_host_gate_allowed())
         db = store.create(Path(directory) / "l.sqlite", T0, note="lane L benchmark: the integration loop")
         stack.callback(db.close)
-        world = World(spec, seed, db, web, inst)
+        world = World(spec, seed, db, web, inst, decoupled=decoupled)
+        stack.enter_context(_activity(counts))
         beliefs_before = db.execute("SELECT count(*) FROM belief_revisions").fetchone()[0]
         series, caught, conflicts, wasted = [], 0, 0, 0
+        launches, held = [], []         # per step: what was investigated, what is held (compared across configurations)
         arrivals = 0
         for step in range(spec["steps"]):
+            world.step = step
             world.now += spec["step_hours"] * 3600.0
             world.step_world()
             for _ in range(spec["arrivals"]):
@@ -252,6 +310,8 @@ def run_world(spec, seed, links, *, defaults=False) -> dict:
             named = [s for s in looked if s is not None]
             wasted += len(named) - len(set(named))
             series.append(world.score())
+            launches.append(tuple(looked))
+            held.append(tuple((sid, world.stored_version(sid)) for sid in sorted(world.truth)))
         scenarios.tick(db, world.now + 1)         # settle what the last pass can compare
         errors = scenarios.errors(db)["mechanisms"] if scenarios.enabled(db) else {}
         probes = self_probes(db, world, world.now + 2)
@@ -259,6 +319,8 @@ def run_world(spec, seed, links, *, defaults=False) -> dict:
         imagined_rows = imagined.counts(db)["total"]          # a count, never a record's content
         arbitrations = db.execute("SELECT count(*) FROM web_events WHERE kind='decision' AND "
                                   "json_extract(detail,'$.arbitration') IS NOT NULL").fetchone()[0]
+        marks_rows = db.execute("SELECT count(*) FROM web_rechecks").fetchone()[0]
+        premise_rows = db.execute("SELECT count(*) FROM web_premises").fetchone()[0]
     investigations = [e for e in world.executed]
     n = len(investigations)
     noise = sum(1 for e in investigations if e[3] is not None and e[3].startswith("noise"))
@@ -276,27 +338,44 @@ def run_world(spec, seed, links, *, defaults=False) -> dict:
             "scenario_log_loss": err["log_loss"] if err else None,
             "self_probes_correct": sum(1 for p in probes if p["correct"]), "self_probes": len(probes),
             "probes": probes, "imagined_rows": imagined_rows, "series_keys": keys,
-            "wall_seconds": time.perf_counter() - started}
+            "marks_rows": marks_rows, "premise_rows": premise_rows, **counts,
+            "launches": launches, "held": held, "wall_seconds": time.perf_counter() - started}
 
 
 METRICS = ("correct_mean", "correct_final", "correct_weighted_mean", "correct_old_mean", "caught_per_investigation",
            "investigations", "noise_share", "wasted_share", "conflicts", "arbitrations", "belief_writes", "scenario_n",
-           "scenario_brier", "scenario_log_loss", "self_probes_correct", "imagined_rows", "wall_seconds")
+           "scenario_brier", "scenario_log_loss", "self_probes_correct", "imagined_rows", "wall_seconds",
+           "marks_rows", "premise_rows", *ACTIVITY, "changed_launch_steps", "changed_held_steps")
 
 
-def run(split, configs=None, *, seeds=None) -> dict:
+def _changed(rows, base, field) -> int:
+    """Steps at which a run's `field` (what was investigated, what is held) differs from the baseline's run of the
+    same world and seed (the same world trajectory under the decoupled draw)."""
+    return sum(1 for a, b in zip(rows[field], base[field]) if a != b)
+
+
+def run(split, configs=None, *, seeds=None, decoupled=True) -> dict:
     """Every configuration on every world of the split under its seeds: per world the scores' spread over seeds, and
-    the mean over worlds."""
+    the mean over worlds. With the baseline among the configurations, each run also counts the steps at which what
+    it investigated, and what it held, differ from the baseline's run of the same world and seed (lane Y, M1)."""
     spec = splits.INTEGRATED[split]
     seeds = tuple(seeds or spec["seeds"])
     configs = configs or configurations()
     out = {"split": split, "seeds": list(seeds), "reference": {"scenario_brier_equal_futures": 2 / 3,
                                                                "scenario_log_loss_equal_futures": math.log(3)},
-           "configurations": {}}
+           "draw": knowledge.DRAW[decoupled], "configurations": {}}
+    raw = {(name, world["name"]): [run_world(world, seed, links, defaults=defaults, decoupled=decoupled)
+                                   for seed in seeds]
+           for name, (links, defaults) in configs.items() for world in spec["worlds"]}
+    for (name, world), rows in raw.items():
+        base = raw.get(("baseline", world))
+        for i, r in enumerate(rows):
+            r["changed_launch_steps"] = _changed(r, base[i], "launches") if base else None
+            r["changed_held_steps"] = _changed(r, base[i], "held") if base else None
     for name, (links, defaults) in configs.items():
         worlds = {}
         for world in spec["worlds"]:
-            rows = [run_world(world, seed, links, defaults=defaults) for seed in seeds]
+            rows = raw[(name, world["name"])]
             worlds[world["name"]] = {k: scoring.spread([r[k] for r in rows]) for k in METRICS}
             worlds[world["name"]]["per_seed"] = {str(s): {k: r[k] for k in METRICS} for s, r in zip(seeds, rows)}
         out["configurations"][name] = {
@@ -305,13 +384,26 @@ def run(split, configs=None, *, seeds=None) -> dict:
     return scoring.rounded(out)
 
 
+def forced(links) -> tuple[dict, dict]:
+    """(web, instance) settings the "integrated" mechanism forces on in the retention and adversarial families: the
+    links' own settings and the records they need (RECORDS_WEB), nothing else. Every other setting stays what each
+    case's individual stored (lane Y, H2: forcing the whole configuration switched every Wave 1 setting off inside
+    the cases, so a case that stages its own setting passed vacuously)."""
+    web, inst = (dict(RECORDS_WEB) if links else {}), {}
+    for name in links:
+        w, i = LINKS[name]
+        web |= w
+        inst |= i
+    return web, inst
+
+
 @contextmanager
 def switched_on(links=tuple(LINKS)):
-    """Every individual the family creates reads the integrated configuration's settings, whatever it stored (the
-    settings dataclasses' from_json, patched for the run; nothing is written)."""
+    """Every individual the family creates reads the links' settings on top of what it stored (forced(); the settings
+    dataclasses' from_json, patched for the run; nothing is written), as lane K's KnowledgeEvolution does."""
     import dataclasses
     from ...instance.store import InstanceConfig
-    web, inst = config(links)
+    web, inst = forced(links)
     real_i, real_w = InstanceConfig.from_json.__func__, WebConfig.from_json.__func__
 
     def instance_json(cls, text):
@@ -347,5 +439,6 @@ def register():
 
 register()
 
-__all__ = ["CONFIGS", "Integrated", "LINKS", "World", "config", "configurations", "run", "run_world", "switched_on"]
+__all__ = ["CONFIGS", "Integrated", "LINKS", "World", "config", "configurations", "forced", "run", "run_world",
+           "switched_on"]
 CONFIGS = configurations()

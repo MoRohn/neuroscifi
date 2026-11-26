@@ -22,6 +22,9 @@ what the owner researched (the world's cycle-0 subjects). Each cycle (one simula
 What is substituted: search and fetching (the world hands each task its pages; no SafeFetcher, no search engine, no
 answer synthesis, no model: the stored model answer is a fixed sentence), the host's resource gate (held open:
 resources.policy.background_gate), and the owner (accepts a seeded share of new items; answers nothing else).
+Not run: the worker's idle investigation (autonomy.idle), which in the product shares the daily allowance with the
+timer; "the loop" here is the timer's pass only (lane Y, M4).
+References (lane Y, H4): REFERENCES / references(), from the world generator alone, beside the measured runs.
 
 Measured per cycle against the world's truth (never against anything the individual produced):
   accuracy        share of held items (live knowledge rows about a world subject) that state the version true now
@@ -192,6 +195,8 @@ class Run:
         self.history = {}                 # subject -> list of (cycle, newest held version or None)
         self.calibration = []             # (confidence, true now)
         self.self_now = []
+        self.launches = []                # (cycle, kind, subject) of every non-owner task executed (lane Y, M1)
+        self.strategy = {"calls": 0, "changed": 0}    # strategies.rank calls / those that changed the order
 
     # ---- the world ----------------------------------------------------------------------------------------------
     def subject_in(self, text):
@@ -250,6 +255,8 @@ class Run:
                 else "owner" if origin in ("console", "cli") else "other")
         self.tasks[kind] += 1
         name = self.subject_in(task["objective"])
+        if kind != "owner":
+            self.launches.append((self.cycle, kind, name))
         look, docs = self._documents(name, now - 600.0) if name else ({"kind": "none", "pages": []}, [])
         self.pages += len(docs)
         before = {r[0]: r[2] for rows in self.held().values() for r in rows}
@@ -406,7 +413,7 @@ class Run:
         rate = sum(1 for _, t in self.calibration if t) / n if n else None
         counts = {t: db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in
                   ("web_knowledge", "web_claims", "web_hypotheses", "web_predictions", "web_events", "web_rechecks",
-                   "web_premises", "web_reflections", "imagined", "pending")}
+                   "web_premises", "web_reflections", "imagined", "pending", "web_hypothesis_details")}
         return {
             "mean": {k: scoring.spread([s[k] for s in self.series[1:]])["mean"]
                      for k in ("accuracy", "coverage", "correct")},
@@ -431,20 +438,37 @@ class Run:
             "file_bytes_growth_per_cycle": (self.series[-1]["file_bytes"] - self.series[0]["file_bytes"]) / max(1, last),
             "abandoned": db.execute("SELECT count(*) FROM web_hypotheses WHERE status='abandoned'").fetchone()[0],
             "reflections": counts["web_reflections"],
+            # what each mechanism DID (lane Y, M1): its own records, and strategy selection's rankings
+            "activity": {"hypothesis_detail_rows": counts["web_hypothesis_details"],
+                         "premise_rows": counts["web_premises"], "recheck_rows": counts["web_rechecks"],
+                         "recheck_tasks": self.tasks["recheck"], "strategy_rank_calls": self.strategy["calls"],
+                         "strategy_rank_changed": self.strategy["changed"]},
+            "launches": list(self.launches), "history": {n: list(h) for n, h in self.history.items()},
         }
 
 
 @contextmanager
 def _environment(run_ref):
     """The host's resource gate held open (the experiment measures knowledge, not this host's memory pressure);
-    the reflection's model summary answered by the stub (no model is called)."""
+    the reflection's model summary answered by the stub (no model is called); strategy selection's rankings counted
+    (a pass-through wrapper: the call and its result are unchanged; lane Y, M1)."""
     from ...resources import policy as rpolicy
     from ...inference import gateway
+    from ...webcortex import strategies
+    real_rank = strategies.rank
+
+    def rank(db, now, chosen, **kw):
+        ordered, record = real_rank(db, now, chosen, **kw)
+        if run_ref[0] is not None:
+            run_ref[0].strategy["calls"] += 1
+            run_ref[0].strategy["changed"] += [c.get("key") for c in ordered] != [c.get("key") for c in chosen]
+        return ordered, record
     with ExitStack() as stack:
         stack.enter_context(mock.patch.object(rpolicy, "background_gate", lambda *a, **k: {"allowed": True,
                                                                                            "reason": None}))
         stack.enter_context(mock.patch.object(gateway.Gateway, "from_db",
                                               classmethod(lambda cls, db: _StubGateway(run_ref[0]))))
+        stack.enter_context(mock.patch.object(strategies, "rank", rank))
         yield
 
 
@@ -474,7 +498,11 @@ SCALARS = ("mean.accuracy", "mean.coverage", "mean.correct", "final.correct", "c
            "file_bytes_growth_per_cycle", "open_marks_max", "open_marks_end", "reflections", "abandoned",
            # the counts behind the shares above
            "changes", "caught", "error_episodes", "retention.base", "retention.forgotten_by_owner", "calibration.n",
-           "one_origin_looks")
+           "one_origin_looks",
+           # what each mechanism did, and whether it changed what was investigated or held (lane Y, M1)
+           "activity.hypothesis_detail_rows", "activity.premise_rows", "activity.recheck_rows",
+           "activity.recheck_tasks", "activity.strategy_rank_calls", "activity.strategy_rank_changed",
+           "changed_launch_cycles", "changed_held_cycles")
 
 
 def _get(d, dotted):
@@ -483,15 +511,41 @@ def _get(d, dotted):
     return d
 
 
+def _changed(row, base) -> tuple[int, int]:
+    """(cycles in which the autonomous tasks investigated other subjects than the baseline's run of the same world and
+    seed, cycles in which a subject's newest held version differs from that run's): the world is written whole
+    before the run, so both runs met the same pages."""
+    def by_cycle(launches):
+        out = {}
+        for c, kind, name in launches:
+            out.setdefault(c, []).append((kind, name))
+        return out
+    mine, theirs = by_cycle(row["launches"]), by_cycle(base["launches"])
+    launch = sum(1 for c in set(mine) | set(theirs) if mine.get(c) != theirs.get(c))
+    held = {}
+    for history in (row["history"], base["history"]):
+        for name, hist in history.items():
+            for c, v in hist:
+                held.setdefault((name, c), []).append(v)
+    held_cycles = {c for (name, c), vs in held.items() if len(vs) != 2 or vs[0] != vs[1]}
+    return launch, len(held_cycles)
+
+
 def run_split(split, *, configs=None, cycles=None, seeds=None) -> dict:
     spec = worlds.CYCLES[split]
     configs = configs or configurations()
     seeds = tuple(seeds or spec["seeds"])
+    raw = {(name, world["name"]): [run_world(world, seed, mechanisms, cycles=cycles) for seed in seeds]
+           for name, mechanisms in configs.items() for world in spec["worlds"]}
+    for (name, world), rows in raw.items():
+        base = raw.get(("baseline", world))
+        for i, r in enumerate(rows):
+            r["changed_launch_cycles"], r["changed_held_cycles"] = _changed(r, base[i]) if base else (None, None)
     out = {}
     for name, mechanisms in configs.items():
         per_world = {}
         for world in spec["worlds"]:
-            rows = [run_world(world, seed, mechanisms, cycles=cycles) for seed in seeds]
+            rows = raw[(name, world["name"])]
             per_world[world["name"]] = {
                 "seeds": list(seeds), "per_seed": [{k: _get(r, k) for k in SCALARS} | {"tasks": r["tasks"]}
                                                    for r in rows],
@@ -504,6 +558,92 @@ def run_split(split, *, configs=None, cycles=None, seeds=None) -> dict:
     return {"split": split, "seeds": list(seeds), "configurations": out,
             "strategy_selection_note": "in force without passing the real gate (a 'retain' row written into each "
                                        "throwaway individual's ledger)"}
+
+
+# ---- references from the world generator alone (lane Y, H4; after the benchmark-integrity review) ---------------------
+#
+# What the decay means needs a reference: the same worlds, the same budget where one applies, and no product code.
+# Each reference holds one value per subject, starts from what the owner's research would give it at the subject's
+# birth, and is scored like `correct` (share of the subjects so far whose held value is the true one now):
+#   snapshot      a perfect snapshot at birth (the true version then), never refreshed: the ideal no-loop
+#   round_robin   a blind schedule with the run's budget: each cycle the `budget` subjects checked longest ago
+#                 (ties by name) are looked at once and the held value becomes what that look's pages state by
+#                 majority (honest, lagging and copied pages each one vote; the wire story and its copies, and echo
+#                 pages, are not read; a tie or a look with none of them teaches nothing); birth knowledge the same
+#   round_robin_perfect   the same schedule with perfect reads (each look learns the truth): the schedule's own limit
+#   oracle        knows which subjects changed: each cycle it refreshes, perfectly, up to `budget` subjects whose held
+#                 value is wrong (in birth order): the bound for this budget
+# These are not product configurations: they read the world's truth or pages directly.
+REFERENCES = ("snapshot", "round_robin", "round_robin_perfect", "oracle")
+
+
+def _look_majority(world, name, cycle):
+    votes = {}
+    for page in (world["looks"].get((name, cycle)) or {"pages": []})["pages"]:
+        if page["kind"] not in ("honest", "lag", "copy"):
+            continue
+        m = re.search(r"\b1\.(\d+)\.0\b", page["text"])
+        if m:
+            votes[int(m.group(1))] = votes.get(int(m.group(1)), 0) + 1
+    if not votes:
+        return None
+    top = max(votes.values())
+    best = [v for v, n in votes.items() if n == top]
+    return best[0] if len(best) == 1 else None
+
+
+def references(spec, seed) -> dict:
+    """{reference: [correct at cycle 0..N]} and the world's changes per cycle (see REFERENCES)."""
+    world = worlds.generate(spec, seed)
+    subjects, n, budget = world["subjects"], spec["cycles"], spec["budget"]
+    out = {}
+    for ref in REFERENCES:
+        held, last, series = {}, {}, []
+        for c in range(n + 1):
+            for s in subjects:
+                if s["born"] == c:
+                    held[s["name"]] = _look_majority(world, s["name"], c) if ref == "round_robin" else s["truth"][c]
+                    last[s["name"]] = c
+            if c >= 1 and ref != "snapshot":
+                older = [s for s in subjects if s["born"] < c]
+                if ref == "oracle":
+                    pick = [s for s in older if held[s["name"]] != s["truth"][c]][:budget]
+                else:
+                    pick = sorted(older, key=lambda s: (last[s["name"]], s["name"]))[:budget]
+                for s in pick:
+                    value = _look_majority(world, s["name"], c) if ref == "round_robin" else s["truth"][c]
+                    if value is not None:
+                        held[s["name"]] = value
+                    last[s["name"]] = c
+            live = [s for s in subjects if s["born"] <= c]
+            series.append(sum(1 for s in live if held[s["name"]] == s["truth"][c]) / len(live))
+        out[ref] = series
+    changes = sum(1 for s in subjects for c in range(s["born"] + 1, n + 1) if s["truth"][c] != s["truth"][c - 1])
+    return {"series": out, "changes_per_cycle": changes / n}
+
+
+def run_references(split, *, seeds=None) -> dict:
+    """Per world: budget, changes per cycle, and per reference the mean of `correct` over cycles 1..N (spread over
+    seeds, as PRIMARY), at cycle 0 and at cycle N, and the per-cycle mean series."""
+    spec = worlds.CYCLES[split]
+    seeds = tuple(seeds or spec["seeds"])
+    out = {}
+    for world in spec["worlds"]:
+        rows = [references(world, seed) for seed in seeds]
+        entry = {"budget": world["budget"], "cycles": world["cycles"],
+                 "changes_per_cycle": scoring.spread([r["changes_per_cycle"] for r in rows])}
+        for ref in REFERENCES:
+            series = [r["series"][ref] for r in rows]
+            entry[ref] = {"mean_correct": scoring.spread([sum(s[1:]) / len(s[1:]) for s in series]),
+                          "per_seed_mean_correct": [sum(s[1:]) / len(s[1:]) for s in series],
+                          "cycle0": scoring.spread([s[0] for s in series])["mean"],
+                          "final": scoring.spread([s[-1] for s in series])["mean"],
+                          "series_mean": [scoring.spread([s[i] for s in series])["mean"]
+                                          for i in range(len(series[0]))]}
+        out[world["name"]] = entry
+    return {"split": split, "seeds": list(seeds), "references": list(REFERENCES), "worlds": out,
+            "code": "src/neuroscifi/acceptance/cognition/cycles.py: references, run_references (from cycles_splits."
+                    "generate alone; no product code)"}
 
 
 # ---- the verdict, written before the held-out run (roadmap §2 applied to this experiment) -----------------------------

@@ -112,6 +112,19 @@ def test_conflicting_internal_priorities_one_task_per_subject_and_the_loser_name
     assert cycle["arbitration"][0]["loser"] == "curiosity" and cycle["arbitration"][0]["winner"] == "refresh"
 
 
+def test_a_refresh_that_takes_a_subject_when_no_budget_is_left_records_no_arbitration(individual, monkeypatch):
+    """Lane Y (H1): with no budget left for curiosity, the refresh's subject is no conflict: one task, no record."""
+    db, _ = individual
+    monkeypatch.setattr(curiosity, "rank", ranked(GOOD))
+    refresh = [{"prediction_id": 1, "action": "refresh_submitted", "task_id": "refresh-task", "knowledge_id": GOOD[0]}]
+    monkeypatch.setattr(predictions, "check_due", lambda *a, **k: refresh)
+    autonomy.enable(db, T0)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=0)
+    assert {"target": {"key": GOOD[1], "knowledge_id": GOOD[0]}, "reason": scheduler.REFRESHED_THIS_TICK} \
+        in report["skipped"]
+    assert "arbitration" not in report and _arbitrations(db) == []
+
+
 def test_the_arbitration_record_is_attached_to_the_winners_task_and_launches_nothing(individual):
     db, _ = individual
     before = db.execute("SELECT count(*) FROM web_tasks").fetchone()[0]
@@ -122,6 +135,88 @@ def test_the_arbitration_record_is_attached_to_the_winners_task_and_launches_not
     assert rows == [("t-1", "curiosity")] and db.execute("SELECT count(*) FROM web_tasks").fetchone()[0] == before
     # it never feeds the cooldown or the lineage (they read $.autonomy.key only)
     assert autonomy._recent(db, T0 + 1, 86400.0) == set()
+
+
+def _c(key, record, priority):
+    return {"key": key, "salience": record, "priority": priority, "owner": False}
+
+
+@pytest.mark.parametrize("bad", [{"error": "could not be made (ValueError)"}, {"score": "high"},
+                                 {"score": float("nan")}, {"score": None}, {"score": True}, {"score": float("inf")}],
+                         ids=["error-record", "string", "nan", "none", "bool", "inf"])
+def test_salience_order_falls_back_to_priority_unless_every_score_is_finite(bad):
+    """Lane Y (M2): a failed salience record (lane U's guard stores {"error": ...}), a string, a NaN or another
+    non-finite score is never ordered "by salience": the priority order stands and the record says so."""
+    chosen = [_c("a", bad, 0.9), _c("b", {"score": 0.1}, 0.5), _c("c", {"score": 0.6}, 0.1)]
+    ordered, record = salience.order(chosen)
+    assert [c["key"] for c in ordered] == ["a", "b", "c"]
+    assert record["by"] == "priority" and "priority_rank" not in ordered[0]
+
+
+def test_salience_order_is_stable_under_any_permutation_of_its_input():
+    import itertools
+    chosen = [_c("a", {"score": 0.4}, 0.9), _c("b", {"score": 0.6}, 0.5), _c("c", {"score": 0.6}, 0.7),
+              _c("d", {"score": 0.6}, 0.7)]
+    orders = {tuple(c["key"] for c in salience.order(list(p))[0]) for p in itertools.permutations(chosen)}
+    assert orders == {("c", "d", "b", "a")}
+    assert salience.order(chosen)[1]["by"] == "salience"
+
+
+def _recheck_takes(db, monkeypatch, item, *, task="recheck-task"):
+    """The knowledge re-check queues `item` in this pass (its decision event names the subject, so curiosity's
+    cooldown refuses it afterwards), as recheck.run does."""
+    from neuroscifi.webcortex import recheck
+
+    def run(db, now, *, limit, over_cap):
+        with store.write(db):
+            state.log_event(db, task, "decision", {"autonomy": {"key": item[1], "admission": {"path": "recheck"}}},
+                            now)
+        return {"skipped": [], "submitted": [{"knowledge_id": item[0], "task_id": task}]}
+    monkeypatch.setattr(recheck, "enabled", lambda db: True)
+    monkeypatch.setattr(recheck, "run", run)
+
+
+def _arbitrations(db):
+    return [json for (json,) in db.execute("SELECT json_extract(detail,'$.arbitration.winner') FROM web_events "
+                                           "WHERE kind='decision' AND json_extract(detail,'$.arbitration') IS NOT "
+                                           "NULL")]
+
+
+def test_a_real_conflict_between_the_recheck_and_curiosity_records_exactly_one_arbitration(individual, monkeypatch):
+    """Lane Y (H1): the re-check took a subject in the timer's curiosity pool while budget was left for it."""
+    db, _ = individual
+    stage(db, monkeypatch)
+    _recheck_takes(db, monkeypatch, A)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=3)
+    assert _arbitrations(db) == ["recheck"]
+    assert report["arbitration"] == [{"task_id": "recheck-task", "slot": "one investigation per subject per timer "
+                                      "pass", "winner": "recheck", "loser": "curiosity",
+                                      "rule": scheduler.TAKEN_BY_RECHECK}]
+
+
+def test_a_subject_outside_the_timers_curiosity_pool_records_no_arbitration(individual, monkeypatch):
+    """Lane Y (H1): curiosity refuses the re-checked subject by cooldown, but it was never among the timer's ten
+    best (curiosity.rank limit 10), so curiosity could not have taken it: no conflict, no record."""
+    db, _ = individual
+    stage(db, monkeypatch)
+    both, timer = ranked(B, A), ranked(B)
+    monkeypatch.setattr(curiosity, "rank", lambda db, now, limit=10: (timer if limit == 10 else both)(db, now))
+    _recheck_takes(db, monkeypatch, A)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=3)
+    assert any(s.get("target", {}).get("key") == A[1] and str(s["reason"]).startswith("investigated autonomously")
+               for s in report["skipped"])          # the cooldown refusal the old record fired on
+    assert _arbitrations(db) == [] and "arbitration" not in report
+
+
+def test_no_budget_left_for_curiosity_records_no_arbitration(individual, monkeypatch):
+    """Lane Y (H1): the re-check spent the pass's whole budget, so curiosity could not have taken the subject."""
+    db, _ = individual
+    stage(db, monkeypatch)
+    _recheck_takes(db, monkeypatch, A)
+    report = scheduler.tick(db, T0, None, queue=True, max_tasks=1)
+    assert any(s.get("target", {}).get("key") == A[1] and str(s["reason"]).startswith("investigated autonomously")
+               for s in report["skipped"])
+    assert _arbitrations(db) == [] and "arbitration" not in report
 
 
 # ---- competing objectives (directive §8: "prevent any subsystem from creating uncontrolled competing objectives") ----
