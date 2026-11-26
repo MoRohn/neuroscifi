@@ -1618,6 +1618,48 @@ def division_verdicts(result) -> dict:
     return out
 
 
+DIVISION_FIELDS = ("mean.correct", "mean.coverage", "self_admitted", "wire_admitted", "one_origin_rises",
+                   "admitted.rows", "admitted.wrong", "admitted.own_only", "admitted.wire_only", "retention.lost",
+                   "retention.regressed", "pages", "wall_seconds", "activity.idle_tasks",
+                   "activity.division_held_cycles", "activity.division_held_places", "activity.division_mean_share",
+                   "activity.division_reach_tasks", "activity.division_refresh_idle_tasks",
+                   "division_changed_launch_cycles", "division_changed_held_cycles",
+                   "diagnosis.total.refresh.looks", "diagnosis.total.refresh.made", "diagnosis.total.refresh.lost",
+                   "diagnosis.total.reach.looks", "diagnosis.total.reach.made", "diagnosis.total.reach.lost",
+                   "diagnosis.cycles_allowance_spent")
+DIAGNOSED = ("shipped", DIVISION_REFERENCE, "shipped+idle-first")   # their per-cycle diagnosis is kept in the summary
+
+
+def division_summary(result) -> dict:
+    """A summary of a run_split result over division_configurations() (evidence files hold summaries, Wave 4): per
+    configuration and world the DIVISION_FIELDS per seed and their spread, the read-back, the diagnosis totals (and
+    per cycle for DIAGNOSED), the gap to the references; then the verdicts and the development choice."""
+    refs = (result.get("references") or {}).get("worlds") or {}
+    out = {}
+    for name, conf in result["configurations"].items():
+        worlds = {}
+        for w, e in conf["worlds"].items():
+            diag = dict(e.get("diagnosis") or {})
+            if name not in DIAGNOSED:
+                diag.pop("per_cycle", None)
+            gaps = {k: refs[w][k]["mean_correct"]["mean"] - e["spread"][PRIMARY]["mean"]
+                    for k in ("round_robin", "oracle")} if w in refs else None
+            worlds[w] = {"kind": e.get("kind"), "seeds": e["seeds"],
+                         "per_seed": [{k: r.get(k) for k in DIVISION_FIELDS} for r in e["per_seed"]],
+                         "spread": {k: {s: e["spread"][k][s] for s in ("mean", "sd")} for k in DIVISION_FIELDS
+                                    if k in e["spread"]},
+                         "config_same_every_seed": e["config_same_every_seed"], "diagnosis": diag,
+                         "gap_to": gaps}
+        backs = [e["config_read_back"] for e in conf["worlds"].values()]
+        out[name] = {"mechanisms": conf["mechanisms"], "config_read_back": backs[0],
+                     "config_same_every_world": all(b == backs[0] for b in backs), "worlds": worlds}
+    verdicts = division_verdicts(result)
+    return {"split": result["split"], "seeds": result["seeds"], "configurations": out,
+            "references": {w: {k: v[k]["mean_correct"] for k in REFERENCES} | {"budget": v["budget"]}
+                           for w, v in refs.items()},
+            "verdicts": verdicts, "choice": division_choice(verdicts)}
+
+
 def division_choice(verdicts) -> dict:
     """The development choice under the rule above: {"chosen": name or None, "for_the_look": name or None, "why"}."""
     ranked = sorted(((v["mean_gain_open_worlds"] if v["mean_gain_open_worlds"] is not None else float("-inf"), name)
