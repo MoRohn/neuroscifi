@@ -232,6 +232,7 @@ def read_ods(data, detected, limits):
             break
         notes: list[str] = []
         rows = odf_table_cells(table, pkg.budget, notes, typed=True)
+        pkg.partial = pkg.partial or any(n.startswith("partial: repeated") for n in notes)
         if any(local(k) == "formula" for c in table.iter(TABLE + "table-cell") for k in c.attrib):
             notes.append("formulas are not evaluated: the stored values are used")
         members.append(_member(table.get(TABLE + "name") or f"Sheet{i + 1}", 0, rows, notes, "ods"))

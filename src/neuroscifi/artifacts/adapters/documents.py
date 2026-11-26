@@ -29,13 +29,14 @@ from .tables import table_from_rows
 FEED_CHUNK = 1 << 16
 MAX_RTF_DEPTH = 256
 
-_ATX = re.compile(r"^ {0,3}(#{1,6})(?:\s+(.*?))?\s*#*\s*$")
+_ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*))?$")
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([\w+.#-]*)")
 _LIST = re.compile(r"^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$")
 _HR = re.compile(r"^ {0,3}([-*_])(\s*\1){2,}\s*$")
 _TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$")
-_IMAGE = re.compile(r"!\[([^\]]*)\]\(\s*<?([^)\s>]*)>?(?:\s+\"([^\"]*)\")?\s*\)")
-_LINK = re.compile(r"(?<!!)\[([^\]]+)\]\(\s*<?([^)\s>]*)>?(?:\s+\"[^\"]*\")?\s*\)")
+# Bounded, possessive runs that cannot cross a bracket: every pattern below runs in linear time on hostile text.
+_IMAGE = re.compile(r"!\[([^\[\]]{0,1000}+)\]\( {0,8}+<?([^)\s<>\[\]]{0,2000}+)>?(?: {1,8}+\"([^\"]{0,1000}+)\")? {0,8}+\)")
+_LINK = re.compile(r"(?<!!)\[([^\[\]]{1,1000}+)\]\( {0,8}+<?([^)\s<>\[\]]{0,2000}+)>?(?: {1,8}+\"[^\"]{0,1000}+\")? {0,8}+\)")
 _AUTOLINK = re.compile(r"<((?:https?|mailto|ftp):[^>\s]+)>")
 _WS = re.compile(r"\s+")
 
@@ -144,7 +145,11 @@ def markdown_blocks(text: str, *, budget: Budget | None = None, deadline: Deadli
         atx = _ATX.match(line)
         if atx:
             flush()
-            emit(Block("heading", len(atx.group(1)), _inline(atx.group(2) or "")[0]))
+            words = (atx.group(2) or "").strip()
+            stripped_words = words.rstrip("#")            # a closing run of '#' is not part of the heading
+            if stripped_words != words and (not stripped_words or stripped_words[-1] in " \t"):
+                words = stripped_words.strip()
+            emit(Block("heading", len(atx.group(1)), _inline(words)[0]))
             i += 1
             continue
         if para and re.match(r"^ {0,3}(=+|-+)\s*$", line) and not _LIST.match(para[-1]):

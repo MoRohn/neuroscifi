@@ -85,11 +85,13 @@ FILENAMES = {"pyproject.toml": "pyproject", "requirements.txt": "requirements", 
 _ZIP_KINDS = {"application/vnd.oasis.opendocument.text": "odt",
               "application/vnd.oasis.opendocument.spreadsheet": "ods",
               "application/vnd.oasis.opendocument.presentation": "odp", "application/epub+zip": "epub"}
+_HTML_ROOTS = {"head", "body", "div", "span", "table", "section", "article", "ul", "ol", "h1", "h2", "h3", "h4", "h5",
+               "h6", "form", "nav"}              # an HTML fragment's usual first element (unless named .xml)
 _GENERIC = {"unknown", "text", "json", "zip", "gzip", "bzip2", "xz", "zstd"}
 _SHEBANG = re.compile(rb"^#![^\n]*\b(python[0-9.]*|node|bash|sh|zsh|dash|ksh)\b")
 _MD_MARKERS = [(re.compile(r"(?m)^#{1,6} \S"), "an ATX heading"), (re.compile(r"(?m)^(```|~~~)"), "a fenced code block"),
                (re.compile(r"(?m)^\s{0,3}([-*+]|\d+\.) \S"), "a list item"),
-               (re.compile(r"\[[^\]\n]+\]\([^)\s]+\)"), "a link"),
+               (re.compile(r"\[[^\[\]\n]{1,200}+\]\([^)\s\[\]]{1,500}+\)"), "a link"),
                (re.compile(r"(?m)^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$"), "a table separator row")]
 
 
@@ -203,6 +205,8 @@ def _by_text(head: bytes, hint: str | None) -> tuple[str, str] | None:
             return "html", "XML whose root element is <html>"
         if root and root.group(1).lower() == "svg":
             return None                                   # lane B2's drawing
+        if root and root.group(1).lower() in _HTML_ROOTS and not stripped.startswith("<?xml") and hint != "xml":
+            return "html", f"the text starts with an HTML <{root.group(1).lower()}> element"
         return "xml", "the text starts with an XML declaration or element"
     if stripped.startswith("{"):
         try:
@@ -226,7 +230,7 @@ def _by_text(head: bytes, hint: str | None) -> tuple[str, str] | None:
         try:
             tomllib.loads(text)
             return hint, "the text parses as TOML"
-        except (tomllib.TOMLDecodeError, ValueError):
+        except (tomllib.TOMLDecodeError, ValueError, RecursionError):
             pass
     if hint == "ini":
         parser = configparser.ConfigParser(interpolation=None, strict=False)
@@ -291,8 +295,12 @@ def _refine(detected: Detected, head: bytes, name, declared, size) -> Detected:
 def detect(head: bytes, *, name: str | None = None, declared: str | None = None, size: int | None = None) -> Detected:
     """K's `detect` followed by B1's `refine`."""
     head = bytes(head[:64 << 10])
-    return refine(_kernel_detect(head, name=name, declared=declared, size=size), head, name=name, declared=declared,
-                  size=size)
+    try:
+        found = _kernel_detect(head, name=name, declared=declared, size=size)
+    except Exception as error:        # K's detect promises never to raise; this wrapper keeps that promise too
+        found = Detected("unknown", "unknown", "application/octet-stream", "none", None,
+                         (f"the kernel's detection failed ({type(error).__name__})",))
+    return refine(found, head, name=name, declared=declared, size=size)
 
 
 __all__ = ["EXTENSIONS", "FILENAMES", "FORMATS", "SIGNATURES", "detect", "refine"]

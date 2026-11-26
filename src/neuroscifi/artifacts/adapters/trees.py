@@ -22,7 +22,8 @@ import datetime as _dt
 import re
 import tomllib
 
-from ..safe_b1 import Budget, Deadline, decode_text, injection_notes, local, parse_xml
+from ..safe_b1 import Budget, Deadline, decode_text, injection_notes, local, parse_xml, xml_node_budget, \
+    XML_NODE_COST
 from ..types import Decoded, Malformed, Node, Refused, Tree, Unsupported
 from . import Adapter
 from .tables import load_json
@@ -108,7 +109,8 @@ def plist_tree(el, name: str, budget: Budget, depth: int = 0) -> Node:
 
 def read_xml(data, detected, limits):
     deadline, budget = Deadline.of(limits), Budget(limits)
-    root = parse_xml(data, max_nodes=limits.max_elements, deadline=deadline)
+    root = parse_xml(data, max_nodes=xml_node_budget(budget), deadline=deadline)
+    budget.take_bytes(min(budget.bytes_left, XML_NODE_COST * sum(1 for _ in root.iter())))
     tree = Tree(xml_tree(root, budget))
     notes = ("namespaces kept as {uri}local; comments and processing instructions dropped",)
     return Decoded(detected, tree, notes + injection_notes(tree.text()), False)
@@ -119,7 +121,7 @@ def read_plist(data, detected, limits):
         raise Unsupported("binary property list identified; it is not decoded here (no bounded binary-plist "
                           "reader)", needs=("a bounded binary property-list reader",))
     deadline, budget = Deadline.of(limits), Budget(limits)
-    root = parse_xml(data, max_nodes=limits.max_elements, deadline=deadline, allow_doctype_reference=True)
+    root = parse_xml(data, max_nodes=xml_node_budget(budget), deadline=deadline, allow_doctype_reference=True)
     if local(root.tag) != "plist":
         raise Malformed("the root element is not <plist>")
     kids = [plist_tree(child, "root", budget) for child in root]

@@ -26,7 +26,8 @@ from __future__ import annotations
 import posixpath
 import re
 
-from ..safe_b1 import Budget, Deadline, ZipReader, decode_text, local, parse_xml, zip_member
+from ..safe_b1 import (Budget, Deadline, ZipReader, charge_xml, decode_text, local, parse_xml, xml_node_budget,
+                       zip_member)
 from ..types import Block, Malformed, Refused
 from . import Adapter
 from .documents import _figure, _finish, html_blocks
@@ -69,9 +70,8 @@ class Package:
         data = self.raw(name, required)
         if data is None:
             return None
-        root = parse_xml(data, max_nodes=max(1, self.budget.max_elements - self.budget.elements),
-                         deadline=self.deadline)
-        self.budget.take_elements(sum(1 for _ in root.iter()))
+        root = parse_xml(data, max_nodes=xml_node_budget(self.budget), deadline=self.deadline)
+        charge_xml(self.budget, root)
         return root
 
     def rels(self, part: str) -> dict[str, tuple[str | None, str | None]]:
@@ -364,7 +364,7 @@ def odf_table_cells(table, budget: Budget, notes: list[str], *, typed: bool) -> 
     while rows and not any(c not in ("", None) for c in rows[-1]):
         rows.pop()
     if capped:
-        notes.append(f"repeated rows or columns were expanded at most {MAX_REPEAT} times")
+        notes.append(f"partial: repeated rows or columns were expanded at most {MAX_REPEAT} times")
     return rows
 
 
@@ -406,6 +406,7 @@ def _odf_body(pkg, el, blocks, list_level=0, depth=0) -> None:
                     _odf_body(pkg, item, blocks, list_level + 1, depth + 1)
         elif tag == TABLE + "table":
             _table(pkg, odf_table_rows(child, pkg.budget, pkg.notes), blocks)
+            pkg.partial = pkg.partial or any(n.startswith("partial: repeated") for n in pkg.notes)
         elif tag in (TEXT + "section", TEXT + "index-body", TEXT + "table-of-content", DRAW + "text-box"):
             _odf_body(pkg, child, blocks, list_level, depth + 1)
         elif tag == DRAW + "frame":

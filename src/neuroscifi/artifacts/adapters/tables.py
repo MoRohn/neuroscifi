@@ -22,7 +22,7 @@ The stated rules (each has a test):
   time, AND either some column below it has a non-text kind, or every first-row cell is distinct and appears
   nowhere else in its own column. A single row is data. Without a header, columns are `column_1`, `column_2`, ...
 - Unit: a header `price (EUR)` or `price [EUR]` gives the name `price` and the unit `EUR`.
-- Bounds: cells count against `max_elements` and (cell characters + 64 bytes each) against `max_decoded_bytes`;
+- Bounds: cells count against `max_elements` and (cell characters + 160 bytes each) against `max_decoded_bytes`;
   reaching either stops reading, marks the result partial and says after which row.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ MISSING = frozenset({"", "na", "n/a", "null", "none", "nan", "-"})
 DELIMITERS = (",", ";", "\t", "|")
 SNIFF_CHARS = 64 << 10
 SNIFF_LINES = 64
-CELL_OVERHEAD = 64
+CELL_OVERHEAD = 160            # bytes charged per cell beyond its characters (measured about 150 with its column)
 MAX_COLUMNS = 16384
 JSON_MAX_DEPTH = 64
 
@@ -74,7 +74,7 @@ def is_missing(cell) -> bool:
 
 def split_unit(header: str) -> tuple[str, str | None]:
     """`"price (EUR)"` -> ("price", "EUR"); a header without a bracketed suffix has no unit."""
-    m = _UNIT.match(header.strip())
+    m = _UNIT.match(header.strip()) if len(header) <= 200 else None
     if m:
         return m.group(1), m.group(2)
     return header.strip(), None

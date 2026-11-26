@@ -9,12 +9,12 @@ module; a name bound by an import (`from m import f`, `import m` then `m.f`) to 
 there is one; otherwise it is kept unresolved with its written name. No type inference: `obj.method()` on any other
 receiver stays unresolved. Node attributes: line numbers, the first line of the docstring, decorators, base names.
 `outline(graph)` turns a Python graph into a `Document` outline (modules, classes, functions as nested headings).
-Bounds: each file at most PY_FILE_MAX bytes; all files together at most max_decoded_bytes / 32 (the syntax tree
-costs about thirty times the source); nodes and edges count against max_elements.
+Bounds: each file at most PY_FILE_MAX bytes; all files together at most max_decoded_bytes / 256 (the syntax tree
+and graph cost about 250 times the source, measured); nodes and edges count against max_elements.
 
 JavaScript/TypeScript, C/C++ and shell: an honest minimum, said in the notes as a surface reading: line counts,
-comment lines and their share, and top-level definitions and imports found by the line patterns below. Nothing is
-parsed and calls are not traced.
+comment lines and their share, and top-level definitions and imports found by the line patterns below (lines over
+500 characters, such as minified code, are counted but not matched). Nothing is parsed and calls are not traced.
 
 Manifests: `pyproject.toml` ([project] dependencies and optional-dependencies, [build-system] requires, Poetry
 tables), `requirements.txt` (requirement lines; `-r`/`-c` includes are named, never followed; options ignored),
@@ -36,7 +36,7 @@ from ..types import Block, Decoded, Document, Edge, GNode, Graph, Malformed, Ref
 from . import Adapter
 
 PY_FILE_MAX = 4 << 20
-AST_COST = 32
+AST_COST = 256                 # bytes of memory per byte of source while parsing (measured about 250)
 _BUILTINS = frozenset(dir(builtins))
 
 
@@ -374,8 +374,8 @@ def read_surface(data, detected, limits):
             if not (lang == "c" and s.startswith("#")):
                 comment += 1
                 continue
-        if line[:1].isspace():
-            continue                                   # top-level definitions only
+        if line[:1].isspace() or len(line) > 500:
+            continue                                   # top-level definitions only; long lines are not matched
         for rx, kind in rules["defs"]:
             m = rx.match(line)
             if m:
