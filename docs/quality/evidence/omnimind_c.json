@@ -1,0 +1,81 @@
+{
+ "lane": "C (form planner, ADR-073)",
+ "what": "Properties of forms.plan measured by running it; nothing here judges whether a choice is good. Development and held-out case scores are added when the main session provides the development cases (the held-out run is the main session's).",
+ "unit_tests": {
+  "file": "tests/artifacts/test_forms.py (29 tests) and tests/artifacts/test_forms_cli.py (12 tests)",
+  "seeded_random_plans_per_property": {
+   "hard_constraints_never_violated": 600,
+   "deterministic_and_complete_score_sheet": 200,
+   "explicit_honoured_when_feasible_else_explained": 600,
+   "scalar_or_sentence_stays_words": 600,
+   "monotonicity_shapes_x_sizes": "150 x 8",
+   "sentence_names_deciding_evidence": 600,
+   "reachability_probe_plans": 5824,
+   "combination_adds_what_first_lacks": 600,
+   "alternatives_differ_in_kind": 200,
+   "adjustments_default_equality": 100,
+   "adjustments_random_tables": 200
+  },
+  "result": "41 passed"
+ },
+ "wider_sample": {
+  "command": "PYTHONPATH=src python scripts/forms_evidence.py --shapes 2000 --seed {101,202,303}",
+  "sizes": [
+   1,
+   2,
+   4,
+   8,
+   30,
+   200,
+   5000,
+   2000000
+  ],
+  "per_seed": [
+   {
+    "seed": 101,
+    "shapes": 2000,
+    "monotonicity_checks_after_leaving_words": 7058,
+    "returned_to_words": 0,
+    "hard_constraint_or_determinism_violations": 0,
+    "decided_by_share": {
+     "explicit": 0.0,
+     "content": 0.139,
+     "words": 0.0095,
+     "context": 0.8515
+    },
+    "mean_ms_per_plan": 3.36
+   },
+   {
+    "seed": 202,
+    "shapes": 2000,
+    "monotonicity_checks_after_leaving_words": 7111,
+    "returned_to_words": 0,
+    "hard_constraint_or_determinism_violations": 0,
+    "decided_by_share": {
+     "explicit": 0.0,
+     "content": 0.128,
+     "words": 0.0125,
+     "context": 0.8595
+    },
+    "mean_ms_per_plan": 3.43
+   },
+   {
+    "seed": 303,
+    "shapes": 2000,
+    "monotonicity_checks_after_leaving_words": 7145,
+    "returned_to_words": 0,
+    "hard_constraint_or_determinism_violations": 0,
+    "decided_by_share": {
+     "explicit": 0.0,
+     "content": 0.136,
+     "words": 0.0115,
+     "context": 0.8525
+    },
+    "mean_ms_per_plan": 3.45
+   }
+  ],
+  "note": "decided_by shares are over random contexts (random generator subsets, budgets and accessibility needs), so 'context' dominates by construction; they describe the sample, not real use. Timing on the shared aarch64 host, under load from other lanes."
+ },
+ "development_cases": null,
+ "size_note": "summary only; this file is under 4 KiB"
+}

@@ -20,7 +20,9 @@ How a choice is made, in order:
    or by a preference of -1; the pre-production check (`foresee`) rejecting a form when the form it would switch to
    is here; a data file only when keeping a copy is a purpose or it is named.
 4. Each remaining candidate scores in [0, 1] on CRITERIA by the rules stated beside each function below; the total is
-   the weighted mean (WEIGHTS, optionally shifted within clamps by `adjustments`), plus a stated preference.
+   the weighted mean (WEIGHTS, optionally shifted within clamps by `adjustments`), plus a stated preference. A
+   problem the pre-production check predicts is listed with its fix and costs no score: what it loses is already
+   counted in carried information (a scoring penalty that grew with the content could move the choice back to words).
 5. Rules over the totals, in order: an explicit form wins when feasible (else the nearest in kind, explained); a
    scalar or a sentence's worth stays words (except hearing a value, which words cannot do); a wish for a short
    answer is words; when hearing is the main purpose, the best form that is heard; words that cover less than half
@@ -1146,7 +1148,7 @@ def _content_purposes(shape: ContentShape | None, n_pieces: int) -> dict:
         elif kind == "sequence":
             options = ("follow_process",)
         elif kind == "series":
-            options = ("change_over_time",) if shape.n_items >= 3 else ("look_up",)
+            options = ("change_over_time",)
         elif kind == "distribution":
             options = ("distribution",)
         elif kind == "categories":
@@ -1162,22 +1164,23 @@ def _content_purposes(shape: ContentShape | None, n_pieces: int) -> dict:
 
 
 def serves(purpose: str, shape: ContentShape | None, n_pieces: int = 1) -> bool:
-    """Whether the content has what the purpose needs (a change needs an order, a relation two things ...). No rule
-    here needs more than two items: a purpose that switched on as content grew could move the choice back to words."""
+    """Whether the content has what the purpose needs (a change needs an order, a relation two measures ...). No rule
+    here counts items: a purpose that switched on as content grew could move the choice back to words (content of
+    one or two values is words anyway)."""
     if purpose in ("look_up", "learn"):
         return True
     if shape is None or not shape.kinds:
         return False
-    kinds, n = set(shape.kinds), shape.n_items
+    kinds = set(shape.kinds)
     if purpose == "compare":
         return bool(kinds & {"categories", "relation"}) or shape.n_series >= 2 or n_pieces >= 2 or \
-            (bool(kinds & {"records", "series"}) and n >= 2)
+            bool(kinds & {"records", "series"})
     if purpose == "change_over_time":
-        return bool(kinds & {"series", "timeline", "sequence", "process"} or shape.has_time) and n >= 2
+        return bool(kinds & {"series", "timeline", "sequence", "process"} or shape.has_time)
     if purpose == "distribution":
-        return "distribution" in kinds or (bool(kinds & {"series", "records", "categories"}) and n >= 2)
+        return "distribution" in kinds or bool(kinds & {"series", "records", "categories"})
     if purpose == "relation":
-        return bool(kinds & {"relation", "network", "hierarchy"}) or (shape.n_series >= 2 and n >= 2)
+        return bool(kinds & {"relation", "network", "hierarchy"}) or shape.n_series >= 2
     if purpose == "follow_process":
         return bool(kinds & {"sequence", "process", "timeline", "code"})
     if purpose == "what_if":
@@ -1465,9 +1468,8 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
         elif form.second_for and not any(p in purposes for p in form.second_for) and not (
                 explicit and name in explicit):
             excluded = f"{form.label} is made only when it is asked for"
-        adapt = [p for p in seen.problems if p.severity == "adapt"]
         scores = {
-            "clarity": _clarity((name,), purposes) * (0.9 ** min(3, len(adapt))),
+            "clarity": _clarity((name,), purposes),
             "carried": carried,
             "precision": _precision((name,), need_precision),
             "interactivity": _interactivity((name,), need_interaction),
@@ -1528,7 +1530,10 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
             elif other.excluded:
                 excluded = other.excluded
             else:
-                gain_carried = carried - cand.scores["carried"]
+                # what the second adds on the kinds the first shows poorly (below half): a diagram's missing words,
+                # not a share of a kind the first already shows
+                gain_carried = sum(max(0.0, per_s.get(k, 0.0) - per_p.get(k, 0.0)) for k in kinds
+                                   if per_p.get(k, 0.0) < COMBO_PRIMARY_CARRIED) / len(kinds) if kinds else 0.0
                 gain_precision = _precision(pair, 1.0, other.scores["carried"]) - _precision((name,), 1.0)
                 if not forced and cand.scores["carried"] < COMBO_PRIMARY_CARRIED:
                     excluded = f"{form.label} carries too little of this content to lead"
@@ -1545,8 +1550,7 @@ def _score_run(shape, n_pieces, reading: Reading, context: Context, display: Dis
                 excluded = "the two together would take more than the budget allows"
             effort = min(1.0, _effort_of(form, shape, display) + 0.5 * _effort_of(FORMS[second], shape, display))
             scores = {
-                "clarity": _clarity(pair, purposes) * (cand.scores["clarity"] / max(1e-9, _clarity((name,),
-                                                                                                  purposes))),
+                "clarity": _clarity(pair, purposes),
                 "carried": carried,
                 "precision": _precision(pair, need_precision, other.scores["carried"]),
                 "interactivity": _interactivity(pair, need_interaction),
