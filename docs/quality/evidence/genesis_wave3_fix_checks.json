@@ -208,6 +208,11 @@
   ],
   "same_counts": "tested at 2,000 tasks (test_outcomes_count_as_the_per_task_query_did)"
  },
+ "read_ahead_stress": {
+  "what": "tests/webcortex/test_read_ahead.py (36 tests, the max_bytes=200 budget edge and the new abandon-between-reads test included) run 50 times with 16 busy loops on the 20-core host, after the fix (82b7fd9, test 102e72b)",
+  "result": "50 passed, 0 failed of 50 (73.8-76.6 s per run)",
+  "first_attempt": "4 runs of an earlier version of the new test failed under load because it abandoned before any body byte arrived (no second take); the test was changed (102e72b) and the 50 runs restarted"
+ },
  "h1_probe": {
   "what": "security review p2b_suppression.py after the fix (attribution on)",
   "two_honest_plus_one_sentence_crediting_both": "admitted (provisional, confidence 0.722; 0.773 with attribution off)",
