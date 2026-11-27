@@ -466,3 +466,18 @@ def test_the_commands_make_explain_and_remake(individual, tmp_path, capsys):
     out = capsys.readouterr().out
     assert "42" in out and "nothing was stored" in out
     assert cli.main(["artifact", "make", str(src), "-r", "x", "--form", "hologram", "--db", str(path)]) == 2
+
+
+def test_a_made_artifacts_record_outranks_a_long_description_of_its_bytes():
+    from types import SimpleNamespace
+    from neuroscifi.artifacts.detect import detect
+    big = SimpleNamespace(representation=SimpleNamespace(kind="drawing", describe=lambda: {"kind": "drawing",
+                                                                                             "text": "x" * 30000}),
+                          notes=(), partial=False)
+    extra = {"check": {"ok": True, "failed": [], "warnings": []}, "production": {"label": P.LABEL, "pad": "y" * 9000}}
+    out, text = A._index(detect(b"<svg/>"), big, None, text_chars=0, text_truncated=False,
+                         injection={"flagged": False}, extra=extra)
+    assert out["check"]["ok"] and out["production"]["label"] == P.LABEL and out["representation_cut"]
+    plain, _ = A._index(detect(b"<svg/>"), big, None, text_chars=0, text_truncated=False,
+                        injection={"flagged": False}, extra={"pad": "y" * 9000})
+    assert plain.get("truncated") is True                 # without a production record: unchanged behaviour

@@ -483,6 +483,10 @@ def _index(detected, decoded, error, *, text_chars, text_truncated, injection, e
         out["error"] = error
     if extra:
         out |= extra
+    if extra and "production" in extra and len(json.dumps(out, sort_keys=True, ensure_ascii=False, separators=(
+            ",", ":"), allow_nan=False).encode("utf-8")) > INDEX_MAX_BYTES:
+        # a made artifact's own record (its check, spec and production: lane P) outranks the description of its bytes
+        out = {k: v for k, v in out.items() if k != "representation"} | {"representation_cut": True}
     out = bounded(out)
     text = json.dumps(out, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     if len(text.encode("utf-8")) > INDEX_MAX_BYTES:
