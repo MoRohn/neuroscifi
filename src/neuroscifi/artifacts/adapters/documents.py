@@ -37,6 +37,7 @@ MAX_MARKUP_DEPTH = 256
 _OPTIONAL_END = {"p", "li", "dt", "dd", "tr", "td", "th", "option", "optgroup", "thead", "tbody", "tfoot",
                  "colgroup", "caption", "rb", "rt", "rp", "rtc", "head", "body", "html"}
 _QUOTE_MARKERS = re.compile(r"[ \t]*((?:>[ \t]*)+)")
+MAX_RULE_LINE = 4096        # characters of a thematic break read as a rule (lane FX5)
 # lane FX4 (R6, class H-A generalised): a Markdown line's nesting is its quote markers, its list markers and its
 # indentation (two columns a level, a tab four), whatever spaces or tabs separate them
 _NEST_MARKERS = re.compile(r"[ \t]*((?:(?:>|[-*+]|\d{1,9}[.)])(?:[ \t]+|$))+)")
@@ -140,7 +141,10 @@ def markdown_blocks(text: str, *, budget: DecodeBudget | None = None, deadline: 
             deadline.check()
         line = lines[i]
         stripped = line.strip()
-        if len(line) > MAX_MARKUP_DEPTH // 2 and _markdown_nesting(line) > MAX_MARKUP_DEPTH:
+        # lane FX5 (C5): a thematic break ("- - - -", "* * *", up to MAX_RULE_LINE characters) is a rule, not a list
+        # nested once per marker (CommonMark: a break wins over a list item); a longer one stays counted as nesting
+        rule = len(line) <= MAX_RULE_LINE and _HR.match(line) is not None
+        if len(line) > MAX_MARKUP_DEPTH // 2 and not rule and _markdown_nesting(line) > MAX_MARKUP_DEPTH:
             raise Refused(f"the Markdown nests quotes, lists or indentation deeper than {MAX_MARKUP_DEPTH} levels",
                           rule="max_depth")
         fence = _FENCE.match(line)

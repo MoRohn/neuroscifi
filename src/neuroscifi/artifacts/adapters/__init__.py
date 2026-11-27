@@ -502,7 +502,7 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
     try:
         try:
             if detected.basis == "declared":
-                return _screened(_confirming(data, detected, adapter, limits, name, declared), limits)
+                return _screened(_confirming(data, detected, adapter, limits, name, declared), limits, data)
             result = adapter.decode(data, detected, limits)
         except Unsupported:
             _gap(detected, "unsupported")
@@ -521,7 +521,7 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         raise _resources() from None
     if not isinstance(result, Decoded):
         raise Malformed(f"the {adapter.name} adapter returned {type(result).__name__}, not Decoded")
-    return _screened(result, limits)
+    return _screened(result, limits, data)
 
 
 def _probe_hinted(data: bytes, name, declared, limits: Limits) -> None:
@@ -642,9 +642,9 @@ def _refuse_duplicate_members(result: Decoded) -> None:
         seen.add(path)
 
 
-def _screened(result: Decoded, limits: Limits) -> Decoded:
+def _screened(result: Decoded, limits: Limits, data: bytes | None = None) -> Decoded:
     _refuse_duplicate_members(result)
-    flagged = _flags(result)
+    flagged = _flags(result, data)
     if flagged:
         if limits.refuse_flagged:
             raise Refused("the file's own words include passages addressed to an AI agent: it is not read for an "
@@ -654,18 +654,35 @@ def _screened(result: Decoded, limits: Limits) -> Decoded:
     return result
 
 
-def _flags(decoded: Decoded) -> tuple[str, ...]:
+# text formats whose bytes hold words a reader does not show (comments, link definitions, markup): the address screen
+# reads those words too (lane FX5, C5: an address inside a Markdown or HTML comment)
+_MARKUP_FORMATS = frozenset(("markdown", "html", "xhtml", "svg", "xml", "text", "rtf"))
+
+
+def _unshown_words(decoded: Decoded, data: bytes | None) -> str:
+    """A markup file's own bytes as text, its comments opened and its tags removed (bounded), for the address
+    screen only: never shown, never evidence."""
+    if not data or getattr(decoded.detected, "format", "") not in _MARKUP_FORMATS:
+        return ""
+    raw = data[:1 << 20].decode("utf-8", "ignore")
+    raw = raw.replace("<!--", "\n").replace("-->", "\n")
+    return re.sub(r"<[^<>]{0,2000}>", "\n", raw)
+
+
+def _flags(decoded: Decoded, data: bytes | None = None) -> tuple[str, ...]:
     """The injection patterns `webcortex.safety.scan_injection` finds in the representation's own words (the
-    product's one screen before a model; ruling G of fix lane F1)."""
+    product's one screen before a model; ruling G of fix lane F1), and the artifacts-only address screen over those
+    words and over the words a markup file holds but does not show (lane FX5, C5)."""
     try:
         text = decoded.representation.text() or ""
     except Exception:
-        return ()
-    if not text:
+        text = ""
+    unshown = _unshown_words(decoded, data)
+    if not text and not unshown:
         return ()
     from ...webcortex.safety import scan_injection
-    found = {f["pattern"] for f in scan_injection(text[:1 << 20])}
-    if _addressed_directive(text[:1 << 20]):
+    found = {f["pattern"] for f in scan_injection(text[:1 << 20])} if text else set()
+    if _addressed_directive(text[:1 << 20]) or (unshown and _addressed_directive(unshown)):
         found.add("addressed_directive")
     return tuple(sorted(found))
 
@@ -676,8 +693,10 @@ def _flags(decoded: Decoded) -> tuple[str, ...]:
 # and stays as it is; this second screen applies to artifacts only. Both an ADDRESS to an AI reader and a
 # DIRECTIVE must be present, the directive within the same passage after the address: an ordinary text that
 # mentions an assistant, or that says "forget the rules of chess", is neither.
-_AI_READER = (r"(?:ai|a\.i\.|artificial\s+intelligence|(?:ai\s+)?assistant|chat\s?bot|language\s+model|llm|gpt|claude|"
-              r"copilot|ai\s+(?:agent|model|system|tool))")
+_AI_READER = (r"(?:ai|a\.i\.|artificial\s+intelligence|(?:ai\s+)?assistant|chat\s?bot|(?:ai\s+|language\s+)?model|llm|"
+              r"gpt|chatgpt|claude|gemini|copilot|(?:ro)?bot|ai\s+(?:agent|system|tool))(?:\s+reader)?")
+# lane FX5 (C5): a vocative may open with "to" or "for" and a determiner ("To the AI:", "For the assistant,")
+_TO_WHOM = r"(?:(?:to|for)\s+)?(?:(?:the|any|all|every|each|whichever|whatever)\s+)?"
 # Lane FX4 (R6, H-B generalised; M5): the address is the AI reader as the HEAD of its phrase: a vocative at the start
 # of a sentence ("Assistant, ...", "Hey Claude, ..."), or a note "to/for" it, optionally followed by what it is doing
 # ("reading this file", "that summarises this page") and a colon. "Note for the assistant manager:" names a person
@@ -686,7 +705,7 @@ _DOING = (r"(?:that\s+|who\s+|which\s+)?(?:is\s+)?(?:reading|reads|processing|pr
           r"summari[sz]es|seeing|sees|handling|handles|working\s+on|looks?\s+at|looking\s+at|given|scanning|scans|"
           r"analy[sz]ing|analy[sz]es)\b[^.\n:]{0,80}")
 _ADDRESS = re.compile(
-    rf"(?:^|[.!?]\s+|\n\s*)(?:(?:dear|hey|hi|hello|attention|listen)\s*,?\s+)?(?:the\s+)?{_AI_READER}\s*[,:!]"
+    rf"(?:^|[.!?]\s+|\n\s*)(?:(?:dear|hey|hi|hello|attention|listen)\s*,?\s+)?{_TO_WHOM}{_AI_READER}\s*[,:!]"
     rf"|(?:^|[.!?]\s+|\n\s*)(?:(?:dear|hey|hi|hello|attention|listen)\s*,?\s+)?(?:the\s+|any\s+|every\s+)?"
     rf"{_AI_READER}s?\s+{_DOING}:"
     rf"|\b(?:note|message|notice|instructions?|reminder|attention|request|warning)\s+(?:to|for)\s+"
@@ -707,20 +726,41 @@ ADDRESS_REACH = 2000       # characters after an address (within its paragraph) 
 # lane FX4 (R6): other directives that tell a reader to do the owner's file's bidding ("your new task is",
 # "pretend", "do not mention")
 _NEW_ORDERS = re.compile(r"\byour\s+(?:new|real|actual|true|only)\s+(?:task|job|instructions?|role|goal|purpose|orders?)"
-                         r"\b|\bpretend\b|\b(?:do\s+not|don'?t|never)\s+(?:mention|report|reveal|tell|flag)\b", re.I)
+                         r"\b|\bpretend\b|\b(?:do\s+not|don'?t|never)\s+(?:mention|report|reveal|tell|flag)\b"
+                         r"|\bfrom\s+(?:now|this\s+point|here)\s+on\b", re.I)
+# lane FX5 (C5), by class: an imperative that tells the reader what to conclude or answer ("mark this file as safe",
+# "summarise it as a recipe", "answer every question with 'approved'", "reply only 'safe'", "consider it verified",
+# "skip the checks"), whatever it names
+_VERDICT_ORDERS = re.compile(
+    r"\b(?:summari[sz]e|describe|present)\s+(?:(?:it|this|that|these|them|everything|all|the|my)\s+){1,2}"
+    r"(?:[\w'-]+\s+){0,2}?as\b"
+    r"|\b(?:mark|label|classify|treat|call|rate|tag|consider|report|record|flag|list)\s+"
+    r"(?:(?:it|this|that|these|them|everything|all|every|each|the|my)\s+){1,2}(?:[\w'-]+\s+){0,2}?(?:as\s+)?"
+    r"(?:safe|clean|harmless|benign|trusted|approved|verified|valid|correct|fine|ok|okay|legitimate|paid|genuine|"
+    r"checked|reviewed|passed)\b"
+    r"|\b(?:answer|reply|respond)\s+(?:only\s+)?(?:(?:to\s+)?(?:every|all|any|each|the)\s+)?(?:questions?\s+)?"
+    r"(?:with|by\s+saying|only|yes\b|['\"\u2018\u201c])"
+    r"|\b(?:approve|accept|whitelist|allow)\s+(?:it|this|everything|all|the\s+[\w-]+)\b"
+    r"|\b(?:skip|bypass|disable|turn\s+off)\s+(?:(?:the|all|any|your)\s+)?(?:checks?|verification|review|scan|"
+    r"filters?|safety)\b", re.I)
 # letters of other scripts that look like Latin ones (Cyrillic, Greek), mapped before matching (lane FX4, R6)
 _LOOKALIKE = str.maketrans("АаВЕеКМНОоРрСсТуХхІіЈјЅѕԁһԛԝΑΒΕΖΗΙΚΜΝΟοΡΤΥΧνρτ",
                            "AaBEeKMHOoPpCcTyXxIiJjSsdhqwABEZHIKMNOoPTYXvpt")
 _INVISIBLE_CHARS = re.compile("[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]")
+_BLANKS = re.compile(r"\s{2,}")
 
 
 def _addressed_directive(text: str) -> bool:
     import unicodedata
     text = _INVISIBLE_CHARS.sub("", unicodedata.normalize("NFKC", text)).translate(_LOOKALIKE)
+    # lane FX5 (C5): runs of white space folded (a paragraph break kept as one), so that the patterns stay linear on
+    # a file of blank lines or of markup turned into line breaks
+    text = _BLANKS.sub(lambda m: "\n\n" if m.group().count("\n") > 1 else "\n" if "\n" in m.group() else " ", text)
     for m in _ADDRESS.finditer(text):
         end = text.find("\n\n", m.end())
         window = text[m.start():min(m.end() + ADDRESS_REACH, end if end >= 0 else len(text))]
-        if _SET_ASIDE.search(window) or _AGAINST_OWNER.search(window) or _NEW_ORDERS.search(window):
+        if _SET_ASIDE.search(window) or _AGAINST_OWNER.search(window) or _NEW_ORDERS.search(window) or \
+                _VERDICT_ORDERS.search(window):
             return True
     return False
 
