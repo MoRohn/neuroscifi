@@ -281,8 +281,9 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
 def _register_builtins() -> None:
     """The kernel's generic adapters first, then lane B1's and lane B2's specific ones (`resolve` takes the most
     recently registered, so a specific adapter wins over a generic one: B1's notebook over K's JSON tree, B2's
-    GeoJSON over K's JSON tree). B2's registration also installs its detection."""
-    from . import _b1, _b2
+    GeoJSON over K's JSON tree). B2's registration also installs its detection. Lane P's model file (ADR-076) last:
+    its detection names only a JSON object marked "neuroscifi.model/1"."""
+    from . import _b1, _b2, model_file
     from .compressed import CompressedStream
     from .jsontree import JsonTree
     from .plain import PlainText
@@ -290,6 +291,7 @@ def _register_builtins() -> None:
         register(adapter)
     _b1.register_all()
     _b2.register_all()
+    model_file.register_all()
 
 
 _register_builtins()

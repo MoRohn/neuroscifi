@@ -499,6 +499,13 @@
    "name": "b2-npz"
   },
   {
+   "available": true,
+   "formats": [
+    "nsf_model"
+   ],
+   "name": "model_file"
+  },
+  {
    "available": false,
    "formats": [
     "pickle"
