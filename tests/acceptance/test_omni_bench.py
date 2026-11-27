@@ -10,7 +10,7 @@ import tempfile
 import pytest
 
 from neuroscifi.acceptance import omni
-from neuroscifi.acceptance.omni import Answer, Task, cases, made, same, score_task, subject
+from neuroscifi.acceptance.omni import Answer, Task, cases, made, readers, same, score_task, subject
 
 import omni_oracle as oracle
 import omni_reference_maker as reference
@@ -19,6 +19,11 @@ import omni_reference_maker as reference
 # A change here means the tasks changed: every earlier number stops being comparable. Do not update these to make a
 # run pass; add new tasks in a new file instead.
 CASES_SHA256 = "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c"
+# The made-judge's readers. Pinned first by fix lane F2 when they were made stricter (review finding M1: a chart a
+# person cannot see was read as carried); the file at 505b55b, never pinned, had SHA-256 6c6c28a2e91b1cbb...c239.
+# A change here changes what "right" means for made and transform: re-pin only with the reason written in
+# docs/quality/OMNIMIND_BENCHMARK.md, before any look that it affects.
+READERS_SHA256 = "df21e65899c3830514d2ac05322f3b2ace5738aedb02a17561baf0c985596327"
 FROZEN = {
     "development": {
         "intake": {"n": 337, "sha256": "54afb377ea0e01f6bda0153949bb867f32c48a7265eb333ba10948720d67b1aa"},
@@ -130,6 +135,7 @@ def test_tasks_are_deterministic():
 
 def test_task_definitions_are_frozen():
     assert hashlib.sha256(Path(cases.__file__).read_bytes()).hexdigest() == CASES_SHA256
+    assert hashlib.sha256(Path(readers.__file__).read_bytes()).hexdigest() == READERS_SHA256
     for split in omni.SPLITS:
         assert omni.digests(split) == FROZEN[split], split
 
@@ -193,6 +199,48 @@ def test_each_flaw_is_caught(flaw, outcome, forms):
         by_form.setdefault(task.question.split(":")[1], []).append(out["tasks"][task.id])
     for form in forms:
         assert outcome in by_form[form], (flaw, form, by_form[form])
+
+
+SVG_FORMS = ("line", "bar", "scatter", "histogram", "timeline", "diagram")
+
+
+def _hide(data: bytes, how: str) -> bytes:
+    """The reference maker's picture with its plot (a chart) or all of it (a diagram) made invisible to a person."""
+    s = data.decode()
+    attrs = {"display none": ' style="display:none"', "visibility hidden": ' visibility="hidden"',
+             "opacity 0": ' opacity="0"', "zero size": ' transform="scale(0)"',
+             "off the canvas": ' transform="translate(5000,0)"', "clipped away": ' clip-path="url(#hide)"'}
+    clip = '<clipPath id="hide"><rect width="1" height="1"/></clipPath>'
+    if how == "background colour":
+        return s.replace("</svg>", "<style>.plot *, .node *, .edge { fill: #fff; stroke: #fff }</style></svg>").encode()
+    if how == "covered":
+        return s.replace("</svg>", '<rect x="-10" y="-10" width="2000" height="2000" fill="#fff"/></svg>').encode()
+    if 'class="plot"' in s:
+        return s.replace('<g class="plot"', clip + '<g class="plot"' + attrs[how], 1).encode()
+    head, _, body = s.partition("</style>")
+    return (head + "</style>" + clip + f"<g{attrs[how]}>" + body.replace("</svg>", "</g></svg>")).encode()
+
+
+class _Hiding(reference.ReferenceMaker):
+    def __init__(self, how: str):
+        super().__init__()
+        self.how = how
+
+    def answer(self, task):
+        a = super().answer(task)
+        if a.status == "answered" and a.value["media_type"] == "image/svg+xml":
+            a = omni.Answer(dict(a.value, bytes=_hide(a.value["bytes"], self.how)), "answered")
+        return a
+
+
+@pytest.mark.parametrize("how", ("display none", "visibility hidden", "opacity 0", "zero size", "off the canvas",
+                                 "clipped away", "background colour", "covered"))
+def test_a_made_picture_a_person_cannot_see_is_not_right(how):
+    """Review M1: the judge reads what a person would see; the same artifacts, visible, are right (test above)."""
+    out = made.score(_Hiding(how), "development")
+    for task in made.tasks("development"):
+        if task.question.split(":")[1] in SVG_FORMS:
+            assert out["tasks"][task.id] in ("wrong", "failed"), (how, task.id, out["tasks"][task.id])
 
 
 def test_a_maker_that_answers_nothing_useful():

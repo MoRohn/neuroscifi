@@ -150,6 +150,31 @@ contract, and never reads `<metadata>`:
   whose two ends attach to the nearest nodes. Reading order of an outline: depth-first from the node no edge points
   to, siblings by position across the direction the tree grows.
 - **Timelines**: read as a chart: an x axis of ISO dates, one `circle.mark` per event.
+- **Visibility** (added by fix lane F2 after review finding M1, before any withheld look of `made` or `transform`):
+  only what a person would SEE is read, in every colour scheme the picture defines (light, and dark when it has a
+  `prefers-color-scheme: dark` rule). A mark, a series vertex, a tick label, a node or an edge is left out when it or
+  an ancestor has `display:none` or sits in `defs`/`clipPath`/`mask`/`pattern`/`symbol`/`marker`; when its
+  `visibility` is hidden; when a mask, a CSS filter or a blend mode applies (not established); when it has zero size
+  (`r` 0, a bar of zero width across its value axis, a degenerate transform, a polyline whose points coincide,
+  `font-size` 0); when its probe point is off the canvas (the root's `viewBox`, else its width and height) or
+  outside its clip path; when a later opaque area shape that is neither a data mark nor part of its own drawing
+  (an edge's arrowhead) covers it; or when its paint, after every opacity, differs from what is beneath it by less
+  than 4 of 255 levels in every channel (a colour the reader cannot resolve to RGB is not seen). A bar of zero
+  LENGTH draws nothing and is read as the baseline value where it is placed, as a person reads it. Style sheets are
+  evaluated for simple selectors (type, `#id`, `.class`, `:root`, `*`, descendant and child combinators); a rule the
+  reader cannot evaluate that sets paint, visibility or geometry, and geometry set by CSS, make the picture
+  unreadable (failed). Probe points: a circle's centre; a bar's centre and the midpoints of its four edges (all must
+  be seen); each vertex of a series (the seen ones are read); a text's anchor; an edge is seen when any of 19 points
+  along it is. Tests: `test_omni_readers.py` (every rule, right and hidden variants), `test_omni_bench.py`
+  (`test_a_made_picture_a_person_cannot_see_is_not_right`: the reference maker's six picture forms under eight
+  hidings), `test_omni_driver_real.py` (the reviewer's probe on product charts).
+  **Re-pin.** `readers.py` was not pinned before; it is pinned now in `test_omni_bench.py` (`READERS_SHA256`): at
+  `505b55b` its SHA-256 was `6c6c28a2e91b1cbb77a40d12bbd9cd6091b873120e35353ef2145855f9edc239`, after the rule
+  `df21e65899c3830514d2ac05322f3b2ace5738aedb02a17561baf0c985596327`. No case table, task digest or truth changed.
+  The product on development after the change: `made` 14/14 right, `transform` 8/8 right, carried 1.0 (unchanged);
+  on 1,537 fresh product charts and diagrams (1,600 requests from the development templates, seeds 20000+; 63 bar
+  requests the product refused by name) the reader and the product's own check agree on all but one, a histogram where the product puts a value lying exactly on an inner bin edge (17.5)
+  in the lower bin against the request's half-open bins: a product finding, and the old reader read it the same way.
 - **Warnings and the palette**: hue is allowed only on elements carrying (or inside) a class `warn` or `danger`, on
   at most as many marks as the request has warned values, and in style rules whose selector names warn or danger;
   `var(...)` colours are judged where defined. Grays: `#rgb`/`#rrggbb` with equal channels, `rgb()` with equal
