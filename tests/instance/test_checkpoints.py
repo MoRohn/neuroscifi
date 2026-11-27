@@ -937,7 +937,7 @@ CHANGED = {"ask_budget_per_epoch": 7, "ask_budget_window_seconds": 3600, "consol
            "imagine_what_if": False, "imagine_forecast": False, "imagine_retrospect": False, "imagine_scenarios": True,
            "imagine_max_seconds": 5.0, "imagine_max_bytes": 2 << 20, "broadcast": "log", "broadcast_threshold": 0.25,
            "artifact_max_bytes": 8 << 20, "artifact_store_max_bytes": 256 << 20,
-           "artifact_adapters": ["example_adapter"]}
+           "artifact_adapters": ["example_adapter"], "form_learning": "apply"}
 
 
 def test_a_restore_carries_exactly_the_settings_the_owner_may_change(instance, tmp_path):

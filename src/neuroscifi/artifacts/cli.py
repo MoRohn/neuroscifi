@@ -1,5 +1,5 @@
-"""`nsf artifact add FILE… | list | show ID | facts ID | export ID PATH | forget ID | gaps | adapters | forms`
-(ADR-071).
+"""`nsf artifact add FILE… | list | show ID | facts ID | export ID PATH | forget ID | gaps [--report] | adapters | forms
+| feedback ID kept|dismissed|replaced:FORM | feedback --reset` (ADR-071; feedback and the gap report: ADR-078).
 
 The owner's commands for the artifact store (artifacts/store.py). Plain words by default; `--json` prints the record
 instead. Nothing here runs unless the owner types it. `add` follows a symbolic link the owner names on the command
@@ -115,6 +115,21 @@ def _plain(what, value) -> str:
         for step in value.get("next_steps") or []:
             text += "\n" + step
         return text
+    if what == "gaps" and isinstance(value, dict):
+        lines = ["What is missing most, from what is already recorded (read-only: nothing acts on this):"]
+        for line in value["lines"]:
+            evidence = f" [{', '.join(line['evidence'])}]" if line["evidence"] else ""
+            lines.append(f"  {line['words']}{evidence}")
+        return "\n".join(lines)
+    if what == "feedback":
+        if "outcomes_removed" in value:
+            return (f"Removed {value['outcomes_removed']} recorded reaction(s): nothing learned from them is used any "
+                    "more. A restore of an older checkpoint removes them from it too.")
+        if not value["recorded"]:
+            return f"Nothing was recorded: {value['why']}."
+        named = f" (you wanted {value['by']})" if value["by"] else ""
+        return (f"Recorded: you {value['outcome']} the {value['form']} made for {value['key'][0]} on the "
+                f"{value['key'][2]}{named}; {value['why'].removeprefix('recorded; ')}.")
     if what == "gaps":
         if not value:
             return "Every file so far was read by an adapter here."
@@ -178,6 +193,30 @@ def _forget(db, args, now):
     return result
 
 
+def _feedback(db, args, now):
+    from . import learn
+    from .types import Malformed
+    if args.reset:
+        if args.id or args.reaction:
+            raise Malformed("--reset clears every recorded reaction; give it alone")
+        result = learn.reset(db, now)
+        if result.get("checkpoints_stale"):
+            from ..instance import checkpoints
+            checkpoints.after_forget(db, now)
+        return result
+    if not args.id or not args.reaction:
+        raise Malformed("give an artifact id and kept, dismissed or replaced:FORM (or --reset)")
+    outcome, _, by = args.reaction.partition(":")
+    if outcome not in learn.OWNER_OUTCOMES or (outcome == "replaced") != bool(by):
+        raise Malformed("the reaction is kept, dismissed or replaced:FORM")
+    return learn.record_outcome(db, args.id, outcome, by=by or None, now=now)
+
+
+def _gaps(db, args, now):
+    from . import learn, store
+    return learn.gap_report(db) if args.report else store.gaps(db)
+
+
 def _list(db, args, now):
     from . import store
     store.reconcile(db, now)
@@ -214,6 +253,8 @@ def _command(what, handler):
         else:
             print(_plain(what, value))
         if what == "add" and value["refused"] and not value["added"]:
+            return 1
+        if what == "feedback" and value.get("recorded") is False:
             return 1
         return 0
     return run
@@ -253,7 +294,17 @@ def register(sub):
     q = command("forget", _forget, "forget an artifact, its bytes and everything made from it; checkpoint "
                                    "archives are rewritten without it")
     q.add_argument("id")
-    command("gaps", lambda db, a, now: store.gaps(db), "which formats nothing here could read, and how often")
+    q = command("gaps", _gaps, "which formats nothing here could read, and how often")
+    q.add_argument("--report", action="store_true",
+                   help="everything recorded that shows what is missing most (unread formats, failed checks, "
+                        "recurring repairs, words where a form would carry more, inconsistent relations), each with "
+                        "its count and evidence ids; read-only")
+    q = command("feedback", _feedback, "tell NeuroSciFi what you did with a form it made (kept, dismissed, or replaced "
+                                       "by the form you wanted), so it can choose better; needs `nsf config "
+                                       "--form-learning record` or `apply`")
+    q.add_argument("id", nargs="?", help="the made artifact's id")
+    q.add_argument("reaction", nargs="?", metavar="kept|dismissed|replaced:FORM")
+    q.add_argument("--reset", action="store_true", help="remove every recorded reaction (what was learned is gone)")
     command("adapters", lambda db, a, now: store.adapter_catalog(db), "the file readers here, and which external "
                                                                        "ones you approved")
     q = asub.add_parser("forms", help="what can be made here and which independent check reads it back (reads no "

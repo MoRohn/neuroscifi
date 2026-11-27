@@ -1,0 +1,1120 @@
+{
+ "adr": "ADR-078",
+ "environment": {
+  "machine": "aarch64",
+  "python": "3.12.16"
+ },
+ "lane": "omnimind-l",
+ "learn_development": {
+  "denominator_per_cycle": 600,
+  "early": "cycles 1-4 (the first half): rejected = dismissed or replaced",
+  "label": "OMNIMIND benchmark, family learn: SIMULATED people with hidden, stable preferences; it measures adaptation to simulated preferences from simulated feedback, NOT benefit to a real person; offline; no model",
+  "people": [
+   "D1",
+   "D2",
+   "D3",
+   "D4",
+   "D5",
+   "D6"
+  ],
+  "seconds": 153.8,
+  "seeds": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10
+  ],
+  "split": "development",
+  "subjects": {
+   "key_majority": {
+    "all_kept": {
+     "mean": 0.7942,
+     "per_seed": [
+      0.7646,
+      0.8229,
+      0.8125,
+      0.7958,
+      0.7625,
+      0.7979,
+      0.7917,
+      0.8271,
+      0.7583,
+      0.8083
+     ],
+     "sd_over_seeds": 0.025
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.8788,
+      "early_choices": 400,
+      "late_kept": 0.8775,
+      "rejected_early": 48
+     },
+     "D2": {
+      "all_kept": 0.735,
+      "early_choices": 400,
+      "late_kept": 0.855,
+      "rejected_early": 154
+     },
+     "D3": {
+      "all_kept": 0.7312,
+      "early_choices": 400,
+      "late_kept": 0.8225,
+      "rejected_early": 144
+     },
+     "D4": {
+      "all_kept": 0.7712,
+      "early_choices": 400,
+      "late_kept": 0.875,
+      "rejected_early": 133
+     },
+     "D5": {
+      "all_kept": 0.7937,
+      "early_choices": 400,
+      "late_kept": 0.835,
+      "rejected_early": 99
+     },
+     "D6": {
+      "all_kept": 0.855,
+      "early_choices": 400,
+      "late_kept": 0.89,
+      "rejected_early": 72
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.8592,
+     "per_seed": [
+      0.8167,
+      0.8875,
+      0.8708,
+      0.875,
+      0.8375,
+      0.8667,
+      0.8375,
+      0.8875,
+      0.825,
+      0.8875
+     ],
+     "sd_over_seeds": 0.0274
+    },
+    "rejected_early": 650,
+    "what": "reference learner: per (kind, device) tally, choosing directly"
+   },
+   "never_learns": {
+    "all_kept": {
+     "mean": 0.5787,
+     "per_seed": [
+      0.5708,
+      0.6,
+      0.6042,
+      0.5646,
+      0.5625,
+      0.575,
+      0.5938,
+      0.5938,
+      0.5563,
+      0.5667
+     ],
+     "sd_over_seeds": 0.0175
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.8838,
+      "early_choices": 400,
+      "late_kept": 0.88,
+      "rejected_early": 45
+     },
+     "D2": {
+      "all_kept": 0.3638,
+      "early_choices": 400,
+      "late_kept": 0.355,
+      "rejected_early": 251
+     },
+     "D3": {
+      "all_kept": 0.365,
+      "early_choices": 400,
+      "late_kept": 0.37,
+      "rejected_early": 256
+     },
+     "D4": {
+      "all_kept": 0.4738,
+      "early_choices": 400,
+      "late_kept": 0.5,
+      "rejected_early": 221
+     },
+     "D5": {
+      "all_kept": 0.575,
+      "early_choices": 400,
+      "late_kept": 0.57,
+      "rejected_early": 168
+     },
+     "D6": {
+      "all_kept": 0.8113,
+      "early_choices": 400,
+      "late_kept": 0.8125,
+      "rejected_early": 76
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.5813,
+     "per_seed": [
+      0.5708,
+      0.6125,
+      0.5917,
+      0.5625,
+      0.6042,
+      0.5792,
+      0.5667,
+      0.5667,
+      0.5833,
+      0.575
+     ],
+     "sd_over_seeds": 0.0168
+    },
+    "rejected_early": 1017,
+    "what": "reference: the kind's usual form, never adjusted"
+   },
+   "not_shipped_backoff": {
+    "all_kept": {
+     "mean": 0.7967,
+     "per_seed": [
+      0.7812,
+      0.8063,
+      0.8146,
+      0.8,
+      0.7771,
+      0.8333,
+      0.7771,
+      0.7979,
+      0.7708,
+      0.8083
+     ],
+     "sd_over_seeds": 0.0199
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.785,
+      "early_choices": 400,
+      "late_kept": 0.8,
+      "rejected_early": 92
+     },
+     "D2": {
+      "all_kept": 0.84,
+      "early_choices": 400,
+      "late_kept": 0.865,
+      "rejected_early": 74
+     },
+     "D3": {
+      "all_kept": 0.8725,
+      "early_choices": 400,
+      "late_kept": 0.8725,
+      "rejected_early": 51
+     },
+     "D4": {
+      "all_kept": 0.7538,
+      "early_choices": 400,
+      "late_kept": 0.83,
+      "rejected_early": 129
+     },
+     "D5": {
+      "all_kept": 0.7262,
+      "early_choices": 400,
+      "late_kept": 0.78,
+      "rejected_early": 131
+     },
+     "D6": {
+      "all_kept": 0.8025,
+      "early_choices": 400,
+      "late_kept": 0.8075,
+      "rejected_early": 81
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.8258,
+     "per_seed": [
+      0.8042,
+      0.8667,
+      0.8333,
+      0.8333,
+      0.825,
+      0.8583,
+      0.7708,
+      0.8333,
+      0.7958,
+      0.8375
+     ],
+     "sd_over_seeds": 0.0287
+    },
+    "rejected_early": 558,
+    "what": "NOT SHIPPED: the per-key majority backed off to the person's whole tally"
+   },
+   "not_shipped_weights": {
+    "all_kept": {
+     "mean": 0.601,
+     "per_seed": [
+      0.5917,
+      0.625,
+      0.625,
+      0.5854,
+      0.5667,
+      0.6104,
+      0.6208,
+      0.5938,
+      0.5917,
+      0.6
+     ],
+     "sd_over_seeds": 0.0191
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.8237,
+      "early_choices": 400,
+      "late_kept": 0.8275,
+      "rejected_early": 72
+     },
+     "D2": {
+      "all_kept": 0.4975,
+      "early_choices": 400,
+      "late_kept": 0.5375,
+      "rejected_early": 217
+     },
+     "D3": {
+      "all_kept": 0.3775,
+      "early_choices": 400,
+      "late_kept": 0.3875,
+      "rejected_early": 253
+     },
+     "D4": {
+      "all_kept": 0.505,
+      "early_choices": 400,
+      "late_kept": 0.57,
+      "rejected_early": 224
+     },
+     "D5": {
+      "all_kept": 0.6,
+      "early_choices": 400,
+      "late_kept": 0.585,
+      "rejected_early": 154
+     },
+     "D6": {
+      "all_kept": 0.8025,
+      "early_choices": 400,
+      "late_kept": 0.7975,
+      "rejected_early": 77
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.6175,
+     "per_seed": [
+      0.6042,
+      0.6583,
+      0.6167,
+      0.5958,
+      0.6292,
+      0.625,
+      0.625,
+      0.575,
+      0.6208,
+      0.625
+     ],
+     "sd_over_seeds": 0.0222
+    },
+    "rejected_early": 997,
+    "what": "NOT SHIPPED: a learner of the planner's weights through the adjustments seam"
+   },
+   "oracle": {
+    "all_kept": {
+     "mean": 0.9023,
+     "per_seed": [
+      0.8729,
+      0.9292,
+      0.9208,
+      0.9062,
+      0.8771,
+      0.9146,
+      0.8896,
+      0.9146,
+      0.875,
+      0.9229
+     ],
+     "sd_over_seeds": 0.0216
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.905,
+      "early_choices": 400,
+      "late_kept": 0.9025,
+      "rejected_early": 37
+     },
+     "D2": {
+      "all_kept": 0.9062,
+      "early_choices": 400,
+      "late_kept": 0.9175,
+      "rejected_early": 42
+     },
+     "D3": {
+      "all_kept": 0.905,
+      "early_choices": 400,
+      "late_kept": 0.8925,
+      "rejected_early": 33
+     },
+     "D4": {
+      "all_kept": 0.8925,
+      "early_choices": 400,
+      "late_kept": 0.9125,
+      "rejected_early": 51
+     },
+     "D5": {
+      "all_kept": 0.9062,
+      "early_choices": 400,
+      "late_kept": 0.9,
+      "rejected_early": 35
+     },
+     "D6": {
+      "all_kept": 0.8988,
+      "early_choices": 400,
+      "late_kept": 0.915,
+      "rejected_early": 47
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.9067,
+     "per_seed": [
+      0.8667,
+      0.9375,
+      0.9458,
+      0.9042,
+      0.875,
+      0.9167,
+      0.8917,
+      0.9125,
+      0.8958,
+      0.9208
+     ],
+     "sd_over_seeds": 0.0253
+    },
+    "rejected_early": 245,
+    "what": "reference bound: knows the hidden preference"
+   },
+   "person_majority": {
+    "all_kept": {
+     "mean": 0.7377,
+     "per_seed": [
+      0.725,
+      0.7271,
+      0.7667,
+      0.7521,
+      0.6979,
+      0.7271,
+      0.7292,
+      0.7479,
+      0.7396,
+      0.7646
+     ],
+     "sd_over_seeds": 0.0209
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.76,
+      "early_choices": 400,
+      "late_kept": 0.755,
+      "rejected_early": 94
+     },
+     "D2": {
+      "all_kept": 0.8912,
+      "early_choices": 400,
+      "late_kept": 0.9175,
+      "rejected_early": 54
+     },
+     "D3": {
+      "all_kept": 0.8113,
+      "early_choices": 400,
+      "late_kept": 0.825,
+      "rejected_early": 81
+     },
+     "D4": {
+      "all_kept": 0.5725,
+      "early_choices": 400,
+      "late_kept": 0.6075,
+      "rejected_early": 185
+     },
+     "D5": {
+      "all_kept": 0.5475,
+      "early_choices": 400,
+      "late_kept": 0.57,
+      "rejected_early": 190
+     },
+     "D6": {
+      "all_kept": 0.8438,
+      "early_choices": 400,
+      "late_kept": 0.865,
+      "rejected_early": 71
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.7567,
+     "per_seed": [
+      0.7583,
+      0.7542,
+      0.8,
+      0.775,
+      0.7042,
+      0.7333,
+      0.7292,
+      0.775,
+      0.75,
+      0.7875
+     ],
+     "sd_over_seeds": 0.0291
+    },
+    "rejected_early": 675,
+    "what": "reference learner: one tally per person"
+   },
+   "planner_constrained_oracle": {
+    "all_kept": {
+     "mean": 0.8544,
+     "per_seed": [
+      0.825,
+      0.8771,
+      0.8688,
+      0.8542,
+      0.8333,
+      0.875,
+      0.8438,
+      0.8521,
+      0.8333,
+      0.8812
+     ],
+     "sd_over_seeds": 0.0204
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.8263,
+      "early_choices": 400,
+      "late_kept": 0.83,
+      "rejected_early": 71
+     },
+     "D2": {
+      "all_kept": 0.865,
+      "early_choices": 400,
+      "late_kept": 0.8775,
+      "rejected_early": 59
+     },
+     "D3": {
+      "all_kept": 0.905,
+      "early_choices": 400,
+      "late_kept": 0.8925,
+      "rejected_early": 33
+     },
+     "D4": {
+      "all_kept": 0.8612,
+      "early_choices": 400,
+      "late_kept": 0.8775,
+      "rejected_early": 62
+     },
+     "D5": {
+      "all_kept": 0.8588,
+      "early_choices": 400,
+      "late_kept": 0.84,
+      "rejected_early": 49
+     },
+     "D6": {
+      "all_kept": 0.81,
+      "early_choices": 400,
+      "late_kept": 0.81,
+      "rejected_early": 76
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.8546,
+     "per_seed": [
+      0.8208,
+      0.8917,
+      0.8667,
+      0.8542,
+      0.8375,
+      0.8792,
+      0.8292,
+      0.8583,
+      0.8458,
+      0.8625
+     ],
+     "sd_over_seeds": 0.022
+    },
+    "rejected_early": 350,
+    "what": "BOUND: the hidden preference handed to the planner as a stated preference"
+   },
+   "product_min_evidence_1": {
+    "all_kept": {
+     "mean": 0.7625,
+     "per_seed": [
+      0.7354,
+      0.775,
+      0.7833,
+      0.7792,
+      0.7521,
+      0.7771,
+      0.7521,
+      0.7646,
+      0.7354,
+      0.7708
+     ],
+     "sd_over_seeds": 0.0178
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.8263,
+      "early_choices": 400,
+      "late_kept": 0.83,
+      "rejected_early": 71
+     },
+     "D2": {
+      "all_kept": 0.7425,
+      "early_choices": 400,
+      "late_kept": 0.845,
+      "rejected_early": 144
+     },
+     "D3": {
+      "all_kept": 0.6913,
+      "early_choices": 400,
+      "late_kept": 0.785,
+      "rejected_early": 161
+     },
+     "D4": {
+      "all_kept": 0.7512,
+      "early_choices": 400,
+      "late_kept": 0.85,
+      "rejected_early": 139
+     },
+     "D5": {
+      "all_kept": 0.7588,
+      "early_choices": 400,
+      "late_kept": 0.785,
+      "rejected_early": 107
+     },
+     "D6": {
+      "all_kept": 0.805,
+      "early_choices": 400,
+      "late_kept": 0.8025,
+      "rejected_early": 77
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.8162,
+     "per_seed": [
+      0.7708,
+      0.8417,
+      0.8167,
+      0.8375,
+      0.8375,
+      0.825,
+      0.7875,
+      0.8167,
+      0.8042,
+      0.825
+     ],
+     "sd_over_seeds": 0.0229
+    },
+    "rejected_early": 699,
+    "what": "the shipped rule with the evidence minimum at 1 (not shipped)"
+   },
+   "product_min_evidence_3": {
+    "all_kept": {
+     "mean": 0.7263,
+     "per_seed": [
+      0.6979,
+      0.7354,
+      0.7417,
+      0.7479,
+      0.7083,
+      0.7375,
+      0.7167,
+      0.7438,
+      0.7042,
+      0.7292
+     ],
+     "sd_over_seeds": 0.0181
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.8237,
+      "early_choices": 400,
+      "late_kept": 0.83,
+      "rejected_early": 73
+     },
+     "D2": {
+      "all_kept": 0.6863,
+      "early_choices": 400,
+      "late_kept": 0.7975,
+      "rejected_early": 170
+     },
+     "D3": {
+      "all_kept": 0.6075,
+      "early_choices": 400,
+      "late_kept": 0.73,
+      "rejected_early": 206
+     },
+     "D4": {
+      "all_kept": 0.695,
+      "early_choices": 400,
+      "late_kept": 0.8275,
+      "rejected_early": 175
+     },
+     "D5": {
+      "all_kept": 0.7412,
+      "early_choices": 400,
+      "late_kept": 0.765,
+      "rejected_early": 113
+     },
+     "D6": {
+      "all_kept": 0.8037,
+      "early_choices": 400,
+      "late_kept": 0.8,
+      "rejected_early": 77
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.7917,
+     "per_seed": [
+      0.7458,
+      0.7917,
+      0.7875,
+      0.8333,
+      0.825,
+      0.8083,
+      0.7583,
+      0.8,
+      0.7708,
+      0.7958
+     ],
+     "sd_over_seeds": 0.0276
+    },
+    "rejected_early": 814,
+    "what": "the shipped rule with the evidence minimum at 3 (not shipped)"
+   },
+   "product_planner_only": {
+    "all_kept": {
+     "mean": 0.5842,
+     "per_seed": [
+      0.5792,
+      0.6062,
+      0.6021,
+      0.5625,
+      0.5646,
+      0.5979,
+      0.6,
+      0.5813,
+      0.5792,
+      0.5687
+     ],
+     "sd_over_seeds": 0.0163
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.82,
+      "early_choices": 400,
+      "late_kept": 0.8225,
+      "rejected_early": 73
+     },
+     "D2": {
+      "all_kept": 0.45,
+      "early_choices": 400,
+      "late_kept": 0.4475,
+      "rejected_early": 219
+     },
+     "D3": {
+      "all_kept": 0.3762,
+      "early_choices": 400,
+      "late_kept": 0.3875,
+      "rejected_early": 254
+     },
+     "D4": {
+      "all_kept": 0.4562,
+      "early_choices": 400,
+      "late_kept": 0.4825,
+      "rejected_early": 228
+     },
+     "D5": {
+      "all_kept": 0.6,
+      "early_choices": 400,
+      "late_kept": 0.585,
+      "rejected_early": 154
+     },
+     "D6": {
+      "all_kept": 0.8025,
+      "early_choices": 400,
+      "late_kept": 0.7975,
+      "rejected_early": 77
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.5871,
+     "per_seed": [
+      0.5792,
+      0.625,
+      0.5833,
+      0.5542,
+      0.625,
+      0.6,
+      0.5833,
+      0.5542,
+      0.6,
+      0.5667
+     ],
+     "sd_over_seeds": 0.0256
+    },
+    "rejected_early": 1005,
+    "what": "the frozen planner through the driver, nothing learned applied (form_learning record)"
+   },
+   "product_shipped": {
+    "all_kept": {
+     "mean": 0.7617,
+     "per_seed": [
+      0.7333,
+      0.775,
+      0.7833,
+      0.7792,
+      0.75,
+      0.775,
+      0.7521,
+      0.7646,
+      0.7354,
+      0.7688
+     ],
+     "sd_over_seeds": 0.018
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.8237,
+      "early_choices": 400,
+      "late_kept": 0.83,
+      "rejected_early": 73
+     },
+     "D2": {
+      "all_kept": 0.7425,
+      "early_choices": 400,
+      "late_kept": 0.845,
+      "rejected_early": 144
+     },
+     "D3": {
+      "all_kept": 0.69,
+      "early_choices": 400,
+      "late_kept": 0.785,
+      "rejected_early": 162
+     },
+     "D4": {
+      "all_kept": 0.7512,
+      "early_choices": 400,
+      "late_kept": 0.85,
+      "rejected_early": 139
+     },
+     "D5": {
+      "all_kept": 0.7588,
+      "early_choices": 400,
+      "late_kept": 0.785,
+      "rejected_early": 107
+     },
+     "D6": {
+      "all_kept": 0.8037,
+      "early_choices": 400,
+      "late_kept": 0.8,
+      "rejected_early": 77
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.8158,
+     "per_seed": [
+      0.7667,
+      0.8417,
+      0.8167,
+      0.8375,
+      0.8375,
+      0.825,
+      0.7875,
+      0.8167,
+      0.8042,
+      0.825
+     ],
+     "sd_over_seeds": 0.0239
+    },
+    "rejected_early": 702,
+    "what": "SHIPPED: lane L's per-key majority through the frozen planner (form_learning apply; subject:make_learner)"
+   },
+   "today": {
+    "all_kept": {
+     "mean": 0.4088,
+     "per_seed": [
+      0.4,
+      0.4167,
+      0.3979,
+      0.4333,
+      0.4167,
+      0.3917,
+      0.3875,
+      0.4083,
+      0.4292,
+      0.4062
+     ],
+     "sd_over_seeds": 0.0152
+    },
+    "by_person": {
+     "D1": {
+      "all_kept": 0.2687,
+      "early_choices": 400,
+      "late_kept": 0.275,
+      "rejected_early": 295
+     },
+     "D2": {
+      "all_kept": 0.425,
+      "early_choices": 400,
+      "late_kept": 0.42,
+      "rejected_early": 228
+     },
+     "D3": {
+      "all_kept": 0.825,
+      "early_choices": 400,
+      "late_kept": 0.825,
+      "rejected_early": 70
+     },
+     "D4": {
+      "all_kept": 0.3837,
+      "early_choices": 400,
+      "late_kept": 0.3725,
+      "rejected_early": 242
+     },
+     "D5": {
+      "all_kept": 0.4263,
+      "early_choices": 400,
+      "late_kept": 0.4225,
+      "rejected_early": 228
+     },
+     "D6": {
+      "all_kept": 0.1237,
+      "early_choices": 400,
+      "late_kept": 0.105,
+      "rejected_early": 343
+     }
+    },
+    "early_choices": 2400,
+    "late_kept": {
+     "mean": 0.4033,
+     "per_seed": [
+      0.4042,
+      0.4083,
+      0.3917,
+      0.4375,
+      0.3833,
+      0.3833,
+      0.4,
+      0.4375,
+      0.375,
+      0.4125
+     ],
+     "sd_over_seeds": 0.0216
+    },
+    "rejected_early": 1406,
+    "what": "reference: always prose"
+   }
+  },
+  "verdicts": {
+   "not_shipped_backoff": {
+    "all_kept_over_key_majority": {
+     "clears": false,
+     "gain": 0.0025,
+     "visible_above": 0.0707
+    },
+    "all_kept_over_never_learns": {
+     "clears": true,
+     "gain": 0.2179,
+     "visible_above": 0.0563
+    },
+    "all_kept_over_product_shipped": {
+     "clears": false,
+     "gain": 0.035,
+     "visible_above": 0.0563
+    },
+    "late_kept_over_key_majority": {
+     "clears": false,
+     "gain": -0.0333,
+     "visible_above": 0.0812
+    },
+    "late_kept_over_never_learns": {
+     "clears": true,
+     "gain": 0.2446,
+     "visible_above": 0.0812
+    },
+    "late_kept_over_product_shipped": {
+     "clears": false,
+     "gain": 0.01,
+     "visible_above": 0.0812
+    }
+   },
+   "not_shipped_weights": {
+    "all_kept_over_key_majority": {
+     "clears": false,
+     "gain": -0.1931,
+     "visible_above": 0.0707
+    },
+    "all_kept_over_never_learns": {
+     "clears": false,
+     "gain": 0.0223,
+     "visible_above": 0.054
+    },
+    "all_kept_over_product_shipped": {
+     "clears": false,
+     "gain": -0.1606,
+     "visible_above": 0.054
+    },
+    "late_kept_over_key_majority": {
+     "clears": false,
+     "gain": -0.2417,
+     "visible_above": 0.0775
+    },
+    "late_kept_over_never_learns": {
+     "clears": false,
+     "gain": 0.0362,
+     "visible_above": 0.0628
+    },
+    "late_kept_over_product_shipped": {
+     "clears": false,
+     "gain": -0.1983,
+     "visible_above": 0.0676
+    }
+   },
+   "product_min_evidence_1": {
+    "all_kept_over_key_majority": {
+     "clears": false,
+     "gain": -0.0317,
+     "visible_above": 0.0707
+    },
+    "all_kept_over_never_learns": {
+     "clears": true,
+     "gain": 0.1837,
+     "visible_above": 0.0503
+    },
+    "all_kept_over_product_shipped": {
+     "clears": false,
+     "gain": 0.0008,
+     "visible_above": 0.0509
+    },
+    "late_kept_over_key_majority": {
+     "clears": false,
+     "gain": -0.0429,
+     "visible_above": 0.0775
+    },
+    "late_kept_over_never_learns": {
+     "clears": true,
+     "gain": 0.235,
+     "visible_above": 0.0648
+    },
+    "late_kept_over_product_shipped": {
+     "clears": false,
+     "gain": 0.0004,
+     "visible_above": 0.0676
+    }
+   },
+   "product_shipped": {
+    "all_kept_over_key_majority": {
+     "clears": false,
+     "gain": -0.0325,
+     "visible_above": 0.0707
+    },
+    "all_kept_over_never_learns": {
+     "clears": true,
+     "gain": 0.1829,
+     "visible_above": 0.0509
+    },
+    "late_kept_over_key_majority": {
+     "clears": false,
+     "gain": -0.0433,
+     "visible_above": 0.0775
+    },
+    "late_kept_over_never_learns": {
+     "clears": true,
+     "gain": 0.2346,
+     "visible_above": 0.0676
+    }
+   }
+  },
+  "visible_gain_development": {
+   "all_kept": {
+    "over_key_majority": 0.0707,
+    "over_never_learns": 0.0495
+   },
+   "late_kept": {
+    "over_key_majority": 0.0775,
+    "over_never_learns": 0.0475
+   }
+  }
+ },
+ "outcome_table_cost": {
+  "file_bytes_per_row": 184.4,
+  "forget_one_artifact_ms": 3.6,
+  "insert_all_s": 1.39,
+  "made_artifacts": 500,
+  "median_ms": {
+   "adjustments_for_one_key": 5.11,
+   "forms.plan alone": 2.67,
+   "gap_report": 109.21,
+   "learn.plan (two plans when something applies)": 10.87,
+   "record_outcome": 2.32,
+   "report_all_keys": 132.59
+  },
+  "note": "one run on a loaded shared host; every record_outcome trims the table to its bound (100,000 rows), so the forget took the rest of its artifact's rows by trigger",
+  "reset_ms": 22.4,
+  "rows": 100000,
+  "rows_after_forget": 99801,
+  "status_of_the_timed_plan": "applied"
+ },
+ "properties_under_random_learned_policies": {
+  "test_a_scalar_or_a_sentence_stays_words_whatever_the_words_say": {
+   "choice_changed": 1,
+   "learned_applied": 362,
+   "plans": 600,
+   "violations": 0
+  },
+  "test_an_explicit_form_is_honoured_whenever_it_is_feasible_and_explained_when_not": {
+   "choice_changed": 7,
+   "learned_applied": 380,
+   "plans": 600,
+   "violations": 0
+  },
+  "test_hard_constraints_are_never_violated_over_random_contexts": {
+   "choice_changed": 20,
+   "learned_applied": 399,
+   "plans": 600,
+   "violations": 0
+  },
+  "test_more_data_never_moves_the_choice_toward_words (learned preferences name no words form)": {
+   "choice_changed": 261,
+   "learned_applied": 984,
+   "plans": 1200,
+   "violations": 0
+  },
+  "test_no_answer_breaks_a_cost_floor_or_a_medium_by_construction": {
+   "choice_changed": 35,
+   "learned_applied": 2019,
+   "plans": 3000,
+   "violations": 0
+  }
+ },
+ "simulated": true,
+ "statement": "the learn family measures adaptation to SIMULATED, stable preferences from simulated feedback, not benefit to a person; development split only"
+}

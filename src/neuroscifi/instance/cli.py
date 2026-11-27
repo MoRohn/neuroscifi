@@ -218,6 +218,8 @@ def _config(db, args, now):
         changes["artifact_store_max_bytes"] = args.artifact_store_max_mib * 1024 * 1024
     if args.artifact_adapters is not None:
         changes["artifact_adapters"] = [n for n in (p.strip() for p in args.artifact_adapters.split(",")) if n]
+    if args.form_learning is not None:
+        changes["form_learning"] = args.form_learning
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     repair_notes = []
@@ -355,6 +357,10 @@ def register(sub):
     p.add_argument("--artifact-adapters", metavar="NAME,...",
                    help="external file readers you approve, by name, comma-separated (`nsf artifact adapters` lists "
                         "those found); an empty value approves none (the default)")
+    p.add_argument("--form-learning", choices=store.FORM_LEARNING,
+                   help="learning the form of a result from what you keep (ADR-078): off = nothing recorded "
+                        "(default); record = your reactions to made forms are kept and change nothing; apply = what "
+                        "was learned is also used when a form is chosen (`nsf form learned` shows it)")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("self", help="what this individual is doing, knows, is unsure of and can do next, each with "

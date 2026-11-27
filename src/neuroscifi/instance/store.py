@@ -139,6 +139,10 @@ class InstanceConfig:
     artifact_max_bytes: int = 64 * 1024 * 1024
     artifact_store_max_bytes: int = 2 * 1024 ** 3
     artifact_adapters: list = field(default_factory=list)
+    # Learning the form of a result from outcomes (OMNIMIND lane L, ADR-078; artifacts/learn.py): "off" (default)
+    # records nothing and changes nothing; "record" keeps the owner's reactions to made forms and the independent
+    # check's verdicts, and changes nothing; "apply" also hands what was learned to the planner.
+    form_learning: str = "off"
 
     @classmethod
     def from_json(cls, text):
@@ -389,6 +393,7 @@ _SETTABLE = {
                                     and len(set(v)) == len(v)),
     "broadcast_threshold": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                                       and 0 <= v <= 1),
+    "form_learning": lambda v: isinstance(v, str) and v in FORM_LEARNING,
 }
 # The settings fixed at `nsf init` and their checks (Wave 4 lane D: checked on load as well; since the Wave 4 fix a
 # damaged one pauses writes, as on main, where it made the write check fail, until `nsf config --repair-fixed`).
@@ -407,7 +412,9 @@ RULE_VERSIONS = ("rules-v1", "information-v1")
 MAX_IMAGINED_ROWS = 100_000
 MAX_IMAGINED_LIFETIME = 365 * 86400    # also how long an imagined tombstone is kept (imagined.expire)
 IMAGINE_SWITCHES = ("imagine_what_if", "imagine_forecast", "imagine_retrospect", "imagine_scenarios")
-ARTIFACT_SETTINGS = ("artifact_max_bytes", "artifact_store_max_bytes", "artifact_adapters")
+ARTIFACT_SETTINGS = ("artifact_max_bytes", "artifact_store_max_bytes", "artifact_adapters",
+                     "form_learning")        # lane L (ADR-078): a damaged value reads as "off"
+FORM_LEARNING = ("off", "record", "apply")
 
 
 SETTING_KIND = "setting"      # deletion_log.target_kind of a changed setting (target_id: the setting's name)
@@ -460,6 +467,8 @@ def setting_problems(db):
                                          "`nsf config --artifact-store-max-mib M`",
              "artifact_adapters": "; no external adapter is loaded until the list is set with "
                                   "`nsf config --artifact-adapters NAME,...`",
+             "form_learning": "; form learning is treated as off (nothing recorded, nothing applied) until it is "
+                              "set with `nsf config --form-learning off|record|apply`",
              "ask_budget_per_epoch": "; it reads as 0 (no question asks you; the executive defers) until it is set "
                                      "with `nsf config --ask-budget N`",
              **{name: "; " + _fixed_remedy(name) for name in _FIXED}}

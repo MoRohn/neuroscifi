@@ -872,6 +872,42 @@ def test_artifact_adapters(individual, monkeypatch):
     assert [artifact_store.read_bytes(db, i) for i in kept] == [bytes(range(256))] * 3
 
 
+def test_form_learning(individual, tmp_path):
+    """OMNIMIND lane L (ADR-078): with "form_learning" off (the default) the planner's own choice stands and nothing
+    is recorded; on ("apply"), after the owner replaced a made bar chart by a table twice for this kind of content,
+    the plan is a table; off again: the planner's choice, on the next call. The reactions recorded while it was on
+    stay readable (`nsf form learned`), go with a restore and are removed by the owner's reset."""
+    db, path = individual
+    from neuroscifi.artifacts import forms, learn, make, store as artifact_store
+    from neuroscifi.artifacts.types import ContentShape
+    bars = {"spec": "chart.bar", "version": 1, "title": "Rain", "description": "", "options": {},
+            "data": {"categories": [f"c{i}" for i in range(16)], "x": {"label": "Month"}, "y": {"label": "Rain"},
+                     "series": [{"name": "Lisbon", "values": list(range(16))}]},
+            "sources": ["request"], "made_by": {"generator": "", "version": 0}}
+    key = {"kind": "categories", "purpose": "compare", "device": "console"}
+    assert learn.record_outcome(db, "artifact-" + "0" * 32, "kept")["recorded"] is False     # off: nothing recorded
+    store.set_config(db, {"form_learning": "record"}, time.time())
+    for _ in range(2):
+        made = make.make(bars)
+        record = artifact_store.add_made(db, made, made.spec, [])
+        learn.record_outcome(db, record.id, "check_passed", form="bar_chart", **key)
+        learn.record_outcome(db, record.id, "replaced", by="table")
+    shape = ContentShape(("categories",), 16, 1, False, 0, False, 0.0, 0)
+    context = forms.Context(generators=tuple(f.generator for f in forms.FORMS.values() if f.generator))
+    on, off = instance_switch(db, "form_learning", "apply", "off")
+
+    def probe():
+        return learn.plan(db, forms.Request(), (shape,), context)[0].chosen
+    reference, on_, again = cycle(on, off, probe)
+    assert reference == ("bar_chart",) and on_ == ("table",)
+    assert_rolls_back(reference, on_, again)
+
+    def count(d):
+        return d.execute("SELECT count(*) FROM form_outcomes").fetchone()[0]
+    assert len(learn.report(db)["keys"]) == 1
+    readable_forgettable_restorable(db, path, tmp_path, count, lambda d: learn.reset(d, time.time()))
+
+
 def test_source_derivation(individual):
     """ADR-066 (Wave 4 lane S). Off: an outlet and two reworded copies naming it in wordings no credit pattern reads are
     three sources and their version becomes knowledge; on: one source, held; off again: three, on the next task."""
@@ -976,6 +1012,7 @@ SWITCHES = {
     "supersession": test_supersession_and_its_records, "origin_grouping": test_origin_grouping,
     "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
     "artifact_adapters": test_artifact_adapters,
+    "form_learning": test_form_learning,
     "own_text_provenance": test_own_text_provenance,
     "source_derivation": test_source_derivation,
     "allowance_division": test_allowance_division,
