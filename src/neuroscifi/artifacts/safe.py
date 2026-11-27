@@ -394,6 +394,36 @@ def _refuse(*_args):
     raise Refused("XML with a DOCTYPE or entity declaration is refused", rule="xml_dtd")
 
 
+XINCLUDE = "http://www.w3.org/2001/XInclude"
+# DOCTYPEs that only NAME a well-known public DTD (never loaded here): XHTML in EPUB chapters, NCX, SVG, Apple plists
+_KNOWN_PUBLIC = re.compile(rb'<!DOCTYPE\s+[\w:.-]+\s+PUBLIC\s+"-//(?:W3C|NISO|Apple|Apple Computer|IDPF|OASIS)//'
+                           rb'[^"<>\[\]]{1,200}"(?:\s+"[^"<>\[\]]{0,300}")?\s*>', re.I)
+
+
+def markup_hazard(data: bytes) -> str | None:
+    """Why markup bytes may not be answered from (lane FX, item 2), or None: an entity declaration or a DOCTYPE
+    with an internal subset, or a DOCTYPE naming a DTD by a system address alone ("xml_dtd", the XML readers' own
+    rule), or an XInclude ("external_reference"). Byte-level, so it holds whichever reader would read the bytes (a refused XML is not
+    read again as text). UTF-16 text is examined after decoding its first MiB."""
+    head = bytes(data)
+    if head[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        head = head[:1 << 20].decode("utf-16", "replace").encode("utf-8", "replace")
+    if b"<!ENTITY" in head:
+        return "xml_dtd"
+    for m in re.finditer(rb"<!DOCTYPE\b[^>\[]*(\[)?", head, re.I):
+        if m.group(1):
+            return "xml_dtd"
+        decl = head[m.start():m.start() + 600]
+        if re.match(rb'<!DOCTYPE\s+[\w:.-]+\s*(?:SYSTEM\s+"about:legacy-compat"\s*)?>', decl, re.I):
+            continue                                     # <!DOCTYPE html>: names no DTD
+        if _KNOWN_PUBLIC.match(decl):
+            continue
+        return "xml_dtd"
+    if XINCLUDE.encode() in head:
+        return "external_reference"
+    return None
+
+
 def parse_xml(data: bytes, limits: Limits, *, deadline: Deadline | None = None) -> ElementTree.Element:
     """ElementTree root of an untrusted XML document. Any DOCTYPE or entity declaration, external entity or
     undefined entity is refused before expansion (as `webcortex/safety.safe_xml_parse`); element count is bounded
@@ -420,6 +450,9 @@ def parse_xml(data: bytes, limits: Limits, *, deadline: Deadline | None = None) 
             raise Refused(f"the XML nests deeper than {max_depth} elements", rule="xml_depth")
         if state["elements"] % 4096 == 0:
             deadline.check("parsing XML")
+        if tag.startswith(XINCLUDE + "}"):
+            raise Refused("the XML includes another document by reference (XInclude): it is not read",
+                          rule="external_reference")
         builder.start(name(tag), {name(k): v for k, v in attrs.items()})
 
     def end(tag):

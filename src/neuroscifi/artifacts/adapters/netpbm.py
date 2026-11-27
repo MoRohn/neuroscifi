@@ -110,7 +110,14 @@ def decode_netpbm(data: bytes, detected: Detected, limits: Limits) -> Decoded:
             if len(raw) < n:
                 raise Malformed("the raw NetPBM body is shorter than its size")
             vals = np.frombuffer(raw, ">u2" if width == 2 else np.uint8)
-        if len(data) > pos + (((w + 7) // 8) * h if kind == 4 else w * h * ch * width):
+        end = pos + (((w + 7) // 8) * h if kind == 4 else w * h * ch * width)
+        if len(data) > end:
+            # a raw NetPBM file may hold further images, each with its own header (and white space or comment
+            # lines); any other bytes after the image mean the header was followed by something else, so the image
+            # is not answered (lane FX, item 1)
+            tail = re.sub(rb"#[^\n]*(?:\n|$)", b"", data[end:end + 4096])
+            if not re.match(rb"[ \t\r\n]*(?:P[1-7][ \t\r\n#]|$)", tail):
+                raise Malformed("the bytes after the image are neither another NetPBM image nor white space")
             notes.append("data after the first image was not read")
     if kind in (1, 4):
         if vals.size and int(vals.max()) > 1:

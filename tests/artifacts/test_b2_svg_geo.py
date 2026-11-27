@@ -67,17 +67,20 @@ def test_viewbox_units_text_and_use():
 
 def test_active_and_external_content_is_refused_and_not_kept():
     body = ('<script>alert(1)</script><foreignObject><div>x</div></foreignObject>'
-            '<rect width="1" height="1" onclick="steal()"/><image href="https://example.invalid/a.png" width="2" height="2"/>'
-            '<use href="other.svg#x"/><a href="https://example.invalid"><circle r="1"/></a>')
+            '<rect width="1" height="1" onclick="steal()"/><image href="data:image/png;base64,AAAA" width="2" '
+            'height="2"/><a href="https://example.invalid"><circle r="1"/></a>')
     out = adapters.decode(_svg(body, 'width="5" height="5" onload="go()"'))
     note = next(n for n in out.notes if n.startswith("refused"))
-    for what in ("script", "foreignObject", "2 x event attribute", "external image reference",
-                 "external use reference", "link address"):
+    for what in ("script", "foreignObject", "2 x event attribute", "link address"):
         assert what in note
     d = out.representation
     assert not any("alert" in (s.text or "") for s in d.shapes)
-    img = next(s for s in d.shapes if s.kind == "image")
-    assert "refused" in img.attrs["source"] and "example" not in json.dumps(dict(img.attrs))
+    assert "example" not in json.dumps([dict(s.attrs) for s in d.shapes])
+    # lane FX, item 2: what a renderer would FETCH (an outside image or use target) refuses the whole drawing
+    for fetched in ('<image href="https://example.invalid/a.png" width="2" height="2"/>', '<use href="other.svg#x"/>'):
+        with pytest.raises(T.Refused) as err:
+            adapters.decode(_svg('<rect width="1" height="1"/>' + fetched, 'width="5" height="5"'))
+        assert err.value.rule == "external_reference"
 
 
 def test_svg_hostile_xml():

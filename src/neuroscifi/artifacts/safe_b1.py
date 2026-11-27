@@ -231,6 +231,8 @@ class ZipReader:
                               needs=(f"a decoder for ZIP method {entry.method}",))
         if zlib.crc32(out) != entry.crc:
             raise Malformed("a ZIP member fails its CRC check")
+        if len(out) != entry.size:
+            raise Refused("a ZIP member inflates to another size than its directory entry states", rule="lying_size")
         return out
 
 

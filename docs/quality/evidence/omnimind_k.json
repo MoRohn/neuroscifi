@@ -517,17 +517,17 @@
  },
  "corpus": {
   "by_basis": {
-   "declared": 7,
-   "signature": 83,
+   "declared": 6,
+   "signature": 84,
    "structure": 35
   },
   "by_family": {
-   "archive": 10,
+   "archive": 11,
    "array": 5,
    "audio": 11,
    "code": 17,
    "database": 1,
-   "document": 14,
+   "document": 13,
    "drawing": 1,
    "geo": 4,
    "image": 19,
@@ -593,7 +593,7 @@
    "xlsx": 1,
    "xml": 1,
    "xz": 1,
-   "zip": 1,
+   "zip": 2,
    "zstd": 1
   },
   "opaque": 17,
@@ -622,7 +622,7 @@
    "avi:malformed": 1,
    "avif:malformed": 1,
    "dicom:unsupported": 1,
-   "docx:malformed": 2,
+   "docx:malformed": 1,
    "epub:malformed": 1,
    "fits:unsupported": 1,
    "flac:unsupported": 1,
@@ -642,7 +642,7 @@
    "pickle:refused": 3,
    "ply:malformed": 1,
    "png:malformed": 1,
-   "psd:unsupported": 1,
+   "psd:malformed": 1,
    "rar:unsupported": 2,
    "sqlite:malformed": 1,
    "stl:malformed": 1,
@@ -690,16 +690,17 @@
   "note": "with the size unknown, a short prefix of a binary format that happens to be printable (b'GIF8', b'PK') is called text, which those bytes are; with the size given, prefixes under 32 bytes of a longer input get no structure verdict",
   "outcomes": {
    "size_given": {
-    "exact": 673,
+    "exact": 662,
     "general": 86,
-    "text": 16,
-    "unknown": 600
+    "hint_on_prefix": 6,
+    "text": 18,
+    "unknown": 603
    },
    "size_unknown": {
-    "exact": 701,
+    "exact": 698,
     "general": 78,
-    "text": 346,
-    "unknown": 250
+    "text": 348,
+    "unknown": 251
    }
   },
   "tried": 2750

@@ -66,12 +66,13 @@ def test_zip_encrypted_members_are_refused_one_by_one(b1reg):
     assert m["secret.csv"].inner is None and "encrypted" in m["secret.csv"].note
 
 
-def test_zip_bomb_member_refused_archive_goes_on(b1reg):
+def test_zip_bomb_member_refuses_the_whole_archive(b1reg):
+    # lane FX, item 2 (outcome.refuses_whole): a bomb-like member refuses the whole archive; its honest sibling is
+    # not answered, and the listing is kept as findings
     data = make_zip([("bomb.txt", b"\x00" * (20 << 20)), ("ok.csv", CSV)])
-    out = b1reg.decode(data, name="b.zip")
-    m = by_path(out.representation)
-    assert m["bomb.txt"].inner is None and "max_ratio" in m["bomb.txt"].note
-    assert m["ok.csv"].inner is not None
+    with pytest.raises(T.Refused) as err:
+        b1reg.decode(data, name="b.zip")
+    assert err.value.rule == "max_ratio" and any("ok.csv" in f for f in err.value.findings)
 
 
 def test_zip_lying_sizes_and_crc(b1reg):
@@ -79,8 +80,14 @@ def test_zip_lying_sizes_and_crc(b1reg):
     corrupt = bytearray(good)
     pos = corrupt.find(b"PK\x01\x02")
     corrupt[pos + 16:pos + 20] = b"\x00\x00\x00\x00"           # central CRC
-    m = by_path(b1reg.decode(bytes(corrupt), name="c.zip").representation)
-    assert m["t.csv"].inner is None and "CRC" in m["t.csv"].note
+    with pytest.raises(T.Refused) as err:                       # lane FX: a damaged stored member refuses it all
+        b1reg.decode(bytes(corrupt), name="c.zip")
+    assert err.value.rule == "damaged_member"
+    lying = make_zip([("t.csv", CSV)])
+    pos = lying.find(b"PK\x01\x02")
+    lying = lying[:pos + 24] + (len(CSV) - 3).to_bytes(4, "little") + lying[pos + 28:]   # central size lies
+    with pytest.raises(T.ArtifactError):
+        b1reg.decode(lying, name="l.zip")
 
 
 def test_zip_member_flood_is_partial(b1reg):
@@ -95,18 +102,15 @@ def test_zip_declared_count_lie_is_malformed(b1reg):
         b1reg.decode(data, name="l.zip")
 
 
-def test_nesting_deeper_than_allowed_is_listed_not_decoded(b1reg):
+def test_nesting_deeper_than_allowed_refuses_the_whole_archive(b1reg):
+    # lane FX, item 2: nesting past max_depth is the nested bomb's shape: the whole archive is refused
     data = CSV
     for i in range(4):
         data = make_zip([(f"level{i}.{'zip' if i else 'csv'}", data)])
-    out = b1reg.decode(data, name="n.zip", limits=T.Limits(max_depth=2))
-    level = out.representation
-    depth = 0
-    while level is not None and isinstance(level, T.Bundle):
-        member = level.members[0]
-        level = member.inner
-        depth += 1
-    assert depth <= 3 and "deeper" in member.note
+    with pytest.raises(T.Refused) as err:
+        b1reg.decode(data, name="n.zip", limits=T.Limits(max_depth=2))
+    assert err.value.rule == "max_depth"
+    assert b1reg.decode(data, name="n.zip").representation.members[0].inner is not None     # within the limit
 
 
 def tar_bytes(entries):
@@ -179,10 +183,11 @@ def test_tar_gz_bomb_refused(b1reg):
 
 
 def test_tar_truncated_member(b1reg):
+    # lane FX, item 2: a header stating more bytes than the archive holds is a lying size: the whole TAR is refused
     data = tar_bytes([("t.csv", "file", CSV * 200)])[:900]
-    out = b1reg.decode(data, name="t.tar")
-    members = out.representation.members
-    assert members and members[0].inner is None and "cut short" in members[0].note
+    with pytest.raises(T.Refused) as err:
+        b1reg.decode(data, name="t.tar")
+    assert err.value.rule == "lying_size"
 
 
 def test_7z_and_rar_identified_unsupported(b1reg):

@@ -11,11 +11,16 @@ recursively through `adapters.decode` with `nested()` limits (one level less of 
   entry: such a member is an attack on whoever extracts the archive, and the main session's ruling (integration,
   ADR-072) is that its siblings are not read either. The refusal names the first offending member (JSON-escaped,
   as data) and carries the listing of member names and sizes as `findings` (inspection, never content);
-- refused as members to decode (listed, never read): sparse TAR members (their holes would be materialised);
-  encrypted ZIP members (`Refused` per member, not for the archive: not an attack on the reader);
-- refused while reading: a member that would pass the remaining `max_decoded_bytes` or `max_ratio`;
-- not decoded: members nested deeper than `max_depth`;
-- an `ArtifactError` from the member's own adapter is recorded in its note; the archive goes on.
+- the WHOLE archive is refused too (lane FX, item 2: the table `outcome.PART_ONLY_RULES` / `refuses_whole`) when
+  any member is refused for any other reason than the three that concern that member only: a bomb-like member (the
+  ratio rule, or a small member that would need more than the budget), a member that inflates to another size than
+  the directory states or that the archive's bytes cut short (a lying size), a damaged stored member, a member
+  nested deeper than `max_depth`, a member whose own reader refuses it (an entity, a DTD, an external reference,
+  words addressed to an AI agent, ...). Its honest siblings are not answered; the listing is kept as findings;
+- refused as members only (listed, never read; the archive goes on): sparse TAR members (their holes would be
+  materialised); encrypted ZIP members (not an attack on the reader); a member that would pass what is left of
+  `max_decoded_bytes` (a large archive);
+- a `Malformed` or `Unsupported` from a member's own adapter is recorded in its note; the archive goes on.
 
 More than `max_members` entries: the first `max_members` are listed and the result is partial. Each decoded member
 is charged twice its size against `max_decoded_bytes` (its bytes, and its representation as an estimate). When an
@@ -30,6 +35,7 @@ import tarfile
 from dataclasses import replace
 
 from ..safe import Deadline
+from ..outcome import refuses_whole
 from ..safe_b1 import DecodeBudget, ZipReader, unsafe_member_name
 from ..types import ArtifactError, Decoded, Detected, Malformed, Member, Refused, Unsupported, Bundle
 from . import Adapter, nested
@@ -63,6 +69,15 @@ def refuse_unsafe(container: str, offending: list[tuple[str, str]], listing: lis
     raise error
 
 
+def refuse_whole(container: str, why: str, rule: str, listing: list[tuple[str, int]]):
+    """Raise the whole-file refusal for a hostile part met inside (lane FX, item 2; `outcome.refuses_whole`): `why`
+    says what was met (never a member's name: names are the file's own text and go into the findings only)."""
+    error = Refused(f"the {container} file is refused as a whole: {why}; nothing inside is answered", rule=rule)
+    error.findings = tuple(f"member {_quoted(n)}: {int(max(0, size))} bytes" for n, size in listing[:LISTING_MAX]) \
+        + ((f"{len(listing) - LISTING_MAX} more member(s) not listed",) if len(listing) > LISTING_MAX else ())
+    raise error
+
+
 def _listed(name: str, container: str, why: str) -> Detected:
     from .. import detect as detect_mod
     try:
@@ -90,6 +105,13 @@ class _Walk:
         self.python: dict[str, bytes] = {}
         self.counts = {"decoded": 0, "listed": 0, "refused": 0, "failed": 0}
 
+    def refuse(self, name: str, size: int, rule: str, why: str, *, remaining=()) -> None:
+        """A member refused by `rule`: the whole archive when the outcome table says so, else this member only."""
+        if refuses_whole(rule):
+            listing = [(m.path, m.size) for m in self.members] + [(name, size)] + list(remaining)
+            refuse_whole(self.container.upper(), f"a member was refused ({rule})", rule, listing)
+        self.listed(name, size, why, refused=True)
+
     def listed(self, name: str, size: int, why: str, *, refused: bool = False) -> None:
         self.counts["refused" if refused else "listed"] += 1
         self.members.append(Member(name, int(max(0, size)), _listed(name, self.container, why), None, _cut(why)))
@@ -102,14 +124,17 @@ class _Walk:
             self.python[name] = data
         if self.limits.max_depth - 1 < 0:
             # the chain's own answer to this depth is Refused(rule="max_depth"): the member is refused, by the same rule
-            self.counts["refused"] += 1
-            self.members.append(Member(name, len(data), _listed(name, self.container, "nested deeper than allowed"),
-                                       None, "refused: containers nest deeper than max_depth (rule max_depth)"))
+            self.refuse(name, len(data), "max_depth", "refused: containers nest deeper than max_depth (rule max_depth)")
             return
         inner_limits = nested(self.limits, self.budget.bytes, self.deadline.elapsed())
         try:
             result = decode(data, name=posixpath.basename(name.rstrip("/")) or None, limits=inner_limits)
         except ArtifactError as error:
+            rule = getattr(error, "rule", "")
+            if rule == "max_decoded_bytes" and len(data) * self.limits.max_ratio < inner_limits.max_decoded_bytes:
+                rule = "bomb_like"      # a small member that would need more than the budget: a bomb, not a big file
+            if isinstance(error, Refused) and error.reason != "timeout" and refuses_whole(rule):
+                self.refuse(name, len(data), rule, "")
             self.counts["failed" if not isinstance(error, Refused) else "refused"] += 1
             self.members.append(Member(name, len(data), _listed(name, self.container, "decoding the member failed"),
                                        None, _cut(f"{error.reason}: {error}")))
@@ -173,7 +198,7 @@ def read_zip(data: bytes, detected: Detected, limits) -> Decoded:
             walk.members.append(Member(entry.name, 0, _directory("zip"), None, "directory"))
             continue
         if entry.encrypted:
-            walk.listed(entry.name, entry.size, "refused: the member is encrypted and is not decrypted", refused=True)
+            walk.refuse(entry.name, entry.size, "encrypted", "refused: the member is encrypted and is not decrypted")
             continue
         if not walk.budget.fits_bytes(1):
             walk.partial = True
@@ -184,9 +209,15 @@ def read_zip(data: bytes, detected: Detected, limits) -> Decoded:
         except Refused as error:
             if error.reason == "timeout":
                 raise
-            walk.listed(entry.name, entry.size, f"refused: {error} (rule {error.rule})", refused=True)
+            walk.refuse(entry.name, entry.size, error.rule, f"refused: {error} (rule {error.rule})",
+                        remaining=[(e.name, e.size) for e in reader.entries[reader.entries.index(entry) + 1:]])
             continue
-        except (Unsupported, Malformed) as error:
+        except Malformed:
+            # the archive's own stored bytes are damaged or lie (a CRC that fails, a member past the end): the
+            # archive is refused as a whole, never answered from its other members
+            refuse_whole("ZIP", "a member's stored bytes are damaged or do not match the directory",
+                         "damaged_member", [(e.name, e.size) for e in reader.entries])
+        except Unsupported as error:
             walk.counts["failed"] += 1
             walk.members.append(Member(entry.name, entry.size, _listed(entry.name, "zip", "not read"), None,
                                        _cut(f"{error.reason}: {error}")))
@@ -260,7 +291,7 @@ def read_tar(data: bytes, detected: Detected, limits) -> Decoded:
                                          f"{_cut(info.linkname, 120)!r} (never followed)", refused=True)
             continue
         if info.issparse():
-            walk.listed(name, info.size, "refused: a sparse member (its holes would be materialised)", refused=True)
+            walk.refuse(name, info.size, "sparse_member", "refused: a sparse member (its holes would be materialised)")
             continue
         if not info.isreg():
             walk.listed(name, 0, "refused: a device, FIFO or other special entry", refused=True)
@@ -279,10 +310,8 @@ def read_tar(data: bytes, detected: Detected, limits) -> Decoded:
         except tarfile.TarError:
             body = b""
         if len(body) != info.size:
-            walk.counts["failed"] += 1
-            walk.members.append(Member(name, len(body), _listed(name, "tar", "truncated"), None,
-                                       "malformed: the member is cut short by the end of the archive"))
-            continue
+            # the header states more bytes than the archive holds: a lying size refuses the whole archive
+            walk.refuse(name, info.size, "lying_size", "")
         walk.decode_member(name, body)
     return walk.finish(detected)
 

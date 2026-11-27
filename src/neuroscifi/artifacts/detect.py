@@ -455,7 +455,7 @@ def _shapefile(h, size):
 
 
 def _ply(h, size):
-    if re.match(rb"ply\r?\nformat (ascii|binary_little_endian|binary_big_endian) 1\.0", h[:64]):
+    if re.match(rb"ply\r?\nformat (ascii|binary_little_endian|binary_big_endian) 1\.0[ \t]*\r?\n", h[:64]):
         return "ply", ["'ply' magic line followed by a format line"], None
     return None
 
@@ -507,10 +507,22 @@ def _wasm(h, size):
     return None
 
 
+_PDF_OBJECT = re.compile(rb"(?:^|[\r\n\s])\d{1,10}\s+\d{1,5}\s+obj\b")
+
+
 def _pdf(h, size):
+    """'%PDF-n.n' within the first 1024 bytes AND what every PDF has after it (lane FX, item 1): an indirect object
+    ('1 0 obj') in the prefix; or, at offset 0, the header on a line of its own not followed by prose (a cut head
+    of a PDF). A header followed by words is words ('%PDF-1.7 was mentioned'); one buried in other bytes is a
+    coincidence, not a PDF."""
     at = h.find(b"%PDF-", 0, 1024)
-    if at >= 0 and re.match(rb"%PDF-\d\.\d", h[at:at + 8]):
-        return "pdf", ["'%PDF-' header" + (f" at offset {at}" if at else "")], None
+    if at < 0 or not re.match(rb"%PDF-\d\.\d", h[at:at + 8]):
+        return None
+    if _PDF_OBJECT.search(h, at + 8):
+        return "pdf", ["'%PDF-' header" + (f" at offset {at}" if at else "") + " and an indirect object after it"], None
+    if at == 0 and re.match(rb"%PDF-\d\.\d[ \t]*(?:\r?\n|\r|$)", h[:16]) and not re.match(
+            rb"%PDF-\d\.\d[ \t]*\r?\n[ \t]*[A-Za-z]{2,}[ \t]+[A-Za-z]{2,}", h[:64]):
+        return "pdf", ["'%PDF-' header on a line of its own at the start (no object in the prefix)"], None
     return None
 
 
@@ -540,6 +552,7 @@ SIGNATURES = [
     _fixed(0, b"7z\xbc\xaf\x27\x1c", "7z", "7z signature"),
     _fixed(0, b"Rar!\x1a\x07\x00", "rar", "RAR 4 signature"), _fixed(0, b"Rar!\x1a\x07\x01\x00", "rar", "RAR 5 signature"),
     _fixed(0, b"SQLite format 3\x00", "sqlite", "'SQLite format 3' header"),
+    _fixed(0, b"bplist00", "plist", "'bplist00' binary property list header"),
     _fixed(0, b"PAR1", "parquet", "'PAR1' magic at the start", min_len=8),
     _fixed(0, b"ARROW1\x00\x00", "arrow", "'ARROW1' file magic"),
     _fixed(0, b"FEA1", "feather", "Feather version 1 magic", min_len=8),
@@ -740,6 +753,11 @@ def _obj(lines: list[str], complete: bool) -> tuple[str, list[str]] | None:
     return None
 
 
+_NUM = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+_STL_FACET = re.compile(rf"^\s*facet\s+normal\s+{_NUM}\s+{_NUM}\s+{_NUM}\s*$", re.M)
+_STL_VERTEX = re.compile(rf"^\s*vertex\s+{_NUM}\s+{_NUM}\s+{_NUM}\s*$", re.M)
+
+
 def _structure(h: bytes, complete: bool) -> tuple[str, list[str]] | None:
     decoded = _as_text(h, complete)
     if decoded is None:
@@ -770,7 +788,7 @@ def _structure(h: bytes, complete: bool) -> tuple[str, list[str]] | None:
         code = _shebang(stripped)
         if code is not None:
             return code[0], head + code[1]
-    if re.match(r"solid[ \t\r\n]", stripped) and re.search(r"^\s*facet normal ", text, re.M):
+    if re.match(r"solid[ \t\r\n]", stripped) and _STL_FACET.search(text) and _STL_VERTEX.search(text):
         return "stl", head + ["'solid' followed by 'facet normal' lines (text STL)"]
     for test in (_obj, _delimited):
         found = test(lines, complete)
@@ -807,6 +825,26 @@ def _make(fmt: str, basis: str, reasons: list[str], container: str | None = None
 
 
 UNKNOWN_REASON = "no signature or structure was recognised"
+
+# Formats whose files are text by definition (lane FX, item 1). Only these may be named on a hint (a declared type
+# or an extension) when nothing in the bytes is recognised, and then only when the bytes read as text in a
+# single-byte encoding (an XML file in ISO-8859-1, a CSV in Windows-1252); the format's reader must then confirm
+# the hint by decoding (`adapters.decode`). Every other format has a signature or a structure test here, so bytes
+# that show neither CONTRADICT a hint naming it: a name or a declared type alone never identifies a file.
+TEXT_FORMATS = frozenset({"text", "json", "ndjson", "xml", "rss", "atom", "plist", "csv", "tsv", "ipynb", "yaml",
+                          "toml", "ini", "pyproject", "requirements", "package-json", "python", "javascript",
+                          "typescript", "c", "cpp", "shell", "perl", "ruby", "rust", "go", "java", "sql", "css",
+                          "html", "markdown", "svg", "kml", "gpx", "geojson", "obj"})
+_NOT_TEXT = re.compile(rb"[\x00-\x08\x0e-\x1a\x1c-\x1f\x7f]")
+HINT_ONLY = "nothing in the bytes confirms it"
+# Formats refused on their name alone: what they hold is never read, so naming them costs nothing but a refusal.
+REFUSED_ON_HINT = frozenset({"pickle"})
+
+
+def _single_byte_text(head: bytes) -> bool:
+    """Whether bytes read as text in some single-byte encoding: no NUL and no control character other than tab,
+    line breaks, form feed and escape."""
+    return bool(head.strip()) and _NOT_TEXT.search(head) is None
 
 
 def _unknown(reasons) -> Detected:
@@ -883,25 +921,33 @@ def detect(head: bytes, *, name: str | None = None, declared: str | None = None,
         size = None
     hints = _hints(name, declared)
     if not head:
-        if hints:
-            return _make(hints[0][0], "declared", [hints[0][1] + "; the input is empty, so nothing confirms it"])
-        return _unknown(["the input is empty"])
+        text_hint = next(((f, w) for f, w in hints if f in TEXT_FORMATS), None)
+        if text_hint:
+            return _make(text_hint[0], "declared", [text_hint[1] + "; the input is empty, so " + HINT_ONLY])
+        return _unknown(["the input is empty"] + [w + f", which names {f}: an empty input is not one" for f, w in hints])
     try:
         found = _identify(head, size)
     except (RecursionError, MemoryError):
         found = None
     if found is None:
-        if hints:
-            fmt, why = hints[0]
-            return _make(fmt, "declared", [UNKNOWN_REASON, why + "; nothing in the bytes confirms it"])
-        return _unknown([UNKNOWN_REASON])
+        text = _single_byte_text(head)
+        for fmt, why in hints:
+            if fmt in TEXT_FORMATS and text or fmt in REFUSED_ON_HINT:
+                return _make(fmt, "declared", [UNKNOWN_REASON, why + "; " + HINT_ONLY])
+        return _unknown([UNKNOWN_REASON] + [why + f", which names {fmt}: the bytes show no {fmt} signature or "
+                                            "structure, and a name or a declared type alone never identifies a file"
+                                            for fmt, why in hints])
     fmt, reasons, container, basis = found
+    complete = (size is not None and len(head) >= size) or (size is None and len(head) < HEAD_MAX)
     manifest = _manifest(name, fmt, head, size)
     if manifest is not None:
         return _make(manifest[0], manifest[1], reasons + manifest[2])
     for hinted, why in hints:
         if hinted == fmt:
             reasons.append(why + ", which agrees")
+        elif hinted in _REFINES.get(fmt, ()) and complete and fmt in ("zip", "ole"):
+            # the whole file was seen: a member or stream specific to the hinted format would have been found
+            reasons.append(why + f", but the whole file was examined and nothing in it is specific to {hinted}")
         elif hinted in _REFINES.get(fmt, ()):
             reasons.append(why + f", which is consistent with {fmt} but not confirmed by the bytes")
             container = "zip" if fmt == "zip" else "ole" if fmt == "ole" else container
@@ -911,4 +957,4 @@ def detect(head: bytes, *, name: str | None = None, declared: str | None = None,
     return _make(fmt, basis, reasons, container)
 
 
-__all__ = ["DECLARED", "EXTENSIONS", "FORMATS", "HEAD_MAX", "SIGNATURES", "detect"]
+__all__ = ["DECLARED", "EXTENSIONS", "FORMATS", "HEAD_MAX", "HINT_ONLY", "SIGNATURES", "TEXT_FORMATS", "detect"]

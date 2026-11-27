@@ -113,6 +113,9 @@ def _column_unit(column) -> Unit | None:
     u = unit_of(column.unit) if column.unit else None
     if u is None and column.name and unit_of(column.name.strip()) is not None and len(column.name.strip()) > 2:
         u = unit_of(column.name.strip())                # a column named "Hours" or "Seconds" states its unit
+    m = re.fullmatch(r"[A-Za-z][A-Za-z ]*?[_-]([A-Za-z]{1,3})", (column.name or "").strip()) if u is None else None
+    if m and unit_of(m.group(1)) is not None and unit_of(m.group(1)).dim in ("length", "mass", "time"):
+        u = unit_of(m.group(1))                         # "weight_g", "length_mm", "time_s" (lane FX, item 3)
     return u
 
 
@@ -694,8 +697,8 @@ def statements(representation, *, data: bytes | None = None) -> list:
         return out
     if kind == "table":
         return [f for f in _table_quantities(r, "table", Statement) if f.kind in ("events", "sequence")]
-    if kind == "bundle":
-        return []
+    if kind in ("bundle", "raster", "frames", "signal"):
+        return []           # an image or a sound gives measurements only; what it depicts or says is never read
     comments = own_comments(data)
     if comments:
         return [_said(s, "comment") for s in rr.statements_of_text(comments)]
@@ -833,6 +836,17 @@ def _fmt(v) -> str:
     return str(v)
 
 
+_SCALES = (10.0, 100.0, 1000.0, 1e4, 1e5, 1e6, 60.0, 3600.0, 86400.0, 1024.0, 1048576.0, 25.4, 2.54, 12.0, 16.0)
+
+
+def _scaled(a: float, b: float, tol: float) -> bool:
+    """Whether a common unit factor maps one value onto the other (within the comparison's tolerance, scaled)."""
+    for f in _SCALES:
+        if abs(a * f - b) <= tol * f or abs(b * f - a) <= tol * f:
+            return True
+    return False
+
+
 def _yearlike(f: Fact) -> bool:
     v = f.value
     return f.unit is None and isinstance(v, float) and v.is_integer() and 1800 <= v <= 2200
@@ -864,6 +878,13 @@ def _cmp_number(fa: Fact, fb: Fact, q_aggs, explicit_sentences) -> Pair | None:
     mv = rr.convert(float(meas.value), meas.unit, unit) if meas.unit else float(meas.value)
     tol = max(stmt.tolerance * (stmt.unit.factor / unit.factor if stmt.unit and unit else 1.0), meas.tolerance)
     verdict, extra = _number_verdict(stmt, meas, sv, mv, tol)
+    if verdict == "inconsistent" and (stmt.unit is None) != (meas.unit is None) and _scaled(sv, mv, tol):
+        # lane FX, item 3: one side states a unit and the other states none; a unit's scale factor would make them
+        # agree (1.025 kg against a column summing to 1025): which unit the bare numbers are in is not known, so
+        # this is not a disagreement (as for a mesh without a unit, ADR-077)
+        verdict = "not_comparable"
+        extra = "; ".join(x for x in (extra, "one side states no unit, and a unit's scale factor would make them "
+                                      "agree") if x)
     if agg_m is None:                         # a scalar (a duration): its words must be shared, beyond the unit
         strong = bool(set(stmt.words) & set(meas.words))
         named = strong
@@ -1347,13 +1368,54 @@ def _question_pairs(A: Side, B: Side, q_words: set) -> list:
     return [_count_pair(fa, fb, how, "paired by the question's words")]
 
 
+# Words that name an artifact or its kind, not a quantity of it (lane FX, item 3): "Is the caption right about the
+# image?" names two artifacts and no comparison, so these words never focus a comparison.
+ARTIFACT_WORDS = frozenset("image images picture pictures photo photos photograph photographs caption captions figure "
+                           "figures file files document documents report reports text texts note notes label labels "
+                           "sound sounds recording recordings audio clip clips table tables spreadsheet spreadsheets "
+                           "csv mesh meshes model models log logs code readme screenshot screenshots transcript "
+                           "transcripts description descriptions title titles page pages artifact artifacts "
+                           "drawing drawings svg png wav".split())
+
+
 def _focus(p: Pair, q_words: set, q_aggs) -> int:
     words = set(p.a.words) | set(p.b.words) | set(p.a.nouns) | set(p.b.nouns)
-    score = len(words & q_words)
+    score = len(words & (q_words - ARTIFACT_WORDS))
     for f in (p.a, p.b):
         if f.aggregate and f.aggregate in q_aggs:
             score += 2
     return score
+
+
+# What a question must name for a comparison of each kind to answer it (lane FX, item 3, ADR-080): a comparison
+# decides only when the question names its aggregate, its count, its subject's words, or its kind by one of these.
+KIND_CUES = {
+    "series": frozenset("series value values number numbers point points data plotted plot line lines bar bars chart "
+                        "charts graph graphs drawn".split()),
+    "pairs": frozenset("trace traces call calls called calling".split()),
+    "sequence": frozenset("order ordered sequence event events step steps timeline before after chronology first last "
+                          "then earlier later happened when".split()),
+    "events": frozenset("order ordered sequence event events step steps timeline before after chronology first last "
+                        "then earlier later happened when".split()),
+    "box": frozenset("box bounding size sizes dimension dimensions extent extents width height depth wide tall deep "
+                     "large big range ranges".split()),
+    "extent": frozenset("box bounding size sizes dimension dimensions extent extents width height depth wide tall deep "
+                        "large big range ranges pixel pixels resolution".split()),
+    "range": frozenset("range ranges minimum maximum min max lowest highest between".split()),
+    "count": rr.COUNT_CUES,
+    "number": frozenset("duration long second seconds rate length area volume total sum mean average amount amounts "
+                        "minimum maximum".split()),
+}
+# Words that ask what an image depicts or what a sound says: measured sizes, durations and statistics never answer
+# them (an image or a sound contributes measurements only).
+DEPICTION_CUES = frozenset("depict depicts depicted depicting describe describes described describing description "
+                           "subject subjects scene scenes portray portrays portrayed show shows shown showing content "
+                           "contents spoken speech lyrics sing sings sung utter utters uttered".split())
+MEASURED_ONLY = ("raster", "frames", "signal")
+
+
+def _named_kind(p, q_tokens: set) -> bool:
+    return bool((KIND_CUES.get(p.a.kind, frozenset()) | KIND_CUES.get(p.b.kind, frozenset())) & q_tokens)
 
 
 @dataclass
@@ -1429,6 +1491,7 @@ def compare(a, b, question: str | None = None) -> Relation:
     A = a if isinstance(a, Side) else side(a)
     B = b if isinstance(b, Side) else side(b)
     q_words = set(rr.content_words(question or ""))
+    q_tokens = set(rr.tokens(question or "")) | q_words
     q_aggs = rr.aggregate_named(question or "")
     pairs = _candidates(A, B, q_aggs)
     if set(rr.tokens(question or "")) & rr.COUNT_CUES:
@@ -1458,8 +1521,25 @@ def compare(a, b, question: str | None = None) -> Relation:
         top = max((pairs[k].focus for k in strong), default=0)
         decide = [k for k in strong if pairs[k].focus == top] if top > 0 else strong
         scope = "what the question names" if top > 0 else "everything the two artifacts let me compare"
+        if question and top == 0:
+            # lane FX, item 3: a question is answered only by a comparison it names (its kind, by KIND_CUES); one it
+            # does not name never stands in for it
+            decide = [k for k in decide if _named_kind(pairs[k], q_tokens)]
+            scope = "the kind of comparison the question names"
+    measured_only = [s for s in (A, B) if s.kind in MEASURED_ONLY]
+    if question and measured_only and q_tokens & DEPICTION_CUES:
+        rel.decided_by = []
+        rel.reason = ("cannot tell: the question asks what " + ("an image depicts" if measured_only[0].kind != "signal"
+                                                               else "a sound says") +
+                      "; here an image or a sound gives only its measurements (sizes, durations, measured "
+                      "statistics), never what it shows or says")
+        return rel
     verdicts = [pairs[k].verdict for k in decide]
     rel.decided_by = decide
+    if not decide and question and pairs and strong:
+        rel.reason = ("cannot tell: the question does not name anything both artifacts let me measure (what could "
+                      "be compared is not what it asks)")
+        return rel
     if not decide:
         rel.reason = ("cannot tell: nothing measured in one of them is stated or shown in the other in a way that "
                       "can be compared" if not pairs else
