@@ -6612,7 +6612,7 @@ that?") is "cannot" where an unrelated agreement used to answer it. Development:
 |---|---|---|---|
 | identification: disguises and near-misses | 3,669 | 344 | 0 |
 | refusal: a hostile part, the honest part asked | 168 | 132 answered | 0 answered |
-| relater: twin pairs in 16 kinds | 144 | 24 | 0 (84 right, 60 cannot) |
+| relater: twin pairs in 12 kinds | 144 | 24 | 0 (84 right, 60 cannot) |
 
 ## Rollback
 
