@@ -6542,3 +6542,79 @@ decoder is not offered untrusted bytes here). Pocket does not show artifacts (it
 blob:`; it would need family-scoped routes, a family's own artifacts, signed replies and the phone's byte limits).
 Rollback: `nsf config --console-artifacts off` (the view answers 409 on the next call), or revert lane U's commits;
 nothing stored changes shape.
+
+# ADR-080 What the withheld looks found, fixed by class: identification, complete refusal, a relater that does not guess
+
+Status: built by lane FX (OMNIMIND Wave O-2), 2026-11-27, on branch `omni-fx`. No setting, no migration, no new
+format, form or command; `artifacts/forms.py` and the benchmark's drivers unchanged. Nothing outside the artifact
+package changes: the offline digest is equal in both regimes and the sentence guard differential is 0 different.
+**Unverified on unseen cases**: the fixes are judged once on NEW withheld cases written by another lane.
+
+## Context
+
+The withheld looks (`docs/quality/evidence/omnimind_looks/summary.json`) found, as counts only: `unknown` 3 wrong of
+111 (disguised or unknown files answered falsely), `hostile` 3 of 35 answered instead of refused, the relater 6 wrong
+of 78 and, on a kind no earlier split had (an image against its caption), 10 answered and 5 right. Nobody knows which
+tasks failed, and those cases are never retried. Lane FX reasoned about classes of wrong answer, wrote its own
+adversarial corpora (seeds 40000-43999; development evidence by the lane that wrote the fixes, not an independent
+examination) and ran them through the benchmark's own driver.
+
+## Decision
+
+1. **A name or a declared type alone never identifies a file** (`detect.py`, `adapters/__init__.py`).
+   - Bytes that show no signature or structure are "unknown" when the hint names a binary format: every such format has
+     a signature test here, so the bytes contradict the hint. A text format (`detect.TEXT_FORMATS`) is named on a hint
+     only when the bytes read as single-byte text, and its reader must then confirm it by decoding; otherwise the answer
+     is "unknown" (an `Opaque`), never the hinted name. A pickle name still refuses (`REFUSED_ON_HINT`).
+   - The hinted binary format's reader is still run (`_probe_hinted`): a refusal it finds (a lying count) is kept; what
+     it reads or states (header facts from a coincidence) is never used.
+   - A ZIP or OLE file seen whole is not refined by its name (a plain ZIP named `.docx` is "zip"); for a longer one the
+     office reader must confirm, else the archive reader reads it. Text refinements keep their reader's verdict.
+   - Weak signatures: `%PDF-` needs an indirect object after it, or (at offset 0) a line of its own not followed by
+     prose; the PLY magic line must end; text STL needs numeric `facet normal` and `vertex` lines; `bplist00` is named.
+   - Readers report only from valid structure: PSD header fields must lie in the format's ranges; a NetPBM image followed
+     by bytes that are neither another image, white space nor comments is malformed.
+2. **One table decides which refusals refuse the whole file** (`outcome.PART_ONLY_RULES`, `outcome.refuses_whole`).
+   Only `encrypted`, `sparse_member` and `max_decoded_bytes` concern the part they were met in. Any other refusal met
+   anywhere inside a container or compound file refuses the whole file, with the listing kept as findings (extending
+   the ruling for unsafe member names, ADR-072 integration item 9):
+   - archives: a bomb-like member (the ratio rule, or a small member that would need more than the budget), nesting past
+     `max_depth`, a member's own refusal (entity, DTD, external reference, injection), a damaged stored member, a member
+     that inflates to another size than its directory states (`lying_size`), a TAR member cut short;
+   - every part of a ZIP-based compound file (office, EPUB, KMZ, JAR, NPZ) is read before its reader answers
+     (`_compound_check`): unsafe names, links, special entries, bomb-like, lying or damaged parts, and an entity, a DTD
+     or an external reference in any markup part (a DOCTYPE that only names a well-known public DTD stays readable);
+   - markup-shaped bytes with an entity declaration, an inline or system DTD, or an XInclude are refused whichever
+     reader would read them (`_markup_check`, `safe.markup_hazard`): no XML refusal is answered as text or HTML;
+     `parse_xml` refuses XInclude; an SVG that would load outside files is refused.
+3. **The relater answers only what the question names, and never what an image depicts** (`relate.py`).
+   - A raster, an animation or a sound states nothing (`statements()`): it contributes measurements only.
+   - With a question, a comparison decides only when the question names its aggregate, its count, its subject's words
+     (words that name artifacts, `ARTIFACT_WORDS`, never focus one) or its kind (`KIND_CUES`); otherwise "cannot". A
+     question about what an image depicts or a sound says (`DEPICTION_CUES`) against pixels or samples is "cannot",
+     with the reason. Without a question the earlier behaviour stands.
+   - A disagreement between a bare number and a stated unit that a unit's scale factor explains is not a disagreement;
+     a column named like `weight_g` states its unit.
+
+## What each rule turns away (honest inputs), measured
+
+Lane FX's honest edge corpus (19 files, truth = the earlier answer): 15 unchanged, and turned away: an empty file
+named `.png` (now "unknown"), a two-frame MP3 without an ID3 tag (now "unknown"; identified before by its name only),
+a ZIP whose XML tutorial member declares a DTD (the whole ZIP refused), an SVG that links an outside image (refused).
+Also by rule, not measured on real files: a ZIP with any damaged member is refused as a whole; a ZIP nested deeper than
+`max_depth` is refused as a whole; a question to the relater that names no measurable comparison ("Was this made from
+that?") is "cannot" where an unrelated agreement used to answer it. Development: 512 / 12 / 0 / 0 of 524 and cross
+72 of 72, unchanged; lane R's evidence sets byte-identical.
+
+## Measured (`docs/quality/evidence/omnimind_fx.json`)
+
+| corpus (lane FX's own) | n | before (wrong) | after (wrong) |
+|---|---|---|---|
+| identification: disguises and near-misses | 3,669 | 344 | 0 |
+| refusal: a hostile part, the honest part asked | 168 | 132 answered | 0 answered |
+| relater: twin pairs in 16 kinds | 144 | 24 | 0 (84 right, 60 cannot) |
+
+## Rollback
+
+Revert lane FX's commits on `omni-fx`; nothing stored changes shape (no migration), and kept artifacts are re-read with
+whatever code is present.
