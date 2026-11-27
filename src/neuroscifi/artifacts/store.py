@@ -75,7 +75,7 @@ from pathlib import Path
 
 from .. import provenance
 from ..instance.errors import NotFound
-from . import adapters
+from . import adapters, guarded
 from .detect import detect
 from .types import ArtifactError, HeaderOnly, Limits, Malformed, Refused, bounded
 
@@ -433,7 +433,9 @@ def apply_adapter_setting(approved) -> list[str]:
 
 # Refusals after which the owner's file is still kept with what was established: the archive whose members were not
 # read because one of them is unsafe (the listing of names and sizes is recorded as findings).
-KEPT_REFUSALS = frozenset({"unsafe_member_name"})
+# The file whose decode went over the operating-system limits in the guarded child (`guarded`), or for which no such
+# child could be started, is kept too, unread: an opaque artifact with that refusal recorded.
+KEPT_REFUSALS = frozenset({"unsafe_member_name", "resource_limit", "guard_unavailable"})
 
 
 def _decode(data: bytes, *, name, declared, lim: Limits):
@@ -449,7 +451,7 @@ def _decode(data: bytes, *, name, declared, lim: Limits):
     remove = adapters.on_gap(hook)
     try:
         try:
-            return adapters.decode(data, name=name, declared=declared, limits=lim), None, gaps
+            return guarded.decode(data, name=name, declared=declared, limits=lim), None, gaps
         except Refused as error:
             if error.reason != "too_large" and error.rule not in KEPT_REFUSALS:
                 raise

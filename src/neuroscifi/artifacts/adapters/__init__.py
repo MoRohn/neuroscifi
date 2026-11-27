@@ -153,6 +153,11 @@ def unload_external(approved: Iterable[str]) -> list[str]:
     return unloaded
 
 
+def loaded_external() -> tuple[str, ...]:
+    """The entry-point names of the external adapters loaded now (the guarded child loads the same ones)."""
+    return tuple(sorted(n for n, v in _EXTERNAL.items() if v.get("state") == "loaded"))
+
+
 def catalog() -> list[dict]:
     """The live capability list: one row per adapter (name, formats, families, available, reason, source) and one
     per discovered-but-unloaded external adapter. Nothing else may be quoted as "supported"."""
@@ -235,6 +240,18 @@ def _also_a_zip(data: bytes, detected: Detected) -> bool:
         return False
 
 
+# Made once, at import, for when memory has run out so far that even a new refusal cannot be made.
+_RESOURCES = Refused("decoding needed more memory or depth than is allowed", rule="resources")
+
+
+def _resources() -> Refused:
+    try:
+        return Refused("decoding needed more memory or depth than is allowed", rule="resources")
+    except MemoryError:
+        _RESOURCES.__traceback__ = None
+        return _RESOURCES
+
+
 def decode(data: bytes, *, name: str | None = None, declared: str | None = None, limits: Limits = Limits()) -> Decoded:
     """The whole chain. Returns a `Decoded` (with an `Opaque` representation when nothing here can decode the
     bytes); raises an `ArtifactError` when a rule or limit refuses the input or an adapter finds it malformed."""
@@ -262,17 +279,23 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         opaque = replace(opaque, needs=tuple(dict.fromkeys(opaque.needs + tuple(adapter.needs))))
         return Decoded(detected, opaque, (f"adapter {adapter.name} is not available: {reason}",), False)
     try:
-        result = adapter.decode(data, detected, limits)
-    except Unsupported:
-        _gap(detected, "unsupported")
-        raise
-    except ArtifactError:
-        raise
-    except (MemoryError, RecursionError) as error:
-        raise Refused(f"decoding needed more resources than allowed ({type(error).__name__})",
-                      rule="resources") from None
-    except Exception as error:
-        raise Malformed(f"the {adapter.name} adapter could not read these bytes ({type(error).__name__})") from None
+        try:
+            result = adapter.decode(data, detected, limits)
+        except Unsupported:
+            _gap(detected, "unsupported")
+            raise
+        except ArtifactError:
+            raise
+        except (MemoryError, RecursionError):
+            raise _resources() from None
+        except Exception as error:
+            # plain words for the owner; the exception's type only as a detail for a log (ruling C of fix lane F1)
+            failure = Malformed(f"the {adapter.name} adapter could not read these bytes")
+            failure.detail = type(error).__name__
+            raise failure from None
+    except MemoryError:
+        # memory ran out while an error was being handled or named: the prepared refusal needs no allocation
+        raise _resources() from None
     if not isinstance(result, Decoded):
         raise Malformed(f"the {adapter.name} adapter returned {type(result).__name__}, not Decoded")
     return result

@@ -46,7 +46,7 @@ import json
 import time
 from dataclasses import dataclass, field, replace
 
-from . import adapters, forms
+from . import forms, guarded
 from . import produce_builders as B
 from .spec import Spec, canonical_json
 from .types import ArtifactError, ContentShape, HeaderOnly, Limits, Malformed, Refused
@@ -137,7 +137,7 @@ class _Run:
 def _decode(data: bytes, name: str, limits: Limits):
     """(representation, detected format, None) or (None, format, why not)."""
     try:
-        decoded = adapters.decode(data, name=name, limits=limits)
+        decoded = guarded.decode(data, name=name, limits=limits)
     except HeaderOnly as error:
         return None, "unknown", f"only its header is read here ({error})"[:300]
     except ArtifactError as error:

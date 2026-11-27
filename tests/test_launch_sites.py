@@ -243,6 +243,8 @@ SITES = {
         (1, "owner", "`nsf acceptance`: the load generator of the loaded scenario"),
     ("neuroscifi.acceptance.scenarios:_loaded_loop", "loop"):
         (1, "owner", "`nsf acceptance`: waits, bounded, for that load generator"),
+    ("neuroscifi.artifacts.guarded:check", "process"):
+        (1, "owner", "`nsf inspect`, `nsf artifact add | make | facts`: one file decoded in a limited child first"),
     ("neuroscifi.acceptance.omni.isolate:run_isolated", "process"):
         (1, "owner", "`scripts/bench_omni.py`: one hostile benchmark task in a child process, so a crash is a result"),
     ("neuroscifi.acceptance.omni.subject:ProbeSubject.answer", "loop"):

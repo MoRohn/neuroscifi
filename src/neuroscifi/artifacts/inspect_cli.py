@@ -42,10 +42,10 @@ def _detected(d) -> dict:
 def report(data: bytes, name: str | None) -> dict:
     """What `nsf inspect` prints. A header-only format (HeaderOnly) is a read file too: its header facts are the
     structure, `header_only` says the content was not decoded, and its words are counted (never printed)."""
-    from . import adapters
+    from . import guarded
     from .detect import detect
     try:
-        decoded = adapters.decode(data, name=name, limits=Limits())
+        decoded = guarded.decode(data, name=name, limits=Limits())
     except HeaderOnly as error:
         d = detect(data[:64 << 10], name=name, size=len(data))
         return {"size": len(data), "detected": _detected(d), "representation": error.opaque.describe(),
