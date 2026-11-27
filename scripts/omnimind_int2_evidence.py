@@ -87,10 +87,19 @@ def estimates(repeats: int) -> dict:
                            "over the budget, because the production enforces the budget itself on the clock"}
 
 
+# Why each development task that is not right is "cannot", as lane int's report gives it (the task ids are this run's).
+CANNOT = {"array.dtype": "lane B2 represents 1-D and 2-D arrays as a Table, which does not carry the storage dtype",
+          "audio.duration_s (mp3)": "no MP3 decoder here: only an estimate from the frame headers exists, labelled so",
+          "parquet": "no Parquet adapter (and no pyarrow): the file stays Opaque with what could be established",
+          "docx embedded image": "lane B1's DOCX reader names embedded media; it does not decode them"}
+
+
 def development(bench: Path) -> dict:
     art = json.loads((bench / "artifacts_dev.json").read_text())
     families = {fam: {k: row.get(k) for k in ("n", "right", "abstained", "wrong", "failed")}
                 for fam, row in art["splits"]["development"]["families"].items()}
+    not_right = sorted(task for row in art["splits"]["development"]["families"].values()
+                       for task, outcome in (row.get("tasks") or {}).items() if outcome != "right")
     forms_r = json.loads((bench / "forms_dev.json").read_text())["result"]
     cross_r = json.loads((bench / "cross_dev.json").read_text())["result"]
     learn = {s: json.loads((bench / f"learn_{s}_dev.json").read_text())["result"]
@@ -99,6 +108,7 @@ def development(bench: Path) -> dict:
             "artifacts_subject": families,
             "artifacts_total": {k: sum(r[k] for r in families.values()) for k in ("n", "right", "abstained",
                                                                                      "wrong", "failed")},
+            "not_right": {"tasks": not_right, "why": CANNOT},
             "forms_planner": {k: forms_r[k] for k in ("n_cases", "good", "good_or_fine", "bad",
                                                       "hard_constraints_violated")},
             "cross_relate": {k: cross_r[k] for k in ("n_cases", "correct", "answered", "correct_of_answered",

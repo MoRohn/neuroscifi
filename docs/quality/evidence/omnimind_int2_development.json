@@ -1,0 +1,199 @@
+{
+ "artifacts_subject": {
+  "compound": {
+   "abstained": 2,
+   "failed": 0,
+   "n": 36,
+   "right": 34,
+   "wrong": 0
+  },
+  "honest": {
+   "abstained": 3,
+   "failed": 0,
+   "n": 55,
+   "right": 52,
+   "wrong": 0
+  },
+  "hostile": {
+   "abstained": 0,
+   "failed": 0,
+   "n": 23,
+   "right": 23,
+   "wrong": 0
+  },
+  "intake": {
+   "abstained": 7,
+   "failed": 0,
+   "n": 337,
+   "right": 330,
+   "wrong": 0
+  },
+  "made": {
+   "abstained": 0,
+   "failed": 0,
+   "n": 14,
+   "right": 14,
+   "wrong": 0
+  },
+  "transform": {
+   "abstained": 0,
+   "failed": 0,
+   "n": 8,
+   "right": 8,
+   "wrong": 0
+  },
+  "unknown": {
+   "abstained": 0,
+   "failed": 0,
+   "n": 51,
+   "right": 51,
+   "wrong": 0
+  }
+ },
+ "artifacts_total": {
+  "abstained": 12,
+  "failed": 0,
+  "n": 524,
+  "right": 512,
+  "wrong": 0
+ },
+ "commands": [
+  "scripts/bench_omni.py run --split development --subject artifacts",
+  "scripts/bench_omni_forms.py run --family forms --split development --subject neuroscifi.acceptance.omni.subject:choose_form",
+  "scripts/bench_omni_forms.py run --family cross --split development --subject neuroscifi.acceptance.omni.subject:relate",
+  "scripts/bench_omni_forms.py run --family learn --split development --subject neuroscifi.acceptance.omni.subject:make_learner (and :make_planner_only)"
+ ],
+ "commit": "f5cc17b",
+ "cross_relate": {
+  "answered": {
+   "k": 72,
+   "n": 72,
+   "share": 1.0
+  },
+  "both_twins_correct": {
+   "k": 36,
+   "n": 36,
+   "share": 1.0
+  },
+  "by_kind": {
+   "chart_series": {
+    "cases": 12
+   },
+   "code_trace": {
+    "cases": 12
+   },
+   "mesh_bbox": {
+    "cases": 12
+   },
+   "report_total": {
+    "cases": 12
+   },
+   "timeline_log": {
+    "cases": 12
+   },
+   "tones_rows": {
+    "cases": 12
+   }
+  },
+  "correct": {
+   "k": 72,
+   "n": 72,
+   "share": 1.0
+  },
+  "correct_of_answered": {
+   "k": 72,
+   "n": 72,
+   "share": 1.0
+  },
+  "n_cases": 72
+ },
+ "forms_planner": {
+  "bad": {
+   "k": 0,
+   "n": 133,
+   "share": 0.0,
+   "too_much": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "too_poor": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "unfit": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "violation": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   }
+  },
+  "good": {
+   "k": 107.0,
+   "n": 133,
+   "share": 0.8045
+  },
+  "good_or_fine": {
+   "k": 133.0,
+   "n": 133,
+   "share": 1.0
+  },
+  "hard_constraints_violated": {
+   "k": 0,
+   "n": 133,
+   "share": 0.0
+  },
+  "n_cases": 133
+ },
+ "label": "OMNIMIND Wave O-1 integration evidence: measured on this host, offline, no model; development split only; made artifacts are made by the system and are not evidence",
+ "learn": {
+  "make_learner": {
+   "all_kept": {
+    "mean": 0.7617,
+    "sd_over_seeds": 0.018
+   },
+   "late_kept": {
+    "mean": 0.8158,
+    "sd_over_seeds": 0.0239
+   }
+  },
+  "make_planner_only": {
+   "all_kept": {
+    "mean": 0.5842,
+    "sd_over_seeds": 0.0163
+   },
+   "late_kept": {
+    "mean": 0.5871,
+    "sd_over_seeds": 0.0256
+   }
+  }
+ },
+ "not_right": {
+  "tasks": [
+   "compound/development/docx-with-image-and-table/word/media/image1.png::image.pixel:0,0",
+   "compound/development/docx-with-image-and-table/word/media/image1.png::image.size",
+   "honest/development/mp3-silent-frames/audio.duration_s",
+   "honest/development/parquet-footer/table.columns",
+   "honest/development/parquet-footer/table.n_rows",
+   "intake/development/npy-bigendian-fortran/array.dtype",
+   "intake/development/npy-float64-2d/array.dtype",
+   "intake/development/npy-int32-1d/array.dtype",
+   "intake/development/npz-states-targets/states::array.dtype",
+   "intake/development/npz-states-targets/targets::array.dtype",
+   "intake/development/npz-two-arrays/flow::array.dtype",
+   "intake/development/npz-two-arrays/pressure::array.dtype"
+  ],
+  "why": {
+   "array.dtype": "lane B2 represents 1-D and 2-D arrays as a Table, which does not carry the storage dtype",
+   "audio.duration_s (mp3)": "no MP3 decoder here: only an estimate from the frame headers exists, labelled so",
+   "docx embedded image": "lane B1's DOCX reader names embedded media; it does not decode them",
+   "parquet": "no Parquet adapter (and no pyarrow): the file stays Opaque with what could be established"
+  }
+ },
+ "split": "development"
+}
