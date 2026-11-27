@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 import struct
+import unicodedata
 import zlib
 from dataclasses import dataclass, replace
 from xml.etree import ElementTree
@@ -108,6 +109,37 @@ def _unicode_path(extra: bytes) -> str | None:
     return None
 
 
+# Code pages in which archivers without the UTF-8 flag write names (DOS, Windows, Mac, East Asian).
+_LEGACY_CODEPAGES = ("cp437", "cp850", "cp852", "cp866", "cp1250", "cp1251", "cp1252", "mac_roman", "iso8859_2",
+                     "koi8_r", "cp932", "cp936", "cp949", "cp950")
+
+
+def _same_name_in_a_code_page(raw: bytes, extra: bytes) -> str | None:
+    """Lane FX5 (C5): the Unicode name of an Info-ZIP Unicode Path field (0x7075) when it is the directory's raw name
+    written in a legacy code page (a Windows "Łódź.txt" stored in CP852) and the field's CRC is that of the raw
+    name: the same name written twice, not two names. None otherwise (a field naming another file stays refused)."""
+    pos = 0
+    while pos + 4 <= len(extra):
+        tag, size = struct.unpack("<HH", extra[pos:pos + 4])
+        body = extra[pos + 4:pos + 4 + size]
+        if tag == 0x7075 and len(body) >= 5:
+            if body[0] != 1 or struct.unpack("<I", body[1:5])[0] != zlib.crc32(raw) & 0xFFFFFFFF:
+                return None
+            try:
+                uname = unicodedata.normalize("NFC", body[5:].decode("utf-8"))
+            except UnicodeDecodeError:
+                return None
+            for page in _LEGACY_CODEPAGES:
+                try:
+                    if unicodedata.normalize("NFC", raw.decode(page)) == uname:
+                        return uname
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            return None
+        pos += 4 + size
+    return None
+
+
 def unsafe_member_name(name: str) -> str | None:
     """Why a member name may not be treated as a member to decode (None when it is fine)."""
     if not name or "\x00" in name:
@@ -171,7 +203,10 @@ class ZipReader:
             else:
                 name = raw.decode("cp437")
             raws.append(bytes(raw))
-            if _unicode_path(extra) not in (None, name):
+            if not flags & 0x800 and _unicode_path(extra) not in (None, name):
+                name = _same_name_in_a_code_page(bytes(raw), extra) or name
+            if _unicode_path(extra) not in (None, name) and \
+                    unicodedata.normalize("NFC", _unicode_path(extra) or "") != name:
                 # lane FX4 (R6, H-E): an Info-ZIP Unicode Path field (0x7075) naming another file than the
                 # directory's name: two readers would see two files
                 raise Refused("the archive is refused as a whole: a member's Unicode path field names it differently "
@@ -202,7 +237,8 @@ class ZipReader:
                 sizes_here = not (l_flags & 0x08) and 0xFFFFFFFF not in (l_csize, l_usize)
                 if l_method != entry.method or (sizes_here and (l_crc, l_csize, l_usize) !=
                                                 (entry.crc, entry.compressed_size, entry.size)) \
-                        or _unicode_path(local_extra) not in (None, entry.name):
+                        or (_unicode_path(local_extra) is not None and
+                            unicodedata.normalize("NFC", _unicode_path(local_extra)) != entry.name):
                     raise Refused("the archive is refused as a whole: a member's local header disagrees with the "
                                   "directory about how it is stored; nothing inside was decoded", rule="header_mismatch")
 

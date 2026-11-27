@@ -53,7 +53,6 @@ ACTIVE_NAMES = {"JavaScript": ("active", "a script"), "JS": ("active", "a script
                 "GoToE": ("outside", "other document")}
 _OPEN_ACTION = re.compile(rb"/OpenAction\s*<<")
 _STARTXREF = re.compile(rb"startxref\s+(\d{1,12})")
-_PREV = re.compile(rb"/Prev\s+(\d{1,12})")
 MAX_XREF_SECTIONS = 4096
 
 
@@ -86,37 +85,68 @@ def _dictionary_tokens(raw: bytes) -> bytes:
     return bytes(out)
 
 
+_CHAIN_KEYS = re.compile(rb"/(Prev|XRefStm)\s+(\d{1,12})")
+MAX_STARTXREF = 64
+
+
+def _names_decoded(tokens: bytes) -> bytes:
+    """PDF names with their #xx escapes decoded ("/P#72ev" is "/Prev" to every conforming reader; lane FX5, C5)."""
+    def decode(m):
+        return b"/" + re.sub(rb"#([0-9A-Fa-f]{2})", lambda h: bytes([int(h.group(1), 16)]), m.group(1))
+    return re.sub(rb"/([^\s/<>\[\]()%{}]+)", decode, tokens)
+
+
+def _chain_edges(data: bytes, offset: int) -> list[int]:
+    """The offsets a cross-reference section at `offset` points on to: every /Prev and /XRefStm of its trailer (or
+    of its stream's dictionary), read as tokens (strings and comments blanked, name escapes decoded)."""
+    section = data[offset:offset + (1 << 20)]
+    if section.startswith(b"xref"):
+        at = section.find(b"trailer")
+        if at < 0:
+            return []
+        stop = section.find(b"startxref", at)
+        trailer = section[at:stop if stop > 0 else at + 4096]
+    else:                                   # a cross-reference stream: its dictionary, up to its stream
+        stop = section.find(b"stream")
+        trailer = section[:stop if stop > 0 else 4096]
+    return [int(m.group(2)) for m in _CHAIN_KEYS.finditer(_names_decoded(_dictionary_tokens(trailer)))]
+
+
 def xref_chain_loops(data: bytes) -> bool:
-    """Lane FX3 (class H-C): whether the chain of cross-reference sections (the last `startxref`, then each section's
-    /Prev) comes back to a section it has already visited (a /Prev that points at itself or at a later section).
-    A reader that follows it never ends, or stops quietly at a place of its own choosing; either way what the file
-    holds is not established. Read from the bytes only, within MAX_XREF_SECTIONS steps."""
-    at = data.rfind(b"startxref")            # lane FX4 (R6): anywhere, not only in the last 4 KiB
-    found = _STARTXREF.match(data, at) if at >= 0 else None
-    if found is None:
-        return False
-    offset, seen = int(found.group(1)), set()
-    for _ in range(MAX_XREF_SECTIONS):
-        if offset in seen:
-            return True
-        if not 0 <= offset < len(data):
-            return False
-        seen.add(offset)
-        section = data[offset:offset + (1 << 20)]
-        if section.startswith(b"xref"):
-            at = section.find(b"trailer")
-            if at < 0:
-                return False
-            stop = section.find(b"startxref", at)
-            trailer = section[at:stop if stop > 0 else at + 4096]
-        else:                                   # a cross-reference stream: its dictionary, up to its stream
-            stop = section.find(b"stream")
-            trailer = section[:stop if stop > 0 else 4096]
-        prev = _PREV.search(_dictionary_tokens(trailer))
-        if prev is None:
-            return False
-        offset = int(prev.group(1))
-    return True
+    """Lane FX3 (class H-C): whether the cross-reference sections come back to a section on their own path (a /Prev
+    or /XRefStm that points at itself or at a section that leads to it). A reader that follows it never ends, or
+    stops quietly at a place of its own choosing; either way what the file holds is not established.
+
+    Lane FX5 (C5), by class: the chain is PARSED, not found by a pattern near the end. Every `startxref <offset>` of
+    the file starts a walk (at most MAX_STARTXREF, the last first): a comment that mentions the word, padding after
+    %%EOF or an earlier revision's startxref cannot hide the real one; each section's every /Prev and /XRefStm is
+    an edge (a decoy or a duplicate key cannot either); names are decoded before they are read. A cycle on any walk
+    is a loop. Within MAX_XREF_SECTIONS sections per walk."""
+    starts = [int(m.group(1)) for m in _STARTXREF.finditer(data)][-MAX_STARTXREF:]
+    for start in reversed(starts):
+        if not 0 <= start < len(data):
+            continue
+        state: dict[int, int] = {}          # 1 on the current path, 2 done
+        state[start] = 1
+        stack = [(start, iter(_chain_edges(data, start)))]
+        visited = 1
+        while stack:
+            node, edges = stack[-1]
+            nxt = next(edges, None)
+            if nxt is None:
+                state[node] = 2
+                stack.pop()
+                continue
+            if state.get(nxt) == 1:
+                return True
+            if nxt in state or not 0 <= nxt < len(data):
+                continue
+            visited += 1
+            if visited > MAX_XREF_SECTIONS:
+                return True                 # a chain longer than any honest file's: not followed to its end
+            state[nxt] = 1
+            stack.append((nxt, iter(_chain_edges(data, nxt))))
+    return False
 
 
 class _Timeout(BaseException):

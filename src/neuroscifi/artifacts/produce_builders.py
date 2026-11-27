@@ -65,6 +65,7 @@ class Piece:
     reading: str = "as decoded"  # how this piece was read from the source
     part: str = ""              # when only part of the source was read (the owner agreed, --partial): what part
     reduced: str = ""           # when a large source was reduced to be made from (produce.reduce_for_making): how
+    decoded_as: tuple = ()      # lane FX5 (C6a): (format, the decoder's notes, partial) for the relater; () unknown
 
 
 @dataclass(frozen=True)
