@@ -902,6 +902,39 @@ MIGRATIONS = [
       PRIMARY KEY(format, outcome));
     -- No reference column of an evidence-side table may name an artifact (schema._NO_IMAGINED's columns).
     """ + ";\n".join(NO_ARTIFACT_TRIGGERS.values()) + ";\n",
+    # ---- version 21 (OMNIMIND Wave O-1 lane L: outcomes of made forms; ADR-078, artifacts/learn.py) --------------
+    """
+    -- artifacts/learn.py: what happened to a form the system made, from OUTSIDE the system only: the owner kept it,
+    -- dismissed it or replaced it by another form (`nsf artifact feedback`), or the independent check of its bytes
+    -- passed or failed when it was made. Never the planner's own scores. A row holds the key the planner used
+    -- (content kind, purpose, device), the form shown, the outcome, the time and the made artifact's id; words of
+    -- the planner's own vocabularies only (no text from a request or an artifact). On the artifact side: no
+    -- evidence-side table names it, and a row goes with its artifact (every forget, and a restore's replay, delete
+    -- the artifact's row, and the trigger below takes its outcomes). Never rewritten. IF NOT EXISTS throughout.
+    CREATE TABLE IF NOT EXISTS form_outcomes(
+      id INTEGER PRIMARY KEY,
+      artifact_id TEXT NOT NULL CHECK(artifact_id GLOB '""" + _ARTIFACT_ID + """'),
+      kind TEXT NOT NULL CHECK(length(kind) BETWEEN 1 AND 32 AND kind NOT GLOB '*[^a-z_]*'),
+      purpose TEXT NOT NULL CHECK(length(purpose) BETWEEN 1 AND 32 AND purpose NOT GLOB '*[^a-z_]*'),
+      device TEXT NOT NULL CHECK(length(device) BETWEEN 1 AND 16 AND device NOT GLOB '*[^a-z_]*'),
+      form TEXT NOT NULL CHECK(length(form) BETWEEN 1 AND 64 AND form NOT GLOB '*[^a-z_+]*'),
+      outcome TEXT NOT NULL CHECK(outcome IN ('kept','dismissed','replaced','check_passed','check_failed')),
+      replaced_by TEXT CHECK(replaced_by IS NULL OR (length(replaced_by) BETWEEN 1 AND 32
+        AND replaced_by NOT GLOB '*[^a-z_]*')),
+      source TEXT NOT NULL CHECK(source IN ('owner','check')),
+      at REAL NOT NULL,
+      CHECK((outcome='replaced') = (replaced_by IS NOT NULL)),
+      CHECK((source='check') = (outcome IN ('check_passed','check_failed'))));
+    CREATE INDEX IF NOT EXISTS form_outcomes_key ON form_outcomes(kind, purpose, device);
+    CREATE INDEX IF NOT EXISTS form_outcomes_artifact ON form_outcomes(artifact_id);
+    CREATE TRIGGER IF NOT EXISTS form_outcomes_name_a_made_artifact BEFORE INSERT ON form_outcomes
+      WHEN NOT EXISTS (SELECT 1 FROM artifacts WHERE id=NEW.artifact_id AND origin='made')
+      BEGIN SELECT RAISE(ABORT,'a form outcome names a made artifact this individual holds'); END;
+    CREATE TRIGGER IF NOT EXISTS form_outcomes_never_rewritten BEFORE UPDATE ON form_outcomes
+      BEGIN SELECT RAISE(ABORT,'a form outcome is never rewritten'); END;
+    CREATE TRIGGER IF NOT EXISTS form_outcomes_go_with_their_artifact AFTER DELETE ON artifacts
+      BEGIN DELETE FROM form_outcomes WHERE artifact_id=OLD.id; END;
+    """,
 ]
 
 SCHEMA_VERSION = len(MIGRATIONS)

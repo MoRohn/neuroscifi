@@ -51,7 +51,7 @@ def test_every_reference_column_has_its_artifact_triggers(instance):
 
 def test_version_20_is_the_artifact_index_appended_last_and_changes_no_older_row(tmp_path):
     number = next(i for i, script in enumerate(schema.MIGRATIONS) if "CREATE TABLE IF NOT EXISTS artifacts(" in script)
-    assert number + 1 == 20 == schema.SCHEMA_VERSION == len(schema.MIGRATIONS)
+    assert number + 1 == 20 <= schema.SCHEMA_VERSION == len(schema.MIGRATIONS)    # 21: lane L (ADR-078)
     assert next(i for i, s in enumerate(schema.MIGRATIONS) if "web_events_kind_time" in s) + 1 == 19
     path = tmp_path / "v19.sqlite"
     with closing(sqlite3.connect(path, isolation_level=None)) as raw:
@@ -61,7 +61,7 @@ def test_version_20_is_the_artifact_index_appended_last_and_changes_no_older_row
         raw.execute("INSERT INTO evidence(id,epoch,channel,action,bit,root,recorded_at) VALUES('a','e1','word',0,1,'r',1)")
         before = raw.execute("SELECT * FROM evidence").fetchall()
         schema.migrate(raw)
-        assert raw.execute("PRAGMA user_version").fetchone()[0] == 20
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
         assert raw.execute("SELECT * FROM evidence").fetchall() == before
         assert raw.execute("SELECT count(*) FROM artifacts").fetchone()[0] == 0
         raw.executescript(schema.MIGRATIONS[number])          # IF NOT EXISTS throughout: a second run is harmless
