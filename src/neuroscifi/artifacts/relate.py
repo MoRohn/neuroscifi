@@ -37,8 +37,11 @@ import numpy as np
 from . import relate_read as rr
 from .relate_read import Unit, clean, name_words, unit_of
 
-MAX_FACTS = 4000
+MAX_FACTS = 1500            # per artifact
 MAX_PAIRS = 20_000
+MAX_COLUMNS = 64            # columns of a table that are measured
+MAX_SERIES = 20_000         # values of a series compared point by point
+MAX_MATCH = 4_000_000       # steps x lines tried when matching words
 MATCH_SHARE = 0.75          # a step matches an event when this share of its words is in the event's line
 REL_EPS = 1e-9
 
@@ -117,7 +120,7 @@ def _numeric_columns(table):
     """(index, column, values float64 with NaN, unit) for every column that holds numbers: number and integer
     columns, and text columns whose every cell is one number in one consistent format."""
     out = []
-    for i, c in enumerate(table.columns):
+    for i, c in enumerate(table.columns[:MAX_COLUMNS]):
         if c.kind in ("number", "integer"):
             out.append((i, c, np.asarray(c.values, dtype=np.float64), _column_unit(c), ""))
         elif c.kind == "text":
@@ -155,7 +158,7 @@ def _table_quantities(t, prefix: str, origin: type, label_words=()) -> list:
                 aggregate="count", how="columns")]
     numeric = _numeric_columns(t)
     numeric_idx = {i for i, *_ in numeric}
-    for i, c in enumerate(t.columns):
+    for i, c in enumerate(t.columns[:MAX_COLUMNS]):
         if c.kind == "text" and i not in numeric_idx:
             words = name_words(c.name)
             distinct = len({v for v in c.values if v != ""})
@@ -1020,6 +1023,9 @@ def _cmp_series(fa: Fact, fb: Fact, single: bool) -> Pair | None:
             return u > 0 and v > 0 and abs(math.log10(u) - math.log10(v)) <= tol_y + 1e-12
         return _close(u, v, tol_y)
     ps, pm = list(shown.value), list(meas.value)
+    if len(ps) > MAX_SERIES or len(pm) > MAX_SERIES:
+        return Pair("not_comparable", fa, fb, len(ps), len(pm), None, False, "values one by one",
+                    f"more than {MAX_SERIES} values: not compared point by point here")
     aligned = ka == kb and ka in ("category", "number", "time")
     if not aligned and {ka, kb} <= {"number", "index"}:
         aligned = False
@@ -1072,8 +1078,11 @@ def _cmp_series(fa: Fact, fb: Fact, single: bool) -> Pair | None:
 
 def _match_steps(steps: list[tuple], targets: list[tuple]) -> list:
     """Greedy one-to-one matching of steps to target lines by the share of each step's words found in the line;
-    a step whose best line is tied with another is left unmatched (ambiguous)."""
-    cand = []
+    a step whose best line is tied with another is left unmatched (ambiguous). Bounded: past MAX_MATCH tries the
+    remaining steps are left unmatched (so the comparison says it could not cover them)."""
+    cand, n_steps = [], len(steps)
+    if len(steps) * max(1, len(targets)) > MAX_MATCH:
+        steps = steps[:max(1, MAX_MATCH // max(1, len(targets)))]
     for i, sw in enumerate(steps):
         if not sw:
             continue
@@ -1096,7 +1105,7 @@ def _match_steps(steps: list[tuple], targets: list[tuple]) -> list:
         taken_s.add(i)
         taken_t.add(j)
         out[i] = j
-    return [out.get(i) for i in range(len(steps))]
+    return [out.get(i) for i in range(n_steps)]
 
 
 def _cmp_sequence_events(seq_fact: Fact, ev_fact: Fact) -> Pair | None:

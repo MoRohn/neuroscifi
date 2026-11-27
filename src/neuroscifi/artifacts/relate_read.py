@@ -733,7 +733,7 @@ def column_numbers(values) -> tuple[list[float], str] | None:
     None otherwise (the column stays text: nothing is guessed)."""
     cells = [str(v).strip() for v in values]
     filled = [c for c in cells if c and c.lower() not in ("na", "n/a", "nan", "null", "-", "—")]
-    if not filled or len(filled) > 1_000_000:
+    if not filled or len(filled) > 200_000:
         return None
     joined = " ".join(filled[:5000])
     conv = convention(joined)
