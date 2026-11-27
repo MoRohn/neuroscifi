@@ -87,3 +87,34 @@ def test_a_cut_zip_says_how_many_members_it_declares_and_how_many_were_not_read(
     assert "stopped after the first 20 of the 30 members the archive declares (the limit is 20): the other 10 are " \
            "not read" in decoded.notes
     assert "the other 10 are not read" in P.part_read(decoded)
+
+
+# Item 2 (code N4): `make --partial` on an archive of thousands of files makes a bounded tree of what was read
+
+
+def _many(folders: int, per: int) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for f in range(folders):
+            for i in range(per):
+                z.writestr(f"notes/{f:02d}/note_{f * per + i:04d}.txt", f"note {i}\n")
+    return buf.getvalue()
+
+
+def test_an_archive_too_large_to_draw_member_by_member_is_drawn_as_its_folders():
+    made = P.produce(None, "what is in this archive", [P.Given("notes.zip", _many(40, 30))],
+                     limits=Limits(max_members=1000), partial_ok=True)
+    assert made.status == "made", made.record.get("candidates")
+    assert made.spec.spec == "graph.tree"
+    labels = [n["label"] for n in made.spec.data["nodes"]]
+    assert "00/ (30 files)" in labels and not any(label.startswith("note_") for label in labels)
+    assert "only its folders are shown, each with how many files it holds directly" in made.spec.description
+    assert "stopped after the first 1000 of the 1200 members the archive declares" in made.spec.description
+    assert "the other 200 are not read" in _summary(made)
+
+
+def test_a_small_archive_is_still_drawn_member_by_member():
+    made = P.produce(None, "what is in this archive", [P.Given("notes.zip", _many(2, 3))], form="tree_diagram")
+    assert made.status == "made"
+    assert "note_0000.txt" in [n["label"] for n in made.spec.data["nodes"]]
+
