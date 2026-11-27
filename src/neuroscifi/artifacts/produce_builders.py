@@ -738,9 +738,10 @@ def build_nodelink(pieces, request, options) -> Built:
                  {"nodes": len(nodes), "links": len(unique), "what": what}, tuple(rules))
 
 
-def _hierarchy(piece) -> tuple[list[str], list[int | None], list[str], str]:
+def _hierarchy(piece, folders_only: bool = False) -> tuple[list[str], list[int | None], list[str], str]:
     """(labels, parent index or None, rules, what it is) of a document's outline, a tree's nodes or an archive's
-    folders and members, in reading order."""
+    folders and members, in reading order. `folders_only`: an archive's folders, each labelled with how many files it
+    holds directly, and only the files at its top level (build_tree, when the members are too many to draw)."""
     rep = piece.representation
     kind = rep.kind
     labels: list[str] = []
@@ -771,6 +772,7 @@ def _hierarchy(piece) -> tuple[list[str], list[int | None], list[str], str]:
         what = "nested items"
     elif kind == "bundle":
         index: dict[str, int] = {}
+        files: dict[int, int] = {}
         for m in rep.members:
             if m.path.startswith("("):
                 continue
@@ -778,12 +780,18 @@ def _hierarchy(piece) -> tuple[list[str], list[int | None], list[str], str]:
             parent = None
             for depth in range(len(parts)):
                 key = "/".join(parts[:depth + 1])
+                last = depth == len(parts) - 1
+                if folders_only and last and parent is not None and not str(m.path).endswith("/"):
+                    files[parent] = files.get(parent, 0) + 1
+                    break
                 if key not in index:
-                    labels.append(parts[depth] + ("/" if depth < len(parts) - 1 else ""))
+                    labels.append(parts[depth] + ("/" if not last or str(m.path).endswith("/") else ""))
                     parents.append(parent)
                     index[key] = len(labels) - 1
                 parent = index[key]
-        what = "folders and members"
+        for i, n in files.items():
+            labels[i] += f" ({n} file{'s' if n != 1 else ''})"
+        what = "folders, each with how many files it holds," if folders_only else "folders and members"
     else:
         raise CannotBuild(f"{piece.label} has no hierarchy")
     labels, parents = _few_siblings(labels, parents, rules, what)
@@ -821,12 +829,29 @@ def _few_siblings(labels, parents, rules, what):
     return out_labels, out_parents
 
 
+def _too_wide(labels, parents) -> bool:
+    """Whether the tree diagram of these nodes would be wider than its canvas allows, by the generator's own layout
+    rule (make/graphs.tidy_tree: one slot as wide as the widest node per leaf)."""
+    from .make.graphs import MAX_CANVAS, NODE_GAP, Box
+    if not labels:
+        return False
+    leaves = len(labels) - len({p for p in parents if p is not None})
+    slot = max(Box("", _cut(n)).w for n in labels) + NODE_GAP * 0.6
+    return leaves * slot + 48 > MAX_CANVAS
+
+
 def build_tree(pieces, request, options) -> Built:
     piece = _one(pieces)
     rep = piece.representation
     if getattr(rep, "kind", None) == "graph":
         return _code_tree(piece)
     labels, parents, rules, what = _hierarchy(piece)
+    if getattr(rep, "kind", None) == "bundle" and _too_wide(labels, parents):
+        # a member per node cannot be drawn (code review N4: 5,000 files make a tree 36,814 px wide): the folders,
+        # each with how many files it holds, are drawn instead
+        labels, parents, rules, what = _hierarchy(piece, folders_only=True)
+        rules.insert(0, f"{piece.label} has too many members to draw one by one: only its folders are shown, each "
+                        "with how many files it holds directly, and the files at its top level")
     if len([p for p in parents if p is None]) > 1:
         # a tree has one root: the source itself holds the top level
         labels = [piece.label] + labels

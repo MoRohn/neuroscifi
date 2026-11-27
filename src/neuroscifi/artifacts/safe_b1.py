@@ -129,6 +129,7 @@ class ZipReader:
             else:
                 raise Malformed("the ZIP central directory is not where the end record says")
         self.shift = shift
+        self.declared = n_total          # a claim of the end record, said as one
         if n_total > max_members:
             if not partial_ok:
                 raise Refused(f"the archive declares {n_total} members, over the limit of {max_members}",

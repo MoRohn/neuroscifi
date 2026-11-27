@@ -18,7 +18,7 @@ def register(sub):
     form = sub.add_parser("form", help="decide the form of a result (plan only; nothing is made)")
     ops = form.add_subparsers(dest="form_op", required=True, metavar="OP")
     p = ops.add_parser("plan", help="print which form a result should take, and why")
-    p.add_argument("--request", required=True, help="the words of the request")
+    p.add_argument("--request", "-r", required=True, help="the words of the request")
     group = p.add_mutually_exclusive_group()
     group.add_argument("--content", nargs="+", type=Path, metavar="FILE",
                        help="files whose content the result would present (decoded here, never stored)")

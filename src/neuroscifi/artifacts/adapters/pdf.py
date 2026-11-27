@@ -184,7 +184,7 @@ def read_pdf(data: bytes, detected, limits):
                 failure.detail = type(error).__name__          # for a log, never printed to the owner
                 raise failure from None
     except _Timeout:
-        raise Refused(f"reading the PDF took longer than the limit of {limits.max_seconds:g} seconds",
+        raise Refused(f"reading the PDF took longer than the limit of {limits.max_seconds:.3g} seconds",
                       rule="max_seconds", reason="timeout") from None
     finally:
         logging.getLogger("pypdf").setLevel(level)
