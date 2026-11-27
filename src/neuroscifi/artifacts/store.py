@@ -44,9 +44,18 @@ Rules
   UTF-16LE and UTF-16BE, base64 of it, and the same inside every gzip, zip (deflate), zlib (PNG text chunks, PDF
   streams), bzip2, xz and Zstandard stream found in them, nested up to Limits.max_depth, within Limits'
   decompressed-size budget). `forget_found` runs INSIDE the forget's transaction: it scans what was added since,
-  then removes. What the scan cannot find: text drawn as pixels (no OCR exists here), words split by a format's own
-  structure (a PDF text operator per letter), encodings it does not undo (UTF-32, quoted-printable, base64 broken
-  across lines, encrypted members, LZW), anything past the decompressed-size budget (counted in the result).
+  then removes. The root counts as named unless an ASCII letter or digit touches it (so `-`, `_`, `.`, `/` joins are
+  found), after removing soft hyphens and zero-width characters, and after percent-decoding; hex of the UTF-8 bytes
+  and base64 runs (lines broken anywhere, either alphabet) are decoded and searched as further layers. A value still
+  compressed or base64 when the depth or the decompressed-size budget runs out COUNTS as naming the root: the
+  artifact is removed, and the result says how many were removed for that reason
+  (`artifacts_removed_uninspectable`). What the scan cannot find (fix lane F1, ruling B, stated as measured by
+  tests/artifacts/test_f1_forget.py): case variants (the owner's forget treats a name as itself, exactly:
+  governance._scrubber), other Unicode look-alikes (fullwidth letters, NFKC forms), text drawn as pixels (no OCR
+  exists here), words split by a format's own structure (a PDF text operator per letter), encodings it does not undo
+  (UTF-32, quoted-printable, rot13, encrypted members, LZW) when they are not also compressed or base64, a name split
+  by a space or by a format's cells, and a name that letters touch on either side once decoded (it is then part of
+  another word, as in plain text).
 - Restore (checkpoints.restore): `replay` removes from the archive's copy every artifact the live file has forgotten
   since; `after_restore` gives the restored file its own sidecar with the bytes, text layers and specifications its
   remaining index rows name (copied from the live sidecar), marks the rows whose bytes are gone 'missing', and sweeps
@@ -96,7 +105,17 @@ MADE_LABEL = provenance.MADE_NOT_EVIDENCE
 _ID = re.compile(r"artifact-[0-9a-f]{32}")
 _HOW = re.compile(r"[a-z0-9_.:=,;/+-]{1,200}")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f‎‏‪-‮⁦-⁩]")
-_WORD = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
+# The artifact scan's boundary (fix lane F1, ruling B): a root counts as named unless a letter or digit touches it, so
+# `notes_<root>.txt`, `<root>-2024.jpg` and `photos/<root>_1.png` are found ("_", "-", ".", "/" are boundaries here,
+# where a file or member name joins words with them).
+_WORD = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+# Characters that split a word without showing: soft hyphen, zero-width space / non-joiner / joiner, word joiner,
+# and the byte order mark used as a zero-width no-break space. Removed before matching.
+_INVISIBLE = "\u00ad\u200b\u200c\u200d\u2060\ufeff"
+_INVISIBLE_RE = re.compile(f"[{_INVISIBLE}]")
+_INVISIBLE_BYTES = tuple(ch.encode("utf-8") for ch in _INVISIBLE)
+# A run of base64 text (either alphabet, lines broken anywhere) long enough to hide a name: decoded and searched.
+_B64_RUN = re.compile(rb"[A-Za-z0-9+/_-][A-Za-z0-9+/_\r\n-]{15,}")
 EXPAND_BUFFER = 64 << 20         # the most of one decompressed stream kept to look inside it again
 
 SIDECAR_SCHEMA = """
@@ -1204,15 +1223,39 @@ class RootScan:
     mark: int                       # the highest artifact seq the scan covered
     hits: list = field(default_factory=list)
     scanned: int = 0
-    budget_reached: int = 0         # artifacts whose compressed streams were not all searched (budget)
+    budget_reached: int = 0         # artifacts with a value still encoded when the inspection limit ran out: REMOVED
+                                    # (counted as naming the root, as imagined.remove_naming does)
     bytes_missing: int = 0          # artifacts searched without their bytes (label, index, layers only)
     removed: list = field(default_factory=list)
     shas: list = field(default_factory=list)
     cache: dict = field(default_factory=dict, repr=False)     # sha -> whether its bytes name the root
 
 
+class _TextMatcher:
+    """The root in a text (label, index strings, text layers): no letter or digit on either side, after removing the
+    invisible characters that split a word, and also after percent-decoding when the text holds a "%". Case is kept:
+    the owner's forget treats a name as itself, exactly (governance._scrubber, naming_forms), and this scan follows
+    that rule rather than a looser one."""
+
+    def __init__(self, root: str):
+        self.pattern = re.compile(rf"(?<![A-Za-z0-9]){re.escape(root)}(?![A-Za-z0-9])")
+
+    def search(self, text) -> bool:
+        if not isinstance(text, str):
+            return False
+        if self.pattern.search(text):
+            return True
+        clean = _INVISIBLE_RE.sub("", text)
+        if clean != text and self.pattern.search(clean):
+            return True
+        if "%" in clean:
+            from urllib.parse import unquote
+            return bool(self.pattern.search(unquote(clean)))
+        return False
+
+
 def _text_matcher(root):
-    return re.compile(rf"(?<![\w-]){re.escape(root)}(?![\w-])")
+    return _TextMatcher(root)
 
 
 def _strings(value, depth=0):
@@ -1243,13 +1286,16 @@ def _b64_cores(needle: bytes) -> list[bytes]:
 
 
 class _Needles:
-    """The byte forms of one root, with the boundary rule of governance._scrubber (no word character or '-' on
-    either side, ASCII; the base64 forms have no boundary)."""
+    """The byte forms of one root, with the scan's boundary rule (no ASCII letter or digit on either side; the
+    base64 and hex forms have no boundary): UTF-8, UTF-16LE/BE, base64 cores, hex (both cases); searched in the
+    bytes as they are, then with invisible splitting characters removed, then percent-decoded."""
 
     def __init__(self, root: str):
+        raw = root.encode("utf-8")
         self.forms = [(root.encode(enc), unit, enc) for enc, unit in
                       (("utf-8", 1), ("utf-16-le", 2), ("utf-16-be", 2))]
-        self.b64 = _b64_cores(root.encode("utf-8"))
+        self.b64 = _b64_cores(raw)
+        self.hex = [raw.hex().encode(), raw.hex().upper().encode()] if len(raw) >= 3 else []
         self.longest = max([len(f) for f, _, _ in self.forms] + [len(c) for c in self.b64])
 
     @staticmethod
@@ -1262,6 +1308,21 @@ class _Needles:
         return len(ch) == 1 and ord(ch) < 128 and ord(ch) in _WORD
 
     def found(self, buf) -> bool:
+        if self._found(buf):
+            return True
+        clean = bytes(buf)
+        for mark in _INVISIBLE_BYTES:
+            clean = clean.replace(mark, b"")
+        if len(clean) != len(buf) and self._found(clean):
+            return True
+        if b"%" in clean:
+            from urllib.parse import unquote_to_bytes
+            return self._found(unquote_to_bytes(clean))
+        return False
+
+    def _found(self, buf) -> bool:
+        if any(buf.find(h) != -1 for h in self.hex):
+            return True
         for needle, unit, enc in self.forms:
             start = 0
             while (at := buf.find(needle, start)) != -1:
@@ -1375,14 +1436,32 @@ def _candidates(buf, max_members):
     return found
 
 
+def _b64_runs(buf, max_members):
+    """The base64 runs in `buf` (lines broken anywhere), decoded: each a further layer to search."""
+    out = []
+    for m in _B64_RUN.finditer(buf):
+        if len(out) >= max_members:
+            break
+        text = re.sub(rb"[\r\n]", b"", m.group(0)).replace(b"-", b"+").replace(b"_", b"/")
+        try:
+            out.append(base64.b64decode(text[:len(text) - len(text) % 4]))
+        except (ValueError, base64.binascii.Error):
+            continue
+    return out
+
+
 def _search(buf, needles, budget, depth, max_depth, max_members) -> tuple[bool, bool]:
-    """(found, budget reached): the needles in `buf` and in every compressed stream inside it, recursively."""
+    """(found, still encoded): the needles in `buf` and in every compressed stream and base64 run inside it,
+    recursively. "Still encoded" means the depth or the decompressed-size budget ran out while something in it was
+    still compressed or base64: the caller counts that as naming the root (ruling B of fix lane F1, as
+    imagined.remove_naming does), since what could not be inspected cannot be shown not to name it."""
     if needles.found(buf):
         return True, False
+    candidates = _candidates(buf, max_members)
     if depth >= max_depth:
-        return False, False
+        return False, bool(candidates) or _B64_RUN.search(buf) is not None
     view, reached = memoryview(buf), False
-    for offset, kind in _candidates(buf, max_members):
+    for offset, kind in candidates:
         if budget[0] <= 0:
             return False, True
         out, cut = _expand(kind, view[offset:], min(budget[0], EXPAND_BUFFER))
@@ -1393,6 +1472,15 @@ def _search(buf, needles, budget, depth, max_depth, max_members) -> tuple[bool, 
             if hit:
                 return True, False
             reached = reached or more
+    runs = _b64_runs(buf, max_members)
+    for out in runs:
+        if budget[0] <= 0:
+            return False, True
+        budget[0] -= len(out)
+        hit, more = _search(out, needles, budget, depth + 1, max_depth, max_members)
+        if hit:
+            return True, False
+        reached = reached or more
     return False, reached
 
 
@@ -1425,8 +1513,8 @@ def _artifact_names(db, side, row, matcher, needles, lim, cache, scan) -> bool:
             cache[sha] = False
         else:
             hit, reached = _search(data, needles, [lim.max_decoded_bytes], 0, lim.max_depth, lim.max_members)
-            scan.budget_reached += int(reached)
-            cache[sha] = hit
+            scan.budget_reached += int(reached and not hit)
+            cache[sha] = hit or reached
     return cache[sha]
 
 
@@ -1485,6 +1573,9 @@ def forget_found(db, scan, now, effects, label) -> dict | None:
     else:
         effects["checkpoints_stale"] = sorted(set(effects.get("checkpoints_stale") or []) | set(stale))
     effects["artifacts_removed"] = len(removed)
+    if scan.budget_reached:
+        # removed because a value in them was still encoded when the inspection limit ran out (ruling B)
+        effects["artifacts_removed_uninspectable"] = scan.budget_reached
     record = {"artifacts_removed": len(removed), "made_or_contained_removed": len(cascaded),
               "scanned": scan.scanned, "budget_reached": scan.budget_reached, "bytes_missing": scan.bytes_missing,
               "checkpoints_stale": stale, "state_version": effects["state_version"]}
