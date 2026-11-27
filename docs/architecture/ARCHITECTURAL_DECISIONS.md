@@ -5933,6 +5933,113 @@ Written by a lane that read no product code and no lane report of B1, B2, C, G1 
   random 20.8 (0.139); 0 hard-constraint violations for all four. Cross: today 0 / 78 answered. Learn: today late kept
   0.384 (sd 0.028).
 
+
+
+# ADR-076 The production pipeline: from files and a request to a made, checked, stored result with a visible "why" (OMNIMIND Wave O-1, lane P)
+
+**Status.** Accepted for Wave O-1 (lane P). No migration, no setting: everything runs only when the owner types
+`nsf artifact make | remake` (or a caller calls `artifacts.produce.produce`).
+
+**Context.** Wave O-0 left the parts unconnected: adapters decode, the frozen planner (ADR-073) decides a form,
+generators make a spec into bytes and independent checks read the bytes back (ADR-074), the store keeps made artifacts
+as never-evidence (ADR-071). Nothing went from "here are my files, this is what I want to know" to a kept result.
+
+**Decision.** `artifacts/produce.py` runs Interpret -> Conceptualize -> Explore -> Choose -> Plan -> Generate -> Render
+-> Evaluate -> Repair -> Converge -> Finalize, each a named function; what went in and came out of each is recorded in
+a production record (`neuroscifi.production/1`, at most 14 KiB of JSON, labelled "made by the system, not evidence"),
+kept in the made artifact's index (`index.production`, at most 16 KiB; `store.add_made(..., production=)`).
+- *Interpret.* Every source is decoded again from its bytes under the instance's `Limits`. Not used as content, and
+  said so in the record: a flagged artifact (its text looked like instructions to an AI), a refusal, a format nothing
+  reads, a header-only file, a partial decode. Stated readings: an archive holding Python files is read as its package
+  (the combined graph lane B1 builds); an archive or stream holding exactly one decoded file is read as that file; a
+  JSON array of flat records is read as a table (the adapter's own `as_table`); several Python files given together
+  are read as one package. A table whose columns the request names is read as those columns and its first column of
+  times: the content planned for is what was asked about (a column the request does not name is not used, not even
+  the rows' names: "calls for each who" names both; no model reads a request more finely here).
+- *Conceptualize.* `forms.plan` decides (unchanged, called through its public API). `--form` takes a planner form or
+  alias (the planner's explicit path: honoured when feasible, else its stated nearest form) or a generator form the
+  planner has no form for (`solid.mesh`): that is made as named and the planner's own plan is recorded beside it.
+  `forms.foresee` runs for each candidate before anything is made.
+- *Proportion.* When the plan's form is words (prose or spoken), nothing is made and nothing is stored: the measured
+  facts (`store.facts_of`) are given as sentences with the plan's reason. Given files are stored only when something
+  will be made.
+- *Explore, choose, converge.* `--alternatives N` (at most 4) takes `forms.alternatives` (candidates that differ in
+  kind, the plan's choice first); each is built, made, checked and repaired. Convergence: the technical verdict first
+  (a candidate whose technical checks failed is never kept), then carried information (the share of source values
+  the check read back), then the planner's total, then the simpler form. The losers stay in the record as their
+  spec's envelope (form, title, description, options, SHA-256 and size of the data): `remake --form` makes any of them
+  again from the sources; `--keep` stores those that passed as made artifacts too.
+- *Plan: specification builders* (`artifacts/produce_builders.py`, a registry keyed by planner form, plus `solid.mesh`).
+  Rules every builder keeps: every value comes from the representation; titles, axis labels and units come from the
+  content (column names, declared units, file labels) or are fixed words saying what a thing is ("row number",
+  "frequency (Hz)"); what a form cannot show is left out by a stated rule written into the spec's description and the
+  record (the first 2000 rows; the 6 series with the widest spread; columns ten times smaller than the largest are not
+  drawn on its axis; module-level only for a code graph over 40 nodes; the mean of k x k pixel blocks); a column named
+  in the request is chosen ("A against/versus/by/over B" names y and x); a bar chart refuses repeated category names
+  rather than summing; an explorable model is made only from an explicit model file. Coverage (representation kind x
+  builder, builds or the reason it cannot) is in `docs/quality/evidence/omnimind_p.json`.
+  Several sources: each is planned on its own (same words and context) and placed in one `document.html` under its
+  own heading with a sentence of what it is, its figure (an SVG form), table, or measured facts; a form that cannot sit
+  inside a document (sound, solid, picture, explorable) falls back to the planner form's stated fallback, said so. A
+  planned combination (a chart with its table, a diagram with sentences) is one document with both.
+- *Generate, render, evaluate, repair.* `make.make` (bytes over the context's byte budget are refused), the bytes as a
+  file (media type, size, export extension, SHA-256), `check.check` with the spec, then at most three rounds of the
+  generators' own named repairs (lane G1's `make.repair` for charts, lane G2's resampling of a sonification over its
+  duration bound), each round recorded; the best round is kept (technical pass first, then fewer findings).
+- *Finalize.* `store.add_made` with the spec as editable source, `derived_from` links to every source, the check's
+  verdict and the record. `nsf artifact show ID --why` prints it in plain words; `nsf artifact remake ID --form F`
+  runs the production again on the same sources and request; `--option k=v` edits the stored spec's options and makes,
+  checks and repairs it again (a new artifact; the old one stays; the record names `remade_from`).
+- *Foresight against outcome.* Each estimate (bytes, seconds, over budget) and each foreseen problem some check can
+  observe (label overlap, too many categories or series, points per pixel, too many nodes, a sound too long) is paired
+  with what the first made bytes and their check (or the generator's refusal) showed, for the made forms whose check
+  always looks for that problem: numbers right within a factor of two, problems right / false alarm / missed, others
+  "not observable here". The pairs go into the record and, as a SIMULATION record (ADR-049:
+  NOT_EVIDENCE, quarantined) in the imagined store: payload = the predictions (numbers, booleans, form names; no
+  content), outcome slot = the observation. The imagined store's references cannot name an artifact (schema; no
+  migration here), so the record names the simulation and `store._remove` deletes it (tombstoned) whenever the made
+  artifact is removed (forget, root forget, a source's forget, restore replay).
+- *Budgets and stops.* The context's seconds and bytes are the planner's budget and are enforced here: a deadline
+  checked before every step (`ProductionStopped`, nothing stored), made bytes over the byte budget refused. Any stop
+  (Ctrl-C, the deadline, an error) and any result that failed its technical check leaves nothing: given files this
+  production stored are forgotten again and the simulation record is purged. A failure ends "could not make this
+  well" with the findings in plain words and the next candidate form.
+
+**The model file** (`artifacts/adapters/model_file.py`, format `neuroscifi.model/1`, media type
+`application/vnd.neuroscifi.model+json`): a JSON object with `"format": "neuroscifi.model/1"`, optional `title` and
+`description`, and exactly the data of lane G2's `explorable.model` form: `parameters` (1-12: name, label, min, max,
+step, value, unit), `quantities` (expressions in `artifacts/expr.py`'s language), optional `dynamics` (state,
+initial and update expressions, steps, dt) and `views` (plot, table, bars). Detected by structure (the marker in the
+first 4 KiB; the file name is never used); checked with the form's schema and `expr.model_problems` (a file that
+cannot run is Malformed with its reasons; at most 256 KiB); represented as `ModelFile`, a `Tree` of the JSON that also
+carries the checked model, whose shape is a process with parameters counted by the states its sliders can take
+(product of (max - min) / step + 1, at most 1,000,000). Expressions are parsed into trees, never run as code.
+
+**`solid.mesh`** (lane G2's generator and check modules): given vertices and triangles written as they are (only the
+vertices a face uses; a closed mesh turned outward; an open one with its given winding); a face without area, an
+index out of range, an edge of more than two faces or faces wound against each other is refused by name. The check
+re-derives closedness, triangle count, bounds and volume from the spec and reads every used vertex back.
+
+**The benchmark.** `ArtifactsSubject._transform` states the structured request in the owner's words with a named form
+and calls `produce.produce` with no individual (nothing stored); `FORM_NAMES["mesh"] = "solid.mesh"`. Development
+(artifacts subject): made 13/14 -> 14/14, transform 6/8 -> 8/8, 0 wrong; all families 509 -> 512 of 524 right.
+
+**Not done, and why.** No model reads the request (column names and a few prepositions only); no relation between
+sources is drawn (lane R); the planner's weights are not learned here (lane L); playing back a given recording, maps,
+step-throughs from data, animation from data and surface views of given meshes have no builder; the viewer does not
+simplify meshes over 20,000 vertices; durable (resumable) production jobs and progress reporting are not built: a
+production runs in the owner's command and either finishes or leaves nothing.
+
+**Consequences.** Nothing runs unasked; with no command typed, every existing output is unchanged. Rollback: revert
+lane P's commits (the index key `production` is ignored by older code; no stored state changes shape).
+
+**Proposed held-out rule (for the main session, written before any held-out run).** Run `bench_omni.py run --split
+held_out --subject artifacts --family made --family transform` once on lane P's final commit. Fields: each task's
+outcome as the benchmark's own `judge` gives it (readers recover the values from the bytes; no product code judges).
+Supported when, on held-out, transform has 0 wrong and 0 failed and at least as many right as at `c1f5f2f` on the
+same split, and made has 0 wrong and 0 failed; a transform "abstained" because the frozen planner says a form cannot
+carry the content counts as abstained, not as right.
+
 # ADR-078 Learning the form of a result from outcomes: a per-key majority, because nothing tried beat it
 
 Status: built, off by default (OMNIMIND Wave O-1, lane L). Schema 21 (`form_outcomes`), one owner setting

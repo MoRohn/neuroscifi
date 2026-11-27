@@ -59,6 +59,7 @@ FORM_TABLE = {
     "solid.revolve": (solids.SCHEMAS["solid.revolve"], _SOLIDS, None),
     "surface.grid": (solids.SCHEMAS["surface.grid"], _SOLIDS, None),
     "solid.points": (solids.SCHEMAS["solid.points"], _SOLIDS, None),
+    "solid.mesh": (solids.SCHEMAS["solid.mesh"], _SOLIDS, None),           # lane P: a given mesh, as it is
     "image.raster": (raster.SCHEMAS["image.raster"], _RASTER, None),
     "image.apng": (raster.SCHEMAS["image.apng"], _RASTER, None),
     "explorable.model": (explorable.SCHEMAS["explorable.model"], _EXPLORABLE, None),

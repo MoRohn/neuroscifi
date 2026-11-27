@@ -677,57 +677,42 @@ class ArtifactsSubject:
         return Answer({"bytes": bytes(made.bytes if hasattr(made, "bytes") else made[0]),
                        "media_type": getattr(made, "media_type", "")}, "answered")
 
+    # The benchmark's structured transform request -> the owner's words and a named form, for the production pipeline
+    # (lane P, ADR-076: artifacts/produce.py decodes, reads the columns named in the words, builds the spec, makes,
+    # checks and repairs). Only the wording and the form name are chosen here; every value comes from the input file.
+    _TRANSFORM_FORMS = {"csv_to_chart": None, "table_to_sound": "sonification", "mesh_to_stl": "solid.mesh",
+                        "doc_to_outline": "node_link", "archive_index": "data_file"}
+
     def _transform(self, task: Task) -> Answer:
-        """The steps a transform task needs, chained HERE from DESIGN §3 and §6 calls (decode, then make): the
-        production pipeline is a later wave; when it exists, this should call it instead."""
+        """A transform task through the production pipeline (`produce.produce`, with no individual: nothing is
+        stored), as the owner's command `nsf artifact make FILE --request ... --form ...` would run it."""
         request = json.loads(task.files["request.json"])
         (name, data), = [(n, d) for n, d in task.files.items() if n != "request.json"]
-        rep = _descend_single(self._decode(name, data, task.declared.get(name)).representation)
+        try:
+            produce = importlib.import_module("neuroscifi.artifacts.produce")
+        except ImportError as error:
+            return Answer(None, "cannot", f"not built: {error.name or error}")
         kind = request["transform"]
-        if kind in ("csv_to_chart", "table_to_sound"):
-            table = _tables(rep)[0]
-
-            def column(col):
-                if isinstance(table, _Records):
-                    return [table.rows[i].get(col) for i in range(table.n_rows)]
-                match = [c for c in table.columns if c.name == col]
-                if not match:
-                    raise Cannot(f"no column {col}")
-                return _value_list(match[0])
-            if kind == "csv_to_chart":
-                xs, ys = column(request["x"]), column(request["y"])
-                labels = {"x_label": request["x"], "y_label": request["y"]}      # the columns' own names
-                made = ({"form": "line", "series": [{"name": request["y"], "x": xs, "y": ys}]} | labels
-                        if request["form"] == "line" else
-                        {"form": "scatter", "points": [list(p) for p in zip(xs, ys)]} | labels)
-            else:
-                values = column(request["column"])
-                made = {"form": "sonify", "values": values, "low_hz": request["low_hz"], "high_hz": request["high_hz"],
-                        "domain": [min(values), max(values)], "tone_s": request["tone_s"]}
-        elif kind == "mesh_to_stl":
-            if _kind(rep) != "Mesh":
-                raise Cannot(f"a {_kind(rep)} is not a mesh")
-            made = {"form": "mesh", "format": request["format"], "vertices": np.asarray(rep.vertices).tolist(),
-                    "faces": np.asarray(rep.faces).tolist()}
-        elif kind == "doc_to_outline":
-            nodes, edges, stack = [], [], []
-            for block in _blocks(rep, "heading"):
-                text = _norm(block.text)
-                nodes.append(text)
-                while stack and stack[-1][0] >= block.level:
-                    stack.pop()
-                if stack:
-                    edges.append([stack[-1][1], text])
-                stack.append((block.level, text))
-            made = {"form": "diagram", "nodes": nodes, "edges": edges}
-        elif kind == "archive_index":
-            if _kind(rep) != "Bundle":
-                raise Cannot(f"a {_kind(rep)} is not an archive")
-            made = {"form": "data_file", "format": "csv", "columns": ["path", "size", "format"],
-                    "rows": [[str(m.path), int(m.size), m.detected.format] for m in _members(rep)]}
-        else:
+        if kind not in self._TRANSFORM_FORMS:
             raise Cannot(f"unknown transform {kind}")
-        return self._make(made)
+        form, options = self._TRANSFORM_FORMS[kind], {}
+        if kind == "csv_to_chart":
+            form = {"line": "line_chart", "scatter": "scatter_chart"}[request["form"]]
+            words = f"a {request['form']} chart of {request['y']} against {request['x']}"
+        elif kind == "table_to_sound":
+            words = f"let me hear {request['column']}"
+            options = {"low_hz": request["low_hz"], "high_hz": request["high_hz"], "tone_s": request["tone_s"],
+                       "reference": "none"}                       # the request asks for the values' tones only
+        elif kind == "mesh_to_stl":
+            words, options = "this mesh as a file", {"format": request["format"]}
+        elif kind == "doc_to_outline":
+            words = "an outline of its headings"
+        else:
+            words = "an index of what the archive holds"
+        result = produce.produce(None, words, [produce.Given(name, data)], form=form, options=options)
+        if result.status != "made":
+            raise Cannot(f"the production ended {result.status}: {result.record.get('why', '')[:160]}")
+        return Answer({"bytes": bytes(result.made.bytes), "media_type": result.made.media_type}, "answered")
 
 
 def _header_fact(facts: dict, measure_name: str):
@@ -757,11 +742,11 @@ def _plain(value):
     return value
 
 
-# The benchmark's request forms -> the product's registered form names (make.catalog(); lanes G1 and G2). None: no
-# product form makes it (a solid from given vertices and faces). Adjust HERE (only) when the schemas change.
+# The benchmark's request forms -> the product's registered form names (make.catalog(); lanes G1, G2 and P's
+# solid.mesh for a solid from given vertices and faces). Adjust HERE (only) when the schemas change.
 FORM_NAMES = {"line": "chart.line", "bar": "chart.bar", "scatter": "chart.scatter", "histogram": "chart.histogram",
               "timeline": "timeline", "diagram": "graph.nodelink", "tone": "sound.tone", "sonify": "sound.sonify",
-              "mesh": None, "surface": "surface.grid", "animation": "image.apng", "data_file": "data.csv"}
+              "mesh": "solid.mesh", "surface": "surface.grid", "animation": "image.apng", "data_file": "data.csv"}
 
 
 def _evenly_spaced(values) -> list:
@@ -783,6 +768,9 @@ def _data_and_options(form: str, request: dict) -> tuple[dict, dict]:
         options |= {"low_hz": rest["low_hz"], "high_hz": rest["high_hz"], "tone_s": rest["tone_s"],
                     "range": list(rest["domain"]), "reference": "none"}       # the request asks for no reference
         return {"values": rest["values"]}, options
+    if form == "mesh":
+        options |= {k: rest[k] for k in ("format", "unit") if k in rest}
+        return {"vertices": rest["vertices"], "faces": rest["faces"]}, options
     if form == "surface":
         if "format" in rest:
             options["format"] = rest["format"]

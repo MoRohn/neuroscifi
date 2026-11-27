@@ -74,6 +74,9 @@ STORE = {
     "instance/governance.py": "every forget removes what derives from what it removed; the sweep expires records",
     "instance/checkpoints.py": "a restore replays the store's removals (tombstones, limits, orphans)",
     "instance/cli_imagined.py": "the owner's `nsf imagined list|show|purge|kinds`, every item labelled",
+    "artifacts/store.py": "lane P (ADR-076): forgetting a made artifact (and a stopped production) removes the "
+                          "simulation record its production kept, tombstoned, as every forget removes what derives "
+                          "from what it removed",
 }
 WRITERS: dict[str, str] = {
     "webcortex/scenarios.py": "lane M (ADR-052): one simulation record per open prediction (imagine_scenarios, off), "
@@ -92,6 +95,9 @@ WRITERS: dict[str, str] = {
     "acceptance/cognition/sources.py": "Wave 4 step 0's source-independence family plants the individual's own "
                                        "answers in temporary individuals, as cycles.py does, so echoes of them can "
                                        "be measured",
+    "artifacts/produce.py": "lane P (ADR-076): one simulation record per kept production, the pre-production "
+                            "check's predictions with its outcome slot filled once from what the made bytes and "
+                            "their independent check showed",
 }
 DISPLAYS: dict[str, str] = {
     "console/server.py": "lane W (ADR-053): the console's read-only 'Imagined, not evidence' panel (GET "

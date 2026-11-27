@@ -483,6 +483,10 @@ def _index(detected, decoded, error, *, text_chars, text_truncated, injection, e
         out["error"] = error
     if extra:
         out |= extra
+    if extra and "production" in extra and len(json.dumps(out, sort_keys=True, ensure_ascii=False, separators=(
+            ",", ":"), allow_nan=False).encode("utf-8")) > INDEX_MAX_BYTES:
+        # a made artifact's own record (its check, spec and production: lane P) outranks the description of its bytes
+        out = {k: v for k, v in out.items() if k != "representation"} | {"representation_cut": True}
     out = bounded(out)
     text = json.dumps(out, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     if len(text.encode("utf-8")) > INDEX_MAX_BYTES:
@@ -647,6 +651,7 @@ def add(db, source, *, name=None, origin="given", scope="owner", follow_symlinks
 
 # Technical findings that PASS but that a later path must warn about (opening a CSV in a spreadsheet program).
 CHECK_WARNINGS = frozenset({"formula_like_cells"})
+PRODUCTION_MAX_BYTES = 16 << 10   # lane P's production record in a made artifact's index (INDEX_MAX_BYTES bounds all)
 
 
 def _check_summary(data: bytes, media_type: str, spec) -> dict:
@@ -658,9 +663,11 @@ def _check_summary(data: bytes, media_type: str, spec) -> dict:
             "warnings": [f.detail[:300] for f in verdict.technical if f.passed and f.rule in CHECK_WARNINGS][:8]}
 
 
-def add_made(db, made, spec, sources=(), *, now=None) -> ArtifactRecord:
+def add_made(db, made, spec, sources=(), *, now=None, production=None) -> ArtifactRecord:
     """Keep what the system made (artifacts.make.Made) with its specification as the editable source and a
-    `derived_from` link to every source artifact. Origin 'made': never evidence (ADR-071)."""
+    `derived_from` link to every source artifact. Origin 'made': never evidence (ADR-071). `production` (lane P,
+    ADR-076): the production record (bounded JSON, at most PRODUCTION_MAX_BYTES) kept in the index; the imagined
+    record it names (`simulation`) is removed when the artifact is forgotten."""
     from .spec import Spec, canonical_json
     now = _now(now)
     if isinstance(spec, dict):
@@ -689,6 +696,11 @@ def add_made(db, made, spec, sources=(), *, now=None) -> ArtifactRecord:
                       "bytes": len(text.encode("utf-8"))},
              "made_notes": [str(n)[:400] for n in tuple(getattr(made, "notes", ()))[:16]],
              "check": _check_summary(data, str(getattr(made, "media_type", "") or ""), spec)}
+    if production is not None:
+        record = json.dumps(production, sort_keys=True, ensure_ascii=False, allow_nan=False)
+        if not isinstance(production, dict) or len(record.encode("utf-8")) > PRODUCTION_MAX_BYTES:
+            raise Malformed(f"a production record is a JSON object of at most {PRODUCTION_MAX_BYTES} bytes")
+        extra["production"] = production
     return _store(db, data, label=_label(spec.title or spec.spec), origin="made", maker=maker, scope="owner",
                   name_hint=None, declared=str(getattr(made, "media_type", "") or "") or None, now=now,
                   # the generator's own media type is kept: detection cannot tell lane G2's explorable document
@@ -1062,6 +1074,7 @@ def _remove(db, ids, reasons, now, instance_id) -> tuple[list, list, float | Non
         part = ids[start:start + 300]
         marks = ",".join("?" * len(part))
         rows = db.execute(f"SELECT id, sha256, created_at FROM artifacts WHERE id IN ({marks})", part).fetchall()
+        _remove_simulations(db, part, now)
         db.execute(f"DELETE FROM artifact_links WHERE src IN ({marks}) OR (dst_kind='artifact' AND dst_id IN "
                    f"({marks}))", part + part)
         db.execute(f"DELETE FROM artifacts WHERE id IN ({marks})", part)
@@ -1074,6 +1087,38 @@ def _remove(db, ids, reasons, now, instance_id) -> tuple[list, list, float | Non
             first = min(r[2] for r in rows)
             earliest = first if earliest is None else min(earliest, first)
     return removed, shas, earliest
+
+
+def _remove_simulations(db, ids, now) -> int:
+    """The imagined SIMULATION records a production kept for these made artifacts (index `production.simulation`,
+    lane P): removed with them (tombstoned by the imagined store, so a restore removes them too). Caller owns the
+    transaction."""
+    marks = ",".join("?" * len(ids))
+    found = [r for (r,) in db.execute(
+        f"SELECT json_extract(index_json, '$.production.simulation') FROM artifacts WHERE id IN ({marks}) AND "
+        "origin='made'", list(ids)) if isinstance(r, str) and r.startswith("imagined:")]
+    if not found:
+        return 0
+    from ..instance import imagined
+    if not imagined.present(db):
+        return 0
+    removed, _ = imagined._remove(db, f"id IN ({','.join('?' * len(found))})", tuple(found), "forgotten", now)
+    return len(removed) + imagined.purge_orphans(db, now)
+
+
+def discard_simulation(db, record_id, now) -> int:
+    """Remove the simulation record a production wrote for an artifact it did not keep (a stop, a failure): the same
+    removal a forget of the artifact makes. Returns how many records went."""
+    from ..instance import imagined
+    from ..instance import store as instance_store
+    if not isinstance(record_id, str) or not record_id.startswith("imagined:") or not imagined.present(db):
+        return 0
+    with instance_store.write(db):
+        removed, _ = imagined._remove(db, "id=?", (record_id,), "forgotten", now)
+        count = len(removed) + imagined.purge_orphans(db, now)
+        if removed:
+            instance_store.bump_state_version(db)
+    return count
 
 
 def _stale_checkpoints(db, since) -> list:

@@ -1,5 +1,7 @@
-"""`nsf artifact add FILE… | list | show ID | facts ID | export ID PATH | forget ID | gaps [--report] | adapters | forms
-| feedback ID kept|dismissed|replaced:FORM | feedback --reset` (ADR-071; feedback and the gap report: ADR-078).
+"""`nsf artifact add FILE… | list | show ID [--why] | facts ID | export ID PATH | forget ID | gaps [--report] |
+adapters | forms | make FILE_OR_ID… --request TEXT | remake ID --form F | --option k=v |
+feedback ID kept|dismissed|replaced:FORM | feedback --reset` (ADR-071; make, remake and --why: ADR-076;
+feedback and the gap report: ADR-078).
 
 The owner's commands for the artifact store (artifacts/store.py). Plain words by default; `--json` prints the record
 instead. Nothing here runs unless the owner types it. `add` follows a symbolic link the owner names on the command
@@ -94,7 +96,34 @@ def _plain(what, value) -> str:
                 lines.append(f"  warning: {warning}")
         for link in value["links"]:
             lines.append(f"  link: {link['src']} {link['relation']} {link['dst_id']} ({link['how']})")
+        if "why" in value:
+            from .produce import why_text
+            lines.append("Why it has this form:")
+            lines.extend("  " + line for line in why_text(value["why"]).splitlines())
         return "\n".join(lines)
+    if what in ("make", "remake"):
+        from .produce import why_text
+        record = value["record"]
+        if value["status"] == "made":
+            made = record.get("made") or {}
+            check = record.get("check") or {}
+            carried = check.get("carried")
+            lines = [f"Made {value['artifact']}: {made.get('title')} ({made.get('form')}, {_size(made.get('bytes'))}; "
+                     "made by the system, not evidence).",
+                     f"Why this form: {(record.get('plan') or {}).get('reason') or 'you named it.'}",
+                     "Independent check: passed" + (f"; {carried:.0%} of the source values were read back from the "
+                                                    "file" if carried is not None else "") + "."]
+            if value["sources_kept"]:
+                lines.append(f"The {len(value['sources_kept'])} file(s) it was made from are kept too: "
+                             + ", ".join(value["sources_kept"]) + ".")
+            for kept in value["kept"]:
+                lines.append(f"Also kept (an alternative): {kept}.")
+            lines.append(f"`nsf artifact show {value['artifact']} --why` tells the whole story; "
+                         f"`nsf artifact export {value['artifact']} FILE` writes it out.")
+            return "\n".join(lines)
+        if value["status"] == "words":
+            return "\n".join(value["words"] + [record.get("why", "")])
+        return why_text(record, short=True)
     if what == "facts":
         lines = [f"{value['id']} ({value['provenance']})"]
         if not value["decoded"] and (value.get("error") or {}).get("header_only"):
@@ -217,6 +246,67 @@ def _gaps(db, args, now):
     return learn.gap_report(db) if args.report else store.gaps(db)
 
 
+def _show(db, args, now):
+    from . import store
+    value = store.show(db, args.id)
+    if getattr(args, "why", False):
+        value["why"] = (value.get("index") or {}).get("production") or {}
+    return value
+
+
+def _context(args):
+    from . import forms
+    from .types import Malformed
+    kwargs = {"device": args.device}
+    if args.seconds is not None:
+        kwargs["budget_s"] = float(args.seconds)
+    if args.bytes is not None:
+        kwargs["budget_bytes"] = int(args.bytes)
+    try:
+        return forms.Context(**kwargs)
+    except Malformed:
+        raise
+    except (TypeError, ValueError) as error:
+        raise Malformed(f"the budget is not a number ({error})") from None
+
+
+def _make(db, args, now):
+    """The production pipeline (artifacts/produce.py): files are held in memory and kept (as given) only when something
+    is made from them; artifact ids are read from the store."""
+    from . import produce, store
+    from .types import Malformed
+    sources = []
+    for item in args.sources:
+        text = str(item)
+        if store._ID.fullmatch(text):
+            sources.append(text)
+            continue
+        path = Path(text)
+        cap = store.limits(_instance_config(db)).max_bytes
+        data = store._read_file(str(path), min(cap, _instance_config(db).artifact_max_bytes), follow_symlinks=True)
+        sources.append(produce.Given(path.name, data))
+    if not args.request.strip():
+        raise Malformed("say what you want to know or see (--request)")
+    result = produce.produce(db, args.request, sources, form=args.form, context=_context(args),
+                             options=produce.parse_options(args.option), alternatives=args.alternatives,
+                             keep=args.keep, now=now)
+    return {"status": result.status, "artifact": result.artifact, "kept": list(result.kept),
+            "sources_kept": list(result.stored_sources), "words": list(result.words), "record": result.record}
+
+
+def _remake(db, args, now):
+    from . import produce
+    result = produce.remake(db, args.id, form=args.form, options=produce.parse_options(args.option),
+                            context=_context(args), now=now)
+    return {"status": result.status, "artifact": result.artifact, "kept": [], "sources_kept": [],
+            "words": list(result.words), "record": result.record}
+
+
+def _instance_config(db):
+    from ..instance import store as instance_store
+    return instance_store.config(db)
+
+
 def _list(db, args, now):
     from . import store
     store.reconcile(db, now)
@@ -256,6 +346,8 @@ def _command(what, handler):
             return 1
         if what == "feedback" and value.get("recorded") is False:
             return 1
+        if what in ("make", "remake") and value["status"] in ("failed", "cannot"):
+            return 1
         return 0
     return run
 
@@ -281,9 +373,10 @@ def register(sub):
     q = command("list", _list, "what is kept, newest first; what the system made says so")
     q.add_argument("--origin", choices=store.ORIGINS)
     q.add_argument("--limit", type=int, default=100)
-    q = command("show", lambda db, a, now: store.show(db, a.id), "one artifact: what was detected and read, its "
-                                                                  "links and what was done to it")
+    q = command("show", _show, "one artifact: what was detected and read, its links and what was done to it")
     q.add_argument("id")
+    q.add_argument("--why", action="store_true", help="for something the system made: what was asked, what the "
+                                                      "sources were, which forms were considered, what the check found")
     q = command("facts", lambda db, a, now: store.facts(db, a.id), "measurements computed from what was read "
                                                                     "(counts, sizes, ranges, means), each with how")
     q.add_argument("id")
@@ -307,6 +400,28 @@ def register(sub):
     q.add_argument("--reset", action="store_true", help="remove every recorded reaction (what was learned is gone)")
     command("adapters", lambda db, a, now: store.adapter_catalog(db), "the file readers here, and which external "
                                                                        "ones you approved")
+    def budget(q):
+        from . import forms
+        q.add_argument("--form", help="the form you want (a planner form such as line_chart or table, a plain word "
+                                      "such as chart, or a generator form such as solid.mesh); default: decided for you")
+        q.add_argument("--option", action="append", metavar="KEY=VALUE", help="an option of the made form's "
+                                                                              "specification (repeatable)")
+        q.add_argument("--device", choices=forms.DEVICES, default="console", help="where it will be looked at")
+        q.add_argument("--seconds", type=float, help="the most time it may take (default 60)")
+        q.add_argument("--bytes", type=int, help="the most bytes the made file may have (default 16 MiB)")
+
+    q = command("make", _make, "make something from files you hand over (or kept artifacts) for what you want to "
+                               "know: the form is decided for you, made, checked independently and kept with why")
+    q.add_argument("sources", nargs="+", help="files, or ids of kept artifacts")
+    q.add_argument("--request", "-r", required=True, help="what you want to know or see, in your own words")
+    q.add_argument("--alternatives", type=int, default=1, help="try up to N forms that differ in kind (at most 4) "
+                                                               "and keep the best")
+    q.add_argument("--keep", action="store_true", help="keep the alternatives that passed their check too")
+    budget(q)
+    q = command("remake", _remake, "make something the system made again from its kept specification, in another "
+                                   "form or with changed options")
+    q.add_argument("id")
+    budget(q)
     q = asub.add_parser("forms", help="what can be made here and which independent check reads it back (reads no "
                                       "individual)")
     q.add_argument("--json", action="store_true", help="print the catalog as JSON instead of plain words")

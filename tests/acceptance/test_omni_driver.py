@@ -198,8 +198,10 @@ def _stand_in():
         return Made(*reference.make(_request_of(spec, reverse)))
     M.make = make
     P = types.ModuleType("neuroscifi.artifacts")
+    # no production pipeline in the stand-in (None in sys.modules: importing it fails, even after the real package
+    # was imported by another test)
     return {"neuroscifi.artifacts": P, "neuroscifi.artifacts.types": T, "neuroscifi.artifacts.adapters": A,
-            "neuroscifi.artifacts.make": M}
+            "neuroscifi.artifacts.make": M, "neuroscifi.artifacts.produce": None}
 
 
 def _request_of(spec, reverse):
@@ -293,17 +295,8 @@ def test_made_and_transform_through_the_driver(artifacts):
     # forms no product form makes (a solid from given vertices and faces) are "cannot" before anything is made
     unmade = [t.id for t in made.tasks("development") if subject.FORM_NAMES[t.question.split(":")[1]] is None]
     assert out["right"] == out["n"] - len(unmade) and out["abstained"] == len(unmade), out["failures"]
+    # a transform goes through the production pipeline (lane P, artifacts/produce.py), which the stand-in does not
+    # have: every transform is "cannot", named (tests/acceptance/test_omni_driver_real.py runs them for real)
     for t in transform.tasks("development"):
-        kind = t.question.split(":")[1]
-        name = next(n for n in t.files if n != "request.json")
-        if kind == "mesh_to_stl":
-            assert artifacts.answer(t).status == "cannot"
-            continue
-        if kind == "doc_to_outline" and not name.endswith(".md"):
-            continue
         a = artifacts.answer(t)
-        result = transform.judge(t, a, artifacts.answer(t))
-        if kind == "doc_to_outline":            # the reference maker's circular layout does not keep reading order
-            assert result.detail.get("carried", 0) >= 0.8, (t.id, result.detail)
-            continue
-        assert result.outcome == "right", (t.id, result.detail)
+        assert a.status == "cannot" and a.reason.startswith("not built"), (t.id, a)

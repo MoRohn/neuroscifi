@@ -77,6 +77,7 @@ ADAPTERS = (
     ('b2-geo', ('geojson', 'gpx', 'kml', 'kmz', 'wkt'), 'content', True),
     ('b2-npy', ('npy',), 'content', True),
     ('b2-npz', ('npz',), 'content', True),
+    ('model_file', ('nsf_model',), 'content', True),          # lane P (ADR-076): the owner's model file
     ('refuse-pickle', ('pickle',), 'nothing', False),
 )
 GENERATORS = (
@@ -100,6 +101,7 @@ GENERATORS = (
     ('image.raster', 'g2.raster'),
     ('solid.box', 'g2.solids'),
     ('solid.extrude', 'g2.solids'),
+    ('solid.mesh', 'g2.solids'),                               # lane P (ADR-076): a given mesh, as it is
     ('solid.points', 'g2.solids'),
     ('solid.revolve', 'g2.solids'),
     ('solid.view', 'g2.explorable'),
