@@ -656,8 +656,11 @@ def histogram_edges(values, opts):
     lo, hi = min(values), max(values)
     if "bin_width" in opts and opts["bin_width"] > 0:
         w = float(opts["bin_width"])
-        k0, k1 = math.floor(lo / w), math.ceil(hi / w)
-        k1 = max(k1, k0 + 1)
+        # bins [k*w, (k+1)*w) from the one that holds the smallest value to the one that holds the largest: a value
+        # on an inner edge belongs to the upper bin, so the largest value never sits on the right edge (17.5 with a
+        # width of 2.5 is in the bin 17.5-20, not the last edge of 15-17.5); the quotient is rounded to 9 places so
+        # that 0.3 / 0.1 counts as 3
+        k0, k1 = math.floor(round(lo / w, 9)), math.floor(round(hi / w, 9)) + 1
         if k1 - k0 > 500:
             raise Fit("the bin width gives more than 500 bins")
         places = decimals_of(w)
@@ -708,8 +711,8 @@ def make_histogram(spec):
     name = d.get("name") or d["x"]["label"]
     plot = el("g", (("class", "plot"),), el("g", (("class", "series"), ("data-name", name)), "".join(rects)))
     words = (f"Histogram of {len(values)} values of {xlab} in {len(counts)} bins of width "
-             f"{plain(edges[1] - edges[0])} from {plain(edges[0])} to {plain(edges[-1])}; each bin holds the values "
-             f"from its left edge up to (not including) its right edge, the last bin also its right edge. "
+             f"{plain(edges[1] - edges[0])} from {plain(edges[0])} to {plain(edges[-1])}; a value on an inner edge "
+             f"belongs to the upper bin, and the last bin is closed on the right. "
              f"The fullest bin holds {max(counts)} values.")
     body = frame.title_svg + grid + yaxis + xaxis + plot
     return finish(frame, describe(spec, words), d, body), ()
