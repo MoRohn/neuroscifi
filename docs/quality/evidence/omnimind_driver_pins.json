@@ -1,10 +1,9 @@
 {
  "how": "written by the main session from `scripts/bench_omni.py pin-driver`, committed deliberately before a look; a later driver change needs a new pin and is visible in git",
  "label": "OMNIMIND benchmark drivers pinned for the withheld looks (acceptance/omni/final.py refuses a look through a driver whose SHA-256 differs from its pin)",
- "pinned_at_commit": null,
+ "pinned_at_commit": "bf835ca",
  "pins": {
-  "scripts/omni_forms_driver.py": null,
-  "src/neuroscifi/acceptance/omni/subject.py": null
- },
- "status": "NOT PINNED: lane F1 is rewriting the driver so that it only translates (review finding B4); the main session runs `scripts/bench_omni.py pin-driver` after merging it and commits the result here. Until then every look is refused."
+  "scripts/omni_forms_driver.py": "7492a3970d2d804989073bf087cb1cbe10ee7695f7483fe736109dbae2e49829",
+  "src/neuroscifi/acceptance/omni/subject.py": "edd0820faa63983b9bbf29516240166a7a43accd727b9fd1cb1c97aff3611a53"
+ }
 }
