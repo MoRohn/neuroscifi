@@ -46,6 +46,23 @@ def register(sub):
     q.set_defaults(handler=_learned)
 
 
+def _margin_words(result) -> list[str]:
+    """When the planner's rule "the simplest form within a small margin of the best wins" chose (code review L5): one
+    plain sentence saying so, in this command's own words (the planner's sentence is frozen)."""
+    admitted = [c for c in result.candidates if c.admitted]
+    chosen = result.candidate(result.chosen)
+    if not admitted or chosen is None:
+        return []
+    best = max(admitted, key=lambda c: c.total)
+    if best.forms == chosen.forms or best.total <= chosen.total or best.total - chosen.total > forms.SIMPLE_MARGIN:
+        return []                      # the best won, or another rule decided (words kept, words that lose content)
+    if best.forms[0] in forms.WORDS and chosen.forms[0] not in forms.WORDS:
+        return []
+    return [f"Why not the highest score: {forms.label_of(best.forms)} scored a little higher ({best.total:.3f} against "
+            f"{chosen.total:.3f}), but when two forms are within {forms.SIMPLE_MARGIN:g} of each other the simpler one "
+            "is chosen."]
+
+
 def _fail(message: str) -> int:
     print(f"nsf form plan: {message}", file=sys.stderr)
     return 2
@@ -150,6 +167,8 @@ def _plan(a) -> int:
     if a.assume_available:
         print("Note: planned as if every generator existed here.")
     print(forms.describe(result))
+    for line in _margin_words(result):
+        print(line)
     if decided:
         print(f"Learned: {decided}")
     if others:

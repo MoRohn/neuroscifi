@@ -404,6 +404,7 @@ def test_every_owner_setting_is_carried_by_a_restore():
 class _Ep:
     def __init__(self, name, obj):
         self.name, self._obj = name, obj
+        self.dist = type("Dist", (), {"name": "outside-pkg", "version": "0.1"})()
 
     def load(self):
         return self._obj
@@ -421,12 +422,25 @@ def test_an_external_adapter_runs_only_while_the_owner_approves_it(individual, m
     monkeypatch.setattr(adapters, "_DISCOVERED", [_Ep("outside", Outside)])
     data = bytes(range(256)) * 2
     kinds = []
-    for approved in ([], ["outside"], []):
+    for approved in ([], ["outside=outside-pkg==0.1"], []):
         store.set_config(db, {"artifact_adapters": approved}, T0)
         kinds.append(A.add(db, data, name=f"o{len(kinds)}.bin", now=T0).index["representation"]["kind"])
     assert kinds == ["opaque", "document", "opaque"]
     rows = {r["name"]: r for r in A.adapter_catalog(db)["adapters"]}
     assert rows["outside"]["reason"] == "found, not approved"
+
+
+def test_nsf_config_approves_a_reader_as_installed_and_says_which(individual, monkeypatch, capsys):
+    db, path = individual
+    db.close()
+    from neuroscifi.cli import main
+    monkeypatch.setattr(adapters, "_DISCOVERED", [_Ep("outside", Outside)])
+    assert main(["config", "--db", str(path), "--artifact-adapters", "outside"]) == 0
+    assert "approved the file reader outside from outside-pkg version 0.1" in capsys.readouterr().out
+    with closing(store.open_existing(path)) as copy:
+        assert store.config(copy).artifact_adapters == ["outside=outside-pkg==0.1"]
+    assert main(["config", "--db", str(path), "--artifact-adapters", "nobody"]) != 0
+    assert "no installed file reader is named nobody" in capsys.readouterr().err
 
 
 # ---- the owner's commands ----------------------------------------------------------------------------------------------

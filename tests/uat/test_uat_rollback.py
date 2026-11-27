@@ -854,6 +854,7 @@ def test_artifact_adapters(individual, monkeypatch):
 
     class Ep:
         name = "uat-reader"
+        dist = type("Dist", (), {"name": "uat-pkg", "version": "1"})()
 
         def load(self):
             return Reader
@@ -861,7 +862,7 @@ def test_artifact_adapters(individual, monkeypatch):
     monkeypatch.setattr(adapters, "_DISCOVERED", [Ep()])
     monkeypatch.setattr(adapters, "_EXTERNAL", {})
     monkeypatch.setattr(adapters, "_ADAPTERS", list(adapters._ADAPTERS))
-    on, off = instance_switch(db, "artifact_adapters", ["uat-reader"], [])
+    on, off = instance_switch(db, "artifact_adapters", ["uat-reader=uat-pkg==1"], [])
     kept = []
 
     def probe():

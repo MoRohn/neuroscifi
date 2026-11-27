@@ -216,6 +216,9 @@ def driver_findings(source: str, names: set[str]) -> list[str]:
                 out.append("builds Limits of its own")
             if func == "decode" and any(k.arg == "limits" for k in node.keywords):
                 out.append("decodes with limits of its own")
+            if (func in ("startswith", "endswith") and node.args and isinstance(node.args[0], ast.Constant)
+                    and str(node.args[0].value).split(":")[0] in ("refused", "cannot", "partial")):
+                out.append(f"chooses by a note's words (line {node.lineno})")
         if isinstance(node, ast.Compare):
             sides = [node.left, *node.comparators]
             words = any(isinstance(s, ast.Constant) and isinstance(s.value, str) or isinstance(s, (ast.Tuple, ast.List,
@@ -245,6 +248,7 @@ def test_driver_rules_catch_each_way_of_deciding():
         "status = 'cannot' if reason in ('unsupported',) else 'refused'": "error's words",
         "if 'bomb' in str(error): pass": "error's words",
         "if decoded.partial:\n    return Answer(None, 'refused', 'partial')": "partial decode",
+        "if member.note.startswith('refused'):\n    raise Refused(member.note)": "note's words",
         "if task.id == 'made/development/line-one-series': pass": "names a task",
         "if case == 'line-one-series': pass": "names a task",
     }

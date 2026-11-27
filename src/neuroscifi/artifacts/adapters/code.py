@@ -224,6 +224,7 @@ def python_package_graph(files: Mapping[str, bytes], limits) -> tuple[Graph, lis
                       rule="max_decoded_bytes", reason="too_large")
     notes: list[str] = []
     modules: dict[str, _Module] = {}
+    too_deep = 0
     for path in sorted(files):
         deadline.check()
         raw = files[path]
@@ -237,7 +238,8 @@ def python_package_graph(files: Mapping[str, bytes], limits) -> tuple[Graph, lis
             notes.append(f"{path}: not valid Python (line {error.lineno}), left out")
             continue
         except (RecursionError, MemoryError, ValueError):
-            notes.append(f"{path}: nests too deeply to parse, left out")
+            too_deep += 1
+            notes.append(f"{path}: nests too deeply, or holds too long an expression, for the parser here; left out")
             continue
         name = module_name(path)
         if name in modules:
@@ -245,6 +247,12 @@ def python_package_graph(files: Mapping[str, bytes], limits) -> tuple[Graph, lis
             continue
         modules[name] = _Module(name, tree, text.count("\n") + (1 if text and not text.endswith("\n") else 0),
                                 path.replace("\\", "/").endswith("__init__.py"))
+    if not modules and too_deep:
+        # security review N2: a long chain (a + b + ..., f(f(...)), a.b.c...) can be valid Python the parser cannot
+        # build within its recursion limit; that is a limit here, not a judgment of the file
+        raise Refused(f"{too_deep} of {len(files)} file(s) nest too deeply, or hold too long an expression, for the "
+                      "Python parser here, so they were not read (they may be valid Python)"
+                      + ("; the others are not valid Python" if too_deep < len(files) else ""), rule="max_depth")
     if not modules:
         raise Malformed("no file holds valid Python")
     b = _Builder(budget)

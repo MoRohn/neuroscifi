@@ -544,7 +544,10 @@ def _read_file(path, cap: int, *, follow_symlinks: bool) -> bytes:
     except OSError as error:
         if not follow_symlinks and os.path.islink(path):
             raise StoreRefused("a symbolic link is followed only when you name it yourself", rule="symlink") from None
-        raise StoreRefused(f"the file cannot be opened ({type(error).__name__})", rule="unreadable") from None
+        why = ("it does not exist" if isinstance(error, FileNotFoundError) else
+               "you do not have permission to read it" if isinstance(error, PermissionError) else
+               "it is a folder" if isinstance(error, IsADirectoryError) else (error.strerror or "an error").lower())
+        raise StoreRefused(f"the file cannot be opened: {why}", rule="unreadable") from None
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):

@@ -228,7 +228,9 @@ class InstanceConfig:
 
 
 MAX_ROW_LIMIT = 10**12
-_ADAPTER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")    # an entry-point name the owner may approve
+# an approval of an external file reader: its entry-point name, and the distribution and version installed when the
+# owner approved it (NAME=DIST==VERSION; security review N4); a bare name is accepted as stored before and loads nothing
+_ADAPTER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}(?:=[A-Za-z0-9][A-Za-z0-9_.-]{0,99}==[A-Za-z0-9][A-Za-z0-9_.+!-]{0,63})?")
 CONSOLIDATION_WARN_SHARE = 0.8      # of max_consolidated_rows: from here the owner is warned
 
 

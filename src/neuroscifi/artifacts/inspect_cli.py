@@ -36,9 +36,22 @@ def register(sub):
     p.set_defaults(handler=_inspect)
 
 
+_BYTE_COUNT = re.compile(r"\b(\d{7,}) bytes\b|(?<=limit of )(\d{7,})\b")      # "N bytes", "the limit of N"
+_SPEC_PATH = re.compile(r"\$((?:\.[A-Za-z_][\w-]*|\[\d+\])*)(?=:)")
+
+
+def _path_words(m) -> str:
+    parts = re.findall(r"\.([A-Za-z_][\w-]*)|\[(\d+)\]", m.group(1))
+    words = [name or f"item {int(index) + 1}" for name, index in parts]
+    return "in " + (", ".join(words) if words else "the specification")
+
+
 def _clean(text) -> str:
-    """Text from the file may hold terminal escape or direction-override characters: shown as '?'."""
-    return _CONTROL.sub("?", str(text))
+    """Plain output: text from the file may hold terminal escape or direction-override characters (shown as '?');
+    large byte counts are written in MiB, and a specification path ($.options) in words (fix lane F3, item 7)."""
+    text = _CONTROL.sub("?", str(text))
+    text = _BYTE_COUNT.sub(lambda m: f"{int(m.group(1) or m.group(2)) / 1048576:.1f} MiB", text)
+    return _SPEC_PATH.sub(_path_words, text)
 
 
 def _detected(d) -> dict:

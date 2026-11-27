@@ -166,10 +166,21 @@ def read_exact(source, count):
     return data
 
 
-def unpack(source, dest):
+# The most `unpack` writes (fix lane F3, item 5; lane S's open item): NSFA blocks stream, so a small archive of
+# highly compressible blocks could otherwise fill the disk. An instance or checkpoint larger than this is not one this
+# software makes; `convert` publishes nothing when the cap stops it.
+MAX_UNPACK_BYTES = 16 << 30
+
+
+class UnpackTooLarge(ValueError):
+    """The archive would unpack to more than the stated cap; nothing is published."""
+
+
+def unpack(source, dest, max_bytes=None):
     if read_exact(source, len(MAGIC)) != MAGIC:
         raise ValueError("Unknown archive format")
     digest = hashlib.sha256()
+    written, max_bytes = 0, MAX_UNPACK_BYTES if max_bytes is None else max_bytes
     while True:
         tag = read_exact(source, 1)[0]
         if tag == END:
@@ -181,6 +192,10 @@ def unpack(source, dest):
         _, size, length, packed_hash, raw_hash = FRAME.unpack(bytes([tag])+read_exact(source, FRAME.size-1))
         if not 0 < size <= BLOCK or not 0 < length <= 2*BLOCK+1024:
             raise ValueError("Invalid block length")
+        if written + size > max_bytes:
+            raise UnpackTooLarge(f"the archive would unpack to more than {max_bytes >> 20} MiB, the most this "
+                                 "software writes: nothing was written")
+        written += size
         encoded = read_exact(source, length)
         if hashlib.sha256(encoded).digest() != packed_hash:
             raise ValueError("Damaged payload")
@@ -276,7 +291,7 @@ def partial_dir(parent):
         shutil.rmtree(directory, ignore_errors=True)
 
 
-def convert(command, source, destination, methods=FAST):
+def convert(command, source, destination, methods=FAST, max_unpack_bytes=None):
     """Never replace an existing file. Publish only complete outputs."""
     if destination.exists():
         raise FileExistsError(destination)
@@ -290,7 +305,7 @@ def convert(command, source, destination, methods=FAST):
         fd = os.open(temp/"output", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)  # private whatever the umask
         with source.open("rb") as inp, os.fdopen(fd, "wb") as out:
             if command == "unpack":
-                unpack(inp, out)
+                unpack(inp, out, max_unpack_bytes)
             else:
                 pack(inp, out, methods)
             out.flush()

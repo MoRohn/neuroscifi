@@ -6,9 +6,15 @@ from neuroscifi.artifacts import adapters, check, make, spec
 from neuroscifi.artifacts import types as T
 
 
+class _Dist:
+    def __init__(self, name, version):
+        self.name, self.version = name, version
+
+
 class _Ep:
-    def __init__(self, name, obj):
+    def __init__(self, name, obj, dist=("ext-pkg", "1.0")):
         self.name, self._obj, self.loaded = name, obj, False
+        self.dist = _Dist(*dist) if dist else None
 
     def load(self):
         self.loaded = True
@@ -133,12 +139,12 @@ def test_external_adapters_load_only_when_named(registry, monkeypatch):
     rows = {r["name"]: r for r in registry.catalog()}
     assert rows["ext-adapter"]["reason"] == "found, not approved" and not ep_named.loaded
     assert registry.load_external([]) == [] and not ep_named.loaded and not ep_other.loaded
-    assert registry.load_external(["ext-adapter"]) == ["ext-adapter"]
+    assert registry.load_external(["ext-adapter=ext-pkg==1.0"]) == ["ext-adapter"]
     assert ep_named.loaded and not ep_other.loaded
     rows = {r["name"]: r for r in registry.catalog()}
     assert rows["ext-adapter"]["source"] == "external" and rows["ext-adapter"]["available"] is True
     assert rows["unasked"]["reason"] == "found, not approved"
-    assert registry.load_external(["ext-adapter"]) == []   # idempotent
+    assert registry.load_external(["ext-adapter=ext-pkg==1.0"]) == []   # idempotent
     # the owner withdraws the name: the adapter is unloaded and listed as found again, through the public call
     assert registry.unload_external(["something-else"]) == ["ext-adapter"]
     rows = {r["name"]: r for r in registry.catalog()}
@@ -147,13 +153,41 @@ def test_external_adapters_load_only_when_named(registry, monkeypatch):
     assert registry.unload_external([]) == []
 
 
+def test_an_approval_names_the_distribution_and_version_and_a_changed_one_needs_approval_again(registry, monkeypatch):
+    # security review N4: two distributions may declare the same entry-point name; an upgrade may change the code
+    class Ext(Fake):
+        name = "ext-adapter"
+    ours, theirs = _Ep("ext-adapter", Ext), _Ep("ext-adapter", Ext, dist=("other-pkg", "9.9"))
+    monkeypatch.setattr(adapters, "_DISCOVERED", [theirs, ours])
+    with pytest.raises(LookupError, match="2 installed distributions declare"):
+        adapters.approval_for("ext-adapter")
+    assert registry.load_external(["ext-adapter=ext-pkg==1.0"]) == ["ext-adapter"]
+    assert ours.loaded and not theirs.loaded
+    assert adapters.loaded_external() == ("ext-adapter=ext-pkg==1.0",)
+    # the approval is withdrawn for a newer version: the one loaded is unloaded, and the newer one is not installed
+    assert registry.unload_external(["ext-adapter=ext-pkg==1.1"]) == ["ext-adapter"]
+    monkeypatch.setattr(adapters, "_DISCOVERED", [_Ep("ext-adapter", Ext, dist=("ext-pkg", "1.1"))])
+    assert adapters.approval_for("ext-adapter") == "ext-adapter=ext-pkg==1.1"
+    upgraded = _Ep("ext-adapter", Ext, dist=("ext-pkg", "2.0"))
+    monkeypatch.setattr(adapters, "_DISCOVERED", [upgraded])
+    assert registry.load_external(["ext-adapter=ext-pkg==1.1"]) == [] and not upgraded.loaded
+    row = {r["name"]: r for r in registry.catalog()}["ext-adapter"]
+    assert "approved as ext-pkg 1.1, but the one installed is ext-pkg 2.0: approve it again" in row["reason"]
+    assert row["distribution"] == "ext-pkg 2.0"
+    # a bare name (stored before distributions were recorded) loads nothing
+    assert registry.load_external(["ext-adapter"]) == [] and not upgraded.loaded
+    assert "approved by name only" in {r["name"]: r for r in registry.catalog()}["ext-adapter"]["reason"]
+    with pytest.raises(LookupError, match="no installed file reader"):
+        adapters.approval_for("nothing-here")
+
+
 def test_external_adapter_that_fails_to_load_is_listed(registry, monkeypatch):
     class Bad:
         def load(self):
             raise ImportError("boom")
-        name = "bad"
+        name, dist = "bad", _Dist("bad-pkg", "2")
     monkeypatch.setattr(adapters, "_DISCOVERED", [Bad()])
-    assert registry.load_external(["bad"]) == []
+    assert registry.load_external(["bad=bad-pkg==2"]) == []
     rows = {r["name"]: r for r in registry.catalog()}
     assert rows["bad"]["reason"] == "approved, failed to load (ImportError)"
 

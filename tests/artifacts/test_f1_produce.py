@@ -20,8 +20,8 @@ def test_a_planned_form_without_a_builder_falls_through_and_says_so(monkeypatch)
 def test_the_decode_is_given_only_the_time_that_is_left(monkeypatch):
     seen = []
     real = P._decode
-    monkeypatch.setattr(P, "_decode", lambda data, name, limits: seen.append(limits.max_seconds) or real(data, name,
-                                                                                                         limits))
+    monkeypatch.setattr(P, "_decode", lambda data, name, limits, partial_ok=False: seen.append(limits.max_seconds)
+                        or real(data, name, limits, partial_ok))
     ctx = P.forms.Context(device="cli", budget_s=3.0)
     P.produce(None, "show me the temperature over time", [P.Given("temps.csv", base.temps_csv())], context=ctx)
     assert seen and all(0 < s <= 3.0 for s in seen)

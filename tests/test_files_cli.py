@@ -92,3 +92,20 @@ def test_profile_device_cuda_without_cupy_exits_2(tmp_path):
     assert done.returncode == 2 and "Traceback" not in done.stderr
     assert done.stderr.strip() == ("CUDA mode requires CuPy for this driver; install the 'gpu' extra "
                                    "(pip install 'neuroscifi[gpu]')")
+
+
+def test_archive_unpack_stops_at_its_stated_cap_and_publishes_nothing(tmp_path, monkeypatch, capsys):
+    # fix lane F3, item 5: NSFA blocks stream, so a small archive of compressible blocks could fill the disk
+    source = tmp_path / "zeros.bin"
+    source.write_bytes(bytes(4 << 20))
+    packed, restored = tmp_path / "zeros.nsfa", tmp_path / "zeros.out"
+    run("archive", "pack", str(source), str(packed))
+    assert packed.stat().st_size < 64 << 10                        # 4 MiB of zeros in a few KiB
+    monkeypatch.setattr(archive, "MAX_UNPACK_BYTES", 1 << 20)
+    assert run("archive", "unpack", str(packed), str(restored)) == 2
+    assert "would unpack to more than 1 MiB" in capsys.readouterr().err
+    assert not restored.exists() and not list(tmp_path.glob(".nsf-partial-*"))
+    with pytest.raises(archive.UnpackTooLarge):
+        archive.convert("unpack", packed, restored, max_unpack_bytes=(4 << 20) - 1)
+    archive.convert("unpack", packed, restored, max_unpack_bytes=4 << 20)   # exactly the cap is allowed
+    assert restored.read_bytes() == source.read_bytes()

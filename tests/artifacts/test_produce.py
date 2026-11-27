@@ -391,7 +391,13 @@ def test_the_byte_budget_reaches_the_planner_and_the_generator():
 
 def test_foresight_is_paired_with_the_outcome_and_kept_as_a_simulation_not_evidence(individual):
     db, _ = individual
-    result = P.produce(db, "how did it change?", [P.Given("temps.csv", temps_csv())], now=T0)
+    # at the defaults the imagined store is not written (fix lane F3, item 3): the pairs stay in the record
+    quiet = P.produce(db, "how did it change?", [P.Given("temps.csv", temps_csv())], now=T0)
+    assert {p["what"] for p in quiet.record["foresight"]} >= {"bytes", "seconds", "over_budget"}
+    assert "your imagination settings do not allow records there" in quiet.record["simulation"]
+    assert db.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
+    store.set_config(db, {"imagine_scenarios": True}, T0)
+    result = P.produce(db, "how did it change?", [P.Given("temps2.csv", temps_csv())], now=T0)
     pairs = {p["what"]: p for p in result.record["foresight"]}
     assert {"bytes", "seconds", "over_budget"} <= set(pairs)
     assert pairs["bytes"]["observed"] == len(result.made.bytes)
@@ -410,6 +416,7 @@ def test_a_forgotten_root_named_in_a_source_removes_what_was_made_and_a_restore_
     evidence.start_epoch(db, "e1", T0)
     evidence.observe(db, {"id": "ev1", "epoch": "e1", "channel": "word", "action": 0, "bit": 1, "root": ROOT}, T0)
     named = f"who,n\n{ROOT},3\nothers,4\n".encode()
+    store.set_config(db, {"imagine_scenarios": True}, T0)            # the simulation record is written (item 3)
     result = P.produce(db, "compare n for each who", [P.Given("people.csv", named)], form="bar_chart", now=T0)
     plain = P.produce(db, "how did it change?", [P.Given("temps.csv", temps_csv())], now=T0)
     assert result.status == plain.status == "made"

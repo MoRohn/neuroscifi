@@ -629,11 +629,16 @@ def carried_hist(scope: Elem, data: dict, options: dict) -> list:
     import bisect
     found = stray = 0
     counted = 0
+    # The convention, read from the specification and not from the generator: a value on an inner edge belongs to
+    # the upper bin, and the last bin is closed on the right. With a stated bin width the bins are [k*w, (k+1)*w)
+    # up to the one that holds the largest value, so no value may sit on the last right edge: a value there is
+    # counted in no bin, and a picture that drew it in the bin below fails.
     last_edge = max((b[1] for b in bins), default=None)
+    closed_last = not options.get("bin_width")
     for a, b, c in bins:
         lo = bisect.bisect_left(values, a - eps)
-        hi = bisect.bisect_right(values, b + eps) if last_edge is not None and abs(b - last_edge) <= eps * 50 \
-            else bisect.bisect_left(values, b - eps)
+        hi = bisect.bisect_right(values, b + eps) if closed_last and last_edge is not None and \
+            abs(b - last_edge) <= eps * 50 else bisect.bisect_left(values, b - eps)
         truth = hi - lo
         if abs(c - truth) <= max(0.5, ay.tol()):
             found += 1

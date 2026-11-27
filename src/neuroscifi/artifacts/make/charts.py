@@ -656,26 +656,15 @@ def histogram_edges(values, opts):
     lo, hi = min(values), max(values)
     if "bin_width" in opts and opts["bin_width"] > 0:
         w = float(opts["bin_width"])
-        places = decimals_of(w)
-
-        def edge(k):
-            return float(f"{k * w:.{places}f}")
-        # Bins [k*w, (k+1)*w): a value on an edge belongs to the bin it starts, so the first edge is at or below the
-        # smallest value and the last edge is ABOVE the largest one (a largest value lying on k*w opens bin k rather
-        # than closing bin k-1: fix lane F1, the histogram finding of lane F2's fuzz, 17.5 drawn in the lower bin).
-        # Edges are compared as the rounded numbers that are drawn and stated.
-        k0, k1 = math.floor(lo / w), math.floor(hi / w) + 1
-        while edge(k0) > lo:
-            k0 -= 1
-        while edge(k0 + 1) <= lo:
-            k0 += 1
-        while edge(k1) <= hi:
-            k1 += 1
-        while k1 - 1 > k0 and edge(k1 - 1) > hi:
-            k1 -= 1
+        # bins [k*w, (k+1)*w) from the one that holds the smallest value to the one that holds the largest: a value
+        # on an inner edge belongs to the upper bin, so the largest value never sits on the right edge (17.5 with a
+        # width of 2.5 is in the bin 17.5-20, not the last edge of 15-17.5); the quotient is rounded to 9 places so
+        # that 0.3 / 0.1 counts as 3
+        k0, k1 = math.floor(round(lo / w, 9)), math.floor(round(hi / w, 9)) + 1
         if k1 - k0 > 500:
             raise Fit("the bin width gives more than 500 bins")
-        return [edge(k) for k in range(k0, k1 + 1)]
+        places = decimals_of(w)
+        return [float(f"{k * w:.{places}f}") for k in range(k0, k1 + 1)]
     # Sturges' rule (ceil(log2 n) + 1 bins, 5 to 50) unless the spec names a count; edges on nice numbers.
     target = int(opts.get("bins", min(50, max(5, math.ceil(math.log2(len(values))) + 1))))
     return list(linear_ticks(lo, hi, max(2, round(target * 1.5))).values)   # nice steps at or above the count
@@ -722,8 +711,8 @@ def make_histogram(spec):
     name = d.get("name") or d["x"]["label"]
     plot = el("g", (("class", "plot"),), el("g", (("class", "series"), ("data-name", name)), "".join(rects)))
     words = (f"Histogram of {len(values)} values of {xlab} in {len(counts)} bins of width "
-             f"{plain(edges[1] - edges[0])} from {plain(edges[0])} to {plain(edges[-1])}; each bin holds the values "
-             f"from its left edge up to (not including) its right edge, the last bin also its right edge. "
+             f"{plain(edges[1] - edges[0])} from {plain(edges[0])} to {plain(edges[-1])}; a value on an inner edge "
+             f"belongs to the upper bin, and the last bin is closed on the right. "
              f"The fullest bin holds {max(counts)} values.")
     body = frame.title_svg + grid + yaxis + xaxis + plot
     return finish(frame, describe(spec, words), d, body), ()

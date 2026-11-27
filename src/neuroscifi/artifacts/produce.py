@@ -44,6 +44,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import re
 import time
 from dataclasses import dataclass, field, replace
 
@@ -58,6 +59,12 @@ MAX_RECORD_BYTES = 14 << 10
 MAX_ALTERNATIVES = 4
 MAX_SOURCES = 32
 MECHANISM, MECHANISM_VERSION = "artifacts.produce", "1"
+# the pipeline's stages in the owner's words (a stopped production names the stage it did not reach)
+STAGE_WORDS = {"interpret": "reading the files", "relate": "relating the files to each other",
+               "conceptualize": "choosing a form", "explore": "weighing the possible forms",
+               "choose": "choosing among them", "plan": "planning what to make", "generate": "making it",
+               "render": "drawing it", "evaluate": "checking it", "repair": "repairing it",
+               "finalize": "finishing"}
 # Findings whose passing means the source's values were read back from the bytes (carried information).
 CARRIED_RULES = ("values_recovered", "nodes_recovered", "edges_recovered", "cells_match", "values_exact",
                  "order_preserved", "printed_values_match", "all_values_binned")
@@ -122,8 +129,9 @@ class _Run:
 
     def step(self, name, fn, *args, summary_in=None, summary_out=None, **kwargs):
         if self.deadline is not None and time.monotonic() > self.deadline:
-            raise ProductionStopped(f"the time budget of {self.context.budget_s:g} seconds was used up before "
-                                    f"{name}: nothing was stored")
+            raise ProductionStopped(f"the time budget of {self.context.budget_s:g} second"
+                                    f"{'' if self.context.budget_s == 1 else 's'} was used up before "
+                                    f"{STAGE_WORDS.get(name, name)}: nothing was stored")
         start = time.monotonic()
         out = fn(*args, **kwargs)
         self.steps.append({"step": name, "seconds": round(time.monotonic() - start, 4),
@@ -135,20 +143,67 @@ class _Run:
 # Interpret
 
 
-def _decode(data: bytes, name: str, limits: Limits):
-    """(representation, detected format, None) or (None, format, why not)."""
+_STOP_WORDS = re.compile(r"\b(?:stopped|limits?|partial|not decoded|listed only)\b", re.I)
+
+
+def part_read(decoded) -> str:
+    """Exactly what part of a partly decoded file was read, in the decoder's own words (where it stopped and why)
+    and the representation's own count: the sentence a thing made from it carries in its description."""
+    rep = decoded.representation
+    said = [n for n in decoded.notes if _STOP_WORDS.search(n)] or list(decoded.notes)
+    count = (f"{rep.n_rows} rows" if getattr(rep, "kind", "") == "table" else
+             f"{len(rep.members)} members" if getattr(rep, "kind", "") == "bundle" else
+             f"{len(rep.blocks)} blocks" if getattr(rep, "kind", "") == "document" else "")
+    return (f"what was read holds {count}; " if count else "") + "; ".join(said)[:400]
+
+
+def _decode(data: bytes, name: str, limits: Limits, partial_ok: bool = False):
+    """(representation, detected format, None, part) or (None, format, why not, ""). A partly decoded file is used
+    only when the owner agreed (`partial_ok`, `nsf artifact make --partial`); `part` then says what was read."""
     try:
         decoded = guarded.decode(data, name=name, limits=replace(limits, refuse_flagged=True))
     except HeaderOnly as error:
-        return None, "unknown", f"only its header is read here ({error})"[:300]
+        return None, "unknown", f"only its header is read here ({error})"[:300], ""
     except ArtifactError as error:
-        return None, "unknown", f"{error.reason}: {error}"[:300]
+        return None, "unknown", f"{error.reason}: {error}"[:300], ""
     rep = decoded.representation
     if getattr(rep, "kind", None) == "opaque":
-        return None, decoded.detected.format, "nothing here reads its format"
-    if decoded.partial:
-        return None, decoded.detected.format, "a limit stopped its decoding early: " + "; ".join(decoded.notes)[:200]
-    return rep, decoded.detected.format, None
+        return None, decoded.detected.format, "nothing here reads its format", ""
+    if decoded.partial and not partial_ok:
+        return None, decoded.detected.format, ("only part of it could be read, and a part is used only when you "
+                                               "agree (--partial): " + part_read(decoded))[:400], ""
+    return rep, decoded.detected.format, None, part_read(decoded) if decoded.partial else ""
+
+
+MAX_RASTER_PIXELS = 4_000_000   # a larger image is measured and drawn from a downsample (fix lane F3, item 3)
+
+
+def reduce_for_making(rep) -> tuple[object, str]:
+    """(representation, rule) a production works from: a large image becomes a stated downsample and a large mesh a
+    stated decimation the viewer can show, so that making stays within its memory whatever the source's size (code
+    review M5 and H1: 1.37 GiB for a 30 MP photo, nothing made for a 1 M-triangle STL). The rule ("" when nothing
+    was reduced) goes into the description of whatever is made."""
+    import math
+
+    import numpy as np
+    kind = getattr(rep, "kind", "")
+    if kind == "raster":
+        h, w = rep.pixels.shape[:2]
+        if h * w > MAX_RASTER_PIXELS:
+            step = math.ceil(math.sqrt(h * w / MAX_RASTER_PIXELS))
+            px = np.ascontiguousarray(rep.pixels[::step, ::step])
+            return replace(rep, pixels=px), (f"measured and drawn from a downsample of its {w} x {h} pixels: one "
+                                             f"pixel in every {step} across and down ({px.shape[1]} x {px.shape[0]})")
+    if kind == "mesh":
+        m, n = len(rep.faces), len(rep.vertices)
+        if m > B.MAX_SOLID_VIEW_FACES or n > B.MAX_SOLID_VIEW_VERTICES:
+            step = math.ceil(m / min(B.MAX_SOLID_VIEW_FACES, B.MAX_SOLID_VIEW_VERTICES // 3))
+            used, inverse = np.unique(rep.faces[::step], return_inverse=True)
+            faces = inverse.reshape(-1, 3).astype(np.int64)
+            return replace(rep, vertices=np.ascontiguousarray(rep.vertices[used]), faces=faces), (
+                f"decimated to be shown: one triangle in every {step} of its {m} is kept ({len(faces)} triangles, "
+                f"{len(used)} vertices) and the others are not shown")
+    return rep, ""
 
 
 def _unwrap(rep, label):
@@ -177,7 +232,8 @@ def _within(limits: Limits, deadline: float | None) -> Limits:
     return replace(limits, max_seconds=max(0.0, min(limits.max_seconds, deadline - time.monotonic())))
 
 
-def interpret(db, sources, limits: Limits, deadline: float | None = None) -> tuple[list, list]:
+def interpret(db, sources, limits: Limits, deadline: float | None = None,
+              partial_ok: bool = False) -> tuple[list, list]:
     """(pieces, notes per source). `sources`: artifact ids (read from the store) or `Given` files (in memory)."""
     from . import store
     pieces, notes, python = [], [], []
@@ -197,18 +253,20 @@ def interpret(db, sources, limits: Limits, deadline: float | None = None) -> tup
                 notes.append({"id": sid, "label": label, "used": False, "why": f"its bytes are {record.state}"})
                 continue
             data = store.read_bytes(db, sid)
-        rep, fmt, why = _decode(data, label, _within(limits, deadline))
+        rep, fmt, why, part = _decode(data, label, _within(limits, deadline), partial_ok)
         if rep is None:
             notes.append({"id": sid, "label": label, "format": fmt, "used": False, "why": why})
             continue
         if fmt == "python":
             python.append((label, data, sid))
         rep, reading = _unwrap(rep, label)
+        rep, reduced = reduce_for_making(rep)
         if kind == "made":
             reading += "; it was made by the system"
-        pieces.append(B.Piece(sid, label, rep, fmt, rep.shape(), reading))
+        pieces.append(B.Piece(sid, label, rep, fmt, rep.shape(), reading, part, reduced))
         notes.append({"id": sid, "label": label, "format": fmt, "used": True, "reading": reading,
-                      "kind": rep.kind, "shape": _shape(rep.shape())})
+                      "kind": rep.kind, "shape": _shape(rep.shape())} | ({"part": part} if part else {})
+                     | ({"reduced": reduced} if reduced else {}))
     if len(python) >= 2:
         from .adapters.code import python_package_graph
         try:
@@ -533,15 +591,21 @@ def choose(plan, explored, direct) -> list[dict]:
         out.append({"forms": list(fs), "total": round(cand.total, 4) if cand else None,
                     "complexity": sum(forms.FORMS[f].complexity for f in fs if f in forms.FORMS)})
     if any(fs and fs[0] not in B.BUILDERS and fs[0] not in WORDS for fs in explored):
-        seen = {tuple(fs) for fs in explored}
-        for cand in (c for c in plan.candidates if c.excluded is None):
-            if cand.forms in seen or not cand.forms or cand.forms[0] not in B.BUILDERS:
-                continue
-            seen.add(cand.forms)
-            out.append({"forms": list(cand.forms), "total": round(cand.total, 4), "fallback": True,
-                        "complexity": sum(forms.FORMS[f].complexity for f in cand.forms if f in forms.FORMS)})
-            if sum(1 for c in out if c.get("fallback")) >= FALLBACKS:
-                break
+        out += fallbacks(plan, {tuple(fs) for fs in explored})
+    return out
+
+
+def fallbacks(plan, seen: set, why: str = "fallback") -> list[dict]:
+    """Up to FALLBACKS further candidates the planner admitted whose first form has a builder, not in `seen`."""
+    out = []
+    for cand in (c for c in plan.candidates if c.excluded is None):
+        if cand.forms in seen or not cand.forms or cand.forms[0] not in B.BUILDERS:
+            continue
+        seen.add(cand.forms)
+        out.append({"forms": list(cand.forms), "total": round(cand.total, 4), why: True,
+                    "complexity": sum(forms.FORMS[f].complexity for f in cand.forms if f in forms.FORMS)})
+        if len(out) >= FALLBACKS:
+            break
     return out
 
 
@@ -902,9 +966,16 @@ def _simulate(db, foreseen: dict, pairs: list, made_form: str, now: float):
     the predictions (numbers and booleans, a form name), the outcome slot what was observed. No content is in it.
     Returns (record id or None, why not)."""
     from .. import provenance
-    from ..instance import imagined
+    from ..instance import imagined, store as instance_store
     if not imagined.present(db):
         return None, "this individual has no imagined store"
+    cfg = instance_store.config(db)
+    # fix lane F3, item 3 (code review L9): the imagined store is written only where the owner's imagination settings
+    # allow records in it: imagine_scenarios (the one imagination switch that writes, off by default) and a
+    # max_imagined_rows above 0. The production record inside the artifact keeps the foresight pairs regardless.
+    if not cfg.imagine_scenarios or cfg.max_imagined_rows <= 0:
+        return None, ("not kept in the imagined store: your imagination settings do not allow records there "
+                      "(nsf config --imagine-scenarios on); the foresight and what was observed are in this record")
     payload, observed = {"form": made_form, "planner_form": foreseen.get("form")}, {}
     for pair in pairs:
         key = pair["what"]
@@ -924,7 +995,7 @@ def _simulate(db, foreseen: dict, pairs: list, made_form: str, now: float):
                               question="Did the pre-production check foresee what making this form showed?", now=now)
         imagined.observe(db, rid, observation=observed, now=now)
     except Exception as error:         # the imagined store refusing (a limit of 0, paused writes) is not fatal
-        return None, f"not kept: {type(error).__name__}: {str(error)[:120]}"
+        return None, f"not kept: the store of imagined records refused it ({str(error)[:120]})"
     return rid, None
 
 
@@ -953,7 +1024,7 @@ def _forget_stored(db, ids, now):
 
 def produce(db, request: str, sources, *, form: str | None = None, context: forms.Context | None = None,
             limits: Limits | None = None, options: dict | None = None, alternatives: int = 1, keep: bool = False,
-            now: float | None = None) -> Production:
+            now: float | None = None, partial_ok: bool = False) -> Production:
     """Make, check and keep the result the request and the content call for (the module doc). `sources`: stored
     artifact ids, or `Given` files (stored only when something is made). `db=None` runs every step but Finalize
     (nothing is stored; the record says so): the benchmark's driver uses it."""
@@ -976,7 +1047,8 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
               "asked": {"request": request, "form": form, "options": options, "device": context.device,
                         "budget": {"seconds": context.budget_s, "bytes": context.budget_bytes},
                         "alternatives": alternatives}}
-    pieces, notes = run.step("interpret", functools.partial(interpret, deadline=run.deadline), db, sources, limits,
+    pieces, notes = run.step("interpret", functools.partial(interpret, deadline=run.deadline, partial_ok=partial_ok),
+                             db, sources, limits,
                              summary_in={"sources": len(sources)},
                              summary_out=lambda r: {"pieces": len(r[0]), "unused": sum(1 for n in r[1]
                                                                                         if not n["used"])})
@@ -1029,12 +1101,17 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
         if db is not None and any(isinstance(s, Given) for s in sources):
             pieces, stored_sources = _store_given(db, sources, pieces, record, now)
         candidates = []
-        for cand in tried:
+        queue, refilled = list(tried), direct is not None
+        while queue:
+            cand = queue.pop(0)
             fs = tuple(cand["forms"])
             entry = {"forms": list(fs), "form": _generator_form(fs[0]), "total": cand["total"]}
             if cand.get("fallback"):
                 entry["fallback"] = ("the planned form has no builder here: this is the next form the planner "
                                      "admitted that has one")
+            if cand.get("cannot_build"):
+                entry["fallback"] = ("the planned form could not be built from this content: this is the next form "
+                                     "the planner admitted that has a builder")
             seen = foresee(fs[0], pieces, context) if direct is None else {"form": fs[0], "codes": [],
                                                                            "problems": [], "estimates": {}}
             entry["foreseen"] = seen
@@ -1046,6 +1123,10 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
             except B.CannotBuild as why:
                 entry["cannot"] = str(why)[:300]
                 candidates.append(entry)
+                if not queue and not refilled and all("spec_form" not in c for c in candidates):
+                    # nothing tried could even be built (code review M4: a mesh planned as a picture): fall through
+                    refilled = True
+                    queue += fallbacks(plan, {tuple(c["forms"]) for c in tried}, "cannot_build")
                 continue
             spec = _apply_options(built.spec, options)
             used = dict(built.used)

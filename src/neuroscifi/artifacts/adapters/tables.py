@@ -32,6 +32,7 @@ import io
 import json
 import math
 import re
+import sys
 from datetime import datetime, timezone
 
 import numpy as np
@@ -388,6 +389,16 @@ def _reject_controls(text: str) -> None:
         raise Malformed("the text holds NUL characters: not delimited text")
 
 
+def _lines(text: str):
+    """The lines of `text` with their endings, one at a time (csv joins a quoted field across them)."""
+    start, n = 0, len(text)
+    while start < n:
+        end = text.find("\n", start)
+        end = n if end < 0 else end + 1
+        yield text[start:end]
+        start = end
+
+
 def read_delimited(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     deadline, budget = Deadline(limits.max_seconds), DecodeBudget(limits)
     text, notes = decode_text(data)
@@ -398,8 +409,11 @@ def read_delimited(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     else:
         delimiter, why = sniff_delimiter(text)
     notes.append(why)
+    # the decoded text is charged before any row is split; the rows are then read one line at a time from it (an
+    # io.StringIO copy would hold every character in four bytes: about 4x the input again, fix lane F3 item 5)
+    budget.take_bytes(sys.getsizeof(text))
     rows, partial = [], False
-    reader = (csv.reader(io.StringIO(text), delimiter=delimiter, quotechar='"', strict=False) if delimiter
+    reader = (csv.reader(_lines(text), delimiter=delimiter, quotechar='"', strict=False) if delimiter
               else ([line] for line in text.splitlines()))
     try:
         for i, row in enumerate(reader):

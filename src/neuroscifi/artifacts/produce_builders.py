@@ -38,12 +38,15 @@ MAX_TABLE_COLUMNS = 50
 MAX_EVENTS = 500               # events a timeline shows (forms: "every dated event up to 500")
 MAX_NODES = 150                # nodes a node-link diagram shows (forms: "about 150 nodes")
 MAX_TREE_NODES = 300           # nodes a tree diagram shows
+MAX_SIBLINGS = 24              # children of one node a tree diagram shows side by side (fix lane F3: 5000 files)
 ENVELOPE_WINDOWS = 480         # windows of a sound's amplitude envelope
 SPECTRUM_FFT = 4096            # samples per spectrum window (Hann, half overlap)
 SPECTRUM_MAX_WINDOWS = 512     # windows averaged at most (evenly spread over the sound)
 RASTER_SIDE = 256              # the longest side of a derived image view, in cells
 MAX_HIST_BINS, MIN_HIST_BINS = 40, 5
 MAX_SOLID_VIEW_VERTICES, MAX_SOLID_VIEW_FACES = 20_000, 40_000
+LINE_WINDOWS = 2000            # a longer series is drawn as the extremes of this many windows of rows (fix lane F3)
+MAX_SCATTER_POINTS = 5000      # a scatter of more rows draws every k-th row
 
 
 class CannotBuild(ArtifactError):
@@ -60,6 +63,8 @@ class Piece:
     format: str
     shape: ContentShape
     reading: str = "as decoded"  # how this piece was read from the source
+    part: str = ""              # when only part of the source was read (the owner agreed, --partial): what part
+    reduced: str = ""           # when a large source was reduced to be made from (produce.reduce_for_making): how
 
 
 @dataclass(frozen=True)
@@ -86,6 +91,8 @@ def _sources(pieces) -> str:
 def _spec(form: str, title: str, description: str, data: dict, pieces, options: dict | None = None,
           rules=()) -> dict:
     words = " ".join([description.strip()] + [r[:1].upper() + r[1:] + "." for r in rules] +
+                     [f"Only part of {p.label} was read: {p.part}." for p in pieces if p.part] +
+                     [f"{p.label} was {p.reduced}." for p in pieces if p.reduced] +
                      [MADE.format(sources=_sources(pieces))])
     return {"spec": form, "version": 1, "title": _cut(title, 200), "description": _cut(words, 2000), "data": data,
             "options": dict(options or {}), "sources": list(dict.fromkeys(p.source for p in pieces)),
@@ -270,6 +277,24 @@ def _points(table, x, y) -> list:
     return [[a, b] for a, b in zip(xs, ys, strict=True) if a is not None]
 
 
+def _envelope_points(points: list) -> list:
+    """At most 2 x LINE_WINDOWS points: in each of LINE_WINDOWS equal windows of rows, the row with the smallest and
+    the row with the largest value, in row order (every extreme of the series is kept; gaps are dropped)."""
+    pts = [p for p in points if p[1] is not None]
+    n = len(pts)
+    if n <= 2 * LINE_WINDOWS:
+        return pts
+    out = []
+    for w in range(LINE_WINDOWS):
+        window = pts[w * n // LINE_WINDOWS:(w + 1) * n // LINE_WINDOWS]
+        if not window:
+            continue
+        lo = min(range(len(window)), key=lambda i: window[i][1])
+        hi = max(range(len(window)), key=lambda i: window[i][1])
+        out.extend(window[i] for i in sorted({lo, hi}))
+    return out
+
+
 def _y_axis(ys) -> dict:
     units = {c.unit for c in ys}
     axis = {"label": _cut(ys[0].name if len(ys) == 1 else ", ".join(c.name for c in ys), 200)}
@@ -292,6 +317,11 @@ def build_line(pieces, request, options, *, small_multiples=False) -> Built:
     x_axis = _axis(x, scale="time" if x.kind == "time" else "linear") if x is not None else \
         {"label": "row number", "scale": "linear"}
     series = [{"name": _cut(c.name, 200), "points": _points(table, x, c)} for c in ys]
+    longest = max((len(s["points"]) for s in series), default=0)
+    if longest > 2 * LINE_WINDOWS:
+        series = [s | {"points": _envelope_points(s["points"])} for s in series]
+        rules.append(f"the {longest} rows are drawn as the smallest and the largest value in each of {LINE_WINDOWS} "
+                     "equal windows of rows (every extreme is kept; the values between them are not drawn)")
     xname = x.name if x is not None else "row number"
     kind = "small multiples (one panel per series)" if form == "chart.small_multiples" else "a line chart"
     desc = (f"{kind[:1].upper() + kind[1:]} of {', '.join(c.name for c in ys)} against {xname}, {table.n_rows} rows "
@@ -330,6 +360,11 @@ def build_scatter(pieces, request, options) -> Built:
             raise CannotBuild(f"the column {c.name!r} holds {c.kind}, not numbers")
     pts = [p for p in _points(table, x, y) if p[1] is not None]
     rules = []
+    if len(pts) > MAX_SCATTER_POINTS:
+        step = -(-len(pts) // MAX_SCATTER_POINTS)
+        rules.append(f"one row in every {step} of the {len(pts)} rows is drawn ({len(pts[::step])} points), "
+                     "starting with the first")
+        pts = pts[::step]
     if len(numeric) > 2:
         rules.append(f"two of the {len(numeric)} numeric columns are drawn ({x.name} across, {y.name} up)")
     desc = f"A scatter chart of {y.name} against {x.name}: {len(pts)} points, one per row of {piece.label}."
@@ -751,10 +786,39 @@ def _hierarchy(piece) -> tuple[list[str], list[int | None], list[str], str]:
         what = "folders and members"
     else:
         raise CannotBuild(f"{piece.label} has no hierarchy")
+    labels, parents = _few_siblings(labels, parents, rules, what)
     if len(labels) > MAX_TREE_NODES:
         rules.append(f"the first {MAX_TREE_NODES} of {len(labels)} {what}, in reading order, are shown")
         labels, parents = labels[:MAX_TREE_NODES], parents[:MAX_TREE_NODES]
     return labels, parents, rules, what
+
+
+def _few_siblings(labels, parents, rules, what):
+    """At most MAX_SIBLINGS children of one node, the first in reading order; the others (with what is under them)
+    become one node saying how many are not shown (a diagram of thousands of siblings cannot be read or drawn)."""
+    counts: dict = {}
+    for p in parents:
+        counts[p] = counts.get(p, 0) + 1
+    if max(counts.values(), default=0) <= MAX_SIBLINGS:
+        return labels, parents
+    seen: dict = {}
+    new_index, out_labels, out_parents, more = {}, [], [], {}
+    for i, (label, p) in enumerate(zip(labels, parents, strict=True)):
+        if p is not None and p not in new_index:
+            continue                                   # under a node that is not shown
+        seen[p] = seen.get(p, 0) + 1
+        if seen[p] > MAX_SIBLINGS:
+            more[p] = more.get(p, 0) + 1
+            continue
+        new_index[i] = len(out_labels)
+        out_labels.append(label)
+        out_parents.append(None if p is None else new_index[p])
+    for p, n in more.items():
+        out_labels.append(f"... and {n} more")
+        out_parents.append(None if p is None else new_index[p])
+    rules.append(f"at most {MAX_SIBLINGS} {what} are shown under one node, the first in reading order; one node "
+                 "under each says how many more there are")
+    return out_labels, out_parents
 
 
 def build_tree(pieces, request, options) -> Built:

@@ -336,10 +336,19 @@ def _unit_after(text: str, end: int) -> tuple[Unit | None, str, int]:
         # a single letter is a unit only when it stands alone ("5 m", not "5 more")
         if m.end(1) < len(text) and text[m.end(1)].isalpha():
             return None, "", end
+    after = _PREPOSITION_IN.match(text, m.end(1)) if word.lower() == "in" else None
+    if after and after.group(1).lower() not in DIMENSION_WORDS:
+        # "in" is a unit only when it is adjacent to its number and not the preposition before another word
+        # ("520 in total", "5 in the box"); "5 in", "5 in.", "5 in x 3 in", "5 in by 3 in" and "5 in wide" (a
+        # dimension word) stay inches
+        return None, "", end
     u = unit_of(word)
     if u is None:
         return None, "", end
     return u, word, m.end(1)
+
+
+_PREPOSITION_IN = re.compile(r"[ \t]+(?!(?:x|by)[ \t]*[\d.]|x\b)([^\W\d_]+)")
 
 
 def _before(text: str, start: int, words: tuple[str, ...]) -> bool:

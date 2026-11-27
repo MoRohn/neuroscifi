@@ -38,9 +38,24 @@ def of_decoded(decoded, *, partial_ok: bool = False) -> str:
     return ANSWERED
 
 
+def of_member(member, *, partial_ok: bool = False) -> str:
+    """The outcome of a question about one member of a Bundle. The archive readers label each member's note with
+    their own decision ("refused: ..." when a rule refused to decode it, "partial: ..." when a limit cut its decode
+    short; `archives._Walk`); this table is where that label becomes an outcome, so nothing downstream reads the
+    words. A member that was not decoded is "refused" when a rule refused it, else "cannot" (it was only listed, or
+    its decode failed for a reason about its bytes); a partly decoded member is refused unless the owner agreed to a
+    partial answer."""
+    note = str(getattr(member, "note", "") or "")
+    if getattr(member, "inner", None) is None:
+        return REFUSED if note.startswith("refused") else CANNOT
+    if note.startswith("partial") and not partial_ok:
+        return REFUSED
+    return ANSWERED
+
+
 def exit_code(outcome: str) -> int:
     return EXIT_CODES[outcome]
 
 
 __all__ = ["ANSWERED", "CANNOT", "CANNOT_REASONS", "EXIT_CODES", "MISUSE", "OUTCOMES", "REFUSED", "exit_code",
-           "of_decoded", "of_error"]
+           "of_decoded", "of_error", "of_member"]
