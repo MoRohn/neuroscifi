@@ -1,0 +1,93 @@
+{
+ "cases_sha256": "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c",
+ "commit": "c1f5f2f",
+ "label": "OMNIMIND benchmark: synthetic files assembled by the benchmark's own encoders from known values; offline; no model; exact comparison within stated tolerances",
+ "machine": "aarch64",
+ "python": "3.12.16",
+ "recorded": "2026-11-27",
+ "splits": {
+  "held_out": {
+   "families": {
+    "hostile": {
+     "abstained": 1,
+     "abstention_floor": 23,
+     "bounds": {
+      "kill_s": 60.0,
+      "memory_bytes": 402653184,
+      "time_s": 25.0
+     },
+     "by_kind": {
+      "refuse": {
+       "abstained": 1,
+       "failed": 0,
+       "right": 22,
+       "wrong": 0
+      }
+     },
+     "fabrication": 0,
+     "fabrication_rate": 0.0,
+     "failed": 0,
+     "failures": {},
+     "family": "hostile",
+     "n": 23,
+     "peak_traced_max": 382120337,
+     "right": 22,
+     "safe": 23,
+     "safe_rate": 1.0,
+     "score": 0.9565,
+     "split": "held_out",
+     "subject": "artifacts",
+     "tasks": {
+      "hostile/held_out/csv-one-60mb-field": "right",
+      "hostile/held_out/gzip-bomb-1500mib": "right",
+      "hostile/held_out/gzip-nested-big": "right",
+      "hostile/held_out/markdown-in-zip-tells-the-agent": "right",
+      "hostile/held_out/npy-declares-petabytes": "right",
+      "hostile/held_out/pdf-tells-the-agent": "right",
+      "hostile/held_out/pdf-that-is-a-zip-held": "right",
+      "hostile/held_out/png-cut-early": "right",
+      "hostile/held_out/png-declares-65535-square": "right",
+      "hostile/held_out/png-decompression-bomb-wide": "right",
+      "hostile/held_out/tar-member-dotdot-held": "right",
+      "hostile/held_out/tar-member-symlink": "right",
+      "hostile/held_out/wav-cut-in-data": "right",
+      "hostile/held_out/xml-entity-expansion-deep": "right",
+      "hostile/held_out/xml-external-entity-name": "right",
+      "hostile/held_out/xml-nested-50000": "abstained",
+      "hostile/held_out/zip-9000-members": "right",
+      "hostile/held_out/zip-bomb-2gib-letter": "right",
+      "hostile/held_out/zip-headers-lie-big": "right",
+      "hostile/held_out/zip-member-absolute-held": "right",
+      "hostile/held_out/zip-member-dotdot-held": "right",
+      "hostile/held_out/zip-nested-25": "right",
+      "hostile/held_out/zip-overlapping-entries-many": "right"
+     },
+     "wall_s": 29.28,
+     "wrong": 0
+    }
+   },
+   "frozen": {
+    "hostile": {
+     "n": 23,
+     "sha256": "3dd144a27f44f8421bad5211d82f9bb8dfc2d5b86202c079a55abb48d140f6a2"
+    }
+   },
+   "totals": {
+    "abstained": 1,
+    "abstention_floor": 23,
+    "fabrication": 0,
+    "failed": 0,
+    "n": 23,
+    "right": 22,
+    "score": 0.9565,
+    "wrong": 0
+   },
+   "wall_s": 29.4
+  }
+ },
+ "subject": "artifacts",
+ "subject_available": [
+  true,
+  ""
+ ]
+}
