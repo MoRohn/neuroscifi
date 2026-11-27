@@ -128,7 +128,7 @@ def _plain(what, value) -> str:
             lines.extend("  " + line for line in why_text(value["why"]).splitlines())
         return "\n".join(lines)
     if what in ("make", "remake"):
-        from .produce import why_text
+        from .produce import carried_words, used_part_lines, why_text
         record = value["record"]
         if value["status"] == "made":
             made = record.get("made") or {}
@@ -136,9 +136,10 @@ def _plain(what, value) -> str:
             carried = check.get("carried")
             lines = [f"Made {value['artifact']}: {made.get('title')} ({made.get('form')}, {_size(made.get('bytes'))}; "
                      "made by the system, not evidence).",
+                     *used_part_lines(record.get("sources")),
                      f"Why this form: {(record.get('plan') or {}).get('reason') or 'you named it.'}",
-                     "Independent check: passed" + (f"; {carried:.0%} of the source values were read back from the "
-                                                    "file" if carried is not None else "") + "."]
+                     "Independent check: passed" + (carried_words(carried, record, "file") if carried is not None
+                                                    else "") + "."]
             if value["sources_kept"]:
                 lines.append(f"The {len(value['sources_kept'])} file(s) it was made from are kept too: "
                              + ", ".join(value["sources_kept"]) + ".")

@@ -155,8 +155,9 @@ def read_zip(data: bytes, detected: Detected, limits) -> Decoded:
     reader = ZipReader(data, max_members=limits.max_members, partial_ok=True)
     if reader.truncated:
         walk.partial = True
-        walk.notes.append(f"the archive declares more than {limits.max_members} members: the first "
-                          f"{len(reader.entries)} are listed")
+        walk.notes.append(f"stopped after the first {len(reader.entries)} of the {reader.declared} members the "
+                          f"archive declares (the limit is {limits.max_members}): the other "
+                          f"{reader.declared - len(reader.entries)} are not read")
     offending = []
     for entry in reader.entries:
         unsafe = unsafe_member_name(entry.name)

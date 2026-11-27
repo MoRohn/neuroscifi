@@ -202,7 +202,8 @@ def reduce_for_making(rep) -> tuple[object, str]:
             faces = inverse.reshape(-1, 3).astype(np.int64)
             return replace(rep, vertices=np.ascontiguousarray(rep.vertices[used]), faces=faces), (
                 f"decimated to be shown: one triangle in every {step} of its {m} is kept ({len(faces)} triangles, "
-                f"{len(used)} vertices) and the others are not shown")
+                f"{len(used)} vertices) and the others are not shown; the {len(used)} points the view shows are a "
+                f"reduction of its {n} vertices")
     return rep, ""
 
 
@@ -1356,6 +1357,32 @@ def remake(db, artifact_id: str, *, form: str | None = None, options: dict | Non
 # The "why", in plain words
 
 
+def used_part_lines(sources) -> list[str]:
+    """What the owner must read before anything else about a made thing (code review N3): for each used source read
+    only in part (`--partial`) or reduced to be made from, the same sentence its description carries."""
+    lines = []
+    for s in sources or ():
+        if not s.get("used"):
+            continue
+        if s.get("part"):
+            lines.append(f"Only part of {s.get('label')} was used (--partial): {s['part']}.")
+        if s.get("reduced"):
+            lines.append(f"{s.get('label')} was {s['reduced']}.")
+    return lines
+
+
+def carried_words(carried: float, record: dict, where: str) -> str:
+    """The carried share in words: of the source values, or, when a source was read in part or reduced, of the values
+    the thing was made from (never "100% of the source values" for a part)."""
+    used = [s for s in record.get("sources") or () if s.get("used")]
+    part, reduced = any(s.get("part") for s in used), any(s.get("reduced") for s in used)
+    if not (part or reduced):
+        return f"; {carried:.0%} of the source values were read back from the {where}"
+    what = " and ".join(w for w, on in (("the part that was read", part), ("the reduction", reduced)) if on)
+    return (f"; {carried:.0%} of the values it was made from were read back from the {where} (they are {what}, "
+            "as said above, not the whole source)")
+
+
 def why_text(record: dict, *, short: bool = False) -> str:
     """The production record in plain words: what was asked, what the sources were measured to be, which forms were
     considered with their scores, what was foreseen, what was made, what the independent check found, what was
@@ -1374,6 +1401,7 @@ def why_text(record: dict, *, short: bool = False) -> str:
             lines.append(f"Source {s.get('label')}: {s.get('format')}, read {s.get('reading')}; measured as "
                          f"{', '.join(shape.get('kinds', []))} with {shape.get('items')} items"
                          + (f" in {shape.get('series')} series" if shape.get("series") else "") + ".")
+            lines.extend("  " + line for line in used_part_lines([s]))
         else:
             lines.append(f"Source {s.get('label')} was not used: {s.get('why')}.")
     plan = record.get("plan") or {}
@@ -1425,8 +1453,7 @@ def why_text(record: dict, *, short: bool = False) -> str:
     if check:
         carried = check.get("carried")
         lines.append("Independent check: " + ("passed" if check.get("ok") else "FAILED") +
-                     (f"; {carried:.0%} of the source values were read back from the bytes" if carried is not None
-                      else "") + (f"; failed: {', '.join(check['failed'])}" if check.get("failed") else "") +
+                     (carried_words(carried, record, "bytes") if carried is not None else "") + (f"; failed: {', '.join(check['failed'])}" if check.get("failed") else "") +
                      (f"; style notes: {', '.join(check['style_failed'])}" if check.get("style_failed") else ""))
     if record.get("foresight") and not short:
         lines.append("Foreseen against found: " + "; ".join(
@@ -1441,5 +1468,5 @@ def why_text(record: dict, *, short: bool = False) -> str:
     return "\n".join(line for line in lines if line)
 
 
-__all__ = ["Given", "LABEL", "Production", "ProductionStopped", "RECORD", "bound_record", "converge", "foresight_pairs",
-           "interpret", "parse_options", "produce", "remake", "why_text"]
+__all__ = ["Given", "LABEL", "Production", "ProductionStopped", "RECORD", "bound_record", "carried_words", "converge",
+           "foresight_pairs", "interpret", "parse_options", "produce", "remake", "used_part_lines", "why_text"]

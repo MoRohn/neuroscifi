@@ -412,7 +412,7 @@ def read_delimited(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     # the decoded text is charged before any row is split; the rows are then read one line at a time from it (an
     # io.StringIO copy would hold every character in four bytes: about 4x the input again, fix lane F3 item 5)
     budget.take_bytes(sys.getsizeof(text))
-    rows, partial = [], False
+    rows, partial, line_kept = [], False, 0
     reader = (csv.reader(_lines(text), delimiter=delimiter, quotechar='"', strict=False) if delimiter
               else ([line] for line in text.splitlines()))
     try:
@@ -424,17 +424,26 @@ def read_delimited(data: bytes, detected: Detected, limits: Limits) -> Decoded:
             cost = sum(len(c) for c in row) + CELL_OVERHEAD * len(row)
             if not budget.fits_elements(len(row)) or not budget.fits_bytes(cost):
                 partial = True
-                notes.append(f"stopped after {len(rows)} rows: the element or byte limit was reached")
+                stop_at = len(notes)
                 break
             budget.take_elements(len(row))
             budget.take_bytes(cost)
             rows.append(row)
+            line_kept = reader.line_num if delimiter else i + 1
     except csv.Error as error:
         raise Malformed(f"the delimited text cannot be split ({type(error).__name__}: a field is too long or "
                         "quoting is broken)") from None
     if not rows:
         raise Malformed("the delimited text has no rows")
     table, table_notes = table_from_rows(rows, delimiter=delimiter, deadline=deadline)
+    if partial:
+        # said after the header rule, so that the count is the table's own rows (code review N3: "stopped after
+        # 260118 rows" for a table of 260117), with the file's line count (counted, not parsed) for what was left
+        lines = text.count("\n") + (0 if text.endswith("\n") else 1)
+        header = " and the header line" if len(rows) > table.n_rows else ""
+        notes.insert(stop_at, f"stopped after {table.n_rows} rows{header}, at line {line_kept} of the file's "
+                              f"{lines}: the element or byte limit was reached; the {lines - line_kept} lines after "
+                              "it were not read")
     notes.extend(table_notes)
     notes.extend(injection_notes(table.text()))
     return Decoded(detected, table, tuple(notes), partial)
