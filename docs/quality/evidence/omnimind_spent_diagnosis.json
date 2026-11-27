@@ -8,7 +8,7 @@
   "acceptance/omni/withheld_cross.py"
  ],
  "not_opened": {
-  "acceptance/omni/withheld_cases.py": "also holds the first split's intake, honest, compound, made and transform cases: the first split's 3 unknown wrong and 3 hostile answered are not diagnosed from cases"
+  "acceptance/omni/withheld_cases.py": "holds all seven of lane Z's families of the first split: not opened, stays sealed; the first split's 3 unknown wrong and 3 hostile answered stay undiagnosed"
  },
  "reproduced": {
   "withheld2/unknown": {
@@ -50,7 +50,8 @@
  "hostile_columns": {
   "a_real_failures": 11,
   "b_owner_rule_2": 0,
-  "c_truth_in_doubt": 0
+  "c_truth_in_doubt": 0,
+  "reading": "none of the 11 hostile failures is class (b): the owner's references ruling (WAVE3 item 2, ADR-080 decision 4) accounts for none of them"
  },
  "classes": {
   "unknown": [
@@ -185,5 +186,6 @@
    }
   ]
  },
- "full_text": "scratchpad lane-fx3-diagnosis.md (not committed); summarised in ADR-081"
+ "full_text": "scratchpad lane-fx3-diagnosis.md (not committed); summarised in ADR-081",
+ "recorded_in": "ADR-081 and src/neuroscifi/acceptance/omni/SPENT.md; the spent files are not edited"
 }
