@@ -715,11 +715,39 @@ _MD_MARKERS = (("an ATX heading", re.compile(r"^#{1,6} \S", re.M)), ("a fenced c
                ("bold text", re.compile(r"\*\*[^*\n]{1,200}\*\*")), ("a bullet list", re.compile(r"^[-*+] \S.*\n[-*+] \S", re.M)))
 
 
-def _markdown(text: str) -> tuple[str, list[str]] | None:
+_ATX_BLOCK = re.compile(r"(?:\A|\n[ \t]*\n)#{1,6} \S[^\n]*(?=\n[ \t]*\n|\n?\Z)")
+
+
+def _markdown(text: str, headings_alone: bool = False) -> tuple[str, list[str]] | None:
     seen = [what for what, pattern in _MD_MARKERS if pattern.search(text)]
     if len(seen) >= 2:
         return "markdown", ["Markdown markers: " + ", ".join(seen)]
+    # Lane FX3 (class U-C): a document whose only marker is its headings. Two or more ATX headings, each a block of
+    # its own (a blank line or the file's edge on both sides), are Markdown, unless a hint names another text
+    # format whose comments also begin with '#' (YAML, TOML, INI, code): `headings_alone` is False then.
+    if headings_alone and len(_ATX_BLOCK.findall(text.replace("\r\n", "\n"))) >= 2:
+        return "markdown", ["Markdown markers: two or more ATX headings, each a block of its own"]
     return None
+
+
+_PY_START = re.compile(r"^(?:def|class|import|from|async\s+def)\s", re.M)
+
+
+def _python(text: str) -> tuple[str, list[str]] | None:
+    """Lane FX3 (class U-B): text that parses as a Python module holding at least one function, class or import
+    is Python source, whatever it is named. The text is parsed by `ast.parse` (syntax only); nothing is compiled,
+    imported or run."""
+    if not _PY_START.search(text):
+        return None
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return None
+    kinds = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom)
+    if not any(isinstance(node, kinds) for node in tree.body):
+        return None
+    return "python", ["it parses as a Python module with a function, a class or an import (syntax only, never run)"]
 
 
 _SHEBANG = (("python", "python"), ("node", "javascript"), ("deno", "javascript"), ("bash", "shell"),
@@ -758,7 +786,7 @@ _STL_FACET = re.compile(rf"^\s*facet\s+normal\s+{_NUM}\s+{_NUM}\s+{_NUM}\s*$", r
 _STL_VERTEX = re.compile(rf"^\s*vertex\s+{_NUM}\s+{_NUM}\s+{_NUM}\s*$", re.M)
 
 
-def _structure(h: bytes, complete: bool) -> tuple[str, list[str]] | None:
+def _structure(h: bytes, complete: bool, headings_alone: bool = False) -> tuple[str, list[str]] | None:
     decoded = _as_text(h, complete)
     if decoded is None:
         return None
@@ -788,13 +816,17 @@ def _structure(h: bytes, complete: bool) -> tuple[str, list[str]] | None:
         code = _shebang(stripped)
         if code is not None:
             return code[0], head + code[1]
+    if complete:
+        code = _python(text)
+        if code is not None:
+            return code[0], head + code[1]
     if re.match(r"solid[ \t\r\n]", stripped) and _STL_FACET.search(text) and _STL_VERTEX.search(text):
         return "stl", head + ["'solid' followed by 'facet normal' lines (text STL)"]
     for test in (_obj, _delimited):
         found = test(lines, complete)
         if found is not None:
             return found[0], head + found[1]
-    md = _markdown(text)
+    md = _markdown(text, headings_alone)
     if md is not None:
         return md[0], head + md[1]
     return "text", head
@@ -851,7 +883,33 @@ def _unknown(reasons) -> Detected:
     return Detected("unknown", "unknown", "application/octet-stream", "none", None, tuple(reasons))
 
 
-def _identify(head: bytes, size: int | None) -> tuple[str, list[str], str | None, str] | None:
+# Formats whose files may be wholly text although a signature names them (lane FX3, class U-A): their signature is
+# not doubted when every byte is text. Every other signature belongs to a binary layout (sizes, counts, block
+# terminators, a PNG's 0x1A byte) that no file made only of text can hold.
+TEXT_SIGNATURES = frozenset({"pdf", "ps", "rtf", "ply", "fits", "pbm", "pgm", "ppm", "pnm", "pam", "pickle"})
+PROSE_PREFIX = 4096     # a prefix of a longer file this long, all text, is enough to doubt a binary signature
+
+
+def _binary_signature_in_text(fmt: str, head: bytes, size: int | None, headings_alone: bool):
+    """What the structure test finds when a BINARY format's signature begins bytes that are all text (a note that
+    starts "RIFF....WAVE is how a sound file begins", a table whose first header cell is "GIF89a"): the signature is
+    then part of the words, not a file of that format. None when the signature stands."""
+    if fmt in TEXT_SIGNATURES or fmt in TEXT_FORMATS:
+        return None
+    complete = (size is not None and len(head) >= size) or (size is None and len(head) < HEAD_MAX)
+    if not complete and len(head) < PROSE_PREFIX:
+        return None
+    if _as_text(head, complete) is None:
+        return None
+    found = _structure(head, complete, headings_alone)
+    if found is None:
+        return None
+    return found[0], list(found[1]) + [f"it begins with the bytes of a {fmt} signature, but every byte is text, "
+                                       f"which no {fmt} file is: the signature is part of the words"], None, "structure"
+
+
+def _identify(head: bytes, size: int | None,
+              headings_alone: bool = False) -> tuple[str, list[str], str | None, str] | None:
     for test in SIGNATURES:
         try:
             found = test(head, size)
@@ -861,11 +919,15 @@ def _identify(head: bytes, size: int | None) -> tuple[str, list[str], str | None
             # a detector added by a lane (B2's structure test for glTF, OFF, WKT, bare GeoJSON geometries) may say
             # that its answer rests on structure, not on a signature: a fourth element names the basis
             basis = found[3] if len(found) > 3 and found[3] in ("signature", "structure") else "signature"
+            if basis == "signature":
+                prose = _binary_signature_in_text(found[0], head, size, headings_alone)
+                if prose is not None:
+                    return prose
             return found[0], list(found[1]), found[2], basis
     complete = (size is not None and len(head) >= size) or (size is None and len(head) < HEAD_MAX)
     if size is not None and not complete and len(head) < MIN_STRUCTURE_PREFIX:
         return None   # a few bytes of a longer input say nothing about its structure
-    found = _structure(head, complete)
+    found = _structure(head, complete, headings_alone)
     if found is not None:
         return found[0], list(found[1]), None, "structure"
     return None
@@ -925,8 +987,10 @@ def detect(head: bytes, *, name: str | None = None, declared: str | None = None,
         if text_hint:
             return _make(text_hint[0], "declared", [text_hint[1] + "; the input is empty, so " + HINT_ONLY])
         return _unknown(["the input is empty"] + [w + f", which names {f}: an empty input is not one" for f, w in hints])
+    # Markdown by its headings alone only when no hint names another text format whose comments begin with '#'
+    headings_alone = not any(f in TEXT_FORMATS and f not in ("text", "markdown") for f, _ in hints)
     try:
-        found = _identify(head, size)
+        found = _identify(head, size, headings_alone)
     except (RecursionError, MemoryError):
         found = None
     if found is None:

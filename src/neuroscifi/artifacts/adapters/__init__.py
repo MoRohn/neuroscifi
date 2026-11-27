@@ -297,6 +297,29 @@ def _also_a_zip(data: bytes, detected: Detected) -> bool:
         return False
 
 
+def _zip_after_unknown_bytes(data: bytes, detected: Detected, limits: Limits) -> Detected:
+    """Lane FX3 (class U-D): bytes whose head no signature or structure claims, and which END in a ZIP archive that
+    the safe reader reads with its offsets shifted past those leading bytes (a self-extracting stub, a header the
+    writer put first): there is one reading, the ZIP, so the file is identified as one. Leading bytes that ARE a
+    format (a PNG, a WAV, a PDF before the ZIP) never come here: that is a polyglot, refused (`_also_a_zip`)."""
+    if len(data) < 22 or data.rfind(b"PK\x05\x06", max(0, len(data) - (1 << 16) - 22)) < 0:
+        return detected
+    from ..safe_b1 import ZipReader
+    try:
+        reader = ZipReader(data, max_members=limits.max_members, partial_ok=True)
+    except Exception:           # no directory the safe reader can read: the bytes stay unknown
+        return detected
+    entries = reader.entries
+    if not entries or any(data[e.offset:e.offset + 4] != b"PK\x03\x04" for e in entries):
+        return detected
+    lead = min(e.offset for e in entries)
+    if lead <= 0:
+        return detected
+    reason = (f"a ZIP archive after {lead} leading bytes that no format here recognises: its end record, its "
+              f"directory of {len(entries)} member(s) and their local headers agree")
+    return Detected("archive", "zip", "application/zip", "structure", None, detected.reasons + (reason,))
+
+
 # Parts of a ZIP-based compound file read as markup by the hazard scan, by name (any part whose bytes begin with
 # "<" is read as markup too).
 _MARKUP_PARTS = (".xml", ".rels", ".kml", ".gpx", ".svg", ".opf", ".ncx", ".xhtml", ".html", ".htm", ".xsl",
@@ -439,6 +462,8 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         raise Refused(f"input of {len(data)} bytes is over the limit of {limits.max_bytes}", rule="max_bytes",
                       reason="too_large")
     detected = detect(data[:DETECTION_PREFIX], name=name, declared=declared, size=len(data))
+    if detected.format == "unknown":
+        detected = _zip_after_unknown_bytes(data, detected, limits)
     if detected.format in REFUSED_FORMATS:
         raise Refused(REFUSED_FORMATS[detected.format], rule=detected.format)
     if _also_a_zip(data, detected):

@@ -314,7 +314,10 @@ def corpus():
         ("python-shebang", PYTHON, {}, "python", st),
         ("shell-shebang", SHELL, {}, "shell", st),
         ("node-shebang", NODE, {}, "javascript", st),
-        ("python-by-name", b"import os\nprint(os.sep)\n", {"name": "tool.py"}, "python", d),
+        # lane FX3 (U-B): Python source is recognised by parsing it (syntax only), so the name now agrees with the
+        # structure instead of naming it; a body that is not a module with a def, class or import stays "declared"
+        ("python-by-name", b"import os\nprint(os.sep)\n", {"name": "tool.py"}, "python", st),
+        ("python-by-name-no-def", b"print(1)\n", {"name": "tool.py"}, "python", d),
         ("c-by-name", b"int main(void) { return 0; }\n", {"name": "main.c"}, "c", d),
         ("yaml-by-name", b"key: value\nlist:\n  - a\n", {"name": "conf.yaml"}, "yaml", d),
         ("toml-by-name", b'[tool]\nname = "x"\n', {"name": "config.toml"}, "toml", d),

@@ -519,13 +519,13 @@
   "by_basis": {
    "declared": 6,
    "signature": 84,
-   "structure": 35
+   "structure": 36
   },
   "by_family": {
    "archive": 11,
    "array": 5,
    "audio": 11,
-   "code": 17,
+   "code": 18,
    "database": 1,
    "document": 13,
    "drawing": 1,
@@ -540,8 +540,8 @@
    "video": 6
   },
   "distinct_formats": 99,
-  "identified_as_constructed": 125,
-  "items": 125,
+  "identified_as_constructed": 126,
+  "items": 126,
   "wrong": []
  },
  "decode_chain_on_corpus": {
@@ -578,7 +578,7 @@
    "ppm": 2,
    "pptx": 1,
    "pyproject": 1,
-   "python": 2,
+   "python": 3,
    "requirements": 2,
    "rss": 1,
    "rtf": 1,
@@ -690,20 +690,20 @@
   "note": "with the size unknown, a short prefix of a binary format that happens to be printable (b'GIF8', b'PK') is called text, which those bytes are; with the size given, prefixes under 32 bytes of a longer input get no structure verdict",
   "outcomes": {
    "size_given": {
-    "exact": 662,
+    "exact": 673,
     "general": 86,
     "hint_on_prefix": 6,
     "text": 18,
     "unknown": 603
    },
    "size_unknown": {
-    "exact": 698,
+    "exact": 706,
     "general": 78,
-    "text": 348,
+    "text": 351,
     "unknown": 251
    }
   },
-  "tried": 2750
+  "tried": 2772
  },
  "what": "artifact detection over lane K's hand-assembled corpus (tests/artifacts/detect_corpus.py)"
 }
