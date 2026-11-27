@@ -124,7 +124,7 @@ def _edge_text(edges, verb="hands over to") -> bytes:
     return "".join(f"* {a} {verb} {b}\n" for a, b in edges).encode()
 
 
-@pytest.mark.parametrize("question", ["Do the drawing and the hand-over notes agree?",
+@pytest.mark.parametrize("question", ["Do the connections in the drawing match the hand-over notes?",
                                       "Are the connections in the picture the ones written down?"])
 def test_drawn_links_are_compared_with_the_links_a_text_names(question):
     svg = _graph_svg(EDGES)
@@ -136,7 +136,10 @@ def test_drawn_links_are_compared_with_the_links_a_text_names(question):
 
 def test_link_traps_stay_cannot():
     svg = _graph_svg(EDGES)
-    q = "Do the drawing and the hand-over notes agree?"
+    # lane FX4 (R1): a question that names no quantity of the comparison ("agree") is not answered by it
+    assert _ask({"flow.svg": svg, "notes.txt": _edge_text(EDGES)}, "Do the drawing and the hand-over notes agree?") \
+        is None
+    q = "Do the connections in the drawing match the hand-over notes?"
     three = b"* Ash, Birch and Cedar meet weekly\n" + _edge_text(EDGES)
     assert _ask({"flow.svg": svg, "notes.txt": three}, q) is None        # a line naming three labels
     negated = _edge_text(EDGES[:3]) + b"* Douglas does not hand over to Elm\n"

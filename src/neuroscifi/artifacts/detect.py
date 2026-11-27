@@ -709,9 +709,11 @@ def _delimited(lines: list[str], complete: bool) -> tuple[str, list[str]] | None
 
 
 _MD_MARKERS = (("an ATX heading", re.compile(r"^#{1,6} \S", re.M)), ("a fenced code block", re.compile(r"^```", re.M)),
-               ("a Markdown table rule", re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", re.M)),
+               # lane FX4 (review L3): [ \t]* never crosses a line, so a file of blank lines is not quadratic
+               ("a Markdown table rule", re.compile(r"^\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$",
+                                                    re.M)),
                ("a Markdown link", re.compile(r"\[[^\]\n\[]{1,200}\]\([^)\s]{1,500}\)")),
-               ("a task list item", re.compile(r"^\s*[-*] \[[ xX]\] ", re.M)),
+               ("a task list item", re.compile(r"^[ \t]*[-*] \[[ xX]\] ", re.M)),
                ("bold text", re.compile(r"\*\*[^*\n]{1,200}\*\*")), ("a bullet list", re.compile(r"^[-*+] \S.*\n[-*+] \S", re.M)))
 
 

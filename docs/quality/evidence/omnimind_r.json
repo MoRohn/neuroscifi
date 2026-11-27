@@ -1,6 +1,6 @@
 {
  "adr": "ADR-077",
- "commit": "c4c5527",
+ "commit": "930397d",
  "coverage": {
   "bundle": {
    "files": 2,
@@ -442,9 +442,9 @@
  "lane": "R",
  "own_generator_variants": {
   "all": {
-   "cannot": 0,
+   "cannot": 90,
    "cases": 630,
-   "right": 630,
+   "right": 540,
    "wrong": 0
   },
   "by_kind": {
@@ -473,9 +473,9 @@
     "wrong": 0
    },
    "timeline_log": {
-    "cannot": 0,
+    "cannot": 90,
     "cases": 90,
-    "right": 90,
+    "right": 0,
     "wrong": 0
    },
    "tones_rows": {
