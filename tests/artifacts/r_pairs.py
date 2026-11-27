@@ -229,3 +229,31 @@ def unrelated():
 
 __all__ = ["csv", "gpx", "midi", "obj_box", "pairs", "png", "svg_bars", "unrelated", "wav_seconds", "wav_tones",
            "zip_of"]
+
+
+# ---- transfer: units a document states for a bare CSV's columns -----------------------------------------------------
+# (document text, CSV header, {column: the unit symbol the document truly states for it, or None})
+
+TRANSFER = [
+    ("# Weather data\n\n- temp: air temperature in degrees Celsius\n- rain: rainfall in mm\n- wind: wind speed\n",
+     ["date", "temp", "rain", "wind"], {"date": None, "temp": "degC", "rain": "mm", "wind": None}),
+    ("Columns\n\n| column | unit | meaning |\n|---|---|---|\n| dist | km | distance covered |\n"
+     "| time | min | moving time |\n| climb | m | height gained |\n",
+     ["day", "dist", "time", "climb"], {"day": None, "dist": "km", "time": "min", "climb": "m"}),
+    ("The file has three columns. temp and rain are in mm and degrees.\n", ["temp", "rain"],
+     {"temp": None, "rain": None}),
+    ("price: in EUR\nqty: number of items\nweight (kg)\n", ["sku", "price", "qty", "weight"],
+     {"sku": None, "price": "EUR", "qty": None, "weight": "kg"}),
+    ("pressure is measured in hPa; humidity is given in percent.\n", ["pressure", "humidity"],
+     {"pressure": None, "humidity": "%"}),
+    ("temp_min: lowest temperature, in degrees Celsius\ntemp: see the notes in mm/dd format\n",
+     ["temp_min", "temp"], {"temp_min": "degC", "temp": None}),
+    ("duration — seconds\nsize: file size in bytes\nname: the file's name\n", ["name", "size", "duration"],
+     {"name": None, "size": "B", "duration": "s"}),
+    ("rain (inches)\n", ["rain (mm)"], {"rain (mm)": "mm"}),
+    ("Speed is recorded in km per hour.\nLength: overall length in feet\n", ["speed", "length"],
+     {"speed": None, "length": "ft"}),
+    ("height: in cm\nHEIGHT is sometimes in inches in old files\n", ["height"], {"height": None}),
+    ("level - metres above sea level\nflow: litres\n", ["level", "flow"], {"level": "m", "flow": "l"}),
+    ("All values are in Fahrenheit.\n", ["low", "high"], {"low": None, "high": None}),
+]

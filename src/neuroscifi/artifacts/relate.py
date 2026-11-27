@@ -1549,7 +1549,9 @@ def _column_mention(line: str, col: str) -> list[int]:
 _UNIT_PHRASE = re.compile(
     r"(?:\(\s*(?:in\s+)?(?P<paren>[^()]{1,24}?)\s*\)|\b(?:in|unit[s]?\s*(?:is|are|:|=)?|measured\s+in|given\s+in|"
     r"expressed\s+in|recorded\s+in)\s+(?P<word>(?:degrees?\s+)?[A-Za-zµ°%²³$€£]{1,14}(?:\s+(?:celsius|fahrenheit))?)"
-    r"|[:|,;—–-]\s*(?P<bare>(?:degrees?\s+)?[A-Za-zµ°%²³$€£]{1,14}(?:\s+(?:celsius|fahrenheit))?)\s*(?:[|,;.]|$))",
+    r"(?!\w)(?![/.-]\w)"
+    r"|[:|,;—–-]\s*(?P<bare>(?:degrees?\s+)?[A-Za-zµ°%²³$€£]{1,14}(?:\s+(?:celsius|fahrenheit))?)"
+    r"(?=\s*(?:[|,;]|\.(?!\w)|$)))",
     re.I)
 
 
@@ -1557,23 +1559,37 @@ def _units_in(segment: str) -> list[Unit]:
     out = {}
     for m in _UNIT_PHRASE.finditer(segment):
         text = m.group("paren") or m.group("word") or m.group("bare")
+        if re.match(r"\s*(?:per\b|/\s*\w)", segment[m.end():]) or re.search(r"(?:\bper\s+\w+|/\w+)\s*\)?$", text):
+            continue                          # a rate ("km per hour", "m/s") is not the unit named alone
         u = unit_of(text)
         if u is not None:
             out[u.symbol] = u
     return list(out.values())
 
 
-def transfer_units(table, document, *, source: str = "the document") -> Transfer:
+def transfer_units(table, document, *, source: str = "the document", data: bytes | None = None) -> Transfer:
     """Units a document (a README, a data dictionary) states for a table's columns, applied to a copy of the table.
     A unit is applied only when one line or sentence names exactly one of the table's columns and states exactly
     one unit for it; a column that already has a different unit is a conflict and keeps its own; nothing is
-    guessed: a column no statement covers stays without a unit."""
+    guessed: a column no statement covers stays without a unit. With the document's bytes (`data`, UTF-8 text) its
+    own lines are read, since a Markdown paragraph joins lines that each name one column."""
     from .types import Column, Table
     doc = getattr(document, "representation", document)
     text = doc.text() if hasattr(doc, "text") else str(doc)
+    if data and b"\x00" not in data[:4096]:
+        try:
+            text = data[:rr.MAX_TEXT].decode("utf-8")
+        except UnicodeDecodeError:
+            pass
     lines = []
     for ln in (text or "")[:rr.MAX_TEXT].splitlines():
-        lines += [s for _, s in rr.sentences(ln)] if len(ln) > 200 else [ln]
+        for _, sentence in rr.sentences(ln):
+            lines += [c for c in re.split(r";\s+", sentence) if c.strip()]
+    for b in getattr(doc, "blocks", ()):              # a data dictionary written as a table: one row, one line
+        if b.kind == "table" and isinstance(b.ref, Table):
+            t = b.ref
+            for r in range(min(t.n_rows, 2000)):
+                lines.append(" | ".join(str(c.values[r]) for c in t.columns))
     names = [c.name for c in table.columns]
     applied, conflicts, ambiguous = {}, [], []
     for line in lines[:rr.MAX_SENTENCES]:
@@ -1583,8 +1599,7 @@ def transfer_units(table, document, *, source: str = "the document") -> Transfer
         if len(hits) != 1:
             continue
         col = hits[0]
-        end = max(_column_mention(line, col.strip()))
-        units = _units_in(line[end:]) or _units_in(line)
+        units = _units_in(line)
         if len(units) != 1:
             if col not in applied:
                 ambiguous.append(col)
