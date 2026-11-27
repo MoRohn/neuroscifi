@@ -198,8 +198,10 @@ def _stand_in():
         return Made(*reference.make(_request_of(spec, reverse)))
     M.make = make
     P = types.ModuleType("neuroscifi.artifacts")
+    # no production pipeline in the stand-in (None in sys.modules: importing it fails, even after the real package
+    # was imported by another test)
     return {"neuroscifi.artifacts": P, "neuroscifi.artifacts.types": T, "neuroscifi.artifacts.adapters": A,
-            "neuroscifi.artifacts.make": M}
+            "neuroscifi.artifacts.make": M, "neuroscifi.artifacts.produce": None}
 
 
 def _request_of(spec, reverse):
