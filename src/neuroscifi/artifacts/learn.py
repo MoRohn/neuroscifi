@@ -91,17 +91,18 @@ class KeyPolicy:
     observed: Mapping[str, int]          # outcome -> count
     tally: Mapping[str, int]             # form -> tally
     preferences: Mapping[str, float]     # form -> value in (0, 1]; empty while not enough or nothing positive
+    minimum: int = MIN_EVIDENCE
 
     @property
     def enough(self) -> bool:
-        return self.evidence >= MIN_EVIDENCE
+        return self.evidence >= self.minimum
 
     def words(self) -> str:
         kind, purpose, device = self.key
         seen = ", ".join(f"{n} {o.replace('_', ' ')}" for o, n in sorted(self.observed.items())) or "nothing"
         head = f"{kind} for {forms.PURPOSE_PHRASE.get(purpose, purpose)} on the {device}: observed {seen}"
         if not self.enough:
-            return f"{head}; not enough yet ({self.evidence} of {MIN_EVIDENCE}), so nothing changes"
+            return f"{head}; not enough yet ({self.evidence} of {self.minimum}), so nothing changes"
         if not self.preferences:
             return f"{head}; no form was kept more than it was turned down, so nothing changes"
         order = sorted(self.preferences.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -109,8 +110,8 @@ class KeyPolicy:
         return f"{head}; prefers {named}, where the planner allows it"
 
 
-def _preferences(tally: Mapping[str, int], evidence: int) -> dict[str, float]:
-    if evidence < MIN_EVIDENCE:
+def _preferences(tally: Mapping[str, int], evidence: int, minimum: int) -> dict[str, float]:
+    if evidence < minimum:
         return {}
     top = max(tally.values(), default=0)
     if top <= 0:
@@ -119,10 +120,12 @@ def _preferences(tally: Mapping[str, int], evidence: int) -> dict[str, float]:
 
 
 class Tally:
-    """The per-key majority over outcome rows. `add` one row (or `count` equal rows); `policy(key)` the result."""
+    """The per-key majority over outcome rows. `add` one row (or `count` equal rows); `policy(key)` the result.
+    `min_evidence` other than MIN_EVIDENCE is for measuring the rule's sensitivity only (the evidence script)."""
 
-    def __init__(self):
+    def __init__(self, min_evidence: int = MIN_EVIDENCE):
         self._keys: dict[tuple, dict] = {}
+        self.min_evidence = int(min_evidence)
 
     def add(self, kind, purpose, device, form, outcome, replaced_by=None, count=1) -> None:
         key = _key(kind, purpose, device)
@@ -148,10 +151,12 @@ class Tally:
     def policy(self, key) -> KeyPolicy:
         entry = self._keys.get(tuple(key))
         if entry is None:
-            return KeyPolicy(tuple(key), 0, MappingProxyType({}), MappingProxyType({}), MappingProxyType({}))
+            return KeyPolicy(tuple(key), 0, MappingProxyType({}), MappingProxyType({}), MappingProxyType({}),
+                             self.min_evidence)
         tally = {f: v for f, v in sorted(entry["tally"].items())}
         return KeyPolicy(tuple(key), entry["evidence"], MappingProxyType(dict(sorted(entry["observed"].items()))),
-                         MappingProxyType(tally), MappingProxyType(_preferences(tally, entry["evidence"])))
+                         MappingProxyType(tally),
+                         MappingProxyType(_preferences(tally, entry["evidence"], self.min_evidence)), self.min_evidence)
 
 
 @dataclass(frozen=True)
