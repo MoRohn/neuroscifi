@@ -1,6 +1,7 @@
 # Multimodal capability audit (deliverable 1)
 
-Status: 2026-11-27. Two parts. **After** (written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4, `1aa7eb6`, and F5, `bf3dac6`, merged; schema 21): what
+Status: 2026-11-27. Two parts. The "After" part was brought up to date by documentation lane 3 from `omnimind` at
+`4f66291` (Wave O-3: the relater's verdicts shown only, the relater not supported). **After** (written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4, `1aa7eb6`, and F5, `bf3dac6`, merged; schema 21): what
 each pathway does now, beside its status before, and what now exists that did not. **Before** (below, unchanged
 apart from this header): the baseline of 2026-11-26, `main` at `8f68beb` (schema 19, package 0.7.0), which merged the
 four Phase I audits. OMNIMIND is on the local branch `omnimind`; nothing of it is merged into `main`.
@@ -39,7 +40,9 @@ covers the line. Live model, speech and search services were not contacted by an
 - **The form of a made result is chosen before it is made** by the form planner (`nsf form plan`; inside `nsf artifact
   make`), with one sentence saying why.
 - **Two artifacts can be related by measurement**: `nsf artifact relate A B --question "..."` compares what one
-  measures with what the other states or shows.
+  measures with what the other states or shows. Since Wave O-3 its verdict is shown only, never stored as a link, three
+  comparisons added in that wave are withdrawn (they could not be made reliable), and the relater is **not
+  supported** on unseen cases (ADR-081).
 - **Still true**: no model here sees or hears; nothing decodes JPEG, MP3, AAC, FLAC, Ogg or video frames; **every
   answer in conversation is still sentences** (nothing of OMNIMIND is on the answer path); Pocket, voice and agents
   see no artifact; production runs inside the owner's command, not as a durable job.
@@ -78,7 +81,7 @@ Status words as defined below (the directive's five). "Unchanged" means OMNIMIND
 | Prompt-injection screen | Partially implemented | Partially implemented | text decoded from a file passes `scan_injection` first; a flagged file is refused by `adapters.decode` and kept but marked by the store; still English regex only | `Limits.refuse_flagged`; hostile family |
 | Spatial reasoning | Unsupported | Partially implemented (measurements only) | meshes: volume, area, bounds, watertight; maps: bounding boxes; no reasoning over space beyond these | intake family |
 | Temporal interpretation | Partially implemented | Partially implemented | `relate` aligns two artifacts' clocks where both carry timestamps (spans, overlap, offset); no causality | ADR-077 |
-| Cross-modal alignment | Unsupported | Partially implemented | `nsf artifact relate`: what one artifact measures against what the other states or shows; only comparisons the question names (58 / 14 / 0 without it); no meaning of an image or sound | cross 72 of 72 development, 66 / 6 / 0 of 72 held-out |
+| Cross-modal alignment | Unsupported | Partially implemented | `nsf artifact relate`: what one artifact measures against what the other states or shows; only comparisons the question names (58 / 14 / 0 without it); no meaning of an image or sound; **since Wave O-3 every verdict is shown only and no `consistent_with` / `contradicts` link is stored**; archive members against a listing, drawn links against a text and cue times against a cue sheet are "cannot" (withdrawn after three constructions were broken: 24 of 27, 30 of 56, 31 of 63 new pairs wrong) | cross 72 of 72 development before Wave O-3, 70 of 72 after; 66 / 6 / 0 of 72 held-out (before Wave O-3); **not supported** on either withheld split (ADR-077, ADR-080 and ADR-081 additions) |
 
 **3. Cognition**
 

@@ -1,6 +1,7 @@
 # What exists, with its limits and its rollback (deliverable 6: "Production-Ready Integrations")
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged, from the catalogs the system prints
+Status: 2026-11-27, brought up to date by documentation lane 3 from `omnimind` at `4f66291` (Wave O-3: the relater's
+verdicts shown only, never stored; its three new comparisons withdrawn; the relater not supported). Earlier: written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged, from the catalogs the system prints
 (`nsf artifact adapters`, `nsf artifact forms`, `nsf artifact --help`, as recorded by the integration lane 2) and the
 code. "Production-ready" in the directive's sense is not claimed: this is a local branch, not merged into `main`,
 never run on CI, measured on synthetic files and simulated people, and with three mechanisms (identification of unknown files, refusal of hostile ones, the relater) not
@@ -28,9 +29,9 @@ Fix lane F5 (`bf3dac6`) is merged too.
 | `nsf artifact facts ID` | measurements from what was read, each with how |  |
 | `nsf artifact export ID PATH` | writes the bytes to a new file (never overwrites; mode 0600); the explorable type gets `.html` |  |
 | `nsf artifact forget ID` | the artifact, everything made from or contained in it, its bytes and outcomes; later checkpoints rewritten |  |
-| `nsf artifact gaps [--report]` | formats nothing read, and how often; `--report` adds failed checks, recurring repairs, words where another form carried more, contradicting links | read-only |
+| `nsf artifact gaps [--report]` | formats nothing read, and how often; `--report` adds failed checks, recurring repairs, words where another form carried more, contradicting links (since Wave O-3 only links an earlier version stored: none is stored now) | read-only |
 | `nsf artifact feedback ID kept\|dismissed\|replaced:FORM`, `--reset` | records the owner's reaction to a made form; `--reset` deletes every row | only with `form_learning` `record` or `apply` |
-| `nsf artifact relate A B [--question "..."]` | measures both; records `consistent_with` / `contradicts` / `describes` / `same_subject` as the system's claim | compares what the question names |
+| `nsf artifact relate A B [--question "..."]` | measures both and shows the verdict with the line "not recorded: the relater's answers are shown only, never stored as links, until a relater passes an examination (ADR-081)"; since Wave O-3 **no `consistent_with` / `contradicts` link is stored** on any path; `describes` / `same_subject` are recorded as before, as the system's claim | compares what the question names; archive members against a listing, drawn links against a text and sound cue times against a cue sheet are "cannot" (those comparisons were withdrawn: they could not be made reliable); the relater is not supported. Verdict links an earlier version stored: `PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by any` lists them (dry run), `--remove` removes them and writes no history entry |
 | `nsf artifact adapters` | the readers here and the approved external ones |  |
 | `nsf artifact make FILE\|ID... -r "..." [--form F] [--alternatives N] [--keep] [--partial] [--device D] [--seconds S] [--bytes B]` | decides the form, makes, checks independently, repairs, keeps with its "why"; several files are related | 60 s and 16 MiB by default; at most 4 alternatives; large sources reduced by stated rules |
 | `nsf artifact remake ID [--form F] [--option K=V]` | makes again from the kept specification or sources | as `make` |
@@ -124,7 +125,7 @@ revert lanes G1, G2 and their fixes.
 |---|---|---|---|
 | `artifacts.produce.produce` | `nsf artifact make`, `remake`, the console's Make | 60 s, 16 MiB, at most 4 alternatives, at most 6 source pairs related (none started after 10 s); any stop leaves nothing stored | revert lane P, int2, F1 D, F3 item 3 |
 | `artifacts.forms.plan`, `alternatives`, `foresee` | inside `produce`; `nsf form plan` | frozen at `4388f4d`; time estimates 5 to 560 times too high (recorded) | revert lane C (nothing else imports it but the pipeline and the console) |
-| `artifacts.relate.compare`, `transfer_units` | `nsf artifact relate`; inside `produce` for two or more sources | comparisons the question names; plural folding only; no meaning of a picture or sound | revert lane R and F3 item 2 |
+| `artifacts.relate.compare`, `transfer_units` | `nsf artifact relate`; inside `produce` for two or more sources (its relations are shown in the made document and its record, never stored as verdict links) | comparisons the question names, the older ones only (Wave O-3 withdrew three new ones); answers shown only; plural folding only; no meaning of a picture or sound; with no question no word selects an aggregate, so a stated total beside a column shows "Cannot tell" | revert lane R and F3 item 2; reverting lane FX5's last commits would bring back the withdrawn comparisons and verdict recording (not advised: ADR-081); earlier verdict links: `links_decided_by.py --by any --remove` |
 | `artifacts.learn.plan`, `record_outcome` | inside `produce` when `form_learning` is on; `nsf artifact feedback`; `nsf form learned` | per-key tally, minimum evidence 2, never removes a form, owner's stated preferences win | `form_learning off`; revert lane L (schema 21 stays) |
 
 ## Console routes (lane U, ADR-079)

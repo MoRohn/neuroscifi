@@ -1,6 +1,7 @@
 # Learning from outcomes, as measured (deliverable 8: "Recursive Knowledge Validation")
 
-Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `21193c4` (the withheld look taken on `55f89be`). The directive asks for "evidence that
+Status: 2026-11-27, brought up to date by documentation lane 3 from `omnimind` at `4f66291` (Wave O-3 changed nothing
+in the learner; the relater's verdicts are no longer stored). Earlier: written on `omni-docs2` from `omnimind` at `21193c4` (the withheld look taken on `55f89be`). The directive asks for "evidence that
 experience and feedback improve future multimodal performance". This page says what "learning" means in OMNIMIND,
 what was measured, against which references, and what is not learned at all. Figures come from
 `docs/quality/evidence/omnimind_l.json` (development), `omnimind_baseline_forms.json` (references) and
@@ -93,7 +94,8 @@ share of made forms the simulated person kept; "late" is cycles 5 to 8. Mean (sd
 - **Cross-modal transfer is measured only as units travelling from a document to a table.** A unit a README states
   for a CSV column reaches the made chart's axis label ("degC, from README.md"); on lane R's own 12 cases, 29 columns:
   14 right units, 14 rightly without a unit, 1 absent, 0 wrong. The relater's verdicts (`consistent_with`,
-  `contradicts`) are recorded as the system's claims, not evidence, and nothing learns from them.
+  `contradicts`) were recorded as the system's claims, not evidence; since Wave O-3 (the owner's decision of 2026-11-27,
+  ADR-081) they are shown only and never stored, the relater is not supported, and nothing learns from them.
 - **No skill accumulates across modalities.** The tally is per content kind; nothing carries a preference learned on
   tables to sounds, and no measure of accumulation across modalities exists.
 
