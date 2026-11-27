@@ -190,11 +190,15 @@ What the numbers do not say:
   command line's exit codes and the driver read; fix lane F3 (`bdfebab`) moved the last two member decisions into it
   (`of_member`). Development is unchanged by the move (512 / 12 / 0 / 0). The held-out figures were not re-taken (no
   held-out run is repeated); the withheld looks are taken through the new driver, pinned.
-- **The driver still decides two things** (second measurement pass, R2-3 and R2-4): `choose_form` re-plans without
-  the explicit form when the planner's `Request` refuses it, and drops explicit, preferred and avoided form names it
-  cannot map (on development neither happens: `FORMS_UNMAPPED == []`); and it decides itself that a climbing or
-  absolute member name "names no member" (in practice the product's whole-archive refusal decides first). Fix lane F4
-  is moving both into the product. **To be confirmed after fix lane F4.**
+- **The driver's last two decisions moved into the product** (second measurement pass, R2-3 and R2-4; fix lane F4,
+  `c579be6`). Until `09bfff6`, `choose_form` re-planned without the explicit form when the planner's `Request` refused
+  it, dropped explicit, preferred and avoided form names it could not map, and decided itself that a climbing or
+  absolute member name "names no member". Now a refused explicit form gives no form (the product's answer, scored by
+  the examiner) and is recorded as `("explicit-refused", name)`; unmapped names are passed to the planner unchanged and
+  recorded in `FORMS_UNMAPPED`, which every forms look prints; and `artifacts/outcome.member_path` (the product's
+  table) decides the member question. The dead `_Refuse` class is deleted. `test_the_drivers_only_translate` passes
+  with no mark; `tests/acceptance/test_f4_driver.py`. Development is unchanged (forms identical to the reviewer's
+  run; `FORMS_UNMAPPED == []`).
 - **The driver measures some quantities with its own definitions**, not the product's: a sound's pitch and its
   number of onsets (with the benchmark's own readers), an image's mean gray (Rec. 709 luminance over the returned
   pixels), a map's bounding box. A product that computed them differently would be scored by the driver's
@@ -215,7 +219,7 @@ What the numbers do not say:
   comparison (a histogram value lying exactly on an inner bin edge drawn in the lower bin) was fixed by fix lane F1
   (`bb0fedf`, the generator) and fix lane F3 (the check: with a stated bin width every bin is half-open,
   `test_f3_histogram.py`). The visibility rule (below) made the benchmark's reader stricter than the contract was;
-  the product's own check is not yet as strict (next section).
+  since fix lane F4 the product's own check applies visibility rules of its own (next section).
 - No held-out run is repeated: a later version of a mechanism is judged only on the withheld split.
 
 **What "made right" and "checked" establish, and what they do not** (second measurement pass, R2-1 and R2-2).
@@ -224,19 +228,26 @@ What the numbers do not say:
   It does not mean a person looked at the picture, found it legible or found it useful: no person judged any made
   artifact.
 - "Checked" (what the store records for a made artifact) is the product's own check's verdict
-  (`artifacts/check/`, code that never imports the generators). At `09bfff6` it is weaker than the benchmark's reader:
-  on product-made line, bar and scatter charts it says ok for six hidings the reader rejects (`visibility="hidden"`
+  (`artifacts/check/`, code that never imports the generators). At `09bfff6` it was weaker than the benchmark's reader:
+  on product-made line, bar and scatter charts it said ok for six hidings the reader rejects (`visibility="hidden"`
   on the plot; a style rule `display:none` on the marks or series; a style rule `opacity:0` on the plot; the plot
-  clipped to a 0 x 0 `clipPath`; tick labels at `font-size:0`; on a scatter, circles with no radius).
-- Two hidings pass both the reader and the check at `09bfff6`: an opaque rectangle the size of the picture painted
-  after the plot, and a root `<svg width="0">`. A wrong but consistent picture of either kind would be "made right"
-  and "checked".
-- None of these can raise a product figure: the product's generators never emit them (the reviewer's fuzz of 350
-  fresh seeds: 0 disagreements between the reader and the check). They are limits of what the words establish.
-- Fix lane F4 is making the product's check apply its own visibility rules (written independently of the reader)
-  and the reader refuse the two shared blind spots in one separate commit, with a re-pin of `readers.py` recorded
-  here. **To be confirmed after fix lane F4** (the new hash of `readers.py` and the development `made` 14/14 and
-  `transform` 8/8 after it).
+  clipped to a 0 x 0 `clipPath`; tick labels at `font-size:0`; on a scatter, circles with no radius), and two
+  hidings passed both the reader and the check (an opaque rectangle the size of the picture painted after the plot,
+  and a root `<svg width="0">`).
+- **Since fix lane F4** the product's check has its own finding `visible_to_a_person` (`artifacts/check/visible.py`,
+  `6c2ed98`; written from the SVG and CSS rules, not from the reader): hidden by `display`, `visibility` or opacity in
+  attributes, `style` attributes or `<style>` rules (the dark scheme's `@media` rules counted for that scheme); a clip
+  path of zero area; zero font size; a circle with no radius; paint only in the background colour or none; a mark off
+  the canvas; a mark covered by a later opaque shape; a zero-size root; a hiding rule the check cannot read. Tests:
+  `tests/artifacts/test_f4_visible.py` (50: 16 hidings on line, bar and scatter charts and no radius on a scatter, all
+  failing without the change; untouched charts and harmless later shapes pass). And the reader (`8523136`, one
+  separate commit) reads a rectangle's percentages as percentages of the canvas, so the covering rectangle covers
+  the plot, and refuses a picture with no area; re-pinned (`READERS_SHA256` `df21e658...` to `fb51f10c...`, the
+  paragraph "Re-pin (fix lane F4 ...)" below). The product on development after both: `made` 14/14, `transform` 8/8.
+- None of these could raise a product figure: the product's generators never emit them (the reviewer's fuzz of 350
+  fresh seeds: 0 disagreements between the reader and the check). What remains a limit of the words: both judges
+  read only what their rules name; a way of hiding that neither rule set names is still possible, and no person
+  looked at any made picture.
 
 **The withheld split: status.** Written by lane ZW and pinned; **no product look has been taken yet**. The ledger
 (`evidence/omnimind_final_uses.jsonl`, 17 lines) holds only lane ZW's machinery check through the reference subjects.
@@ -521,9 +532,8 @@ Every look reports n, the counts and the references beside them, whatever the wo
   - a second look, which is not a fresh measure.
 - A "not supported" is reported as a result, never retried on the same split.
 
-**Where the two texts differ** (stated so that nobody chooses between them after a look; the main session states which
-it applies before the first look, in the commit that writes the pins). **To be confirmed by the main session before
-the looks.**
+**Where the two texts differ, and which applies** (the main session's ruling of 2026-11-27, before any look: **in all
+four places the reviewer's stricter text applies**):
 - The reviewer's A.3 adds a control for the seven families that the log's summary leaves out: "The today subject
   scores 0 failed outside hostile and makes nothing."
 - The reviewer's A.3 says what happens when a control cannot be run: "If `final` cannot run a control subject, the rule
@@ -533,10 +543,12 @@ the looks.**
 - The reviewer's B adds, for the seven families, "The words 'hostile inputs refused' only if hostile right == n", which
   the log writes as "'hostile refused' only if right == n"; and, for forms, "Any unmapped explicit form is listed, and
   counts as not honoured".
-Nothing in the log's summary is looser than the reviewer's text; where the reviewer's text is stricter, the stricter
-reading is the one this document records.
+So the rule that applies is the reviewer's text above, with the one change below for the refuse-everything control.
+Concretely: the `today` control must score 0 failed outside hostile and make nothing; one product look per family,
+at one commit; "hostile inputs refused" is written only if hostile right == n; an unmapped explicit form is listed
+and counts as not honoured.
 
-**Which controls `final` can run at this commit** (read from the code at `09bfff6`; nothing was run).
+**Which controls `final` can run** (read from the code at `09bfff6`, unchanged by fix lane F4; nothing was run).
 - forms, cross, learn (`scripts/bench_omni_forms.py final`): the subject may be any of the family's references
   (`acceptance/omni/forms.py`: `today`, `richest`, `random`, `shape_only`, and `first_good` for forms;
   `cross.py`: `today`, `always_consistent`, `always_inconsistent`; `learn.py`: `today`, `never_learns`,
@@ -545,7 +557,8 @@ reading is the one this document records.
 - the seven families of lane Z (`scripts/bench_omni.py final`): `--subject` accepts only `today` and `artifacts`
   (`subject.SUBJECTS`). The `today` control can be run. **A refuse-everything subject cannot be run through `final`
   as it stands**: the harness's `probe:refuse` subject exists for the tests and is not a `final` choice. By the
-  reviewer's A.3 the main session must say, before the looks, whether that control is dropped for the withheld split
-  (its result holds by construction: a subject that refuses everything scores the floor) or added as a `final`
-  subject in a commit before the looks. **To be confirmed by the main session before the looks.**
+  reviewer's A.3 the main session ruled before the looks (2026-11-27): **the refuse-everything control is DROPPED for
+  the withheld split**, because `final` cannot run it and its result holds by construction (a subject that refuses
+  everything scores exactly the floor). **The `today` control IS run first**, as a reference-only ledger line, and
+  every control named for forms, cross and learn is run.
 

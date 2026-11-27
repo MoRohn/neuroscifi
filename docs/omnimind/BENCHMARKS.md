@@ -52,8 +52,9 @@ on held-out: `omnimind_heldout/{intake,honest,unknown,compound,hostile}.json` at
 everything scores 52; one that says "cannot" to everything scores 29 (the 23 hostile tasks need a refusal). Today's
 55 per split are 25 intake answers and 30 abstentions where abstaining is right (20 honest, 9 unknown, 1 hostile
 refusal; `omnimind_baseline.json`); it also answered a question about a PDF that is also a ZIP (wrong) and crashed
-with a MemoryError on an `.npy` declaring terabytes. (The held-out record's README and the main session's log say
-"55 right (52 of them the floor)": the baseline file gives 30 floor tasks right, not 52; the file wins.)
+with a MemoryError on an `.npy` declaring terabytes. (The phrase "55 right (52 of them the floor)", which stood in the
+main session's log, the held-out record, ADR-075 and the benchmark document, is wrong: the held-out record and
+ADR-075 now carry dated corrections beside the earlier text, and the benchmark document is corrected.)
 
 **What "right" is made of** (`docs/quality/evidence/omnimind_right_breakdown.json`):
 

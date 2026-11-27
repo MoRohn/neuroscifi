@@ -5941,6 +5941,10 @@ shape the examination to its answers.
 - The baseline (`docs/quality/evidence/omnimind_baseline.json`, at `23b5e50`): today's system is right on 55 of 524
   development and 55 of 528 held-out tasks, 52 of which per split are the abstention floor; it makes nothing,
   identifies nothing, crashes on an `.npy` header declaring terabytes and answers about a PDF that is also a ZIP.
+  (Correction, 2026-11-27, documentation lane 2, the earlier text kept: "52 of which per split are the abstention
+  floor" is wrong. Of today's 55 per split, 25 are real intake answers and 30 are right abstentions (20 honest and 9
+  unknown "cannot", 1 hostile refusal; the baseline file). 52 is the floor itself: what a subject that refuses
+  everything scores; one that says "cannot" to everything scores 29.)
 - Points DESIGN.md leaves open are stated as the benchmark's reading, to be ruled on by the main session: the
   diagram and timeline reading, the `warn`/`danger` class for permitted hue, the sonification domain in the request,
   how an array, a JSON tree, an XLSX and a JSON record list may be represented, and the request-to-spec mapping
