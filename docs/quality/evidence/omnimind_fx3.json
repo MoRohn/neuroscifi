@@ -267,5 +267,132 @@
  "changed_outputs_inside_the_artifact_package": [
   "detect: Python source is identified by parsing (basis structure, was declared for a .py name); 3 of 2772 truncated prefixes with the size unknown ('fLaC', 'BZh9', 'BZh91AY&') are called text (lane K evidence regenerated)",
   "relate: listings, drawn links, cue times, pixel axes, waypoints, stated counts of a column's noun are now compared; a count question, or an unread number about a table under a general question, now gives 'cannot'"
- ]
+ ],
+ "second_part": {
+  "label": "lane FX3 second part (FX4): the relater's first fixes fitted the opened cases; replaced by rulings R1-R8",
+  "reviewer_pairs_rebuilt (tests/artifacts/fx4_review_pairs.py, 28)": {
+   "first_version_403fd61": {
+    "right": 2,
+    "cannot": 2,
+    "wrong": 24
+   },
+   "base_06a6b30": {
+    "right": 11,
+    "cannot": 16,
+    "wrong": 1
+   },
+   "now": {
+    "right": 12,
+    "cannot": 16,
+    "wrong": 0
+   }
+  },
+  "own_relater_corpus_276": {
+   "first_version": {
+    "right": 276,
+    "cannot": 0,
+    "wrong": 0
+   },
+   "now": {
+    "right": 188,
+    "cannot": 88,
+    "wrong": 0
+   },
+   "per_class_now": {
+    "members_digest": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "members_size": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "trap_listing_of_other_files": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_digest_of_tar": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "links": {
+     "right": 8,
+     "cannot": 16,
+     "wrong": 0
+    },
+    "trap_links_three_names": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_links_line_off_nodes": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "times": {
+     "right": 8,
+     "cannot": 16,
+     "wrong": 0
+    },
+    "trap_times_clock_of_day": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "image_axis": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_image_depiction": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_count_of_drawn_things": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "waypoints": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "count_as_total": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "chart_words": {
+     "right": 16,
+     "cannot": 8,
+     "wrong": 0
+    }
+   }
+  },
+  "lane_fx_corpora_now": {
+   "identification": "3664/5/0 of 3669",
+   "hostile_parts": "165 refused / 3 answered (H6, rule 2)",
+   "honest_edges": "16/1/2",
+   "relater": "84/60/0"
+  },
+  "opened_cases_now": {
+   "withheld2/unknown": "170 / 1 / 0",
+   "withheld2/hostile": "62 refused of 62",
+   "withheld2/cross": "82 right, 16 cannot, 0 wrong; decidable 64 of 80; undecidable cannot 18 of 18",
+   "withheld/cross": "58 right, 20 cannot, 0 wrong of 78"
+  },
+  "reviewer_hostile_variants": "every H-A, H-C, H-D, H-F, H-G variant refused; H-B 8 of 9 refused (the Spanish paraphrase is read: English-only screen); H-E Unicode-path and size variants refused, the method variant as built by the review is not a disagreement (both headers say stored); review's honest neighbours answered",
+  "ordinary_files_88": "74 answered / 14 refused, identical to the review's f2efbea run",
+  "development": "512/12/0/0 of 524; cross 72 of 72",
+  "guard_differential": "compared 1937, different 0",
+  "offline_digest": "68731d72... both regimes",
+  "lane_r_evidence": "own-variant sweep timeline_log 90 answered -> 90 cannot (question names no artifact); regenerated"
+ }
 }

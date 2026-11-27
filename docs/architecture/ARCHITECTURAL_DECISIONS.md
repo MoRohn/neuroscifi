@@ -6759,3 +6759,46 @@ undecidable "cannot" 18 of 18; cross (first split) 44/32/2 -> 64/14/0 of 78. Lan
 
 Revert lane FX3's commits; nothing stored changes shape (kept artifacts are re-read with the code present). The spent
 files themselves were never changed.
+
+## ADR-081, addition (2026-11-27, lane FX3 second part, "FX4"): the first relater fixes fitted the opened cases
+
+Said plainly: the first version of decision 5 fitted the opened cases, not the class. The security review of Wave
+O-3 rebuilt 28 relater pairs of its own: on that code 24 were answered wrongly or answered where "cannot" was right
+(2 on the code before it). Its cue lists were partly transcribed from the opened questions, a single cue word or a
+document "read on every line" selected a comparison ahead of aggregate and count questions, lines were read from raw
+bytes (a Markdown comment or an RTF hidden group decided), and the hostile class fixes closed the constructions seen,
+not their variants. Replaced, on principle (rulings R1-R8 of the team lead):
+- **R1**: a comparison decides only when the question names one of its quantities (`relate.QUANTITY_WORDS`, general
+  words per quantity) AND where it is read from (`WHERE_WORDS`); aggregate and count questions keep precedence; a
+  quantity named that the deciding comparison does not measure (pitch, date, distance, direction, content...) makes
+  the answer "cannot". The seeded cue lists and the "whole document" fallback are removed.
+- **R2**: only what a reader sees is evidence (a plain text file's lines, else the reader's text); a document holding
+  a comment or hidden group answers "cannot"; invisible drawing marks disable the link reading.
+- **R3**: `record_links` stores consistent_with/contradicts only for an answer decided under R1 (`Relation.specific`);
+  the production pipeline, which asks no question, now shows its sources' relations without recording them.
+- **R4/R5**: link lines need a relation word; listing lines that are not a member and its value make the listing
+  unread; whole-second cue times get half a second and truncation-only agreement is "cannot"; per-item counts are
+  never a total; pixels only against pixels; depiction questions stay "cannot" unless every content word is an
+  artifact, judgement or size word; a listing longer than what is read never answers; digests are read by one reader
+  built once (linear).
+- **R6**: the hostile classes generalised and proved on the reviewer's variants and the lane's own
+  (`tests/artifacts/test_fx4_refusal.py`): Markdown nesting in any form; the AI-address screen normalised (NFKC,
+  zero-width, look-alike letters), with the address as the head of its phrase (a human job title such as "assistant
+  manager" is not an address: review M5 fixed without re-opening the injection variants); PDF xref loops with decoys,
+  comments and padding; duplicate names by NFC, case, path form and trailing dots/spaces; ZIP Unicode Path fields and
+  local/central disagreements (`header_mismatch`). **Measured cost and limits:** the address screen is English only
+  (a Spanish paraphrase is read; a test records it); two ZIP members differing only in case are now refused (honest
+  on Linux, ambiguous elsewhere); the 88 ordinary files of the review keep their outcomes (74 answered, 14 refused).
+- **R7**: HTML and Markdown outside references get the same plain note as SVG, DOCX and PDF; HTML scripts are noted
+  as not run.
+- **R8**: the spent runner's import allowance also rejects `withheld3_`; the two expected-to-fail tests became
+  explicit `final.Spent` assertions and the conftest hook is gone.
+
+Measured (development numbers; `docs/quality/evidence/omnimind_fx3.json`, section `second_part`): the reviewer's 28
+pairs 0 wrong (12 right, 16 cannot; 24 wrong on the first version); the lane's own 276 twins and traps 188 right /
+88 cannot / 0 wrong (was 276/0/0 under the first version's cue lists); lane FX's corpora unchanged; opened cases, which
+lose right answers as expected: cross second split 96 -> 82 right (decidable 78 -> 64 of 80, 0 wrong), first split
+64 -> 58 (0 wrong); unknown 170/1/0 and hostile 62/62 unchanged. Development unchanged: 512/12/0/0, cross 72 of 72.
+Lane R's own-variant sweep: its timeline question names no artifact, so those 90 answers became "cannot".
+Rollback addendum (review): links recorded by the first version's relater (a `how` basis naming members, links or
+times) stay in a store after a revert and would have to be deleted.
