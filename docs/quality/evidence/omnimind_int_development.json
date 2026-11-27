@@ -121,6 +121,67 @@
     "share": 0.0
    },
    "n_cases": 133
+  },
+  {
+   "bad": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0,
+    "too_much": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "too_poor": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "unfit": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "violation": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    }
+   },
+   "commit": "4604f385dbdb872c03ad76dc704818158458a3e1",
+   "explicit": {
+    "feasible_honoured": {
+     "k": 10.0,
+     "n": 10,
+     "share": 1.0
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    },
+    "infeasible_handled": {
+     "k": 4.0,
+     "n": 5,
+     "share": 0.8
+    }
+   },
+   "good": {
+    "k": 107.0,
+    "n": 133,
+    "share": 0.8045
+   },
+   "good_or_fine": {
+    "k": 133.0,
+    "n": 133,
+    "share": 1.0
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "n_cases": 133
   }
  ],
  "how": "each run: scripts/bench_omni.py run --split development --subject artifacts --out FILE --scratch DIR; the planner: scripts/bench_omni_forms.py run --family forms --split development --subject neuroscifi.acceptance.omni.subject:choose_form; 41dacac was run from `git archive 41dacac src scripts` (the merged tree before the registries were wired)",
@@ -196,6 +257,75 @@
   },
   "after_ruling_and_g1_1e9a858": {
    "commit": "1e9a858",
+   "families": {
+    "all": {
+     "abstained": 15,
+     "abstention_floor": 52,
+     "failed": 0,
+     "n": 524,
+     "right": 509,
+     "wrong": 0
+    },
+    "compound": {
+     "abstained": 2,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 36,
+     "right": 34,
+     "wrong": 0
+    },
+    "honest": {
+     "abstained": 3,
+     "abstention_floor": 20,
+     "failed": 0,
+     "n": 55,
+     "right": 52,
+     "wrong": 0
+    },
+    "hostile": {
+     "abstained": 0,
+     "abstention_floor": 23,
+     "failed": 0,
+     "n": 23,
+     "right": 23,
+     "wrong": 0
+    },
+    "intake": {
+     "abstained": 7,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 337,
+     "right": 330,
+     "wrong": 0
+    },
+    "made": {
+     "abstained": 1,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 14,
+     "right": 13,
+     "wrong": 0
+    },
+    "transform": {
+     "abstained": 2,
+     "abstention_floor": 0,
+     "failed": 0,
+     "n": 8,
+     "right": 6,
+     "wrong": 0
+    },
+    "unknown": {
+     "abstained": 0,
+     "abstention_floor": 9,
+     "failed": 0,
+     "n": 51,
+     "right": 51,
+     "wrong": 0
+    }
+   }
+  },
+  "final_with_main_wave4_4604f38": {
+   "commit": "4604f38",
    "families": {
     "all": {
      "abstained": 15,
