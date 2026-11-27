@@ -373,3 +373,26 @@ def test_migration_13_releases_sessions_of_unsigned_nodes(tmp_path):
         assert db.execute("SELECT count(*) FROM node_keys_retired").fetchone()[0] == 0
     finally:
         db.close()
+
+
+def test_rollback_facts(tmp_path):
+    """What MIGRATIONS.md section 2 says about going back (fix lane F1, ruling H; code review M1): a file of a newer
+    schema is refused in plain words naming both versions, and a restore made by this build yields this build's
+    schema, so the old build refuses the restored copy too; the way back is the owner's own pre-upgrade copy or
+    `nsf archive unpack` with the old software."""
+    from neuroscifi.instance import checkpoints
+    path = tmp_path / "live.sqlite"
+    db = store.create(path, T0)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0)
+    out = tmp_path / "restored.sqlite"
+    checkpoints.restore(db, cp["id"], out, T0 + 1)
+    db.close()
+    with sqlite3.connect(out) as raw:
+        assert raw.execute("PRAGMA user_version").fetchone()[0] == schema.SCHEMA_VERSION
+    with sqlite3.connect(path) as raw:
+        raw.execute(f"PRAGMA user_version={schema.SCHEMA_VERSION + 1}")
+    with pytest.raises(Exception) as caught:
+        store.open_existing(path)
+    message = str(caught.value)
+    assert "newer than this software" in message and str(schema.SCHEMA_VERSION) in message
+    assert "Traceback" not in message and "\n" not in message

@@ -198,8 +198,26 @@ def _numbers(cells: list[str], delimiter: str | None) -> tuple[list[str], bool, 
     return values, all(_int64(v) for v in values), note
 
 
-def infer_column(name: str, cells: list, *, delimiter: str | None = None) -> tuple[Column, list[str]]:
-    """One `Column` from raw cells (str, or already typed: bool, int, float, TimeValue, None), by the module's rules."""
+def _chunked(fn, values: list, deadline) -> list:
+    """`[fn(v) for v in values]`, with the deadline checked every CHECK_EVERY values (fix lane F1: inference on a
+    million long cells must not run past the decode's time limit)."""
+    if deadline is None or len(values) <= CHECK_EVERY:
+        return [fn(v) for v in values]
+    out = []
+    for k in range(0, len(values), CHECK_EVERY):
+        out.extend(fn(v) for v in values[k:k + CHECK_EVERY])
+        deadline.check("reading the table's columns")
+    return out
+
+
+CHECK_EVERY = 1 << 16
+
+
+def infer_column(name: str, cells: list, *, delimiter: str | None = None, deadline=None) -> tuple[Column, list[str]]:
+    """One `Column` from raw cells (str, or already typed: bool, int, float, TimeValue, None), by the module's rules.
+    With a `deadline`, its time limit is checked as the cells are read."""
+    if deadline is not None:
+        deadline.check("reading the table's columns")
     name, unit = split_unit(str(name))
     n = len(cells)
     present = [(i, c) for i, c in enumerate(cells) if not is_missing(c)]
@@ -216,8 +234,10 @@ def infer_column(name: str, cells: list, *, delimiter: str | None = None) -> tup
         return arr
 
     if values and all(isinstance(v, str) for v in values):
-        stripped = [v.strip() for v in values]
-        low = [v.lower() for v in stripped]
+        stripped = _chunked(str.strip, values, deadline)
+        low = _chunked(str.lower, stripped, deadline)
+        if deadline is not None:
+            deadline.check("reading the table's columns")
         if all(v in _BOOL for v in low):
             kind, arr = "boolean", floats([1.0 if _BOOL[v] else 0.0 for v in low])
         elif (num := _numbers(stripped, delimiter)) is not None:
@@ -277,7 +297,7 @@ def _time_text(seconds: float) -> str:
         return str(float(seconds))
 
 
-def _detect_header(rows: list[list], delimiter: str | None) -> tuple[bool, str]:
+def _detect_header(rows: list[list], delimiter: str | None, deadline=None) -> tuple[bool, str]:
     if len(rows) < 2:
         return False, "a single row is read as data"
     first = rows[0]
@@ -288,7 +308,7 @@ def _detect_header(rows: list[list], delimiter: str | None) -> tuple[bool, str]:
     width = len(first)
     for j in range(width):
         below = [r[j] if j < len(r) else None for r in rows[1:]]
-        if infer_column("x", below, delimiter=delimiter)[0].kind != "text":
+        if infer_column("x", below, delimiter=delimiter, deadline=deadline)[0].kind != "text":
             return True, "header row: the first row is text above a typed column"
     names = [c.strip() for c in first]
     if len(set(names)) == len(names) and all(
@@ -299,11 +319,12 @@ def _detect_header(rows: list[list], delimiter: str | None) -> tuple[bool, str]:
 
 
 def table_from_rows(rows: list[list], *, header: bool | None = None, title: str | None = None,
-                    delimiter: str | None = None) -> tuple[Table, list[str]]:
-    """A `Table` from rows of cells (strings or typed values). `header=None` applies the header rule."""
+                    delimiter: str | None = None, deadline=None) -> tuple[Table, list[str]]:
+    """A `Table` from rows of cells (strings or typed values). `header=None` applies the header rule. With a
+    `deadline` (`safe.Deadline`), inference stops with its named timeout when the decode's time runs out."""
     notes: list[str] = []
     if header is None:
-        header, why = _detect_header(rows, delimiter)
+        header, why = _detect_header(rows, delimiter, deadline)
         notes.append(why)
     width = max((len(r) for r in rows), default=0)
     if width > MAX_COLUMNS:
@@ -324,7 +345,8 @@ def table_from_rows(rows: list[list], *, header: bool | None = None, title: str 
         notes.append("repeated header names were numbered")
     columns = []
     for j in range(width):
-        column, col_notes = infer_column(names[j], [r[j] if j < len(r) else None for r in body], delimiter=delimiter)
+        column, col_notes = infer_column(names[j], [r[j] if j < len(r) else None for r in body], delimiter=delimiter,
+                                         deadline=deadline)
         columns.append(column)
         notes.extend(col_notes)
     return Table(tuple(columns), len(body), title), notes
@@ -398,7 +420,7 @@ def read_delimited(data: bytes, detected: Detected, limits: Limits) -> Decoded:
                         "quoting is broken)") from None
     if not rows:
         raise Malformed("the delimited text has no rows")
-    table, table_notes = table_from_rows(rows, delimiter=delimiter)
+    table, table_notes = table_from_rows(rows, delimiter=delimiter, deadline=deadline)
     notes.extend(table_notes)
     notes.extend(injection_notes(table.text()))
     return Decoded(detected, table, tuple(notes), partial)
@@ -470,7 +492,7 @@ def table_from_records(records: list, *, title: str | None = None, budget: Decod
         rows.append([_flatten_value(rec.get(k), nested, k) for k in keys])
     if nested:
         notes.append("nested values kept as JSON text in column(s) " + ", ".join(sorted(nested)[:16]))
-    table, table_notes = table_from_rows(rows, header=True, title=title)
+    table, table_notes = table_from_rows(rows, header=True, title=title, deadline=deadline)
     absent = sum(1 for rec in kept for k in keys if k not in rec)
     if absent:
         notes.append(f"{absent} key(s) absent from some records: counted as missing")

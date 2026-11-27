@@ -64,13 +64,19 @@ def streams(path):
 HUGE = npy_bytes((1 << 22, 1 << 20), data=b"\0" * 64)        # declares 32 TiB of float64
 
 
-def hostile_npz():
-    zeros = np.zeros((200_000, 8))                       # 12.8 MB each, deflated to a few kB: a zero-fill bomb
+def constant_npz() -> bytes:
+    """np.savez_compressed of constant arrays (12.8 MB each, deflated to a few kB): honest data, not a bomb, since
+    zipfile never inflates past the declared size and the declared size is within the accepted bound (code review
+    L11; fix lane F1 ruling F removed the ratio rule that refused it)."""
+    zeros = np.zeros((200_000, 8))
     buffer = io.BytesIO()
     np.savez_compressed(buffer, states=zeros, targets=zeros)
+    return buffer.getvalue()
+
+
+def hostile_npz():
     return {
         "huge_header.npz": zip_bytes({"states.npy": HUGE, "targets.npy": HUGE}),
-        "zero_bomb.npz": buffer.getvalue(),
         "bzip2.npz": zip_bytes({"states.npy": npy_bytes((8, 1), data=b"\0" * 64),
                                 "targets.npy": npy_bytes((8, 1), data=b"\0" * 64)}, zipfile.ZIP_BZIP2),
         "many_members.npz": zip_bytes({f"m{i}.npy": b"" for i in range(5000)}),
@@ -106,6 +112,12 @@ def test_epoch_stream_refuses_a_fifo_without_blocking(individual, tmp_path, caps
         worker.join(10)
         pytest.fail("the command blocked on a FIFO")
     assert result["code"] == 2 and "FIFO" in capsys.readouterr().err
+
+
+def test_an_honest_npz_of_constant_data_is_not_refused(individual, tmp_path, capsys):
+    (tmp_path / "zeros.npz").write_bytes(constant_npz())
+    code, out, err = nsf(capsys, "epoch", "stream", "desk", tmp_path / "zeros.npz", "--db", individual)
+    assert code == 0 and json.loads(out)["rows"] == 200_000, err
 
 
 @pytest.mark.parametrize("save", [np.savez, np.savez_compressed])

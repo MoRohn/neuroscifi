@@ -89,7 +89,7 @@ def shapes_from_files(paths, limits: Limits = Limits()) -> tuple[tuple[ContentSh
     """The shapes the planner is handed for these files: each file's decoded representation's `shape()`, and for an
     archive, workbook or database also its decoded members' shapes (`shapes_b1.content_shapes`). A file only
     identified (nothing decodes it, or only its header is read) adds an empty shape and a note."""
-    from . import adapters
+    from . import guarded
     from .safe import read_file
     from .shapes_b1 import content_shapes
     from .types import HeaderOnly
@@ -100,7 +100,7 @@ def shapes_from_files(paths, limits: Limits = Limits()) -> tuple[tuple[ContentSh
         except ArtifactError as error:           # not there, not a regular file, too large: named, as before
             raise ValueError(f"cannot read a file ({path.name}: {error})") from None
         try:
-            decoded = adapters.decode(data, name=path.name, limits=limits)
+            decoded = guarded.decode(data, name=path.name, limits=limits)
         except HeaderOnly as error:
             notes.append(f"{path.name}: only its header could be read ({error.facts.get('format', 'its format')}); "
                          "planned as words")

@@ -11,10 +11,15 @@ line (the owner chose that path) and takes regular files only. `export` never ov
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import sys
 import time
 from pathlib import Path
+
+from . import outcome
+from .inspect_cli import _clean, inert_json
+from .outcome import CANNOT_REASONS
 
 HELP = ("files you hand over, kept beside this individual with what could be read from them, and what NeuroSciFi "
         "made (always marked: made by the system, not evidence)")
@@ -58,6 +63,16 @@ def _line(item) -> str:
             f"{state}{flag})")
 
 
+_NOT_RECOVERED = re.compile(r"\b(not|never|no|skipped|missing|stopped|cut|partial|without|unreadable|left out|"
+                            r"refused|ignored|dropped|lost)\b", re.I)
+
+
+def _note_label(note: str) -> str:
+    """What a decode note is (ruling C of fix lane F1): "not recovered" when it says something was not read, kept
+    out or stopped (the decoders' own wording), else "read" (a measurement of what was read)."""
+    return "not recovered" if _NOT_RECOVERED.search(str(note)) else "read"
+
+
 def _plain(what, value) -> str:
     if what == "add":
         lines = []
@@ -85,7 +100,11 @@ def _plain(what, value) -> str:
         lines = [_line(value), f"  kind: {(value['index'].get('representation') or {}).get('kind', 'not read')}",
                  f"  sha256: {value['sha256']}"]
         for note in (value["index"].get("notes") or [])[:8]:
-            lines.append(f"  not recovered: {note}")
+            lines.append(f"  {_note_label(note)}: {note}")
+        error = value["index"].get("error")
+        if error:
+            lines.append(f"  refused: {error.get('message')}" if error.get("reason") not in CANNOT_REASONS
+                         else f"  not recovered: {error.get('message')}")
         for note in (value["index"].get("made_notes") or [])[:8]:
             lines.append(f"  made: {note}")
         checked = value["index"].get("check")
@@ -326,7 +345,7 @@ def _list(db, args, now):
 def _command(what, handler):
     def run(args):
         from ..instance import store as instance_store
-        from ..instance.errors import InstanceError
+        from ..instance.errors import InstanceError, NotFound
         from .types import ArtifactError
         try:
             db = instance_store.open_existing(instance_store.resolve_db(args))
@@ -338,9 +357,15 @@ def _command(what, handler):
             from ..instance.governance import sweep
             sweep(db, now)                         # as every `nsf` command on an individual does (MEM-09)
             value = handler(db, args, now)
-        except (ArtifactError, InstanceError) as error:
-            print(f"nsf: {error}", file=sys.stderr)
-            return 2
+        except NotFound as error:              # the id asked for is not held: about the input, not misuse
+            print(f"nsf: {_clean(error)}", file=sys.stderr)
+            return outcome.exit_code(outcome.CANNOT)
+        except ArtifactError as error:
+            print(f"nsf: {_clean(error)}", file=sys.stderr)
+            return outcome.exit_code(outcome.of_error(error))
+        except InstanceError as error:
+            print(f"nsf: {_clean(error)}", file=sys.stderr)
+            return outcome.MISUSE
         except sqlite3.Error as error:
             busy = "locked" in str(error) or "busy" in str(error)
             print("nsf: instance busy; retry" if busy else f"nsf: database error ({type(error).__name__})",
@@ -349,16 +374,19 @@ def _command(what, handler):
         finally:
             db.close()
         if args.json:
-            print(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False))
+            print(inert_json(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False)))
         else:
-            print(_plain(what, value))
+            print(_clean(_plain(what, value)))
+        # the one exit-code table (artifacts/outcome.py): 0 done, 1 could not be done (input), 2 refused or misuse
         if what == "add" and value["refused"] and not value["added"]:
-            return 1
+            return outcome.exit_code(outcome.REFUSED)
         if what == "feedback" and value.get("recorded") is False:
-            return 1
-        if what in ("make", "remake") and value["status"] in ("failed", "cannot"):
-            return 1
-        return 0
+            return outcome.exit_code(outcome.CANNOT)
+        if what in ("make", "remake") and value["status"] not in ("made", "words", "remade"):
+            return outcome.exit_code(outcome.CANNOT)
+        if what == "forget" and value.get("status") == "absent":
+            return outcome.exit_code(outcome.CANNOT)
+        return outcome.exit_code(outcome.ANSWERED)
     return run
 
 

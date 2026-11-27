@@ -41,12 +41,13 @@ No model is called.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import time
 from dataclasses import dataclass, field, replace
 
-from . import adapters, forms
+from . import forms, guarded
 from . import produce_builders as B
 from .spec import Spec, canonical_json
 from .types import ArtifactError, ContentShape, HeaderOnly, Limits, Malformed, Refused
@@ -137,7 +138,7 @@ class _Run:
 def _decode(data: bytes, name: str, limits: Limits):
     """(representation, detected format, None) or (None, format, why not)."""
     try:
-        decoded = adapters.decode(data, name=name, limits=limits)
+        decoded = guarded.decode(data, name=name, limits=replace(limits, refuse_flagged=True))
     except HeaderOnly as error:
         return None, "unknown", f"only its header is read here ({error})"[:300]
     except ArtifactError as error:
@@ -168,7 +169,15 @@ def _unwrap(rep, label):
     return rep, "as decoded"
 
 
-def interpret(db, sources, limits: Limits) -> tuple[list, list]:
+def _within(limits: Limits, deadline: float | None) -> Limits:
+    """`limits` with max_seconds no longer than what is left before `deadline` (time.monotonic()): the decode, and
+    its guarded child, are given the production's remaining time (code review L1; ruling D of fix lane F1)."""
+    if deadline is None:
+        return limits
+    return replace(limits, max_seconds=max(0.0, min(limits.max_seconds, deadline - time.monotonic())))
+
+
+def interpret(db, sources, limits: Limits, deadline: float | None = None) -> tuple[list, list]:
     """(pieces, notes per source). `sources`: artifact ids (read from the store) or `Given` files (in memory)."""
     from . import store
     pieces, notes, python = [], [], []
@@ -188,7 +197,7 @@ def interpret(db, sources, limits: Limits) -> tuple[list, list]:
                 notes.append({"id": sid, "label": label, "used": False, "why": f"its bytes are {record.state}"})
                 continue
             data = store.read_bytes(db, sid)
-        rep, fmt, why = _decode(data, label, limits)
+        rep, fmt, why = _decode(data, label, _within(limits, deadline))
         if rep is None:
             notes.append({"id": sid, "label": label, "format": fmt, "used": False, "why": why})
             continue
@@ -512,7 +521,10 @@ def explore(plan, n: int) -> list[tuple[str, ...]]:
 
 
 def choose(plan, explored, direct) -> list[dict]:
-    """The candidates to try, in order: the plan's choice (or the form named by its generator name) first."""
+    """The candidates to try, in order: the plan's choice (or the form named by its generator name) first. When a
+    form explored has no builder here (the planner reads `make.catalog()`, the builders are produce_builders.BUILDERS:
+    code review M4), the next candidates the planner admitted whose first form HAS a builder follow, each marked
+    "fallback" so the record says the production fell through (the planner itself is not changed)."""
     if direct is not None:
         return [{"forms": [direct], "total": None, "complexity": 0, "direct": True}]
     out = []
@@ -520,7 +532,20 @@ def choose(plan, explored, direct) -> list[dict]:
         cand = plan.candidate(fs)
         out.append({"forms": list(fs), "total": round(cand.total, 4) if cand else None,
                     "complexity": sum(forms.FORMS[f].complexity for f in fs if f in forms.FORMS)})
+    if any(fs and fs[0] not in B.BUILDERS and fs[0] not in WORDS for fs in explored):
+        seen = {tuple(fs) for fs in explored}
+        for cand in (c for c in plan.candidates if c.excluded is None):
+            if cand.forms in seen or not cand.forms or cand.forms[0] not in B.BUILDERS:
+                continue
+            seen.add(cand.forms)
+            out.append({"forms": list(cand.forms), "total": round(cand.total, 4), "fallback": True,
+                        "complexity": sum(forms.FORMS[f].complexity for f in cand.forms if f in forms.FORMS)})
+            if sum(1 for c in out if c.get("fallback")) >= FALLBACKS:
+                break
     return out
+
+
+FALLBACKS = 2      # admitted candidates with a builder tried after a planned form that has none
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -951,7 +976,7 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
               "asked": {"request": request, "form": form, "options": options, "device": context.device,
                         "budget": {"seconds": context.budget_s, "bytes": context.budget_bytes},
                         "alternatives": alternatives}}
-    pieces, notes = run.step("interpret", interpret, db, sources, limits,
+    pieces, notes = run.step("interpret", functools.partial(interpret, deadline=run.deadline), db, sources, limits,
                              summary_in={"sources": len(sources)},
                              summary_out=lambda r: {"pieces": len(r[0]), "unused": sum(1 for n in r[1]
                                                                                         if not n["used"])})
@@ -997,7 +1022,7 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
     explored = run.step("explore", explore, plan, alternatives if direct is None else 1,
                         summary_in={"alternatives": alternatives}, summary_out=lambda r: {"candidates": r})
     tried = run.step("choose", choose, plan, explored, direct, summary_out=lambda r: {"order": [c["forms"] for c in r]})
-    make_limits = replace(limits, max_bytes=min(limits.max_bytes, context.budget_bytes))
+    make_limits = replace(_within(limits, run.deadline), max_bytes=min(limits.max_bytes, context.budget_bytes))
     stored_sources: list[str] = []
     sim_id = None
     try:
@@ -1007,6 +1032,9 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
         for cand in tried:
             fs = tuple(cand["forms"])
             entry = {"forms": list(fs), "form": _generator_form(fs[0]), "total": cand["total"]}
+            if cand.get("fallback"):
+                entry["fallback"] = ("the planned form has no builder here: this is the next form the planner "
+                                     "admitted that has one")
             seen = foresee(fs[0], pieces, context) if direct is None else {"form": fs[0], "codes": [],
                                                                            "problems": [], "estimates": {}}
             entry["foreseen"] = seen

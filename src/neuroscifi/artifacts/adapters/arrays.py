@@ -57,7 +57,7 @@ def parse_header(data: bytes) -> tuple[np.dtype, bool, tuple[int, ...], int]:
     if descr.lstrip("<>|=") in ("O", "O8", "O4"):
         raise Refused("object arrays are refused: loading them would unpickle", rule="pickle")
     if not _DESCR.match(descr):
-        raise Unsupported(f"the .npy dtype {descr[:20]!r} is not read here", needs=("a reader for this dtype",))
+        raise Unsupported("the .npy file's dtype is not one read here", needs=("a reader for this dtype",))
     shape_text = items["shape"].strip("()").replace(" ", "")
     try:
         shape = tuple(int(x) for x in shape_text.split(",") if x)

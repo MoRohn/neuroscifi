@@ -203,9 +203,9 @@ def _gpx_points(parent, name, budget):
         try:
             lat, lon = float(p.get("lat")), float(p.get("lon"))
         except (TypeError, ValueError):
-            raise Malformed(f"a GPX {name} has no numeric lat and lon") from None
+            raise Malformed("a GPX point has no numeric lat and lon") from None
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            raise Malformed(f"a GPX {name} lies outside latitude/longitude ranges")
+            raise Malformed("a GPX point lies outside latitude/longitude ranges")
         ele = _text(p, "ele")
         try:
             pts.append([lon, lat] + ([float(ele)] if ele is not None else []))

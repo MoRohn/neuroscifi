@@ -99,7 +99,7 @@ def test_adapter_failures_become_named_errors(registry):
     registry.register(Crashy())
     with pytest.raises(T.Malformed) as e:
         registry.decode(PNG)
-    assert "IndexError" in str(e.value) and "\\x89" not in str(e.value)
+    assert e.value.detail == "IndexError" and "IndexError" not in str(e.value) and "\\x89" not in str(e.value)
 
     class Liar(Fake):
         name = "liar"

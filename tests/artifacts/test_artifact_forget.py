@@ -237,7 +237,44 @@ def test_the_decompression_budget_bounds_the_scan_and_is_reported(individual, mo
     A.add(db, bomb + gzip.compress(ROOT.encode(), mtime=0), name="bomb.gz", now=T0)
     monkeypatch.setattr(A, "limits", lambda cfg: A.Limits(max_decoded_bytes=1 << 20))
     scan = A.scan_root(db, ROOT)
-    assert scan.hits == [] and scan.budget_reached == 1          # the name after the bomb was not reached
+    # the name after the bomb was not reached: what could not be inspected counts as naming it (fix lane F1, B)
+    assert len(scan.hits) == 1 and scan.budget_reached == 1
+
+
+def _deep(text: bytes, layers: int) -> bytes:
+    for _ in range(layers):
+        text = base64.b64encode(gzip.compress(text, mtime=0))
+    return text
+
+
+FOUND = {   # ruling B of fix lane F1: each holds the root joined, split or encoded as the reviewers found it kept
+    "dash.txt": f"see to-{ROOT}-2024 here\n".encode(),
+    "under.txt": f"notes_{ROOT}_1\n".encode(),
+    "dot.txt": f"photos.{ROOT}.png\n".encode(),
+    "soft.txt": f"letter to {ROOT[:4]}\u00ad{ROOT[4:]}\n".encode(),
+    "zwsp.txt": f"letter to {ROOT[:4]}\u200b{ROOT[4:]}\n".encode(),
+    "url.txt": ("see https://x.example/?who=%4F" + ROOT[1:].replace("-", "%2D") + "\n").encode(),
+    "hex.txt": ROOT.encode().hex().encode(),
+    "b64lines.txt": base64.encodebytes(("x" * 50 + " " + ROOT + " " + "y" * 50).encode()),   # lines of 76
+    "deep.txt": _deep(f"Carol said hi to {ROOT}".encode(), 5),      # past max_depth: still encoded -> removed
+}
+KEPT = {    # stated as not found (the module docstring of artifacts/store.py)
+    "inside.txt": f"x{ROOT}y\n".encode(),           # letters touch it: another word
+    "upper.txt": f"to {ROOT.upper()}\n".encode(),    # case: the owner's forget treats a name as itself, exactly
+    "fullwidth.txt": ("to \uff2f" + ROOT[1:] + "\n").encode(),
+}
+
+
+def test_forget_finds_joined_split_and_encoded_names(individual):
+    db, path = individual
+    ids = {name: A.add(db, data, name=name.replace(".txt", ".dat"), now=T0).id for name, data in
+           (FOUND | KEPT).items()}
+    result = governance.forget_partner(db, ROOT, T0 + 1)
+    kept = held(db)
+    assert {n for n, i in ids.items() if i in kept} == set(KEPT)
+    assert result["effects"]["artifacts_removed"] == len(FOUND)
+    assert result["effects"]["artifacts_removed_uninspectable"] == 1          # deep.txt, and the owner is told
+    assert names_root(open(side_path(path), "rb").read()) is False
 
 
 # ---- restore -----------------------------------------------------------------------------------------------------------------

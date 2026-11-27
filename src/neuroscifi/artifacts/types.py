@@ -111,6 +111,11 @@ class Limits:
     max_ratio: int = 200                # decompressed/compressed, per stream
     max_elements: int = 5_000_000       # cells, XML nodes, vertices (pixels are bounded by max_decoded_bytes)
     max_seconds: float = 20.0           # wall clock per decode (checked cooperatively)
+    # A file whose own words hold passages addressed to an AI agent (webcortex.safety.scan_injection) is refused by
+    # `adapters.decode` (Refused, rule "injection") when True: the answer to a question about its content is the
+    # product's refusal (fix lane F1, ruling G). The store decodes with False: it keeps the file, marks it flagged
+    # (`Decoded.flagged`, the index's "injection"), and never offers its words to a model.
+    refuse_flagged: bool = True
 
 
 @dataclass(frozen=True)
@@ -833,9 +838,17 @@ class Decoded:
     representation: object      # one of REPRESENTATIONS
     notes: tuple[str, ...] = ()  # what was NOT recovered
     partial: bool = False       # True when a limit stopped the decode early; notes say where
+    flagged: tuple[str, ...] = ()  # injection patterns found in the artifact's own words (set by adapters.decode)
+
+    @property
+    def status(self) -> str:
+        """"partial" (a limit stopped the decode: what was read is not the whole), "flagged" (read whole; its words
+        try to instruct an AI agent), or "read". `outcome.of_decoded` turns it into an answer's outcome."""
+        return "partial" if self.partial else ("flagged" if self.flagged else "read")
 
     def __post_init__(self):
         object.__setattr__(self, "notes", _strings(self.notes, "notes"))
+        object.__setattr__(self, "flagged", tuple(str(f) for f in self.flagged))
         if not isinstance(self.representation, REPRESENTATIONS):
             raise Malformed(f"{type(self.representation).__name__} is not a representation")
 

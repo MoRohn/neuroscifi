@@ -18,7 +18,14 @@ from pathlib import Path
 
 from .types import ArtifactError, HeaderOnly, Limits, bounded
 
-_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]")
+# Terminal control (C0 but tab and newline, ESC, DEL, C1) and direction marks, embeddings, overrides and isolates
+# (fix lane F1, ruling C: everything from a file that reaches a terminal is inert, in every command).
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+
+
+def inert_json(text: str) -> str:
+    """JSON text with every character `_CONTROL` names written as a \\uXXXX escape (still the same JSON value)."""
+    return _CONTROL.sub(lambda m: f"\\u{ord(m.group(0)):04x}", text)
 
 
 def register(sub):
@@ -42,10 +49,10 @@ def _detected(d) -> dict:
 def report(data: bytes, name: str | None) -> dict:
     """What `nsf inspect` prints. A header-only format (HeaderOnly) is a read file too: its header facts are the
     structure, `header_only` says the content was not decoded, and its words are counted (never printed)."""
-    from . import adapters
+    from . import guarded
     from .detect import detect
     try:
-        decoded = adapters.decode(data, name=name, limits=Limits())
+        decoded = guarded.decode(data, name=name, limits=Limits())
     except HeaderOnly as error:
         d = detect(data[:64 << 10], name=name, size=len(data))
         return {"size": len(data), "detected": _detected(d), "representation": error.opaque.describe(),
@@ -106,12 +113,13 @@ def _inspect(args) -> int:
         elif findings:                          # e.g. an archive refused as a whole: its listing, never its content
             print("What could be established (inspection only, nothing inside was decoded):")
             print("\n".join(f"  - {_clean(f)}" for f in findings))
-        print(f"nsf inspect: {error.reason}: {_clean(error)}", file=sys.stderr)
-        return 2
+        print(f"nsf inspect: {_clean(error)}", file=sys.stderr)
+        from . import outcome
+        return outcome.exit_code(outcome.of_error(error))      # 1 cannot, 2 refused (artifacts/outcome.py)
     if args.json:
         print(json.dumps(out, ensure_ascii=True, sort_keys=True))
     else:
-        print(_plain(str(args.file), out))
+        print(_clean(_plain(str(args.file), out)))
     return 0
 
 

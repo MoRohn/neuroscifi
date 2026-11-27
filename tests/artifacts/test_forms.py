@@ -9,6 +9,7 @@ the pre-production check predicts the stated problems; the adjustments seam is b
 """
 import json
 import math
+import os
 import random
 
 import pytest
@@ -27,6 +28,10 @@ NEUTRAL = ("", "How did it change?", "Compare these.", "What is the value?", "Ho
            "Explain this.", "What does it look like?", "How are the values spread?", "Save a copy for my records.",
            "Tell me about it.", "Which one is bigger?", "What happened?")
 
+
+# The random sweeps run 1200 draws by default and the full 3000 with NSF_BENCH_OMNI=1 (fix lane F1, ruling I: code
+# review M6); 1200 keeps test_learn_properties' floors (600 plans, 10 changed choices) with room.
+COST_FLOOR_SWEEP = 3000 if os.environ.get("NSF_BENCH_OMNI") == "1" else 1200
 
 def shape(kinds, n=0, k=0, t=False, space=0, params=False, duration=0.0, chars=0):
     return ContentShape(tuple(kinds), n, k, t, space, params, duration, chars)
@@ -651,7 +656,7 @@ def test_no_answer_breaks_a_cost_floor_or_a_medium_by_construction():
     test's own arithmetic over the declared floors, whatever rule chose the answer."""
     rng = random.Random(13)
     names = tuple(F.FORMS)
-    for _ in range(3000):
+    for _ in range(COST_FLOOR_SWEEP):
         content = (random_shape(rng),)
         context = F.Context(device=rng.choice(F.DEVICES),
                             shows=None if rng.random() < 0.6 else tuple(rng.sample(F.MEDIA, rng.randint(1, 8))),
