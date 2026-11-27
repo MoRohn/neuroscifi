@@ -87,3 +87,18 @@ def test_the_documented_step_lists_then_removes(tmp_path):
         assert relate_cli.links_decided_by(db, "times") == [] and len(relate_cli.links_decided_by(db, "links")) == 1
     finally:
         db.close()
+
+
+def test_a_productions_record_of_its_sources_is_never_matched_by_the_rollback(tmp_path):
+    """The production records its sources' relations as before this wave, not through the specificity gate; one that
+    rests on an FX3 comparison is marked, and removing a comparison's links never removes it."""
+    from neuroscifi.artifacts import produce as PR
+    db = store.create(tmp_path / "made.sqlite", T0)               # no earlier link between these two sources
+    result = PR.produce(db, "a document of the package and its list",
+                        [PR.Given("pack.zip", P.zipped(P.PACK)), PR.Given("sizes.txt", P.size_lines(P.PACK).encode())],
+                        form="document", now=T0 + 10)
+    made_links = [r for r in _all_links(db) if r[3].startswith(relate_cli.MADE_BASIS)]
+    assert result.status == "made" and len(made_links) == 1 and made_links[0][1] == "consistent_with"
+    relate_cli.remove_links_decided_by(db, "members")
+    assert [r for r in _all_links(db) if r[3].startswith(relate_cli.MADE_BASIS)] == made_links
+    db.close()

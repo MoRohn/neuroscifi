@@ -6784,7 +6784,7 @@ not their variants. Replaced, on principle (rulings R1-R8 of the team lead):
 - **R3**: `record_links` stores consistent_with/contradicts only for an answer decided under R1 (`Relation.specific`);
   `nsf artifact relate` without such a question shows its answer and records no consistent_with/contradicts link.
   The production pipeline records its sources' relations exactly as before this wave (team lead's ruling, lane FX4
-  follow-up: `record_links(..., require_specific=False)`); its derived_from links were never affected.
+  follow-up: `record_links(..., require_specific=False)`); its derived_from links were never affected. A production relation resting on one of FX3's comparisons (none existed before) has its basis marked `made:`, and the rollback step never matches it.
 - **R4/R5**: link lines need a relation word; listing lines that are not a member and its value make the listing
   unread; whole-second cue times get half a second and truncation-only agreement is "cannot"; per-item counts are
   never a total; pixels only against pixels; depiction questions stay "cannot" unless every content word is an
