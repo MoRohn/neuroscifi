@@ -272,7 +272,7 @@
     "right": 10
    },
    "points_per_pixel": {
-    "not observable here": 1
+    "false alarm": 1
    },
    "seconds": {
     "over-predicted": 10
@@ -314,7 +314,7 @@
    ],
    "form": "chart.line",
    "request": "how did temperature_c change over the year?",
-   "seconds": 0.0126,
+   "seconds": 0.0127,
    "source": "table (time series)",
    "status": "made"
   },
@@ -360,7 +360,7 @@
      "what": "over_budget"
     },
     {
-     "outcome": "not observable here",
+     "outcome": "false alarm",
      "what": "points_per_pixel"
     }
    ],
@@ -462,7 +462,7 @@
    ],
    "form": "graph.tree",
    "request": "how is this organised?",
-   "seconds": 0.0052,
+   "seconds": 0.0053,
    "source": "tree",
    "status": "made"
   },
@@ -521,7 +521,7 @@
    "foresight": [],
    "form": null,
    "request": "what is in this archive?",
-   "seconds": 0.0033,
+   "seconds": 0.0034,
    "source": "bundle",
    "status": "words"
   },
@@ -545,7 +545,7 @@
    ],
    "form": "explorable.model",
    "request": "what happens when I change gravity?",
-   "seconds": 0.0045,
+   "seconds": 0.0046,
    "source": "model file",
    "status": "made"
   }

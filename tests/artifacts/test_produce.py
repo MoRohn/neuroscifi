@@ -327,6 +327,11 @@ def test_a_style_finding_is_repaired_within_three_rounds_and_each_round_is_recor
     assert result.status == "made" and len(rounds) >= 2 and rounds[0]["repair"]
     assert "points_exceed_pixels" in rounds[0]["style_failed"] and len(rounds) <= 4
     assert result.spec.options.get("aggregate") and result.record["check"]["ok"]
+    pairs = {p["what"]: p for p in result.record["foresight"]}
+    assert pairs["points_per_pixel"] == {"what": "points_per_pixel", "predicted": True, "observed": True,
+                                         "outcome": "right"}
+    calm = made_now("how did it change?", [("temps.csv", temps_csv())])
+    assert {p["what"]: p["outcome"] for p in calm.record["foresight"]}.get("points_per_pixel") is None
 
 
 def test_a_failed_technical_check_is_never_stored_and_the_next_form_is_offered(individual, monkeypatch):

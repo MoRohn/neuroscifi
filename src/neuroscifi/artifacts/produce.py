@@ -60,16 +60,17 @@ MECHANISM, MECHANISM_VERSION = "artifacts.produce", "1"
 # Findings whose passing means the source's values were read back from the bytes (carried information).
 CARRIED_RULES = ("values_recovered", "nodes_recovered", "edges_recovered", "cells_match", "values_exact",
                  "order_preserved", "printed_values_match", "all_values_binned")
-# A foreseen problem -> the check findings that would show it (failed) on the first made bytes. Codes with no entry
-# are not observable by any check here and are reported as such.
-OBSERVABLE = {"label_overlap": ("tick_labels_overlap_x", "tick_labels_overlap_y", "text_overlap"),
-              "too_many_categories": ("tick_labels_overlap_x",),
-              "too_many_series": ("series_distinguishable",),
-              "points_per_pixel": ("points_exceed_pixels",),
-              "too_many_nodes": ("nodes_apart",),
-              "sound_too_long": ("max_duration",)}
 SVG_FORMS = ("chart.line", "chart.bar", "chart.scatter", "chart.histogram", "chart.heatmap", "chart.small_multiples",
              "timeline", "graph.nodelink", "graph.tree", "flow.steps")
+# A foreseen problem -> (the check findings, or the generator's refusal rule, that show it on the first made bytes;
+# the made forms whose check or generator always looks for it). A finding a check emits only when it fails counts as
+# "not found" for those forms. Elsewhere, and for codes with no entry, the problem is "not observable here".
+OBSERVABLE = {"label_overlap": (("tick_labels_overlap_x", "tick_labels_overlap_y", "text_overlap"), SVG_FORMS),
+              "too_many_categories": (("tick_labels_overlap_x",), ("chart.bar", "chart.heatmap")),
+              "too_many_series": (("series_distinguishable",), ("chart.line", "chart.scatter")),
+              "points_per_pixel": (("points_exceed_pixels",), ("chart.line", "chart.small_multiples")),
+              "too_many_nodes": (("nodes_apart",), ("graph.nodelink", "graph.tree", "flow.steps")),
+              "sound_too_long": (("max_duration",), ("sound.sonify",))}
 WORDS = ("prose", "spoken")
 
 
@@ -532,7 +533,7 @@ def _factor(predicted: float, observed: float) -> str:
     return "right" if 0.5 <= ratio <= 2.0 else ("under-predicted" if ratio > 2.0 else "over-predicted")
 
 
-def foresight_pairs(foreseen: dict, outcome: dict, context, seconds: float) -> list[dict]:
+def foresight_pairs(foreseen: dict, outcome: dict, context, seconds: float, made_form: str | None = None) -> list[dict]:
     """Each prediction of `forms.foresee` beside what the made bytes and the independent check showed.
     Numbers: right within a factor of two. Problems: right, false alarm (predicted, not found) or missed (found,
     not predicted); only problems some check here can observe are paired."""
@@ -550,10 +551,9 @@ def foresight_pairs(foreseen: dict, outcome: dict, context, seconds: float) -> l
         pairs.append({"what": "over_budget", "predicted": bool(p_over), "observed": bool(o_over),
                       "outcome": _problem_outcome(p_over, o_over)})
     predicted = set(foreseen.get("codes") or [])
-    seen_rules = set(outcome.get("evaluated") or ())
     failed = set(outcome.get("failed_first") or ())
-    for code, rules in OBSERVABLE.items():
-        observable = any(r in seen_rules for r in rules)
+    for code, (rules, made_forms) in OBSERVABLE.items():
+        observable = made_form in made_forms
         if code in predicted and not observable:
             pairs.append({"what": code, "predicted": True, "observed": None, "outcome": "not observable here"})
             continue
@@ -798,19 +798,16 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
                 entry["verdict"] = _verdict_summary(v)
                 first = result["first_verdict"]
                 observed = {"bytes": len(result["made"].bytes),
-                            "evaluated": [f.rule for f in list(first.technical) + list(first.style)],
                             "failed_first": [f.rule for f in list(first.technical) + list(first.style)
                                              if not f.passed] + ([result["refusal"]["rule"]]
                                                                  if result["refusal"] else [])}
-                entry["foresight"] = foresight_pairs(seen, observed, context, result["seconds"])
+                entry["foresight"] = foresight_pairs(seen, observed, context, result["seconds"], spec["spec"])
                 entry["final_spec"] = _envelope(result["spec"])
             else:
                 entry["verdict"] = None
                 entry["cannot"] = (result["refusal"] or {}).get("message", "nothing could be made")
-                entry["foresight"] = foresight_pairs(seen, {"evaluated": ["max_duration"] if seen["form"] ==
-                                                             "sonification" else [],
-                                                             "failed_first": [(result["refusal"] or {}).get("rule")]},
-                                                     context, result["seconds"])
+                entry["foresight"] = foresight_pairs(seen, {"failed_first": [(result["refusal"] or {}).get("rule")]},
+                                                     context, result["seconds"], spec["spec"])
             candidates.append(entry)
         winner, rule_words = converge(candidates)
         record["candidates"] = [{k: v for k, v in c.items() if k != "_result"} for c in candidates]

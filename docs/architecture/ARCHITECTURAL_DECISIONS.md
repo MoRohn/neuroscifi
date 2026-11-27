@@ -5990,8 +5990,9 @@ kept in the made artifact's index (`index.production`, at most 16 KiB; `store.ad
   checks and repairs it again (a new artifact; the old one stays; the record names `remade_from`).
 - *Foresight against outcome.* Each estimate (bytes, seconds, over budget) and each foreseen problem some check can
   observe (label overlap, too many categories or series, points per pixel, too many nodes, a sound too long) is paired
-  with what the first made bytes and their check showed: numbers right within a factor of two, problems right / false
-  alarm / missed, others "not observable here". The pairs go into the record and, as a SIMULATION record (ADR-049:
+  with what the first made bytes and their check (or the generator's refusal) showed, for the made forms whose check
+  always looks for that problem: numbers right within a factor of two, problems right / false alarm / missed, others
+  "not observable here". The pairs go into the record and, as a SIMULATION record (ADR-049:
   NOT_EVIDENCE, quarantined) in the imagined store: payload = the predictions (numbers, booleans, form names; no
   content), outcome slot = the observation. The imagined store's references cannot name an artifact (schema; no
   migration here), so the record names the simulation and `store._remove` deletes it (tombstoned) whenever the made
