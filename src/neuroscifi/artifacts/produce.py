@@ -509,7 +509,8 @@ def _record_links(db, pieces, related, now) -> list:
         first, second = pieces[i].source, pieces[j].source
         if first == second or not (first.startswith("artifact-") and second.startswith("artifact-")):
             continue
-        out += relate_cli.record_links(db, first, second, rel, now=now)
+        # recorded as before Wave O-3 (lane FX4, team lead's ruling): not through the question-specificity gate
+        out += relate_cli.record_links(db, first, second, rel, now=now, require_specific=False)
     return out
 
 

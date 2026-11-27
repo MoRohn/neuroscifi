@@ -1543,9 +1543,12 @@ def _hidden_text(S) -> bool:
     if S.kind != "document":
         return False
     raw = S.raw or b""
-    if S.fmt in ("markdown", "html", "xhtml", "text", "md") and b"<!--" in raw:
+    # the format is not known when a side is built from a bare representation (the production's sources): then a
+    # text file's bytes are looked at as they are (lane FX4)
+    textual = S.fmt in ("markdown", "html", "xhtml", "text", "md") or (not S.fmt and b"\x00" not in raw[:4096])
+    if textual and b"<!--" in raw:
         return True
-    if S.fmt == "rtf" and re.search(rb"\\v(?![a-z])", raw):
+    if (S.fmt == "rtf" or (not S.fmt and raw[:5] == b"{\\rtf")) and re.search(rb"\\v(?![a-z])", raw):
         return True
     return any("hidden element" in str(n) for n in S.source_notes)
 
@@ -1647,7 +1650,7 @@ def compare(a, b, question: str | None = None) -> Relation:
     structure = [k for k in strong if pairs[k].a.kind in STRUCTURE_KINDS]
     asked = _counts_asked(question or "")
     hidden = [S for S in (A, B) if _hidden_text(S)]
-    if question and hidden:
+    if hidden:                         # with or without a question (lane FX4: the production's question-less path)
         # lane FX4 (R2): only what a reader sees is evidence; a comment or a hidden group is not, and whether it
         # agrees with what is shown is not known
         rel.reason = ("cannot tell: one of them holds text a reader does not see (a comment or a hidden group); "
@@ -1685,8 +1688,8 @@ def compare(a, b, question: str | None = None) -> Relation:
             # word is never enough
             decide = [k for k in legacy + structure if _names_measure_and_where(pairs[k], q_tokens)]
             scope = "the comparison the question names, with where it is read from"
-        elif not question:
-            decide = decide + structure
+        # lane FX4 (team lead's ruling): with no question, only the comparisons that existed before Wave O-3
+        # decide; members, links and times never do (they decide only a question that names them, R1)
     if question and decide:
         # lane FX4 (R1): a quantity the question names that the deciding comparison does not measure (a pitch,
         # a date, a distance, a direction, a member's content...) makes it "cannot", whatever else agrees

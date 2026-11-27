@@ -6757,8 +6757,15 @@ undecidable "cannot" 18 of 18; cross (first split) 44/32/2 -> 64/14/0 of 78. Lan
 
 ## Rollback
 
-Revert lane FX3's commits; nothing stored changes shape (kept artifacts are re-read with the code present). The spent
-files themselves were never changed.
+Revert lane FX3's commits AND remove the relation links its comparisons recorded: a revert changes no stored shape
+(kept artifacts are re-read with the code present), but a `consistent_with` or `contradicts` link that
+`relate_cli.record_links` stored from the members, links or times comparison stays in the store. Which comparison
+decided a link is in its `how` (the deciding refs; no new column, no migration). Before reverting, for each of
+`members`, `links` and `times`:
+`PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by members` lists them (ids and bases
+only) and it is a dry run that prints what it would remove and removes nothing; `... --remove` deletes exactly those links (artifacts, events and every other link stay; no event is written,
+as `artifact_events`' actions are fixed by the schema). Proved on a seeded store:
+`tests/artifacts/test_fx4_link_rollback.py`. The spent files themselves were never changed.
 
 ## ADR-081, addition (2026-11-27, lane FX3 second part, "FX4"): the first relater fixes fitted the opened cases
 
@@ -6775,7 +6782,12 @@ not their variants. Replaced, on principle (rulings R1-R8 of the team lead):
 - **R2**: only what a reader sees is evidence (a plain text file's lines, else the reader's text); a document holding
   a comment or hidden group answers "cannot"; invisible drawing marks disable the link reading.
 - **R3**: `record_links` stores consistent_with/contradicts only for an answer decided under R1 (`Relation.specific`);
-  the production pipeline, which asks no question, now shows its sources' relations without recording them.
+  `nsf artifact relate` without such a question shows its answer and records no consistent_with/contradicts link.
+  Question-less links between a production's sources (`consistent_with`, `contradicts`) are relater inferences, not
+  facts of construction; they are recorded as before the wave (`record_links(..., require_specific=False)`), by the
+  comparisons that existed at 06a6b30 only: with no question, members, links and times never decide (so nothing is
+  recorded from them), and R2 (a source holding hidden text gives no answer), R4 and R5 apply to that path too. The
+  production's derived_from links were never affected.
 - **R4/R5**: link lines need a relation word; listing lines that are not a member and its value make the listing
   unread; whole-second cue times get half a second and truncation-only agreement is "cannot"; per-item counts are
   never a total; pixels only against pixels; depiction questions stay "cannot" unless every content word is an
@@ -6800,5 +6812,5 @@ pairs 0 wrong (12 right, 16 cannot; 24 wrong on the first version); the lane's o
 lose right answers as expected: cross second split 96 -> 82 right (decidable 78 -> 64 of 80, 0 wrong), first split
 64 -> 58 (0 wrong); unknown 170/1/0 and hostile 62/62 unchanged. Development unchanged: 512/12/0/0, cross 72 of 72.
 Lane R's own-variant sweep: its timeline question names no artifact, so those 90 answers became "cannot".
-Rollback addendum (review): links recorded by the first version's relater (a `how` basis naming members, links or
-times) stay in a store after a revert and would have to be deleted.
+Rollback (R9): see the corrected Rollback above: links recorded by these comparisons (from the first version or this
+one) are listed and removed by naming the comparison with `scripts/omnimind_fx3/links_decided_by.py`.

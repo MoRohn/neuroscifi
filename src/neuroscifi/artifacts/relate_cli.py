@@ -63,18 +63,22 @@ def relate(db, first: str, second: str, *, question: str | None = None, now=None
     return out
 
 
-def record_links(db, first: str, second: str, rel, *, now=None) -> list[dict]:
+def record_links(db, first: str, second: str, rel, *, now=None, require_specific: bool = True) -> list[dict]:
     """The links a Relation of two held artifacts supports, recorded in `artifact_links` (the module doc's rules;
     the production pipeline records the relations of its sources through this too)."""
     from . import store
     shared = rel.shared
     links = []
     # lane FX4 (R3): only an answer decided under a question that names what is compared and where becomes a
-    # durable link; an answer from "everything the two artifacts let me compare" is shown, never recorded
-    if rel.answer is True and getattr(rel, "specific", False):
-        links.append(("consistent_with", first, second, rel.basis()))
-    elif rel.answer is False and getattr(rel, "specific", False):
-        links.append(("contradicts", first, second, rel.basis()))
+    # durable link; an answer from "everything the two artifacts let me compare" is shown, never recorded. The
+    # production pipeline passes require_specific=False (team lead's ruling: its sources' relations are recorded
+    # as before this wave, as part of how the made artifact was made)
+    specific = getattr(rel, "specific", False) or not require_specific
+    basis = rel.basis()
+    if rel.answer is True and specific:
+        links.append(("consistent_with", first, second, basis))
+    elif rel.answer is False and specific:
+        links.append(("contradicts", first, second, basis))
     for m in rel.describes:
         src, dst = (first, second) if m["describes"] == "first" else (second, first)
         links.append(("describes", src, dst, "mentions=file_name"))
@@ -85,6 +89,50 @@ def record_links(db, first: str, second: str, rel, *, now=None) -> list[dict]:
         result = store.link(db, src, relation, "artifact", dst, how, CONFIDENCE[relation], now=now)
         out.append({"relation": relation, "src": src, "dst": dst, "how": how, "status": result["status"]})
     return out
+
+
+# Lane FX4 (R9): which comparison decided a recorded consistent_with / contradicts link is in its `how` (the
+# Relation's basis: "<first ref>/<second ref>;tol=..." for each deciding comparison, `relate.Relation.basis`). The
+# three comparisons lane FX3 added are told apart by their refs, so their links can be listed and removed without a
+# new column (no migration). A rollback of those comparisons removes these links with `remove_links_decided_by`.
+DECIDED_BY_REFS = {"members": frozenset({"bundle.members.listing", "document.listing"}),
+                   "links": frozenset({"drawing.links", "document.links"}),
+                   "times": frozenset({"signal.tone_starts", "document.times"})}
+
+
+def _refs_of(how: str) -> set:
+    out = set()
+    for part in str(how or "").split(";"):
+        if "/" in part and not part.startswith("tol="):
+            out.update(x for x in part.split("/") if x)
+    return out
+
+
+def links_decided_by(db, comparison: str) -> list[dict]:
+    """The consistent_with / contradicts links whose deciding comparisons include `comparison` (one of
+    DECIDED_BY_REFS)."""
+    if comparison not in DECIDED_BY_REFS:
+        raise ValueError(f"comparison must be one of {', '.join(sorted(DECIDED_BY_REFS))}")
+    refs = DECIDED_BY_REFS[comparison]
+    rows = db.execute("SELECT src, relation, dst_kind, dst_id, how FROM artifact_links WHERE relation IN "
+                      "('consistent_with', 'contradicts') ORDER BY created_at, src").fetchall()
+    return [dict(zip(("src", "relation", "dst_kind", "dst_id", "how"), r)) for r in rows
+            if refs <= _refs_of(r[4])]
+
+
+def remove_links_decided_by(db, comparison: str) -> list[dict]:
+    """Remove those links (the rollback of a comparison); returns what was removed. The artifacts, their events and
+    every other link stay. No event is written: artifact_events' actions are fixed by the schema (no migration)."""
+    from ..instance import store
+    found = links_decided_by(db, comparison)
+    if not found:
+        return []
+    with store.write(db):
+        for x in found:
+            db.execute("DELETE FROM artifact_links WHERE src=? AND relation=? AND dst_kind=? AND dst_id=? AND how=?",
+                       (x["src"], x["relation"], x["dst_kind"], x["dst_id"], x["how"]))
+        store.bump_state_version(db)
+    return found
 
 
 def plain(value: dict) -> str:
