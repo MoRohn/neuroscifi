@@ -1102,6 +1102,21 @@ def _remove_simulations(db, ids, now) -> int:
     return len(removed) + imagined.purge_orphans(db, now)
 
 
+def discard_simulation(db, record_id, now) -> int:
+    """Remove the simulation record a production wrote for an artifact it did not keep (a stop, a failure): the same
+    removal a forget of the artifact makes. Returns how many records went."""
+    from ..instance import imagined
+    from ..instance import store as instance_store
+    if not isinstance(record_id, str) or not record_id.startswith("imagined:") or not imagined.present(db):
+        return 0
+    with instance_store.write(db):
+        removed, _ = imagined._remove(db, "id=?", (record_id,), "forgotten", now)
+        count = len(removed) + imagined.purge_orphans(db, now)
+        if removed:
+            instance_store.bump_state_version(db)
+    return count
+
+
 def _stale_checkpoints(db, since) -> list:
     """Valid checkpoints written at or after `since` (they may hold a removed row) become stale."""
     if since is None:

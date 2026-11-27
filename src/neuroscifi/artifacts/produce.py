@@ -688,9 +688,9 @@ def _simulate(db, foreseen: dict, pairs: list, made_form: str, now: float):
 def _purge_simulation(db, rid, now):
     if db is None or rid is None:
         return
-    from ..instance import imagined
+    from . import store
     try:
-        imagined.purge(db, now, record_id=rid)
+        store.discard_simulation(db, rid, now)
     except Exception:
         pass
 
