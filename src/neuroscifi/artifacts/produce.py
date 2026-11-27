@@ -72,6 +72,11 @@ OBSERVABLE = {"label_overlap": (("tick_labels_overlap_x", "tick_labels_overlap_y
               "too_many_nodes": (("nodes_apart",), ("graph.nodelink", "graph.tree", "flow.steps")),
               "sound_too_long": (("max_duration",), ("sound.sonify",))}
 WORDS = ("prose", "spoken")
+# Relating the sources of one production (lane R's `relate.compare`, ADR-077): at most this many pairs, and no new
+# pair is started after this many seconds (a pair once started runs to its end: `compare` is not interruptible).
+MAX_RELATE_PAIRS = 6
+MAX_RELATE_SECONDS = 10.0
+MAX_RELATE_LINES = 8           # sentences per pair and per verdict shown in the made document
 
 
 class ProductionStopped(ArtifactError):
@@ -256,6 +261,181 @@ def _shape(shape: ContentShape) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# Several sources: units a document states for a table's columns, and what one source says about another
+
+
+def _bytes_of(db, sources, pieces) -> dict:
+    """piece source id -> the bytes it was decoded from (the relater reads a chart's marks and a file's comments)."""
+    from . import store
+    out = {}
+    for p in pieces:
+        if p.source.startswith("given-"):
+            out[p.source] = bytes(sources[int(p.source.split("-", 1)[1]) - 1].data)
+        elif db is not None:
+            out[p.source] = store.read_bytes(db, p.source)
+    return out
+
+
+def transfer(pieces, data_of: dict, notes: list) -> tuple[list, list]:
+    """Units a document among the sources states for a table's columns (lane R's `relate.transfer_units`: one line
+    names exactly one column and exactly one unit; a column's own unit is kept on a conflict; nothing is guessed).
+    Returns (pieces with the units applied, one entry per applied unit: column, unit, from)."""
+    from . import relate as R
+    from .types import Column, Table
+    documents = [p for p in pieces if getattr(p.representation, "kind", None) == "document"]
+    if not documents:
+        return pieces, []
+    out, applied = [], []
+    for p in pieces:
+        if getattr(p.representation, "kind", None) != "table":
+            out.append(p)
+            continue
+        table, given, conflicts = p.representation, {}, []
+        for d in documents:
+            tr = R.transfer_units(table, d.representation, source=d.label, data=data_of.get(d.source))
+            table = tr.table
+            given.update({col: {"unit": v["unit"], "from": v["from"]} for col, v in tr.applied.items()})
+            conflicts += [dict(c, source=d.label) for c in tr.conflicts]
+        if not given:
+            out.append(p)
+            continue
+        # the unit as a reader sees it: with where it was read ("degC, from README.md"); the bare unit when that
+        # would not fit the forms' 40 characters (the record still names the file)
+        cols = tuple(Column(c.name, c.kind, _unit_shown(given[c.name]), c.values, c.n_missing)
+                     if c.name in given else c for c in table.columns)
+        words = "; ".join(f"{col} in {v['unit']} (from {v['from']})" for col, v in given.items())
+        reading = (p.reading if p.reading != "as decoded" else "as decoded") + f"; units stated elsewhere: {words}"
+        out.append(replace(p, representation=Table(cols, table.n_rows, table.title), reading=reading))
+        applied += [{"table": p.label, "column": col, **v} for col, v in given.items()]
+        for note in notes:
+            if note.get("id") == p.source:
+                note["reading"] = reading
+                if conflicts:
+                    note["unit_conflicts"] = conflicts[:8]
+    return out, applied
+
+
+def _unit_shown(given: dict) -> str:
+    text = f"{given['unit']}, from {given['from']}"
+    return text if len(text) <= 40 else given["unit"]
+
+
+def relate_sources(pieces, data_of: dict, db=None) -> dict:
+    """Each pair of sources compared by measurement (`relate.compare`), bounded (MAX_RELATE_PAIRS pairs, no pair
+    started after MAX_RELATE_SECONDS): {"pairs": [...], "skipped": n, "why_skipped": ..., "_relations": [(i, j,
+    Relation)]}. Only what `compare` measured is reported; an inconsistency is shown with both values, not
+    resolved. No question is passed: the request says what to make, not which of the sources' facts to compare (read
+    as a question, "a report of the calls" made the relater count rows as calls), and without one `compare` answers
+    from every strong comparison."""
+    from itertools import combinations
+
+    from . import relate as R
+    from . import relate_cli
+    started = time.monotonic()
+    sides = [R.side(p.representation, name=None if "made by the system" in p.reading else p.label,
+                    data=data_of.get(p.source)) for p in pieces]
+    every = list(combinations(range(len(pieces)), 2))
+    out, relations, why = [], [], None
+    for n, (i, j) in enumerate(every):
+        if n >= MAX_RELATE_PAIRS:
+            why = f"at most {MAX_RELATE_PAIRS} pairs of sources are compared"
+            break
+        if time.monotonic() - started > MAX_RELATE_SECONDS:
+            why = f"no new pair is started after {MAX_RELATE_SECONDS:g} seconds"
+            break
+        rel = R.compare(sides[i], sides[j], None)
+        if db is not None:
+            rel.shared = [x for x in rel.shared if not relate_cli._forgotten(db, x["name"])]
+        names = (pieces[i].label, pieces[j].label)
+        rel.names = names
+        relations.append((i, j, rel))
+        decided = [rel.pairs[k] for k in rel.decided_by]
+        also = [p for k, p in enumerate(rel.pairs) if k not in rel.decided_by and p.strong
+                and p.verdict != "not_comparable"]
+        out.append({"first": names[0], "second": names[1], "answer": rel.answer, "reason": rel.reason,
+                    "agree": [R.describe_pair(p, names) for p in decided if p.verdict == "consistent"]
+                    [:MAX_RELATE_LINES],
+                    "disagree": [R.describe_pair(p, names) for p in decided if p.verdict == "inconsistent"]
+                    [:MAX_RELATE_LINES],
+                    "also": [R.describe_pair(p, names) for p in also][:MAX_RELATE_LINES],
+                    "not_compared": [R.describe_pair(p, names) for p in rel.pairs if p.verdict == "not_comparable"]
+                    [:MAX_RELATE_LINES],
+                    "notes": [str(x)[:300] for x in rel.notes[:4]],
+                    "describes": len(rel.describes), "shared_names": len(rel.shared)})
+    return {"pairs": out, "compared": len(out), "of": len(every), "skipped": len(every) - len(out),
+            "why_skipped": why, "seconds": round(time.monotonic() - started, 4), "_relations": relations}
+
+
+def relation_blocks(related: dict) -> list:
+    """The made document's own section on how its sources relate, in plain words."""
+    if not related or not related.get("pairs"):
+        return []
+    blocks = [{"kind": "heading", "level": 1, "text": "How the sources relate"},
+              {"kind": "paragraph", "text": (
+                  "Each pair of sources was compared by measurement: a number, size, count or order measured in one "
+                  "is compared with what the other states or shows, within the tolerance named. Where they disagree "
+                  "both values are given and nothing is corrected. These comparisons were made by the system; they "
+                  "are not evidence.")}]
+    for pair in related["pairs"]:
+        blocks.append({"kind": "heading", "level": 2, "text": B._cut(f"{pair['first']} and {pair['second']}", 4096)})
+        blocks.append({"kind": "paragraph", "text": B._cut(_verdict_words(pair) + ".", 4096)})
+        for key in ("disagree", "agree", "also", "not_compared"):
+            for text in pair.get(key, []):
+                blocks.append({"kind": "list_item", "text": B._cut(text[:1].upper() + text[1:], 4096)})
+        for note in pair.get("notes", []):
+            blocks.append({"kind": "note", "text": B._cut(note, 4096)})
+        if not any(pair.get(k) for k in ("disagree", "agree", "also", "not_compared")):
+            blocks.append({"kind": "list_item", "text": "Nothing measured in one of them is stated or shown in the "
+                                                        "other, so nothing could be compared."})
+    if related.get("skipped"):
+        blocks.append({"kind": "note", "text": B._cut(
+            f"{related['skipped']} of {related['of']} pairs were not compared: {related['why_skipped']}.", 4096)})
+    return blocks
+
+
+def _verdict_words(pair: dict) -> str:
+    """`compare`'s reason as a sentence, a disagreement in capitals ("They DISAGREE (1 of 1 comparison(s) ...)")."""
+    reason = str(pair.get("reason") or "")
+    if reason.startswith("they disagree"):
+        return "They DISAGREE" + reason[len("they disagree"):]
+    return reason[:1].upper() + reason[1:]
+
+
+def relation_words(related: dict) -> list[str]:
+    """The relations as sentences, for an answer in words (nothing is made, but what was measured is still said)."""
+    out = []
+    for pair in (related or {}).get("pairs", []):
+        out.append(f"{pair['first']} and {pair['second']}: {_verdict_words(pair)}.")
+        out += [f"  {t}" for t in pair["disagree"] + pair["agree"]]
+    return out
+
+
+def _relation_record(related: dict, applied: list) -> dict:
+    out = {"label": "the system's claims from measuring the sources; not evidence"}
+    if related:
+        out |= {"compared": related["compared"], "of": related["of"], "skipped": related["skipped"],
+                "why_skipped": related["why_skipped"],
+                "pairs": [{"first": p["first"], "second": p["second"], "answer": p["answer"],
+                           "reason": p["reason"][:300], "agree": len(p["agree"]), "disagree": len(p["disagree"]),
+                           "not_compared": len(p["not_compared"])} for p in related["pairs"]]}
+    if applied:
+        out["units"] = applied[:16]
+    return out
+
+
+def _record_links(db, pieces, related, now) -> list:
+    """The relations found, recorded as `nsf artifact relate` records them (relate_cli.record_links)."""
+    from . import relate_cli
+    out = []
+    for i, j, rel in (related or {}).get("_relations", []):
+        first, second = pieces[i].source, pieces[j].source
+        if first == second or not (first.startswith("artifact-") and second.startswith("artifact-")):
+            continue
+        out += relate_cli.record_links(db, first, second, rel, now=now)
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Conceptualize, explore, choose
 
 
@@ -388,7 +568,7 @@ def _part(form: str, piece, request: str, options: dict, context) -> dict:
             "rule": f"{forms.label_of((form,))} cannot sit inside a document and nothing else could show it"}
 
 
-def compose(pieces, request, options, context, explicit) -> tuple[B.Built, list]:
+def compose(pieces, request, options, context, explicit, relations=None) -> tuple[B.Built, list]:
     """Several pieces: each planned on its own (with the same words and context) and placed in one document under a
     heading with its source."""
     parts, plans = {}, []
@@ -404,14 +584,14 @@ def compose(pieces, request, options, context, explicit) -> tuple[B.Built, list]
             for b in parts[i].get("blocks", []):
                 if b["kind"] == "heading":
                     b["level"] = max(2, b["level"])
-    built = B.build_document(pieces, request, options, parts=parts)
+    built = B.build_document(pieces, request, options, parts=parts, relations=relations or None)
     return built, plans
 
 
-def build_candidate(forms_tuple, pieces, request, options, context, explicit) -> B.Built:
+def build_candidate(forms_tuple, pieces, request, options, context, explicit, relations=None) -> B.Built:
     first = forms_tuple[0]
     if len(pieces) > 1 and first != "solid.mesh":
-        built, plans = compose(pieces, request, options, context, explicit)
+        built, plans = compose(pieces, request, options, context, explicit, relations)
         rule = ("several sources: each was planned on its own and placed in one document under its own heading"
                 f" ({'; '.join(forms.label_of(tuple(p['chosen'])) for p in plans)})")
         return replace(built, used={**built.used, "plans": plans}, rules=(rule,) + built.rules)
@@ -775,8 +955,18 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
                              summary_in={"sources": len(sources)},
                              summary_out=lambda r: {"pieces": len(r[0]), "unused": sum(1 for n in r[1]
                                                                                         if not n["used"])})
+    related, applied = None, []
+    if len(pieces) >= 2:
+        data_of = _bytes_of(db, sources, pieces)
+        pieces, applied = transfer(pieces, data_of, notes)
+        related = run.step("relate", relate_sources, pieces, data_of, db,
+                           summary_in={"pieces": len(pieces)},
+                           summary_out=lambda r: {"compared": r["compared"], "of": r["of"],
+                                                  "answers": [p["answer"] for p in r["pairs"]]})
     pieces = narrow(pieces, request, notes)
     record["sources"] = notes
+    if related is not None:
+        record["relations"] = _relation_record(related, applied)
     if not pieces:
         record["outcome"] = "nothing to make"
         record["why"] = "none of the sources could be read as content: " + "; ".join(
@@ -799,6 +989,7 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
         words = []
         for piece in pieces:
             words += [f"{piece.label}: {s}" for s in B.facts_sentences(piece)]
+        words += relation_words(related)
         record["outcome"] = "words"
         record["why"] = (plan.reason + " No picture or file was made, and nothing was stored.")
         record["steps"] = run.steps
@@ -821,6 +1012,7 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
             entry["foreseen"] = seen
             try:
                 built = run.step("plan", build_candidate, fs, pieces, request, options, context, explicit,
+                                 relation_blocks(related),
                                  summary_in={"forms": list(fs)},
                                  summary_out=lambda b: {"spec": b.spec["spec"], "used": b.used})
             except B.CannotBuild as why:
@@ -891,6 +1083,8 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
                        production=bounded)
         if learning is not None:
             _record_check(db, out.id, learning, best["forms"], bool(best["verdict"]["ok"]), now)
+        if related is not None:
+            _record_links(db, pieces, related, now)
         kept = []
         if keep:
             for i, c in enumerate(candidates):
@@ -1083,6 +1277,10 @@ def why_text(record: dict, *, short: bool = False) -> str:
                              f": {c['total']:.2f}" + (f" ({detail})" if detail else ""))
             for c in plan.get("excluded", [])[:4]:
                 lines.append(f"  not possible: {', '.join(c['forms'])}: {c['why']}")
+    for pair in (record.get("relations") or {}).get("pairs", []):
+        lines.append(f"Related {pair.get('first')} and {pair.get('second')}: {_verdict_words(pair)}.")
+    for unit in (record.get("relations") or {}).get("units", [])[: (2 if short else 16)]:
+        lines.append(f"  unit of {unit['column']} in {unit['table']}: {unit['unit']}, as {unit['from']} states it")
     learning = record.get("learning")
     if learning and not short:
         lines.append(f"Form learning ({learning.get('mode')}): {learning.get('words') or learning.get('status')}")

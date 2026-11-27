@@ -59,6 +59,15 @@ def relate(db, first: str, second: str, *, question: str | None = None, now=None
     out |= {"answer": rel.answer, "because": rel.because(), "relation": rel.to_dict()}
     if not record:
         return out
+    out["links"] = record_links(db, first, second, rel, now=now)
+    return out
+
+
+def record_links(db, first: str, second: str, rel, *, now=None) -> list[dict]:
+    """The links a Relation of two held artifacts supports, recorded in `artifact_links` (the module doc's rules;
+    the production pipeline records the relations of its sources through this too)."""
+    from . import store
+    shared = rel.shared
     links = []
     if rel.answer is True:
         links.append(("consistent_with", first, second, rel.basis()))
@@ -69,9 +78,10 @@ def relate(db, first: str, second: str, *, question: str | None = None, now=None
         links.append(("describes", src, dst, "mentions=file_name"))
     if shared:
         links.append(("same_subject", first, second, f"shared_names={len(shared)}"))
+    out = []
     for relation, src, dst, how in links:
         result = store.link(db, src, relation, "artifact", dst, how, CONFIDENCE[relation], now=now)
-        out["links"].append({"relation": relation, "src": src, "dst": dst, "how": how, "status": result["status"]})
+        out.append({"relation": relation, "src": src, "dst": dst, "how": how, "status": result["status"]})
     return out
 
 
@@ -91,4 +101,4 @@ def plain(value: dict) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["CLAIM_LABEL", "CLAIM_RELATIONS", "plain", "relate"]
+__all__ = ["CLAIM_LABEL", "CLAIM_RELATIONS", "plain", "record_links", "relate"]

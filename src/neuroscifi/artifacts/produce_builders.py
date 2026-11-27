@@ -1076,9 +1076,10 @@ def _title(pieces) -> str:
     return f"{', '.join(labels[:2])} and {len(labels) - 2} more"
 
 
-def build_document(pieces, request, options, *, parts=None) -> Built:
+def build_document(pieces, request, options, *, parts=None, relations=None) -> Built:
     """A document: for one Document piece, its digest (outline, tables, figure list); for several pieces (or `parts`
-    the production made for each piece), one section per piece with its made figure or table and its sources."""
+    the production made for each piece), one section per piece with its made figure or table and its sources;
+    `relations` (blocks the production wrote on how its sources relate) form their own section after them."""
     if parts is None and len(pieces) == 1 and getattr(pieces[0].representation, "kind", None) == "document":
         return _digest(pieces[0])
     blocks = []
@@ -1103,6 +1104,9 @@ def build_document(pieces, request, options, *, parts=None) -> Built:
         if part is not None and part.get("rule"):
             rules.append(f"{piece.label}: {part['rule']}")
         used["sections"].append({"source": piece.source, "shown_as": (part or {}).get("shown_as", "facts")})
+    if relations:
+        blocks.extend(relations)
+        used["relations"] = sum(1 for b in relations if b["kind"] == "heading" and b["level"] == 2)
     sources = [{"title": _cut(p.label), "detail": _cut(about(p, named=False), 1000)} for p in pieces]
     spec = _spec("document.html", _title(pieces), f"One section for each of the {len(pieces)} sources, each shown "
                  "in the form planned for it on its own.", {"blocks": blocks, "sources": sources}, pieces,

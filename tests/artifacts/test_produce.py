@@ -266,7 +266,8 @@ def test_several_sources_make_one_document_with_a_section_each(individual):
                                                           P.Given("events.csv", events)], now=T0)
     assert result.status == "made" and result.spec.spec == "document.html"
     blocks = result.spec.data["blocks"]
-    assert [b["text"] for b in blocks if b["kind"] == "heading" and b["level"] == 1] == ["tones.wav", "events.csv"]
+    assert [b["text"] for b in blocks if b["kind"] == "heading" and b["level"] == 1] == ["tones.wav", "events.csv",
+                                                                                         "How the sources relate"]
     assert sum(1 for b in blocks if b["kind"] == "figure") == 2
     assert len(result.record["candidates"][0]["piece_plans"]) == 2
     assert {s["title"] for s in result.spec.data["sources"]} == {"tones.wav", "events.csv"}
