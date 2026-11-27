@@ -148,8 +148,8 @@ def _key_column(table, skip: int):
 
 def _table_quantities(t, prefix: str, origin: type, label_words=()) -> list:
     make = _q if origin is Quantity else _s
-    out = [make("count", f"{prefix}.rows", int(t.n_rows), nouns=ROW_NOUNS + tuple(label_words), primary=True,
-                aggregate="count", how="rows the decoder read"),
+    out = [make("count", f"{prefix}.rows", int(t.n_rows), nouns=ROW_NOUNS, primary=True, aggregate="count",
+                how="rows the decoder read", detail=(("also_nouns", tuple(label_words)),)),
            make("count", f"{prefix}.columns", len(t.columns), nouns=("column", "field", "variable"),
                 aggregate="count", how="columns")]
     numeric = _numeric_columns(t)
@@ -509,6 +509,11 @@ def _document_facts(doc, *, base_unit=None) -> list:
             if len(lines) >= 2:
                 out.append(_s("sequence", f"document.lines@{i}", rr.Sequence(lines, "lines", i),
                               nouns=SEQUENCE_NOUNS, how="the lines of one paragraph in order"))
+        elif b.kind in ("paragraph", "note"):
+            said = [t for _, t in rr.sentences(b.text)]
+            if len(said) >= 2:
+                out.append(_s("sequence", f"document.sentences@{i}", rr.Sequence(said, "sentences", i),
+                              nouns=SEQUENCE_NOUNS, how="the sentences of one paragraph in order"))
     if len(run) >= 2:
         out.append(_s("sequence", "document.list@end", rr.Sequence(run, "list", len(doc.blocks)),
                       nouns=SEQUENCE_NOUNS, how="list items in order"))
@@ -838,9 +843,13 @@ def _cmp_number(fa: Fact, fb: Fact, q_aggs, explicit_sentences) -> Pair | None:
 
 
 def _cmp_count(fa: Fact, fb: Fact) -> Pair | None:
-    if not (set(fa.nouns) & set(fb.nouns)):
+    """Counts of the same thing: the nouns agree (a file's own name counts as a noun of its rows: "14 receipts" for
+    receipts.csv)."""
+    na = set(fa.nouns) | set(fa.get("also_nouns") or ())
+    nb = set(fb.nouns) | set(fb.get("also_nouns") or ())
+    if not (na & nb):
         return None
-    return _count_pair(fa, fb, "counts of the same thing (" + sorted(set(fa.nouns) & set(fb.nouns))[0] + ")")
+    return _count_pair(fa, fb, "counts of the same thing (" + sorted(na & nb)[0] + ")")
 
 
 def _count_pair(fa, fb, how, note="") -> Pair:
@@ -1067,14 +1076,20 @@ def _cmp_sequence_events(seq_fact: Fact, ev_fact: Fact) -> Pair | None:
     found = [(i, events[j]) for i, j in enumerate(match) if j is not None]
     if len(found) < 2:
         return None
-    strong = len(found) * 2 >= len(seq.items)
+    # a step that shares not even a third of its words with any line is not about the log (a heading, an
+    # introduction); a step that half-matches lines but none uniquely is a missing step
+    unrelated = sum(1 for i, j in enumerate(match) if j is None and max(
+        (len(set(seq.words[i]) & set(e.words)) / max(1, len(seq.words[i])) for e in events), default=0.0) < 1 / 3)
+    steps = len(seq.items) - unrelated
+    strong = len(found) * 3 >= 2 * steps
     inversions = []
     for (i1, e1), (i2, e2) in zip(found, found[1:]):
         if e2.seconds < e1.seconds - 1e-9:
             inversions.append((i1, i2, e1, e2))
     ties = sum(1 for (_, e1), (_, e2) in zip(found, found[1:]) if abs(e2.seconds - e1.seconds) <= 1e-9)
-    missing = len(seq.items) - len(found)
-    note = []
+    missing = steps - len(found)
+    note = [f"{unrelated} line(s) of the document share almost no words with the log and are not taken as "
+            "steps"] if unrelated else []
     if inversions:
         i1, i2, e1, e2 = inversions[0]
         note.append(f"step {i1 + 1} is listed before step {i2 + 1}, but the log has step {i2 + 1} first "
@@ -1082,7 +1097,7 @@ def _cmp_sequence_events(seq_fact: Fact, ev_fact: Fact) -> Pair | None:
         verdict = "inconsistent"
     elif missing:
         verdict = "not_comparable"
-        note.append(f"{missing} of {len(seq.items)} steps were not found in the log")
+        note.append(f"{missing} of {steps} steps were not found in the log")
     elif ties:
         verdict = "not_comparable"
         note.append(f"{ties} pair(s) of steps share one timestamp: their order is not established")
@@ -1148,8 +1163,8 @@ def _cmp_pairs(fa: Fact, fb: Fact) -> Pair | None:
     edges = set(meas.value)
     fwd = sum(1 for p in stated if p in edges)
     rev = sum(1 for a, b in stated if (b, a) in edges)
-    if max(fwd, rev) * 2 < len(stated):
-        return None
+    if max(fwd, rev) == 0:
+        return None                            # not one stated pair is a pair of the code: they are not related
     if rev > fwd:
         stated = [(b, a) for a, b in stated]
     bad = [p for p in stated if p not in edges]
@@ -1216,7 +1231,26 @@ def _candidates(A: Side, B: Side, q_aggs) -> list:
                 out.append(p)
                 if len(out) >= MAX_PAIRS:
                     return out
-    return _resolve_numbers(out)
+    return _best_sequences(_resolve_numbers(out))
+
+
+def _best_sequences(pairs: list) -> list:
+    """Of a document's several readings as ordered steps (its list, the lines or sentences of a paragraph), only the
+    one that matches the most events of a log is compared with it."""
+    groups: dict[int, list] = {}
+    for p in pairs:
+        if {p.a.kind, p.b.kind} == {"sequence", "events"}:
+            ev = p.a if p.a.kind == "events" else p.b
+            groups.setdefault(id(ev), []).append(p)
+    for group in groups.values():
+        def found(p):
+            return p.b_value if p.a.kind == "sequence" else p.a_value
+        best = max(group, key=lambda p: (found(p), -abs((p.a_value if p.a.kind == "sequence" else p.b_value)
+                                                         - found(p))))
+        for p in group:
+            if p is not best:
+                p.strong = False
+    return pairs
 
 
 def _resolve_numbers(pairs: list) -> list:
@@ -1354,13 +1388,19 @@ def compare(a, b, question: str | None = None) -> Relation:
     names = (clean(A.name or "the first artifact", 60), clean(B.name or "the second artifact", 60))
     rel = Relation(None, pairs, [], "", shared_names(A, B), mentions(A, B), timing(A, B), A.notes + B.notes, names)
     strong = [k for k, p in enumerate(pairs) if p.strong]
-    top = max((pairs[k].focus for k in strong), default=0)
-    if top > 0:
-        decide = [k for k in strong if pairs[k].focus == top]
-        scope = "what the question names"
+    named_counts = {n for f in A.facts + B.facts if f.kind == "count" and f.primary for n in f.nouns} & q_words
+    if q_aggs:
+        # the question asks about an aggregate: only a comparison of that aggregate may answer it
+        decide = [k for k in strong if pairs[k].a.aggregate in q_aggs or pairs[k].b.aggregate in q_aggs]
+        scope = "what the question asks about (" + ", ".join(q_aggs) + ")"
+    elif named_counts:
+        decide = [k for k in strong if pairs[k].a.kind == "count" and
+                  (set(pairs[k].a.nouns) | set(pairs[k].b.nouns)) & named_counts]
+        scope = "the counts the question names"
     else:
-        decide = strong
-        scope = "everything the two artifacts let me compare"
+        top = max((pairs[k].focus for k in strong), default=0)
+        decide = [k for k in strong if pairs[k].focus == top] if top > 0 else strong
+        scope = "what the question names" if top > 0 else "everything the two artifacts let me compare"
     verdicts = [pairs[k].verdict for k in decide]
     rel.decided_by = decide
     if not decide:

@@ -437,6 +437,8 @@ def declared_unit(sentence: str) -> Unit | None:
 
 
 def _aggregate_for(words_before: list[str], words_after: list[str]) -> str | None:
+    if words_before[-2:] in (["in", "all"], ["all", "told"]):
+        return "sum"
     for w in reversed(words_before[-8:]):
         if w in _AGG_OF:
             return _AGG_OF[w]
@@ -447,16 +449,20 @@ def _aggregate_for(words_before: list[str], words_after: list[str]) -> str | Non
     return None
 
 
+_COUNT_ADJECTIVES = frozenset("distinct different separate unique individual more other new active further "
+                              "additional extra".split())
+
+
 def _noun_after(text: str, end: int) -> str | None:
-    m = re.match(r"\s+(?:(?:distinct|different|separate|unique|individual|single|more|other|[a-z]+-?[a-z]*)\s+)?"
-                 r"([A-Za-z][a-z]+)", text[end:end + 40])
-    if not m:
+    """The noun a whole number counts: the word right after it ("9 entries"), or after one counting adjective
+    ("5 distinct customers"). Nothing else is skipped ("17718 was paid" counts nothing)."""
+    words = re.findall(r"[A-Za-z][A-Za-z-]*", text[end:end + 48])[:2]
+    if not words or not re.match(r"\s", text[end:end + 1] or "x"):
         return None
-    word = m.group(1).lower()
-    first = re.match(r"\s+([A-Za-z][a-z]+)", text[end:end + 40])
-    if first and first.group(1).lower() not in STOP and singular(first.group(1).lower()) != first.group(1).lower():
-        word = first.group(1).lower()                  # "9 entries": the first word is already the plural noun
-    if word in STOP or unit_of(word) is not None or word in _AGG_OF or word in SEQUENCE_WORDS:
+    word = words[0].lower()
+    if word in _COUNT_ADJECTIVES and len(words) > 1:
+        word = words[1].lower()
+    if word in STOP or unit_of(word) is not None or word in _AGG_OF or word in SEQUENCE_WORDS or len(word) < 3:
         return None
     return singular(word)
 
@@ -570,10 +576,14 @@ def statements_of_text(text: str, *, base: int = 0, default_unit: Unit | None = 
 
 # ---- ordered steps -------------------------------------------------------------------------------------------------
 
+_LIST_MARK = re.compile(r"^\s*(?:[-*•+]|\(?\d{1,3}[.)]|\(?[a-zA-Z][.)]|step\s+\d{1,3}[:.)]?)\s+", re.I)
+
+
 def step_words(text: str) -> tuple[str, ...]:
     """The words a step is matched by: its content words and digits (so 'port 3' differs from 'port 7'), without
     sequence markers ('first', 'then', 'finally')."""
     out: dict[str, None] = {}
+    text = _LIST_MARK.sub("", text or "", count=1)
     for t in tokens(text):
         if (t in STOP and t not in STEP_KEEP) or t in SEQUENCE_WORDS:
             continue
