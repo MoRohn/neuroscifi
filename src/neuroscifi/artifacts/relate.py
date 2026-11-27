@@ -151,7 +151,10 @@ def _key_column(table, skip: int):
 
 def _table_quantities(t, prefix: str, origin: type, label_words=()) -> list:
     make = _q if origin is Quantity else _s
-    also = tuple(label_words) + (name_words(t.title) if t.title else ())
+    # a file's or table's name may say what its rows are (receipts.csv), unless a column carries the same word: then
+    # the name says what that column holds (calls.csv with a column of calls, one row per day), not what rows are
+    column_words = {w for c in t.columns for w in name_words(c.name)}
+    also = tuple(w for w in tuple(label_words) + (name_words(t.title) if t.title else ()) if w not in column_words)
     out = [make("count", f"{prefix}.rows", int(t.n_rows), nouns=ROW_NOUNS, primary=True, aggregate="count",
                 how="rows the decoder read", detail=(("also_nouns", also),)),
            make("count", f"{prefix}.columns", len(t.columns), nouns=("column", "field", "variable"),
@@ -788,6 +791,7 @@ class Pair:
     focus: int = 0
     unit: str | None = None
     conn: int = 0                   # for a number: how strongly the statement names the quantity
+    name_only: tuple = ()           # for a count joined only by a file's or table's name: the joining words
 
     def basis(self) -> str:
         tol = "none" if self.tolerance is None else f"{self.tolerance:.6g}"
@@ -875,13 +879,22 @@ def _cmp_number(fa: Fact, fb: Fact, q_aggs, explicit_sentences) -> Pair | None:
 
 
 def _cmp_count(fa: Fact, fb: Fact) -> Pair | None:
-    """Counts of the same thing: the nouns agree (a file's own name counts as a noun of its rows: "14 receipts" for
-    receipts.csv)."""
-    na = set(fa.nouns) | set(fa.get("also_nouns") or ())
-    nb = set(fb.nouns) | set(fb.get("also_nouns") or ())
+    """Counts of the same thing: the nouns agree. A file's or a table's name is weak evidence of what its rows are
+    ("14 receipts" for receipts.csv may count its rows, but calls.csv may as well hold one row per day with a column
+    of calls): a pair joined only by such a name is listed and never decides by itself (it is weak, `strong` False),
+    so a row count never becomes a named quantity on the strength of a name alone."""
+    own_a, own_b = set(fa.nouns), set(fb.nouns)
+    na = own_a | set(fa.get("also_nouns") or ())
+    nb = own_b | set(fb.get("also_nouns") or ())
     if not (na & nb):
         return None
-    return _count_pair(fa, fb, "counts of the same thing (" + sorted(na & nb)[0] + ")")
+    pair = _count_pair(fa, fb, "counts of the same thing (" + sorted(na & nb)[0] + ")")
+    if not (own_a & own_b):
+        pair.strong = False
+        pair.name_only = tuple(sorted(na & nb))
+        pair.note = "; ".join(x for x in (pair.note, "joined only by a file's or table's name, which is weak "
+                                          "evidence of what its rows are") if x)
+    return pair
 
 
 def _count_pair(fa, fb, how, note="") -> Pair:
@@ -1425,6 +1438,9 @@ def compare(a, b, question: str | None = None) -> Relation:
         if isinstance(p.a, Quantity) and isinstance(p.b, Quantity) and p.verdict != "not_comparable" and \
                 q_words & (set(p.a.nouns) | set(p.a.words)) and q_words & (set(p.b.nouns) | set(p.b.words)):
             p.strong = True                    # the question names what each of two measurements counts or shows
+        if p.name_only and q_words & set(p.name_only) and set(rr.tokens(question or "")) & rr.COUNT_CUES:
+            p.strong = True                    # the question, too, says the rows are what the name says (corroborated)
+            p.note = "; ".join(x for x in (p.note, "the question counts the same thing") if x)
     names = (clean(A.name or "the first artifact", 60), clean(B.name or "the second artifact", 60))
     rel = Relation(None, pairs, [], "", shared_names(A, B), mentions(A, B), timing(A, B), A.notes + B.notes, names)
     strong = [k for k, p in enumerate(pairs) if p.strong]
