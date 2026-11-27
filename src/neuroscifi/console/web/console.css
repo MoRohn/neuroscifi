@@ -426,5 +426,6 @@ svg.qr .qr-fg { fill: var(--qr-dark); }
 .dropzone.over { background: var(--surface-muted); }
 @media (max-width: 640px) {
   .art-item { grid-template-columns: auto minmax(0, 1fr); }
-  .art-item > .badge { grid-column: 2; justify-self: start; }
+  .art-item { padding: 8px 10px; gap: 4px 8px; }
+  .art-item > .badge { grid-column: 2; justify-self: start; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 }
