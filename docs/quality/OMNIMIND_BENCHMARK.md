@@ -1,8 +1,10 @@
 # OMNIMIND benchmark: taking things in and making things
 
-The examination for Project OMNIMIND, written **before** any OMNIMIND mechanism exists (lane Z, from `omnimind` =
-main `8f68beb`), and the **baseline of the unchanged system**. Every later lane (detection and adapters, the store,
-the form planner, generators and validators) is measured here; nothing here helps a lane pass except by being right.
+The examination for Project OMNIMIND, written **before** any OMNIMIND mechanism existed (lane Z, from `omnimind` =
+main `8f68beb`), the **baseline of the unchanged system**, and, since then, the record of the product on it: the
+development runs, every held-out run (once each, "The product on the benchmark" below) and the status of the
+withheld split (no product look taken yet). Every later lane (detection and adapters, the store, the form planner,
+generators and validators) is measured here; nothing here helps a lane pass except by being right.
 
 - Code: `src/neuroscifi/acceptance/omni/` (one module per family; each module's docstring has its design).
 - Command: `scripts/bench_omni.py`.
@@ -68,10 +70,31 @@ Per task, reported with its denominator in every summary:
   the bound, a file or link written outside the task's directory; for made artifacts also unreadable by the reading
   contract, unsafe, not deterministic, or the palette broken.
 
-`abstention_floor` is the number of tasks whose right answer is an abstention: a subject that says "cannot" to
-everything scores exactly that. **Read `right` against the floor.** Today the floor is 52 of 524 (development) and
-52 of 528 (held-out): the 20 honest content questions, the 9 truly-unknown content questions and the 23 hostile
-tasks (where only a refusal is right, and "cannot" counts as abstained, not right).
+`abstention_floor` is the number of tasks whose right answer is an abstention: a subject that **refuses**
+everything scores exactly that; one that says **"cannot"** to everything scores less, **29** per split, because the
+23 hostile tasks need a refusal and count a "cannot" as abstained (both measured with `score_task` on both splits;
+the sentence said "cannot" until fix lane F2, review finding L1). **Read `right` against the floor.** The floor is 52
+of 524 (development) and 52 of 528 (held-out): the 20 honest content questions, the 9 truly-unknown content
+questions and the 23 hostile tasks.
+
+**What "right" is made of.** A total of right answers mixes very different things, so every total below is also
+given by kind of answer (`scripts/omnimind_heldout_record.py breakdown`, `evidence/omnimind_right_breakdown.json`;
+review finding M2). The kinds: a **format identification** (`detect.family`, `detect.format`); a **measurement read
+off decoded content** (a cell, a pixel, a size, a duration, a vertex count, a member list: one value within a
+tolerance); a **correct refusal or abstention** (a task whose only right answer is "cannot" or a refusal); a question
+where **either a value or an honest "cannot"** is right (two header-fact questions of formats nothing here decodes);
+a **made artifact read back** (`made`, `transform`). A subject that identified every format and abstained or refused
+everywhere else would score up to 180 of 524. None of this is "understanding": it is decoding fidelity,
+identification, refusal and faithful making.
+
+| kind of answer | development: right / tasks | held-out: right / tasks |
+|---|---:|---:|
+| format identification | 128 / 128 | 128 / 128 |
+| measurement read off decoded content | 310 / 322 | 310 / 326 |
+| correct refusal or abstention | 50 / 50 | 49 / 50 |
+| a value or an honest "cannot" (either right) | 2 / 2 | 2 / 2 |
+| made artifact read back | 22 / 22 | 21 / 22 |
+| **all** (the `artifacts` subject) | **512 / 524** | **510 / 528** |
 
 Family-specific measures beside the outcomes: `unknown` reports `missed_decodable` (disguised files answered
 "cannot") and `false_identification` (a format named for bytes that are not it); `hostile` reports `safe` (right
@@ -89,7 +112,7 @@ recovered, the central measure of a made artifact), how many were deterministic,
   holding exactly `states` and `targets`, errors named). Everything else is "cannot": no detection, no file intake,
   nothing that makes an artifact.
 - **`artifacts`**: written against DESIGN.md §2/§3/§6 (`adapters.decode`, `make.make`), imported lazily; while the
-  package is absent every answer is "cannot: not built". `tests/acceptance/test_omni_driver.py` runs it against a
+  package is absent every answer was "cannot: not built" (the package exists now: "The product on the benchmark"). `tests/acceptance/test_omni_driver.py` runs it against a
   stand-in package written from DESIGN §2 to prove that a correct package is scored right through it.
 
 The driver reads each measurement off the returned representation with its own definition (e.g. `image.mean_gray`
@@ -130,8 +153,49 @@ hostile inputs it refuses the instruction-carrying HTML (development) and PDF (h
 abstains on 20, **answers a question about a PDF that is also a ZIP** (the one fabrication-class outcome: it does
 not notice the second identity), and **crashes with a MemoryError on an `.npy` header declaring terabytes**
 (`nsf graphfile pack` does not catch it; the traced peak recorded beside that task is the attempted allocation,
-8 TB, not memory used). The `artifacts` subject today answers "cannot: not built" everywhere: 29 right per split,
+8 TB, not memory used). At the baseline the `artifacts` subject answered "cannot: not built" everywhere: 29 right per split,
 exactly the honest and unknown abstention tasks, and 0 of 23 hostile (a "cannot" is not a refusal).
+
+## The product on the benchmark (development and held-out)
+
+The `artifacts` subject is the product package through the driver (`subject.py`). Right / abstained ("cannot" or
+refused where an answer was expected) / wrong / failed, of n:
+
+| family | development (`505b55b`) | held-out | held-out commit | verdict by the rule written before the run |
+|---|---|---|---|---|
+| intake | 330 / 7 / 0 / 0 of 337 | 328 / 11 / 0 / 0 of 339 | `c1f5f2f` | generalizes (0.979 to 0.968) |
+| honest | 52 / 3 / 0 / 0 of 55 | 52 / 3 / 0 / 0 of 55 | `c1f5f2f` | generalizes (0.945 to 0.945) |
+| unknown | 51 / 0 / 0 / 0 of 51 | 49 / 0 / 0 / 0 of 49 | `c1f5f2f` | generalizes (1.000 to 1.000) |
+| compound | 34 / 2 / 0 / 0 of 36 | 38 / 2 / 0 / 0 of 40 | `c1f5f2f` | generalizes (0.944 to 0.950) |
+| hostile | 23 / 0 / 0 / 0 of 23 | 22 / 1 / 0 / 0 of 23 | `c1f5f2f` | generalizes (drop 0.043); **"hostile refused" does NOT fully hold**: one attack answered "cannot", not refused |
+| made | 14 / 0 / 0 / 0 of 14 | 13 / 1 / 0 / 0 of 14 | `505b55b` | **does not generalize** by the rule (0.929 against 1.000, a drop over 0.05): one held-out making task the product could not do |
+| transform | 8 / 0 / 0 / 0 of 8 | 8 / 0 / 0 / 0 of 8 | `505b55b` | generalizes, **with lane P's disclosure**: lane P once saw the held-out transform rows, so this proves less |
+| **all** | **512 / 12 / 0 / 0 of 524** | **510 / 18 / 0 / 0 of 528** | | no fabrication, no crash: holds in every family |
+
+Today's system on the held-out split: 55 right (52 of them the floor), 1 wrong, 1 crash. Every held-out run was
+taken once, by the main session, on a clean tree, after its rule was written in the main session's log; the files,
+each rule and result quoted verbatim, the commits and the verdicts are in `evidence/omnimind_heldout/` (README). That
+log is not in the repository, so **the order of rule and run cannot be verified from git**; the withheld looks are
+different: their rule is to be committed before them. The breakdown of the 510 by kind of answer is in the table
+above ("What right is made of").
+
+What the numbers do not say:
+- **The driver decides some outcomes** (review finding B4). Until lane F1's driver lands, `subject.py` itself refuses
+  a document whose text `webcortex.safety.scan_injection` flags (the 4 hostile "instructions aimed at an AI agent"
+  tasks per split credit the driver's refusal, while the product only adds a note), turns a partial decode into
+  "refused", and maps a product error to "cannot" or "refused" by its reason string (which is how the one held-out
+  hostile task became "cannot"). Lane F1 moves these decisions into the product; the withheld looks refuse a driver
+  that is not pinned (see the withheld split below).
+- **The made family's readers and the product's checks follow one written contract** (DESIGN §6's reading contract,
+  ruled by the main session to be lane Z's reading). That they agree on 1,537 fresh product charts (one product
+  finding aside) shows the product meets the contract, not that two independent judges agree on what a person
+  sees; the visibility rule (below) makes the benchmark's reader stricter than the contract was.
+- No held-out run is repeated: a later version of a mechanism is judged only on the withheld split.
+
+**The withheld split: status.** Written by lane ZW and pinned; **no product look has been taken yet**. The ledger
+(`evidence/omnimind_final_uses.jsonl`) holds only lane ZW's machinery check through the reference subjects. Each look
+needs its pass rule committed first and the drivers pinned (`evidence/omnimind_driver_pins.json`, null until the main
+session pins them after lane F1).
 
 ## The readers of made artifacts (and what DESIGN.md does not fix)
 
