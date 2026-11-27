@@ -63,17 +63,20 @@ def relate(db, first: str, second: str, *, question: str | None = None, now=None
     return out
 
 
-def record_links(db, first: str, second: str, rel, *, now=None) -> list[dict]:
+def record_links(db, first: str, second: str, rel, *, now=None, require_specific: bool = True) -> list[dict]:
     """The links a Relation of two held artifacts supports, recorded in `artifact_links` (the module doc's rules;
     the production pipeline records the relations of its sources through this too)."""
     from . import store
     shared = rel.shared
     links = []
     # lane FX4 (R3): only an answer decided under a question that names what is compared and where becomes a
-    # durable link; an answer from "everything the two artifacts let me compare" is shown, never recorded
-    if rel.answer is True and getattr(rel, "specific", False):
+    # durable link; an answer from "everything the two artifacts let me compare" is shown, never recorded. The
+    # production pipeline passes require_specific=False (team lead's ruling: its sources' relations are recorded
+    # as before this wave, as part of how the made artifact was made)
+    specific = getattr(rel, "specific", False) or not require_specific
+    if rel.answer is True and specific:
         links.append(("consistent_with", first, second, rel.basis()))
-    elif rel.answer is False and getattr(rel, "specific", False):
+    elif rel.answer is False and specific:
         links.append(("contradicts", first, second, rel.basis()))
     for m in rel.describes:
         src, dst = (first, second) if m["describes"] == "first" else (second, first)
