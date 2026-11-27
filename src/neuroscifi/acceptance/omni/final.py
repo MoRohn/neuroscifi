@@ -61,6 +61,25 @@ WITHHELD_SHA256 = {
     "withheld_cross.py": "ef8601bc5090deb2ad6c80c480a27038a25b9c181cc4865a2652b1a8a4104846",
     "withheld_learn.py": "511264dc08ecf02d6b796ee9b12df656f1ff48f8749fda54f53b154b3a1b4cfc",
 }
+# The SECOND withheld split (lane ZW2, `final --split withheld2`): new cases of the three mechanisms the first looks did
+# not support (lane Z's `unknown` and `hostile`, and `cross`). Its files are pinned here and in
+# tests/acceptance/test_omni_withheld2.py; a ledger line of this split carries "split": "withheld2".
+SPLITS = ("withheld", "withheld2")
+FILE_OF2 = {"unknown": "withheld2_unknown_hostile.py", "hostile": "withheld2_unknown_hostile.py",
+            "cross": "withheld2_cross.py"}
+WITHHELD2_SHA256 = {
+    "withheld2_unknown_hostile.py": "bf296a3d4fd65ca4a833aa41de4a9eec055b516e5bbde8dd346ec9530f2e1ad3",
+    "withheld2_cross.py": "a8b60d0df21fbed228a917a16ce69cb3d8e82977323bdd599ec28ecced4b2fe9",
+}
+
+
+def files_of(split: str) -> tuple[dict, dict]:
+    """(family -> withheld file, file -> pinned SHA-256) of a withheld split."""
+    if split == "withheld":
+        return FILE_OF, WITHHELD_SHA256
+    if split == "withheld2":
+        return FILE_OF2, WITHHELD2_SHA256
+    raise Refused(f"unknown withheld split {split!r} (one of {', '.join(SPLITS)})")
 
 
 class Refused(ValueError):
@@ -130,22 +149,24 @@ def out_problem(out: str, repo: Path = REPO) -> str | None:
     return None
 
 
-def check(note: str, families, env: dict, *, pins: dict | None = None, drivers: dict | None = None) -> None:
+def check(note: str, families, env: dict, *, pins: dict | None = None, drivers: dict | None = None,
+          split: str = "withheld") -> None:
     """Every refusal that comes before the ledger line. `pins` default: the tracked DRIVER_PINS file; `drivers`
     default: the drivers' hashes on disk."""
+    file_of, pinned = files_of(split)
     if not (note or "").strip():
         raise Refused("a note is required (it is the ledger line's reason)")
-    unknown = [f for f in families if f not in FILE_OF]
+    unknown = [f for f in families if f not in file_of]
     if unknown or not families:
         raise Refused(f"unknown or missing family: {', '.join(unknown) or 'none given'}")
     if env.get("git_dirty") is not False or not env.get("git_commit"):
         raise Refused("the tree must be clean and committed (and git must say so), so the ledger line names the code "
                       "it measured")
-    for name in sorted({FILE_OF[f] for f in families}):
+    for name in sorted({file_of[f] for f in families}):
         got = digest(name)
-        if got != WITHHELD_SHA256[name]:
-            raise Refused(f"{name}'s SHA-256 is {got[:12]}..., not the pinned {WITHHELD_SHA256[name][:12]}...: it was "
-                          "changed and is not scored")
+        if got != pinned[name]:
+            raise Refused(f"{name}'s SHA-256 is {got[:12]}..., not the pinned {(pinned[name] or 'none')[:12]}...: it "
+                          "was changed and is not scored")
     pins = pinned_drivers() if pins is None else pins
     drivers = driver_hashes() if drivers is None else drivers
     for rel in DRIVERS:
@@ -170,23 +191,28 @@ def record(entries: list[dict], ledger: Path = LEDGER) -> int:
 
 
 def look(families, subject, subject_name: str, note: str, *, script: str, scratch: str | None = None,
-         ledger: Path = LEDGER, env: dict | None = None, pins: dict | None = None) -> dict:
+         ledger: Path = LEDGER, env: dict | None = None, pins: dict | None = None, split: str = "withheld") -> dict:
     """THE look: refusals, the ledger lines, then the withheld tasks scored. `subject`: a lane Z Subject for lane Z's
-    families; for forms / cross / learn a chooser / relater / learner factory, or a reference name."""
+    families; for forms / cross / learn a chooser / relater / learner factory, or a reference name. `split`:
+    "withheld" (lane ZW's files) or "withheld2" (lane ZW2's: unknown, hostile, cross)."""
     families = list(dict.fromkeys(families))
     env = environment() if env is None else env
     drivers = driver_hashes()
-    check(note, families, env, pins=pins, drivers=drivers)
+    check(note, families, env, pins=pins, drivers=drivers, split=split)
+    file_of, pinned = files_of(split)
     at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entries = [{"at": at, "commit": env["git_commit"], "dirty": env["git_dirty"], "family": f,
-                "subject": subject_name, "note": note, "script": script, "withheld_file": FILE_OF[f],
-                "withheld_sha256": WITHHELD_SHA256[FILE_OF[f]], "drivers": drivers} for f in families]
+                "subject": subject_name, "note": note, "script": script, "withheld_file": file_of[f],
+                "withheld_sha256": pinned[file_of[f]], "drivers": drivers,
+                **({"split": split} if split != "withheld" else {})} for f in families]
     lines = record(entries, ledger)
     out = {"label": LABEL, "generated_at": at, "environment": env, "ledger_lines": lines,
            "ledger_entries": entries, "families": {}}
     for f in families:
         start = time.perf_counter()
-        if f in Z_FAMILIES:
+        if split == "withheld2":
+            value = score_cross2(subject) if f == "cross" else score_z(f, subject, scratch=scratch, second=True)
+        elif f in Z_FAMILIES:
             value = score_z(f, subject, scratch=scratch)
         else:
             value = {"forms": score_forms, "cross": score_cross, "learn": score_learn}[f](subject)
@@ -201,9 +227,13 @@ def _summary_only(value: dict) -> dict:
 
 # ---- lane Z's families ------------------------------------------------------------------------------------------------
 
-def score_z(family: str, subject, *, scratch: str | None = None) -> dict:
+def score_z(family: str, subject, *, scratch: str | None = None, second: bool = False) -> dict:
     from . import Result, run_in_process, run_tasks, summarise
-    from . import hostile, made, transform, withheld_cases as W
+    from . import hostile, made, transform
+    if second:
+        from . import withheld2_unknown_hostile as W
+    else:
+        from . import withheld_cases as W
     split, start = W.SPLIT, time.perf_counter()
     if family in ("intake", "honest", "unknown", "compound"):
         rows = run_tasks(family, split, subject, W.tasks(family))
@@ -374,3 +404,42 @@ def score_learn(subject) -> dict:
             "all_kept": {"mean": round(statistics.fmean(whole), 4), "sd_over_seeds": sd(whole),
                          "per_seed": [round(x, 4) for x in whole]},
             "late_kept_by_person": {pid: round(sum(v) / len(v), 4) for pid, v in late_person.items()}}
+
+
+def score_cross2(subject) -> dict:
+    """The second withheld split's cross measures. A case is correct when the answer equals its `expect`: the truth
+    where the kind is decidable by measurement, None ("cannot") on both twins where it is not (any answer there is
+    wrong, so a guess gains nothing). Blocks: all, decidable, undecidable, the kinds only this split has, by kind."""
+    from . import cross, withheld2_cross as WX
+    if isinstance(subject, str):
+        subject = cross.REFERENCES[subject][1]
+    relate = getattr(subject, "relate", subject)
+    rows = []
+    for t in WX.tasks():
+        reply = relate(dict(t.files), t.question) or {}
+        answer = reply.get("answer")
+        rows.append((t, answer if isinstance(answer, bool) else None, bool(reply.get("because"))))
+    n = len(rows)
+
+    def frac(k, m):
+        return {"k": k, "n": m, "share": round(k / m, 4) if m else None}
+
+    def block(sel):
+        answered = [r for r in sel if r[1] is not None]
+        correct = sum(1 for t, a, _ in sel if a is t.expect)
+        right_answers = sum(1 for t, a, _ in answered if a is t.expect)
+        return {"cases": len(sel), "correct": frac(correct, len(sel)), "answered": frac(len(answered), len(sel)),
+                "correct_of_answered": frac(right_answers, len(answered)),
+                "wrong": len(answered) - right_answers}
+    decidable = [r for r in rows if WX.DECIDABLE[r[0].kind][0]]
+    return {"label": cross.LABEL, "split": "withheld2", "n_cases": n, "n_pairs": n // 2, **block(rows),
+            "both_twins_correct": frac(sum(1 for a, b in zip(rows[::2], rows[1::2])
+                                           if a[1] is a[0].expect and b[1] is b[0].expect), n // 2),
+            "with_reasons": frac(sum(1 for r in rows if r[2]), n),
+            "decidable": block(decidable),
+            "matching": block([r for r in decidable if r[0].truth]),
+            "non_matching": block([r for r in decidable if not r[0].truth]),
+            "undecidable": block([r for r in rows if not WX.DECIDABLE[r[0].kind][0]]),
+            "kinds_only_in_this_split": block([r for r in rows if r[0].kind in WX.NEW_KINDS]),
+            "by_kind": {kind: {**block([r for r in rows if r[0].kind == kind]),
+                               "decidable_by_measurement": WX.DECIDABLE[kind][0]} for kind in WX.KINDS}}

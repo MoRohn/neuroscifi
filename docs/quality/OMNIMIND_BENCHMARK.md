@@ -572,3 +572,29 @@ and counts as not honoured.
   everything scores exactly the floor). **The `today` control IS run first**, as a reference-only ledger line, and
   every control named for forms, cross and learn is run.
 
+
+## The second withheld split (lane ZW2)
+
+Written by lane ZW2 (2026-11-27), after the first withheld looks, without reading product code, the first withheld
+files or any product lane's report; counts and rules only here. It exists because `unknown` and `hostile` were "not
+supported" on the first withheld split, and a "not supported" is never retried on the same cases: a fix is judged
+once on these NEW cases. Nobody else opens `acceptance/omni/withheld2_*.py` or
+`tests/acceptance/test_omni_withheld2.py`.
+
+- `acceptance/omni/withheld2_unknown_hostile.py`, seeds from `omni.WITHHELD2_SEEDS` (9600-9999, guarded by
+  `test_no_script_or_test_draws_a_seed_from_a_reserved_range`):
+  - `unknown`: 60 cases, 171 tasks (36 disguised decodable files, 103 tasks; 24 truly unknown, 68 tasks); abstention
+    floor 24. A false identification (a format named for bytes that are not it) is wrong, as before.
+  - `hostile`: 62 constructions over 25 classes; 11 of the classes (31 constructions) exist in no public split.
+    Every task expects a refusal within the harness's bounds (`hostile.py`, `isolate.py`).
+- Truths are known by construction and re-derived in `test_omni_withheld2.py` by independent readers (the oracle of
+  `omni_oracle.py` after an independent unwrap, signature checks, and a check of each hostile construction's hostile
+  property that never decodes it as a product would). Names, files and seeds repeat no public case.
+- **The look**: `scripts/bench_omni.py final --split withheld2 --family unknown|hostile|all --subject S --note TEXT
+  --out FILE`. Same refusals as the first split (note, `--out` inside the checkout or not writable, another tree, a
+  dirty tree, a withheld2 file whose SHA-256 differs from `final.WITHHELD2_SHA256`, a driver not pinned or changed);
+  any other family is refused for this split. The ledger is the same file; a line of this split carries
+  `"split": "withheld2"`. `run --split withheld2` is refused.
+- The rule for its looks is not this lane's to write: it must be committed before any product look, as for the first
+  split. The ledger's first withheld2 lines are lane ZW2's machinery check (`today` only, noted "machinery check:
+  references only"); no product subject has looked.
