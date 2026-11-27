@@ -261,3 +261,24 @@ def test_relate_imports_nothing_beyond_the_default_path():
             if isinstance(node, ast.ImportFrom) and node.level == 0:
                 assert node.module.split(".")[0] in ("__future__", "dataclasses", "datetime", "math", "re"), name
     assert math.isfinite(1.0)
+
+
+# ---- the fresh pairs (written after the mechanism was frozen; see r_pairs_fresh.py) ------------------------------
+
+import r_pairs_fresh as RF  # noqa: E402
+
+
+@pytest.mark.parametrize("kind, question, matching, other", RF.pairs(), ids=[p[0] for p in RF.pairs()])
+def test_fresh_pairs_are_never_answered_wrong(kind, question, matching, other):
+    assert run(matching, question).answer in (True, None)
+    assert run(other, question).answer in (False, None)
+
+
+@pytest.mark.parametrize("question, files", RF.unrelated(), ids=[",".join(f) for _, f in RF.unrelated()])
+def test_fresh_unrelated_are_cannot(question, files):
+    assert run(files, question).answer is None
+
+
+def test_two_logs_from_different_programs_are_matched_by_what_happened():
+    kind, question, matching, other = next(p for p in RF.pairs() if p[0] == "two_logs_order")
+    assert run(matching, question).answer is True and run(other, question).answer is False

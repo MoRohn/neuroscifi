@@ -693,6 +693,23 @@ def events_of_text(text: str) -> list[Event] | None:
     return out
 
 
+def without_format_words(events: list) -> list:
+    """Words that occur in at least 80 % of a log's lines (its host, program, process id, level) are the log's
+    format, not what happened: left out when the log's events are matched INTO another log's lines (three lines or
+    more; the other log keeps all its words, so a source name that is also a word of the events still matches)."""
+    if len(events) < 3:
+        return events
+    seen: dict[str, int] = {}
+    for e in events:
+        for w in set(e.words):
+            seen[w] = seen.get(w, 0) + 1
+    common = {w for w, n in seen.items() if n >= 0.8 * len(events)}
+    if not common:
+        return events
+    return [Event(e.seconds, e.absolute, e.text, tuple(w for w in e.words if w not in common) or e.words, e.line,
+                  e.precision) for e in events]
+
+
 @dataclass
 class Sequence:
     """Ordered steps a document states (a list, the lines of one paragraph, its sentences)."""

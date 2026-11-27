@@ -1148,7 +1148,7 @@ def _clock(e) -> str:
 def _cmp_events(fa: Fact, fb: Fact) -> Pair | None:
     """Two event lists (two logs): events matched by their words; order agreement and the offset between them."""
     ea, eb = list(fa.value), list(fb.value)
-    match = _match_steps([e.words for e in ea], [e.words for e in eb])
+    match = _match_steps([e.words for e in rr.without_format_words(ea)], [e.words for e in eb])
     found = [(ea[i], eb[j]) for i, j in enumerate(match) if j is not None]
     if len(found) < 2:
         return None
