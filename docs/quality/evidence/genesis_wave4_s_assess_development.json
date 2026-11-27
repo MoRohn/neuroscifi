@@ -1,0 +1,664 @@
+{
+ "split": "development",
+ "min_key": 4,
+ "by_shape": {
+  "all": {
+   "same_source_pairs": 755,
+   "independent_pairs": 340,
+   "same_source_not_joined_today": 627,
+   "independent_joined_today": 22,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 604,
+    "flags_independent": 315,
+    "flags_independent_not_joined_today": 294
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 610,
+    "flags_independent": 316,
+    "flags_independent_not_joined_today": 295
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 192,
+    "flags_independent": 173,
+    "flags_independent_not_joined_today": 154,
+    "auc_not_joined_today": 0.334
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 151,
+    "flags_independent": 63,
+    "flags_independent_not_joined_today": 59
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 135,
+    "flags_independent": 25,
+    "flags_independent_not_joined_today": 23
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 101,
+    "flags_independent": 24,
+    "flags_independent_not_joined_today": 22
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 101,
+    "flags_independent": 24,
+    "flags_independent_not_joined_today": 22
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 59,
+    "flags_independent": 1,
+    "flags_independent_not_joined_today": 1
+   }
+  },
+  "correction": {
+   "same_source_pairs": 0,
+   "independent_pairs": 35,
+   "same_source_not_joined_today": 0,
+   "independent_joined_today": 1,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 19,
+    "flags_independent_not_joined_today": 18
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 20,
+    "flags_independent_not_joined_today": 19
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 22,
+    "flags_independent_not_joined_today": 21,
+    "auc_not_joined_today": null
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 2,
+    "flags_independent_not_joined_today": 2
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 1,
+    "flags_independent_not_joined_today": 1
+   }
+  },
+  "echo": {
+   "same_source_pairs": 17,
+   "independent_pairs": 6,
+   "same_source_not_joined_today": 14,
+   "independent_joined_today": 1,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 14,
+    "flags_independent": 4,
+    "flags_independent_not_joined_today": 3
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 14,
+    "flags_independent": 4,
+    "flags_independent_not_joined_today": 3
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 1,
+    "flags_independent": 1,
+    "flags_independent_not_joined_today": 0,
+    "auc_not_joined_today": 0.464
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 8,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "extra_origin": {
+   "same_source_pairs": 76,
+   "independent_pairs": 4,
+   "same_source_not_joined_today": 66,
+   "independent_joined_today": 0,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 66,
+    "flags_independent": 4,
+    "flags_independent_not_joined_today": 4
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 66,
+    "flags_independent": 4,
+    "flags_independent_not_joined_today": 4
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 9,
+    "flags_independent": 3,
+    "flags_independent_not_joined_today": 3,
+    "auc_not_joined_today": 0.129
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 25,
+    "flags_independent": 1,
+    "flags_independent_not_joined_today": 1
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 17,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 13,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 13,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 16,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "independent": {
+   "same_source_pairs": 0,
+   "independent_pairs": 182,
+   "same_source_not_joined_today": 0,
+   "independent_joined_today": 11,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 182,
+    "flags_independent_not_joined_today": 171
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 182,
+    "flags_independent_not_joined_today": 171
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 97,
+    "flags_independent_not_joined_today": 86,
+    "auc_not_joined_today": null
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 42,
+    "flags_independent_not_joined_today": 38
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "mirror_dates": {
+   "same_source_pairs": 59,
+   "independent_pairs": 1,
+   "same_source_not_joined_today": 27,
+   "independent_joined_today": 0,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 23,
+    "flags_independent": 1,
+    "flags_independent_not_joined_today": 1
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 26,
+    "flags_independent": 1,
+    "flags_independent_not_joined_today": 1
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 27,
+    "flags_independent": 1,
+    "flags_independent_not_joined_today": 1,
+    "auc_not_joined_today": 0.5
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 19,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 2,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "primary_cited": {
+   "same_source_pairs": 138,
+   "independent_pairs": 0,
+   "same_source_not_joined_today": 138,
+   "independent_joined_today": 0,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 138,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 138,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 25,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0,
+    "auc_not_joined_today": null
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 43,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 22,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 7,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "roundup": {
+   "same_source_pairs": 31,
+   "independent_pairs": 9,
+   "same_source_not_joined_today": 31,
+   "independent_joined_today": 2,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 12,
+    "flags_independent": 9,
+    "flags_independent_not_joined_today": 7
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 15,
+    "flags_independent": 9,
+    "flags_independent_not_joined_today": 7
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 11,
+    "flags_independent": 5,
+    "flags_independent_not_joined_today": 3,
+    "auc_not_joined_today": 0.417
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 13,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 31,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 31,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 31,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "stale": {
+   "same_source_pairs": 0,
+   "independent_pairs": 14,
+   "same_source_not_joined_today": 0,
+   "independent_joined_today": 1,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 7,
+    "flags_independent_not_joined_today": 7
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 7,
+    "flags_independent_not_joined_today": 7
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 12,
+    "flags_independent_not_joined_today": 11,
+    "auc_not_joined_today": null
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "syndicated_credit": {
+   "same_source_pairs": 243,
+   "independent_pairs": 9,
+   "same_source_not_joined_today": 214,
+   "independent_joined_today": 1,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 214,
+    "flags_independent": 9,
+    "flags_independent_not_joined_today": 8
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 214,
+    "flags_independent": 9,
+    "flags_independent_not_joined_today": 8
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 64,
+    "flags_independent": 5,
+    "flags_independent_not_joined_today": 4,
+    "auc_not_joined_today": 0.278
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 39,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 47,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 40,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 40,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 34,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "syndicated_nocredit": {
+   "same_source_pairs": 146,
+   "independent_pairs": 6,
+   "same_source_not_joined_today": 117,
+   "independent_joined_today": 0,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 117,
+    "flags_independent": 6,
+    "flags_independent_not_joined_today": 6
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 117,
+    "flags_independent": 6,
+    "flags_independent_not_joined_today": 6
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 46,
+    "flags_independent": 2,
+    "flags_independent_not_joined_today": 2,
+    "auc_not_joined_today": 0.555
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 3,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "two_origins": {
+   "same_source_pairs": 28,
+   "independent_pairs": 14,
+   "same_source_not_joined_today": 17,
+   "independent_joined_today": 3,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 17,
+    "flags_independent": 14,
+    "flags_independent_not_joined_today": 11
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 17,
+    "flags_independent": 14,
+    "flags_independent_not_joined_today": 11
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 6,
+    "flags_independent": 8,
+    "flags_independent_not_joined_today": 6,
+    "auc_not_joined_today": 0.38
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 2,
+    "flags_independent_not_joined_today": 2
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 17,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 16,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 16,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "verified_credit": {
+   "same_source_pairs": 0,
+   "independent_pairs": 34,
+   "same_source_not_joined_today": 0,
+   "independent_joined_today": 2,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 34,
+    "flags_independent_not_joined_today": 32
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 34,
+    "flags_independent_not_joined_today": 32
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 10,
+    "flags_independent_not_joined_today": 10,
+    "auc_not_joined_today": null
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 15,
+    "flags_independent_not_joined_today": 15
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 25,
+    "flags_independent_not_joined_today": 23
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 24,
+    "flags_independent_not_joined_today": 22
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 24,
+    "flags_independent_not_joined_today": 22
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  },
+  "wire_like_host": {
+   "same_source_pairs": 17,
+   "independent_pairs": 26,
+   "same_source_not_joined_today": 3,
+   "independent_joined_today": 0,
+   "time_equal": {
+    "adds_of_same_not_joined_today": 3,
+    "flags_independent": 26,
+    "flags_independent_not_joined_today": 26
+   },
+   "time_close": {
+    "adds_of_same_not_joined_today": 3,
+    "flags_independent": 26,
+    "flags_independent_not_joined_today": 26
+   },
+   "text_overlap": {
+    "adds_of_same_not_joined_today": 3,
+    "flags_independent": 7,
+    "flags_independent_not_joined_today": 7,
+    "auc_not_joined_today": 0.865
+   },
+   "rare_shared": {
+    "adds_of_same_not_joined_today": 1,
+    "flags_independent": 1,
+    "flags_independent_not_joined_today": 1
+   },
+   "cites_any_case": {
+    "adds_of_same_not_joined_today": 1,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites": {
+    "adds_of_same_not_joined_today": 1,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "cites_in_time": {
+    "adds_of_same_not_joined_today": 1,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   },
+   "shared_name": {
+    "adds_of_same_not_joined_today": 0,
+    "flags_independent": 0,
+    "flags_independent_not_joined_today": 0
+   }
+  }
+ }
+}

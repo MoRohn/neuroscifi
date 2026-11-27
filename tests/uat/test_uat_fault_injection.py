@@ -399,6 +399,7 @@ def test_a_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record(
 # the owner's own front-door question (the front door).
 WAVE3_WEB_ON = {"recheck_order": "rate+seen+rotation", "attribution_independence": True, "echo_recognition": True,
                 "supersession": "independent", "origin_grouping": "one_way"}
+WAVE3_WEB_ON["own_text_provenance"] = True        # Wave 4 lane E (ADR-067), failed by the same checks
 WAVE3_INSTANCE_ON = {"predictive_regulation": "shadow"}
 
 
@@ -454,6 +455,8 @@ WAVE3_ENTRIES = (
     ("predictive_regulation_shadow", "neuroscifi.resources.shadow", "_verdict", None),
     ("readiness", "neuroscifi.readiness", "report", None),
     ("front_door", "neuroscifi.causal", "_frontdoor", _front_door_question),
+    ("own_text_provenance", "neuroscifi.webcortex.emitted", "prepare", None),      # Wave 4 lane E (ADR-067)
+    ("own_text_provenance", "neuroscifi.webcortex.emitted", "Echoes", None),
 )
 WAVE3_IDS = [f"{m}:{n}" for m, _, n, _ in WAVE3_ENTRIES]
 
@@ -486,3 +489,93 @@ def test_a_wave3_failure_message_naming_a_subject_reaches_no_log_and_no_stored_r
     assert not logged, logged
     stored = [t for t in _stored_text(rig3) if MARKER in t]
     assert not stored, stored
+
+
+# ---- Wave 4 lane S (ADR-066): source_derivation, made to fail with every Wave 3 setting on and the rule on -----------
+# A failing derivation grouping is logged (its type only) and the grouping without it decides (claims.
+# independence_groups); a failing echo hook is lane E's and is tested with a stand-in in
+# tests/webcortex/test_source_derivation.py.
+WAVE4_S_ENTRIES = (("source_derivation", "neuroscifi.webcortex.claims", "_derivation_edges", None),)
+WAVE4_S_IDS = [f"{m}:{n}" for m, _, n, _ in WAVE4_S_ENTRIES]
+
+
+@pytest.fixture
+def rig4s(rig3):
+    with rig3.db() as db:
+        state.set_config(db, {"source_derivation": True}, time.time())
+    return rig3
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("mechanism,module,name,stage", WAVE4_S_ENTRIES, ids=WAVE4_S_IDS)
+def test_a_failing_derivation_grouping_leaves_the_owner_in_control(rig4s, web, monkeypatch, caplog, mechanism, module,
+                                                                   name, stage, mode):
+    problems, fault, visible = check(rig4s, web, monkeypatch, caplog, module, name, mode, stage)
+    assert not problems, (problems, fault.calls, visible)
+
+
+@pytest.mark.parametrize("mechanism,module,name,stage", WAVE4_S_ENTRIES, ids=WAVE4_S_IDS)
+def test_a_derivation_failure_message_naming_a_subject_reaches_no_log_and_no_stored_record(rig4s, web, monkeypatch,
+                                                                                          caplog, mechanism, module,
+                                                                                          name, stage):
+    problems, fault, visible = check(rig4s, web, monkeypatch, caplog, module, name, "marked", stage)
+    assert not problems, (problems, fault.calls, visible)
+    logged = [rec.getMessage() for rec in caplog.records if MARKER in rec.getMessage()]
+    assert not logged, logged
+    stored = [t for t in _stored_text(rig4s) if MARKER in t]
+    assert not stored, stored
+
+
+# ---- Wave 4 lane A (ADR-064): the division of the day's allowance, made to fail with it on ----------------------------
+#
+# The same owner session and checks, with allowance_division "reserve" (off by default). The stage makes the division
+# reachable through the product's own code: autonomy on with the owner's recorded enable and an open owner hypothesis
+# (a subject that holds no knowledge item), then one idle-investigation decision; the session's timer pass reads the
+# division too. A division that cannot be read holds nothing: the pass and the idle decision go on as with "race",
+# reported in the pass and logged with the error's type only.
+
+def _reaching_candidate(r, seen):
+    from neuroscifi.webcortex import claims, evolution, text
+    now = time.time()
+    statement = "The Zephyr compiler version 4.2.0 was released on 17 November 2026"
+    with r.db() as db:
+        state.set_config(db, {"autonomous": True}, now)
+        autonomy.enable(db, now)
+        with store.write(db):
+            hid, _ = evolution.open_hypothesis(
+                db, key=claims.claim_key(statement), statement=statement, origin="owner",
+                verification={"policy": "ADR-035", "state": "not_evaluated", "basis": "owner_hypothesis",
+                              "confidence": 0.5}, claims=[], values=text.values(statement),
+                polarity=claims.polarity(statement), now=now, with_prediction=False)
+            evolution.predict(db, hid, now, deadline=now + 20 * 86_400.0, probability=0.5)
+        out = autonomy.idle(db, now, worker="uat-division")
+    seen["shown"].append(json.dumps(out, default=str))
+
+
+WAVE4A_ENTRIES = (("allowance_division", "neuroscifi.webcortex.autonomy", "division", _reaching_candidate),)
+WAVE4A_IDS = [f"{m}:{n}" for m, _, n, _ in WAVE4A_ENTRIES]
+
+
+@pytest.fixture
+def rig4a(rig):
+    with rig.db() as db:
+        state.set_config(db, {"allowance_division": "reserve", "reach_share": 0.5}, time.time())
+    return rig
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("mechanism,module,name,stage", WAVE4A_ENTRIES, ids=WAVE4A_IDS)
+def test_a_failing_allowance_division_leaves_the_owner_in_control(rig4a, web, monkeypatch, caplog, mechanism, module,
+                                                                  name, stage, mode):
+    problems, fault, visible = check(rig4a, web, monkeypatch, caplog, module, name, mode, stage)
+    assert not problems, (problems, fault.calls, visible)
+
+
+@pytest.mark.parametrize("mechanism,module,name,stage", WAVE4A_ENTRIES, ids=WAVE4A_IDS)
+def test_an_allowance_division_failure_naming_a_subject_reaches_no_log_and_no_stored_record(rig4a, web, monkeypatch,
+                                                                                           caplog, mechanism, module,
+                                                                                           name, stage):
+    problems, fault, visible = check(rig4a, web, monkeypatch, caplog, module, name, "marked", stage)
+    assert not problems, (problems, fault.calls, visible)
+    assert not [rec.getMessage() for rec in caplog.records if MARKER in rec.getMessage()]
+    assert not [t for t in _stored_text(rig4a) if MARKER in t]

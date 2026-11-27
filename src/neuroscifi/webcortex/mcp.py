@@ -219,7 +219,8 @@ class Server:
                 db.close()
             text = f"{UNTRUSTED_HEADER}\n\n{_dump(payload)}"
         except (ToolInputError, InstanceError, RateLimited) as exc:
-            return self._failed(name, str(exc))
+            # a refusal that names damaged settings is the owner's to read (Wave 4 second fix round)
+            return self._failed(name, store.PAUSED_FOR_REPAIR if getattr(exc, "for_repair", False) else str(exc))
         except Exception as exc:   # never a stack trace on the wire: name the failure only
             detail = getattr(exc, "detail", None)
             code = getattr(exc, "code", None)

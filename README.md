@@ -8,8 +8,8 @@
 ![Version](https://img.shields.io/badge/version-0.7.0-3A3437)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-3A3437)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-3A3437?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-6195%20passed-3A3437)
-![Browser](https://img.shields.io/badge/browser%20e2e-212%20passed-3A3437)
+![Tests](https://img.shields.io/badge/tests-6397%20passed-3A3437)
+![Browser](https://img.shields.io/badge/browser%20e2e-216%20passed-3A3437)
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-3A3437)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-3A3437)
 
@@ -49,7 +49,7 @@ Web research enters memory only as dated, cited evidence that passes verificatio
 | 🔏 **Signed research nodes** | The owner enrols a paired device after comparing key fingerprints. Nodes sign their requests and can hand off research sessions; Pocket checks the Spark's signature on every reply. |
 | ⚖️ **Resource scheduling** | One pressure level from memory and GPU data, audio first. Opt-in idle unloading of the model, speech, search and memory services; a reload is refused if it would not fit, and never holds a call past its timeout. |
 | 🧾 **Governed forgetting** | `nsf forget` cascades through every derived record, in-memory indexes included, and a checkpoint restore replays every forget, so forgotten records do not come back. |
-| 🔬 **Measured cognitive mechanisms** | Project Cognitive Genesis, Wave 1: an internal-state record, a self-description (`nsf self`) with each field's source and age, exact what-if and forecast commands on a private copy (`nsf imagine`), a monitoring record per research answer, knowledge premises and re-check marks. On by default only where they record or display; whatever would change research, answers or beliefs is off until the owner turns it on ([Wave 1](docs/genesis/WAVE1.md)). |
+| 🔬 **Measured cognitive mechanisms** | Project Cognitive Genesis, Wave 1: an internal-state record, a self-description (`nsf self`) with each field's source and age, exact what-if and forecast commands on a private copy (`nsf imagine`), a monitoring record per research answer, knowledge premises and re-check marks. On by default only where they record or display; whatever would change research, answers or beliefs is off until the owner turns it on ([Wave 1](docs/genesis/WAVE1.md)). Waves 2 to 4 measured further mechanisms (Waves 3 and 4 also once on withheld worlds at the end); most mechanisms they built ship off, and telling independent sources from copies, or from the individual's own earlier answers, is still unsolved at the shipped defaults ([Genesis overview](docs/genesis/README.md), [Wave 4](docs/genesis/WAVE4.md)). |
 | 🩺 **Health checks** | `nsf doctor` checks dependencies, file modes, WAL mode, schema, integrity, free space, disk encryption and swap. |
 
 The **[34-page architecture brief](NeuroSciFi_Architecture.pdf)** (editable as [`Architecture.md`](Architecture.md)) covers reanalyses of human brain and behavioural data, controlled simulations, CPU benchmarks, the TufaZip evaluation, the DGX Spark plan and the mobile field runtime.
@@ -606,8 +606,8 @@ python scripts/guard_differential.py compare   # the answer guard against its at
 
 | Gate | Result |
 |---|---|
-| Quality gate (`bash scripts/check.sh`) | **6195 passed**, 22 skipped (live-service and platform tests, opt-in benchmark runs), 0 failed |
-| Browser end-to-end (`tests/e2e`) | **212 passed**, 1 skipped (opt-in degraded-voice test) |
+| Quality gate (`bash scripts/check.sh`) | **6397 passed**, 22 skipped (live-service and platform tests, opt-in benchmark runs), 0 failed |
+| Browser end-to-end (`tests/e2e`) | **216 passed**, 1 skipped (opt-in degraded-voice test) |
 | Acceptance scenarios | 7 of 7 pass ([pre-registered](docs/quality/PREREGISTRATION_D1.md) D-1 redesign) |
 | Reproduction | 8 of 8 analyses within tolerance |
 | Answer guard differential | 1,937 inputs against the attack-tested reference: 0 unexplained differences, every change stricter or a proven exact restatement |

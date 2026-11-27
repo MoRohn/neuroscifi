@@ -35,7 +35,11 @@ OFF_WEB = {"curiosity_learning_progress": False, "salience_record": False, "hypo
            "pocket_recent": False, "salience_attention": False, "arbitration_record": False,
            "recheck_order": "staleness",
            "attribution_independence": False, "echo_recognition": False, "supersession": "ask",
-           "origin_grouping": "transitive"}
+           "origin_grouping": "transitive",
+           "source_derivation": False,
+           "own_text_provenance": False,
+           "allowance_division": "race",         # Wave 4 lane A (ADR-064)
+           "caution_detail": False}             # Wave 4 fix (ADR-065): display only
 WAVE0_DIGEST = "68731d7235cbae9fca289124ea59bed99c1aa5b578ecaf8784d2e3df54cdf9d5"
 WAVE0_DIGEST_MACHINE = "aarch64"         # platform.machine() of the host the digest was recorded on
 
