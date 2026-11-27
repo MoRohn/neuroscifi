@@ -388,3 +388,24 @@ supported" on the first withheld split; counts and rules only. Nobody else opens
   `wrong` (answered and not correct) in every block. `run --split withheld2` is refused.
 - The pass rule for its look is to be committed before any product look. The ledger's first withheld2 cross lines are
   lane ZW2's machinery check with the references (`today`, `always_consistent`, `always_inconsistent`).
+
+## The third withheld split: cross (lane ZW3)
+
+Written by lane ZW3 (2026-11-27) after the owner opened the first two withheld splits of `cross` as development cases,
+without opening them, product code or the fix lane's work; counts and rules only. Nobody else opens
+`acceptance/omni/withheld3_cross.py`.
+
+- 56 pairs (112 cases), seeds from `omni.WITHHELD3_SEEDS`: 24 pairs of the six public kinds (new values, file names and
+  questions) and 32 pairs of eight kinds no public split has and no earlier look named. For each kind the module states
+  whether a relater that only measures structure and samples can decide it: five of the new kinds can; three (12 pairs,
+  24 cases) cannot, because one side's meaning is not measurable from bytes. On those the expected answer on BOTH twins
+  is "cannot" and any answer is wrong. Decidable: 44 pairs, 88 cases (44 matching, 44 non-matching).
+- The twins of every pair differ in exactly one file and one value (in the undecidable kinds, one short value); truths
+  are re-derived from the bytes in `test_omni_withheld3.py` (the public kinds with `test_omni_cross_bench.py`'s readers,
+  the new kinds with readers of its own); a reader built from those parsers scores 112 of 112.
+- **The look**: `scripts/bench_omni_forms.py final --split withheld3 --family cross --subject S --note TEXT --out FILE`,
+  scored by `final.score_cross3` with `score_cross2`'s blocks and rule. `run --split withheld3` is refused. `final`
+  refuses `--split withheld` and `--split withheld2` for `cross` ("spent and opened on 2026-11-27 by the owner's
+  decision") and records the refusal in the ledger.
+- The pass rule for its look is to be committed before any product look. The ledger's first withheld3 cross lines are
+  lane ZW3's machinery check with the references (`today`, `always_consistent`, `always_inconsistent`), each run twice.
