@@ -28,11 +28,7 @@ def test_content_shapes_of_a_bundle_reach_its_members(b1reg):
     assert len(shapes_b1.content_shapes(b1reg.decode(data, name="a.zip").representation, limit=2)) == 2
 
 
-# Names detect does not return yet: B1 asked lane K to add them (file-name based, confirmed by structure).
-AWAITING_DETECT = {"pyproject", "pyproject-toml", "requirements", "requirements-txt", "package-json"}
-
-
 def test_every_b1_adapter_is_reachable_through_detect():
     for cls in _b1.adapter_classes():
         reachable = [f for f in cls.formats if f in detect.FORMATS]
-        assert reachable or set(cls.formats) <= AWAITING_DETECT, cls.name
+        assert reachable, cls.name

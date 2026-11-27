@@ -4,7 +4,7 @@ the worst hostile input. Writes docs/quality/evidence/omnimind_b1.json (a summar
 
 Usage: PYTHONPATH=src python scripts/omni_b1_evidence.py [--out PATH]
 The registry is the merged one (lane K's built-ins, then B1's adapters) with K's `detect`; each row names the adapter
-that `resolve` actually picked (the manifest example is read by the TOML adapter until detect names manifests).
+that `resolve` actually picked.
 Each input is decoded twice: once for time (no tracing), once under tracemalloc for the peak of Python and numpy
 allocations (C-level buffers of sqlite3 and zlib are not traced: the numbers are lower bounds for those)."""
 from __future__ import annotations

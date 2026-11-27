@@ -36,7 +36,7 @@ ADAPTERS = (
     ('b1-yaml', ('yaml', 'yml'), 'content or header', True),
     ('b1-python', ('python', 'py'), 'content', True),
     ('b1-code-surface', ('javascript', 'js', 'typescript', 'ts', 'c', 'cpp', 'c++', 'h', 'shell', 'sh', 'bash'), 'content', True),
-    ('b1-manifests', ('pyproject', 'pyproject-toml', 'requirements', 'requirements-txt', 'package-json'), 'content', True),
+    ('b1-manifests', ('pyproject', 'requirements', 'package-json'), 'content', True),
     ('b1-notebook', ('ipynb', 'jupyter', 'notebook'), 'content', True),
     ('b1-zip', ('zip', 'jar', 'apk'), 'content', True),
     ('b1-tar', ('tar',), 'content', True),

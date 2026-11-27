@@ -13,7 +13,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 153.11,
-   "seconds": 1.602
+   "seconds": 1.605
   },
   {
    "adapter": "b1-delimited",
@@ -43,7 +43,7 @@
    "outcome": "too_large",
    "peak_mib": 30.22,
    "rule": "max_columns",
-   "seconds": 2.63
+   "seconds": 2.696
   },
   {
    "adapter": "b1-ndjson",
@@ -52,8 +52,8 @@
    "input": "ndjson 50k records",
    "kind": "honest",
    "outcome": "decoded",
-   "peak_mib": 34.97,
-   "seconds": 0.648
+   "peak_mib": 34.95,
+   "seconds": 0.655
   },
   {
    "adapter": "json",
@@ -73,7 +73,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 18.07,
-   "seconds": 0.572
+   "seconds": 0.56
   },
   {
    "adapter": "b1-html",
@@ -83,7 +83,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 10.64,
-   "seconds": 0.49
+   "seconds": 0.499
   },
   {
    "adapter": "b1-html",
@@ -93,7 +93,7 @@
    "kind": "hostile",
    "outcome": "decoded",
    "peak_mib": 6.8,
-   "seconds": 2.602
+   "seconds": 2.639
   },
   {
    "adapter": "b1-html",
@@ -103,7 +103,7 @@
    "kind": "hostile",
    "outcome": "decoded",
    "peak_mib": 0.61,
-   "seconds": 0.189
+   "seconds": 0.19
   },
   {
    "adapter": "b1-rtf",
@@ -113,7 +113,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 14.69,
-   "seconds": 0.398
+   "seconds": 0.409
   },
   {
    "adapter": "b1-rtf",
@@ -133,7 +133,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 16.51,
-   "seconds": 0.185
+   "seconds": 0.191
   },
   {
    "adapter": "b1-docx",
@@ -163,7 +163,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 95.85,
-   "seconds": 0.454
+   "seconds": 0.468
   },
   {
    "adapter": "b1-xlsx",
@@ -183,7 +183,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 19.5,
-   "seconds": 0.114
+   "seconds": 0.115
   },
   {
    "adapter": "b1-ods",
@@ -203,7 +203,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 0.7,
-   "seconds": 0.039
+   "seconds": 0.04
   },
   {
    "adapter": "b1-pdf",
@@ -212,8 +212,8 @@
    "input": "pdf 2000 pages, 1 s deadline",
    "kind": "hostile",
    "outcome": "decoded",
-   "peak_mib": 6.39,
-   "seconds": 0.583
+   "peak_mib": 6.41,
+   "seconds": 0.587
   },
   {
    "adapter": "b1-xml",
@@ -223,7 +223,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 150.15,
-   "seconds": 0.98
+   "seconds": 0.996
   },
   {
    "adapter": "b1-xml",
@@ -273,7 +273,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 4.12,
-   "seconds": 0.023
+   "seconds": 0.024
   },
   {
    "adapter": "b1-plist",
@@ -283,7 +283,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 5.91,
-   "seconds": 0.038
+   "seconds": 0.041
   },
   {
    "adapter": "b1-yaml",
@@ -303,7 +303,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 51.43,
-   "seconds": 0.149
+   "seconds": 0.17
   },
   {
    "adapter": "b1-python",
@@ -323,12 +323,12 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 8.28,
-   "seconds": 0.061
+   "seconds": 0.063
   },
   {
-   "adapter": "b1-toml",
+   "adapter": "b1-manifests",
    "bytes": 62,
-   "format": "toml",
+   "format": "pyproject",
    "input": "pyproject",
    "kind": "honest",
    "outcome": "decoded",
@@ -352,7 +352,7 @@
    "input": "zip 500 csv members",
    "kind": "honest",
    "outcome": "decoded",
-   "peak_mib": 0.87,
+   "peak_mib": 0.86,
    "seconds": 0.028
   },
   {
@@ -383,7 +383,7 @@
    "kind": "hostile",
    "outcome": "partial",
    "peak_mib": 3.75,
-   "seconds": 0.075
+   "seconds": 0.076
   },
   {
    "adapter": "compressed-stream",
@@ -392,7 +392,7 @@
    "input": "tar.gz 500 csv members",
    "kind": "honest",
    "outcome": "decoded",
-   "peak_mib": 1.17,
+   "peak_mib": 1.18,
    "seconds": 0.031
   },
   {
@@ -403,7 +403,7 @@
    "outcome": "too_large",
    "peak_mib": 39.31,
    "rule": "max_ratio",
-   "seconds": 0.066
+   "seconds": 0.067
   },
   {
    "adapter": "b1-7z-rar",
@@ -423,7 +423,7 @@
    "kind": "honest",
    "outcome": "decoded",
    "peak_mib": 0.39,
-   "seconds": 0.005
+   "seconds": 0.006
   },
   {
    "adapter": "b1-sqlite",
@@ -464,7 +464,7 @@
     "input": "c 10k functions",
     "outcome": "decoded",
     "peak_mib": 8.28,
-    "seconds": 0.061
+    "seconds": 0.063
    },
    "malformed": 0,
    "other": 0,
@@ -481,7 +481,7 @@
     "input": "csv 200k rows x 5",
     "outcome": "decoded",
     "peak_mib": 153.11,
-    "seconds": 1.602
+    "seconds": 1.605
    },
    "malformed": 1,
    "other": 0,
@@ -495,7 +495,7 @@
     "outcome": "too_large",
     "peak_mib": 30.22,
     "rule": "max_columns",
-    "seconds": 2.63
+    "seconds": 2.696
    }
   },
   "b1-docx": {
@@ -505,7 +505,7 @@
     "input": "docx 20k paragraphs",
     "outcome": "decoded",
     "peak_mib": 16.51,
-    "seconds": 0.185
+    "seconds": 0.191
    },
    "malformed": 0,
    "other": 0,
@@ -529,7 +529,7 @@
     "input": "html 10k sections with tables",
     "outcome": "decoded",
     "peak_mib": 10.64,
-    "seconds": 0.49
+    "seconds": 0.499
    },
    "malformed": 0,
    "other": 0,
@@ -542,7 +542,7 @@
     "input": "html 1M empty tags",
     "outcome": "decoded",
     "peak_mib": 6.8,
-    "seconds": 2.602
+    "seconds": 2.639
    }
   },
   "b1-ini": {
@@ -552,7 +552,24 @@
     "input": "ini 2k sections",
     "outcome": "decoded",
     "peak_mib": 4.12,
-    "seconds": 0.023
+    "seconds": 0.024
+   },
+   "malformed": 0,
+   "other": 0,
+   "partial": 0,
+   "refused": 0,
+   "tried": 1,
+   "unsupported": 0,
+   "worst_hostile": null
+  },
+  "b1-manifests": {
+   "decoded": 1,
+   "largest_honest": {
+    "bytes": 62,
+    "input": "pyproject",
+    "outcome": "decoded",
+    "peak_mib": 0.0,
+    "seconds": 0.0
    },
    "malformed": 0,
    "other": 0,
@@ -569,7 +586,7 @@
     "input": "markdown 1.5 MB",
     "outcome": "decoded",
     "peak_mib": 18.07,
-    "seconds": 0.572
+    "seconds": 0.56
    },
    "malformed": 0,
    "other": 0,
@@ -585,8 +602,8 @@
     "bytes": 2538890,
     "input": "ndjson 50k records",
     "outcome": "decoded",
-    "peak_mib": 34.97,
-    "seconds": 0.648
+    "peak_mib": 34.95,
+    "seconds": 0.655
    },
    "malformed": 0,
    "other": 0,
@@ -620,7 +637,7 @@
     "input": "ods 10k rows",
     "outcome": "decoded",
     "peak_mib": 19.5,
-    "seconds": 0.114
+    "seconds": 0.115
    },
    "malformed": 0,
    "other": 0,
@@ -643,7 +660,7 @@
     "input": "pdf 50 pages",
     "outcome": "decoded",
     "peak_mib": 0.7,
-    "seconds": 0.039
+    "seconds": 0.04
    },
    "malformed": 0,
    "other": 0,
@@ -655,8 +672,8 @@
     "bytes": 537184,
     "input": "pdf 2000 pages, 1 s deadline",
     "outcome": "decoded",
-    "peak_mib": 6.39,
-    "seconds": 0.583
+    "peak_mib": 6.41,
+    "seconds": 0.587
    }
   },
   "b1-plist": {
@@ -666,7 +683,7 @@
     "input": "plist 10k keys",
     "outcome": "decoded",
     "peak_mib": 5.91,
-    "seconds": 0.038
+    "seconds": 0.041
    },
    "malformed": 0,
    "other": 0,
@@ -683,7 +700,7 @@
     "input": "python 5k functions",
     "outcome": "decoded",
     "peak_mib": 51.43,
-    "seconds": 0.149
+    "seconds": 0.17
    },
    "malformed": 1,
    "other": 0,
@@ -706,7 +723,7 @@
     "input": "rtf 50k paragraphs",
     "outcome": "decoded",
     "peak_mib": 14.69,
-    "seconds": 0.398
+    "seconds": 0.409
    },
    "malformed": 0,
    "other": 0,
@@ -730,7 +747,7 @@
     "input": "sqlite 100k rows + cross-join view",
     "outcome": "decoded",
     "peak_mib": 0.39,
-    "seconds": 0.005
+    "seconds": 0.006
    },
    "malformed": 1,
    "other": 0,
@@ -747,7 +764,7 @@
    }
   },
   "b1-toml": {
-   "decoded": 2,
+   "decoded": 1,
    "largest_honest": {
     "bytes": 277780,
     "input": "toml 20k keys",
@@ -759,7 +776,7 @@
    "other": 0,
    "partial": 0,
    "refused": 1,
-   "tried": 3,
+   "tried": 2,
    "unsupported": 0,
    "worst_hostile": {
     "bytes": 20005,
@@ -777,7 +794,7 @@
     "input": "xlsx 30k rows x 3",
     "outcome": "decoded",
     "peak_mib": 95.85,
-    "seconds": 0.454
+    "seconds": 0.468
    },
    "malformed": 0,
    "other": 0,
@@ -801,7 +818,7 @@
     "input": "xml 200k elements",
     "outcome": "decoded",
     "peak_mib": 150.15,
-    "seconds": 0.98
+    "seconds": 0.996
    },
    "malformed": 0,
    "other": 0,
@@ -841,7 +858,7 @@
     "bytes": 53802,
     "input": "zip 500 csv members",
     "outcome": "decoded",
-    "peak_mib": 0.87,
+    "peak_mib": 0.86,
     "seconds": 0.028
    },
    "malformed": 0,
@@ -864,7 +881,7 @@
     "bytes": 3690,
     "input": "tar.gz 500 csv members",
     "outcome": "decoded",
-    "peak_mib": 1.17,
+    "peak_mib": 1.18,
     "seconds": 0.031
    },
    "malformed": 0,
@@ -879,7 +896,7 @@
     "outcome": "too_large",
     "peak_mib": 39.31,
     "rule": "max_ratio",
-    "seconds": 0.066
+    "seconds": 0.067
    }
   },
   "json": {
@@ -901,6 +918,6 @@
    }
   }
  },
- "size_bytes_of_this_file": 18009,
+ "size_bytes_of_this_file": 18327,
  "what": "OMNIMIND lane B1 adapters on a corpus built by scripts/omni_b1_evidence.py"
 }

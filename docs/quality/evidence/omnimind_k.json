@@ -190,9 +190,7 @@
    "available": true,
    "formats": [
     "pyproject",
-    "pyproject-toml",
     "requirements",
-    "requirements-txt",
     "package-json"
    ],
    "name": "b1-manifests"
