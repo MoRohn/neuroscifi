@@ -116,16 +116,66 @@ def _discover() -> list:
     return _DISCOVERED
 
 
+def identity(ep) -> tuple[str, str] | None:
+    """(distribution name, version) of an entry point, from its installed metadata; None when it has none."""
+    dist = getattr(ep, "dist", None)
+    name = getattr(dist, "name", None) or (getattr(dist, "metadata", None) or {}).get("Name") if dist else None
+    version = getattr(dist, "version", None) if dist else None
+    return (str(name), str(version)) if name and version else None
+
+
+def approval_text(name: str, ident: tuple[str, str]) -> str:
+    """How an approval is stored in the setting `artifact_adapters`: entry-point name, distribution and version."""
+    return f"{name}={ident[0]}=={ident[1]}"
+
+
+def parse_approvals(approved: Iterable[str]) -> dict:
+    """{entry-point name: (distribution, version)} from the setting's entries ("NAME=DIST==VERSION"); an entry with a
+    bare name (stored before distributions were recorded) maps to None and loads nothing."""
+    out: dict = {}
+    for entry in approved:
+        name, _, rest = str(entry).partition("=")
+        dist, _, version = rest.partition("==")
+        out[name] = (dist, version) if dist and version else None
+    return out
+
+
+def approval_for(name: str) -> str:
+    """The setting entry that approves the discovered adapter `name` as installed now (shown to the owner when they
+    approve it). LookupError when no adapter of that name is installed, when its distribution is not known, or when
+    several distributions declare the name (the owner then names one as NAME=DIST==VERSION)."""
+    found = [ep for ep in _discover() if ep.name == name]
+    idents = sorted({identity(ep) for ep in found if identity(ep)})
+    if not found:
+        raise LookupError(f"no installed file reader is named {name} (`nsf artifact adapters` lists those found)")
+    if not idents:
+        raise LookupError(f"the file reader {name} has no distribution name and version, so it cannot be approved")
+    if len(idents) > 1:
+        raise LookupError(f"{len(idents)} installed distributions declare the file reader {name}: name one as "
+                          + " or ".join(approval_text(name, i) for i in idents))
+    return approval_text(name, idents[0])
+
+
 def load_external(approved: Iterable[str]) -> list[str]:
-    """Load the discovered external adapters whose entry-point names the owner approved (lane A passes the instance
-    setting `artifact_adapters`). Returns the names loaded now. Nothing unnamed is ever imported."""
-    approved = {str(n) for n in approved}
+    """Load the discovered external adapters the owner approved (lane A passes the instance setting
+    `artifact_adapters`). An approval names the entry point AND the distribution and version that were installed when
+    the owner approved it (security review N4): an entry point of that name from another distribution, or the same
+    distribution at another version, is not loaded and is listed as needing approval again. Returns the entry-point
+    names loaded now. Nothing unapproved is ever imported."""
+    wanted = parse_approvals(approved)
     loaded = []
     for ep in _discover():
-        if ep.name not in approved:
+        if ep.name not in wanted:
             _EXTERNAL.setdefault(ep.name, {"state": "found", "reason": "found, not approved"})
             continue
         if _EXTERNAL.get(ep.name, {}).get("state") == "loaded":
+            continue
+        want, ident = wanted[ep.name], identity(ep)
+        if want is None or ident != want:
+            shown = f"{ident[0]} {ident[1]}" if ident else "a distribution that is not known"
+            why = ("approved by name only, before distributions were recorded" if want is None else
+                   f"approved as {want[0]} {want[1]}, but the one installed is {shown}")
+            _EXTERNAL[ep.name] = {"state": "found", "reason": f"found, {why}: approve it again"}
             continue
         try:
             obj = ep.load()
@@ -133,7 +183,8 @@ def load_external(approved: Iterable[str]) -> list[str]:
             if not isinstance(adapter, Adapter):
                 raise TypeError("not an Adapter")
             register(adapter)
-            _EXTERNAL[ep.name] = {"state": "loaded", "reason": "approved by the owner", "adapter": adapter.name}
+            _EXTERNAL[ep.name] = {"state": "loaded", "reason": "approved by the owner", "adapter": adapter.name,
+                                  "approval": approval_text(ep.name, ident)}
             loaded.append(ep.name)
         except Exception as error:
             _EXTERNAL[ep.name] = {"state": "failed", "reason": f"approved, failed to load ({type(error).__name__})"}
@@ -141,12 +192,16 @@ def load_external(approved: Iterable[str]) -> list[str]:
 
 
 def unload_external(approved: Iterable[str]) -> list[str]:
-    """Unregister every loaded external adapter whose entry-point name is not in `approved` (the owner withdrew it);
-    it is listed again as "found, not approved". Returns the entry-point names unloaded now."""
-    approved = {str(n) for n in approved}
+    """Unregister every loaded external adapter the owner no longer approves as loaded (its name withdrawn, or its
+    approval now names another distribution or version); it is listed again as found. Returns the entry-point names
+    unloaded now."""
+    wanted = parse_approvals(approved)
     unloaded = []
     for ep_name, state in list(_EXTERNAL.items()):
-        if state.get("state") == "loaded" and ep_name not in approved:
+        if state.get("state") != "loaded":
+            continue
+        want = wanted.get(ep_name)
+        if want is None or state.get("approval") != approval_text(ep_name, want):
             unregister(state.get("adapter", ""))
             _EXTERNAL[ep_name] = {"state": "found", "reason": "found, not approved"}
             unloaded.append(ep_name)
@@ -154,8 +209,8 @@ def unload_external(approved: Iterable[str]) -> list[str]:
 
 
 def loaded_external() -> tuple[str, ...]:
-    """The entry-point names of the external adapters loaded now (the guarded child loads the same ones)."""
-    return tuple(sorted(n for n, v in _EXTERNAL.items() if v.get("state") == "loaded"))
+    """The approvals (NAME=DIST==VERSION) of the external adapters loaded now: the guarded child loads the same."""
+    return tuple(sorted(v["approval"] for v in _EXTERNAL.values() if v.get("state") == "loaded"))
 
 
 def catalog() -> list[dict]:
@@ -171,8 +226,10 @@ def catalog() -> list[dict]:
     for ep in _discover():
         state = _EXTERNAL.get(ep.name, {"state": "found", "reason": "found, not approved"})
         if state["state"] != "loaded":
+            ident = identity(ep)
             rows.append({"name": ep.name, "formats": [], "families": [], "available": False,
-                         "reason": state["reason"], "reads": "nothing", "source": "external"})
+                         "reason": state["reason"], "reads": "nothing", "source": "external",
+                         "distribution": f"{ident[0]} {ident[1]}" if ident else "not known"})
     for format_name, why in REFUSED_FORMATS.items():
         rows.append({"name": f"refuse-{format_name}", "formats": [format_name], "families": [], "available": False,
                      "reason": "refused: " + why, "reads": "nothing", "source": "builtin"})
