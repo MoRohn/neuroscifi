@@ -183,10 +183,10 @@
    "heatmap": "cannot: tones.wav is not a table",
    "histogram": "cannot: tones.wav is not a table",
    "image": "cannot: tones.wav is not a picture",
-   "line_chart": "builds; check passed after 1 repair(s)",
+   "line_chart": "builds; check passed",
    "node_link": "cannot: tones.wav is not a network of things",
    "scatter_chart": "cannot: tones.wav is not a table",
-   "small_multiples": "builds; check passed after 1 repair(s)",
+   "small_multiples": "builds; check passed",
    "solid.mesh": "cannot: tones.wav is not a mesh",
    "solid_view": "cannot: tones.wav is not a mesh",
    "sonification": "cannot: a recording is already a sound; playing given samples back is not a form here",
@@ -258,7 +258,7 @@
  },
  "cost": {
   "bytes_max": 62226,
-  "seconds_max": 0.0231,
+  "seconds_max": 0.0137,
   "seconds_median": 0.0054
  },
  "foresight": {
@@ -272,7 +272,7 @@
     "right": 10
    },
    "points_per_pixel": {
-    "right": 1
+    "not observable here": 1
    },
    "seconds": {
     "over-predicted": 10
@@ -314,7 +314,7 @@
    ],
    "form": "chart.line",
    "request": "how did temperature_c change over the year?",
-   "seconds": 0.0127,
+   "seconds": 0.0126,
    "source": "table (time series)",
    "status": "made"
   },
@@ -343,7 +343,7 @@
    "status": "made"
   },
   {
-   "bytes": 25378,
+   "bytes": 24940,
    "carried": 1.0,
    "check_ok": true,
    "foresight": [
@@ -360,13 +360,13 @@
      "what": "over_budget"
     },
     {
-     "outcome": "right",
+     "outcome": "not observable here",
      "what": "points_per_pixel"
     }
    ],
    "form": "chart.line",
    "request": "what is in this sound?",
-   "seconds": 0.0231,
+   "seconds": 0.0137,
    "source": "signal",
    "status": "made"
   },
@@ -390,7 +390,7 @@
    ],
    "form": "image.raster",
    "request": "show me this picture",
-   "seconds": 0.0103,
+   "seconds": 0.01,
    "source": "raster",
    "status": "made"
   },
@@ -414,7 +414,7 @@
    ],
    "form": "solid.view",
    "request": "show me this shape",
-   "seconds": 0.0047,
+   "seconds": 0.0046,
    "source": "mesh",
    "status": "made"
   },
@@ -438,7 +438,7 @@
    ],
    "form": "chart.scatter",
    "request": "where are these places?",
-   "seconds": 0.0058,
+   "seconds": 0.0057,
    "source": "features",
    "status": "made"
   },
@@ -521,7 +521,7 @@
    "foresight": [],
    "form": null,
    "request": "what is in this archive?",
-   "seconds": 0.0034,
+   "seconds": 0.0033,
    "source": "bundle",
    "status": "words"
   },
