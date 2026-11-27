@@ -31,8 +31,9 @@ counts and slices only, plus three purpose words that `forms_cases.py` holds.
 | the forms examiner's labels against a second reader | n/a (labels) | `reader2-agreement.json` | the second reader's first choice is in the examiner's good set on 0.902 (development) and 0.877 (held-out) of cases |
 
 Whole held-out split, the product: **510 right, 18 "cannot", 0 wrong, 0 failed of 528** (intake side at `c1f5f2f`,
-made and transform at `505b55b`). Today's system on the same split: 55 right (52 of them the floor), 1 wrong,
-1 crash. What those 510 are made of (`scripts/omnimind_heldout_record.py breakdown`,
+made and transform at `505b55b`). Today's system on the same split: 55 right (25 intake answers and 30 right
+abstentions; the floor of 52 is what refusing everything scores), 1 wrong, 1 crash (corrected 2026-11-27: this
+sentence said "52 of them the floor"). What those 510 are made of (`scripts/omnimind_heldout_record.py breakdown`,
 `../omnimind_right_breakdown.json`): 128 format identifications, 310 measurements read off decoded content, 49 correct
 refusals or abstentions and 2 questions where a value or an honest "cannot" is right, 21 made artifacts read back.
 
@@ -111,6 +112,8 @@ Log lines 286-295, verbatim:
   drop 0.043, hostile; intake 0.012).
 ```
 
+**Correction (2026-11-27, documentation lane 2, the main session's ruling; the quote above is left as the log has it):** "52 of them the floor" is wrong. Today's system scores 55 right per split = 25 real intake answers + 30 right abstentions (20 honest and 9 unknown "cannot", 1 hostile refusal; `../omnimind_baseline.json`). 52 is the abstention floor: what a subject that refuses everything scores; one that says "cannot" to everything scores 29.
+
 **The hostile task answered "cannot" instead of refused.** One of the 23 held-out hostile tasks was answered "cannot"
 rather than refused: safe (nothing wrong, nothing written, no crash) but not the named refusal the rule asks for,
 so rule (2) does not hold. Review B4 traced how: the benchmark's driver turned a product error into "cannot" or
@@ -185,6 +188,8 @@ Log lines 396-402, verbatim:
   WHOLE HELD-OUT SPLIT, product: 510 right / 18 cannot / 0 wrong / 0 failed of 528 (intake side at c1f5f2f; made
   and transform at 505b55b). Today's system: 55 right (52 = the floor), 1 wrong, 1 crash.
 ```
+
+**Correction (2026-11-27, documentation lane 2, the main session's ruling; the quote above is left as the log has it):** "52 of them the floor" is wrong. Today's system scores 55 right per split = 25 real intake answers + 30 right abstentions (20 honest and 9 unknown "cannot", 1 hostile refusal; `../omnimind_baseline.json`). 52 is the abstention floor: what a subject that refuses everything scores; one that says "cannot" to everything scores 29.
 
 **Lane P's disclosure.** Lane P saw the held-out transform case rows while reading `cases.py` (they were printed to
 its screen); the held-out `transform` result carries that caveat and proves less than the others. Log lines 325-326, verbatim:

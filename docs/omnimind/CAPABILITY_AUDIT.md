@@ -1,26 +1,180 @@
 # Multimodal capability audit (deliverable 1)
 
-Status: 2026-11-26. The baseline before Project OMNIMIND: what NeuroSciFi takes in, how it holds and reasons over
-it, and what it gives back, today. Code: `main` at `8f68beb` (schema 19, package 0.7.0). This document merges the four
-Phase I audits (input acquisition and understanding; cognition and memory; output and delivery; runtime and safety).
-The audits were written against the Cognitive Genesis Wave 4 branch (`97f7abc`); every file:line below was checked
-again on `main`. Where a line moved, the line on `main` is given; facts that exist only on the unmerged Wave 4 branch
-(`webcortex/caution.py`, `webcortex/emitted.py`, ADR-064 to ADR-067) are left out or marked "on the unmerged Wave 4
-branch". Paths are relative to `src/neuroscifi/` unless they start with `tests/`, `docs/`, `deploy/`, `scripts/` or
-`.github/`.
+Status: 2026-11-27. Two parts. **After** (written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4, `1aa7eb6`, and F5, `bf3dac6`, merged; schema 21): what
+each pathway does now, beside its status before, and what now exists that did not. **Before** (below, unchanged
+apart from this header): the baseline of 2026-11-26, `main` at `8f68beb` (schema 19, package 0.7.0), which merged the
+four Phase I audits. OMNIMIND is on the local branch `omnimind`; nothing of it is merged into `main`.
 
 Each pathway has exactly one status word, as directive §4 asks:
 
 | Word | Meaning here |
 |---|---|
-| Fully operational | does what it is for, on `main`, with a test or a probe that ran |
+| Fully operational | does what it is for (on `main` before; on `omnimind` after), with a test or a probe that ran |
 | Partially implemented | works, but covers only part of what the directive's category asks (for example text but not layout) |
 | Unsupported | no code does it |
 | Underperforming | works, but below a stated rule or a reasonable standard for its purpose |
-| Unverified | code exists, but nothing in Phase I exercised it on this host (a live engine not contacted, a service not running) |
+| Unverified | code exists, but nothing in Phase I (before) or in the lanes and reviews (after) exercised it on this host (a live engine not contacted, a service not running) |
 
 "Probe" means a throwaway script an auditor ran; "test" means a test in `tests/` that an auditor ran or that exists and
 covers the line. Live model, speech and search services were not contacted by any audit (the rules forbade it).
+
+## After: the short answer
+
+- **Files can now be handed over, by the owner only**: `nsf inspect FILE` (says what a file is and what can be read
+  from it; stores nothing), `nsf artifact add FILE` (keeps it beside the individual), `nsf artifact make FILE... -r
+  "..."` (makes a result from it), and the console's upload (off by default). Nothing reads a file unasked.
+- **Detection is by signature first** (`artifacts/detect.py`; lane K's count at its merge: 107 formats; its corpus of
+  125 hand-assembled files over 99 formats is identified with 0 wrong, `omnimind_k.json`), never by the name or a declared type alone.
+  Every decode of an owner's file runs first in a child process with memory and time limits (`artifacts/guarded.py`).
+- **What can be read is a list the system prints** (`nsf artifact adapters`; the list is the only statement of what
+  can be read): 66 readers (`docs/quality/evidence/omnimind_k.json`, `catalog`). Their content is decoded for tables, documents, trees, code, notebooks, archives, a SQLite
+  database, lossless images, uncompressed sound, MIDI, meshes, maps and arrays; **only the header** is read for JPEG,
+  WebP, HEIC/AVIF, PSD, MP3, AAC, FLAC, Ogg and M4A (and for some variants of TIFF, DICOM, FITS, YAML); **only the
+  structure and tracks** of MP4/MOV, Matroska/WebM and AVI (no frame or sample); 7z and RAR are **identified only**;
+  pickle is refused. Formats detected with no reader (Parquet, HDF5, `.doc`, `.xls` and others) get the
+  capability-discovery answer: what was identified and which reader is missing.
+- **Things can be made, and each is checked by an independent reader of its bytes**: 30 makers (charts, a timeline,
+  diagrams, documents, tables, data files, sounds, solids, raster pictures, explorable models) and 12 checks by media
+  type (`nsf artifact forms`). Everything made is marked "made by the system, not evidence" wherever it is listed.
+- **The form of a made result is chosen before it is made** by the form planner (`nsf form plan`; inside `nsf artifact
+  make`), with one sentence saying why.
+- **Two artifacts can be related by measurement**: `nsf artifact relate A B --question "..."` compares what one
+  measures with what the other states or shows.
+- **Still true**: no model here sees or hears; nothing decodes JPEG, MP3, AAC, FLAC, Ogg or video frames; **every
+  answer in conversation is still sentences** (nothing of OMNIMIND is on the answer path); Pocket, voice and agents
+  see no artifact; production runs inside the owner's command, not as a durable job.
+
+## After: each pathway of the baseline
+
+Status words as defined below (the directive's five). "Unchanged" means OMNIMIND did not touch the pathway.
+
+**1. Input acquisition**
+
+| Pathway | Before | After | What changed, and its limits | Evidence |
+|---|---|---|---|---|
+| Uploads (console) | Unsupported | Partially implemented | upload in the "Made and kept" view, **off by default** (`console_artifact_upload`); chunked (at most 1 MiB a chunk, in order, never past the announced size), at most two unfinished, 600 s expiry, through `store.add` (guarded); the name is only a label | `tests/console/test_console_artifacts.py`, `tests/e2e/test_console_artifacts_e2e.py`; ADR-079 |
+| Uploads (Pocket) | Partially implemented | Partially implemented (unchanged) | Pocket shows and takes no artifact | ADR-079 "Pocket" |
+| Local filesystem as content | Unsupported | Partially implemented | `nsf inspect`, `nsf artifact add`, `nsf artifact make` take regular files up to `artifact_max_bytes` (64 MiB default, at most 1 GiB); the formats in the reader list; decode bounded by `Limits` (256 MiB decoded, 4,096 members, depth 4, ratio 200, 5,000,000 elements, 20 s) and the guard | `tests/artifacts/`; development 512 of 524 right, held-out 510 of 528 ([BENCHMARKS.md](BENCHMARKS.md)) |
+| Local files the CLI does read | Partially implemented | Partially implemented | the same files, now read with bounds, refusing FIFOs, with named errors (lane S); `nsf archive unpack` stops at 16 GiB of output (F3) | `tests/test_input_files.py`, `tests/test_files_cli.py` |
+| Bounded file reader | Fully operational | Fully operational (unchanged) | | |
+| Device sensors (server), cameras (Pocket), microphones (console, Pocket), streaming | as before | unchanged | | |
+| Connected applications (MCP) | Partially implemented (text only) | unchanged | no artifact is reachable from an agent or family scope | lane A's scope tests |
+| External APIs, network resources (web fetch) | as before | unchanged | the adapters are never used on the web path | |
+| Structured databases | Partially implemented (one fixed shape) | Partially implemented | a SQLite file handed over is read as an artifact (stored columns only; generated columns listed, not evaluated; cells charged in bytes); never copied into evidence | `tests/artifacts/test_f1_bounds.py` |
+| Datasets | Unsupported (as an input path) | Unsupported (unchanged as a dataset path) | `.npy` and `.npz` handed over are read as artifacts (the dtype is not kept) | |
+| Existing document and artifact integrations | Partially implemented | Partially implemented (web cache unchanged) | the artifact store keeps the owner's bytes in a sidecar file that forget and restore reach | ADR-071 |
+
+**2. Understanding**
+
+| Pathway | Before | After | What changed, and its limits | Evidence |
+|---|---|---|---|---|
+| File-type detection | Unsupported (as a general mechanism) | Partially implemented | `artifacts/detect.py`: signatures first, disguises (wrong or no extension, a lying type, BOM, UTF-16, nested compression) and unknown bytes; the web path still trusts the server's type | unknown family 51 of 51 development, 49 of 49 held-out |
+| HTML, PDF, JSON, XML on the web path | Partially implemented | unchanged | the artifact readers keep structure (headings, tables, trees) for files handed over; PDF's text layer needs `pypdf` (optional; present on this host) | |
+| JavaScript rendering | Partially implemented (text only) | unchanged | | |
+| Any other bytes given to `extract()` | Underperforming | Underperforming (unchanged) | defect I3 is not fixed; the artifact readers never call `extract()` | |
+| Perception (images) | Unsupported | Partially implemented | lossless pictures (PNG, NetPBM, BMP, GIF, QOI, farbfeld, ICO, SVG) are decoded to pixels and measured (size, a pixel, mean gray); **nothing recognises what a picture shows**; JPEG, WebP, HEIC: header only | intake family; ADR-072 |
+| Perception (speech) | Partially implemented | unchanged | sound files (WAV, AIFF, AU) are decoded to samples and measured (duration, dominant pitch, onsets); no speech in a file is transcribed | |
+| Semantic extraction | Fully operational (text only) | unchanged | | |
+| Prompt-injection screen | Partially implemented | Partially implemented | text decoded from a file passes `scan_injection` first; a flagged file is refused by `adapters.decode` and kept but marked by the store; still English regex only | `Limits.refuse_flagged`; hostile family |
+| Spatial reasoning | Unsupported | Partially implemented (measurements only) | meshes: volume, area, bounds, watertight; maps: bounding boxes; no reasoning over space beyond these | intake family |
+| Temporal interpretation | Partially implemented | Partially implemented | `relate` aligns two artifacts' clocks where both carry timestamps (spans, overlap, offset); no causality | ADR-077 |
+| Cross-modal alignment | Unsupported | Partially implemented | `nsf artifact relate`: what one artifact measures against what the other states or shows; only comparisons the question names (58 / 14 / 0 without it); no meaning of an image or sound | cross 72 of 72 development, 66 / 6 / 0 of 72 held-out |
+
+**3. Cognition**
+
+| Pathway | Before | After | What changed, and its limits | Evidence |
+|---|---|---|---|---|
+| Memory (instance store) | Fully operational | Fully operational, plus the artifact index | schema 20 (artifact tables, triggers refusing an artifact id in 15 evidence-side tables) and 21 (`form_outcomes`); bytes in a sidecar file | ADR-071, ADR-078 |
+| Memory retrieval, web knowledge, context construction | Fully operational | unchanged | **nothing decoded from an artifact enters memory, knowledge or a context bundle** | |
+| Imagined store | Fully operational; empty by default | unchanged at the defaults | a production's foresight goes there as a SIMULATION record only when `imagine_scenarios` is on (F3) | `tests/artifacts/test_produce.py` |
+| Task planning | Partially implemented | unchanged | a production runs in the owner's command and either finishes or leaves nothing; no durable job | ADR-076 |
+| Reflection / gap detection | Partially implemented | Partially implemented | `nsf artifact gaps --report` lists formats nothing reads, failed checks, recurring repairs, words where another form carried more, contradicting links; read-only | ADR-078 |
+| Creative generation | Partially implemented (entity only) | unchanged | | |
+| Answer form selection | Unsupported | Partially implemented | the planner decides the form for `nsf artifact make`, `remake`, `nsf form plan` and the console's Make; **not on the answer path**; held-out verdict "does not beat the references" | [CREATIVE_INTELLIGENCE_ASSESSMENT.md](CREATIVE_INTELLIGENCE_ASSESSMENT.md) |
+| Reasoning (all kinds), predictive modelling, imagination, strategy, broadcast, tools, structured output | as before | unchanged | | |
+
+**4. Output**
+
+| Pathway | Before | After | What changed, and its limits | Evidence |
+|---|---|---|---|---|
+| Content generation (report, model, `nsf llm ask`) | as before | unchanged | answers are sentences | |
+| Rendering (console) | Fully operational | Fully operational, plus "Made and kept" | made SVG rebuilt through an 18-element allow-list importer; tables and documents from their stored specification; sound through Web Audio; explorable models through the first-party runtime; PNG through a 120-second session-bound address; security headers unchanged to the character; the Presence entity in the view's stage | ADR-079; `tests/e2e/test_console_artifacts_e2e.py` |
+| Rendering (Pocket, voice, Presence entity) | as before | unchanged | | |
+| Rendering (graph heatmap) | Underperforming | Fully operational | a gray ramp with a slash on negative cells (defect O7 fixed) | `tests/e2e/test_console.py`, `tests/console/test_palette_rule.py` |
+| Speech output | Unverified | unchanged | | |
+| File production | Partially implemented | Partially implemented | 30 makers (list below); no PDF, DOCX, slides or video file | `nsf artifact forms` |
+| Interactive components | Unsupported | Partially implemented | explorable models and step-throughs from a spec, mounted by a first-party runtime (a bounded expression language, no code); a solid viewer; an explorable model is made only from an explicit model file | lane G2's tests; `tests/e2e/test_g2_explorable_e2e.py` |
+| Executable artifacts | Unsupported | Unsupported (unchanged) | nothing makes code, an app or a notebook | |
+| Validation | Partially implemented | Partially implemented | 12 independent checks re-read made bytes (they never import the makers; one shared module, `expr.py`, for the explorable check); since fix lane F4 the SVG check reports what a person could not see (`visible_to_a_person`: hidden marks, zero-size clips, fonts, radii or root, a later opaque cover, background-coloured paint); no person judged legibility | [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md) |
+| Persistence | Fully operational | Fully operational, plus the artifact store | forget, restore, quiet and owner scope reach the store; a forget whose scan cannot finish a kept file **holds** it (kept, never read or used, listed by id and label; `nsf artifact release ID`; fix lane F4) | ADR-071; [RUNBOOK.md](RUNBOOK.md) |
+| Export and delivery (HTTP) | Fully operational (for text) | Fully operational, plus the artifact routes | every new route needs the owner's token and the unchanged origin check; no route takes a path | ADR-079 |
+| Export and delivery (agents) | Partially implemented (text only) | unchanged | | |
+
+**5. The directive's §5.2 input categories**
+
+| Category | Before | After | Decoded / header only / identified only |
+|---|---|---|---|
+| Natural language and documents | Partially implemented | Partially implemented | decoded: Markdown, HTML, DOCX, ODT, PPTX, ODP, EPUB, RTF, PDF text layer (optional `pypdf`); identified only: `.doc` |
+| Scanned documents, OCR, handwriting | Unsupported | Unsupported | nothing reads text in a picture |
+| Images and visual information | Unsupported | Partially implemented | decoded: PNG, NetPBM, BMP, GIF, QOI, farbfeld, ICO, SVG; some TIFF, DICOM, FITS variants; header only: JPEG, WebP, HEIC/AVIF, PSD |
+| Audio and speech | Partially implemented | Partially implemented | decoded: WAV, AIFF, AU, MIDI; header only: MP3, AAC, FLAC, Ogg/Opus/Vorbis, M4A; a 6-minute WAV is refused (its samples would need more than 256 MiB) |
+| Video and motion | Unsupported | Partially implemented (structure only) | MP4/MOV/3GP, Matroska/WebM, AVI: container structure and tracks; **no frame or sample is decoded** |
+| Structured and semi-structured data | Partially implemented | Partially implemented | decoded: CSV, TSV, JSON, NDJSON, XLSX, ODS, XML (no DTD), TOML, INI, plist, some YAML, SQLite, `.npy`, `.npz`; identified only: Parquet, HDF5, `.xls` |
+| Source code and executable systems | Unsupported | Partially implemented | Python parsed (imports, calls, a static call graph); JavaScript, TypeScript, C, C++, shell: surface structure; manifests; notebooks; never executed |
+| Spatial and geometric information | Unsupported | Partially implemented | OBJ, STL, PLY, OFF, glTF/GLB meshes; GeoJSON, GPX, KML, KMZ, WKT |
+| Scientific and mathematical information | Partially implemented | Partially implemented | arrays as above (dtype and 3-D shape not kept); some DICOM and FITS |
+| Interactive and compound artifacts | Unsupported | Partially implemented | zip, tar, gzip, zstd, bzip2, xz, nested to depth 4, members bounded, never extracted to disk; an archive with an unsafe member name is refused whole; 7z and RAR identified only |
+
+**6. The directive's §8.3 output families**
+
+| Family | Before | After | What is made now |
+|---|---|---|---|
+| Visual | Partially implemented | Partially implemented | line, bar, scatter, histogram, heat-map and small-multiples charts; a timeline; node-link and tree diagrams; a flow of steps; an SVG animation; PNG and APNG pictures; all grayscale, hue only on warned values |
+| Audio | Partially implemented | Partially implemented | WAV: a tone, a sonified series, a sequence of tones |
+| Video | Unsupported | Unsupported | no video file is made (APNG and SVG animation only) |
+| Documents | Partially implemented | Partially implemented | HTML and Markdown documents, HTML tables, CSV and JSON data files; no PDF, DOCX or slides |
+| Software | Unsupported | Unsupported | the explorable runtime is first-party; no code is generated |
+| Spatial | Unsupported | Partially implemented | STL and OBJ solids (box, extrusion, revolution, a given mesh, points), a surface grid, a solid viewer |
+| Scientific | Partially implemented | Partially implemented | charts and data files of decoded data; what-if models from an explicit model file |
+| Hybrid | Partially implemented | Partially implemented | one document from several sources with "How the sources relate"; the console view with the entity on its stage |
+
+## After: what now exists that did not
+
+**Commands** (`nsf artifact --help` listed 13 at integration lane 2, pinned by `tests/artifacts/test_int2_cli.py`;
+fix lane F4 added `release`): `nsf inspect FILE`; `nsf artifact add | list | show | facts | export | forget | release |
+gaps | feedback | relate | adapters | make | remake | forms`; `nsf form plan`, `nsf form learned`; `nsf config --artifact-max-mib`, `--artifact-store-max-mib`,
+`--artifact-adapters`, `--form-learning`, `--console-artifacts`, `--console-artifact-upload`. Each, with its
+setting's default and its rollback: [PRODUCTION_INTEGRATIONS.md](PRODUCTION_INTEGRATIONS.md).
+
+**The makers** (`nsf artifact forms`): `animation.svg`, `chart.bar`, `chart.heatmap`, `chart.histogram`,
+`chart.line`, `chart.scatter`, `chart.small_multiples`, `data.csv`, `data.json`, `document.html`, `document.md`,
+`explorable.model`, `explorable.steps`, `flow.steps`, `graph.nodelink`, `graph.tree`, `image.apng`, `image.raster`,
+`solid.box`, `solid.extrude`, `solid.mesh`, `solid.points`, `solid.revolve`, `solid.view`, `sound.sequence`,
+`sound.sonify`, `sound.tone`, `surface.grid`, `table.html`, `timeline`. **The checks**, by media type: JSON, the
+explorable HTML type, WAV, APNG and PNG, OBJ and STL, SVG, CSV, HTML, Markdown (12 media types, 8 readers).
+
+**The baseline's defects** (section 9 below), after: fixed by lane S: H1 = I6, I1, I2, I12, C1, H2, C6, C5 (every
+thread, timer and process launch site is classified by `tests/test_launch_sites.py`), C9, C7 (checked). Settled by
+design: C2 (the store's own forget), C3 (ADR-071: made artifacts are their own kind, never evidence), C4 (bytes in a
+sidecar), H7 and O1 (the console view works under the unchanged policy, with no `innerHTML`), O7 (gray heat map).
+Not fixed: I3, I4 (web path), I5, I7 (English regex only), I8, I9, I10 (the web cache), C8, H3, H4, H5, H6, O2, O5,
+O8.
+
+---
+
+# Before: the baseline of 2026-11-26 (unchanged)
+
+The rest of this document is the Phase I audit as it was written, about `main` at `8f68beb`, before any OMNIMIND code
+existed. "Lane S", "lane A" and "Wave O-0" in it are plans as they stood then. Its original header:
+
+> Status: 2026-11-26. The baseline before Project OMNIMIND: what NeuroSciFi takes in, how it holds and reasons over
+> it, and what it gives back, today. Code: `main` at `8f68beb` (schema 19, package 0.7.0). This document merges the
+> four Phase I audits (input acquisition and understanding; cognition and memory; output and delivery; runtime and
+> safety). The audits were written against the Cognitive Genesis Wave 4 branch (`97f7abc`); every file:line below was
+> checked again on `main`. Where a line moved, the line on `main` is given; facts that exist only on the unmerged Wave
+> 4 branch (`webcortex/caution.py`, `webcortex/emitted.py`, ADR-064 to ADR-067) are left out or marked "on the unmerged
+> Wave 4 branch". Paths are relative to `src/neuroscifi/` unless they start with `tests/`, `docs/`, `deploy/`,
+> `scripts/` or `.github/`.
 
 ## 0. The short answer
 
