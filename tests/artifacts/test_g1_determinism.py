@@ -17,7 +17,7 @@ GOLDEN = {
  "chart.line": "172131d23f5756b4",
  "chart.scatter": "90fdb8af9f2c3b49",
  "chart.bar": "41095d266f68e21a",
- "chart.histogram": "e67f28e696d4dd7b",
+ "chart.histogram": "5001165bb779d437",
  "chart.heatmap": "9e727cf365a05384",
  "chart.small_multiples": "f8780c9a798cbcc7",
  "timeline": "ebe38cac47e2a876",

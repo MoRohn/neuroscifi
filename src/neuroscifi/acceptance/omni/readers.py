@@ -139,7 +139,7 @@ def _text(el: ET.Element) -> str:
 # size (r <= 0, a bar of zero width across its value axis, a degenerate transform, a polyline whose points coincide,
 # font-size <= 0; a bar of zero LENGTH is read as the baseline value where it is placed, as a person reads it); its probe point lies outside the canvas (the root's viewBox, else its width and height) or outside a clip
 # path (rect, circle, ellipse, polygon or path children, user-space units; any other clip is "not established");
-# a later opaque area shape (rect, circle, ellipse, polygon, path) that is neither a data mark nor part of the
+# a later opaque area shape (rect, circle, ellipse, polygon, path; a rect's percentages of the canvas) that is neither a data mark nor part of the
 # element's own drawing (in its parent group, in its colour: an edge's arrowhead) covers it; or its
 # paint, after every opacity, differs from what is beneath it (the topmost earlier opaque shape that is not a data
 # mark, else the root's background, else white) by less than 4 of 255 levels in every channel. A colour the reader cannot resolve to RGB
@@ -325,6 +325,12 @@ class _Scene:
             self.canvas = ((0.0, 0.0, _number(w, 0.0), _number(h, 0.0))
                            if re.fullmatch(_NUM + r"(px)?", w.strip()) and re.fullmatch(_NUM + r"(px)?", h.strip())
                            else None)
+        # A picture of no area shows nothing (a zero width or height on the root, or a view box without area): the
+        # reader since fix lane F4 (measurement R2-2), whatever the view box says.
+        sizes = [root.get(k) for k in ("width", "height") if root.get(k) is not None]
+        if any(re.match(_NUM, v.strip()) and _number(v, 1.0) <= 0 for v in sizes) or (
+                self.canvas is not None and (self.canvas[2] <= self.canvas[0] or self.canvas[3] <= self.canvas[1])):
+            raise ReadError("the picture has no area (its width or height is zero), so nothing in it is seen")
 
     def _compute(self, n: _El, scheme: str) -> dict[str, str]:
         parent = self.styles[scheme][id(n.ancestors[-1])] if n.ancestors else {}
@@ -394,13 +400,22 @@ class _Scene:
         except ReadError:
             return False
 
+    def _length(self, shape: _El, name: str, axis: int) -> float:
+        """A rect's length; a percentage is of the canvas's width (axis 0) or height (axis 1), as a renderer reads it
+        (an opaque `width="100%"` rectangle painted over the plot covers it: fix lane F4, measurement R2-2)."""
+        value = (shape.el.get(name) or "").strip()
+        if value.endswith("%") and self.canvas is not None and re.match(_NUM, value):
+            return float(re.match(_NUM, value).group(0)) / 100 * (self.canvas[axis + 2] - self.canvas[axis])
+        return shape.attr(name)
+
     def _contains(self, shape: _El, ctm: np.ndarray, point) -> bool:
         local = self._local(ctm, point)
         if local is None:
             return False
         x, y = local
         if shape.tag == "rect":
-            x0, y0, w, h = shape.attr("x"), shape.attr("y"), shape.attr("width"), shape.attr("height")
+            x0, y0, w, h = (self._length(shape, "x", 0), self._length(shape, "y", 1), self._length(shape, "width", 0),
+                            self._length(shape, "height", 1))
             return w > 0 and h > 0 and x0 <= x <= x0 + w and y0 <= y <= y0 + h
         if shape.tag in ("circle", "ellipse"):
             rx = shape.attr("r") if shape.tag == "circle" else shape.attr("rx")

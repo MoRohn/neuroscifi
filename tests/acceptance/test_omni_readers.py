@@ -192,6 +192,34 @@ def test_marks_a_person_cannot_see_are_not_read(how):
     assert all(m.points == () for m in r.marks if m.kind == "line"), how
 
 
+def test_an_opaque_rectangle_of_the_whole_canvas_painted_after_the_plot_covers_it():
+    """Fix lane F4 (measurement R2-2): `width="100%"` is a percentage of the canvas, as a renderer reads it; before,
+    it was read as 100 user units and the rectangle covered nothing. A small one away from the marks covers nothing."""
+    chart = line_chart([3.0, 12.5, 7.0])
+    cover = chart.replace(b"<metadata>", b'<rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><metadata>', 1)
+    corner = chart.replace(b"<metadata>", b'<rect x="0" y="0" width="10%" height="10%" fill="#ffffff"/><metadata>', 1)
+    with pytest.raises(readers.ReadError, match="without ticks"):      # the tick labels are covered too: unread
+        readers.read_chart(cover)
+    plot = chart.replace(b"<metadata>", b'<rect x="9%" y="0" width="91%" height="85%" fill="#ffffff"/><metadata>', 1)
+    r = readers.read_chart(plot)                                       # x 45-500, y 0-255: the plot only
+    assert [m for m in r.marks if m.kind == "point"] == [] and all(m.points == () for m in r.marks if m.kind == "line")
+    whole = readers.read_chart(corner)
+    assert len([m for m in whole.marks if m.kind == "point"]) == 3
+
+
+@pytest.mark.parametrize("root", ['width="0" height="300" viewBox="0 0 500 300"',
+                                  'width="500" height="0px" viewBox="0 0 500 300"',
+                                  'width="500" height="300" viewBox="0 0 500 0"'])
+def test_a_picture_of_no_area_is_not_read(root):
+    """Fix lane F4 (measurement R2-2): a root of zero width or height shows nothing, whatever its view box says."""
+    chart = line_chart([3.0, 12.5, 7.0]).replace(b'width="500" height="300"', root.encode(), 1)
+    with pytest.raises(readers.ReadError, match="no area"):
+        readers.read_chart(chart)
+    ok = line_chart([3.0, 12.5, 7.0]).replace(b'width="500" height="300"', b'width="500" height="300" '
+                                              b'viewBox="0 0 500 300"', 1)
+    assert len([m for m in readers.read_chart(ok).marks if m.kind == "point"]) == 3
+
+
 def test_only_the_visible_part_of_a_series_is_read():
     # a white rect over the middle vertex hides it; the vertices either side stay
     svg = line_chart([3.0, 12.5, 7.0]).replace(b"<metadata>", b'<rect x="140" y="0" width="20" height="255" '

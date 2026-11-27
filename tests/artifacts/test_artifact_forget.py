@@ -234,11 +234,12 @@ def test_an_artifact_added_between_the_scan_and_the_transaction_is_found(individ
 def test_the_decompression_budget_bounds_the_scan_and_is_reported(individual, monkeypatch):
     db, _ = individual
     bomb = gzip.compress(b"\0" * (8 << 20), mtime=0)            # 8 MiB of zeros in about 8 KiB
-    A.add(db, bomb + gzip.compress(ROOT.encode(), mtime=0), name="bomb.gz", now=T0)
-    monkeypatch.setattr(A, "limits", lambda cfg: A.Limits(max_decoded_bytes=1 << 20))
+    kept = A.add(db, bomb + gzip.compress(ROOT.encode(), mtime=0), name="bomb.gz", now=T0)
+    monkeypatch.setattr(A, "SCAN_BUDGET", 1 << 20)
     scan = A.scan_root(db, ROOT)
-    # the name after the bomb was not reached: what could not be inspected counts as naming it (fix lane F1, B)
-    assert len(scan.hits) == 1 and scan.budget_reached == 1
+    # the name after the bomb was not reached: what could not be inspected is HELD, not shown to name it and not
+    # removed (fix lane F4, replacing fix lane F1's removal; tests/artifacts/test_f4_forget_hold.py)
+    assert scan.hits == [] and scan.unfinished == [kept.id]
 
 
 def _deep(text: bytes, layers: int) -> bytes:
@@ -256,7 +257,7 @@ FOUND = {   # ruling B of fix lane F1: each holds the root joined, split or enco
     "url.txt": ("see https://x.example/?who=%4F" + ROOT[1:].replace("-", "%2D") + "\n").encode(),
     "hex.txt": ROOT.encode().hex().encode(),
     "b64lines.txt": base64.encodebytes(("x" * 50 + " " + ROOT + " " + "y" * 50).encode()),   # lines of 76
-    "deep.txt": _deep(f"Carol said hi to {ROOT}".encode(), 5),      # past max_depth: still encoded -> removed
+    "deep.txt": _deep(f"Carol said hi to {ROOT}".encode(), 5),      # 10 layers: within the scan's own depth (F4)
 }
 KEPT = {    # stated as not found (the module docstring of artifacts/store.py)
     "inside.txt": f"x{ROOT}y\n".encode(),           # letters touch it: another word
@@ -273,7 +274,7 @@ def test_forget_finds_joined_split_and_encoded_names(individual):
     kept = held(db)
     assert {n for n, i in ids.items() if i in kept} == set(KEPT)
     assert result["effects"]["artifacts_removed"] == len(FOUND)
-    assert result["effects"]["artifacts_removed_uninspectable"] == 1          # deep.txt, and the owner is told
+    assert "artifacts_held" not in result["effects"]                         # every file was checked to the end
     assert names_root(open(side_path(path), "rb").read()) is False
 
 

@@ -245,6 +245,9 @@ def interpret(db, sources, limits: Limits, deadline: float | None = None,
                 raise Malformed("an artifact id needs the individual that holds it")
             record = store.get(db, source)
             sid, label, kind = record.id, record.label, record.origin
+            if record.held:
+                notes.append({"id": sid, "label": label, "used": False, "why": store.HELD_WORDS})
+                continue
             if record.flagged:
                 notes.append({"id": sid, "label": label, "used": False,
                               "why": "its text looked like instructions to an AI, so it is not used as content"})

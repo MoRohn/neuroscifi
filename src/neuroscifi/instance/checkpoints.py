@@ -427,6 +427,9 @@ def _read_forgets(db, now, wanted=None):
         if imagined.present(db) else [],
         # Artifacts the live file forgot (ADR-071): their index rows go from the copy too (artifacts/store.py).
         "artifacts": _artifact_store().read_forgotten(db),
+        # Artifacts a root forget HELD because its scan could not finish, and the owner's releases (fix lane F4): no
+        # tombstone, so the deletion log is the record (artifacts/store.replay_holds).
+        "artifact_holds": _artifact_store().read_holds(db),
         # The owner's resets of the form outcomes (`nsf artifact feedback --reset`, ADR-078): no tombstone, so the
         # deletion log is the record, as for own text above (artifacts/learn.replay).
         "form_outcomes": _learn().read_resets(db),
@@ -642,6 +645,7 @@ def _replay(copy, forgets, now):
     # what the live tombstones already removed is gone, so this finds only what they do not name.
     imagined_removed += imagined.remove_naming(copy, named, now)[0]
     artifacts_removed = _artifact_store().replay(copy, forgets.get("artifacts", []) if forgets else [], now)
+    holds_carried = _artifact_store().replay_holds(copy, forgets.get("artifact_holds") if forgets else None)
     # (an artifact removed above took its form outcomes with it, by schema 21's trigger)
     outcomes_removed = _learn().replay(copy, forgets.get("form_outcomes") if forgets else None, version)
     copy.execute("COMMIT")
@@ -658,6 +662,7 @@ def _replay(copy, forgets, now):
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked,
             "imagined_removed": imagined_removed,
             **({"artifacts_removed": artifacts_removed} if artifacts_removed else {}),
+            **({"artifact_holds_carried": holds_carried} if holds_carried else {}),
             **({"form_outcomes_removed": outcomes_removed} if outcomes_removed else {})} | (
                 {"own_text_removed": own_text_removed} if own_text else {})
 

@@ -160,7 +160,7 @@ def test_histogram_bins_are_stated_and_edge_values_counted_once():
     s = case("histogram")
     m = S.made(s)
     desc = S.tree(m.bytes).find(S.q("desc")).text
-    assert "a value on an inner edge belongs to the upper bin, and the last bin is closed on the right" in desc
+    assert "up to (not including) its right edge" in desc
     v = S.verdict(m.bytes, s)
     assert S.finding(v, "all_values_binned").passed
     s2 = case("histogram", bin_width=25)
