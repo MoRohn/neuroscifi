@@ -158,25 +158,27 @@ def part_read(decoded) -> str:
 
 
 def _decode(data: bytes, name: str, limits: Limits, partial_ok: bool = False):
-    """(representation, detected format, None, part, "answered") or (None, format, why not, "", outcome): the
+    """(representation, detected format, None, part, "answered", the decoder's notes) or (None, format, why not, "",
+    outcome, ()): the
     outcome (artifacts/outcome.py) of a source that is not used is "refused" (a rule or limit, or a part the owner
     did not agree to use) or "cannot". A partly decoded file is used only when the owner agreed (`partial_ok`,
     `nsf artifact make --partial`); `part` then says what was read."""
     try:
         decoded = guarded.decode(data, name=name, limits=replace(limits, refuse_flagged=True))
     except HeaderOnly as error:
-        return None, "unknown", f"only its header is read here ({error})"[:300], "", outcome.of_error(error)
+        return None, "unknown", f"only its header is read here ({error})"[:300], "", outcome.of_error(error), ()
     except ArtifactError as error:
         # the message alone: it is the plain reason ("too_large: ..." was a rule's name in front of it, code L3)
-        return None, "unknown", str(error)[:300], "", outcome.of_error(error)
+        return None, "unknown", str(error)[:300], "", outcome.of_error(error), ()
     rep = decoded.representation
     if getattr(rep, "kind", None) == "opaque":
-        return None, decoded.detected.format, "nothing here reads its format", "", outcome.CANNOT
+        return None, decoded.detected.format, "nothing here reads its format", "", outcome.CANNOT, ()
     if decoded.partial and not partial_ok:
         return None, decoded.detected.format, ("only part of it could be read, and a part is used only when you "
                                                "agree (--partial): " + part_read(decoded))[:400], "", \
-            outcome.of_decoded(decoded, partial_ok=False)
-    return rep, decoded.detected.format, None, part_read(decoded) if decoded.partial else "", outcome.ANSWERED
+            outcome.of_decoded(decoded, partial_ok=False), ()
+    return rep, decoded.detected.format, None, part_read(decoded) if decoded.partial else "", outcome.ANSWERED, \
+        tuple(decoded.notes)
 
 
 MAX_RASTER_PIXELS = 4_000_000   # a larger image is measured and drawn from a downsample (fix lane F3, item 3)
@@ -264,17 +266,21 @@ def interpret(db, sources, limits: Limits, deadline: float | None = None,
                               "outcome": outcome.CANNOT})
                 continue
             data = store.read_bytes(db, sid)
-        rep, fmt, why, part, answer = _decode(data, label, _within(limits, deadline), partial_ok)
+        rep, fmt, why, part, answer, read_notes = _decode(data, label, _within(limits, deadline), partial_ok)
         if rep is None:
             notes.append({"id": sid, "label": label, "format": fmt, "used": False, "why": why, "outcome": answer})
             continue
         if fmt == "python":
             python.append((label, data, sid))
+        decoded_rep = rep
         rep, reading = _unwrap(rep, label)
         rep, reduced = reduce_for_making(rep)
+        # lane FX5 (C6a): the relater gets the decoder's format and notes, but only for the representation the
+        # decoder made (an unwrapped or reduced one is another thing: its format is then not known to the relater)
+        decoded_as = (fmt, read_notes, bool(part)) if rep is decoded_rep else ("", (), bool(part))
         if kind == "made":
             reading += "; it was made by the system"
-        pieces.append(B.Piece(sid, label, rep, fmt, rep.shape(), reading, part, reduced))
+        pieces.append(B.Piece(sid, label, rep, fmt, rep.shape(), reading, part, reduced, decoded_as))
         notes.append({"id": sid, "label": label, "format": fmt, "used": True, "reading": reading,
                       "kind": rep.kind, "shape": _shape(rep.shape())} | ({"part": part} if part else {})
                      | ({"reduced": reduced} if reduced else {}))
@@ -398,6 +404,15 @@ def _unit_shown(given: dict) -> str:
     return text if len(text) <= 40 else given["unit"]
 
 
+def _as_decoded(piece):
+    """Lane FX5 (C6a): the piece as the relater's `side` reads a decoded file: its representation with the
+    decoder's format, notes and partial flag (none when the piece is not the decoder's own representation)."""
+    from types import SimpleNamespace
+    fmt, notes, partial = getattr(piece, "decoded_as", ("", (), False)) or ("", (), False)
+    return SimpleNamespace(representation=piece.representation, detected=SimpleNamespace(format=fmt), notes=notes,
+                           partial=partial)
+
+
 def relate_sources(pieces, data_of: dict, db=None) -> dict:
     """Each pair of sources compared by measurement (`relate.compare`), bounded (MAX_RELATE_PAIRS pairs, no pair
     started after MAX_RELATE_SECONDS): {"pairs": [...], "skipped": n, "why_skipped": ..., "_relations": [(i, j,
@@ -410,7 +425,7 @@ def relate_sources(pieces, data_of: dict, db=None) -> dict:
     from . import relate as R
     from . import relate_cli
     started = time.monotonic()
-    sides = [R.side(p.representation, name=None if "made by the system" in p.reading else p.label,
+    sides = [R.side(_as_decoded(p), name=None if "made by the system" in p.reading else p.label,
                     data=data_of.get(p.source)) for p in pieces]
     every = list(combinations(range(len(pieces)), 2))
     out, relations, why = [], [], None

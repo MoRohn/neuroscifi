@@ -75,7 +75,8 @@ def test_one_gate_on_every_path(tmp_path):
     result = PR.produce(made, "a document of these files", [PR.Given("costs.csv", costs["costs.csv"]),
                                                              PR.Given("memo.txt", costs["memo.txt"])],
                         form="document", now=T0 + 5)
-    assert result.status == "made" and result.record["relations"]["pairs"][0]["answer"] is False
+    shown = result.record["relations"]["pairs"][0]
+    assert result.status == "made" and shown["first"] == "costs.csv"        # shown (C6b: "in all" selects nothing)
     assert _verdicts(made) == []
     db.close()
     made.close()

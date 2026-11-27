@@ -1585,8 +1585,11 @@ class Relation:
         return out
 
     def basis(self) -> str:
-        """Machine-readable basis of the overall answer, for a link's `how` (no artifact text in it)."""
-        parts = [self.pairs[i].basis() for i in self.decided_by[:4]]
+        """Machine-readable basis of the overall answer, for a link's `how` (no artifact text in it). Lane FX5 (C6c):
+        the structure comparisons that took part come first, so that a rollback naming one of them finds every link
+        it helped decide whatever else decided it (only the first four deciding comparisons are kept)."""
+        order = sorted(self.decided_by, key=lambda i: self.pairs[i].a.kind not in STRUCTURE_KINDS)
+        parts = [self.pairs[i].basis() for i in order[:4]]
         text = ";".join(parts) or "none"
         return re.sub(r"[^a-z0-9_.:=,;/+-]", "-", text.lower())[:200]
 
@@ -1721,6 +1724,18 @@ def compare(a, b, question: str | None = None) -> Relation:
                       "; here an image or a sound gives only its measurements (sizes, durations, measured "
                       "statistics), never what it shows or says")
         return rel
+    if not question and decide:
+        # lane FX5 (C6b): with no question, a word inside a sentence never selects an aggregate ("last year's" is not
+        # the column's last value, "total" not its sum), and a stated number is compared only with a measured number
+        # that its own sentence names by the same words (a duration, a rate); anything else decides nothing
+        untied = [k for k in decide if not _tied_without_question(pairs[k])]
+        if untied:
+            decide = [k for k in decide if k not in untied]
+            if not decide:
+                rel.reason = ("cannot tell: with no question, a stated number is compared only with a measured "
+                              "number its own sentence names, never with a total, mean or extreme a word in it "
+                              "suggests")
+                return rel
     scoped = _out_of_scope(A, B, [pairs[k] for k in decide])
     if scoped:
         # lane FX5 (C4, the review's M4): a stated number whose own sentence narrows or denies it, whose document
@@ -1755,6 +1770,7 @@ def compare(a, b, question: str | None = None) -> Relation:
     else:
         rel.reason = f"cannot tell: {scope} cannot be compared fully"
     rel.specific = _specific(rel, question, A, B, None if scope.startswith("everything") else decide)
+    _mark_unseen(rel, A, B)
     return rel
 
 
@@ -1823,6 +1839,7 @@ def _decide_by_structure(rel: Relation, pairs: list, asked: tuple, question: str
         note = p.note[len("cannot: "):] if p.note.startswith("cannot: ") else p.note
         rel.reason = "cannot tell: " + (note or f"{asks} cannot be compared fully")
     rel.specific = _specific(rel, question, A, B, [k])
+    _mark_unseen(rel, A, B)
     return rel
 
 
@@ -1866,6 +1883,61 @@ def _out_of_scope(A: Side, B: Side, deciding: list) -> str | None:
     return None
 
 
+UNSEEN_NOTE = "not recorded: this document may hold text a reader does not see"
+_TABLE_PLAIN = ("csv", "tsv")
+
+
+def _shown_as_written(S: Side) -> bool:
+    """A text file whose every character is shown as it is written: it decodes, and holds no control, format,
+    private-use or separator character (a bidirectional override, a zero-width space, an escape sequence)."""
+    import unicodedata
+    if not S.raw:
+        return False
+    from .adapters.plain import decode_text
+    try:
+        text = decode_text(bytes(S.raw))[0]
+    except Exception:
+        return False
+    return not any(unicodedata.category(ch) in ("Cc", "Cf", "Co", "Cs", "Zl", "Zp") and ch not in "\t\n\r"
+                   for ch in text[:rr.MAX_TEXT])
+
+
+def _visibility_unknown(S: Side) -> bool:
+    """Lane FX5 (C6a): whether this side may hold text a reader does not see, as far as this code can establish.
+    Established as visible only for: a plain text document or a CSV/TSV table shown as written (C2), a plain SVG
+    drawing every element of which is evaluated (`_plain_svg`), and the kinds whose content is data, never rendered
+    text (sound, image, video, mesh, archive, map features, code graph, data tree). A side built from a bare
+    representation (no format: its reader's notes are not known) is never established. No reader of a styled format
+    (Markdown, HTML, RTF, DOCX, ODT, PDF, spreadsheets) reports that it holds no hidden text, so none is."""
+    if not S.fmt:
+        return True
+    if S.kind == "document":
+        return not (S.fmt == "text" and _shown_as_written(S))
+    if S.kind == "table":
+        return not (S.fmt in _TABLE_PLAIN and _shown_as_written(S))
+    if S.kind == "drawing":
+        return S.fmt != "svg" or _plain_svg(S.raw or b"") is not None
+    return S.kind not in ("signal", "raster", "frames", "mesh", "bundle", "features", "graph", "tree")
+
+
+def _mark_unseen(rel: Relation, A: Side, B: Side) -> None:
+    """An answer shown from a side that may hold unseen text says that it is not recorded (and `specific` is False)."""
+    if rel.answer is not None and (_visibility_unknown(A) or _visibility_unknown(B)) and UNSEEN_NOTE not in rel.notes:
+        rel.notes = [UNSEEN_NOTE] + list(rel.notes)
+
+
+def _tied_without_question(p: Pair) -> bool:
+    """Lane FX5 (C6b): whether a comparison may decide with no question. Number and range comparisons only when
+    neither side is an aggregate (a word in a sentence never selects one) and the statement's own words name the
+    measured quantity (beyond a unit); every other kind as before."""
+    if p.a.kind not in ("number", "range"):
+        return True
+    stmt, meas = (p.a, p.b) if isinstance(p.a, Statement) else (p.b, p.a)
+    if stmt.aggregate is not None or meas.aggregate is not None or p.note:
+        return False
+    return bool(set(stmt.words) & set(meas.words))
+
+
 def _specific(rel: Relation, question: str | None, A: Side, B: Side, decide) -> bool:
     """The ONE gate for a durable consistent_with / contradicts link, on every path (lane FX5, C4). True only for a
     decided answer to a question that a closed grammar read completely: a structure comparison's own grammar (whose
@@ -1874,6 +1946,8 @@ def _specific(rel: Relation, question: str | None, A: Side, B: Side, decide) -> 
     (`relate_grammar.legacy_parse`). An answer without a question, or decided by "everything", is never specific."""
     if rel.answer is None or not question or not decide:
         return False
+    if _visibility_unknown(A) or _visibility_unknown(B):
+        return False                        # lane FX5 (C6a): a side may hold text a reader does not see
     from . import relate_grammar as rg
     deciding = [rel.pairs[k] for k in decide]
     structural = [p.a.kind in STRUCTURE_KINDS for p in deciding]

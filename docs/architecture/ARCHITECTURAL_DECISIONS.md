@@ -6905,3 +6905,44 @@ read as a column total, the pixel branch, the depiction exemption) carry ordinar
 `table.column:N.sum/document.sentence:N` and cannot be told apart from correct links by any field: only their
 `created_at` window would show them, and nothing here removes them. Production verdict links recorded before FX5
 stay unless removed by hand. Nothing else stored changes shape; no migration, setting, command or format was added.
+
+## ADR-081, addition (2026-11-27, lane FX5, ruling C6 and the team lead's C4 ruling (A))
+
+- **The production pipeline no longer records verdict links (C4, option (A)).** Before lane FX5 the branch recorded
+  consistent_with / contradicts links between a production's sources from relations found with NO question (lane
+  FX4 had restored that pre-wave behaviour; it never reached `main`). That recording is removed: a question-less
+  answer is the low-specificity case, and two reviewers recorded false links through it (hidden totals in five
+  document formats; "last year's regatta" read as a column's last value). The relations are still shown in the
+  made document and its record; derived_from, describes and same_subject are recorded exactly as before. An owner
+  who wants such a link asks for it: `nsf artifact relate A B --question "..."` with a question the grammar reads
+  completely, between plain sources; that answer is recorded. One gate (`relate._specific`), no caller argument.
+- **C6(a), unseen text on every path.** A verdict link is recorded only when each text side is established as
+  showing all it holds (`relate._visibility_unknown`): a plain text document or a CSV/TSV table whose every character
+  is shown as written (no control, format, private-use or separator character), a plain SVG (`_plain_svg`), or a kind
+  whose content is data rather than rendered text (sound, image, video, mesh, archive, map features, code graph,
+  data tree). No reader of a styled format (Markdown, HTML, RTF, DOCX, ODT, PDF, spreadsheets) reports that it holds
+  no hidden text, so none is established; a side with no format (a bare representation) never is. Where it is not
+  established the answer may still be shown, with the note "not recorded: this document may hold text a reader does
+  not see", and nothing is stored. `produce.relate_sources` now gives the relater each source's decoder format,
+  notes and partial flag (`Piece.decoded_as`), so the HTML reader's hidden-element note and the format-based
+  hidden-text checks work on that path too; an unwrapped or reduced representation is passed without a format.
+  This narrows recording on the question path as well: a Markdown or DOCX note's agreement with a table is shown and
+  no longer recorded (lane R's store tests now use a plain-text note).
+- **C6(b), with no question.** A word inside a sentence never selects an aggregate ("total", "average", "last year's",
+  "in all"), and a stated number is compared only with a measured number its own sentence names by the same words
+  (a duration, a rate); counts, sizes, series, sequences and pairs as before. What the production shows changes:
+  "The total of calls was 520" beside a calls column is now "cannot tell" in the made document (it said "They
+  DISAGREE: 500 against 520"); "The recording lasts 3 seconds" beside a sound is still compared and shown.
+- **C6(c), the rollback step.** `Relation.basis()` keeps the first four deciding comparisons and 200 characters; it
+  now lists the structure comparisons (members, links, times) first, so `scripts/omnimind_fx3/links_decided_by.py`
+  finds every link one of them took part in (under FX5's own rules a structure comparison decides alone anyway).
+  **Limit:** a link recorded by lane FX4's code from four or more older comparisons AND a structure comparison (FX4
+  appended structure pairs after the older ones) carries no structure ref and is not found by the step; nothing
+  distinguishes it without a migration. **A removal writes no event:** `artifact_events`' actions are fixed by the
+  schema, so the history keeps the "linked" entry of a link that the step removed, with no record of who removed it
+  or when.
+
+Measured after C6 (development; `omnimind_fx5.json`): unchanged on every relater set (review 1 12/16/0, review 2
+23/33/0, own 49/50/0), opened cross 72/26/0 and 44/34/0, development cross 70 of 72, FX3 corpus 180/96/0, FX corpus
+84/60/0 (all ask questions). Tests: `tests/artifacts/test_fx5_c6.py` (the review's p05-p16 forms rebuilt and the
+lane's own; 17 of its 20 tests fail on 6328828).
