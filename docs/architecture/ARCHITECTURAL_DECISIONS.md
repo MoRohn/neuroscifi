@@ -5932,3 +5932,87 @@ Written by a lane that read no product code and no lane report of B1, B2, C, G1 
   of 35; made 0 / 16; transform 0 / 11. Forms: today good 66 (0.44), shape_only good 72 (0.48), richest 13 (0.087),
   random 20.8 (0.139); 0 hard-constraint violations for all four. Cross: today 0 / 78 answered. Learn: today late kept
   0.384 (sd 0.028).
+
+# ADR-077 Relating artifacts of different kinds: what one measures against what the other states or shows
+
+Status: built, called only by the owner's command `nsf artifact relate` and the benchmark's `relate` subject (Wave
+O-1, lane R). No setting, no schema change (links go in lane A's `artifact_links`), nothing automatic.
+
+## Context
+
+The directive (§6.2, §6.3, §10.2) asks for relationships between modalities "through shared entities, timing,
+causality, context and provenance" that keep meaning, provenance and uncertainty. No model here sees or hears. The
+honest version is: two artifacts are related when a quantity or a structure that can be MEASURED in one is STATED or
+SHOWN in the other, and the two can be compared. The cross family of the benchmark (ADR-075) has six kinds of pair
+and a withheld split with kinds of pairing neither public split has: a matcher per kind would answer "cannot" there,
+one that guesses would score half, and a wrong "consistent" is this mechanism's fabrication.
+
+## Decision
+
+`artifacts/relate.py` (with the reader `relate_read.py`), deterministic, standard library and numpy.
+
+- **What an artifact measures** (`quantities`): counts with the nouns they count (rows, columns, tones, vertices,
+  functions, members, features, events), a table's column aggregates (sum, mean, median, min, max, first, last,
+  range) and series keyed by its label column, a sound's duration, rate and, when it is made of steady tones, their
+  number and pitches (`tone_segments`: quiet gaps and pitch steps, otherwise no tone count is claimed), a mesh's
+  size, box, volume and area (in the unit the file's own comment states, if any), a graph's edge pairs by kind, a
+  raster's or drawing's size, a track's length and time span. Each has `how`.
+- **What an artifact states or shows** (`statements`): a document's numbers with units, nearby words, aggregate
+  words, approximations and bounds; sizes (`120 x 40 x 60 mm`, `200 mm wide, ...`), per-axis ranges, ranges, counts
+  (the word right after a whole number); ordered steps (lists, lines, sentences); a log's timestamped events; a
+  chart's series read back through the reading contract by the independent reader `check/svg_read.py` (never its
+  `<metadata>`) and the aggregates it shows; a JSON trace's name pairs (records with two string fields, an object
+  and the objects in its lists); a text file's comment lines. Sentences are kept as provenance, cleaned, untrusted.
+- **Matching** (`compare`): candidate pairs by kind of fact (number with number, count with count, size with size,
+  series with series, steps with events, pairs with pairs), compatible units (dimension tables, no exchange rates)
+  and names (shared words of the subject; one candidate column with a stated aggregate; a tie is ambiguous and
+  weak). Tolerances are stated: half a unit of the last written digit, wider for "about"; a chart's 0.5 % of its
+  tick span (in decades on a log axis); exact for counts. Two measurements are compared only when the question names
+  what each counts or shows (or two series carry one name). A mesh without a unit is compared as if in the stated
+  unit only when the numbers are equal; when one scale factor would make them agree the answer is "cannot".
+- **The overall answer.** If the question names an aggregate, only comparisons of that aggregate decide; if it asks
+  about a count (counting words and a count's noun), only that count; else the comparisons the question's words
+  focus on; else every strong comparison. False when one deciding comparison disagrees, True when all agree, None
+  otherwise. Agreement is not claimed while a number statement tied to the other artifact went uncompared.
+- **Binding** (`relate_cli.py`): `consistent_with` / `contradicts` (confidence 0.8), `describes` (one names the
+  other's file, 0.6), `same_subject` (a shared name, 0.3), `how` = the machine-readable basis. Labelled "the system's
+  claim from measuring both artifacts; not evidence" wherever shown; removed with either end and by a restore's
+  replay; a shared name that is a forgotten root is not used; no knowledge table is written.
+- **Timing** reports spans, overlap and offset of two clocks; **transfer** applies a unit to a CSV column only when
+  one line of a document names exactly that column and exactly one unit (rates and date formats are not units; a
+  column's own unit wins and the conflict is reported); the provenance rides in `Transfer.describe()["units_from"]`
+  and reaches a made chart's axis label through the spec's unit.
+
+## Measured (`docs/quality/evidence/omnimind_r.json`, `scripts/omnimind_r_evidence.py`)
+
+- Cross family, development split: 72 / 72 right, 0 cannot, 0 wrong (every kind 12 / 12; both twins right 36 / 36);
+  always-consistent and always-inconsistent 36 / 72; today 0 / 72 answered. Held-out and withheld not run by lane R.
+- Own pairs of 14 kinds the public splits lack (development: defects were fixed against them): 28 / 28 right;
+  6 unrelated pairs: 6 cannot. Fresh pairs of 12 more kinds, written after the mechanism was frozen (677cf22) and
+  looked at once: 20 right, 4 cannot, 0 wrong of 24; unrelated 4 / 4 cannot; after one fix (a log's own format
+  words) 22 / 24, the remaining cannot is "sampled at 16 kHz" against a sample rate (no morphology beyond plurals).
+- Own variants from the cross generators with knobs drawn here (seeds 9000+): 630 / 630 right.
+- Transfer, own 12 cases, 29 columns: 14 right units, 14 rightly without a unit, 1 absent, 0 wrong.
+
+## Not done, and why
+
+- No meaning of an image or a sound is read: "cross-modal" here is measurement against statement. A chart is read
+  only when it follows the reading contract; a photograph, a spoken recording or a melody's identity is not related
+  to anything.
+- Words: plural folding only; no stemming of verbs ("sampled"), no synonyms beyond the stated vocabularies, no
+  coreference across sentences. A model could read requests and statements more finely; none is called.
+- Causality is not inferred; time is aligned only where both sides carry timestamps (or the log's order).
+- Static call graphs only: a trace call made through a callback or `getattr` is reported as not in the code.
+
+## Rejected alternatives
+
+- A matcher per kind of pair: it fits the public kinds and answers nothing (or guesses) elsewhere.
+- Answering from whatever agrees when the question's subject cannot be compared: it turns "cannot" into a wrong
+  "consistent".
+- Reading a chart's `<metadata>`: an echo of the data, not what the picture shows (DESIGN §6).
+
+## Rollback
+
+Revert lane R's commits: the new modules, the `relate` subcommand, `store.decoded_held`, the labelled link lines of
+`nsf artifact show` for the four claim relations and the driver's `relate`. Links already recorded stay readable
+by the old code (the relations were already in `store.RELATIONS`) and can be removed by forgetting either end.
