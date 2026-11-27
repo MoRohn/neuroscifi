@@ -545,8 +545,8 @@ def gap_report(db, *, viewer="owner") -> dict:
             lines.append({"gap": "repair_recurs", "subject": rule, "count": entry["count"], "evidence": entry["ids"],
                           "words": f"the repair for {rule} was needed {entry['count']} times"})
     lines.append({"gap": "could_not_make_well", "subject": None, "count": None, "evidence": [],
-                  "words": "productions that ended 'could not make this well': nothing records them on this branch "
-                           "(the production pipeline is where they would be recorded)"})
+                  "words": "productions that ended 'could not make this well' are not counted: an outcome is "
+                           "recorded only for a made artifact that is kept, and one whose check failed is not kept"})
     if present(db):
         kinds = sorted(_carried_elsewhere())
         marks = ",".join("?" * len(kinds))

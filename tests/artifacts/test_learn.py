@@ -383,7 +383,7 @@ def test_the_gap_report_reads_what_is_recorded_and_changes_nothing(individual, m
     assert lines["words_for_shown_content"]["subject"] == "series"
     assert lines["words_for_shown_content"]["evidence"] == [words.id]
     assert lines["relations_inconsistent"]["evidence"] == [f"{repaired[0]} {repaired[1]}"]
-    assert "nothing records them" in lines["could_not_make_well"]["words"]
+    assert "are not counted" in lines["could_not_make_well"]["words"]
     assert report["label"] == "read-only: nothing acts on this report"
     assert before == {t: db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in before}
 
@@ -432,3 +432,13 @@ def test_a_learned_preference_that_flips_the_choice_says_so_and_one_that_does_no
                                        "on the console: that habit, not the content, decided this form") in out
     assert main([*argv, "--db", str(path), "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["learned"]["decided"].startswith("You asked for a table 2 times")
+
+
+def test_a_failed_check_cannot_be_an_outcome_without_its_artifact_as_the_table_stands(individual):
+    # fix lane F3, item 4 (stated open): the table's own rules tie every outcome to a held made artifact, so a failed
+    # production (whose artifact is not stored) cannot be counted without a migration
+    db, _ = individual
+    sql = db.execute("SELECT sql FROM sqlite_master WHERE name='form_outcomes'").fetchone()[0]
+    assert "artifact_id TEXT NOT NULL" in sql
+    trigger = db.execute("SELECT sql FROM sqlite_master WHERE name='form_outcomes_name_a_made_artifact'").fetchone()
+    assert trigger and "a form outcome names a made artifact this individual holds" in trigger[0]
