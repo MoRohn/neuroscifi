@@ -153,6 +153,8 @@ class ZipReader:
             pos += 46 + nlen + xlen + clen
         if len(self.entries) < min(n_total, max_members):
             raise Malformed("the ZIP central directory ends early")
+        from .safe import refuse_overlapping
+        refuse_overlapping((e.offset, e.compressed_size) for e in self.entries if not e.is_dir)
 
     def _find_eocd(self) -> int:
         data = self.data

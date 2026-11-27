@@ -52,47 +52,77 @@ def _paeth(a, b, c):
     return np.where((pa <= pb) & (pa <= pc), a, np.where(pb <= pc, b, c))
 
 
-def unfilter(raw: bytes, h: int, rowbytes: int, bpp: int, deadline: Deadline) -> np.ndarray:
-    """Undo PNG row filters. `raw` holds h rows of (1 + rowbytes) bytes. Returns (h, rowbytes) uint8."""
+BAND_BYTES = 8 << 20         # the Average/Paeth reconstruction works on bands of rows of at most this many int16 bytes
+
+
+def unfilter(raw: bytes, h: int, rowbytes: int, bpp: int, deadline: Deadline, into: np.ndarray | None = None
+             ) -> np.ndarray:
+    """Undo PNG row filters. `raw` holds h rows of (1 + rowbytes) bytes. Returns (h, rowbytes) uint8, written into
+    `into` when it is given (a (h, rowbytes) uint8 array, so the caller's pixel array is the only copy).
+
+    The working set beyond `raw` and the output is one band of rows: None/Sub/Up rows are undone one at a time;
+    Average and Paeth (each pixel needs its left, upper and upper-left neighbour) along anti-diagonals within a band
+    of rows in int16, so the reconstruction never holds a whole-image intermediate (fix lane F1, code review H1)."""
+    out = np.empty((h, rowbytes), np.uint8) if into is None else into
     if h == 0 or rowbytes == 0:
-        return np.zeros((h, rowbytes), np.uint8)
+        return out
     arr = np.frombuffer(raw, np.uint8).reshape(h, rowbytes + 1)
-    ft = arr[:, 0].astype(np.int64)
+    ft = arr[:, 0]
     if (ft > 4).any():
         raise Malformed("a PNG row uses an unknown filter type")
     filt = arr[:, 1:]
     if not np.isin(ft, (3, 4)).any():       # None/Sub/Up only: row by row, vectorised
-        out = np.empty((h, rowbytes), np.uint8)
         prev = np.zeros(rowbytes, np.uint8)
         for y in range(h):
             row = filt[y]
             if ft[y] == 0:
-                cur = row.copy()
+                out[y] = row
             elif ft[y] == 2:
-                cur = row + prev
+                np.add(row, prev, out=out[y])
             else:
-                cur = np.cumsum(row.reshape(-1, bpp), axis=0, dtype=np.uint8).reshape(-1)
-            out[y] = cur
-            prev = cur
+                out[y] = np.cumsum(row.reshape(-1, bpp), axis=0, dtype=np.uint8).reshape(-1)
+            prev = out[y]
             if y % 256 == 0:
                 deadline.check("PNG unfiltering")
         return out
-    # Average/Paeth present: reconstruct along anti-diagonals (each needs its left, upper and upper-left neighbour),
-    # all pixels of one diagonal at once.
     npix = rowbytes // bpp
-    f = filt.reshape(h, npix, bpp).astype(np.int32)
-    rec = np.zeros((h + 1, npix + 1, bpp), np.int32)
-    for d in range(h + npix - 1):
-        y = np.arange(max(0, d - npix + 1), min(h - 1, d) + 1)
-        x = d - y
-        a, b, c = rec[y + 1, x], rec[y, x + 1], rec[y, x]
-        t = ft[y][:, None]
-        pred = np.where(t == 1, a, np.where(t == 2, b, np.where(t == 3, (a + b) >> 1,
-                                                                  np.where(t == 4, _paeth(a, b, c), 0))))
-        rec[y + 1, x + 1] = (f[y, x] + pred) & 0xFF
-        if d % 512 == 0:
-            deadline.check("PNG unfiltering")
-    return rec[1:, 1:].reshape(h, rowbytes).astype(np.uint8)
+    band = max(1, min(h, BAND_BYTES // max(1, 2 * (npix + 1) * bpp)))
+    prev = np.zeros(rowbytes, np.uint8)
+    for top in range(0, h, band):
+        bh = min(band, h - top)
+        rec = np.zeros((bh + 1, npix + 1, bpp), np.int16)
+        rec[0, 1:] = prev.reshape(npix, bpp)
+        f = filt[top:top + bh].reshape(bh, npix, bpp)
+        t_band = ft[top:top + bh].astype(np.int16)
+        for d in range(bh + npix - 1):
+            y = np.arange(max(0, d - npix + 1), min(bh - 1, d) + 1)
+            x = d - y
+            a, b, c = rec[y + 1, x], rec[y, x + 1], rec[y, x]
+            t = t_band[y][:, None]
+            pred = np.where(t == 1, a, np.where(t == 2, b, np.where(t == 3, (a + b) >> 1,
+                                                                      np.where(t == 4, _paeth(a, b, c), 0))))
+            rec[y + 1, x + 1] = (f[y, x] + pred) & 0xFF
+            if d % 512 == 0:
+                deadline.check("PNG unfiltering")
+        out[top:top + bh] = rec[1:, 1:].reshape(bh, rowbytes)
+        prev = out[top + bh - 1]
+        deadline.check("PNG unfiltering")
+    return out
+
+
+def working_set(w: int, h: int, bits: int, ctype: int, interlace: int, out_ch: int) -> int:
+    """The bytes decoding one PNG image holds at its peak, by the code below: the inflated stream, and the larger of
+    its growth while it is inflated (at most its size again) and the pixel arrays (an 8-bit image without interlace
+    is unfiltered straight into its pixel array; any other is unfiltered, unpacked and placed, about four arrays of
+    its size); the output when the mode conversion makes a new one; one band of the Average/Paeth reconstruction."""
+    ch = CHANNELS[ctype]
+    bytes_per = 2 if bits == 16 else 1
+    inflated = h * (1 + _rowbytes(w, bits, ch))
+    samples = w * h * ch * bytes_per
+    direct = interlace == 0 and bits == 8
+    converted = not (ctype in (2, 6) and out_ch == ch)
+    return (inflated + max(inflated, samples if direct else 4 * samples)
+            + (w * h * out_ch * bytes_per if converted else 0) + BAND_BYTES)
 
 
 def _rowbytes(w: int, bits: int, ch: int) -> int:
@@ -115,10 +145,14 @@ def _decode_image(raw_stream: bytes, w: int, h: int, bits: int, ctype: int, inte
             passes.append((x0, y0, dx, dy, pw, ph))
             if pw and ph:
                 expect += ph * (1 + _rowbytes(pw, bits, ch))
-    data = inflate(raw_stream, expect, what="the PNG image data", deadline=deadline, complete=True)
+    data = inflate(raw_stream, expect, what="the PNG image data", deadline=deadline, complete=True, copy=False)
     if len(data) != expect:
         raise Malformed(f"the PNG image data holds {len(data)} bytes, its header implies {expect}")
     dtype = np.uint16 if bits == 16 else np.uint8
+    if interlace == 0 and bits == 8:
+        out = np.empty((h, w, ch), np.uint8)
+        unfilter(data, h, w * ch, bpp, deadline, into=out.reshape(h, w * ch))
+        return out
     out = np.zeros((h, w, ch), dtype)
     at = 0
     for x0, y0, dx, dy, pw, ph in passes:
@@ -306,8 +340,7 @@ class PNGAdapter(Adapter):
         if ctype not in CHANNELS or bits not in DEPTHS[ctype] or comp != 0 or filt != 0 or interlace > 1:
             raise Malformed("the PNG header names an invalid combination of colour type, depth or method")
         out_ch = 4 if (ctype in (4, 6) or trns is not None) else (3 if ctype in (2, 3) else 1)
-        bytes_per = 2 if bits == 16 else 1
-        need(w * h * out_ch * bytes_per * 2, limits, "the PNG image")
+        need(working_set(w, h, bits, ctype, interlace, out_ch), limits, "the PNG image")
         if colour:
             notes.append("colour management chunks (" + ", ".join(sorted(colour)) + ") are not applied: "
                          "pixel values are as stored")

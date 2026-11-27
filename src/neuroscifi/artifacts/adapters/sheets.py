@@ -96,7 +96,9 @@ def _sheet(pkg, root, shared, kinds, date1904, notes) -> list[list]:
     formulas = errors = no_cache = times = 0
     next_row = 0
     max_col = -1
-    for row in (data if data is not None else []):
+    for i, row in enumerate(data if data is not None else []):
+        if i % 256 == 0:
+            pkg.deadline.check("reading a sheet")
         r_attr = row.get("r")
         r = int(r_attr) - 1 if r_attr and r_attr.isdigit() else next_row
         next_row = r + 1
@@ -121,6 +123,8 @@ def _sheet(pkg, root, shared, kinds, date1904, notes) -> list[list]:
                     value = shared[int(raw)]
                 except (ValueError, IndexError, TypeError):
                     raise Malformed("a cell points to a shared string that does not exist") from None
+                # one shared string, as many cells as refer to it: charged per reference (security review H2)
+                pkg.budget.take_bytes(len(value))
             elif t == "inlineStr":
                 value = "".join(x.text or "" for x in c.iter(S + "t"))
             elif t == "str":
@@ -175,11 +179,11 @@ def _sheet(pkg, root, shared, kinds, date1904, notes) -> list[list]:
     return rows
 
 
-def _member(name: str, size: int, rows: list[list], notes: list[str], container: str) -> Member:
+def _member(name: str, size: int, rows: list[list], notes: list[str], container: str, deadline=None) -> Member:
     if not rows:
         return Member(name, size, Detected("table", f"{container}-sheet", "application/octet-stream", "structure",
                                            container, ("a sheet of the workbook",)), None, "empty sheet")
-    table, tnotes = table_from_rows(rows, title=name)
+    table, tnotes = table_from_rows(rows, title=name, deadline=deadline)
     return Member(name, size, Detected("table", f"{container}-sheet", "application/octet-stream", "structure",
                                        container, ("a sheet of the workbook",)), table, "; ".join(notes + tnotes)[:600])
 
@@ -208,7 +212,7 @@ def read_xlsx(data, detected, limits):
         root = pkg.xml(target)
         notes: list[str] = []
         rows = _sheet(pkg, root, shared, kinds, date1904, notes)
-        members.append(_member(name, pkg.sizes[target], rows, notes, "xlsx"))
+        members.append(_member(name, pkg.sizes[target], rows, notes, "xlsx", pkg.deadline))
     bundle = Bundle(tuple(members))
     notes = pkg.notes + ["formulas are never evaluated; charts, pivot tables, comments and formatting are not read"]
     if date1904:
@@ -234,7 +238,7 @@ def read_ods(data, detected, limits):
         pkg.partial = pkg.partial or any(n.startswith("partial: repeated") for n in notes)
         if any(local(k) == "formula" for c in table.iter(TABLE + "table-cell") for k in c.attrib):
             notes.append("formulas are not evaluated: the stored values are used")
-        members.append(_member(table.get(TABLE + "name") or f"Sheet{i + 1}", 0, rows, notes, "ods"))
+        members.append(_member(table.get(TABLE + "name") or f"Sheet{i + 1}", 0, rows, notes, "ods", pkg.deadline))
     bundle = Bundle(tuple(members))
     notes = pkg.notes + ["formulas are never evaluated; charts and formatting are not read"]
     return Decoded(detected, bundle, tuple(notes) + injection_notes(bundle.text()), pkg.partial)

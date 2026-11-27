@@ -240,6 +240,48 @@ def _also_a_zip(data: bytes, detected: Detected) -> bool:
         return False
 
 
+# What parsing a text format costs in memory, per structural mark, as measured on the security reviewer's inputs (fix
+# lane F1, ruling A.2: peak resident memory over the interpreter's, divided by the count of the mark; the inputs and
+# the figures are in docs/quality/evidence/omnimind_f1.json). The parsers build Python objects for every line, table,
+# attribute or number, so their working set is a multiple of these marks, not of the input's size. Charged against
+# `max_decoded_bytes` BEFORE the parser runs: a file whose structure would need more is refused with the reason, not
+# read until memory runs out. format -> ((mark, bytes per mark), ...)
+STRUCTURE_COST = {
+    "ini": ((b"\n", 2048),),                         # configparser: a section or option per line
+    "toml": ((b"[", 1024), (b",", 320), (b"=", 320)),  # tomllib: a table per "[", a value per "," or "="
+    "requirements": ((b"\n", 800),),
+    "javascript": ((b"\n", 800),),
+    "html": ((b"=", 720),),                            # one attribute per "="
+    "markdown": ((b"\n", 176),),
+    "ndjson": ((b"\n", 544),),
+    "gltf": ((b"{", 240),),
+    "obj": ((b" ", 56),),                              # one number or index per space
+    "geojson": ((b",", 72),),                          # one coordinate per ","
+}
+
+
+# Formats whose structure a parser would bound (depth, elements, raster size) and which, when the detection prefix
+# shows only text, would otherwise be read quietly as plain text (security review L4: a 200 000-deep XML).
+HIDDEN_STRUCTURE = frozenset({"xml", "svg", "plist", "kml", "gpx", "json", "geojson", "gltf", "pbm", "pgm", "ppm",
+                              "pnm", "pam"})
+DETECTION_PREFIX = 64 << 10
+
+
+def _hidden_structure(data: bytes, detected: Detected, name: str | None) -> str | None:
+    """The format the file's name claims when the bytes were identified as plain text from a prefix shorter than the
+    file, and that format is one whose structure is bounded only when it is parsed as such."""
+    if detected.format != "text" or len(data) <= DETECTION_PREFIX or not name or "." not in name:
+        return None
+    from ..detect import EXTENSIONS
+    claimed = EXTENSIONS.get("." + name.rsplit(".", 1)[1].lower())
+    return claimed if claimed in HIDDEN_STRUCTURE else None
+
+
+def structure_cost(data: bytes, fmt: str) -> int:
+    """The bytes parsing `data` as `fmt` is expected to hold (STRUCTURE_COST; 0 for a format not listed)."""
+    return sum(data.count(mark) * cost for mark, cost in STRUCTURE_COST.get(fmt, ()))
+
+
 # Made once, at import, for when memory has run out so far that even a new refusal cannot be made.
 _RESOURCES = Refused("decoding needed more memory or depth than is allowed", rule="resources")
 
@@ -262,12 +304,17 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
     if len(data) > limits.max_bytes:
         raise Refused(f"input of {len(data)} bytes is over the limit of {limits.max_bytes}", rule="max_bytes",
                       reason="too_large")
-    detected = detect(data[:64 << 10], name=name, declared=declared, size=len(data))
+    detected = detect(data[:DETECTION_PREFIX], name=name, declared=declared, size=len(data))
     if detected.format in REFUSED_FORMATS:
         raise Refused(REFUSED_FORMATS[detected.format], rule=detected.format)
     if _also_a_zip(data, detected):
         raise Refused(f"the bytes are a {detected.format} file and also a ZIP archive (a polyglot): which reading is "
                       "meant cannot be established, so neither is read", rule="polyglot")
+    claimed = _hidden_structure(data, detected, name)
+    if claimed is not None:
+        raise Refused(f"the file is named as {claimed}, its first {DETECTION_PREFIX >> 10} KiB do not show that "
+                      "structure, and it is longer than what was examined: it is not read as plain text",
+                      rule="unconfirmed_structure")
     adapter = resolve(detected)
     if adapter is None:
         _gap(detected, "opaque")
@@ -278,6 +325,10 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         opaque = inspect_unknown(data, detected)
         opaque = replace(opaque, needs=tuple(dict.fromkeys(opaque.needs + tuple(adapter.needs))))
         return Decoded(detected, opaque, (f"adapter {adapter.name} is not available: {reason}",), False)
+    cost = structure_cost(data, detected.format)
+    if cost > limits.max_decoded_bytes:
+        raise Refused(f"parsing this {detected.format} file would need about {cost >> 20} MiB, over the limit of "
+                      f"{limits.max_decoded_bytes >> 20} MiB", rule="max_decoded_bytes", reason="too_large")
     try:
         try:
             result = adapter.decode(data, detected, limits)

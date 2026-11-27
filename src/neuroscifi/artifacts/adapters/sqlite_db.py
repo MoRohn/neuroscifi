@@ -10,11 +10,14 @@ The connection (all of it is set up before the first statement touches the file'
   never enabled, `PRAGMA query_only=ON`, `cell_size_check=ON`;
 - limits through `Connection.setlimit`: one value at most 1 MiB, SQL at most 100 000 characters, expression depth 64,
   no attached databases;
-- an authorizer that allows only SELECT, READ and the functions `count`, then denies everything else;
+- an authorizer that allows only SELECT, READ, the function `count` and `PRAGMA table_xinfo` (the declared columns),
+  then denies everything else;
 - a progress handler that interrupts any statement once `max_seconds` have passed.
 Views and triggers are listed (name and the table they belong to) and never evaluated; virtual tables are listed
 and not read (reading one would run its module). Each ordinary table gives its row count and a sample of at most
-SAMPLE_ROWS rows (fewer when `max_elements` runs out) as a `Table`; blob cells are not decoded (missing, counted).
+SAMPLE_ROWS rows (fewer when `max_elements` or `max_decoded_bytes`, charged per cell in bytes, runs out) as a
+`Table`, of its stored columns only (a computed column is listed, never evaluated: fix lane F1); blob cells are not
+decoded (missing, counted).
 """
 from __future__ import annotations
 
@@ -62,6 +65,8 @@ def _authorizer(action, arg1, arg2, dbname, source):
         return sqlite3.SQLITE_OK
     if action == sqlite3.SQLITE_FUNCTION and (arg2 or "").lower() in _ALLOWED_FUNCTIONS:
         return sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_PRAGMA and (arg1 or "").lower() == "table_xinfo" and arg2:
+        return sqlite3.SQLITE_OK      # reads the declared columns; evaluates nothing
     return sqlite3.SQLITE_DENY
 
 
@@ -148,37 +153,75 @@ def read_sqlite(data: bytes, detected: Detected, limits) -> Decoded:
     return Decoded(detected, bundle, tuple(notes) + injection_notes(bundle.text()), partial)
 
 
+CELL_MAX = 1 << 20       # one value at most (SQLITE_LIMIT_LENGTH), lowered per table so a row fits what is left
+
+
+def _cell_bytes(v) -> int:
+    """What a fetched cell holds in memory, as charged: text by its characters at the width Python stores them."""
+    if isinstance(v, str):
+        return len(v) if v.isascii() else 4 * len(v)
+    if isinstance(v, bytes):
+        return len(v)
+    return 8
+
+
 def _table_member(conn, name, det, budget, deadline) -> Member:
+    """One table's count and sample. Only STORED columns are selected (`PRAGMA table_xinfo`: hidden 0, or 3 for a
+    stored generated column, whose value is on disk): a virtual generated column would be computed by the SELECT
+    itself, and an innocuous built-in (printf, hex, zeroblob) can make each of its cells a megabyte (security review
+    H1), so it is listed, not evaluated. Cells are charged in bytes, and the per-value length limit is lowered so one
+    row cannot exceed what is left of the budget."""
     q = _quote(name)
     try:
         (count,) = conn.execute(f"SELECT count(*) FROM {q}").fetchone()
+        info = conn.execute(f"PRAGMA table_xinfo({q})").fetchall()
+        stored = [str(r[1]) for r in info if r[6] in (0, 3)]
+        computed = sum(1 for r in info if r[6] not in (0, 3))
+        if not stored:
+            return Member(name, 0, det, None, f"{count} row(s); no stored column (computed columns are not "
+                                              "evaluated)")
         room = max(0, min(SAMPLE_ROWS, budget.max_elements - budget.elements))
-        cur = conn.execute(f"SELECT * FROM {q} LIMIT {int(room)}")
-        columns = [d[0] for d in cur.description or ()]
-        rows, blobs = [], 0
-        for row in cur:
-            if not budget.fits_elements(len(row)):
-                break
-            budget.take_elements(len(row))
-            cells = []
-            for v in row:
-                if isinstance(v, bytes):
-                    blobs += 1
-                    v = None
-                cells.append(v)
-            rows.append(cells)
+        left = max(0, budget.max_bytes - budget.bytes)
+        conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, max(1024, min(CELL_MAX, left // len(stored))))
+        try:
+            cur = conn.execute(f"SELECT {', '.join(_quote(c) for c in stored)} FROM {q} LIMIT {int(room)}")
+            columns = [d[0] for d in cur.description or ()]
+            rows, blobs, cut = [], 0, ""
+            for row in cur:
+                if not budget.fits_elements(len(row)):
+                    cut = "element"
+                    break
+                size = sum(_cell_bytes(v) for v in row)
+                if not budget.fits_bytes(size):
+                    cut = "byte"
+                    break
+                budget.take_elements(len(row))
+                budget.take_bytes(size)
+                cells = []
+                for v in row:
+                    if isinstance(v, bytes):
+                        blobs += 1
+                        v = None
+                    cells.append(v)
+                rows.append(cells)
+        finally:
+            conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, CELL_MAX)
     except sqlite3.OperationalError as error:
         if deadline.remaining() < 0:
             return Member(name, 0, det, None, "stopped: the time limit was reached while reading this table")
         return Member(name, 0, det, None, f"not read ({type(error).__name__}: denied or damaged)")
+    except sqlite3.DataError:            # SQLITE_TOOBIG: one value over the lowered length limit
+        return Member(name, 0, det, None, "not read: a value is longer than the decode budget leaves room for")
     except sqlite3.DatabaseError as error:
         return Member(name, 0, det, None, f"not read: the table is damaged ({type(error).__name__})")
-    table, tnotes = table_from_rows([columns] + rows, header=True, title=name)
+    table, tnotes = table_from_rows([columns] + rows, header=True, title=name, deadline=deadline)
     note = f"{count} row(s); {len(rows)} in the sample" + (f"; {blobs} blob cell(s) not decoded" if blobs else "")
+    if computed:
+        note += f"; {computed} computed column(s) listed, not evaluated"
     if tnotes:
         note += "; " + "; ".join(tnotes)
     if len(rows) < min(count, SAMPLE_ROWS):
-        note = "stopped early (element limit): " + note
+        note = f"stopped early ({cut or 'element'} limit): " + note
     return Member(name, 0, det, table, note[:600])
 
 

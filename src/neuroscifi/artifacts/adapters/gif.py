@@ -98,6 +98,7 @@ def decode_gif(data: bytes, detected: Detected, limits: Limits) -> Decoded:
     gct = None
     if packed & 0x80:
         gct = np.frombuffer(r.take(3 * (2 << (packed & 7))), np.uint8).reshape(-1, 3)
+    need(sw * sh * 4 * 2, limits, "the GIF screen")      # the canvas and the first frame's copy, before either exists
     canvas = np.zeros((sh, sw, 4), np.uint8)
     frames: list[Raster] = []
     delays: list[float] = []

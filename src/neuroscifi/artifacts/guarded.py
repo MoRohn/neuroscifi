@@ -83,6 +83,8 @@ def check(data: bytes, *, name: str | None = None, declared: str | None = None, 
     bounds; raises `Refused(rule="resource_limit")` when it did not, `Refused(rule="guard_unavailable")` when no
     child could be started."""
     data = bytes(data)
+    if len(data) > limits.max_bytes or limits.max_depth < 0:
+        return {"v": 1, "status": "not_run"}       # adapters.decode refuses these before it reads anything
     header = json.dumps({"name": name, "declared": declared, "external": list(external), "size": len(data),
                          "address_space": address_space(limits, len(data)),
                          "limits": {k: getattr(limits, k) for k in limits.__dataclass_fields__}}).encode("utf-8")

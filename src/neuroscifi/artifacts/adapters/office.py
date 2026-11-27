@@ -130,7 +130,7 @@ def _table(pkg: Package, rows: list[list[str]], blocks: list, *, header=None, ti
     if not rows:
         return
     try:
-        table, notes = table_from_rows(rows, header=header, title=title)
+        table, notes = table_from_rows(rows, header=header, title=title, deadline=pkg.deadline)
     except Refused:
         pkg.notes.append("a table was too wide to keep: its cells are kept as text")
         pkg.emit(blocks, Block("paragraph", 0, "\n".join("\t".join(r) for r in rows)))
@@ -338,6 +338,7 @@ def odf_table_cells(table, budget: DecodeBudget, notes: list[str], *, typed: boo
         rep = row.get(TABLE + "number-rows-repeated") or "1"
         rep = int(rep) if rep.isdigit() else 1
         cells: list = []
+        row_bytes = 0
         for cell in row:
             if local(cell.tag) not in ("table-cell", "covered-table-cell"):
                 continue
@@ -365,6 +366,9 @@ def odf_table_cells(table, budget: DecodeBudget, notes: list[str], *, typed: boo
             else:
                 value = words
             cells.extend([value] * crep)
+            # a repeated value is one object here, and every repetition becomes its own cell later (inference,
+            # the text layer): it is charged once per repetition (security review H2)
+            row_bytes += (len(value) if isinstance(value, str) else 8) * crep
         while cells and (cells[-1] == "" or cells[-1] is None):
             cells.pop()
         if rep > MAX_REPEAT:
@@ -373,7 +377,11 @@ def odf_table_cells(table, budget: DecodeBudget, notes: list[str], *, typed: boo
         if not budget.fits_elements(len(cells) * rep):
             notes.append(f"a table was cut after {len(rows)} rows: the element limit was reached")
             break
+        if not budget.fits_bytes(row_bytes * rep):
+            notes.append(f"a table was cut after {len(rows)} rows: the byte limit was reached")
+            break
         budget.take_elements(len(cells) * rep)
+        budget.take_bytes(row_bytes * rep)
         rows.extend([list(cells) for _ in range(rep)])
     while rows and not any(c not in ("", None) for c in rows[-1]):
         rows.pop()

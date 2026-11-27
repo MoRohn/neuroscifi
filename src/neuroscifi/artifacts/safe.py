@@ -304,6 +304,19 @@ _ZIP_METHODS = {zipfile.ZIP_STORED: "stored", zipfile.ZIP_DEFLATED: "deflate", z
                 zipfile.ZIP_LZMA: "lzma"}
 
 
+def refuse_overlapping(spans) -> None:
+    """Refuse a ZIP whose members' data overlap: `spans` are (local header offset, compressed size) pairs. Each member
+    occupies at least its 30-byte local header and its compressed bytes; an honest archive stores them one after
+    another. Two directory entries pointing into the same bytes (security review N1: 3000 entries naming one 50 MiB
+    member cost the whole time budget) are refused when the directory is listed, before anything is inflated."""
+    end = -1
+    for offset, size in sorted((int(o), int(c)) for o, c in spans):
+        if offset < end:
+            raise Refused("two members of the archive share the same stored bytes (overlapping entries): an honest "
+                          "archive never does this, so it is not read", rule="overlapping_members")
+        end = offset + 30 + max(0, size)
+
+
 class SafeZip:
     """A ZIP archive read from memory. `entries` lists members (bounded by max_members); `read(name)` inflates one
     member in bounded chunks against its declared size, the per-stream ratio and the shared decoded budget, and
@@ -329,6 +342,7 @@ class SafeZip:
         if len(infos) > limits.max_members:
             raise Refused(f"the archive lists {len(infos)} members, more than {limits.max_members}",
                           rule="max_members")
+        refuse_overlapping((i.header_offset, i.compress_size) for i in infos if not i.is_dir())
         self._infos = {}
         entries = []
         for info in infos:

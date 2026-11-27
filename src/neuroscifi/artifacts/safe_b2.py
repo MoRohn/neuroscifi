@@ -58,12 +58,13 @@ def members(n: int, limits: Limits, what: str) -> int:
 
 def inflate(data: bytes, max_out: int, *, wbits: int = 15, what: str = "a compressed stream",
             limits: Limits | None = None, ratio: bool = False, deadline=None,
-            complete: bool = False) -> bytes:
+            complete: bool = False, copy: bool = True) -> bytes:
     """Decompress `data`, refusing as soon as the output would exceed `max_out` bytes (the declared size, which has
     already been checked against the budget). With `ratio=True` the output is also refused past
     `limits.max_ratio` times the input. With `complete=True` a stream that ends before its end marker (and, for
     zlib, before its Adler-32, which zlib checks) is `Malformed`; otherwise a truncated stream returns what it held
-    (the caller compares sizes)."""
+    (the caller compares sizes). With `copy=False` the output is returned as the bytearray it was built in (no
+    second copy of a large stream)."""
     if max_out < 0:
         raise Malformed(f"{what} declares a negative size")
     cap = max_out
@@ -90,7 +91,7 @@ def inflate(data: bytes, max_out: int, *, wbits: int = 15, what: str = "a compre
         raise Malformed(f"{what} is not a valid deflate stream or fails its checksum") from None
     if complete and not d.eof:
         raise Malformed(f"{what} ends before its end marker and checksum")
-    return bytes(out)
+    return bytes(out) if copy else out
 
 
 class Reader:

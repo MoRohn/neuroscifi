@@ -435,7 +435,8 @@ def apply_adapter_setting(approved) -> list[str]:
 # read because one of them is unsafe (the listing of names and sizes is recorded as findings).
 # The file whose decode went over the operating-system limits in the guarded child (`guarded`), or for which no such
 # child could be started, is kept too, unread: an opaque artifact with that refusal recorded.
-KEPT_REFUSALS = frozenset({"unsafe_member_name", "resource_limit", "guard_unavailable"})
+# A file named as a structured format whose prefix shows only text (`adapters.HIDDEN_STRUCTURE`) is kept unread too.
+KEPT_REFUSALS = frozenset({"unsafe_member_name", "resource_limit", "guard_unavailable", "unconfirmed_structure"})
 
 
 def _decode(data: bytes, *, name, declared, lim: Limits):
