@@ -5457,6 +5457,30 @@ Status: built by the integration lane. No setting, no schema change.
    and exits 2. Encrypted members stay a per-member refusal (not an attack on the reader); sparse TAR members too.
    Tests: `tests/artifacts/test_b1_archives.py` (updated), `tests/artifacts/test_integration_fixes.py`.
 
+## ADR-072, fix lane F4: what the guard costs, measured, and the second decode removed where it was waste
+
+Fix lane F1 put every decode of the owner's bytes first in a limited child (`artifacts/guarded.py`) and stated the
+cost as "about twice the decode time". The code review's second pass (N1) measured more on its inputs (a 5,000-file
+zip 0.78 -> 6.0 s, a crafted 135 KiB PNG 13.4 s). Where the time went (`docs/quality/evidence/omnimind_f4.json`):
+the child's start-up is about 0.1 s (interpreter, numpy, the adapters); the rest is the decode itself, done twice
+(once in the child, once in the parent). The zip's decode had itself become slower (2.9 s in-process: 2.5 s of it is
+the injection screen `webcortex.safety.scan_injection` run on each of the 4,096 decoded members by ruling G's
+`refuse_flagged`; the screen is outside this lane's files and unchanged).
+
+Keeping a file needs only its index and its words, so `store.add` now asks the child for them
+(`guarded.summarize`): the child returns, in its JSON verdict (at most 4 MiB, never a pickle), what was detected,
+`describe()`, the notes, `partial`, the text layer (at most 256 KiB) and the formats that ended undecoded, or the
+error it raised; the parent validates every field's type and size, and a malformed verdict is a refusal
+(`guard_unavailable`, the file kept unread). The guard is not weakened: the same child, limits and kill decide; only
+the parent's copy of the same decode is gone. Measured, best of two (aarch64, this host), before -> after:
+`add` of the 5,000-file zip 5.81 -> 2.97 s; of the crafted 7600 x 5500 RGB PNG of 135 KiB 13.19 -> 6.86 s (parent
+peak 304 -> 47 MiB); of a 30 MP photo-like PNG of 47 MiB 1.31 -> 1.02 s (parent peak 328 -> 142 MiB). So: `add`
+costs one decode plus about 0.1 s; a command that needs the content itself (`make`, `facts`, `relate`, the
+console's view) costs two decodes plus about 0.1 s. The child also reports which approved external adapters it
+loaded; when they differ from the parent's, the file is kept unread (`external_unguarded`; security N-new-4).
+Tests: `tests/artifacts/test_f4_guard_once.py` (the same index and words with no decode in the parent; the external
+mismatch; a malformed summary refused).
+
 # ADR-073 The form planner: deciding the form of a result before anything is made, and saying why
 
 Status: built, **not called by anything** (Wave O-0, lane C). No setting, no schema change, no stored state. A pure

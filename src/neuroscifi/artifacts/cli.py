@@ -429,7 +429,8 @@ def register(sub):
         return q
 
     q = command("add", _add, "keep one or more files you hand over (regular files only, each up to the limit "
-                             "`nsf config --artifact-max-mib` sets)")
+                             "`nsf config --artifact-max-mib` sets); each is read once, in a separate process under "
+                             "memory and time limits (about 0.1 s more)")
     q.add_argument("files", nargs="+", type=Path)
     q.add_argument("--name", help="the label to keep it under (one file only; default: the file's name)")
     q = command("list", _list, "what is kept, newest first; what the system made says so")

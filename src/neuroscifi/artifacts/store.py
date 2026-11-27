@@ -504,14 +504,16 @@ def apply_adapter_setting(approved) -> list[str]:
 # The file whose decode went over the operating-system limits in the guarded child (`guarded`), or for which no such
 # child could be started, is kept too, unread: an opaque artifact with that refusal recorded.
 # A file named as a structured format whose prefix shows only text (`adapters.HIDDEN_STRUCTURE`) is kept unread too.
-KEPT_REFUSALS = frozenset({"unsafe_member_name", "resource_limit", "guard_unavailable", "unconfirmed_structure"})
+KEPT_REFUSALS = frozenset({"unsafe_member_name", "resource_limit", "guard_unavailable", "unconfirmed_structure",
+                           "external_unguarded"})
 
 
-def _decode(data: bytes, *, name, declared, lim: Limits):
+def _decode(data: bytes, *, name, declared, lim: Limits, summary: bool = False):
     """(decoded or None, error or None, [(format, outcome)] gaps) for these bytes. A safety refusal propagates.
     A header-only format (`HeaderOnly`) is an error that still established something: its `facts` go into the error
     record, and its `words` (untrusted metadata) into the record's "words", which the caller moves to the text
-    layer (never into the index)."""
+    layer (never into the index). `summary`: the decode runs once, in the guard's child, which returns the index and
+    words only (`guarded.summarize`, for keeping a file; the representation is a `guarded.Described`)."""
     gaps, me = [], threading.get_ident()
 
     def hook(detected, outcome):
@@ -520,8 +522,12 @@ def _decode(data: bytes, *, name, declared, lim: Limits):
     remove = adapters.on_gap(hook)
     try:
         try:
+            if summary:
+                decoded, child_gaps = guarded.summarize(data, name=name, declared=declared, limits=lim)
+                return decoded, None, gaps + child_gaps
             return guarded.decode(data, name=name, declared=declared, limits=lim), None, gaps
         except Refused as error:
+            gaps += getattr(error, "gaps", [])
             if error.reason != "too_large" and error.rule not in KEPT_REFUSALS:
                 raise
             record = {"reason": error.reason, "rule": error.rule, "message": str(error)[:300], "needs": []}
@@ -529,6 +535,7 @@ def _decode(data: bytes, *, name, declared, lim: Limits):
                 record["findings"] = [str(f)[:200] for f in error.findings][:64]
             return None, record, gaps
         except ArtifactError as error:
+            gaps += getattr(error, "gaps", [])
             record = {"reason": error.reason, "message": str(error)[:300],
                       "needs": list(getattr(error, "needs", ()))[:16]}
             if isinstance(error, HeaderOnly):
@@ -651,7 +658,7 @@ def _store(db, data: bytes, *, label, origin, maker, scope, name_hint, declared,
                            reason="missing_capability")
     _room(db, path, len(data))
     apply_adapter_setting(cfg.artifact_adapters)
-    decoded, error, gaps = _decode(data, name=name_hint, declared=declared, lim=limits(cfg))
+    decoded, error, gaps = _decode(data, name=name_hint, declared=declared, lim=limits(cfg), summary=True)
     detected = decoded.detected if decoded is not None else detect(data[:64 << 10], name=name_hint,
                                                                    declared=declared, size=len(data))
     text = ""
