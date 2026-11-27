@@ -464,12 +464,31 @@ def _chart_series(data: bytes) -> list:
             if not pts:
                 continue
             words = name_words(s.name) or name_words(title)
-            out.append(_s("series", "chart.series", tuple(pts), words=words,
+            unit = _name_unit(s.name) or _name_unit(title)
+            k = len(out)
+            out.append(_s("series", f"chart.series[{k}]", tuple(pts), words=words, unit=unit,
                           how="marks read back through the axes fitted from the tick labels (reading contract)",
                           tolerance=ay.tol(),
                           detail=(("x_kind", xkind), ("log", ay.kind == "log"),
                                   ("x_tol", ax.tol() if ax.kind != "band" else 0.0), ("name", clean(s.name, 60)))))
+            ys = [y for _, y in pts if isinstance(y, float) and math.isfinite(y)]
+            if ys:
+                values = {"max": max(ys), "min": min(ys), "first": ys[0], "last": ys[-1],
+                          "mean": sum(ys) / len(ys), "sum": sum(ys)}
+                for agg, v in values.items():
+                    tol = ay.tol() * (len(ys) if agg == "sum" else 1)
+                    if ay.kind == "log":
+                        tol = abs(v) * (10 ** (ay.tol() * (len(ys) if agg == "sum" else 1)) - 1)
+                    out.append(_s("number", f"chart.series[{k}].{agg}", v, unit=unit, words=words, aggregate=agg,
+                                  tolerance=tol, how=f"{agg} of the values the chart shows (read back from its marks)",
+                                  detail=(("derived", True),)))
     return out
+
+
+def _name_unit(name: str | None) -> Unit | None:
+    """The unit a name carries in parentheses or brackets: "Rainfall (mm)", "Price [EUR]"."""
+    m = re.search(r"[(\[]\s*([^()\[\]]{1,16}?)\s*[)\]]\s*$", name or "")
+    return unit_of(m.group(1)) if m else None
 
 
 def _document_facts(doc, *, base_unit=None) -> list:
@@ -814,6 +833,14 @@ def _cmp_number(fa: Fact, fb: Fact, q_aggs, explicit_sentences) -> Pair | None:
     if not rr.compatible(fa.unit, fb.unit):
         return None
     stmt, meas = (fa, fb) if isinstance(fa, Statement) or not isinstance(fb, Statement) else (fb, fa)
+    if (fa.get("derived") and isinstance(fb, Quantity)) or (fb.get("derived") and isinstance(fa, Quantity)):
+        return None                       # a chart's aggregates meet a table through its series, not twice
+    if fa.get("derived") and fb.get("derived"):
+        return None
+    if isinstance(fa, Statement) and isinstance(fb, Statement) and fb.get("derived"):
+        stmt, meas = fa, fb               # a document's words against what a chart shows
+    elif isinstance(fa, Statement) and isinstance(fb, Statement) and fa.get("derived"):
+        stmt, meas = fb, fa
     agg_s, agg_m = stmt.aggregate, meas.aggregate
     note = ""
     conn = _connection(stmt, meas)
@@ -1225,9 +1252,10 @@ def _candidates(A: Side, B: Side, q_aggs) -> list:
             elif k == "sequence":
                 p = _cmp_sequences(fa, fb)
             if p is not None:
-                if isinstance(fa, Quantity) and isinstance(fb, Quantity):
-                    p.strong = False           # two measurements: compared when the question names them
-                    p.note = (p.note + "; " if p.note else "") + "two measurements"
+                if isinstance(fa, Quantity) and isinstance(fb, Quantity) and not (
+                        fa.kind == "series" and fa.words and set(fa.words) == set(fb.words)):
+                    p.strong = False           # two measurements: compared when the question names them (or, for
+                    p.note = (p.note + "; " if p.note else "") + "two measurements"   # series, one name)
                 out.append(p)
                 if len(out) >= MAX_PAIRS:
                     return out
@@ -1379,7 +1407,8 @@ def compare(a, b, question: str | None = None) -> Relation:
     q_words = set(rr.content_words(question or ""))
     q_aggs = rr.aggregate_named(question or "")
     pairs = _candidates(A, B, q_aggs)
-    pairs += _question_pairs(A, B, q_words)
+    if set(rr.tokens(question or "")) & rr.COUNT_CUES:
+        pairs += _question_pairs(A, B, q_words)
     for p in pairs:
         p.focus = _focus(p, q_words, q_aggs) if question else 0
         if isinstance(p.a, Quantity) and isinstance(p.b, Quantity) and p.verdict != "not_comparable" and \
@@ -1388,7 +1417,8 @@ def compare(a, b, question: str | None = None) -> Relation:
     names = (clean(A.name or "the first artifact", 60), clean(B.name or "the second artifact", 60))
     rel = Relation(None, pairs, [], "", shared_names(A, B), mentions(A, B), timing(A, B), A.notes + B.notes, names)
     strong = [k for k, p in enumerate(pairs) if p.strong]
-    named_counts = {n for f in A.facts + B.facts if f.kind == "count" and f.primary for n in f.nouns} & q_words
+    named_counts = {n for f in A.facts + B.facts if f.kind == "count" and f.primary for n in f.nouns} & q_words \
+        if set(rr.tokens(question or "")) & rr.COUNT_CUES else set()
     if q_aggs:
         # the question asks about an aggregate: only a comparison of that aggregate may answer it
         decide = [k for k in strong if pairs[k].a.aggregate in q_aggs or pairs[k].b.aggregate in q_aggs]
@@ -1410,12 +1440,35 @@ def compare(a, b, question: str | None = None) -> Relation:
     elif "inconsistent" in verdicts:
         rel.answer = False
         rel.reason = f"they disagree ({verdicts.count('inconsistent')} of {len(decide)} comparison(s) of {scope})"
+    elif all(v == "consistent" for v in verdicts) and scope.startswith("everything") and _dangling(A, B, pairs):
+        st = _dangling(A, B, pairs)[0]
+        rel.reason = ("cannot tell: what could be compared agrees, but a statement about the same subject could not "
+                      f"be compared ({st.how}: it does not say which total, mean or extreme it is)")
     elif all(v == "consistent" for v in verdicts):
         rel.answer = True
         rel.reason = f"they agree ({len(decide)} comparison(s) of {scope}, each within its stated tolerance)"
     else:
         rel.reason = f"cannot tell: {scope} cannot be compared fully"
     return rel
+
+
+def _dangling(A: Side, B: Side, pairs: list) -> list:
+    """Number statements tied to the other artifact (a unit of the same dimension, or a shared word, with one of
+    its quantities) that no comparison used: while one exists, agreement of the rest is not agreement."""
+    used = {id(p.a) for p in pairs} | {id(p.b) for p in pairs}
+    out = []
+    for S, O in ((A, B), (B, A)):
+        others = [q for q in O.facts if q.kind == "number" and not q.get("derived")]
+        for st in S.facts:
+            if st.kind != "number" or not isinstance(st, Statement) or st.get("derived") or id(st) in used or \
+                    _yearlike(st):
+                continue
+            for q in others:
+                same_dim = st.unit is not None and q.unit is not None and st.unit.dim == q.unit.dim
+                if same_dim or (rr.compatible(st.unit, q.unit) and set(st.words) & set(q.words)):
+                    out.append(st)
+                    break
+    return out
 
 
 # ---- names, mentions, timing -------------------------------------------------------------------------------------------

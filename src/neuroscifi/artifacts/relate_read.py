@@ -45,7 +45,7 @@ _TOKEN = re.compile(r"[a-z0-9]+(?:'[a-z]+)?")
 def singular(word: str) -> str:
     """A plain English plural folded to its singular (rows -> row, entries -> entry, vertices -> vertex)."""
     w = word.lower()
-    if len(w) <= 3 or not w.endswith("s") or w.endswith("ss"):
+    if len(w) <= 3 or not w.endswith("s") or w.endswith(("ss", "us", "is")):
         return w
     if w.endswith("ices") and len(w) > 5:
         return w[:-4] + "ex"
@@ -206,6 +206,10 @@ DIMENSION_WORDS = {"width": "width", "wide": "width", "depth": "depth", "deep": 
                    "high": "height", "tall": "height", "length": "length", "long": "length"}
 
 
+# words with which a question asks about a count ("as many", "one per row", "for each", "the number of")
+COUNT_CUES = frozenset("number numbers many count counts each every per how".split())
+
+
 def aggregate_named(text: str) -> tuple[str, ...]:
     """The aggregates a text names (the question's words: "add up", "the total", "the average")."""
     found: dict[str, None] = {}
@@ -312,7 +316,7 @@ class Num:
 
 
 _CURRENCY_BEFORE = {"$": "$", "€": "€", "£": "£", "¥": "¥"}
-_UNIT_AFTER = re.compile(r"\s?(°\s?[cfCF]\b|°|%|[$€£¥]|[A-Za-zµ]{1,12}[²³23]?)(?:\s+(celsius|fahrenheit|cent))?")
+_UNIT_AFTER = re.compile(r"\s?(°\s?[cfCF]\b|°|%|[$€£¥]|[A-Za-zµ]{1,12}[²³23]?)(?:\s+((?i:celsius|fahrenheit|cent)))?")
 
 
 def _unit_after(text: str, end: int) -> tuple[Unit | None, str, int]:
