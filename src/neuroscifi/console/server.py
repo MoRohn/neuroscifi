@@ -22,6 +22,7 @@ import time
 from uuid import uuid4
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from .request_helpers import fields as _fields, integer as _int, number as _number, query as _query
 from ..instance import (beliefs, checkpoints, datasets, evidence, executive, governance, graphs, memory,
                         recall, store)
 from ..instance.errors import InstanceError, ValidationError
@@ -70,40 +71,7 @@ FORGET = {"evidence": governance.forget_evidence, "epoch": governance.forget_epo
 FORGET_BY_NUMBER = ("dataset", "consolidated")      # the target is an id or a seq, the others take a name
 
 
-# ---- request helpers -------------------------------------------------------------------------------
-
-def _fields(body, required=(), optional=()):
-    """Reject unknown or missing keys so a typo never silently falls back to a default."""
-    unknown = sorted(set(body) - set(required) - set(optional))
-    if unknown:
-        raise ValidationError("unknown field(s): " + ", ".join(unknown))
-    missing = [key for key in required if key not in body]
-    if missing:
-        raise ValidationError("missing field(s): " + ", ".join(missing))
-    return body
-
-
-def _int(value, name):
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValidationError(f"{name} must be an integer")
-    return value
-
-
-def _query(query, allowed):
-    unknown = sorted(set(query) - set(allowed))
-    if unknown:
-        raise ValidationError("unknown query parameter(s): " + ", ".join(unknown))
-    return {key: values[-1] for key, values in query.items()}
-
-
-def _number(text, name, kind=float):
-    if text is None:
-        return None
-    try:
-        return kind(text)
-    except ValueError:
-        raise ValidationError(f"{name} must be a number") from None
-
+# ---- request helpers: console/request_helpers.py (shared with console/artifacts.py, no import cycle) ----
 
 # ---- route handlers: (ctx, params, query, body) -> JSON value -----------------------------------------
 

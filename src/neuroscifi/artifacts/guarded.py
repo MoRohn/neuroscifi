@@ -41,6 +41,7 @@ A child that cannot be started at all (no interpreter path, the process table fu
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -48,6 +49,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -252,8 +254,25 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
     `adapters.decode` raises, and `Refused(rule="resource_limit" | "guard_unavailable")`."""
     from . import adapters
     if ENABLED:
-        check(data, name=name, declared=declared, limits=limits, external=adapters.loaded_external())
+        external = adapters.loaded_external()
+        key = (hashlib.sha256(data).hexdigest(), name, declared, repr(limits), external)
+        with _LOCK:
+            seen = key in _VERDICTS
+        if not seen:
+            check(data, name=name, declared=declared, limits=limits, external=external)
+            with _LOCK:
+                _VERDICTS[key] = True
+                while len(_VERDICTS) > VERDICTS_KEPT:
+                    _VERDICTS.pop(next(iter(_VERDICTS)))
     return adapters.decode(data, name=name, declared=declared, limits=limits)
+
+
+# A child that finished within bounds for these exact bytes, name, declared type, limits and approved adapters will
+# finish within them again: the verdict is reused in this process (the console's detail view opens the same kept
+# file again and again; security review, second pass, L-new-1). Only successes are kept; a refusal is never cached.
+VERDICTS_KEPT = 256
+_VERDICTS: dict = {}
+_LOCK = threading.Lock()
 
 
 # Tests that exercise everything but the guard switch it off for speed (tests/artifacts/conftest.py); the owner

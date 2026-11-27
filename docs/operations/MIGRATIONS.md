@@ -94,6 +94,10 @@ the upgrade (section 2, \"Rollback\").
 **Read this first when upgrading from 0.7.0 (schema 13) or older.** From schema 14 an event that reaches its lifetime no longer disappears entirely: what a learning event taught is kept without limit as a consolidated reading, with its root name and sample id (ADR-044). This is on by default, also for an individual created by older software. To keep the old meaning of expiry, **stop every service first** (the console and the Pocket bridge expire due evidence whenever they are used, so a service that restarts after the package upgrade consolidates before you can opt out), then make `nsfs config --no-consolidation` the first command you run: it migrates the file and sets the switch without expiring anything. Only then start the services. If readings were kept before you opted out, list them with `nsfs memory consolidated` and forget them (RUNBOOK section 6).
 
 1. Stop the services: `sudo systemctl stop neuroscifi-pocket.service neuroscifi-console.service neuroscifi-checkpoint.timer`.
+   Then copy the individual's file and its artifact sidecar to a folder only you can read, e.g.
+   `install -d -m 700 ~/nsf-before-upgrade && cp -p INDIVIDUAL.sqlite INDIVIDUAL.artifacts.sqlite ~/nsf-before-upgrade/`
+   (the sidecar exists once a file was kept; with the services stopped, there is no `-wal` file to copy). This copy
+   is the way back that the rollback below names.
 2. Take and verify a checkpoint with the **current** software (the pre-upgrade checkpoint):
    ```sh
    nsfs checkpoint create --policy cold
@@ -113,7 +117,7 @@ The Pocket database needs no step of its own (section 4).
 2. Reinstall the previous software (`install.sh --wheel OLD.whl`).
 3. Put back the file as it was before the upgrade. There are exactly two ways, and `nsf checkpoint restore` is neither
    (corrected by OMNIMIND fix lane F1 after code review M1; pinned by `tests/instance/test_migrations.py`):
-   - the owner's own copy of the individual's file, taken before the upgrade (step 1 of section 2's upgrade); or
+   - the owner's own copy of the individual's file and its sidecar, taken in step 1 of the upgrade above; or
    - `nsf archive unpack SOURCE DESTINATION` with the OLD software, run on the archive file of a checkpoint taken
      before the upgrade (see `nsf archive --help`).
    Why not `restore`: the old software refuses the upgraded live file ("newer than this software"), so it cannot read

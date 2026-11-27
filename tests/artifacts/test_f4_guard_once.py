@@ -91,3 +91,35 @@ def test_a_malformed_summary_is_a_refusal_never_trusted():
         guarded._summary_of({"status": "decoded", "detected": {"family": "text", "format": "txt", "media_type": "x",
                                                                "basis": "structure"}, "description": {},
                              "text": "x" * (guarded.TEXT_MAX + 1)})
+
+
+def test_the_guard_s_verdict_is_reused_for_the_same_bytes_and_a_refusal_is_not(monkeypatch):
+    """Security review, second pass, L-new-1: the console's detail view opens the same kept file again and again."""
+    monkeypatch.setattr(guarded, "ENABLED", True)
+    monkeypatch.setattr(guarded, "_VERDICTS", {})
+    runs = []
+    real = guarded.check
+    monkeypatch.setattr(guarded, "check", lambda *a, **k: runs.append(1) or real(*a, **k))
+    for _ in range(3):
+        guarded.decode(FILES["rain.csv"], name="rain.csv")
+    assert len(runs) == 1
+    guarded.decode(FILES["rain.csv"] + b"5,6\n", name="rain.csv")             # other bytes: checked again
+    assert len(runs) == 2
+
+
+def test_one_console_decode_at_a_time(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from neuroscifi.console import artifacts as console
+    from neuroscifi.instance.errors import Conflict
+    db = _db(tmp_path, "console")
+    record = A.add(db, FILES["rain.csv"], name="rain.csv", now=T0)
+    monkeypatch.setattr(console, "DECODE_WAIT", 0.01)
+    monkeypatch.setattr(console, "_on", lambda c: None)
+    c = SimpleNamespace(db=db, now=T0)
+    assert console.DECODE_SLOT.acquire(timeout=1)
+    try:
+        with pytest.raises(Conflict):
+            console.detail(c, [record.id], {}, b"")
+    finally:
+        console.DECODE_SLOT.release()
