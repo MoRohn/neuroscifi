@@ -9,7 +9,7 @@ import pytest
 
 from b2_fixtures import b2_registered  # noqa: F401
 
-from neuroscifi.artifacts import adapters, measure_mesh
+from neuroscifi.artifacts import adapters, measure_mesh, outcome
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters import _b2, gltf, meshes
 
@@ -44,7 +44,7 @@ def test_obj_quads_negative_indices_groups_and_libraries():
     _check_cube(out.representation)
     words = out.representation.text()
     assert "Cube" in words and "side" in words and "grey" in words
-    assert any("never opened" in n for n in out.notes) and any("fans" in n for n in out.notes)
+    assert any(outcome.OUTSIDE in n for n in out.notes) and any("fans" in n for n in out.notes)
     assert out.representation.unit is None
 
 
@@ -185,8 +185,17 @@ def test_gltf_and_glb_with_node_transforms(binary):
 
 
 def test_gltf_external_uri_is_never_fetched_and_hostile_accessors():
-    out = adapters.decode(_gltf(external=True))
-    assert len(out.representation.faces) == 0 and any("never opened" in n for n in out.notes)
+    # ADR-080 rule 2 (lane FX2): geometry in an outside buffer is never fetched and cannot be known; it used to be
+    # answered as 0 triangles. The file is read as its header only: a question about its geometry is "cannot".
+    with pytest.raises(T.HeaderOnly) as err:
+        adapters.decode(_gltf(external=True))
+    assert outcome.of_error(err.value) == outcome.CANNOT and outcome.OUTSIDE in str(err.value)
+    assert err.value.facts["geometry in outside buffers"] == "buffer 0" and err.value.facts["meshes"] == 1
+    assert "example" not in str(err.value) + json.dumps(err.value.facts) and "tetra" in err.value.words
+    doc = json.loads(_gltf())                                       # an outside image beside embedded geometry
+    doc["images"] = [{"uri": "https://example.invalid/skin.png"}]
+    out = adapters.decode(json.dumps(doc).encode())
+    assert len(out.representation.faces) == 4 and outcome.outside("1 image(s)") in out.notes
     doc = json.loads(_gltf())
     doc["accessors"][0]["count"] = 1000
     with pytest.raises(T.Malformed):

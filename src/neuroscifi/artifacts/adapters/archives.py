@@ -15,7 +15,7 @@ recursively through `adapters.decode` with `nested()` limits (one level less of 
   any member is refused for any other reason than the three that concern that member only: a bomb-like member (the
   ratio rule, or a small member that would need more than the budget), a member that inflates to another size than
   the directory states or that the archive's bytes cut short (a lying size), a damaged stored member, a member
-  nested deeper than `max_depth`, a member whose own reader refuses it (an entity, a DTD, an external reference,
+  nested deeper than `max_depth`, a member whose own reader refuses it (an entity, a DTD, an XInclude,
   words addressed to an AI agent, ...). Its honest siblings are not answered; the listing is kept as findings;
 - refused as members only (listed, never read; the archive goes on): sparse TAR members (their holes would be
   materialised); encrypted ZIP members (not an attack on the reader); a member that would pass what is left of

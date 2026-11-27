@@ -5,7 +5,8 @@ strings; numbers; booleans; error cells as missing (counted); dates where the ce
 format (built-in formats 14-22, 27-36, 45-47, 50-58, or a custom format code holding y or d outside quotes and
 brackets), converted from serial days in the 1900 system (Excel's phantom 29 February 1900 accounted for) or the
 1904 system when the workbook says so. Formulas are NOT evaluated: the cached value stored with each formula cell is
-used, a formula cell without one is missing, and a note counts them. Merged ranges are noted (their value sits in
+used; a formula cell without one is left empty and a note counts them as not known here (a formula linking another
+workbook is the usual case: that workbook is never fetched, ADR-080). Merged ranges are noted (their value sits in
 the top-left cell). Time-only formats (h, m, s without y or d) stay numbers (fractions of a day; noted).
 Each sheet's header row is decided by the rule of `tables.py`.
 
@@ -166,7 +167,8 @@ def _sheet(pkg, root, shared, kinds, date1904, notes) -> list[list]:
     rows = [[cells.get((r, c)) for c in range(width)] for r in range(first, n_rows)]
     if formulas:
         notes.append(f"{formulas} formula cell(s) are not evaluated: their cached values are used"
-                     + (f"; {no_cache} have no cached value and are missing" if no_cache else ""))
+                     + (f"; {no_cache} have no cached value: what they hold cannot be known here (never computed), "
+                        "so they are left empty" if no_cache else ""))
     if errors:
         notes.append(f"{errors} error cell(s) are counted as missing")
     if times:
@@ -205,7 +207,10 @@ def read_xlsx(data, detected, limits):
             pkg.notes.append(f"stopped after {limits.max_members} sheets")
             break
         name = sheet.get("name") or f"Sheet{i + 1}"
-        target = rels.get(sheet.get(R + "id"), (None, None))[0]
+        target, address = rels.get(sheet.get(R + "id"), (None, None))
+        if address is not None:      # ADR-080 rule 2: never fetched; its cells cannot be known, it is not a member
+            pkg.notes.append(f"sheet {i + 1} lives outside the workbook: not fetched, its cells cannot be known here")
+            continue
         if not pkg.has(target):
             pkg.notes.append(f"sheet {i + 1} is listed but its part is missing")
             continue
