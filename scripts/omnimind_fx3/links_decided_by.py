@@ -2,7 +2,8 @@
 
     PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by members|links|times [--remove]
 
-Without --remove it only lists (source id, relation, other id, basis). With --remove it deletes exactly those
+Without --remove it is a dry run: it prints what it would remove (source id, relation, other id, basis) and removes
+nothing. Only with the owner's explicit --remove does it delete exactly those
 consistent_with / contradicts links from the individual's artifact_links; artifacts, their events and every other
 link stay. Ids and bases only: no artifact text is printed.
 """
@@ -26,7 +27,12 @@ def main(argv=None) -> int:
         found = (relate_cli.remove_links_decided_by if args.remove else relate_cli.links_decided_by)(db, args.by)
     finally:
         db.close()
-    print(json.dumps({"comparison": args.by, "removed" if args.remove else "found": found}, indent=1))
+    if args.remove:
+        print(json.dumps({"comparison": args.by, "removed": found}, indent=1))
+    else:
+        print(json.dumps({"comparison": args.by, "would_remove": found,
+                          "note": "dry run: nothing was removed; pass --remove to remove exactly these links"},
+                         indent=1))
     return 0
 
 

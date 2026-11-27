@@ -72,7 +72,13 @@ def test_the_documented_step_lists_then_removes(tmp_path):
     script = str(ROOT / "scripts" / "omnimind_fx3" / "links_decided_by.py")
     listed = subprocess.run([sys.executable, script, "--db", str(path), "--by", "times"], capture_output=True,
                             text=True, env=env, timeout=120)
-    assert listed.returncode == 0 and ids["bells.wav"] in listed.stdout and '"found"' in listed.stdout
+    assert listed.returncode == 0 and ids["bells.wav"] in listed.stdout and '"would_remove"' in listed.stdout
+    assert "nothing was removed" in listed.stdout
+    db = store.open_existing(path)
+    try:
+        assert len(relate_cli.links_decided_by(db, "times")) == 1                    # the dry run removed nothing
+    finally:
+        db.close()
     gone = subprocess.run([sys.executable, script, "--db", str(path), "--by", "times", "--remove"],
                           capture_output=True, text=True, env=env, timeout=120)
     assert gone.returncode == 0 and '"removed"' in gone.stdout
