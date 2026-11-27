@@ -6814,3 +6814,94 @@ lose right answers as expected: cross second split 96 -> 82 right (decidable 78 
 Lane R's own-variant sweep: its timeline question names no artifact, so those 90 answers became "cannot".
 Rollback (R9): see the corrected Rollback above: links recorded by these comparisons (from the first version or this
 one) are listed and removed by naming the comparison with `scripts/omnimind_fx3/links_decided_by.py`.
+
+## ADR-081, addition (2026-11-27, lane FX5): the relater's three new comparisons rebuilt by construction
+
+**What was tried twice, and why it failed.** Lane FX3 added three comparisons (an archive's members against a
+listing, a drawing's links against a text, a sound's tone onsets against a cue sheet) and lane FX4 tightened them
+with word rules: a question had to name a quantity word and a "where" word, hidden text was detected format by
+format, invisible strokes by a pattern. Each round was broken by a fresh security reviewer with new pairs (the first
+review: 24 of 27 wrong or answered where "cannot" was right; the second: 30 of 56 wrong, every one `specific` and so
+recorded as a durable link). The reason is the same both times: a rule that looks for words that MUST be present
+says nothing about the words it does not read, and a rule that lists ways of hiding text says nothing about the ways
+it does not list. A qualifier ("apart from X", "compressed", "in KiB", "MD5", "loud", "notes"), a hidden run, a white
+stroke, a header or "rejected" line, a whole-second cue: each was ignored, and the comparison answered for
+everything it measures.
+
+**The construction now** (lane FX5; a wrong answer is far worse than "cannot", and right answers lost are accepted):
+- **C1, closed question grammar** (`artifacts/relate_grammar.py`). A structure comparison decides only a yes/no
+  question EVERY word of which its grammar consumes: function words from a fixed list, positive words of judgement
+  and of stating, "all/every/each", the comparison's quantity (sizes or bytes; checksums/hashes/digests and the
+  algorithm names; links/connections/edges; times/onsets/starts), the elements it compares named in the plural or
+  with "all/every/each" (files/members/entries; links; tones/beeps/bells/chimes/cues), where it is read from, or the
+  whole name of one of the two files (never a part of a name). Negating, narrowing and reversing words (not, no,
+  only, one, any, except, apart, other, first, last, wrong, false, differ...) are in no vocabulary. Any other word
+  leaves the question unread: such a question is never decided by a structure comparison, and a question the
+  grammar does read completely is decided by that comparison alone or is "cannot" (no older comparison answers it).
+  The same completeness rule (with the general vocabulary of aggregates, counts and measures and the compared facts'
+  own words, `relate_grammar.legacy_parse`) gates the older comparisons' `specific`: "Cost?", "Is the cost right?"
+  are answered as before and never recorded.
+- **C2, plain sources only.** The three comparisons read a listing, a link list or a cue sheet only from a plain
+  text file, from its own bytes, every character printable ASCII (tab and line breaks allowed; a link line may use
+  "→ – —"). Markdown, HTML, RTF, DOCX, ODT, PDF, JSON, XML, CSV and every other source are "cannot: this comparison
+  reads plain listings only". This replaces format-by-format hidden-text detection for them, which cannot be
+  completed. For the older comparisons the existing hidden-text detection is kept; it is not claimed complete.
+- **C3, all or cannot.** Every non-empty line must be read (a member and a size or digest; two labels and a relation
+  join; an elapsed time with at most the sheet's one event word), with no duplicate and within the bounds (20,000
+  lines, 256 KiB of text, 5,000 drawing marks, 2,000 cue times). Every element of the other artifact must be
+  classified: each member of a ZIP or TAR read by the decoder as a regular file with a plain ASCII name (none listed
+  only, refused or cut off); a drawing that is a plain SVG whose every element and attribute this code evaluates
+  (svg, g, title, desc, rect, circle, ellipse, line, polyline, polygon, path, text; geometry, #rgb/#rrggbb or a few
+  colour names, widths and font sizes in pixels after the viewBox scale, translations only; no style, class,
+  opacity, display, visibility, marker, dash, filter, mask, clip, defs or use), every edge stroked visibly on white
+  (contrast at least 1.5, width at least 0.5 px), every mark inside the drawing's area, nodes not overlapping, each
+  with exactly one plain label, no line passing through another node, no free text; a sound whose channels are
+  identical, made of tones of steady pitch and loudness separated by pauses and digital silence (no quieter or
+  shorter sound left over). A value another reading would explain is "cannot": a size that would agree in kB, KiB or
+  blocks when no unit is stated (by the lines or the question), a digest whose algorithm is neither named (question
+  or file name) nor proven by another line that agrees, a cue time that would agree only if the sheet rounded or cut
+  off its times, a listed name that differs from a member only in case or path form or names a folder or a name
+  inside a nested member. Finally a verdict must hold under every reading the grammar accepts: True only when both
+  sides are equal; False only for a value that disagrees, or for a difference on BOTH sides (a listed member missing
+  and a member unlisted; a link stated and not drawn and one drawn and not stated; a listed time with no onset near
+  it and an onset with no listed time near it). An extra line, link or time on one side only is "cannot" ("does the
+  list give the sizes of all the files" holds with an extra line).
+- **C4, recording.** `Relation.specific` is computed in one function (`relate._specific`) and is the ONLY gate for a
+  durable consistent_with / contradicts link, for `nsf artifact relate` and for the production pipeline alike (its
+  `require_specific=False` bypass is removed: a production relates its sources with no question, so its relations
+  are shown in its record and no longer stored as verdict links; describes and same_subject are unchanged). The older
+  number, count and extent comparisons decline a statement whose own sentence narrows, denies or conditions it (a
+  closed list of a decline rule: not, except, before, if, net, each, full...), whose document excludes something
+  (except, excluding, apart, besides, minus, counting), or that the document states twice with two values (the
+  second review's M4). `INSERT OR IGNORE` kept stale links: now a decided answer first removes every other verdict
+  link between the same two artifacts (either direction), so a pair holds at most the latest decided verdict, and an
+  undecided answer to the same question removes the link that answered it (a verdict link's `how` ends in `;q=` and
+  16 hex digits of SHA-256 of the question, never its words); an undecided answer to another question removes
+  nothing.
+- **C5, other findings by class.** The PDF loop check parses the chain (every `startxref`, every /Prev and /XRefStm,
+  strings and comments blanked, name escapes decoded, a cycle on any walk). The artifacts-only address screen takes
+  vocatives that open with "to/for", more names of models and bots, imperatives that tell the reader what to
+  conclude or answer, and the words a markup file holds but does not show; **it is a best-effort screen, English
+  only**: on 12 lines written after it was changed and measured once it caught 5 (a miss rate of 7 of 12); it
+  refuses the reviews' 17 variants and the lane's own 12 (seen while writing), reads 20 honest lines, and still
+  refuses 3 honest lines addressed to a person named Claude or "Assistant:" (the measured cost). A Markdown thematic
+  break of at most 4,096 characters is a rule, not nested lists; a Windows code-page ZIP name with an Info-ZIP
+  Unicode Path field that is the same name (its CRC and a legacy code page agree) is read under it.
+
+**Measured** (development numbers; `docs/quality/evidence/omnimind_fx5.json`): the first review's 28 pairs 12 right /
+16 cannot / 0 wrong; the second review's 56 (rebuilt in the lane's own builders) 23 / 33 / 0 (21 wrong on the code
+before); the lane's own adversarial set 99 pairs 49 / 50 / 0 (40 wrong on the code before; a second round of 9 pairs
+written after reading the first draft broke it 8 times, each closed by a rule above, not by its case). Opened cross,
+second split 72 right / 26 cannot / 0 wrong of 98 (decidable 54 of 80, was 64; undecidable "cannot" 18 of 18); first
+split 44 / 34 / 0 of 78 (was 58). Development cross 70 of 72 (two report totals stated as "Net total" now decline).
+Lane FX3's relater corpus 180 / 96 / 0 of 276 (was 188 / 88 / 0); lane FX's corpora unchanged; opened unknown
+170/1/0 and hostile 62/62 unchanged; the reviews' 159 ordinary files keep their outcomes except two honest Markdown
+rules now read. Guard differential 0 different; offline digest equal in both regimes.
+
+**Rollback.** Revert lane FX5's commits. Links: verdict links recorded by FX5's code carry `;q=`; the structure
+comparisons' links of every version are listed and removed with `scripts/omnimind_fx3/links_decided_by.py`. Links
+that the first version of these fixes (lane FX3, before FX4) recorded from its CHANGED OLDER rules (a stated count
+read as a column total, the pixel branch, the depiction exemption) carry ordinary refs such as
+`table.column:N.sum/document.sentence:N` and cannot be told apart from correct links by any field: only their
+`created_at` window would show them, and nothing here removes them. Production verdict links recorded before FX5
+stay unless removed by hand. Nothing else stored changes shape; no migration, setting, command or format was added.

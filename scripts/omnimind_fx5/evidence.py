@@ -1,0 +1,86 @@
+"""Lane FX5 (ADR-081, C1-C5): the figures of the relater's construction and of the hostile classes, written to
+docs/quality/evidence/omnimind_fx5.json (summaries only).
+
+    PYTHONPATH=src python scripts/omnimind_spent.py --family cross --json SPENT.json --quiet
+    PYTHONPATH=src python scripts/omnimind_fx5/evidence.py [--spent SPENT.json] [--out PATH]
+
+What it measures (development numbers: every set here was seen while the rules were written, except where said):
+- the relater on the first review's 28 pairs (tests/artifacts/fx4_review_pairs.py), the second review's 56 rebuilt
+  (tests/artifacts/fx5_pairs.review_pairs) and this lane's own adversarial set (fx5_pairs.adversarial_pairs):
+  right / cannot / wrong, a pair whose truth is "cannot" counting right only when the answer is "cannot";
+- the cross family's development split (`cross.score`);
+- the address screen on the reviews' variants, the lane's own, the honest lines, and the FRESH lines written after
+  the screen was changed and measured once (its best-effort miss rate).
+The opened withheld cross cases are measured by scripts/omnimind_spent.py (the only script that may import them);
+`--spent` copies its totals in.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tests" / "artifacts"))
+
+
+def _relater_sets() -> dict:
+    import fx4_review_pairs as P4
+    import fx5_pairs as P5
+    from neuroscifi.acceptance.omni.subject import relate
+    out = {}
+    for key, pairs in (("review1_28", P4.pairs()), ("review2_56", P5.review_pairs()),
+                       ("own_adversarial", P5.adversarial_pairs())):
+        tally = {"n": len(pairs), "right": 0, "cannot": 0, "wrong": 0}
+        for _, files, question, truth in pairs:
+            answer = relate(dict(files), question)["answer"]
+            if answer is None:
+                tally["right" if truth is None else "cannot"] += 1
+            else:
+                tally["right" if answer is truth else "wrong"] += 1
+        out[key] = tally
+    out["own_adversarial"]["second_round"] = sum(1 for p in P5.adversarial_pairs() if p[0].startswith("ad2_"))
+    return out
+
+
+def _screen() -> dict:
+    import fx5_address_lines as L
+    from neuroscifi.artifacts import adapters
+    from neuroscifi.artifacts.types import ArtifactError
+
+    def caught(line):
+        try:
+            return bool(adapters.decode(L.note(line), name="n.md").flagged)
+        except ArtifactError:
+            return True
+    return {k.lower(): {"n": len(getattr(L, k)), "refused": sum(caught(x) for x in getattr(L, k))}
+            for k in ("REVIEW1", "REVIEW2", "OWN", "FRESH", "HONEST", "FRESH_HONEST", "COST", "NOT_ENGLISH")}
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--out", default=str(ROOT / "docs" / "quality" / "evidence" / "omnimind_fx5.json"))
+    ap.add_argument("--spent", help="the --json output of scripts/omnimind_spent.py --family cross")
+    args = ap.parse_args(argv)
+    from neuroscifi.acceptance.omni import cross, subject
+    dev = cross.score(subject.relate, "development")
+    value = {
+        "label": "OMNIMIND lane FX5 (ADR-081, C1-C5): development numbers; the sets were seen while the rules were "
+                 "written, except the address screen's FRESH lines (measured once, never tuned on)",
+        "relater": _relater_sets(),
+        "cross_development": {"correct": dev["correct"], "answered": dev["answered"],
+                              "correct_of_answered": dev["correct_of_answered"]},
+        "address_screen": _screen(),
+    }
+    if args.spent:
+        totals = json.loads(Path(args.spent).read_text())["totals"]
+        value["opened_cross"] = {k: {x: t[x] for x in ("n", "right", "cannot", "wrong", "decidable", "undecidable")}
+                                 for k, t in totals.items()}
+    Path(args.out).write_text(json.dumps(value, indent=1, sort_keys=True) + "\n")
+    print(json.dumps(value, indent=1, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

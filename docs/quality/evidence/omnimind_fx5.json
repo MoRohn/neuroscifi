@@ -1,0 +1,107 @@
+{
+ "address_screen": {
+  "cost": {
+   "n": 3,
+   "refused": 3
+  },
+  "fresh": {
+   "n": 12,
+   "refused": 5
+  },
+  "fresh_honest": {
+   "n": 8,
+   "refused": 0
+  },
+  "honest": {
+   "n": 12,
+   "refused": 0
+  },
+  "not_english": {
+   "n": 1,
+   "refused": 0
+  },
+  "own": {
+   "n": 12,
+   "refused": 12
+  },
+  "review1": {
+   "n": 5,
+   "refused": 5
+  },
+  "review2": {
+   "n": 12,
+   "refused": 12
+  }
+ },
+ "cross_development": {
+  "answered": {
+   "k": 70,
+   "n": 72,
+   "share": 0.9722
+  },
+  "correct": {
+   "k": 70,
+   "n": 72,
+   "share": 0.9722
+  },
+  "correct_of_answered": {
+   "k": 70,
+   "n": 70,
+   "share": 1.0
+  }
+ },
+ "label": "OMNIMIND lane FX5 (ADR-081, C1-C5): development numbers; the sets were seen while the rules were written, except the address screen's FRESH lines (measured once, never tuned on)",
+ "opened_cross": {
+  "withheld/cross": {
+   "cannot": 34,
+   "decidable": {
+    "answered": 44,
+    "cases": 78,
+    "right": 44
+   },
+   "n": 78,
+   "right": 44,
+   "undecidable": {
+    "cannot": 0,
+    "cases": 0
+   },
+   "wrong": 0
+  },
+  "withheld2/cross": {
+   "cannot": 26,
+   "decidable": {
+    "answered": 54,
+    "cases": 80,
+    "right": 54
+   },
+   "n": 98,
+   "right": 72,
+   "undecidable": {
+    "cannot": 18,
+    "cases": 18
+   },
+   "wrong": 0
+  }
+ },
+ "relater": {
+  "own_adversarial": {
+   "cannot": 50,
+   "n": 99,
+   "right": 49,
+   "second_round": 9,
+   "wrong": 0
+  },
+  "review1_28": {
+   "cannot": 16,
+   "n": 28,
+   "right": 12,
+   "wrong": 0
+  },
+  "review2_56": {
+   "cannot": 33,
+   "n": 56,
+   "right": 23,
+   "wrong": 0
+  }
+ }
+}
