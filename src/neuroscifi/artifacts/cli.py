@@ -313,7 +313,7 @@ def _make(db, args, now):
         raise Malformed("say what you want to know or see (--request)")
     result = produce.produce(db, args.request, sources, form=args.form, context=_context(args),
                              options=produce.parse_options(args.option), alternatives=args.alternatives,
-                             keep=args.keep, now=now)
+                             keep=args.keep, now=now, partial_ok=getattr(args, "partial", False))
     return {"status": result.status, "artifact": result.artifact, "kept": list(result.kept),
             "sources_kept": list(result.stored_sources), "words": list(result.words), "record": result.record}
 
@@ -475,6 +475,9 @@ def register(sub):
     q.add_argument("--alternatives", type=int, default=1, help="try up to N forms that differ in kind (at most 4) "
                                                                "and keep the best")
     q.add_argument("--keep", action="store_true", help="keep the alternatives that passed their check too")
+    q.add_argument("--partial", action="store_true", help="use a file that could be read only in part (a limit "
+                                                          "stopped its reading); what is made says exactly which part "
+                                                          "was read. Without it, such a file is not used")
     budget(q)
     q = command("remake", _remake, "make something the system made again from its kept specification, in another "
                                    "form or with changed options")
