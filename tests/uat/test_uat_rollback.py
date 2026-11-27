@@ -862,6 +862,11 @@ def test_artifact_adapters(individual, monkeypatch):
     monkeypatch.setattr(adapters, "_DISCOVERED", [Ep()])
     monkeypatch.setattr(adapters, "_EXTERNAL", {})
     monkeypatch.setattr(adapters, "_ADAPTERS", list(adapters._ADAPTERS))
+    # This reader exists only in this process, so the guard's child cannot load it, and since fix lane F4 (security
+    # N-new-4) an adapter the child did not load is never used: the file would be kept unread. The switch's rollback
+    # is what this test measures, so the decode runs here; tests/artifacts/test_f4_guard_once.py covers the mismatch.
+    from neuroscifi.artifacts import guarded
+    monkeypatch.setattr(guarded, "ENABLED", False)
     on, off = instance_switch(db, "artifact_adapters", ["uat-reader=uat-pkg==1"], [])
     kept = []
 
