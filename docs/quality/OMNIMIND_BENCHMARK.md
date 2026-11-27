@@ -3,7 +3,7 @@
 The examination for Project OMNIMIND, written **before** any OMNIMIND mechanism existed (lane Z, from `omnimind` =
 main `8f68beb`), the **baseline of the unchanged system**, and, since then, the record of the product on it: the
 development runs, every held-out run (once each, "The product on the benchmark" below) and the status of the
-withheld split (no product look taken yet). Every later lane (detection and adapters, the store, the form planner,
+withheld split (looked at once per mechanism, on `55f89be`). Every later lane (detection and adapters, the store, the form planner,
 generators and validators) is measured here; nothing here helps a lane pass except by being right.
 
 - Code: `src/neuroscifi/acceptance/omni/` (one module per family; each module's docstring has its design).
@@ -249,11 +249,20 @@ What the numbers do not say:
   read only what their rules name; a way of hiding that neither rule set names is still possible, and no person
   looked at any made picture.
 
-**The withheld split: status.** Written by lane ZW and pinned; **no product look has been taken yet**. The ledger
-(`evidence/omnimind_final_uses.jsonl`, 17 lines) holds only lane ZW's machinery check through the reference subjects.
-Each look needs its pass rule committed first (the rule is in "The rule for the withheld looks (written before
-them)" below) and the drivers pinned (`evidence/omnimind_driver_pins.json`: both pins are still null at this commit,
-so every look is refused; the main session pins them after fix lane F4, in the same commit as the rule or later).
+**The withheld split: status. The looks were taken, once each, on `55f89be`** (2026-11-27, by the main session; the
+rule below and the driver pins committed in that commit; controls first). Ledger `evidence/omnimind_final_uses.jsonl`
+(42 lines); evidence and the main session's reading by the rule in `evidence/omnimind_looks/` (`summary.json`).
+Seven families (subject `artifacts`), right / "cannot" / wrong / failed: intake 347 / 11 / 0 / 0 of 358, honest 52 / 3 /
+0 / 0 of 55, compound 64 / 2 / 0 / 0 of 66, made 16 / 0 / 0 / 0 of 16, transform 11 / 0 / 0 / 0 of 11: **supported on
+unseen cases**; **unknown 107 / 1 / 3 / 0 of 111: not supported, 3 wrong answers** (disguised or unknown files
+answered falsely); **hostile 32 / 0 / 3 / 0 of 35: not supported, 3 hostile files answered instead of refused**
+("hostile inputs refused" does not hold; 8 withheld constructions belong to 7 classes no earlier split has). All:
+629 / 17 / 6 / 0 of 652 (today's system: 72 right, 2 wrong, 3 failed). These six wrong answers are the first
+fabrications and failures to refuse seen on any split. Controls: held, except that "reference reruns identical" was
+not checked (and the refuse-everything control was dropped before the looks, by ruling). By the rule, none of these
+is retried on these cases: the unknown and hostile weaknesses are to be fixed and examined on NEW withheld cases. The
+forms, cross and learn looks: [OMNIMIND_BENCHMARK_FORMS.md](OMNIMIND_BENCHMARK_FORMS.md), "The withheld split:
+status"; all of it: [../omnimind/BENCHMARKS.md](../omnimind/BENCHMARKS.md), "The withheld looks".
 
 ## The readers of made artifacts (and what DESIGN.md does not fix)
 
@@ -414,7 +423,8 @@ Written by lane ZW without reading any product code; counts and rules only here.
   `final.check` also refuses a look when either driver's SHA-256 differs from its pin in the tracked file
   `docs/quality/evidence/omnimind_driver_pins.json`, or is not pinned there (as committed by lane F2: both null, so
   every look is refused until the main session runs `scripts/bench_omni.py pin-driver`, which prints the file with
-  the current hashes and writes nothing, after lane F1's driver rewrite, and commits it). Each ledger line now also
+  the current hashes and writes nothing, after lane F1's driver rewrite, and commits it; the main session pinned both
+  in `55f89be`, the commit the looks were taken on). Each ledger line now also
   records the drivers' SHA-256 (`drivers`). `test_omni_bench.py::test_the_drivers_only_translate` checks that a driver
   imports no `make` internal or private product name, never calls `scan_injection`, decodes with no limits of its
   own, chooses no outcome by an error's words or from a partial decode, and names no task or case. It failed on the

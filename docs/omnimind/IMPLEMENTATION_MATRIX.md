@@ -13,7 +13,7 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 
 - 51 of the 54 first-version rows are built (L4 and L5 for the console only); 35 of them are built and measured. Not
   done: the answer path's use of the planner (L3), durable jobs (L6), optional engines on the system's own bytes (L9),
-  and Pocket's view and upload (the Pocket half of L4 and L5). The withheld looks (L8) are prepared; none is taken.
+  and Pocket's view and upload (the Pocket half of L4 and L5). The withheld looks (L8) were taken once each: three are not supported (unknown, hostile, cross).
 - Measured rows are measured on synthetic files and simulated people. The planner (C1) was measured and does **not**
   beat the references on held-out by the rule written before the run.
 - Every owner decision of the first version is still open except one the main session ruled under the owner's
@@ -68,7 +68,7 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 | L5 | an upload route in the console and Pocket | built for the console (off by default); **open** for Pocket | U | `test_console_artifacts.py` |
 | L6 | durable production jobs | **open** | none | a production runs in the owner's command |
 | L7 | learning form choices from outcomes | built and measured, off by default | L, `2d19a76`; int2 wiring `adae698` | learn held-out 0.710 / 0.656 against 0.450 / 0.454, SIMULATED; ADR-078 |
-| L8 | the withheld split and one look per mechanism | built; **no look taken** | ZW, `df5c820`; F2 (driver pins); this lane (the rule) | `omnimind_final_uses.jsonl` (17 machinery lines) |
+| L8 | the withheld split and one look per mechanism | built and measured: **looks taken once each on `55f89be`** | ZW, `df5c820`; F2 (driver pins); docs-2 (the rule); the main session (pins, looks) | supported: intake, honest, compound, made, transform, forms, learn; **not supported: unknown, hostile, cross** (`omnimind_looks/summary.json`) |
 | L9 | optional engines (ffmpeg, Chromium) on the system's own bytes | **open** | none | an owner decision |
 
 ## Rows the later waves added

@@ -1,6 +1,6 @@
 # Cognitive gap analysis, after the build (deliverable 3)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged. The first version (2026-11-26, written
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `21193c4` (fix lanes F4 and F5 merged; the withheld looks taken on `55f89be`). The first version (2026-11-26, written
 before anything was built; in git at `abc6be4`) named each gap the directive's phases II to X open in NeuroSciFi. This
 version keeps that list and says, for each gap, what closed it, what only narrowed it, and what is still open and
 why. "Closed" means a named command or function exists, has tests and a measured figure; it never means the
@@ -8,6 +8,10 @@ directive's ambition for that phase is met. Fix lane F5 (`bf3dac6`) is merged to
 
 ## The first screen: what is still open
 
+0. **The withheld looks found three weaknesses** (on `55f89be`, cases no lane tuned against): disguised or unknown
+   files answered falsely (3 wrong of 111), hostile files answered instead of refused (3 of 35), and the relater
+   answering a kind of pair it cannot measure (an image against its caption: answered 10 times, right on 5). They are
+   open, and any fix must be examined on NEW withheld cases ([FINAL_REPORT.md](FINAL_REPORT.md), "The withheld looks").
 1. **No model that sees or hears.** The answer model is text-only. Nothing here recognises what a picture shows,
    transcribes speech in a file, or reads text in a picture. Every "cross-modal" relation is a measurement compared
    with a statement. A vision or audio model is an owner decision (a download and a new dependency).

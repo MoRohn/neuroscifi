@@ -1,9 +1,9 @@
 # Project OMNIMIND
 
-Status: 2026-11-27. Waves O-0 and O-1, three independent reviews with second passes, and fix lanes F1 to F3 are
-merged into the integration branch `omnimind`, and so are fix lanes F4 and F5 (`20a86ec`, schema 21). It is a
-**local branch: not merged into `main`, not pushed, never run on CI**. The main session's final validation and the
-withheld looks have not been taken (two placeholders: REGRESSION_REPORT and FINAL_REPORT).
+Status: 2026-11-27. Waves O-0 and O-1, three independent reviews with second passes, fix lanes F1 to F5 and these
+documents are merged into the integration branch `omnimind` (`21193c4`, schema 21). The main session ran the final
+validation on `55f89be` (the commit that pins the drivers beside the look rule) and took the withheld looks there, once
+each. It is a **local branch: not merged into `main`, not pushed, never run on CI**.
 
 Project OMNIMIND is the owner's programme to let NeuroSciFi take in information in many forms and make results that
 are not only text, on top of the system that exists and without replacing any of it. Every capability is a function
@@ -20,14 +20,18 @@ individual where forget and restore reach it. It can **relate** two artifacts by
 the other states (`nsf artifact relate`), **decide** the form of a result before making it and say why (the form
 planner), **make** 30 kinds of result (charts, diagrams, documents, tables, data files, sounds, solids, pictures,
 explorable models) and **check** each with an independent reader of its bytes before keeping it as "made by the
-system, not evidence". On the benchmark's synthetic files it answers 510 of 528 held-out tasks right with 0 wrong and
-0 crashes (today's system: 55 right, 1 wrong, 1 crash). It **cannot** see or hear (no such model here), decode JPEG,
-MP3 or video frames, or say what a picture depicts; its form planner **does not beat the references** on held-out by
-the rule written before the run and shows no evidence of reading the request's words; its learner stays below the
-benchmark's own majority rule with simulated people. **Nothing reaches the answer path** (every answer in
-conversation is still sentences), Pocket, voice or agents; **nothing is on by default except viewing in the
-console**; and **nothing is merged into `main`**. No done-criterion of the directive is met without qualification:
-[FINAL_REPORT.md](FINAL_REPORT.md).
+system, not evidence". **On the withheld split, which no lane tuned against, it gave wrong answers for the first time**: 6 in the seven
+families (3 disguised or unknown files answered falsely; 3 hostile files answered instead of refused) and 6 in relating
+two artifacts (an image against its caption was answered every time and right on 5 of 10, no better than a coin).
+Those three looks are **not supported**; the weaknesses are known now and must be examined afresh on new withheld
+cases. Supported on unseen cases: intake, honest, compound, made and transform (629 right, 17 "cannot", 6 wrong, 0
+failed of 652 in all; today's system 72 right, 2 wrong, 3 failed), the frozen form planner (good 0.687 against the
+shape-only table's 0.480 and always-prose's 0.440, and on these cases it reads the request's words) and the learner
+over the planner alone with simulated people (still below the benchmark's own majority rule). On held-out it had
+answered 510 of 528 with 0 wrong. It **cannot** see or hear (no such model here), decode JPEG, MP3 or video frames, or
+say what a picture depicts. **Nothing reaches the answer path** (every answer in conversation is still sentences),
+Pocket, voice or agents; **nothing is on by default except viewing in the console**; and **nothing is merged into
+`main`**. No done-criterion of the directive is met without qualification: [FINAL_REPORT.md](FINAL_REPORT.md).
 
 ## The twelve deliverables (directive §17)
 
@@ -41,10 +45,10 @@ console**; and **nothing is merged into `main`**. No done-criterion of the direc
 | 6 | Production-ready integrations | [PRODUCTION_INTEGRATIONS.md](PRODUCTION_INTEGRATIONS.md) ("production-ready" is not claimed) |
 | 7 | Multimodal quality benchmarks | [BENCHMARKS.md](BENCHMARKS.md), leading to [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md) and [../quality/OMNIMIND_BENCHMARK_FORMS.md](../quality/OMNIMIND_BENCHMARK_FORMS.md); the held-out record [../quality/evidence/omnimind_heldout/README.md](../quality/evidence/omnimind_heldout/README.md) |
 | 8 | Recursive knowledge validation | [RECURSIVE_KNOWLEDGE_VALIDATION.md](RECURSIVE_KNOWLEDGE_VALIDATION.md) |
-| 9 | Complete regression report | [REGRESSION_REPORT.md](REGRESSION_REPORT.md) (the final-commit validation is a placeholder) |
+| 9 | Complete regression report | [REGRESSION_REPORT.md](REGRESSION_REPORT.md) (with the final validation at `55f89be`) |
 | 10 | Updated architecture documentation | [ARTIFACT_ARCHITECTURE.md](ARTIFACT_ARCHITECTURE.md) and [../architecture/SYSTEM_ARCHITECTURE.md](../architecture/SYSTEM_ARCHITECTURE.md) section 9 |
 | 11 | Operational runbook | [RUNBOOK.md](RUNBOOK.md) |
-| 12 | Final implementation report | [FINAL_REPORT.md](FINAL_REPORT.md) (the withheld looks are a placeholder) |
+| 12 | Final implementation report | [FINAL_REPORT.md](FINAL_REPORT.md) (with the withheld looks) |
 
 Decisions: ADR-070 to ADR-079 in [../architecture/ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md)
 (ADR-073, 076, 077 and 078 carry dated additions of 2026-11-27).
@@ -88,9 +92,9 @@ These documents make no claim of consciousness, understanding, general or superh
 | O-1 | P production pipeline (`b87d90f`); R relating (`e0e056a`); L learning, schema 21 (`2d19a76`, `d8aaf04`); int2 integration (`505b55b`); U console view (`841c3a0`) | yes |
 | reviews | security, measurement, code on `505b55b`; second passes on `09bfff6`: all three "offer to the owner: yes", with residues | (reports, not code) |
 | fixes | F2 benchmark (`4a6986e`); F1 product (`b4798aa`, `bb113ab`); F3 the rest (`a0c7491`) | yes (`09bfff6`) |
-| last | F4 the second passes' residues (`1aa7eb6`); docs-2 these documents | F4: merged (`5c29da4`); docs-2: to be merged |
+| last | F4 the second passes' residues (`1aa7eb6`); docs-2 these documents | F4: merged (`5c29da4`); docs-2: merged |
 | after | F5: the make summary after a partial read, `--partial` on a large archive, `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help (`bf3dac6`) | merged (`20a86ec`) |
-| then | pins, full validation, the withheld looks, the owner's questions | not started |
+| then | driver pins with the look rule (`55f89be`); the main session's full validation there; the withheld looks, once each (`21193c4`) | done; the owner's questions next |
 
 ## Where to read next
 

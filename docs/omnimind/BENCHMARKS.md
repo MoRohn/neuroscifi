@@ -1,6 +1,6 @@
 # OMNIMIND benchmarks: before and after (deliverable 7)
 
-Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `09bfff6`. Every figure is copied from the committed
+Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `21193c4` (the withheld looks taken on `55f89be`). Every figure is copied from the committed
 evidence file named beside it; nothing was re-run for this page. The examinations themselves, their rules and their
 readers are in [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md) (taking things in, making things)
 and [../quality/OMNIMIND_BENCHMARK_FORMS.md](../quality/OMNIMIND_BENCHMARK_FORMS.md) (choosing a form, relating two
@@ -9,6 +9,14 @@ artifacts, learning from outcomes). Every held-out run, its rule quoted verbatim
 
 ## The first screen: what failed, and what the figures are not
 
+- **On the withheld split, which no lane tuned against, the product gave 6 wrong answers in the seven families** (629
+  right, 17 cannot, 6 wrong, 0 failed of 652): **3 disguised or unknown files answered falsely** (`unknown`, not
+  supported) and **3 hostile files answered instead of refused** (`hostile`, 32 of 35, not supported). **The relater
+  gave 6 wrong answers of 78** (cross, not supported); on an image against its caption it answered every time and was
+  right on 5 of 10. Nothing of the kind happened on development or held-out. These are known weaknesses now, to be
+  fixed and examined on NEW withheld cases, never on these. Supported on unseen cases: intake, honest, compound, made,
+  transform, the form planner (good 0.687 against 0.480; it reads the words there) and the learner over the planner
+  alone (simulated people). Section "The withheld looks" at the end.
 - **One held-out making task the product could not do.** `made`: 13 of 14 on held-out against 14 of 14 on development.
   By the rule written before the run this is **not a pass** (a drop over 0.05).
 - **One hostile held-out file was answered "cannot", not refused** (22 of 23 refused). Nothing wrong was answered,
@@ -18,10 +26,7 @@ artifacts, learning from outcomes). Every held-out run, its rule quoted verbatim
   hard-constraint violation (since made impossible by construction), a development-to-held-out drop of 0.19, and no
   evidence that it reads the request's words.
 - **The learner is below the benchmark's own majority rule** on held-out (0.710 against 0.802 late), with simulated
-  people only.
-- **No withheld look has been taken.** The rule for them is committed
-  ([OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md), "The rule for the withheld looks"); the drivers are not
-  yet pinned, so every look is refused today.
+  people only (withheld: 0.713 against 0.831).
 - **The held-out rules lived in the main session's log, which git does not track**: the order of rule and run
   **cannot be verified from git**. Lane P once saw the held-out `transform` rows, so that family's held-out result
   proves less than the others.
@@ -87,7 +92,7 @@ The full assessment: [CREATIVE_INTELLIGENCE_ASSESSMENT.md](CREATIVE_INTELLIGENCE
 | random form (reference) | 0.110 | 0.761 | 0.104 | (not quoted) | 0 |
 | the planner, blind (`8d84f29`, before its author saw a case) | 0.489 | 0.195 | not run | | |
 | the planner tuned (`c5d3230`) | 0.850 (optimistic: tuned on these cases) | 0 | **0.659** | 0.080 | **1** |
-| the planner frozen (`4388f4d`, after the limited round) | 0.805 (107 of 133) | 0 | not run (judged next on the withheld cases) | | |
+| the planner frozen (`4388f4d`, after the limited round) | 0.805 (107 of 133) | 0 | not run; withheld: **0.687** (supported; see the end) | 0.073 | 0 |
 | a second reader's first choice (a ceiling; a model, not a person) | 0.902 | | 0.877 | | |
 
 Held-out verdict by the rule written before the run: "beats the references" **no** (one violation); "overfit to
@@ -138,11 +143,86 @@ reference majority rule** late. `form_learning` is off by default. See
 - The relater and the pipeline changed after their held-out runs (fix lanes F1, F3); the planner did not (frozen at
   `4388f4d`, judged once more only on the withheld cases).
 
-## The withheld split
+## The withheld looks (taken once each, on `55f89be`)
 
-Written by lane ZW without reading product code (652 tasks of the seven families, 150 form cases, 78 cross cases, 6
-simulated people), pinned by SHA-256, and scored only by `final`, which appends a ledger line
-(`docs/quality/evidence/omnimind_final_uses.jsonl`) before it loads anything. The ledger's 17 lines are lane ZW's
-machinery check through the references; **no product look has been taken**. The rule for the looks is committed; the
-driver pins are null, so every look is refused until the main session pins them after fix lane F4. The results
-belong in [FINAL_REPORT.md](FINAL_REPORT.md), "The withheld looks".
+Taken by the main session on 2026-11-27, once per mechanism, on the clean commit `55f89be`, which holds the rule
+([../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md), "The rule for the withheld looks") and the
+driver pins. Ledger: `docs/quality/evidence/omnimind_final_uses.jsonl` (42 lines). Evidence: every look and control in
+`docs/quality/evidence/omnimind_looks/`; the main session's reading of each by the committed rule is `summary.json`,
+whose figures and verdict words are copied here. A "not supported" is never retried on these cases.
+
+**Preconditions: held.** The tree was clean; development reproduced exactly at `55f89be` (artifacts 512 / 12 / 0 / 0
+of 524; forms 107 good of 133, 0 bad, 0 violations; cross 72 of 72; learn 0.8158 / 0.7617 against the planner alone
+0.5871 / 0.5842).
+
+**Controls: held, with two exceptions stated.** Today's system on the seven families: 0 failed outside hostile and
+nothing made (made 0 of 16, transform 0 of 11). Always-consistent on cross: 39 of 78, 0 of 39 twins. Learn: oracle
+0.891 >= key_majority 0.831 >= never-learns 0.444. Not done: the forms oracle `first_good` could not be run through
+`final` (stated before the product looks; not run), and "reference reruns identical" was not checked. The
+refuse-everything control of the seven families was dropped before the looks by the main session's ruling (it holds by
+construction).
+
+**The seven families** (`bench_omni.py final --subject artifacts`; right / "cannot" / wrong / failed of n):
+
+| family | n | result | verdict by the rule |
+|---|---:|---|---|
+| intake | 358 | 347 / 11 / 0 / 0 | supported on unseen cases |
+| honest | 55 | 52 / 3 / 0 / 0 | supported on unseen cases |
+| **unknown** | 111 | 107 / 1 / **3** / 0 | **not supported: 3 wrong answers** (disguised or unknown files answered falsely) |
+| compound | 66 | 64 / 2 / 0 / 0 | supported on unseen cases |
+| **hostile** | 35 | 32 / 0 / **3** / 0 | **not supported: 3 hostile files answered instead of refused; "hostile inputs refused" does not hold** (8 of the withheld constructions belong to 7 classes no earlier split has) |
+| made | 16 | 16 / 0 / 0 / 0 | supported on unseen cases |
+| transform | 11 | 11 / 0 / 0 / 0 | supported on unseen cases |
+| **all** | **652** | **629 / 17 / 6 / 0** | today's system: 72 right, 2 wrong, 3 failed |
+
+**These six wrong answers are the most important result of the looks**: on inputs nobody tuned against, the system
+fabricated (the unknown family) or failed to refuse (the hostile family), which it never did on development or
+held-out.
+
+**forms** (the frozen planner `4388f4d` through `choose_form`, learning off; 150 cases):
+
+| subject | good | good or fine | bad | words slice good | request pairs both good | twins both good |
+|---|---:|---:|---|---|---|---|
+| the planner | **0.687** | 0.927 | 0.073 (too poor 3, too much 4, unfit 4); 0 violations | **35 of 52** | **20 of 40** | **11 of 25** |
+| shape-only table | 0.480 | 0.773 | 0.227 (too much 22) | 18 of 52 | 14 of 40 | 0 of 25 |
+| always prose (today) | 0.440 | 0.820 | 0.180 (too poor 21) | 27 of 52 | | |
+
+Verdict: **supported on unseen cases** (good 0.687 >= 0.480 + 0.10; 0 violations; bad and too-much below the shape-only
+table's); explicit forms honoured 6 of 7; no unmapped name. **"Reads the request's words" holds on these cases**
+(words slice 0.673 against 0.346 and 0.519; pairs 20 against 14 of 40), where it did not on held-out before the fitted
+rules were deleted. Caveats: the labels are one model-written examiner's; no second reader labelled these cases, so
+there is no ceiling to quote; about 30 of the 150 are close calls by the examiner's own count.
+
+**cross** (the relater; 78 cases):
+
+| kind | result |
+|---|---|
+| chart_series, mesh_bbox, code_trace, timeline_log | 8 of 8 each |
+| tones_rows | 6 right, 2 cannot of 8 |
+| report_total | 5 right, **1 wrong**, 2 cannot of 8 |
+| image_caption (a kind only this split has) | **answered all 10, right on 5: no better than a coin** |
+| route_stops, archive_manifest (kinds only this split has) | 0 answered of 10 each: not exercised |
+| **all** | **48 right, 24 cannot, 6 wrong**; correct of answered 0.889; both twins 21 of 39 |
+
+Verdict: **not supported** (6 wrong, more than 2; 0.889 below 0.95; 48 below 58.5; twins 21 below 26; one kind with 5
+wrong). The image-against-caption answers are exactly the fabrication the relater's design warned of: a "consistent"
+or "inconsistent" given where nothing could be measured.
+
+**learn** (SIMULATED people; late kept / all kept):
+
+| subject | late | all |
+|---|---:|---:|
+| the shipped per-key majority through the planner | **0.713** | **0.656** |
+| the planner alone | 0.440 | 0.448 |
+| never learns (reference) | 0.444 | 0.454 |
+| key_majority (reference) | 0.831 | 0.756 |
+| oracle (reference) | 0.891 | 0.894 |
+
+Verdict: **supported on unseen simulated people** (gains 0.273 and 0.208 against thresholds 0.088 and 0.039); **0.118
+below the reference majority rule** late; `form_learning` stays off.
+
+**What these looks cannot establish** (the rule's part C): anything about real files, real people, the owner's taste,
+visual quality or usability; any version after `55f89be`; formats or kinds absent from the tables; generality from
+small n (made 16, transform 11); and a second look at the same cases, which would not be a fresh measure. **The
+unknown, hostile and cross findings are known weaknesses now: they are to be fixed and examined afresh on NEW withheld
+cases, never on these.**

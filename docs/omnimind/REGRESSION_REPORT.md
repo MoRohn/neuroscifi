@@ -1,11 +1,11 @@
 # Preservation of existing behaviour (deliverable 9: "Complete Regression Report")
 
-Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `09bfff6`, with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged. This page collects what each lane and each
-reviewer measured about the system that existed before OMNIMIND: the offline research digest, the sentence guard's
-differential, the test suites, the acceptance scenarios, the two-account check and the browser suite, each with its
-commit and counts. **The final validation at the final commit has not been run yet**: it is the main session's, after
-fix lanes F4 and F5 and these documents are merged (placeholder at the end). Until it is run, "existing functionality is
-preserved" is **unverified** at the final commit; the figures below hold at the commits named.
+Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `21193c4`. This page collects what each lane, each
+reviewer and finally the main session measured about the system that existed before OMNIMIND: the offline research
+digest, the sentence guard's differential, the test suites, the acceptance scenarios, the two-account check and the
+browser suite, each with its commit and counts. **The main session's final validation ran on `55f89be`** (the clean
+commit that pins the drivers beside the look rule; the section at the end): every check it ran passed. It did not
+run CI, x86_64, a real model, real phones or a screen reader.
 
 Sources: the lane reports (`lane-*.md`) and review reports in the main session's scratch folder, and the main
 session's log (`.omc/handoffs/omnimind.md`); none of these is tracked by git. The committed reference for the digest is
@@ -13,10 +13,13 @@ session's log (`.omc/handoffs/omnimind.md`); none of these is tracked by git. Th
 
 ## The first screen
 
-- **Nothing existing changed at the defaults, by every check run so far**: the offline digest is byte-identical in
+- **The final validation at `55f89be` passed every check it ran** (below): 8,472 passed in the non-browser suite,
+  235 in the browser suite, the guard 0 different, the digest unchanged in both regimes, acceptance 7 of 7, two
+  accounts 56 of 56.
+- **Nothing existing changed at the defaults, by every check run**: the offline digest is byte-identical in
   both regimes, the guard differential reports 0 different, `nsf acceptance --all` passes 7 of 7, the two-account
   check passes 56 of 56, and the default import path of the new package needs only numpy. Last checked by the code
-  reviewer's second pass at `09bfff6` and by fix lane F4 at `1aa7eb6`.
+  reviewer's second pass at `09bfff6`, by fix lane F4 at `1aa7eb6` and by the main session at `55f89be`.
 - **Deliberate changes to existing behaviour** (each a fix, listed below): the audit's defects closed by lane S, the
   console heat map's colours (now gray, the owner's palette rule), the gateway's handling of dict content and tool-call
   arguments, the bound on `nsf archive unpack`, and a new console view that is on by default.
@@ -83,26 +86,23 @@ form ...`) or settings that are off by default.
 | `tests/console/test_console_artifacts.py::test_make_is_bounded_and_one_at_a_time` | F1, F3 | a race in lane U's own test: fixed (`bb113ab`, `a0c7491`) | yes (fixed) |
 | one test of the e2e chunk with pocket UAT, phone setup and voice (name not captured) | F4 | the same chunk re-run: no failure | unknown (**unverified as a flake**) |
 
-## Final validation at the final commit (placeholder)
+## Final validation at the final commit (the main session, on `55f89be`)
 
-To be filled by the main session after fix lanes F4 and F5 and this documentation are merged and the drivers are pinned.
-**Not yet run.**
+Run by the main session on the clean commit `55f89be` (fix lanes F1 to F5 merged, these documents, the look rule and
+the driver pins), before the withheld looks.
 
 | check | command | result |
 |---|---|---|
-| lint | `ruff check .` | not yet run |
-| the whole non-e2e suite | `python -m pytest -q -p no:cacheprovider --ignore=tests/e2e` (or chunks) | not yet run |
-| JavaScript | `node tests/js/*.mjs` | not yet run |
-| browser suite | `bash scripts/e2e.sh` | not yet run |
-| reproduction | `python scripts/reproduce.py` | not yet run |
-| sentence guard | `python scripts/guard_differential.py compare` (must be 0 different) | not yet run |
-| offline digest | `python scripts/bench_wave1.py offline --regime defaults` and `--regime all_off` (must equal `offline_deterministic_aarch64.json`) | not yet run |
-| acceptance | `nsf acceptance --all` | not yet run |
-| two accounts | `python scripts/two_account_check.py` | not yet run |
-| OMNIMIND development, every family and subject | `scripts/bench_omni.py run --split development --subject artifacts`; `scripts/bench_omni_forms.py run --split development` for forms, cross, learn | not yet run (must reproduce 512 / 12 / 0 / 0; 107 good / 0 bad / 0 violations; 72 of 72; 0.8158 / 0.7617 against 0.5871 / 0.5842) |
-| CI check job | needs a push (the owner's decision) | not run |
+| lint, the whole non-browser suite, JavaScript, reproduction | `scripts/check.sh` | **ALL CHECKS PASSED**: ruff clean; 8,472 passed, 22 skipped, 35 subtests in 1,481 s; the JavaScript checks, including the explorable runtime's 77; reproduce |
+| acceptance | `nsf acceptance --all` | pass, 7 of 7 |
+| sentence guard | `scripts/guard_differential.py compare` | 1,937 compared: 1,688 identical, 232 stricter, 17 loosened, **0 different** |
+| two accounts | `scripts/two_account_check.py` | 56 of 56 |
+| offline digest | `scripts/bench_wave1.py offline`, defaults and all off | `68731d7235cb...` (portable `d87dbb4fb77f...`) in both regimes, equal to the recorded one |
+| cognitive benchmark | `bench_cognition.py run`, development and held-out | completed |
+| browser suite | `bash scripts/e2e.sh` | 235 passed, 1 skipped in 1,078 s; none of the tests seen to flake under load failed in this run |
+| OMNIMIND development, every family and subject (the look rule's precondition) | `scripts/bench_omni.py run --split development` (artifacts and today); `scripts/bench_omni_forms.py run --split development` (forms, cross, learn) | reproduced exactly: artifacts 512 right / 12 cannot / 0 wrong / 0 failed of 524 (today's system 55 right = 25 intake answers + 30 correct "cannot", 1 wrong, 1 failed); forms 107 good of 133, 0 bad, 0 violations; cross 72 of 72; learn 0.8158 / 0.7617 against the planner alone 0.5871 / 0.5842 |
+| CI check job | needs a push (the owner's decision) | **not run** |
 
-Fix lane F4 ran this list on `1aa7eb6` (its row in the table above): reproduce 8 of 8, node 8 of 8, and development
-unchanged in every family and subject (512 / 12 / 0 / 0; forms 107 good, 0 bad, 0 violations, `FORMS_UNMAPPED` empty;
-cross 72 of 72; learn 0.8158 / 0.7617 against 0.5871 / 0.5842). The final-commit run above is still the main
-session's.
+One slip, stated: the main session's script's first attempt at the two seven-family development runs failed at once
+because a scratch folder did not exist; the folder was created and both runs were taken again (the results above).
+Not run anywhere: CI, x86_64, a real model, real phones, a screen reader.

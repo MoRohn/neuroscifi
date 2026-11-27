@@ -1,6 +1,6 @@
 # Learning from outcomes, as measured (deliverable 8: "Recursive Knowledge Validation")
 
-Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `09bfff6`. The directive asks for "evidence that
+Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `21193c4` (the withheld look taken on `55f89be`). The directive asks for "evidence that
 experience and feedback improve future multimodal performance". This page says what "learning" means in OMNIMIND,
 what was measured, against which references, and what is not learned at all. Figures come from
 `docs/quality/evidence/omnimind_l.json` (development), `omnimind_baseline_forms.json` (references) and
@@ -16,6 +16,9 @@ its addition of 2026-11-27 in [../architecture/ARCHITECTURAL_DECISIONS.md](../ar
   recorded or measured.
 - **Every figure is of SIMULATED people** with hidden, stable preferences and simulated feedback. None measures
   benefit to a real person.
+- **On the withheld simulated people (one look, on `55f89be`) it is supported on unseen cases**: late / all kept 0.713 /
+  0.656 against the planner alone 0.440 / 0.448 (gains 0.273 and 0.208 against the rule's thresholds 0.088 and 0.039),
+  and **0.118 below the benchmark's own majority rule** late (key_majority 0.831 / 0.756). It stays off.
 - **On held-out it beat the planner alone** by more than the margins written before the run (+0.260 late, +0.203 all)
   **and stayed below the benchmark's own per-key majority** (0.710 against 0.802 late: 0.092 below). By construction
   no learner that goes through the frozen planner can clear the margin over that reference (the development bound).
@@ -71,9 +74,13 @@ share of made forms the simulated person kept; "late" is cycles 5 to 8. Mean (sd
   choosing a form directly, ignores.
 - **Development to held-out**: the shipped rule fell from 0.816 to 0.710 late; the planner alone fell from 0.587 to
   0.450. The gain over the planner alone held (+0.229 development, +0.260 held-out).
-- **The withheld look** is next (6 simulated people): "supported on unseen cases (simulated people)" iff both gains
-  exceed 2 times the square root of 2 times the larger sd over seeds; the majority references stand beside it;
-  `form_learning` stays off whatever the result.
+- **The withheld look** (taken once, on `55f89be`; `docs/quality/evidence/omnimind_looks/summary.json`): the rule was
+  "supported on unseen cases (simulated people)" iff both gains exceed 2 times the square root of 2 times the larger
+  sd over seeds. Result: shipped rule 0.713 / 0.656, planner alone 0.440 / 0.448, gains 0.273 / 0.208 against
+  thresholds 0.088 / 0.039: **supported on unseen simulated people**. Beside it: never learns 0.444 / 0.454,
+  key_majority 0.831 / 0.756, oracle 0.891 / 0.894 (the control order oracle >= key_majority >= never learns held).
+  The shipped rule is 0.118 below key_majority late: "better than a majority rule" is not claimed. `form_learning`
+  stays off. Nothing here is a real person.
 
 ## What is NOT learned
 
@@ -103,5 +110,5 @@ the owner, not a learning signal.
 | criterion (directive §18) | status | evidence |
 |---|---|---|
 | Knowledge can be accumulated across different modalities | **Unverified** | nothing measures accumulation; nothing decoded enters memory by design |
-| Recursive improvement produces measurable benefits | **Partially implemented** | learn held-out +0.260 / +0.203 over the planner alone, SIMULATED; below key_majority; `form_learning` off by default |
+| Recursive improvement produces measurable benefits | **Partially implemented** | learn held-out +0.260 / +0.203 and withheld +0.273 / +0.208 over the planner alone, SIMULATED; below key_majority (withheld 0.118 late); `form_learning` off by default |
 | Creative synthesis has demonstrably improved | **Unverified** | no measure exists |

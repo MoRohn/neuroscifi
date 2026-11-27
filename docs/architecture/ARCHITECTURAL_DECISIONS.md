@@ -5712,6 +5712,26 @@ commit), though not a choice. The plan: leave it unchanged until the withheld fo
 say what was measured ("the form the planner ranks first among those this situation admits"), in a commit of its own
 that states it changes no choice.
 
+## ADR-073, addition (2026-11-27, documentation lane 2): the frozen planner's withheld look
+
+Taken once by the main session on `55f89be` (the look rule and the driver pins committed there), through
+`choose_form`, with form learning off, on lane ZW's 150 withheld forms cases (`docs/quality/evidence/omnimind_looks/`,
+`summary.json`). The earlier text above stays as written.
+
+| subject | good | good or fine | bad | words slice good | pairs both good | twins both good |
+|---|---:|---:|---|---|---|---|
+| the planner `4388f4d` | 0.687 | 0.927 | 0.073 (too poor 3, too much 4, unfit 4); 0 violations | 35 of 52 | 20 of 40 | 11 of 25 |
+| shape-only table | 0.480 | 0.773 | 0.227 (too much 22) | 18 of 52 | 14 of 40 | 0 of 25 |
+| always prose | 0.440 | 0.820 | 0.180 (too poor 21) | 27 of 52 | | |
+
+Verdict by the committed rule: **supported on unseen cases** (good 0.687 >= 0.480 + 0.10; 0 violations; bad and too
+much below the shape-only table's); explicit forms honoured 6 of 7; no unmapped name. **"Reads the request's words"
+holds on these cases** (words slice 0.673 against 0.346 + 0.15 and 0.519; pairs 20 against 14), where on held-out the
+tuned planner `c5d3230` showed no evidence of it, before the fitted rules were deleted. Caveats: one model-written
+examiner's labels; no second reader on these cases; about 30 of 150 close calls by the examiner's own count; the
+oracle control `first_good` could not be run through `final`. The P1 sentence ("the best form this situation allows")
+may now be reworded in its own commit that changes no choice. Nothing of this reaches the answer path.
+
 # ADR-074 Things the system makes: specifications instead of generated markup, a reading contract, and checks that never ask the maker
 
 Status: built (OMNIMIND Wave O-0, lane G1: pictures, documents and data files; lane G2 appends its section below).
@@ -6273,6 +6293,20 @@ The text above stays as written. Four facts belong beside its figures:
   Development stayed 72 / 72 and lane R's own sets byte-identical; the held-out figure above is of the relater before
   that change, and the next measure is the withheld cross look.
 
+## ADR-077, addition (2026-11-27, documentation lane 2): the relater's withheld look, not supported
+
+Taken once by the main session on `55f89be` on lane ZW's 78 withheld cross cases (`docs/quality/evidence/omnimind_looks/`,
+`summary.json`). The earlier text above stays as written.
+- **48 right, 24 cannot, 6 wrong**; correct of answered 0.889; both twins 21 of 39. Verdict by the committed rule:
+  **not supported** (6 wrong, more than 2; 0.889 below 0.95; 48 below 58.5; twins 21 below 26; one kind with 5 wrong).
+- By kind: chart_series, mesh_bbox, code_trace, timeline_log 8 of 8 each; tones_rows 6 right, 2 cannot; report_total
+  5 right, **1 wrong**, 2 cannot. Of the three kinds only this split has, route_stops and archive_manifest were
+  answered "cannot" throughout (not exercised), and **image_caption was answered all 10 times and right on 5: no
+  better than a coin**. That is the failure the Context above names ("one that guesses would score half, and a wrong
+  'consistent' is this mechanism's fabrication"): an image's meaning is not read, yet a verdict was given.
+- Always-consistent scored 39 of 78 with 0 twins. A "not supported" is never retried on these cases: the weakness is
+  known now; any fix is to be examined on NEW withheld cases.
+
 # ADR-078 Learning the form of a result from outcomes: a per-key majority, because nothing tried beat it
 
 Status: built, off by default (OMNIMIND Wave O-1, lane L). Schema 21 (`form_outcomes`), one owner setting
@@ -6429,6 +6463,15 @@ the old software, and either brings back whatever was forgotten since (MIGRATION
   0.067). Beside it: the shipped rule is **0.092 below the reference key_majority** late, at the level of
   person_majority. "Better than a majority rule" is not claimed. Every number is of simulated people with hidden,
   stable preferences; none measures benefit to a real person.
+
+## ADR-078, addition (2026-11-27, documentation lane 2): the learner's withheld look
+
+Taken once by the main session on `55f89be` with lane ZW's simulated people (`docs/quality/evidence/omnimind_looks/`,
+`summary.json`); SIMULATED people only. Shipped per-key majority through the planner: late / all kept 0.713 / 0.656;
+the planner alone 0.440 / 0.448; gains 0.273 and 0.208 against the rule's thresholds (2 x sqrt 2 x the larger sd) 0.088
+and 0.039: **supported on unseen simulated people**. References: never learns 0.444 / 0.454, key_majority 0.831 /
+0.756, oracle 0.891 / 0.894. The shipped rule is **0.118 below key_majority** late: "better than a majority rule" is not
+claimed. `form_learning` stays off by default; nothing here measures benefit to a real person.
 
 ## ADR-079: the owner console shows, makes and keeps artifacts (OMNIMIND Wave O-1, lane U)
 
