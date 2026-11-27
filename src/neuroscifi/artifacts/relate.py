@@ -1568,7 +1568,9 @@ class Relation:
     notes: list = field(default_factory=list)
     names: tuple = ("first", "second")
     specific: bool = False          # lane FX4 (R3): decided under a question naming what and where; only such an
-    #                                 answer may become a durable link (`relate_cli.record_links`)
+    #                                 answer may become a durable link (`relate_cli.record_links`); lane FX5 (C4):
+    #                                 computed in ONE place, `_specific`
+    question_digest: str = ""       # lane FX5 (C4): which question (a hash, never its words), to replace a stale link
 
     def because(self, limit: int = 12) -> list[str]:
         out = [self.reason]
@@ -1647,6 +1649,7 @@ def compare(a, b, question: str | None = None) -> Relation:
             p.note = "; ".join(x for x in (p.note, "the question counts the same thing") if x)
     names = (clean(A.name or "the first artifact", 60), clean(B.name or "the second artifact", 60))
     rel = Relation(None, pairs, [], "", shared_names(A, B), mentions(A, B), timing(A, B), A.notes + B.notes, names)
+    rel.question_digest = question_digest(question)
     strong = [k for k, p in enumerate(pairs) if p.strong]
     named_counts = {n for f in A.facts + B.facts if f.kind == "count" and f.primary for n in f.nouns} & q_words \
         if set(rr.tokens(question or "")) & rr.COUNT_CUES else set()
@@ -1756,6 +1759,15 @@ def compare(a, b, question: str | None = None) -> Relation:
 
 
 # ---- lane FX5 (ADR-081, C1-C4): which comparison may decide, and which answer may become a durable link -----------
+
+def question_digest(question: str | None) -> str:
+    """16 hex digits of SHA-256 of the question, case and spacing folded ("" without a question): a recorded link
+    names the question it answers without keeping its words."""
+    if not question:
+        return ""
+    import hashlib
+    return hashlib.sha256(" ".join(question.casefold().split()).encode()).hexdigest()[:16]
+
 
 _STRUCTURE_WHAT = {"size": "the sizes of an archive's members", "digest": "the digests of an archive's members",
                    "link": "the links a drawing draws", "time": "the times a sound's tones start"}

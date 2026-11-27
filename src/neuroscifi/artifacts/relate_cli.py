@@ -63,22 +63,60 @@ def relate(db, first: str, second: str, *, question: str | None = None, now=None
     return out
 
 
-def record_links(db, first: str, second: str, rel, *, now=None, require_specific: bool = True) -> list[dict]:
+VERDICTS = ("consistent_with", "contradicts")
+
+
+def _verdict_how(rel) -> str:
+    """A verdict link's `how`: the Relation's basis, then `;q=` and the question's digest (lane FX5, C4)."""
+    digest = getattr(rel, "question_digest", "")
+    basis = rel.basis()
+    return (basis[:200 - 19] + ";q=" + digest) if digest else basis
+
+
+def _replace_verdicts(db, first: str, second: str, rel, keep: tuple | None) -> int:
+    """Lane FX5 (C4): `INSERT OR IGNORE` never replaces a row, so a verdict link would outlive the answer it records.
+    Before a decided answer is recorded, every other consistent_with / contradicts link between the two artifacts
+    (either direction, any question) is removed: a pair holds at most one verdict link, the latest decided one. An
+    undecided answer to a question removes the verdict link that recorded an answer to that SAME question (its
+    `;q=` digest): the claim no longer stands. An undecided answer to another question removes nothing. Returns the
+    number of links removed (no event is written: artifact_events' actions are fixed by the schema)."""
+    from ..instance import store as istore
+    rows = db.execute("SELECT src, relation, dst_id, how FROM artifact_links WHERE relation IN ('consistent_with', "
+                      "'contradicts') AND dst_kind='artifact' AND ((src=? AND dst_id=?) OR (src=? AND dst_id=?))",
+                      (first, second, second, first)).fetchall()
+    digest = getattr(rel, "question_digest", "")
+    if keep is not None:
+        relation, src, dst, how = keep
+        gone = [r for r in rows if tuple(r) != (src, relation, dst, how)]
+    elif digest:
+        gone = [r for r in rows if str(r[3]).endswith(";q=" + digest)]
+    else:
+        gone = []
+    if gone:
+        with istore.write(db):
+            for src, relation, dst, how in gone:
+                db.execute("DELETE FROM artifact_links WHERE src=? AND relation=? AND dst_kind='artifact' AND dst_id=? "
+                           "AND how=?", (src, relation, dst, how))
+            istore.bump_state_version(db)
+    return len(gone)
+
+
+def record_links(db, first: str, second: str, rel, *, now=None) -> list[dict]:
     """The links a Relation of two held artifacts supports, recorded in `artifact_links` (the module doc's rules;
     the production pipeline records the relations of its sources through this too)."""
     from . import store
     shared = rel.shared
     links = []
-    # lane FX4 (R3): only an answer decided under a question that names what is compared and where becomes a
-    # durable link; an answer from "everything the two artifacts let me compare" is shown, never recorded. The
-    # production pipeline passes require_specific=False (team lead's ruling: its sources' relations are recorded
-    # as before this wave, as part of how the made artifact was made)
-    specific = getattr(rel, "specific", False) or not require_specific
-    basis = rel.basis()
+    # lane FX5 (C4): `Relation.specific` (computed in one place, relate._specific) is the ONLY gate for a durable
+    # consistent_with / contradicts link, on every path: `nsf artifact relate` and the production pipeline alike. An
+    # answer with no question, or to a question no closed grammar read completely, is shown and never recorded
+    specific = bool(getattr(rel, "specific", False))
+    how = _verdict_how(rel)
     if rel.answer is True and specific:
-        links.append(("consistent_with", first, second, basis))
+        links.append(("consistent_with", first, second, how))
     elif rel.answer is False and specific:
-        links.append(("contradicts", first, second, basis))
+        links.append(("contradicts", first, second, how))
+    _replace_verdicts(db, first, second, rel, links[0] if links else None)
     for m in rel.describes:
         src, dst = (first, second) if m["describes"] == "first" else (second, first)
         links.append(("describes", src, dst, "mentions=file_name"))
@@ -151,4 +189,4 @@ def plain(value: dict) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["CLAIM_LABEL", "CLAIM_RELATIONS", "plain", "record_links", "relate"]
+__all__ = ["CLAIM_LABEL", "CLAIM_RELATIONS", "VERDICTS", "plain", "record_links", "relate"]

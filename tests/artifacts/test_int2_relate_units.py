@@ -1,6 +1,7 @@
 """Wave O-1 integration, items 2 and 3: a production with several sources relates each pair by measurement (lane R's
 `relate.compare`, bounded) and says what was found in the made document's own section, with both values where they
-disagree; the links are recorded as `nsf artifact relate` records them. A unit a README states for a table's column
+disagree; the links are recorded as `nsf artifact relate` records them (lane FX5, C4: a relation found with no
+question is shown and records no consistent_with / contradicts link; `Relation.specific` is the one gate). A unit a README states for a table's column
 reaches the made chart's axis label and the table's header with where it was read. Every input is built here, so the
 true relation is known: the CSV's calls sum to 500."""
 import pytest
@@ -60,20 +61,18 @@ def test_a_report_whose_stated_total_disagrees_with_its_csv_says_so_with_both_nu
     pair = result.record["relations"]["pairs"][0]
     assert pair["answer"] is False and pair["disagree"] == 1
     assert "Related week.csv and report.md: They DISAGREE" in P.why_text(result.record)
-    ids = set(result.stored_sources)
-    (src, dst, how), = links(db, "contradicts")
-    assert {src, dst} == ids and "tol=" in how
-    assert links(db, "consistent_with") == []
+    # lane FX5 (C4): shown above, never a durable link: the relation was found with no question
+    assert links(db, "contradicts") == [] and links(db, "consistent_with") == []
 
 
-def test_an_agreeing_report_says_they_agree_and_records_that(individual):
+def test_an_agreeing_report_says_they_agree_and_shows_it(individual):
     db = individual
     result = P.produce(db, "a report of the week", [P.Given("week.csv", WEEK), P.Given("report.md", report(500))],
                        form="document", now=T0)
     blocks = section(result.spec)
     assert blocks[3]["text"].startswith("They agree")
     assert [b["text"][:22] for b in blocks if b["kind"] == "list_item"] == ["Agree: 500 against 500"]
-    assert len(links(db, "consistent_with")) == 1 and links(db, "contradicts") == []
+    assert links(db, "consistent_with") == [] and links(db, "contradicts") == []      # lane FX5 (C4): shown only
 
 
 def test_sources_that_share_nothing_measurable_are_said_to_be_not_comparable(individual):
