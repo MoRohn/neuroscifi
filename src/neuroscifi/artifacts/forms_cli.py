@@ -34,6 +34,9 @@ def register(sub):
     p.add_argument("--alternatives", type=int, default=0, metavar="N",
                    help="also list up to N forms that differ in kind")
     p.add_argument("--json", action="store_true", help="print the whole plan as JSON")
+    p.add_argument("--db", type=Path, default=None,
+                   help="an individual whose learned form choices apply (only with `nsf config --form-learning "
+                        "apply`; ADR-078); without it no individual is read")
     p.set_defaults(handler=_plan)
     from ..instance import store
     q = ops.add_parser("learned", help="what was learned from your reactions to made forms, per kind of content, "
@@ -123,14 +126,21 @@ def _plan(a) -> int:
             else None
         context = forms.Context(device=a.device, accessibility=tuple(a.accessibility), generators=generators)
         request = forms.Request(a.request, explicit_form=a.explicit_form)
-        result = forms.plan(request, content, context)
+        learned = None
+        if a.db is not None:
+            result, learned = _learned_plan(a.db, request, content, context)
+        else:
+            result = forms.plan(request, content, context)
     except (ArtifactError, ValueError, OSError) as error:
         return _fail(str(error) if not isinstance(error, OSError) else f"cannot read a file ({error.strerror})")
+    decided = learned.decided if learned is not None else None
     others = forms.alternatives(result, a.alternatives + 1)[1:] if a.alternatives > 0 else ()
     if a.json:
         out = result.to_dict()
         out["input_notes"] = notes
         out["assumed_available"] = bool(a.assume_available)
+        if learned is not None:
+            out["learned"] = {"status": learned.status, "decided": decided}
         if a.alternatives > 0:
             out["alternatives"] = [list(c.forms) for c in others]
         print(json.dumps(out, indent=1, sort_keys=True))
@@ -140,11 +150,29 @@ def _plan(a) -> int:
     if a.assume_available:
         print("Note: planned as if every generator existed here.")
     print(forms.describe(result))
+    if decided:
+        print(f"Learned: {decided}")
     if others:
         print("Different kinds of form that would also work:")
         for cand in others:
             print(f"  {forms.label_of(cand.forms)} ({cand.total:.2f})")
     return 0
+
+
+def _learned_plan(path, request, content, context):
+    """The plan through what this individual learned (learn.plan); a named failure when the file cannot be opened."""
+    import sqlite3
+    from ..instance import store
+    from ..instance.errors import InstanceError
+    from . import learn
+    try:
+        db = store.open_existing(path)
+    except (InstanceError, sqlite3.Error) as error:
+        raise ValueError(f"cannot open the individual ({error})") from None
+    try:
+        return learn.plan(db, request, content, context)
+    finally:
+        db.close()
 
 
 _MODE_WORDS = {"off": "Form learning is off: nothing is recorded and nothing learned is used "

@@ -92,6 +92,9 @@ class KeyPolicy:
     tally: Mapping[str, int]             # form -> tally
     preferences: Mapping[str, float]     # form -> value in (0, 1]; empty while not enough or nothing positive
     minimum: int = MIN_EVIDENCE
+    shown: Mapping[str, int] = MappingProxyType({})   # form -> owner reactions to it (its latest per artifact)
+    kept: Mapping[str, int] = MappingProxyType({})    # form -> of those, kept
+    asked: Mapping[str, int] = MappingProxyType({})   # form -> times the owner replaced another form by it
 
     @property
     def enough(self) -> bool:
@@ -108,6 +111,21 @@ class KeyPolicy:
         order = sorted(self.preferences.items(), key=lambda kv: (-kv[1], kv[0]))
         named = ", then ".join(forms.FORMS[f].label for f, _ in order)
         return f"{head}; prefers {named}, where the planner allows it"
+
+    def habit(self, form: str, without) -> str:
+        """The sentence for a choice this key's learned preference decided: what was observed of `form`, and what
+        the planner alone would have chosen (`without`, its forms)."""
+        kind, _, device = self.key
+        label = forms.FORMS[form].label if form in forms.FORMS else form
+        times = lambda n: f"{n} time" + ("" if n == 1 else "s")      # noqa: E731
+        seen = []
+        if self.shown.get(form):
+            seen.append(f"kept {label} {self.kept.get(form, 0)} of {times(self.shown[form])} it was made")
+        if self.asked.get(form):
+            seen.append(f"asked for {label} {times(self.asked[form])} instead of another form")
+        observed = " and ".join(seen) or f"chose {label} before"
+        return (f"You {observed} for {kind} on the {device}: that habit, not the content, decided this form (from "
+                f"the content alone it would be {forms.label_of(tuple(without))}).")
 
 
 def _preferences(tally: Mapping[str, int], evidence: int, minimum: int) -> dict[str, float]:
@@ -132,8 +150,12 @@ class Tally:
         if outcome not in OUTCOMES:
             raise Malformed(f"unknown outcome {outcome!r}")
         lead = _form(form).split("+")[0]
-        entry = self._keys.setdefault(key, {"tally": Counter(), "evidence": 0, "observed": Counter()})
+        entry = self._keys.setdefault(key, {"tally": Counter(), "evidence": 0, "observed": Counter(),
+                                            "shown": Counter(), "kept": Counter(), "asked": Counter()})
         entry["observed"][outcome] += count
+        if outcome in OWNER_OUTCOMES:
+            entry["shown"][lead] += count
+            entry["kept"][lead] += count if outcome == "kept" else 0
         if outcome == "check_passed":
             entry["tally"][lead] += 0
             return
@@ -144,6 +166,7 @@ class Tally:
                 raise Malformed(f"unknown form {replaced_by!r}")
             entry["tally"][replaced_by] += count
             entry["evidence"] += count
+            entry["asked"][replaced_by] += count
 
     def keys(self) -> list[tuple[str, str, str]]:
         return sorted(self._keys)
@@ -156,7 +179,8 @@ class Tally:
         tally = {f: v for f, v in sorted(entry["tally"].items())}
         return KeyPolicy(tuple(key), entry["evidence"], MappingProxyType(dict(sorted(entry["observed"].items()))),
                          MappingProxyType(tally),
-                         MappingProxyType(_preferences(tally, entry["evidence"], self.min_evidence)), self.min_evidence)
+                         MappingProxyType(_preferences(tally, entry["evidence"], self.min_evidence)), self.min_evidence,
+                         *(MappingProxyType(dict(sorted(entry[n].items()))) for n in ("shown", "kept", "asked")))
 
 
 @dataclass(frozen=True)
@@ -169,6 +193,11 @@ class Learned:
     preferences: Mapping[str, float]
     words: str
     adjustments: Mapping | None = None
+    policy: KeyPolicy | None = None      # what it was computed from
+    # Set by plan_with only when the learned preference changed the choice (the plan with it differs from the plan
+    # without it): one plain sentence naming what was observed, so that "why" can show a habit decided, not the content.
+    # None whenever the choice is the planner's own.
+    decided: str | None = None
 
     @classmethod
     def of(cls, policy: KeyPolicy, mode: str) -> Learned:
@@ -181,7 +210,7 @@ class Learned:
             return cls(policy.key, "not_enough", MappingProxyType({}), policy.words())
         if not policy.preferences:
             return cls(policy.key, "nothing_learned", MappingProxyType({}), policy.words())
-        return cls(policy.key, "applied", policy.preferences, policy.words())
+        return cls(policy.key, "applied", policy.preferences, policy.words(), policy=policy)
 
     def context(self, context: forms.Context) -> forms.Context:
         """`context` with the learned preferences added. The owner's stated preferences win: with any positive one
@@ -223,6 +252,8 @@ def plan_with(lookup: Callable[[tuple], Learned], request: forms.Request, conten
             f"{label[:1].upper()}{label[1:]}, because that is what you kept or asked for before with {kind} on the "
             f"{device} (learned from your reactions; `nsf form learned` shows it)."),
             notes=(*final.notes, f"without what was learned: {forms.label_of(first.chosen)}"))
+        if learned.policy is not None:
+            learned = dataclasses.replace(learned, decided=learned.policy.habit(final.chosen[0], first.chosen))
     return final, learned
 
 

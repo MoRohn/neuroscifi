@@ -386,3 +386,49 @@ def test_the_gap_report_reads_what_is_recorded_and_changes_nothing(individual, m
     assert "nothing records them" in lines["could_not_make_well"]["words"]
     assert report["label"] == "read-only: nothing acts on this report"
     assert before == {t: db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in before}
+
+
+# ---- when a habit decided, it says so (the main session's condition on the preferences path) ----------------------
+
+def test_a_learned_preference_that_flips_the_choice_says_so_and_one_that_does_not_says_nothing(individual, capsys):
+    db, path = individual
+    store.set_config(db, {"form_learning": "apply"}, T0)
+    for i, reaction in enumerate(("kept", "kept", "kept", "dismissed")):        # a table was made and judged 4 times
+        aid = shown(db, form="table", now=T0 + i)
+        learn.record_outcome(db, aid, reaction, now=T0 + i)
+    aid = shown(db, now=T0 + 5)                                                 # and once a bar chart replaced by one
+    learn.record_outcome(db, aid, "replaced", by="table", now=T0 + 5)
+    plan, learned = learn.plan(db, F.Request(), (SHAPE,), CONSOLE)
+    assert F.plan(F.Request(), (SHAPE,), CONSOLE).chosen == ("bar_chart",) and plan.chosen == ("table",)
+    assert learned.decided == (
+        "You kept a table 3 of 4 times it was made and asked for a table 1 time instead of another form for "
+        "categories on the console: that habit, not the content, decided this form (from the content alone it would "
+        "be a bar chart).")
+    # the same key's preference where the planner already chooses the preferred form: no sentence
+    store.set_config(db, {"form_learning": "record"}, T0 + 6)
+    learn.reset(db, T0 + 6)
+    store.set_config(db, {"form_learning": "apply"}, T0 + 7)
+    for i in range(2):
+        learn.record_outcome(db, shown(db, now=T0 + 8 + i), "kept", now=T0 + 8 + i)
+    plan, learned = learn.plan(db, F.Request(), (SHAPE,), CONSOLE)
+    assert learned.status == "applied" and plan.chosen == ("bar_chart",) and learned.decided is None
+    # nor while nothing is applied
+    store.set_config(db, {"form_learning": "record"}, T0 + 10)
+    assert learn.plan(db, F.Request(), (SHAPE,), CONSOLE)[1].decided is None
+    # `nsf form plan --db` prints it
+    store.set_config(db, {"form_learning": "apply"}, T0 + 11)
+    learn.reset(db, T0 + 11)
+    for i in range(2):
+        aid = shown(db, now=T0 + 12 + i)
+        learn.record_outcome(db, aid, "replaced", by="table", now=T0 + 12 + i)
+    db.close()
+    from neuroscifi.cli import main
+    shape = json.dumps({"kinds": ["categories"], "n_items": 16, "n_series": 1})
+    argv = ["form", "plan", "--request", "", "--shape", shape, "--assume-available"]
+    assert main(argv) == 0 and "Learned:" not in capsys.readouterr().out      # no individual read: as before
+    assert main([*argv, "--db", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "Form: A table" in out and ("Learned: You asked for a table 2 times instead of another form for categories "
+                                       "on the console: that habit, not the content, decided this form") in out
+    assert main([*argv, "--db", str(path), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["learned"]["decided"].startswith("You asked for a table 2 times")
