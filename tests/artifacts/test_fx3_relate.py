@@ -60,22 +60,26 @@ def _sums(files: dict, algo: str = "sha256", spoil: str | None = None) -> bytes:
 
 @pytest.mark.parametrize("algo", ["sha256", "md5", "sha1"])
 @pytest.mark.parametrize("question", ["Do the files in the bundle match the checksum list?",
-                                      "Was this list of hashes made from this archive?"])
+                                      "Are the hashes in this list the hashes of the archive's files?"])
 def test_a_checksum_listing_is_compared_member_by_member(algo, question):
     zipped = _zip(MEMBERS)
     assert _ask({"bundle.zip": zipped, "SUMS": _sums(MEMBERS, algo)}, question) is True
     assert _ask({"bundle.zip": zipped, "SUMS": _sums(MEMBERS, algo, spoil="doc/guide.txt")}, question) is False
     changed = dict(MEMBERS, **{"data/a.dat": b"\x07" * 332 + b"\x08"})
     assert _ask({"bundle.zip": _zip(changed), "SUMS": _sums(MEMBERS, algo)}, question) is False
+    # lane FX5 (C1): a question with a word the comparison's grammar does not read ("made") is "cannot"
+    assert _ask({"bundle.zip": zipped, "SUMS": _sums(MEMBERS, algo)},
+                "Was this list of hashes made from this archive?") is None
 
 
-def test_a_size_listing_in_text_or_json_is_compared_member_by_member():
+def test_a_size_listing_in_plain_text_is_compared_member_by_member():
     zipped = _zip(MEMBERS)
     text = "".join(f"{len(b):>7}  {n}\n" for n, b in MEMBERS.items()).encode()
     as_json = json.dumps({"entries": [{"name": n, "size": len(b)} for n, b in MEMBERS.items()]}).encode()
     q = "Are the sizes in the manifest the sizes of the files in the archive?"
     assert _ask({"pack.zip": zipped, "manifest.txt": text}, q) is True
-    assert _ask({"pack.zip": zipped, "manifest.json": as_json}, q) is True
+    # lane FX5 (C2): a listing is read from plain text only; a JSON listing is "cannot"
+    assert _ask({"pack.zip": zipped, "manifest.json": as_json}, q) is None
     wrong = text.replace(b"    333", b"    334")
     assert _ask({"pack.zip": zipped, "manifest.txt": wrong}, q) is False
     # sizes are measured for a TAR archive too
@@ -94,9 +98,13 @@ def test_listing_traps_stay_cannot():
 
 def test_a_listing_that_names_a_member_the_archive_lacks_disagrees():
     zipped = _zip(MEMBERS)
+    q = "Do the files in the bundle match the checksum list?"
+    # lane FX5 (C3): an extra listed member alone is a difference on one side only ("does the list give the digests
+    # of all the files" holds): "cannot"; a member renamed (listed and missing on both sides) disagrees
     listing = _sums(MEMBERS) + _sums({"doc/missing.txt": b"gone"})
-    assert _ask({"bundle.zip": zipped, "SUMS": listing}, "Do the files in the bundle match the checksum list?") \
-        is False
+    assert _ask({"bundle.zip": zipped, "SUMS": listing}, q) is None
+    renamed = _sums(MEMBERS).replace(b"doc/guide.txt", b"doc/other.txt")
+    assert _ask({"bundle.zip": zipped, "SUMS": renamed}, q) is False
 
 
 # ---- X-D: drawn links against written links ------------------------------------------------------------------------
@@ -124,8 +132,8 @@ def _edge_text(edges, verb="hands over to") -> bytes:
     return "".join(f"* {a} {verb} {b}\n" for a, b in edges).encode()
 
 
-@pytest.mark.parametrize("question", ["Do the connections in the drawing match the hand-over notes?",
-                                      "Are the connections in the picture the ones written down?"])
+@pytest.mark.parametrize("question", ["Do the connections in the drawing match the notes?",
+                                      "Are the connections in the picture the ones written in the notes?"])
 def test_drawn_links_are_compared_with_the_links_a_text_names(question):
     svg = _graph_svg(EDGES)
     assert _ask({"flow.svg": svg, "notes.txt": _edge_text(EDGES)}, question) is True
@@ -136,10 +144,14 @@ def test_drawn_links_are_compared_with_the_links_a_text_names(question):
 
 def test_link_traps_stay_cannot():
     svg = _graph_svg(EDGES)
+    # lane FX5 (C1): words the link grammar does not read ("hand-over", "down") leave the question unread
+    for question in ("Do the connections in the drawing match the hand-over notes?",
+                     "Are the connections in the picture the ones written down?"):
+        assert _ask({"flow.svg": svg, "notes.txt": _edge_text(EDGES)}, question) is None
     # lane FX4 (R1): a question that names no quantity of the comparison ("agree") is not answered by it
     assert _ask({"flow.svg": svg, "notes.txt": _edge_text(EDGES)}, "Do the drawing and the hand-over notes agree?") \
         is None
-    q = "Do the connections in the drawing match the hand-over notes?"
+    q = "Do the connections in the drawing match the notes?"
     three = b"* Ash, Birch and Cedar meet weekly\n" + _edge_text(EDGES)
     assert _ask({"flow.svg": svg, "notes.txt": three}, q) is None        # a line naming three labels
     negated = _edge_text(EDGES[:3]) + b"* Douglas does not hand over to Elm\n"
@@ -175,7 +187,7 @@ ONSETS = [1.1, 2.75, 4.3, 6.05]
 
 
 @pytest.mark.parametrize("question", ["Do the bells ring at the times in the cue sheet?",
-                                      "Is the timing list right for this recording?"])
+                                      "Do the bells in the recording start at the cue times?"])
 def test_onsets_are_compared_with_a_cue_sheet(question):
     wav = _beeps(ONSETS)
     assert _ask({"bells.wav": wav, "cues.txt": _cues(ONSETS)}, question) is True
@@ -187,6 +199,8 @@ def test_onsets_are_compared_with_a_cue_sheet(question):
 def test_cue_traps_stay_cannot():
     wav = _beeps(ONSETS)
     q = "Do the bells ring at the times in the cue sheet?"
+    # lane FX5 (C1): "timing list" names no element compared one by one (no bell, tone or cue)
+    assert _ask({"bells.wav": wav, "cues.txt": _cues(ONSETS)}, "Is the timing list right for this recording?") is None
     clock = "".join(f"14:{10 + i:02d}:{5 * i:02d} bell\n" for i in range(4)).encode()      # times of day
     assert _ask({"bells.wav": wav, "cues.txt": clock}, q) is None
     mixed = _cues(ONSETS) + b"then the hall goes quiet\n"

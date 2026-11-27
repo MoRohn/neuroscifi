@@ -725,6 +725,7 @@ class Side:
     raw: bytes | None = field(default=None, repr=False)  # the file's bytes (lane FX3: an archive's member digests)
     fmt: str = ""                   # the decoder's format name (lane FX4: which lines a reader sees)
     source_notes: tuple = ()        # the decoder's notes (lane FX4: hidden elements a reader dropped)
+    partial: bool = False           # the decoder read only part of it (lane FX5: an archive's listing is then unread)
 
 
 def side(source, *, name: str | None = None, data: bytes | None = None) -> Side:
@@ -743,7 +744,8 @@ def side(source, *, name: str | None = None, data: bytes | None = None) -> Side:
     facts = (qs + said)[:MAX_FACTS]
     detected = getattr(source, "detected", None)
     return Side(name, kind, facts, _names(rep, name, facts), _own_words(rep, data), notes, rep, data,
-                str(getattr(detected, "format", "") or ""), tuple(getattr(source, "notes", ()) or ()))
+                str(getattr(detected, "format", "") or ""), tuple(getattr(source, "notes", ()) or ()),
+                bool(getattr(source, "partial", False)))
 
 
 def _own_words(rep, data) -> str:
@@ -808,6 +810,7 @@ class Pair:
     name_only: tuple = ()           # for a count joined only by a file's or table's name: the joining words
     complete: bool = False          # lane FX3: a structure comparison that used every line of its document
     measures: frozenset = frozenset()  # lane FX4: the quantities a structure comparison measures (QUANTITY_WORDS)
+    read: object = None             # lane FX5: what the comparison's closed grammar read of the question (C1)
 
     def basis(self) -> str:
         tol = "none" if self.tolerance is None else f"{self.tolerance:.6g}"
@@ -1633,7 +1636,7 @@ def compare(a, b, question: str | None = None) -> Relation:
     pairs = _candidates(A, B, q_aggs)
     if set(rr.tokens(question or "")) & rr.COUNT_CUES:
         pairs += _question_pairs(A, B, q_words)
-    pairs += _structure_pairs(A, B)
+    pairs += _structure_pairs(A, B, question)
     for p in pairs:
         p.focus = _focus(p, q_words, q_aggs) if question else 0
         if isinstance(p.a, Quantity) and isinstance(p.b, Quantity) and p.verdict != "not_comparable" and \
@@ -1656,6 +1659,11 @@ def compare(a, b, question: str | None = None) -> Relation:
         rel.reason = ("cannot tell: one of them holds text a reader does not see (a comment or a hidden group); "
                       "hidden text is not evidence, and it is not known whether it agrees with what is shown")
         return rel
+    asked_structure = _structure_question(A, B, question)
+    if asked_structure:
+        # lane FX5 (C1-C3): a question that one of the structure comparisons' closed grammars reads completely is
+        # decided by that comparison alone, or is "cannot"; no other comparison answers it
+        return _decide_by_structure(rel, pairs, asked_structure, question, A, B)
     decide = None
     if q_aggs:
         # the question asks about an aggregate: only a comparison of that aggregate may answer it
@@ -1686,10 +1694,10 @@ def compare(a, b, question: str | None = None) -> Relation:
             # lane FX4 (R1): a comparison decides only when the question names BOTH what it measures (a quantity
             # word of its kind) and where it is read from (a word naming an artifact or its structure); one cue
             # word is never enough
-            decide = [k for k in legacy + structure if _names_measure_and_where(pairs[k], q_tokens)]
+            decide = [k for k in legacy if _names_measure_and_where(pairs[k], q_tokens)]
             scope = "the comparison the question names, with where it is read from"
         # lane FX4 (team lead's ruling): with no question, only the comparisons that existed before Wave O-3
-        # decide; members, links and times never do (they decide only a question that names them, R1)
+        # decide; members, links and times never do (they decide only a question their grammar reads, C1)
     if question and decide:
         # lane FX4 (R1): a quantity the question names that the deciding comparison does not measure (a pitch,
         # a date, a distance, a direction, a member's content...) makes it "cannot", whatever else agrees
@@ -1709,6 +1717,13 @@ def compare(a, b, question: str | None = None) -> Relation:
                                                                else "a sound says") +
                       "; here an image or a sound gives only its measurements (sizes, durations, measured "
                       "statistics), never what it shows or says")
+        return rel
+    scoped = _out_of_scope(A, B, [pairs[k] for k in decide])
+    if scoped:
+        # lane FX5 (C4, the review's M4): a stated number whose own sentence narrows or denies it, whose document
+        # excludes something from it, or that the document states twice with two values is not compared
+        rel.decided_by = []
+        rel.reason = "cannot tell: " + scoped
         return rel
     verdicts = [pairs[k].verdict for k in decide]
     rel.decided_by = decide
@@ -1736,8 +1751,129 @@ def compare(a, b, question: str | None = None) -> Relation:
         rel.reason = f"they agree ({len(decide)} comparison(s) of {scope}, each within its stated tolerance)"
     else:
         rel.reason = f"cannot tell: {scope} cannot be compared fully"
-    rel.specific = rel.answer is not None and bool(question) and not scope.startswith("everything")
+    rel.specific = _specific(rel, question, A, B, None if scope.startswith("everything") else decide)
     return rel
+
+
+# ---- lane FX5 (ADR-081, C1-C4): which comparison may decide, and which answer may become a durable link -----------
+
+_STRUCTURE_WHAT = {"size": "the sizes of an archive's members", "digest": "the digests of an archive's members",
+                   "link": "the links a drawing draws", "time": "the times a sound's tones start"}
+
+
+def _structure_question(A: Side, B: Side, question: str | None) -> tuple:
+    """The structure grammars (`relate_grammar.GRAMMARS`) that read the question completely, for two artifacts of
+    the kinds that comparison relates (an archive and a listing, a drawing and a text, a sound and a text)."""
+    if not question:
+        return ()
+    from . import relate_grammar as rg
+    kinds = {A.kind, B.kind}
+    grams = []
+    if "bundle" in kinds and kinds & {"document", "tree"}:
+        grams += ["size", "digest"]
+    if "drawing" in kinds and "document" in kinds:
+        grams.append("link")
+    if "signal" in kinds and "document" in kinds:
+        grams.append("time")
+    names = (A.name, B.name)
+    return tuple(g for g in grams if rg.parse(question, rg.GRAMMARS[g], names).complete)
+
+
+def _decide_by_structure(rel: Relation, pairs: list, asked: tuple, question: str, A: Side, B: Side) -> Relation:
+    """C1-C3: exactly one structure comparison that read the question completely, and read and matched every line
+    and every element, answers; anything else is "cannot" with the reason."""
+    mine = [k for k, p in enumerate(pairs) if p.a.kind in STRUCTURE_KINDS]
+    able = [k for k in mine if pairs[k].read is not None and pairs[k].read.complete]
+    asks = " and ".join(_STRUCTURE_WHAT[g] for g in asked)
+    if len(able) != 1:
+        notes = [pairs[k].note for k in mine if pairs[k].note.startswith("cannot: ")]
+        if len(able) > 1:
+            why = "more than one comparison could answer it"
+        elif notes:
+            why = notes[0][len("cannot: "):]
+        elif mine:
+            why = "the comparison these two artifacts allow does not measure what the question asks"
+        else:
+            why = ("these are not an archive and a plain listing of its members, a node-link drawing and a plain "
+                   "list of its links, or a sound of steady tones and a plain cue sheet, read completely")
+        rel.reason = f"cannot tell: the question asks about {asks}; {why}"
+        return rel
+    k = able[0]
+    p = pairs[k]
+    rel.decided_by = [k]
+    if p.verdict == "consistent":
+        rel.answer = True
+        rel.reason = f"they agree ({asks}: every line and every element read and matched)"
+    elif p.verdict == "inconsistent":
+        rel.answer = False
+        rel.reason = f"they disagree ({asks})"
+    else:
+        note = p.note[len("cannot: "):] if p.note.startswith("cannot: ") else p.note
+        rel.reason = "cannot tell: " + (note or f"{asks} cannot be compared fully")
+    rel.specific = _specific(rel, question, A, B, [k])
+    return rel
+
+
+# Words with which a sentence narrows, denies, conditions or moves in time what it states (C4, the review's M4: "not
+# counting the silence", "it is not true that", "before the refund", "the full photo is ..."). A stated number whose
+# own sentence holds one is not compared: a closed list of a decline rule, never of an answer.
+_SCOPE_WORDS = frozenset("""not no never none nor neither without cannot except excepting excluding exclude excludes
+excluded apart besides aside other minus plus including include includes included only just alone counting net gross
+subtotal before after until till since prior previous previously earlier later formerly once originally initially
+then now currently yet if unless would could should might may expected expect expects planned plan plans budget
+budgeted target targets forecast forecasts projected estimate estimated estimates each every per apiece first last
+full""".split())
+# Words with which a document excludes something from what it states, wherever they stand in it.
+_EXCLUDING = frozenset("except excepting excluding exclude excludes excluded apart besides aside minus counting".split())
+_SCOPED_KINDS = ("number", "count", "extent", "box", "range")
+
+
+def _out_of_scope(A: Side, B: Side, deciding: list) -> str | None:
+    """Why the older comparisons that would decide must not (C4), or None."""
+    seen: dict[int, list] = {}
+    for p in deciding:
+        for f, other in ((p.a, p.b), (p.b, p.a)):
+            if not isinstance(f, Statement) or f.kind not in _SCOPED_KINDS or not f.sentence:
+                continue
+            toks = set(rr.tokens(f.sentence))
+            if toks & _SCOPE_WORDS or any(t.endswith("n't") for t in toks):
+                return ("a number compared is stated in a sentence that narrows, denies or conditions it (\""
+                        + clean(f.sentence, 80) + "\")")
+            owner = A if any(x is f for x in A.facts) else B if any(x is f for x in B.facts) else None
+            if owner is not None and owner.kind == "document" and set(rr.tokens(owner.words)) & _EXCLUDING:
+                return "the document excludes something from what it states, and what is not read"
+            value = p.a_value if f is p.a else p.b_value
+            seen.setdefault(id(other), []).append((value, p.tolerance or 0.0))
+    for values in seen.values():
+        for (v1, t1), (v2, _) in itertools.combinations(values, 2):
+            same = v1 == v2
+            if not same and isinstance(v1, (int, float)) and isinstance(v2, (int, float)):
+                same = abs(float(v1) - float(v2)) <= t1 + REL_EPS * max(1.0, abs(float(v1)))
+            if not same:
+                return "the document states the quantity compared more than once, with different values"
+    return None
+
+
+def _specific(rel: Relation, question: str | None, A: Side, B: Side, decide) -> bool:
+    """The ONE gate for a durable consistent_with / contradicts link, on every path (lane FX5, C4). True only for a
+    decided answer to a question that a closed grammar read completely: a structure comparison's own grammar (whose
+    C2 and C3 conditions hold by construction once it decides), or, for the older comparisons, the general
+    vocabulary of aggregates, counts and measures together with the words of the facts compared
+    (`relate_grammar.legacy_parse`). An answer without a question, or decided by "everything", is never specific."""
+    if rel.answer is None or not question or not decide:
+        return False
+    from . import relate_grammar as rg
+    deciding = [rel.pairs[k] for k in decide]
+    structural = [p.a.kind in STRUCTURE_KINDS for p in deciding]
+    if all(structural):
+        return all(p.read is not None and p.read.complete for p in deciding)
+    if any(structural):
+        return False
+    words: set = set()
+    for p in deciding:
+        for f in (p.a, p.b):
+            words |= set(f.words) | set(f.nouns)
+    return rg.legacy_parse(question, (A.name, B.name), words).complete
 
 
 _COUNT_ASKED = re.compile(r"\b(?:number|count|amount)\s+of\s+(?:the\s+|all\s+)?([a-z][a-z-]{2,})"
@@ -1799,123 +1935,132 @@ def _dangling(A: Side, B: Side, pairs: list) -> list:
     return out
 
 
-# ---- structure across two sides (lane FX3, ADR-081; tightened by lane FX4) ---------------------------------------------
-# Three measured comparisons that need both artifacts at once: what one artifact holds is the vocabulary in which the
-# other's lines are read (an archive's member names, a drawing's node labels), or the other's lines are elapsed times
-# measured against a sound's onsets. Each compares only what was measured in one artifact with what the other states
-# line by line, and only lines a reader sees (R2): a plain text file's own lines, otherwise its reader's text. A line
-# that cannot be read that way, a listing cut off by a bound, or marks a viewer may not see make it "cannot", never a
-# guess. It decides only when the question names its quantity and where it is read from (R1, `compare`).
+# ---- structure across two sides (lane FX3, ADR-081; rebuilt by construction in lane FX5) ----------------------------
+# Three measured comparisons that need both artifacts at once: an archive's members against a listing of them, a
+# node-link drawing's links against lines naming two of its labels, a sound's tone onsets against lines of elapsed
+# times. Lane FX5 (ADR-081, C1-C3) builds them so that a wrong answer cannot come from what the code does not read:
+# - C1: a comparison decides only a question its closed grammar reads COMPLETELY (`relate_grammar`); any other word
+#   leaves it "cannot";
+# - C2: a listing, a link list or a cue sheet is read only from a PLAIN TEXT file, from its own bytes, every character
+#   printable ASCII (no format, control or look-alike character): Markdown, HTML, RTF, DOCX, ODT, PDF, JSON and every
+#   other source with a notion of hidden, styled or structured text are "cannot: this comparison reads plain listings
+#   only";
+# - C3: every line must be read and matched, and every element of the other artifact classified (each member a
+#   regular file the decoder read, each mark of a drawing a labelled node, its label or an edge with fully evaluated
+#   visible style, each stretch of a sound a steady tone or silence); anything else, a duplicate, a bound reached, or
+#   a value that another reading (another unit, another digest algorithm, rounding against truncation) would explain
+#   makes it "cannot".
 
 STRUCTURE_KINDS = ("members", "links", "times")
 _DIGESTS = {32: "md5", 40: "sha1", 64: "sha256", 128: "sha512"}
-_LIST_MARK = re.compile(r"^\s*(?:[-*+•]|\d{1,4}[.)])\s+")
-_HEX_LINE = re.compile(r"^\s*([0-9a-fA-F]{32,128})\s+\*?(\S(?:.*\S)?)\s*$")
-_SIZE_FIRST = re.compile(r"^\s*(\d{1,15})\s+(\S(?:.*\S)?)\s*$")
-_SIZE_LAST = re.compile(r"^\s*(\S+)\s+(\d{1,15})\s*(?:b|bytes?)?\s*$", re.I)
-_ELAPSED = re.compile(r"^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2}(?:[.,]\d{1,6})?)(?![\d:])")
+_LIST_MARK = re.compile(r"^\s*(?:[-*+]|\d{1,4}[.)])\s+")
+_HEX_LINE = re.compile(r"^\s*([0-9a-fA-F]{32,128})\s+\*?(\S+)\s*$")
+_SIZE_FIRST = re.compile(r"^\s*(\d{1,15})\s+(\S+)\s*$")
+_SIZE_LAST = re.compile(r"^\s*(\S+)\s+(\d{1,15})\s*(b|bytes?)?\s*$", re.I)
 _PATHLIKE = re.compile(r"^[^\s:]*(?:/[^\s/]+|\.[A-Za-z0-9]{1,8})$")
-SIZE_KEYS = frozenset("bytes byte size sizes length octets".split())
+_TIME_LINE = re.compile(r"^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:[.,](\d{1,6}))?(?:\s+([A-Za-z]+)(?:\s+\d{1,4})?)?\s*$")
 MAX_LISTING_LINES = 20_000
 MAX_DIGEST_BYTES = 256 << 20            # member bytes hashed per comparison, at most (as max_decoded_bytes)
+MAX_DRAWING_SHAPES = 5_000              # marks of a node-link drawing read (lane FX4 review L5: a bound on the work)
 TIMES_TOLERANCE_S = 0.05                # ten 5 ms analysis frames of `tone_segments`
-# R1/R4 (lane FX4): the words a link line may hold between two labels. A line naming two labels joined by anything
-# else ("is unrelated to", "stopped reporting to", "and", a distance) is not read as a link, and the comparison is
-# then "cannot". General English verbs of a directed or undirected relation; the direction itself is not read.
+PLAIN_ONLY = "cannot: this comparison reads plain listings only (a plain text file of printable characters)"
+# The joins a link line may hold between two labels: general English for "is linked to" (direction is not read).
 _LINK_JOIN = re.compile(
-    r"^\s*(?:->|-->|→|—>|<->|--|–|—|-|to|reports? to|reports? into|depends? on|feeds?(?: into| to)?|leads? to|links? to|"
+    r"^\s*(?:->|-->|<->|--|-|→|–|—|to|reports? to|depends? on|feeds?(?: into)?|leads? to|links? to|"
     r"is linked to|connects? to|is connected to|calls|is a child of|is the child of|is a parent of|is the parent of|"
-    r"precedes|follows|flows? (?:in)?to|sends? to|hands? over to|passes to|points to|manages|is managed by|"
-    r"uses|imports|includes)\s*$", re.I)
-# lines of a cue sheet that name an end, not an onset: the sheet then lists more than onsets (R4)
-_END_WORDS = frozenset("stop stops stopped end ends ended off finish finishes finished release releases".split())
-_INVISIBLE = re.compile(rb"(?:stroke-opacity|opacity|fill-opacity)\s*[=:]\s*[\"']?\s*0(?:\.0*)?(?![.\d])|stroke\s*[=:]\s*"
-                        rb"[\"']?\s*(?:none|transparent)|stroke-width\s*[=:]\s*[\"']?\s*0(?:\.0*)?(?![.\d])|"
-                        rb"visibility\s*[=:]\s*[\"']?\s*hidden|display\s*[=:]\s*[\"']?\s*none", re.I)
+    r"sends? to|hands? over to|passes to|points to|manages|is managed by|uses|imports)\s*$")
+# A cue sheet line is a bare elapsed time, or a time and one word naming the sound event (the same on every line).
+_EVENT_WORDS = frozenset("tone beep chime bell gong click pulse cue onset ding".split())
+_LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._'&-]{0,78}")
 
 
-def _text_lines(S: Side) -> tuple[list[str], bool]:
-    """(the lines a reader sees, whether all of them were read). A plain text file's own lines; for every other
-    document (Markdown, DOCX, PDF, HTML, RTF) its reader's text, never its raw bytes (R2). List markers dropped."""
-    rep = S.rep
-    text = ""
-    if S.fmt == "text" and S.raw and b"\x00" not in S.raw[:4096]:
-        from .adapters.plain import decode_text
-        try:
-            text = decode_text(bytes(S.raw))[0]
-        except Exception:
-            text = ""
-    if not text:
-        try:
-            text = rep.text() if getattr(rep, "kind", None) == "document" else ""
-        except Exception:
-            text = ""
-    text = text or ""
-    lines = text[:rr.MAX_TEXT].splitlines()
-    complete = len(text) < rr.MAX_TEXT and len(lines) <= MAX_LISTING_LINES
+def _plain_lines(S: Side, extra: str = "") -> tuple[list[str], bool] | None:
+    """C2: (the lines of a plain text file, whether all of them were read), from its own bytes; None for any other
+    source, or when a character is not printable ASCII (or one of `extra`): a control, format or look-alike character
+    may show something other than what is read."""
+    if S.kind != "document" or S.fmt != "text" or not S.raw:
+        return None
+    from .adapters.plain import decode_text
+    try:
+        text = decode_text(bytes(S.raw))[0]
+    except Exception:
+        return None
+    text = text.replace("\r\n", "\n")
+    allowed = set(extra)
+    for ch in text[:rr.MAX_TEXT]:
+        if not (" " <= ch <= "~" or ch in "\t\n" or ch in allowed):
+            return None
+    lines = text[:rr.MAX_TEXT].split("\n")
+    complete = len(text) <= rr.MAX_TEXT and len(lines) <= MAX_LISTING_LINES
     return [_LIST_MARK.sub("", ln) for ln in lines[:MAX_LISTING_LINES]], complete
 
 
-def _member_table(B: Side) -> dict:
-    """{member path (as a question would name it): (size, member)} of a decoded archive; {} when a name repeats."""
+def _all_members_read(B: Side) -> bool:
+    """Every member of the archive was read by the decoder (none listed only, refused or cut off)."""
+    if B.partial:
+        return False
+    for note in B.source_notes:
+        m = re.match(r"(\d+) member\(s\): (\d+) decoded, (\d+) listed only, (\d+) refused, (\d+) failed", str(note))
+        if m:
+            return m.group(3) == "0" and m.group(4) == "0"
+    return False
+
+
+def _canon(path: str) -> str:
+    import posixpath
+    p = posixpath.normpath(path)
+    return (p[2:] if p.startswith("./") else p).casefold()
+
+
+def _member_table(B: Side) -> dict | None:
+    """{member path: size measured from its bytes} of a ZIP or TAR archive every member of which was read, each a
+    regular file with a printable ASCII name; None otherwise (C3: an element not classified)."""
     from .outcome import member_path
-    out = {}
+    if B.fmt not in ("zip", "tar") or not _all_members_read(B):
+        return None
+    out, canon = {}, set()
     for m in getattr(B.rep, "members", ()) or ():
-        if getattr(m.detected, "format", None) == "directory":
+        fmt = getattr(m.detected, "format", None)
+        if fmt == "directory":
             continue
+        if fmt == "python-package":
+            continue                         # the decoder's combined graph of the Python members: not a member
         path = member_path(str(m.path))
-        if not path or path in out:
-            return {}
-        out[path] = (int(m.size), m)
-    return out
+        if not path or not all(" " < ch <= "~" for ch in path) or _canon(path) in canon:
+            return None
+        canon.add(_canon(path))
+        out[path] = int(m.size)
+    return out or None
 
 
-def _listing_from_lines(lines: list[str]) -> tuple[list[tuple[str, str, object]], int]:
-    """((path, property, value) per listed line, lines not read): "<hex digest>  <path>" (sha256sum and kin),
-    "<size>  <path>" or "<path>  <size>" (bytes). A non-empty line that is not one of these, or whose name is not a
-    path ("total 916", "Files: 3"), is a line not read."""
+def _listing_from_lines(lines: list[str]) -> tuple[list[tuple[str, str, object, bool]], int]:
+    """((path, property, value, unit stated) per listed line, lines not read): "<hex digest>  <path>" (sha256sum and
+    kin), "<size>  <path>" or "<path>  <size>[ bytes]". A non-empty line that is not one of these is not read."""
     out, unread = [], 0
     for ln in lines:
         if not ln.strip():
             continue
         m = _HEX_LINE.match(ln)
-        if m and len(m.group(1)) in _DIGESTS and _PATHLIKE.match(m.group(2).strip()):
-            out.append((m.group(2).strip(), _DIGESTS[len(m.group(1))], m.group(1).lower()))
+        if m and len(m.group(1)) in _DIGESTS and _PATHLIKE.match(m.group(2)):
+            out.append((m.group(2), _DIGESTS[len(m.group(1))], m.group(1).lower(), True))
             continue
         m = _SIZE_FIRST.match(ln)
-        if m and _PATHLIKE.match(m.group(2).strip()) and not rr.is_number_like(m.group(2)):
-            out.append((m.group(2).strip(), "size", int(m.group(1))))
+        if m and _PATHLIKE.match(m.group(2)) and not rr.is_number_like(m.group(2)):
+            out.append((m.group(2), "size", int(m.group(1)), False))
             continue
         m = _SIZE_LAST.match(ln)
-        if m and _PATHLIKE.match(m.group(1).strip()) and not rr.is_number_like(m.group(1)):
-            out.append((m.group(1).strip(), "size", int(m.group(2))))
+        if m and _PATHLIKE.match(m.group(1)) and not rr.is_number_like(m.group(1)):
+            out.append((m.group(1), "size", int(m.group(2)), bool(m.group(3))))
             continue
         unread += 1
     return out, unread
-
-
-def _listing_from_tree(tree) -> tuple[list[tuple[str, str, object]], int]:
-    """A JSON or XML list of records, each a path and a size in bytes ({"path": ..., "bytes": ...})."""
-    from .types import _walk
-    out = []
-    for node, _ in _walk(tree.root, limit=200_000):
-        kids = getattr(node, "children", ()) or ()
-        if not kids or len(kids) > 16:
-            continue
-        texts = [c for c in kids if isinstance(c.value, str) and _PATHLIKE.match(c.value.strip())
-                 and not rr.is_number_like(c.value)]
-        sizes = [c for c in kids if str(c.name).lower() in SIZE_KEYS and not isinstance(c.value, bool)
-                 and (isinstance(c.value, (int, float)) or isinstance(c.value, str) and c.value.isdigit())]
-        if len(texts) == 1 and len(sizes) == 1:
-            out.append((texts[0].value.strip(), "size", int(float(sizes[0].value))))
-    return out, 0
 
 
 def _digests(B: Side, wanted: dict) -> dict:
     """{path: hex digest} of the listed ZIP members, each read once by ONE safe reader built once (linear in the
     members and bounded by MAX_DIGEST_BYTES in all); a member that cannot be read is left out."""
     import hashlib
-    if not B.raw:
+    if not B.raw or B.fmt != "zip":
         return {}
     try:
         from .outcome import member_path
@@ -1940,156 +2085,380 @@ def _digests(B: Side, wanted: dict) -> dict:
     return out
 
 
-def _members_pair(B: Side, D: Side) -> Pair | None:
-    """B an archive, D a listing of its members with a size or a digest each."""
+def _other_unit(listed: int, size: int) -> bool:
+    """Whether a listed number would be this size in a common unit other than bytes (kB, KiB, 512- or 4096-byte
+    blocks, MB, MiB; rounded, cut or raised): then a listing that states no unit does not disagree."""
+    for div in (1000, 1024, 512, 4096, 1_000_000, 1 << 20):
+        q = size / div
+        if listed in (math.floor(q), math.ceil(q), round(q)):
+            return True
+    return listed == math.ceil(size / 4096) * 4           # 4 KiB blocks counted in KiB (du)
+
+
+def _unreadable(kind: str, what: str, note: str, read=None) -> Pair:
+    """A structure comparison that was recognised but cannot answer: a pair that never decides, with the reason."""
+    meas = _q(kind, f"structure.{kind}", (), how=what)
+    stmt = _s(kind, f"document.{kind}", (), how=what)
+    pair = Pair("not_comparable", meas, stmt, 0, 0, None, True, what, note)
+    pair.read = read
+    return pair
+
+
+def _members_pair(B: Side, D: Side, question: str | None) -> Pair | None:
+    """B an archive, D a plain listing of its members with a size or a digest each."""
+    from . import relate_grammar as rg
+    if B.kind != "bundle" or B.fmt not in ("zip", "tar"):
+        return None
+    read = _plain_lines(D)
+    if read is None:
+        if D.kind in ("document", "tree") and B.fmt in ("zip", "tar"):
+            return _unreadable("members", "a listing of the archive's members", PLAIN_ONLY)
+        return None
+    lines, whole = read
+    listed, unread = _listing_from_lines(lines)
+    if not listed:
+        return None
     table = _member_table(B)
-    if len(table) < 1:
-        return None
-    if getattr(D.rep, "kind", None) == "tree":
-        listed, unread = _listing_from_tree(D.rep)
-        whole = True
-    else:
-        lines, whole = _text_lines(D)
-        listed, unread = _listing_from_lines(lines)
-    if len(listed) < 1 or len({p for p, _, _ in listed}) != len(listed):
-        return None
+    if table is None:
+        return _unreadable("members", "a listing of the archive's members", "cannot: not every member of the "
+                           "archive was read as a regular file with a plain name")
     from .outcome import member_path
-    matched = [p for p, _, _ in listed if member_path(p) in table]
+    paths = [member_path(p) for p, _, _, _ in listed]
+    if None in paths or len({_canon(p) for p in paths}) != len(paths) or \
+            not all(" " < ch <= "~" for p in paths for ch in p):
+        return _unreadable("members", "a listing of the archive's members", "cannot: the listing names a member "
+                           "twice, or by a name that is not plain")
+    matched = [p for p in paths if p in table]
     if not matched or len(matched) * 2 < len(listed):
         return None                         # not a listing of this archive
-    digests = _digests(B, {member_path(p): prop for p, prop, _ in listed if prop != "size"
-                           and member_path(p) in table})
-    agree, disagree, absent, unhashed = [], [], [], 0
-    for path, prop, value in ((member_path(p), prop, v) for p, prop, v in listed):
-        if path not in table:
-            absent.append(path)
-            continue
-        got = table[path][0] if prop == "size" else digests.get(path)
-        if got is None:
-            unhashed += 1
-            continue
-        (agree if got == value else disagree).append(path)
-    props = sorted({prop for _, prop, _ in listed})
-    what = "sizes in bytes" if props == ["size"] else " and ".join(p.upper() if p != "size" else "sizes"
-                                                                    for p in props)
-    meas = _q("members", "bundle.members.listing", tuple(sorted(table)), how=f"each member's {what}, measured "
-              f"from its bytes", nouns=("member", "file"))
-    stmt = _s("members", "document.listing", tuple(p for p, _, _ in listed), how=f"{len(listed)} line(s) listing "
-              f"a member with its {what}", nouns=("member", "file"))
-    note = []
-    unlisted = len(set(table) - {member_path(p) for p, _, _ in listed})
-    if absent:
-        note.append(f"{len(absent)} listed member(s) are not in the archive")
-    if unlisted:
-        note.append(f"{unlisted} member(s) of the archive are not listed")
-    if unhashed:
-        note.append(f"{unhashed} member(s) could not be read again to compute a digest")
+    props = {prop for _, prop, _, _ in listed}
+    prop = props.pop() if len(props) == 1 else None
+    grammar = rg.GRAMMARS["size" if prop == "size" else "digest"]
+    q_read = rg.parse(question or "", grammar, (B.name, D.name)) if question else None
+    note: list[str] = []
+    if prop is None:
+        note.append("the listing mixes sizes and digests")
     if unread:
         note.append(f"{unread} line(s) of the listing could not be read as a member and its value")
     if not whole:
         note.append("the listing is longer than what is read of it: its end was not read")
-    if not whole or unread:
-        verdict = "not_comparable"          # R4/R5: a partly read listing never answers either way
-    elif disagree or absent:
+    algo = prop if prop not in (None, "size") else None
+    named = None
+    if algo:
+        named = (q_read.algorithm if q_read is not None else None) or rg.algorithm_in_name(D.name)
+        if named and named != algo:
+            note.append(f"the listing's digests have the length of {algo}, not of the {named} named")
+    digests = _digests(B, {p: algo for p in matched}) if algo and not note else {}
+    unit_stated = prop == "size" and all(u for _, _, _, u in listed)
+    bytes_named = unit_stated or bool(q_read is not None and q_read.bytes_named)
+    agree, disagree, explained, absent, ambiguous, unhashed = [], [], [], [], [], 0
+    canon_members = {_canon(p): p for p in table}
+    folders = {_canon(p).rsplit("/", k)[0] for p in table for k in range(1, _canon(p).count("/") + 1)}
+    for path, (_, _, value, _) in zip(paths, listed):
+        if path not in table:
+            c = _canon(path)
+            # a name that differs only in case or path form, a folder of members, or a name inside a member (a
+            # nested archive): what the listing means by it is not plain
+            plain_absent = c not in canon_members and c not in folders and \
+                not any(c.startswith(m + "/") for m in canon_members)
+            (absent if plain_absent else ambiguous).append(path)
+            continue
+        if prop == "size":
+            got = table[path]
+            if got == value:
+                agree.append(path)
+            elif not bytes_named and _other_unit(int(value), got):
+                explained.append(path)
+            else:
+                disagree.append(path)
+        elif algo:
+            got = digests.get(path)
+            if got is None:
+                unhashed += 1
+            else:
+                (agree if got == value else disagree).append(path)
+    unlisted = len(set(table) - set(paths))
+    if absent:
+        note.append(f"{len(absent)} listed member(s) are not in the archive")
+    if ambiguous:
+        note.append(f"{len(ambiguous)} listed name(s) differ from a member's only in case or path form, or name a "
+                    "folder or a name inside a member")
+    if unlisted:
+        note.append(f"{unlisted} member(s) of the archive are not listed")
+    if unhashed:
+        note.append(f"{unhashed} member(s) could not be read again to compute a digest (only ZIP members are)")
+    if explained:
+        note.append(f"{len(explained)} listed size(s) differ in bytes but would agree in another unit, and the "
+                    "listing and the question state no unit")
+    if algo and disagree and not agree and not named:
+        note.append("no digest agreed, and neither the question nor the listing's name says which algorithm made "
+                    "it: its length alone does not say")
+    blocked = prop is None or unread or not whole or (algo and named and named != algo) or ambiguous or unhashed \
+        or explained or (algo and disagree and not agree and not named)
+    if blocked:
+        verdict = "not_comparable"
+    elif disagree or (absent and unlisted):
+        # a value that disagrees is a disagreement whichever way the question is read; a listed member the archive
+        # lacks, or a member the listing leaves out, is one only if both happen ("does the list give the sizes of
+        # all the files" holds with an extra line; "are the listed sizes the archive's" holds with a member left out)
         verdict = "inconsistent"
-    elif unhashed or unlisted or not agree:
+    elif absent or unlisted or not agree:
         verdict = "not_comparable"
     else:
         verdict = "consistent"
+    what = "sizes in bytes" if prop == "size" else f"{(algo or 'mixed').upper()} digests"
+    meas = _q("members", "bundle.members.listing", tuple(sorted(table)), how=f"each member's {what}, measured "
+              f"from its bytes", nouns=("member", "file"))
+    stmt = _s("members", "document.listing", tuple(paths), how=f"{len(listed)} line(s) listing a member with "
+              f"its {what}", nouns=("member", "file"))
     pair = Pair(verdict, meas, stmt, len(agree), len(listed), 0.0, True,
                 f"each listed member's {what} against the archive's member ({len(agree)} of {len(listed)} agree)",
                 "; ".join(note))
-    pair.measures = frozenset({"size"} if props == ["size"] else {"digest"} if "size" not in props
-                              else {"size", "digest"})
-    pair.complete = whole and not unread and not unlisted
+    pair.measures = frozenset({"size"} if prop == "size" else {"digest"})
+    pair.complete = verdict != "not_comparable"
+    pair.read = q_read
     return pair
 
 
-def _node_links(drawing, raw: bytes | None) -> tuple[dict, set] | None:
-    """(label -> centre, {frozenset of two labels}) of a node-link drawing: closed shapes as nodes, each with exactly
-    one text near it as its label, and lines or paths whose two ends lie on two different nodes. None unless every
-    line joins two nodes and every node has its own label (a chart, a map or a picture is not read as one), and
-    None when the drawing holds marks a viewer may not see (zero opacity or width, no stroke, hidden: R2)."""
-    if raw and _INVISIBLE.search(raw):
+# ---- a node-link drawing whose every mark is read (C3) --------------------------------------------------------------
+
+_SVG_NS = "{http://www.w3.org/2000/svg}"
+_SVG_GEOMETRY = {"svg": {"width", "height", "viewBox", "version"}, "g": set(), "title": set(), "desc": set(),
+                 "rect": {"x", "y", "width", "height", "rx", "ry"}, "circle": {"cx", "cy", "r"},
+                 "ellipse": {"cx", "cy", "rx", "ry"}, "line": {"x1", "y1", "x2", "y2"}, "polyline": {"points"},
+                 "polygon": {"points"}, "path": {"d"}, "text": {"x", "y"}}
+_SVG_PAINT = {"id", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "font-family",
+              "font-size", "font-weight", "text-anchor", "transform"}
+_NAMED_COLOURS = {"black": (0, 0, 0), "white": (255, 255, 255), "gray": (128, 128, 128), "grey": (128, 128, 128),
+                  "dimgray": (105, 105, 105), "dimgrey": (105, 105, 105), "darkgray": (169, 169, 169),
+                  "darkgrey": (169, 169, 169), "silver": (192, 192, 192), "red": (255, 0, 0), "maroon": (128, 0, 0),
+                  "green": (0, 128, 0), "blue": (0, 0, 255), "navy": (0, 0, 128), "purple": (128, 0, 128),
+                  "teal": (0, 128, 128), "olive": (128, 128, 0)}
+_PLAIN_NUMBER = re.compile(r"\s*([-+]?(?:\d+\.?\d*|\.\d+))(?:px)?\s*")
+
+
+def _colour(value: str | None):
+    """(r, g, b), "none", or None when the value is not one this code evaluates (alpha, functions, keywords...)."""
+    v = (value or "").strip().lower()
+    if v == "none":
+        return "none"
+    if v in _NAMED_COLOURS:
+        return _NAMED_COLOURS[v]
+    m = re.fullmatch(r"#([0-9a-f]{3}|[0-9a-f]{6})", v)
+    if not m:
         return None
+    h = m.group(1)
+    h = "".join(c * 2 for c in h) if len(h) == 3 else h
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _visible_on_white(rgb) -> bool:
+    """A colour with a contrast of at least 1.5 against white (WCAG relative luminance)."""
+    def lin(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    lum = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2])
+    return 1.05 / (lum + 0.05) >= 1.5
+
+
+def _plain_svg(raw: bytes) -> str | None:
+    """None when every element and attribute of an SVG is one this code fully evaluates and every mark is visible:
+    elements svg, g, title, desc, rect, circle, ellipse, line, polyline, polygon, path, text (no child); geometry
+    attributes, plain colours (#rgb, #rrggbb, a few names), widths and font sizes in pixels, translations only; no
+    style, class, opacity, display, visibility, marker, dash, filter, mask, clip, use, defs or anything else. Else a
+    short reason (C3: a drawing whose style is not fully evaluated is not read)."""
+    from .safe_b2 import parse_xml
+    from .types import Limits
+    try:
+        root = parse_xml(raw, Limits(), "the SVG document")
+    except Exception:
+        return "the drawing could not be parsed again"
+    if root.tag not in (_SVG_NS + "svg", "svg"):
+        return "the drawing's root is not svg"
+    width, height = (_PLAIN_NUMBER.fullmatch(root.get(k) or "") for k in ("width", "height"))
+    if not width or not height:
+        return "the drawing states no plain width and height"
+    scale = 1.0
+    if root.get("viewBox") is not None:
+        vb = [float(x) for x in re.findall(r"[-+]?(?:\d+\.?\d*|\.\d+)", root.get("viewBox"))]
+        if len(vb) != 4 or vb[0] != 0 or vb[1] != 0 or vb[2] <= 0 or vb[3] <= 0:
+            return "the drawing's viewBox is not 0 0 width height"
+        scale = min(float(width.group(1)) / vb[2], float(height.group(1)) / vb[3])
+    if not scale > 0:
+        return "the drawing has no size"
+
+    def walk(el, inherited, depth):
+        tag = el.tag[len(_SVG_NS):] if el.tag.startswith(_SVG_NS) else el.tag
+        if tag not in _SVG_GEOMETRY or (tag == "svg" and depth) or depth > 32:
+            return f"an element ({clean(str(tag), 20)}) this comparison does not evaluate"
+        for name, value in el.attrib.items():
+            if name not in _SVG_GEOMETRY[tag] and name not in _SVG_PAINT:
+                return f"an attribute ({clean(str(name), 30)}) this comparison does not evaluate"
+            if name == "transform" and not re.fullmatch(r"\s*(?:translate\(\s*[-+.\d]+(?:[\s,]+[-+.\d]+)?\s*\)\s*)+",
+                                                         value):
+                return "a transform other than a translation"
+        style = dict(inherited)
+        for key in ("fill", "stroke", "stroke-width", "font-size"):
+            if el.get(key) is not None:
+                style[key] = el.get(key)
+        for key in ("fill", "stroke"):
+            if _colour(style[key]) is None:
+                return f"a {key} colour this comparison does not evaluate"
+        for key, least in (("stroke-width", 0.5), ("font-size", 6.0)):
+            m = _PLAIN_NUMBER.fullmatch(style[key])
+            if not m:
+                return f"a {key} this comparison does not evaluate"
+            style[key + ":ok"] = float(m.group(1)) * scale >= least
+        fill, stroke = _colour(style["fill"]), _colour(style["stroke"])
+        stroked = stroke != "none" and _visible_on_white(stroke) and style["stroke-width:ok"]
+        filled = fill != "none" and _visible_on_white(fill)
+        if tag in ("line", "polyline", "path"):
+            if not stroked or (tag != "line" and fill != "none"):
+                return "a line drawn without a plain visible stroke"
+        elif tag in ("rect", "circle", "ellipse", "polygon"):
+            if not (stroked or filled):
+                return "a shape that is not visible"
+        elif tag == "text":
+            if len(el) or not filled or not style["font-size:ok"]:
+                return "a text that is not plainly visible"
+        if tag in ("title", "desc", "text"):
+            return None if tag == "text" or not len(el) else "a title holding elements"
+        for child in el:
+            why = walk(child, style, depth + 1)
+            if why:
+                return why
+        return None
+    return walk(root, {"fill": "black", "stroke": "none", "stroke-width": "1", "font-size": "16"}, 0)
+
+
+def _seg_near(p, q, c, r) -> bool:
+    """Whether the segment p-q comes within r of the point c."""
+    (x1, y1), (x2, y2), (cx, cy) = p, q, c
+    dx, dy = x2 - x1, y2 - y1
+    t = 0.0 if dx == dy == 0 else max(0.0, min(1.0, ((cx - x1) * dx + (cy - y1) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(x1 + t * dx - cx, y1 + t * dy - cy) <= r
+
+
+def _node_links(drawing) -> tuple[dict, set] | str:
+    """(label -> centre, {frozenset of two labels}) of a node-link drawing whose every mark is classified: closed
+    shapes as nodes, exactly one text near each as its label (printable, distinct whatever the case), lines whose two
+    ends lie on two different nodes and that pass through no other node, everything inside the drawing's area. A
+    reason (a str) when a mark is not one of these (C3)."""
+    shapes = [s for s in drawing.shapes if s.kind not in ("title", "desc")]
+    if len(shapes) > MAX_DRAWING_SHAPES:
+        return "the drawing holds more marks than are read"
+    w, h = drawing.width, drawing.height
+    if not (w > 0 and h > 0):
+        return "the drawing has no size"
+    for sh in shapes:
+        if sh.kind not in ("rect", "circle", "ellipse", "polygon", "line", "polyline", "path", "text"):
+            return f"a mark of a kind not read ({clean(sh.kind, 20)})"
+        if sh.kind == "path" and str(sh.attrs.get("subpaths", "1")) != "1":
+            return "a line made of several pieces"
+        if any(not (-1e-6 <= x <= w + 1e-6 and -1e-6 <= y <= h + 1e-6) for x, y in sh.points):
+            return "a mark outside the drawing's area"
     nodes = []
-    for sh in drawing.shapes:
-        if sh.kind in ("circle", "ellipse", "rect", "polygon") and len(sh.points) >= 3:
+    for sh in shapes:
+        if sh.kind in ("circle", "ellipse", "rect", "polygon"):
             pts = sh.points[1:] if sh.kind in ("circle", "ellipse") else sh.points
+            if len(pts) < 3:
+                return "a shape without an area"
             cx = sum(x for x, _ in pts) / len(pts)
             cy = sum(y for _, y in pts) / len(pts)
             r = max(math.hypot(x - cx, y - cy) for x, y in pts)
-            if r > 0:
-                nodes.append((cx, cy, r))
+            if not r > 0:
+                return "a shape without an area"
+            nodes.append((cx, cy, r))
     if not 2 <= len(nodes) <= 500:
-        return None
+        return "not a drawing of 2 to 500 nodes"
+    for (x1, y1, r1), (x2, y2, r2) in itertools.combinations(nodes, 2):
+        if math.hypot(x1 - x2, y1 - y2) <= r1 + r2:
+            return "two nodes overlap"
     labels: dict[int, str] = {}
-    for sh in drawing.shapes:
-        if sh.kind != "text" or not sh.text or not sh.points:
+    for sh in shapes:
+        if sh.kind != "text":
             continue
+        if not sh.text or not sh.points:
+            return "an empty text"
         x, y = sh.points[0]
         d, i = min((math.hypot(x - cx, y - cy) / r, i) for i, (cx, cy, r) in enumerate(nodes))
-        if d > 3.0:
-            continue                         # a title or a note, not a node's label
-        if i in labels:
-            return None
-        labels[i] = clean(sh.text, 80).strip()
-    if len(labels) != len(nodes) or len(set(labels.values())) != len(nodes) or not all(labels.values()):
-        return None
+        if d > 1.5 or i in labels:
+            return "a text that is not the one label of one node"
+        label = sh.text.strip()
+        if not _LABEL.fullmatch(label):
+            return "a label that is not plain"
+        labels[i] = label
+    if len(labels) != len(nodes) or len({v.casefold() for v in labels.values()}) != len(nodes):
+        return "a node without its own label"
     links = set()
-    for sh in drawing.shapes:
-        if sh.kind not in ("line", "polyline", "path") or len(sh.points) < 2:
+    for sh in shapes:
+        if sh.kind not in ("line", "polyline", "path"):
             continue
+        if len(sh.points) < 2:
+            return "a line of one point"
         ends = []
         for x, y in (sh.points[0], sh.points[-1]):
             d, i = min((math.hypot(x - cx, y - cy) / r, i) for i, (cx, cy, r) in enumerate(nodes))
-            if d > 1.5:
-                return None                  # a line that does not end on a node: not a node-link drawing
+            if d > 1.0:
+                return "a line that does not end on a node"
             ends.append(i)
         if ends[0] == ends[1]:
-            return None
+            return "a line from a node to itself"
+        for k, (cx, cy, r) in enumerate(nodes):
+            if k not in ends and any(_seg_near(p, q, (cx, cy), r) for p, q in zip(sh.points, sh.points[1:])):
+                return "a line that passes through another node"
         links.add(frozenset((labels[ends[0]], labels[ends[1]])))
     if not links:
-        return None
-    centres = {labels[i]: (n[0], n[1]) for i, n in enumerate(nodes)}
-    return centres, links
+        return "no line joins two nodes"
+    return {labels[i]: (n[0], n[1]) for i, n in enumerate(nodes)}, links
 
 
-def _links_pair(G: Side, D: Side) -> Pair | None:
-    """G a node-link drawing, D text whose lines each join two of its labels by a relation word ("Kofi reports to
-    Tomas", "app -> db"). Any line naming a label that is not exactly that makes the comparison "cannot"."""
-    found = _node_links(G.rep, G.raw) if getattr(G.rep, "kind", None) == "drawing" else None
-    if found is None:
+def _links_pair(G: Side, D: Side, question: str | None) -> Pair | None:
+    """G a node-link drawing (SVG), D a plain text whose every non-empty line joins two of its labels by a relation
+    word ("Kofi reports to Tomas", "app -> db")."""
+    from . import relate_grammar as rg
+    if getattr(G.rep, "kind", None) != "drawing":
         return None
+    found = _node_links(G.rep)
+    if isinstance(found, str):
+        return None                          # not a node-link drawing, or one whose marks are not all read
     centres, drawn = found
-    lines, whole = _text_lines(D)
-    if not whole:
-        return None
+    q_read = rg.parse(question or "", rg.GRAMMARS["link"], (G.name, D.name)) if question else None
+    what = "the links of a node-link drawing"
+    why = _plain_svg(G.raw or b"") if G.fmt == "svg" else "the drawing is not a plain SVG file"
+    if why:
+        return _unreadable("links", what, "cannot: " + why, q_read)
+    read = _plain_lines(D, extra="→–—")
+    if read is None:
+        return _unreadable("links", what, PLAIN_ONLY, q_read) if D.kind == "document" else None
+    lines, whole = read
     patterns = {lab: re.compile(r"(?<![\w-])" + re.escape(lab) + r"(?![\w-])") for lab in centres}
-    stated, nonempty, used = set(), 0, 0
+    stated: set = set()
+    unread = 0
     for ln in lines:
         if not ln.strip():
             continue
-        nonempty += 1
         hits = sorted((m.start(), m.end(), lab) for lab, pat in patterns.items() for m in pat.finditer(ln))
-        if not hits:
-            continue
-        if len(hits) != 2 or hits[0][2] == hits[1][2]:
-            return None                      # one label, three or more, or one twice: not read
-        (a0, a1, la), (b0, b1, lb) = hits
-        if ln[:a0].strip() or ln[b1:].strip(" .;") or not _LINK_JOIN.match(ln[a1:b0]):
-            return None                      # words around the labels, or a join that is not a relation
-        stated.add(frozenset((la, lb)))
-        used += 1
-    if len(stated) < 2:
-        return None
-    complete = used == nonempty
-    if stated == drawn:
-        verdict = "consistent"
-    elif stated - drawn or complete:
-        verdict = "inconsistent"
-    else:
-        verdict = "not_comparable"
+        ok = len(hits) == 2 and hits[0][2] != hits[1][2] and hits[0][1] <= hits[1][0]
+        if ok:
+            (a0, a1, la), (b0, b1, lb) = hits
+            ok = not ln[:a0].strip() and not ln[b1:].strip(" .;") and bool(_LINK_JOIN.match(ln[a1:b0]))
+            pair_ = frozenset((la, lb))
+            if ok and pair_ in stated:
+                ok = False                   # a link named twice
+            if ok:
+                stated.add(pair_)
+        if not ok:
+            unread += 1
+    if unread or not whole or len(stated) < 2:
+        why = (f"{unread} line(s) of the text are not read as one link between two of the drawing's labels"
+               if unread else "the text is longer than what is read of it" if not whole else
+               "the text names fewer than two links")
+        return _unreadable("links", what, "cannot: " + why, q_read)
+    # equal sets agree under every reading ("are the links the same", "does the drawing show the text's links", "are
+    # the drawing's links in the text"); a disagreement under every reading needs a link missing on each side
+    verdict = "consistent" if stated == drawn else "inconsistent" if stated - drawn and drawn - stated else \
+        "not_comparable"
     meas = _q("links", "drawing.links", tuple(sorted("-".join(sorted(x)) for x in drawn)),
               how=f"{len(drawn)} line(s) joining two labelled nodes of the drawing", nouns=("link", "line"))
     stmt = _s("links", "document.links", tuple(sorted("-".join(sorted(x)) for x in stated)),
@@ -2103,73 +2472,153 @@ def _links_pair(G: Side, D: Side) -> Pair | None:
                 "the pairs of labels the drawing joins against the pairs the text names (direction not read)",
                 "; ".join(note))
     pair.measures = frozenset({"link"})
-    pair.complete = complete
+    pair.complete = True
+    pair.read = q_read
     return pair
 
 
-def _times_pair(Sg: Side, D: Side) -> Pair | None:
-    """Sg a sound whose tone onsets were measured, D lines that each begin with an elapsed time (m:ss.fff) of an
-    onset. The tolerance is the larger of TIMES_TOLERANCE_S and half the written precision (a time written in whole
-    seconds is rounded); one that agrees only if the sheet truncated its times is "cannot" (R4)."""
+# ---- a sound whose every stretch is a steady tone or silence (C3) --------------------------------------------------
+
+def _tones_only(sig, tones) -> str | None:
+    """None when the sound is steady tones apart from digital silence, the tones separated by quiet gaps; else why
+    not: channels that differ (a mono reading would not hear a tone in one channel, or in opposite phase), a quieter
+    sound the tone reading does not count, one tone split where its pitch changes, a tone whose loudness is not
+    steady (a slow rise or fall: where it "starts" is not plain)."""
+    from . import measure_audio as ma
+    if not tones or len(tones) > 2000:
+        return "the sound holds no tones, or more than are read"
+    samples = np.asarray(sig.samples)
+    if samples.ndim == 2 and samples.shape[1] > 1 and \
+            not np.array_equal(samples, np.repeat(samples[:, :1], samples.shape[1], axis=1)):
+        return "the sound's channels differ (only a sound whose channels are the same is read)"
+    for (_, end, _), (start, _, _) in zip(tones, tones[1:]):
+        if start - end < 0.015:
+            return "two tones follow each other without a pause (one sound or two is not known)"
+    x = ma.mono(sig).astype(np.float64)
+    frame = max(1, int(round(0.005 * float(sig.rate_hz))))
+    m = len(x) // frame
+    if m < 1:
+        return "the sound is too short"
+    rms = np.sqrt(np.mean(x[:m * frame].reshape(m, frame) ** 2, axis=1))
+    peak = float(np.abs(x).max()) or 1.0
+    db = 20 * np.log10(np.maximum(rms, 1e-12))
+    loud = db > max(db.max() - 35.0, -60.0)
+    covered = np.zeros(m, dtype=bool)
+    for start, end, _ in tones:
+        # a tone's measured end falls up to one analysis hop (20 ms) before its last sounding frame
+        covered[max(0, int(start / 0.005) - 2):min(m, int(math.ceil(end / 0.005)) + 5)] = True
+    quiet_sound = (rms > peak * 1e-4) & ~loud & ~covered       # above -80 dB of the peak, not part of a tone
+    if np.convolve(quiet_sound.astype(int), np.ones(6, dtype=int), "valid").max(initial=0) >= 6:
+        return "the sound holds quieter sound that is not read as a tone (30 ms or more)"
+    if (loud & ~covered).any():
+        return "the sound holds loud stretches that are not read as tones"
+    for start, end, _ in tones:
+        part = rms[int(start / 0.005):max(int(start / 0.005) + 1, int(end / 0.005))]
+        if len(part) and int((part < np.median(part) * 10 ** (-10 / 20)).sum()) >= 6:
+            return "a tone's loudness is not steady (it rises or falls for 30 ms or more)"
+    return None
+
+
+def _times_pair(Sg: Side, D: Side, question: str | None) -> Pair | None:
+    """Sg a sound of steady tones, D a plain text whose every non-empty line is an elapsed time (m:ss[.fff]), alone
+    or with the sheet's one word for the sound event. The agreement tolerance is TIMES_TOLERANCE_S; a sheet written
+    more coarsely agrees only within that, and a time that would agree only if the sheet rounded (or cut off) its
+    times is "cannot"."""
+    from . import relate_grammar as rg
     onsets = next((f for f in Sg.facts if f.kind == "times" and f.ref == "signal.tone_starts"), None)
     duration = next((f.value for f in Sg.facts if f.ref == "signal.duration"), None)
     if onsets is None or duration is None:
         return None
-    lines, whole = _text_lines(D)
-    if not whole:
+    read = _plain_lines(D)
+    if read is None:
         return None
-    stated, nonempty, precision = [], 0, 0.0
+    lines, whole = read
+    stated, unread, words, precision = [], 0, set(), 0.0
     for ln in lines:
         if not ln.strip():
             continue
-        nonempty += 1
-        m = _ELAPSED.match(ln)
-        if m is None or set(rr.tokens(ln[m.end():])) & _END_WORDS:
-            return None                      # a line that is not an onset's time
-        h, mi, sec = m.groups()
-        sec = sec.replace(",", ".")
-        stated.append((int(h) if h else 0) * 3600 + int(mi) * 60 + float(sec))
-        frac = sec.split(".")[1] if "." in sec else ""
+        m = _TIME_LINE.match(ln)
+        if m is None or int(m.group(3)) >= 60 or (m.group(1) and int(m.group(2)) >= 60):
+            unread += 1
+            continue
+        h, mi, sec, frac, word = m.groups()
+        if word:
+            w = rr.singular(word.lower())
+            if w not in _EVENT_WORDS:
+                unread += 1
+                continue
+            words.add(w)
+        stated.append((int(h) if h else 0) * 3600 + int(mi) * 60 + int(sec) + (float("0." + frac) if frac else 0.0))
         precision = max(precision, 10.0 ** -len(frac) if frac else 1.0)
-    if len(stated) < 2 or len(stated) != nonempty:
+    if len(stated) < 2 or (not stated and unread):
         return None
-    if max(stated) > float(duration) + max(TIMES_TOLERANCE_S, precision):
+    q_read = rg.parse(question or "", rg.GRAMMARS["time"], (Sg.name, D.name)) if question else None
+    what = "a sound's tone onsets against a cue sheet"
+    if max(stated) > float(duration) + precision + TIMES_TOLERANCE_S:
         return None                          # not times into this recording (a clock of day, another file)
-    tol = max(TIMES_TOLERANCE_S, precision / 2)
+    why = None
+    if unread:
+        why = f"{unread} line(s) of the sheet are not an elapsed time with at most one word for the sound"
+    elif len(words) > 1:
+        why = "the sheet names more than one kind of sound event"
+    elif not whole:
+        why = "the sheet is longer than what is read of it"
+    elif len(set(stated)) != len(stated):
+        why = "the sheet lists a time twice"
+    else:
+        why = _tones_only(Sg.rep, tone_segments(Sg.rep) or [])
+    if why:
+        return _unreadable("times", what, "cannot: " + why, q_read)
+    import bisect
+    tol = TIMES_TOLERANCE_S
     measured = sorted(float(t) for t in onsets.value)
     stated = sorted(stated)
-    if len(measured) != len(stated):
+    if len(stated) > 2000:
+        return _unreadable("times", what, "cannot: the sheet lists more times than are read", q_read)
+    low, high = -(precision / 2 + tol), precision + tol   # an onset this far from a listed time
+    #                                    would agree if the sheet rounded or cut off its times (the widest reading)
+
+    def far(t, among) -> bool:           # no time of `among` within the widest reading of t
+        i = bisect.bisect_left(among, t + low)
+        return not (i < len(among) and among[i] < t + high)
+    exact = len(measured) == len(stated) and all(abs(m - s) <= tol + REL_EPS for s, m in zip(stated, measured))
+    listed_far = any(far(s, measured) for s in stated)
+    onset_far = any(far(-m, [-s for s in reversed(stated)]) for m in measured)
+    if exact:
+        verdict = "consistent"
+    elif listed_far and onset_far:
+        # a listed time with no onset near it AND an onset with no listed time near it: a disagreement whichever
+        # way the question is read ("does each beep start at a listed time", "is there a beep at each listed time")
         verdict = "inconsistent"
-        how = f"{len(stated)} time(s) listed against {len(measured)} onset(s) measured"
     else:
-        worst = max(abs(a - b) for a, b in zip(stated, measured))
-        if worst <= tol + REL_EPS:
-            verdict = "consistent"
-        elif precision > TIMES_TOLERANCE_S and all(-REL_EPS <= m - s < precision + REL_EPS
-                                                     for s, m in zip(stated, measured)):
-            verdict = "not_comparable"       # agrees only if the sheet cut its times off instead of rounding
-        else:
-            verdict = "inconsistent"
-        how = f"each listed time against the measured onset in the same place, within {_fmt(tol)} s " \
-              f"(largest difference {_fmt(worst)} s)"
+        verdict = "not_comparable"
+    worst = max(abs(m - s) for s, m in zip(stated, measured)) if len(measured) == len(stated) else None
+    how = (f"each listed time against the measured onset in the same place, within {_fmt(tol)} s (largest "
+           f"difference {_fmt(worst)} s)" if worst is not None else
+           f"{len(stated)} time(s) listed against {len(measured)} onset(s) measured")
+    note = ""
+    if verdict == "not_comparable":
+        note = ("a listed time would agree only if the sheet rounded or cut off its times, or a time or an onset "
+                "has no counterpart on one side only")
     stmt = _s("times", "document.times", tuple(stated), unit=unit_of("s"),
               how="an elapsed time at the start of every line", nouns=("time", "cue"))
-    pair = Pair(verdict, onsets, stmt, tuple(measured), tuple(stated), tol, True, how, unit="s")
+    pair = Pair(verdict, onsets, stmt, tuple(measured), tuple(stated), tol, True, how, note, unit="s")
     pair.measures = frozenset({"time"})
-    pair.complete = True
+    pair.complete = verdict != "not_comparable"
+    pair.read = q_read
     return pair
 
 
-def _structure_pairs(A: Side, B: Side) -> list:
+def _structure_pairs(A: Side, B: Side, question: str | None = None) -> list:
     out = []
     for X, Y, flip in ((A, B, False), (B, A, True)):
         made = None
         if X.kind == "bundle" and Y.kind in ("document", "tree"):
-            made = _members_pair(X, Y)
+            made = _members_pair(X, Y, question)
         elif X.kind == "drawing" and Y.kind == "document":
-            made = _links_pair(X, Y)
+            made = _links_pair(X, Y, question)
         elif X.kind == "signal" and Y.kind == "document":
-            made = _times_pair(X, Y)
+            made = _times_pair(X, Y, question)
         if made is not None:
             if flip:
                 made = replace(made, a=made.b, b=made.a, a_value=made.b_value, b_value=made.a_value)
