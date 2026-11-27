@@ -1321,7 +1321,7 @@ million. Reading those in bounded pieces needs the live file's snapshot held ope
   consolidation now depends on those rows: if tombstones are ever pruned, the id-to-seq map and the forget record
   must move first).
 - An older binary refuses a schema-14 file ("Instance schema 14 is newer than this software (13)") and changes
-  nothing; rollback is a restore of the pre-upgrade checkpoint (MIGRATIONS.md).
+  nothing; rollback is the owner's own copy taken before the upgrade, or `nsf archive unpack` of a pre-upgrade checkpoint with the old software; either brings back what was forgotten since (MIGRATIONS.md section 2).
 - Tests: `tests/instance/test_consolidation.py` (92 cases, each run on both paths of the copy rule),
   `tests/instance/test_consolidation_limit.py` (the limit at, below and across; the warning; the setting; what a
   restore reads), `tests/console/test_console_api.py` (the readings and the two forgets over HTTP), and the expiry
@@ -5161,7 +5161,7 @@ text. C13 labels: decision 3. C14 the memory envelope: not exposed through `memo
   partner forget, but nothing else waits on it.
 - Rollback: `artifact_adapters` back to `[]` stops any external adapter on the next call; the store can be emptied
   with `nsf artifact forget`; the schema stays (forward-only), and software before schema 20 refuses the file (a
-  restore of the pre-upgrade checkpoint is the rollback, as for every schema change).
+  rollback is the owner's own copy taken before the upgrade, or `nsf archive unpack` of a pre-upgrade checkpoint with the old software, as for every schema change: a restore by the new build yields the new schema; MIGRATIONS.md section 2).
 
 ## ADR-071, integration: the store with the real adapters and generators
 
@@ -6276,3 +6276,10 @@ candidates as what can be made here.
   held-out visible gain (0.058 late, 0.067 overall, the benchmark's own); it is NOT claimed to beat key_majority, and
   "better than a majority rule" is claimed only if it beats key_majority by more than 0.068 / 0.067 (not expected: the
   development bound says it cannot).
+
+Schema rollback (stated by OMNIMIND fix lane F1 after code review M1): schema 21 is forward-only. An upgraded
+file cannot be opened by an older build; a restore made by this build yields schema 21; the only way back is the
+owner's own copy of the file taken before the upgrade, or `nsf archive unpack` of a pre-upgrade checkpoint run with
+the old software, and either brings back whatever was forgotten since (MIGRATIONS.md section 2,
+`tests/instance/test_migrations.py::test_rollback_facts`).
+

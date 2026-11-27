@@ -30,8 +30,8 @@ the three triggers of the release at its next writable open (`schema.ensure_trig
 held that has an earlier reading of the same sample (one indexed lookup per reading with a sample id, once: about a
 second per million). Nothing else is written; no reading is added, removed or changed in what it says. A belief
 computation then finds the samples recorded more than once from the flagged readings instead of grouping every
-reading of the epoch by sample on every read. Software of an earlier schema refuses a version-16 file; rollback is a restore
-of the pre-upgrade checkpoint.
+reading of the epoch by sample on every read. Software of an earlier schema refuses a version-16 file; rollback is the owner's own
+copy taken before the upgrade (section 2, \"Rollback\").
 
 **Version 17 (the imagined store, ADR-049).** It adds three empty tables: `imagined` (content the system produced
 itself that is not evidence: simulations, speculations, model-written inferences), `imagined_refs` (what each record
@@ -50,7 +50,7 @@ store stays empty until a mechanism writes to it; at the defaults nothing does (
 `max_imagined_rows` (1000) and `imagined_lifetime_seconds` (7 days), changeable with `nsf config
 --max-imagined-rows N` and `--imagined-lifetime-days D`; a file saved by older software reads them as these
 defaults. `nsf imagined list` shows what is held. Software of an earlier schema refuses a version-17 file; rollback is
-a restore of the pre-upgrade checkpoint.
+the owner's own copy taken before the upgrade (section 2, \"Rollback\").
 
 **Version 18 (knowledge that knows what it rests on, ADR-055).** It adds five empty tables: `web_hypothesis_details`
 (the assumptions, counter-evidence, expected information gain, cost and revision record of each hypothesis recorded
@@ -64,7 +64,7 @@ forget and in a restore's replay). The settings that write to them are WebConfig
 "gate" (off until a promotion passes the gate). The improvement ledger also refuses a DELETE (trigger
 `improvement_ledger_no_delete`, added to version 18 before release after the Wave 1 review, S7): a file migrated by
 18's first build gets that trigger at its next open (`schema.ensure_triggers`, `_TRIGGERS_18`). Software of an earlier
-schema refuses a version-18 file; rollback is a restore of the pre-upgrade checkpoint.
+schema refuses a version-18 file; rollback is the owner's own copy taken before the upgrade (section 2, \"Rollback\").
 
 **Version 19 (an index for reads by kind and time, Wave 1 review A2/A3).** One statement: `CREATE INDEX IF NOT
 EXISTS web_events_kind_time ON web_events(kind, created_at)`. It changes no row; building it reads `web_events` once
@@ -72,7 +72,7 @@ EXISTS web_events_kind_time ON web_events(kind, created_at)`. It changes no row;
 predictions and findings, the selective broadcast's hourly count, the autonomy windows and the self-description's
 decision reads (measured: Presence derive at 500,000 web events 41.15 → 0.15 ms; one more index costs about 10 % per
 web-event insert, 5.39 → 5.94 µs; `genesis_fix1a.json`). No setting comes with it and nothing changes at the defaults.
-Software of an earlier schema refuses a version-19 file; rollback is a restore of the pre-upgrade checkpoint.
+Software of an earlier schema refuses a version-19 file; rollback is the owner's own copy taken before the upgrade (section 2, \"Rollback\").
 
 **Version 20 (the artifact store's index, OMNIMIND lane A, ADR-071).** Five tables, IF NOT EXISTS throughout:
 `artifacts`, `artifact_links`, `artifact_events` (append-only by trigger), `artifact_forgotten` (tombstones) and
@@ -80,14 +80,14 @@ Software of an earlier schema refuses a version-19 file; rollback is a restore o
 (`schema.NO_ARTIFACT_TRIGGERS`). It reads and writes no existing row; it takes milliseconds. The bytes are not in the
 file: they live in `<stem>.artifacts.sqlite` beside it, which no checkpoint holds and a restore rebuilds for the copy.
 Nothing writes to the tables unless the owner runs `nsf artifact add`. Software of an earlier schema refuses a
-version-20 file; rollback is a restore of the pre-upgrade checkpoint.
+version-20 file; rollback is the owner's own copy taken before the upgrade (section 2, \"Rollback\").
 
 **Version 21 (the outcomes of made forms, OMNIMIND lane L, ADR-078).** One table, `form_outcomes`, with two indexes and
 three triggers (a row names a made artifact the file holds; a row is never rewritten; a row goes when its artifact's
 row is deleted), IF NOT EXISTS throughout. It reads and writes no existing row; it takes milliseconds. Nothing writes
 to it unless the owner sets `nsf config --form-learning record` (or `apply`) and gives a reaction, or a production
-records a check verdict. Software of an earlier schema refuses a version-21 file; rollback is a restore of the
-pre-upgrade checkpoint.
+records a check verdict. Software of an earlier schema refuses a version-21 file; rollback is the owner's own copy taken before
+the upgrade (section 2, \"Rollback\").
 
 ## 2. Upgrade procedure
 
@@ -111,11 +111,18 @@ The Pocket database needs no step of its own (section 4).
 
 1. Stop the services.
 2. Reinstall the previous software (`install.sh --wheel OLD.whl`).
-3. Restore the pre-upgrade checkpoint to a new file and swap it in, as in RUNBOOK section 5. The checkpoint holds the old schema version, so the old software opens it.
-4. Anything recorded after the checkpoint is lost. A restore re-applies only the tombstones held by the database it runs against, so repeat from your records any forget requests made since the checkpoint (RUNBOOK section 6).
+3. Put back the file as it was before the upgrade. There are exactly two ways, and `nsf checkpoint restore` is neither
+   (corrected by OMNIMIND fix lane F1 after code review M1; pinned by `tests/instance/test_migrations.py`):
+   - the owner's own copy of the individual's file, taken before the upgrade (step 1 of section 2's upgrade); or
+   - `nsf archive unpack SOURCE DESTINATION` with the OLD software, run on the archive file of a checkpoint taken
+     before the upgrade (see `nsf archive --help`).
+   Why not `restore`: the old software refuses the upgraded live file ("newer than this software"), so it cannot read
+   the checkpoint registry; and a restore made by the NEW software migrates the copy, so it yields the new schema,
+   which the old software refuses too.
+4. Either way brings back whatever was forgotten since that copy or checkpoint was taken: neither applies the
+   tombstones of later forgets. Repeat from your records every forget request made since (RUNBOOK section 6), and
+   delete the artifact sidecar (`<stem>.artifacts.sqlite`) of the new-schema file rather than reusing it.
 5. Keep the new-schema file aside until the old system is confirmed good.
-
-If `nsf` refuses to open the live database because it is newer than the old software, `restore` cannot read its registry. Use `nsf archive unpack SOURCE DESTINATION` on the archive file instead (see `nsf archive --help`); it does not apply tombstones, so repeat any forgets since.
 
 ## 3. Importing a prototype database
 
