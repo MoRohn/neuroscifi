@@ -34,6 +34,8 @@ CLEAN = {"git_commit": "0" * 40, "git_dirty": False}
 FIELDS = {"at", "commit", "dirty", "family", "subject", "note", "script", "withheld_file", "withheld_sha256"}
 # Lines written since fix lane F2 also carry the drivers' SHA-256 (review finding B4).
 FIELDS_WITH_DRIVERS = FIELDS | {"drivers"}
+# A refused request for spent cases (lane ZW3): what was asked, and why it was refused.
+REFUSED_FIELDS = {"at", "commit", "dirty", "families", "split", "subject", "note", "script", "refused"}
 
 
 @pytest.fixture(autouse=True)
@@ -74,7 +76,7 @@ def test_nothing_but_final_imports_a_withheld_module():
             scanned += 1
             for node, module, names in _imports(path):
                 parts = module.split(".") + [n.split(".")[-1] for n in names]
-                if not any(p.startswith(("withheld_", "withheld2_")) for p in parts):
+                if not any(p.startswith(("withheld_", "withheld2_", "withheld3_")) for p in parts):
                     continue
                 assert path == OMNI / "final.py", (str(path.relative_to(ROOT)), module, names)
     assert scanned > 100
@@ -82,7 +84,7 @@ def test_nothing_but_final_imports_a_withheld_module():
     for node in top:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             names = [a.name for a in node.names] + (getattr(node, "module", "") or "").split(".")
-            assert not any(n.startswith(("withheld_", "withheld2_")) for n in names)
+            assert not any(n.startswith(("withheld_", "withheld2_", "withheld3_")) for n in names)
 
 
 def test_the_withheld_modules_import_no_product_code():
@@ -147,10 +149,10 @@ def test_check_refuses_a_dirty_or_uncommitted_tree_and_a_changed_file(monkeypatc
         final.check("", ["forms"], CLEAN)
     with pytest.raises(final.Refused, match="family"):
         final.check("a note", ["nonsense"], CLEAN)
-    final.check("a note", ["forms", "intake", "cross", "learn"], CLEAN)                   # the pinned files pass
+    final.check("a note", ["forms", "intake", "learn"], CLEAN)                            # the pinned files pass
     monkeypatch.setitem(final.WITHHELD_SHA256, "withheld_cases.py", "0" * 64)
     with pytest.raises(final.Refused, match="changed"):
-        final.check("a note", ["hostile"], CLEAN)
+        final.check("a note", ["compound"], CLEAN)
     final.check("a note", ["forms"], CLEAN)                                               # another file is unaffected
 
 
@@ -208,17 +210,17 @@ def test_the_ledger_line_is_written_before_anything_is_loaded(tmp_path, monkeypa
 def test_a_look_is_one_line_per_family_and_summaries_only(tmp_path):
     """References only (and the harness's own refusing probe): never a product subject."""
     ledger = tmp_path / "ledger.jsonl"
-    out = final.look(["forms", "cross", "learn"], "today", "today", "test of the machinery", script="test",
+    out = final.look(["forms", "learn"], "today", "today", "test of the machinery", script="test",
                      ledger=ledger, env=CLEAN)
-    assert out["ledger_lines"] == 3 and [e["family"] for e in out["ledger_entries"]] == ["forms", "cross", "learn"]
-    forms_out, cross_out, learn_out = (out["families"][f] for f in ("forms", "cross", "learn"))
+    assert out["ledger_lines"] == 2 and [e["family"] for e in out["ledger_entries"]] == ["forms", "learn"]
+    forms_out, learn_out = (out["families"][f] for f in ("forms", "learn"))
     assert forms_out["n_cases"] >= 150 and forms_out["hard_constraints_violated"]["k"] == 0
-    assert cross_out["n_pairs"] >= 36 and cross_out["answered"]["k"] == 0                   # today cannot relate
     assert "SIMULATED" in learn_out["label"] and learn_out["denominator_per_cycle"] >= 600
-    z = final.look(["honest", "hostile"], subject.get("probe:refuse"), "probe:refuse", "test of the machinery",
+    z = final.look(["honest"], subject.get("probe:refuse"), "probe:refuse", "test of the machinery",
                    script="test", ledger=ledger, env=CLEAN)
-    assert z["ledger_lines"] == 5
-    assert z["families"]["hostile"]["right"] == z["families"]["hostile"]["n"] >= 30           # every refusal is right
+    assert z["ledger_lines"] == 3
+    honest = z["families"]["honest"]                                  # a refusal is never a wrong answer
+    assert honest["wrong"] == 0 and honest["right"] == honest["abstention_floor"] > 0
     text = json.dumps([out, z])
     assert "/withheld/" not in text                                                        # no task id
     for key in ("tasks", "failures", "cases"):
@@ -231,9 +233,14 @@ def test_the_tracked_ledger_is_well_formed():
         pytest.skip("no look recorded yet")
     for line in final.LEDGER.read_text(encoding="utf-8").splitlines():
         entry = json.loads(line)
-        if entry.get("split") == "withheld2":                      # lane ZW2's split (test_omni_withheld2.py)
+        if "refused" in entry:                                     # a refused request for spent cases
+            assert set(entry) == REFUSED_FIELDS and final.SPENT_REASON in entry["refused"]
+            assert final.spent(entry["split"], entry["families"])
+            continue
+        if entry.get("split") in ("withheld2", "withheld3"):       # lanes ZW2 and ZW3 (test_omni_withheld2/3.py)
             assert set(entry) == FIELDS_WITH_DRIVERS | {"split"} and entry["note"].strip() and entry["dirty"] is False
-            assert entry["withheld_sha256"] == final.WITHHELD2_SHA256.get(entry["withheld_file"], "absent")
+            pins = final.WITHHELD2_SHA256 if entry["split"] == "withheld2" else final.WITHHELD3_SHA256
+            assert entry["withheld_sha256"] == pins.get(entry["withheld_file"], "absent")
             continue
         assert set(entry) in (FIELDS, FIELDS_WITH_DRIVERS) and entry["note"].strip() and entry["dirty"] is False
         assert entry["withheld_file"] in PINNED
@@ -271,3 +278,73 @@ def test_driver_pin_the_tracked_file_and_the_pin_driver_command():
     assert done.returncode == 0, done.stderr
     printed = json.loads(done.stdout)
     assert printed["pins"] == final.driver_hashes() and set(printed) == set(data) - {"status"}
+
+
+# ---- the spent splits (WAVE3.md: the owner opened withheld and withheld2 for unknown, hostile and cross) -------------
+
+def test_the_spent_pairs_are_exactly_the_three_families_on_the_first_two_splits():
+    assert final.SPENT == {(s, f) for s in ("withheld", "withheld2") for f in ("unknown", "hostile", "cross")}
+    assert final.SPENT_REASON == "spent and opened on 2026-11-27 by the owner's decision"
+    assert final.spent("withheld", ["forms", "hostile", "intake", "cross"]) == ["hostile", "cross"]
+    assert final.spent("withheld3", ["unknown", "hostile", "cross"]) == []
+
+
+@pytest.mark.parametrize("split,families", [("withheld", ["unknown"]), ("withheld", ["intake", "hostile"]),
+                                            ("withheld", ["cross"]), ("withheld2", ["unknown", "hostile"]),
+                                            ("withheld2", ["cross"])])
+def test_a_spent_request_is_refused_recorded_and_never_scored(tmp_path, monkeypatch, split, families):
+    def never(*args, **kwargs):
+        raise AssertionError("a spent split was loaded or scored")
+    for name in ("score_z", "score_cross", "score_cross2"):
+        monkeypatch.setattr(final, name, never)
+    ledger = tmp_path / "ledger.jsonl"
+    with pytest.raises(final.Spent, match="spent and opened on 2026-11-27 by the owner's decision"):
+        final.look(families, "today", "today", "an attempt", script="test", ledger=ledger, env=CLEAN, split=split)
+    (line,) = [json.loads(x) for x in ledger.read_text().splitlines()]
+    assert set(line) == REFUSED_FIELDS and line["families"] == families and line["split"] == split
+    assert final.SPENT_REASON in line["refused"] and all(f in line["refused"] for f in final.spent(split, families))
+    assert line["note"] == "an attempt" and line["commit"] == CLEAN["git_commit"]
+
+
+def test_check_refuses_a_spent_pair_after_every_other_check(tmp_path):
+    """A malformed request (no note, a dirty tree) is refused for that, and writes nothing; a well-formed one for spent
+    cases is refused as spent (and look() records it)."""
+    for split in ("withheld", "withheld2"):
+        for family in ("unknown", "hostile", "cross"):
+            with pytest.raises(final.Spent, match="spent and opened on 2026-11-27"):
+                final.check("a note", [family], CLEAN, split=split)
+            with pytest.raises(final.Refused, match="note") as caught:
+                final.check("", [family], CLEAN, split=split)
+            assert not isinstance(caught.value, final.Spent)
+            with pytest.raises(final.Refused, match="clean and committed"):
+                final.look([family], "today", "today", "x", script="test", ledger=tmp_path / "l.jsonl",
+                           env={"git_commit": "a", "git_dirty": True}, split=split)
+    assert not (tmp_path / "l.jsonl").exists()
+
+
+def _script_module(name):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(f"_omni_{name.removesuffix('.py')}", ROOT / "scripts" / name)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("script,argv", [
+    ("bench_omni.py", ["final", "--split", "withheld2", "--family", "all", "--subject", "today"]),
+    ("bench_omni.py", ["final", "--split", "withheld", "--family", "unknown", "--subject", "today"]),
+    ("bench_omni_forms.py", ["final", "--split", "withheld2", "--family", "cross", "--subject", "today"]),
+    ("bench_omni_forms.py", ["final", "--split", "withheld", "--family", "cross", "--subject", "always_consistent"])])
+def test_the_scripts_refuse_a_spent_request_and_record_it(tmp_path, monkeypatch, capsys, script, argv):
+    """The scripts run in this process, with the ledger moved to a temporary file (the tracked one is untouched)."""
+    module = _script_module(script)
+    tracked, before = final.LEDGER, _ledger_bytes()
+    ledger = tmp_path / "ledger.jsonl"
+    monkeypatch.setattr(final, "LEDGER", ledger)
+    monkeypatch.setattr(final, "environment", lambda repo=final.REPO: dict(CLEAN))
+    out = tmp_path / "out.json"
+    assert module.main([*argv, "--note", "an attempt", "--out", str(out)]) == 2
+    assert "spent and opened on 2026-11-27 by the owner's decision" in capsys.readouterr().err
+    (line,) = [json.loads(x) for x in ledger.read_text().splitlines()]
+    assert "refused" in line and line["split"] == argv[2] and not out.exists()
+    assert (tracked.read_bytes() if tracked.exists() else b"") == before

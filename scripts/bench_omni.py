@@ -6,7 +6,7 @@
     bench_omni.py hash [--split development|held_out]
     bench_omni.py list
     bench_omni.py final --family F [--family F ...] --subject today|artifacts --note TEXT --out FILE [--scratch DIR]
-                        [--split withheld|withheld2]
+                        [--split withheld|withheld2|withheld3]
     bench_omni.py pin-driver
 
 `run` writes a summary (per family: counts with denominators, the fabrication count on its own, per-task outcomes,
@@ -23,7 +23,10 @@ appends one line per family to
 docs/quality/evidence/omnimind_final_uses.jsonl BEFORE it loads or scores anything, and writes summaries only.
 `run` refuses the withheld split: only `final` loads it. `final --split withheld2` is the second withheld split (lane
 ZW2: new cases of the families `unknown` and `hostile`; acceptance/omni/withheld2_unknown_hostile.py), with the same
-refusals and ledger; `run` refuses it too.
+refusals and ledger; `run` refuses it too. `final --split withheld3` is the third (lane ZW3: unknown and hostile,
+acceptance/omni/withheld3_unknown_hostile.py; their outputs carry a per-class breakdown); `run` refuses it. The first
+two splits are spent for unknown, hostile and cross (opened by the owner on 2026-11-27): `final` refuses them and
+records the refusal in the ledger.
 
 `pin-driver` prints that pin file's content with the drivers' current SHA-256 and the commit; it writes nothing. The
 main session redirects it into docs/quality/evidence/omnimind_driver_pins.json and commits it deliberately, once the
@@ -65,7 +68,7 @@ def _totals(families: dict) -> dict:
 
 
 def cmd_run(args) -> int:
-    if args.split in ("withheld", "withheld2"):
+    if args.split in ("withheld", "withheld2", "withheld3"):
         print("refused: the withheld split is scored only by `final`, once per mechanism, and every look is recorded "
               "in the ledger first (docs/quality/OMNIMIND_BENCHMARK.md)", file=sys.stderr)
         return 2
@@ -130,10 +133,11 @@ def cmd_final(args) -> int:
         print(f"refused: {problem}", file=sys.stderr)
         return 2
     second = ("unknown", "hostile")
-    if args.split == "withheld2":
+    if args.split in ("withheld2", "withheld3"):
         families = second if "all" in args.family else tuple(dict.fromkeys(args.family))
         if any(f not in second for f in families):
-            print("refused: the second withheld split has only the families unknown and hostile here (cross is in "
+            which = "second" if args.split == "withheld2" else "third"
+            print(f"refused: the {which} withheld split has only the families unknown and hostile here (cross is in "
                   "bench_omni_forms.py)", file=sys.stderr)
             return 2
     else:
@@ -164,7 +168,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run")
-    run.add_argument("--split", choices=(*omni.SPLITS, "both", "withheld", "withheld2"), required=True)
+    run.add_argument("--split", choices=(*omni.SPLITS, "both", "withheld", "withheld2", "withheld3"), required=True)
     run.add_argument("--subject", default="today", choices=tuple(subject.SUBJECTS))
     run.add_argument("--family", action="append", choices=omni.FAMILIES)
     run.add_argument("--out", required=True)
@@ -182,8 +186,9 @@ def main(argv=None) -> int:
     fin.add_argument("--note", required=True, help="the reason for the look (the ledger line's note)")
     fin.add_argument("--out", required=True, help="a path OUTSIDE this checkout")
     fin.add_argument("--scratch", default=None, help="directory for the hostile family's per-task folders")
-    fin.add_argument("--split", default="withheld", choices=("withheld", "withheld2"),
-                     help="which withheld split (withheld2: lane ZW2's unknown and hostile)")
+    fin.add_argument("--split", default="withheld", choices=("withheld", "withheld2", "withheld3"),
+                     help="which withheld split (withheld2: lane ZW2's unknown and hostile, spent; withheld3: lane "
+                          "ZW3's unknown and hostile)")
     fin.set_defaults(func=cmd_final)
     pin = sub.add_parser("pin-driver", help="print the drivers' pin file with their current SHA-256 (writes nothing)")
     pin.set_defaults(func=cmd_pin_driver)

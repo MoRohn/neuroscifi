@@ -728,3 +728,38 @@ stays unmerged pending the owner's decision.
 
 What this look cannot establish (the rule's part C): real files or real people; kinds and classes not in the split;
 versions after `ae6120f`; generality from 98 or 171 cases; anything about forms, learn, made or transform.
+
+## The third withheld split (lane ZW3) and the spent splits
+
+Written by lane ZW3 on 2026-11-27, after the owner opened the first two withheld splits of `unknown`, `hostile` and
+`cross` as development cases (WAVE3.md, decision 1), without opening those files, product code or the fix lane's work;
+counts and rules only here. Nobody else opens `acceptance/omni/withheld3_*.py` or
+`tests/acceptance/test_omni_withheld3.py`.
+
+- `acceptance/omni/withheld3_unknown_hostile.py`, seeds from `omni.WITHHELD3_SEEDS` (70000-70499, guarded by the seed
+  test like the other reserved ranges):
+  - `unknown`: 71 cases, 207 tasks (44 disguised decodable files, 129 tasks; 27 truly unknown, 78 tasks, 51 of them
+    identification questions); abstention floor 27. 56 classes, none a public construction.
+  - `hostile`: 72 constructions over 44 classes; 35 of the classes (61 constructions) exist in no public split, the other
+    9 are new constructions of public classes. **The truth follows the owner's rule of 2026-11-27** (WAVE3.md rule 2,
+    ADR-080 decision 4): parser-level attacks only, each expecting the whole file refused within the harness's bounds; a
+    file whose only peculiarity is a reference to something outside itself or embedded active content is not a refusal
+    case, and no such file is in this family (the test checks that no construction carries a URI scheme, an external
+    relationship, a script, a macro project, a PDF action, an XInclude or an external DTD).
+- Truths are known by construction and re-derived in `test_omni_withheld3.py`: every format truth by the test's own
+  identification of the (unwrapped) bytes, all 85 content truths of the disguised files by `omni_oracle.py`, the truly
+  unknown bytes checked to carry no known signature and not to be UTF-8 text, and every hostile construction's hostile
+  property checked without decoding it as a product would (headers parsed with struct, inflation streamed to a bound).
+- **The look**: `scripts/bench_omni.py final --split withheld3 --family unknown|hostile|all --subject S --note TEXT --out
+  FILE`, with the refusals and ledger of the earlier splits (a line of this split carries `"split": "withheld3"`); any
+  other family is refused for this split; `run --split withheld3` is refused. The unknown and hostile outputs now carry
+  `by_class`: right / cannot / wrong / failed per class, class names only (hostile classes marked `in_no_public_split`),
+  so a class with a wrong answer can be named.
+- **The spent splits.** `final` refuses `--split withheld` and `--split withheld2` for `unknown`, `hostile` and `cross`
+  with the reason "spent and opened on 2026-11-27 by the owner's decision" (`final.SPENT`, `final.Spent`), after every
+  other check; such a refused request writes one ledger line (`families`, `split`, `subject`, `note`, `script`, `refused`)
+  and loads or scores nothing. Two tests of lane ZW2's file that take a withheld2 look are marked, by name, as strictly
+  expected to fail with `final.Spent` (`tests/acceptance/conftest.py`).
+- The rule for the look is not this lane's to write: it must be committed before any product look. The ledger's first
+  withheld3 lines are lane ZW3's machinery check (references only, each run twice, noted "machinery check: references
+  only"); their figures are the control table for that rule, in lane ZW3's report.
