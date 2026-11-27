@@ -759,7 +759,10 @@ counts and rules only here. Nobody else opens `acceptance/omni/withheld3_*.py` o
   with the reason "spent and opened on 2026-11-27 by the owner's decision" (`final.SPENT`, `final.Spent`), after every
   other check; such a refused request writes one ledger line (`families`, `split`, `subject`, `note`, `script`, `refused`)
   and loads or scores nothing. Two tests of lane ZW2's file that take a withheld2 look are marked, by name, as strictly
-  expected to fail with `final.Spent` (`tests/acceptance/conftest.py`).
+  expected to fail with `final.Spent` (`tests/acceptance/conftest.py`). (Later, 2026-11-27, lane FX4 on the measurement
+  review's M1/item 4: the two marked tests became explicit `pytest.raises(final.Spent)` assertions and the name-keyed
+  hook was removed with `tests/acceptance/conftest.py`; the spent runner's import allowance also rejects a
+  `withheld3_` import.)
 - The rule for the look is not this lane's to write: it must be committed before any product look. The ledger's first
   withheld3 lines are lane ZW3's machinery check (references only, each run twice, noted "machinery check: references
   only"); their figures are the control table for that rule, in lane ZW3's report.
@@ -909,3 +912,9 @@ what changed after the review):
 - Between lane ZW3's machinery check (`156edef`) and `4f66291`, `git diff --stat` over `src/neuroscifi/acceptance`,
   `src/neuroscifi/webcortex`, the two bench scripts and the forms driver shows only `SPENT.md` added: the `today`
   subject (it reads through `webcortex`, not the artifact package), the harness and the drivers the controls run through are the ones the machinery check ran.
+
+## Result of the look at the third withheld split
+
+**Not yet taken (placeholder).** To be filled in from the look's evidence after the look, under the rule above:
+preconditions and controls first, then per family (`unknown`, `hostile`) n, the counts, the references beside them and
+the word; every class with a wrong or failed task named by class; failures first. Cross is not looked at.

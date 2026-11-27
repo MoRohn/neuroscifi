@@ -409,3 +409,27 @@ without opening them, product code or the fix lane's work; counts and rules only
   decision") and records the refusal in the ledger.
 - The pass rule for its look is to be committed before any product look. The ledger's first withheld3 cross lines are
   lane ZW3's machinery check with the references (`today`, `always_consistent`, `always_inconsistent`), each run twice.
+
+## Cross after Wave O-3: the relater withdrawn, the third split's cross cases not looked at
+
+Written by documentation lane 3 on 2026-11-27. **No pass rule is committed for the third split's cross cases, and
+none is looked at**: by the owner's decision of 2026-11-27 (verbatim label "Withdraw them") the relater's three new
+comparisons (an archive's members against a listing, a drawing's links against a text, a sound's tone start times
+against a cue sheet) were removed and every relater verdict made display-only, and the relater is reported **not
+supported** (ADR-081, third addition). The three comparisons were built three times and each version was broken by a
+fresh security reviewer with new pairs of known truth: 24 of 27, 30 of 56 and 31 of 63 answered wrongly. The third
+look's rule ([OMNIMIND_BENCHMARK.md](OMNIMIND_BENCHMARK.md), "The rule for the look at the third withheld split")
+covers `unknown` and `hostile` only; no cross control is run, and `withheld3_cross.py` stays **unlooked and unspent**
+(ledger lines 61 to 66 are lane ZW3's reference-only machinery check, not a product look).
+
+What the relater does now: only the older comparisons answer, each answer shown with the fixed line "not recorded:
+the relater's answers are shown only, never stored as links, until a relater passes an examination (ADR-081)"; a
+question only a withdrawn comparison could decide is "cannot: this comparison was withdrawn: it could not be made
+reliable". No path stores `consistent_with` or `contradicts`.
+
+Figures since then, all **development evidence** (`docs/quality/evidence/omnimind_fx5.json`; the fixes saw the opened
+cases): development cross **70 of 72** (70 answered, all right; was 72 of 72: two report totals stated as "Net total"
+are now declined); the opened second split 70 right / 28 cannot / 0 wrong of 98 (decidable 52 of 80; undecidable
+"cannot" 18 of 18; archive_checksums, audio_cues and diagram_text all "cannot"); the opened first split 44 / 34 / 0 of
+78 (archive_manifest and route_stops "cannot"). The relater's held-out figures above (66 / 6 / 0) were taken before
+these changes and are not re-run.

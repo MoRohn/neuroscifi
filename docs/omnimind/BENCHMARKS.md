@@ -1,6 +1,7 @@
 # OMNIMIND benchmarks: before and after (deliverable 7)
 
-Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `21193c4` (the withheld looks taken on `55f89be`). Every figure is copied from the committed
+Status: 2026-11-27, brought up to date by documentation lane 3 from `omnimind` at `4f66291` (Wave O-3; the section
+at the end). Earlier: written on `omni-docs2` from `omnimind` at `21193c4` (the withheld looks taken on `55f89be`). Every figure is copied from the committed
 evidence file named beside it; nothing was re-run for this page. The examinations themselves, their rules and their
 readers are in [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md) (taking things in, making things)
 and [../quality/OMNIMIND_BENCHMARK_FORMS.md](../quality/OMNIMIND_BENCHMARK_FORMS.md) (choosing a form, relating two
@@ -9,6 +10,12 @@ artifacts, learning from outcomes). Every held-out run, its rule quoted verbatim
 
 ## The first screen: what failed, and what the figures are not
 
+- **Wave O-3 (2026-11-27): the relater's three new comparisons were broken three times and are withdrawn; the third
+  look is not yet taken.** Built three times, each version was broken by a fresh security reviewer with new pairs:
+  **24 of 27, 30 of 56, 31 of 63** answered wrongly (the code before the wave said "cannot" to almost all of them).
+  By the owner's decision every relater verdict is display-only and the relater is **not supported**. The figures
+  on the opened spent cases (unknown 170 / 1 / 0 of 171, hostile 62 of 62) are **development evidence**, not a look.
+  Section "Wave O-3" at the end.
 - **The look at the second withheld split (`ae6120f`): none of the three fixed mechanisms supported.** unknown 158
   right, **5 wrong** of 171; hostile **11 answered instead of refused** of 62; cross 1 wrong of 48 answered but right on
   only 47 of 80 decidable cases (needs 60). The owner's merge condition is not met. Section "The look at the second
@@ -280,10 +287,51 @@ generalise to new constructions. On unseen inputs the wrong answers went from 3 
 11 for hostile files; this is **not a like-for-like comparison** (different splits and sizes: 111 and 35 cases then,
 171 and 62 now). The main session's ruling in lane FX2 (an outside reference or embedded active content is named,
 never followed or run, and does not refuse a file by itself) was made on principle before the look and may account
-for part of the hostile count; this is not known, because no task is opened. **Both withheld splits are now spent for
+for part of the hostile count; this is not known, because no task is opened. (Later, Wave O-3: once the cases were
+opened by the owner's decision, the diagnosis found it accounted for none of the 11.) **Both withheld splits are now spent for
 these families**: any further fix needs a third set of unseen cases, written first. **The owner's condition for
 merging (fix what the look found and re-examine on new withheld cases) was examined and is NOT met**; the pull request
 stays unmerged pending the owner's decision.
 
 What this look cannot establish (the rule's part C): real files or real people; kinds and classes not in the split;
 versions after `ae6120f`; generality from 98 or 171 cases; anything about forms, learn, made or transform.
+
+## Wave O-3: figures on the opened cases (development evidence) and the relater's three breaks
+
+Evidence: `docs/quality/evidence/omnimind_spent_diagnosis.json` (written before any fix), `omnimind_fx3.json`,
+`omnimind_fx5.json`; decisions and limits: ADR-081 and its three dated additions; the full record:
+[FINAL_REPORT.md](FINAL_REPORT.md), section "Wave O-3". **The fixes saw these cases: every figure below is
+development evidence, never a look.**
+
+| set | before the wave | first fix (`403fd61`) | second (FX4) | third (FX5) | withdrawal (`4f66291`) |
+|---|---|---|---|---|---|
+| unknown, second set (171) | 158 / 8 cannot / 5 wrong | 170 / 1 / 0 | 170 / 1 / 0 | 170 / 1 / 0 | **170 / 1 / 0** |
+| hostile, second set (62) | 51 refused / 11 answered | 62 / 0 | 62 / 0 | 62 / 0 | **62 / 0** |
+| cross, second set (98): right / cannot / wrong; decidable right of 80 | 65 / 32 / 1; 47 | 96 / 2 / 0; 78 | 82 / 16 / 0; 64 | 72 / 26 / 0; 54 | **70 / 28 / 0; 52** |
+| cross, first set (78) | 44 / 32 / 2 (on `ae6120f`'s code) | 64 / 14 / 0 | 58 / 20 / 0 | 44 / 34 / 0 | **44 / 34 / 0** |
+| development cross (72) | 72 | 72 | 72 | 70 | **70** |
+| development, seven families (524) | 512 / 12 / 0 / 0 | unchanged | unchanged | unchanged | unchanged |
+
+The second set's cross "before" row is the look's own figures (65 right, 48 answered, 1 wrong of 98; 32 decidable
+cases declined; undecidable "cannot" 18 of 18). In every column "cannot" counts the decidable cases declined; a
+"cannot" on an undecidable case is counted right. The first fix's 96 right was fitted to the opened cases (ADR-081, first addition): its
+cue words were partly the opened questions' words.
+
+**The relater's new comparisons on the reviewers' pairs** (truth by construction; `omnimind_fx5.json`
+`constructions_broken`):
+
+| construction | lane | new pairs answered wrongly (or answered where "cannot" was right) |
+|---|---|---|
+| cue words | FX3 | **24 of 27** (the code before the wave: 2 wrong, 25 "cannot") |
+| a quantity word and a "where" word required; hidden text found format by format | FX4 | **30 of 56** (before: 4 wrong, 49 "cannot", 3 right) |
+| a closed question grammar, plain sources only, every line read | FX5 | **31 of 63** (before: 63 "cannot") |
+| withdrawn: only older comparisons answer, for display | FX5, last part | of 206 pairs of the three reviews and the lane's own set, 6 answered (all by older comparisons, all right), 0 wrong |
+
+**Other figures.** The AI-address screen: 5 of 12 fresh lines caught (measured once, after the change; English only),
+the reviews' 17 and the lane's own 12 caught (seen while writing), 20 honest lines read, 3 honest lines still refused.
+The PDF chain check: 63 ordinary PDFs keep their outcomes (made by the lane; not regenerated). Lane FX3's relater corpus
+172 / 104 / 0 of 276 after the withdrawal (276 / 0 / 0 under the first version's cue lists). Lane FX's corpora unchanged
+(identification 3,664 / 5 / 0; hostile parts 165 / 3; relater 84 / 60 / 0).
+
+**The third look**: its rule is in [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md) ("The rule for
+the look at the third withheld split"), for `unknown` and `hostile` only; not yet taken. Cross is not looked at.
