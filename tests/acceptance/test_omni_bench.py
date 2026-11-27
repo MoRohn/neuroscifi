@@ -237,13 +237,14 @@ def test_hostile_files_are_small_on_disk_and_large_when_expanded():
 
 # ---- the subjects -------------------------------------------------------------------------------------------------
 
-def test_artifacts_subject_says_not_built_while_the_package_is_absent():
+def test_artifacts_subject_says_not_built_while_the_package_is_absent(monkeypatch):
+    """The package exists now, so its absence is simulated (None in sys.modules makes the import fail), instead of a
+    skip that could never run again (code review L8; fix lane F1, ruling I)."""
+    import sys
+    for name in [m for m in sys.modules if m == "neuroscifi.artifacts" or m.startswith("neuroscifi.artifacts.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setitem(sys.modules, "neuroscifi.artifacts", None)
     s = subject.ArtifactsSubject()
-    try:
-        import neuroscifi.artifacts  # noqa: F401
-        pytest.skip("the artifacts package exists now")
-    except ImportError:
-        pass
     a = s.answer(omni.family("intake").tasks("development")[0])
     assert a.status == "cannot" and a.reason.startswith("not built")
 
