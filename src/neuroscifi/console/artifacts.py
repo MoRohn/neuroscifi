@@ -183,6 +183,8 @@ def what_it_is(record) -> str:
         return f"a drawing of {_n(rep.get('n_shapes'), 'shape')}"
     if kind == "mesh":
         return f"a solid of {_n(rep.get('n_faces') or rep.get('faces'), 'triangle')}"
+    if kind == "tree" and rep.get("model"):
+        return f"a model with {_n(len(rep.get('parameters') or []), 'setting')} you can change"
     if kind == "tree":
         return f"nested data of {_n(rep.get('n_nodes'), 'entry', 'entries')}"
     if kind == "graph":
@@ -262,6 +264,46 @@ def document_data(document) -> dict:
     return {"title": document.title, "blocks": blocks, "n_blocks": len(document.blocks)}
 
 
+def made_document(spec) -> dict | None:
+    """A document NeuroSciFi made, from its stored specification (data: the blocks it was made from), in the shape of
+    document_data: references to figures and tables in words ("Figure 1"), a figure by its caption and its order
+    (the page reads the picture itself from the stored file), a table's columns as rows."""
+    blocks = ((spec or {}).get("data") or {}).get("blocks")
+    if not isinstance(blocks, list):
+        return None
+    numbers, counts = {}, {"figure": 0, "table": 0}
+    for b in blocks:
+        if isinstance(b, dict) and b.get("kind") in counts:
+            counts[b["kind"]] += 1
+            if b.get("id"):
+                numbers[b["id"]] = f"{'Figure' if b['kind'] == 'figure' else 'Table'} {counts[b['kind']]}"
+    out, figure, table = [], 0, 0
+    for b in blocks[:MAX_BLOCKS]:
+        if not isinstance(b, dict):
+            continue
+        kind = str(b.get("kind"))
+        text = b.get("text") if "parts" not in b else "".join(
+            str(p.get("text")) if "text" in p else numbers.get(p.get("ref"), "") for p in b["parts"] if isinstance(p, dict))
+        block = {"kind": kind, "level": int(b.get("level") or 0), "text": str(text or "")[:MAX_BLOCK_TEXT]}
+        if kind == "figure":
+            inner = b.get("figure") if isinstance(b.get("figure"), dict) else {}
+            figure += 1
+            block["text"] = f"Figure {figure}. {b.get('caption') or inner.get('title') or ''}".strip()[:MAX_BLOCK_TEXT]
+            block["figure"] = figure - 1
+        elif kind == "table" and isinstance(b.get("table"), dict):
+            table += 1
+            columns = [c for c in b["table"].get("columns") or [] if isinstance(c, dict)][:MAX_TABLE_COLUMNS]
+            n = max((len(c.get("values") or []) for c in columns), default=0)
+            block["text"] = f"Table {table}. {b.get('caption') or ''}".strip()
+            block["table"] = {"columns": [{"name": str(c.get("name"))[:MAX_CELL], "unit": c.get("unit"),
+                                           "kind": c.get("kind")} for c in columns],
+                              "rows": [[_cell((c.get("values") or [None] * n)[i] if i < len(c.get("values") or [])
+                                              else None) for c in columns] for i in range(min(n, MAX_TABLE_ROWS))],
+                              "n_rows": n, "n_columns": len(b["table"].get("columns") or []), "title": None}
+        out.append(block)
+    return {"title": spec.get("title"), "blocks": out, "n_blocks": len(blocks)}
+
+
 def _label_of(db, artifact_id) -> str | None:
     row = db.execute("SELECT label FROM artifacts WHERE id=?", (artifact_id,)).fetchone()
     return row[0] if row else None
@@ -327,7 +369,8 @@ def detail(c, p, q, b):
         if view == "table":
             out["table"] = table_data(rep)
         elif view == "document":
-            out["document"] = document_data(rep)
+            made = made_document(store.spec_of(c.db, artifact_id)) if record.origin == "made" else None
+            out["document"] = made or document_data(rep)
         elif view == "sound":
             out["sound"] = {"seconds": float(rep.samples.shape[0] / rep.rate_hz) if rep.rate_hz else 0.0,
                             "channels": int(rep.samples.shape[1]) if rep.samples.ndim > 1 else 1,

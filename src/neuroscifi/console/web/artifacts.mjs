@@ -25,17 +25,30 @@ const URL_REF = /url\(\s*(['"]?)([^)'"]*)\1\s*\)/gi;
 const ACTIVE = /javascript:|vbscript:|data:|expression\s*\(|@import/i;
 let imports = 0;
 
+// A parsed document is held to this page's policy too, so a <style> element or a style attribute in it would be
+// reported as a refused inline style although nothing is applied. Both are taken out of the text before it is parsed
+// (they would be dropped by the allow-list anyway); `styles` counts the attributes taken out.
+const STYLE_ELEMENT = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
+const STYLE_ATTRIBUTE = /\sstyle\s*=\s*("[^"]*"|'[^']*')/gi;
+function unstyled(text) {
+  let styles = 0;
+  const out = String(text).replace(STYLE_ELEMENT, '').replace(STYLE_ATTRIBUTE, () => { styles += 1; return ' '; });
+  return { text: out, styles };
+}
+
 // Rebuild an SVG picture from its text: {node, dropped} where dropped names (with counts) everything left out. The
 // text is parsed as XML (a parsed document runs nothing and loads nothing); only allow-listed elements and attributes
 // are copied, ids are renamed so two pictures never share one, and a url() may name only an element of the picture.
 export function importSvg(text) {
-  const doc = new DOMParser().parseFromString(String(text), 'image/svg+xml');
+  const clean = unstyled(text);
+  const doc = new DOMParser().parseFromString(clean.text, 'image/svg+xml');
   const root = doc.documentElement;
   if (doc.getElementsByTagName('parsererror').length || root.namespaceURI !== SVG || root.localName !== 'svg') {
     return { node: null, dropped: [['it is not a picture this view can read', 1]] };
   }
   const dropped = new Map();
   const note = (what) => dropped.set(what, (dropped.get(what) ?? 0) + 1);
+  if (clean.styles) dropped.set('the attribute style', clean.styles);
   const ids = new Set([...doc.querySelectorAll('[id]')].map((e) => e.getAttribute('id')));
   const prefix = `art${++imports}-`;
   const copy = (src) => {
@@ -216,7 +229,9 @@ async function showSvg(x, body) {
   const text = await raw(`/api/artifacts/${x.id}/content`);
   const { node, dropped } = importSvg(text);
   if (!node) throw new Error('it is not a picture this view can read');
-  body.append(ctx.h('figure', { class: 'art-figure' }, node), droppedNote(dropped));
+  body.append(ctx.h('figure', { class: 'art-figure' }, node));
+  const left = droppedNote(dropped);
+  if (left) body.append(left);
 }
 
 function tableOf(t, caption) {
@@ -256,7 +271,7 @@ async function showDocument(x, body, ticket) {
   // A document NeuroSciFi made embeds its figures as SVG pictures, in order: each is read from the stored file and
   // rebuilt through the same allow-list as a picture of its own. A given document's figures are named only.
   if (!figures.length || !x.made || x.media_type !== 'text/html') return;
-  const html = new DOMParser().parseFromString(await raw(`/api/artifacts/${x.id}/content`), 'text/html');
+  const html = new DOMParser().parseFromString(unstyled(await raw(`/api/artifacts/${x.id}/content`)).text, 'text/html');
   if (ticket !== view.seq) return;
   const svgs = [...html.querySelectorAll('svg')].filter((s) => !s.parentElement?.closest('svg'));
   figures.forEach((fig, i) => {
@@ -355,7 +370,7 @@ function details(x) {
         ` (${r.relation === 'contradicts' || r.relation === 'consistent_with' ? 'measured' : 'estimated'} with confidence ${Math.round(r.confidence * 100)}%).`)))));
   }
   if (x.why) {
-    parts.push(h('details', { class: 'art-why' }, h('summary', { text: 'Why it has this form' }),
+    parts.push(h('details', { class: 'tech art-why' }, h('summary', { text: 'Why it has this form' }),
       h('ul', { class: 'reasons' }, x.why.map((line) => h('li', { class: line.startsWith('  ') ? 'indent' : null, text: line.trim() })))));
   }
   const facts = (x.facts ?? []).map((f) => [f.name.replaceAll('_', ' '), `${typeof f.value === 'object' ? JSON.stringify(f.value) : f.value} (${f.how})`]);
@@ -452,7 +467,7 @@ async function finished(r) {
     r.words.length ? h('ul', { class: 'art-words' }, r.words.map((w) => h('li', { text: w }))) : null,
     h('p', { class: r.status === 'words' ? 'sub' : 'msg error', text: r.status === 'words'
       ? `No picture was made because words suffice here.${because ? ' ' + because : ''}` : (because ?? 'Nothing could be made from these files.') }),
-    h('details', { class: 'art-why' }, h('summary', { text: 'Why' }), h('ul', { class: 'reasons' }, r.why.map((l) => h('li', { text: l.trim() })))));
+    h('details', { class: 'tech art-why' }, h('summary', { text: 'Why' }), h('ul', { class: 'reasons' }, r.why.map((l) => h('li', { text: l.trim() })))));
   return r.status === 'words' ? 'Answered in words; nothing was made or stored.' : 'Nothing was made.';
 }
 
