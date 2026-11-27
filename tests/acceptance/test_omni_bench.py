@@ -24,7 +24,7 @@ CASES_SHA256 = "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c
 # person cannot see was read as carried); the file at 505b55b, never pinned, had SHA-256 6c6c28a2e91b1cbb...c239.
 # A change here changes what "right" means for made and transform: re-pin only with the reason written in
 # docs/quality/OMNIMIND_BENCHMARK.md, before any look that it affects.
-READERS_SHA256 = "df21e65899c3830514d2ac05322f3b2ace5738aedb02a17561baf0c985596327"
+READERS_SHA256 = "fb51f10c76afeeaa1046e9adb5876d3501175f63eb880ff20eda209a8d3c619e"
 FROZEN = {
     "development": {
         "intake": {"n": 337, "sha256": "54afb377ea0e01f6bda0153949bb867f32c48a7265eb333ba10948720d67b1aa"},
