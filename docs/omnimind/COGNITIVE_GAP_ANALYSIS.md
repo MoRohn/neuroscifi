@@ -1,11 +1,11 @@
 # Cognitive gap analysis, after the build (deliverable 3)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6`. The first version (2026-11-26, written
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged. The first version (2026-11-26, written
 before anything was built; in git at `abc6be4`) named each gap the directive's phases II to X open in NeuroSciFi. This
 version keeps that list and says, for each gap, what closed it, what only narrowed it, and what is still open and
 why. "Closed" means a named command or function exists, has tests and a measured figure; it never means the
-directive's ambition for that phase is met. Places fix lane F4 will change are marked "to be confirmed after fix lane
-F4".
+directive's ambition for that phase is met. Places the small fix lane F5 will change are marked "to be confirmed after fix
+lane F5".
 
 ## The first screen: what is still open
 
@@ -35,7 +35,7 @@ F4".
 | II.2 No format detection, no unknown-format answer | **closed** | `artifacts/detect.py` (signatures first) and the capability-discovery answer | unknown family 51 of 51 development, 49 of 49 held-out |
 | II.3 Formats decodable with what exists | **closed** for the formats listed | 66 readers within `Limits` and the guard | intake 330 of 337 development, 328 of 339 held-out |
 | II.4 Formats that cannot be decoded on this host | **open** | compressed images, compressed audio, video frames, Parquet, HDF5, `.doc`, `.xls`, 7z, RAR: header, structure or identification only; each needs a package or an external decoder (owner decisions) | honest family 52 of 55 (the 3 "cannot" are content questions) |
-| II.5 Streaming, resumable and partial processing | **narrowed** | `--partial` uses a file a limit stopped part-way and says which part; large sources are made from stated reductions; nothing streams or resumes; a 6-minute WAV is still refused (its samples would need more than 256 MiB) | fix lane F3; `tests/artifacts/test_f3_pipeline.py` |
+| II.5 Streaming, resumable and partial processing | **narrowed** | `--partial` uses a file a limit stopped part-way and the made thing says which part (the terminal summary does not yet, and `--partial` on a 5,000-file zip fails: **to be confirmed after fix lane F5**); large sources are made from stated reductions; nothing streams or resumes; a 6-minute WAV is still refused (its samples would need more than 256 MiB) | fix lane F3; `tests/artifacts/test_f3_pipeline.py` |
 
 ## Phase III: native representation (§6)
 
@@ -52,7 +52,7 @@ F4".
 |---|---|---|---|
 | IV.1 Nothing decides the form of an answer | **narrowed** | the form planner, with one sentence of why; frozen; held-out: "does not beat the references", overfit, no evidence it reads the words | [CREATIVE_INTELLIGENCE_ASSESSMENT.md](CREATIVE_INTELLIGENCE_ASSESSMENT.md) |
 | IV.2 Non-text-first answers | **narrowed** | made results exist for owner commands and the console; answers in conversation are still sentences; Pocket not covered | ADR-076, ADR-079 |
-| IV.3 Facts in a non-text artifact are not checked | **narrowed** | every made thing is read back by an independent check before it is kept; the check is weaker than the benchmark's reader on six hidings and shares two blind spots with it (**to be confirmed after fix lane F4**); no person judged legibility | made 14 of 14 development, 13 of 14 held-out |
+| IV.3 Facts in a non-text artifact are not checked | **narrowed** | every made thing is read back by an independent check before it is kept; since fix lane F4 the check also reports what a person could not see (`visible_to_a_person`), and the benchmark's reader was made stricter on the two hidings both had passed; no person judged legibility | made 14 of 14 development, 13 of 14 held-out |
 
 ## Phase V: making things (§8)
 
@@ -87,7 +87,9 @@ comfortable).
 
 **Narrowed.** Every decode is bounded (`Limits`, the guarded child process); the store has caps; a production has
 time and byte budgets; large sources are reduced by stated rules. Open: durable or resumable jobs; progress; the GPU is
-not used; the guard costs more than "about twice" a decode (**to be confirmed after fix lane F4**); the planner's
+not used; the guard's cost, as measured by fix lane F4: `add` one decode in the child plus about 0.1 s, `make`,
+`facts`, `relate` and the console two decodes plus about 0.1 s (a 5,000-file zip add 2.97 s, a crafted PNG 6.86 s);
+a six-minute recording is not read; the planner's
 time estimates are 5 to 560 times too high (recorded, not corrected: the planner is frozen).
 
 ## Phase X: the person's experience (§13)

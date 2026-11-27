@@ -1,6 +1,6 @@
 # Preservation of existing behaviour (deliverable 9: "Complete Regression Report")
 
-Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `09bfff6`. This page collects what each lane and each
+Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `09bfff6`, with fix lane F4 (`1aa7eb6`) merged. This page collects what each lane and each
 reviewer measured about the system that existed before OMNIMIND: the offline research digest, the sentence guard's
 differential, the test suites, the acceptance scenarios, the two-account check and the browser suite, each with its
 commit and counts. **The final validation at the final commit has not been run yet**: it is the main session's, after
@@ -16,7 +16,7 @@ session's log (`.omc/handoffs/omnimind.md`); none of these is tracked by git. Th
 - **Nothing existing changed at the defaults, by every check run so far**: the offline digest is byte-identical in
   both regimes, the guard differential reports 0 different, `nsf acceptance --all` passes 7 of 7, the two-account
   check passes 56 of 56, and the default import path of the new package needs only numpy. Last checked by the code
-  reviewer's second pass at `09bfff6`.
+  reviewer's second pass at `09bfff6` and by fix lane F4 at `1aa7eb6`.
 - **Deliberate changes to existing behaviour** (each a fix, listed below): the audit's defects closed by lane S, the
   console heat map's colours (now gray, the owner's palette rule), the gateway's handling of dict content and tool-call
   arguments, the bound on `nsf archive unpack`, and a new console view that is on by default.
@@ -24,7 +24,8 @@ session's log (`.omc/handoffs/omnimind.md`); none of these is tracked by git. Th
   the added test time at about 2.3 minutes locally and says the check job fits its 40-minute cap only if CI is no
   more than about 2.2 times slower than this host); x86_64; macOS and Windows (the decode guard's memory limit is
   Linux-only there).
-- **Flaky tests seen under load**: four, each passed on rerun or alone, none in code OMNIMIND touched (table below).
+- **Flaky tests seen under load**: four, each passed on rerun or alone, none in code OMNIMIND touched, and one e2e
+  failure in fix lane F4 that did not recur but whose name was not captured (table below).
 
 ## What each lane and reviewer measured
 
@@ -42,6 +43,7 @@ session's log (`.omc/handoffs/omnimind.md`); none of these is tracked by git. Th
 | main session, merged tree | `09bfff6` | artifacts + console + guards + all acceptance: 2,224 passed, 4 skipped (not the whole suite) | not run | not run | not run | not run | not run |
 | code review, second pass | `09bfff6` | `tests/artifacts` 1,526 (80 s); `tests/console` (63 s against 49 s on `main`); `tests/test_no_home.py` 3 passed | not run | 0 differing leaves, both | 1,937 compared, 0 different (232 stricter, 17 loosened, as before) | not run | 56 of 56 |
 | measurement review, second pass | `09bfff6` | benchmark tests 160 passed | not run | not run | not run | not run | not run |
+| fix lane F4 | `1aa7eb6` | chunks: acceptance 580 (4 skipped; withheld-cases and final run as tests), instance 1,073, artifacts 1,588, console 134 (with the guard tests), presence + inference + voice + data 1,620 (9 skipped), uat 246 + 1 failure (`test_artifact_adapters`, adapted in `1aa7eb6`; `test_uat_rollback.py` then 42 passed; the whole uat chunk not re-run), top-level 740, webcortex 2,485 | all of `tests/e2e` in 4 chunks: 73 + 60 + 49 passed, last chunk 52 passed, 1 skipped, 1 failure that did not recur on a re-run (its name not captured: **unverified as a flake**) | 4,116 leaves, 0 differing, both | 1,937 compared, 0 different | 7 of 7 | 56 of 56 |
 
 `scripts/reproduce.py`: 8 of 8 verified at every lane that ran it (integration lanes, U, F1, F3). `node` on
 `tests/js/*.mjs`: 8 of 8 at the integration lanes, U, F1 (merged) and F3.
@@ -78,6 +80,7 @@ form ...`) or settings that are off by default.
 | `tests/e2e/test_console_autonomy_e2e.py::test_a_notification_is_claimed_only_with_a_delivered_question` | lane U | passed alone; the file 8 of 8 twice | no |
 | `tests/e2e/test_ui_matrix.py::test_pocket_matrix[dark]` (geometry), once `console overview 320 light` | F3 | fails 1 of 3 at the base `29aeee6` too, 2 of 4 at F3 | no |
 | `tests/console/test_console_artifacts.py::test_make_is_bounded_and_one_at_a_time` | F1, F3 | a race in lane U's own test: fixed (`bb113ab`, `a0c7491`) | yes (fixed) |
+| one test of the e2e chunk with pocket UAT, phone setup and voice (name not captured) | F4 | the same chunk re-run: no failure | unknown (**unverified as a flake**) |
 
 ## Final validation at the final commit (placeholder)
 
@@ -98,5 +101,7 @@ To be filled by the main session after fix lane F4 and this documentation are me
 | OMNIMIND development, every family and subject | `scripts/bench_omni.py run --split development --subject artifacts`; `scripts/bench_omni_forms.py run --split development` for forms, cross, learn | not yet run (must reproduce 512 / 12 / 0 / 0; 107 good / 0 bad / 0 violations; 72 of 72; 0.8158 / 0.7617 against 0.5871 / 0.5842) |
 | CI check job | needs a push (the owner's decision) | not run |
 
-Fix lane F4 also runs this list on its own final commit. **To be confirmed after fix lane F4**: its counts go in the
-table of lanes above.
+Fix lane F4 ran this list on `1aa7eb6` (its row in the table above): reproduce 8 of 8, node 8 of 8, and development
+unchanged in every family and subject (512 / 12 / 0 / 0; forms 107 good, 0 bad, 0 violations, `FORMS_UNMAPPED` empty;
+cross 72 of 72; learn 0.8158 / 0.7617 against 0.5871 / 0.5842). The final-commit run above is still the main
+session's.

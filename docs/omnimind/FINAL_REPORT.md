@@ -1,8 +1,9 @@
 # OMNIMIND final implementation report (deliverable 12)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6`, before fix lane F4 is merged, before
-the main session's final validation and before any withheld look. Those three places are marked; nothing in them
-is filled in by anticipation. OMNIMIND lives on the local branch `omnimind` (schema 21); **nothing is merged into
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged,
+before the small fix lane F5 lands, before the main session's final validation and before any withheld look. Those
+three places are marked ("to be confirmed after fix lane F5"; two placeholders); nothing in them is filled in by
+anticipation. OMNIMIND lives on the local branch `omnimind` (schema 21); **nothing is merged into
 `main`, nothing is pushed, CI has not run.**
 
 ## The first screen
@@ -40,7 +41,7 @@ Only the console's view of all this is on by default.
 | O-0 | S, K, A, B1, B2, C, G1 (+ G1b), G2, Z, ZF, ZW, docs-0; integration lane; the merge of `main` with Wave 4 | the audit's defects; detection, readers, the store, the planner, makers and checks, the examinations written first, the withheld split |
 | O-1 | P, R, L, U; integration lane 2 | the production pipeline; relating artifacts; learning from outcomes; the console view |
 | reviews | security, measurement, code (each with a second pass) | first pass: 4 blockers (measurement), H1-H2 (security), H1 and M1-M4 (code); second pass: all three "offer to the owner: yes", with residues |
-| fixes | F1, F2, F3; **F4 in progress** | the guard; the product decides outcomes; forget's matcher; the benchmark reads only what a person sees; driver pins; `--partial` and reductions; plain words; **F4: the forget hold, the check's visibility, the reader's two blind spots, the driver's last decisions, the guard's cost, exit codes** |
+| fixes | F1, F2, F3, F4 (`1aa7eb6`); **F5 in progress** | the guard; the product decides outcomes; forget's matcher; the benchmark reads only what a person sees; driver pins machinery; `--partial` and reductions; plain words; F4: a forget holds what its scan cannot finish (and the scan's own budget), the product check's `visible_to_a_person`, the reader's two blind spots (re-pinned), the driver's last decisions in the product, `add` decoding once, console verdict reuse; **F5: the make summary after a partial read, `--partial` on a large archive, `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help** |
 
 Details per row: [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md); what exists with its limits and rollback:
 [PRODUCTION_INTEGRATIONS.md](PRODUCTION_INTEGRATIONS.md); architecture: [ARTIFACT_ARCHITECTURE.md](ARTIFACT_ARCHITECTURE.md).
@@ -75,7 +76,7 @@ accept now, with the evidence it asked to be cited.
 | 4 | Cross-modal relationships represented and reasoned over | Partially implemented | cross 72 of 72 development, 66 / 6 / 0 held-out; only comparisons the question names; report totals 6 of 12 "cannot" |
 | 5 | Context-driven output selection operational | Partially implemented | the planner's held-out verdict "does not beat the references" (one violation); the limited round; the withheld forms look not yet taken; owner commands and the console only, not the answer path |
 | 6 | Non-text responses where useful and feasible | Partially implemented | 30 makers (`nsf artifact forms`); the console's "Made and kept" (lane U, ADR-079); Pocket not covered; answers are sentences |
-| 7 | Artifact generation gives usable, validated results | Partially implemented | made 14 of 14 development, 13 of 14 held-out; the withheld made look not taken; the benchmark reader's visibility rules; the product check weaker than the reader (R2-1) and two blind spots shared (R2-2) (**to be confirmed after fix lane F4**); no person judged usability |
+| 7 | Artifact generation gives usable, validated results | Partially implemented | made 14 of 14 development, 13 of 14 held-out; the withheld made look not taken; the benchmark reader's visibility rules; the product check's `visible_to_a_person` and the stricter reader (fix lane F4, after R2-1 and R2-2); no person judged usability |
 | 8 | Creative synthesis demonstrably improved | **Unverified** | no measure exists |
 | 9 | Complex multi-file artifacts through reliable workflows | Partially implemented | the several-source document with "How the sources relate"; transform 8 of 8 development and held-out; no multi-file project measured |
 | 10 | Large workloads managed by resource-aware execution | Partially implemented | `Limits`; the store's caps; decoding in a limited child (F1); bounded reductions and unpack (F3); planner time estimates 5 to 560 times high; no durable jobs |
@@ -83,15 +84,30 @@ accept now, with the evidence it asked to be cited.
 | 12 | Recursive improvement gives measurable benefits | Partially implemented | learn held-out +0.260 / +0.203 over the planner alone, SIMULATED; below key_majority; `form_learning` off |
 | 13 | New capabilities integrate with existing systems | Partially implemented | forget, restore, quiet and governance tests over artifacts; not on the answer path, the workspace or memory |
 | 14 | Original memory, inference, autonomy, device and interface features operational | **Unverified** until the full validation at the final commit; **Partially implemented** with it | the same run as item 1 |
-| 15 | Security and resource boundaries enforced | Partially implemented | hostile 23 of 23 development, 22 of 23 held-out; the security review's second pass ("offer: yes", with M-new-1 to fix or state: **to be confirmed after fix lane F4**); F1 and F3's fixes |
+| 15 | Security and resource boundaries enforced | Partially implemented | hostile 23 of 23 development, 22 of 23 held-out; the security review's second pass ("offer: yes", with M-new-1 to fix or state: fixed by fix lane F4, a forget holds what it cannot check); F1, F3 and F4's fixes (N-new-4, L-new-1) |
 | 16 | End-to-end tests and benchmarks support the claims | Partially implemented | the committed held-out record (`omnimind_heldout/`); development evidence that reproduces; complete only after the withheld looks, under the rule committed before them |
-| 17 | Rollback and recovery for significant changes | Partially implemented | settings off by default (the console view on); schemas 20-21 forward-only, rolled back by the owner's own copy, not by restore (MIGRATIONS.md section 2, F1 `480b009`); [RUNBOOK.md](RUNBOOK.md) |
+| 17 | Rollback and recovery for significant changes | Partially implemented | console viewing (`console_artifacts`) is ON by default; everything that lets bytes in or changes a choice (upload, form learning, external readers) is off; schemas 20-21 forward-only, rolled back by the owner's own copy, not by restore (MIGRATIONS.md section 2, F1 `480b009`); [RUNBOOK.md](RUNBOOK.md) |
 
 ## Remaining gaps
 
 [COGNITIVE_GAP_ANALYSIS.md](COGNITIVE_GAP_ANALYSIS.md), first screen: no model that sees or hears; no decoder for
 compressed images, audio or video; nothing on the answer path; no durable jobs; Pocket, voice, agents; real files
 beyond this host's tools; creativity and accumulation unmeasured.
+
+Reported as open, not to be fixed in this programme's remaining lanes:
+- a failed check cannot count as a learning outcome without a migration (`form_outcomes` needs a held made artifact;
+  pinned by a test);
+- the plan explanation does not name the simplest-form margin in the planner's own sentence (the planner is frozen);
+- duplicate conventions left from parallel lanes: two zip-entry classes, two XML memory rules, two encoded-name
+  searches (`instance/imagined.py` and `artifacts/store.py`);
+- two functions of about 200 lines (`forms._score_run`, `produce.produce`);
+- a restore-ordering concern for the sidecar (code review L10), not reproduced;
+- a six-minute recording is not read (its samples would need more than 256 MiB);
+- CI's 40-minute cap is not shown to fit: one CI run is needed, which needs the owner's go-ahead to push.
+
+Still with fix lane F5 (**to be confirmed after fix lane F5**): the make summary's wording after a partial read (N3),
+`--partial` on a large archive (N4), `make` exit codes (N2), the remaining non-plain words (L3), the
+`artifact_max_bytes` help (N-new-2).
 
 ## Limitations of the evidence
 
@@ -104,7 +120,7 @@ beyond this host's tools; creativity and accumulation unmeasured.
 ## Recommended next priorities
 
 These are recommendations for the owner and the main session, not decisions.
-1. Merge fix lane F4, pin the drivers in a commit that has the look rule as an ancestor, run the full validation there,
+1. Merge fix lanes F4 and F5, pin the drivers in a commit that has the look rule as an ancestor, run the full validation there,
    take each withheld look once under the committed rule, and record the results below as they come, failures first.
 2. Run the CI check job once (it needs a push: the owner's decision) before any merge into `main`.
 3. Only then ask the owner whether to merge into `main` (schema 21 is one-way for an individual's file).

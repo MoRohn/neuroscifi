@@ -1,6 +1,6 @@
 # Implementation matrix, with outcomes (deliverable 5)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6`. The first version (2026-11-26, in git
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged. The first version (2026-11-26, in git
 at `abc6be4`) ranked 54 changes by a score of benefit, value, impact, confidence, complexity, risk and cost, with
 each row's acceptance criterion; that ranking and its details stay in git history. This version gives every row its
 actual outcome, the lane that did it and the evidence, adds the rows the later waves created, and restates the
@@ -47,14 +47,14 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 | G1c | documents with figures | built and measured | G1 | transform family (document to outline) |
 | G1d | data files | built and measured | G1 | made family (CSV) |
 | G1e | animated SVG | built | G1 | lane G1's tests |
-| G1f | independent checks and bounded repair | built and measured | G1; F3 (histogram check) | 350 fresh seeds: reader and check agree (review M); weaker than the reader on six hidings (**to be confirmed after fix lane F4**) |
+| G1f | independent checks and bounded repair | built and measured | G1; F3 (histogram check) | 350 fresh seeds: reader and check agree (review M); since F4 (`6c2ed98`) the check reports `visible_to_a_person` (`test_f4_visible.py`, 50 tests) |
 | G2a | sound | built and measured | G2, `9b31760` | made family (tone, sonified series); `omnimind_g2.json` |
 | G2b | solids and surfaces | built and measured | G2; P adds `solid.mesh` | made and transform families |
 | G2c | PNG and APNG | built and measured | G2 | made family (APNG) |
 | G2d | explorable models, step-throughs, solid viewer | built | G2 | `tests/e2e/test_g2_explorable_e2e.py` 8 of 8 |
 | G2e | checks for WAV, meshes, PNG, explorable | built and measured | G2 | 66 of 66 wrong artifacts caught (lane G2) |
 | A1 | the artifact store and schema 20 | built and measured | A, `e2e940f` | `omnimind_a.json` (add about 31 ms; root scan about 11 s for 10,000 artifacts) |
-| A2 | forget and restore for artifacts | built | A; F1 (matcher); **F4 (the hold; to be confirmed)** | `test_artifact_forget.py`; security review M2 fixed, M-new-1 open at `09bfff6` |
+| A2 | forget and restore for artifacts | built | A; F1 (matcher); F4 (the hold, `499a298`) | `test_artifact_forget.py`, `test_f4_forget_hold.py`; security review M2 and M-new-1 fixed |
 | Z1 | benchmark: intake, honest, unknown, compound, hostile; baseline | built and measured | Z, `320f068` | `omnimind_baseline.json` |
 | Z2 | benchmark: made and transform with independent readers | built and measured | Z; F2 (visibility rule, re-pin) | `OMNIMIND_BENCHMARK.md` |
 | ZF1 | benchmark: forms with four references | built and measured | ZF, `542dfd9`; second reader | `omnimind_baseline_forms.json`, `omnimind_forms_second_reader.json` |
@@ -78,11 +78,12 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 | wiring every lane into one registry; real-file reality check | built and measured | int, `c1f5f2f` | development 509/15/0/0 then (later 512/12/0/0) |
 | `main` with Cognitive Genesis Wave 4 merged into `omnimind` | built | main, `1a00f50` | 7,726 passed, 0 failed |
 | the pipeline records outcomes and plans through the learner (when on), relates its sources, carries units; SVGs scale to 360 px | built and measured | int2, `505b55b` | 11 productions byte-identical with learning off; [REGRESSION_REPORT.md](REGRESSION_REPORT.md) |
-| decoding in a limited child process (the guard) | built and measured | F1, `5faab9a` | security review second pass: held against every probe; cost **to be confirmed after fix lane F4** |
+| decoding in a limited child process (the guard) | built and measured | F1, `5faab9a` | security review second pass: held against every probe; F4 (`c9b98bd`): `add` decodes once, in the child (5,000-file zip 5.81 to 2.97 s, crafted PNG 13.19 to 6.86 s; `omnimind_f4.json`); N-new-4 refused |
 | the product decides outcomes; one outcome table; exit codes | built | F1 `d8bbfd0`, F3 `bdfebab` | `test_the_drivers_only_translate`; review M B4 fixed |
 | the benchmark reads only what a person would see; drivers pinned for looks | built | F2, `4a6986e` | `READERS_SHA256`; pins file (null until the main session pins) |
 | `--partial`, stated reductions, the SIMULATION record gated, CSV memory, unpack bound, approval by distribution and version | built and measured | F3, `a0c7491` | lane F3's table (30 MP PNG make 1,338 to 338 MiB) |
-| the forget hold, the product check's visibility rules, the reader's two blind spots, the driver's last decisions, the guard's cost, exit codes and words, the console cache | **in progress** | F4 | **to be confirmed after fix lane F4** |
+| the forget hold; the product check's visibility rules; the reader's two blind spots (re-pinned `df21e658...` to `fb51f10c...`); the driver's last decisions (`outcome.member_path`, `FORMS_UNMAPPED`); `add` decoding once; a reader loaded only in the parent refused; console verdict reuse and one decode at a time; the console helpers' import cycle; the MIGRATIONS copy step | built | F4, `1aa7eb6` | lane F4's report; development unchanged (512 / 12 / 0 / 0; forms, cross, learn identical) |
+| the make summary after a partial read (N3), `--partial` on a large archive (N4), `make` exit codes (N2), the remaining non-plain words (L3), the `artifact_max_bytes` help (N-new-2) | **in progress** | F5 | **to be confirmed after fix lane F5** |
 
 ## The owner's decisions, as they now stand
 

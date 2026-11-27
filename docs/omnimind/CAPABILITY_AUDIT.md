@@ -1,10 +1,10 @@
 # Multimodal capability audit (deliverable 1)
 
-Status: 2026-11-27. Two parts. **After** (written by documentation lane 2 on `omnimind` at `09bfff6`, schema 21): what
+Status: 2026-11-27. Two parts. **After** (written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4, `1aa7eb6`, merged; schema 21): what
 each pathway does now, beside its status before, and what now exists that did not. **Before** (below, unchanged
 apart from this header): the baseline of 2026-11-26, `main` at `8f68beb` (schema 19, package 0.7.0), which merged the
-four Phase I audits. OMNIMIND is on the local branch `omnimind`; nothing of it is merged into `main`. Places that fix
-lane F4 (still working) will change are marked "to be confirmed after fix lane F4".
+four Phase I audits. OMNIMIND is on the local branch `omnimind`; nothing of it is merged into `main`. Places that the small fix
+lane F5 (still working) will change are marked "to be confirmed after fix lane F5".
 
 Each pathway has exactly one status word, as directive §4 asks:
 
@@ -106,8 +106,8 @@ Status words as defined below (the directive's five). "Unchanged" means OMNIMIND
 | File production | Partially implemented | Partially implemented | 30 makers (list below); no PDF, DOCX, slides or video file | `nsf artifact forms` |
 | Interactive components | Unsupported | Partially implemented | explorable models and step-throughs from a spec, mounted by a first-party runtime (a bounded expression language, no code); a solid viewer; an explorable model is made only from an explicit model file | lane G2's tests; `tests/e2e/test_g2_explorable_e2e.py` |
 | Executable artifacts | Unsupported | Unsupported (unchanged) | nothing makes code, an app or a notebook | |
-| Validation | Partially implemented | Partially implemented | 12 independent checks re-read made bytes (they never import the makers; one shared module, `expr.py`, for the explorable check); the product check is weaker than the benchmark's reader on six hidings and shares two blind spots with it (**to be confirmed after fix lane F4**) | [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md) |
-| Persistence | Fully operational | Fully operational, plus the artifact store | forget, restore, quiet and owner scope reach the store; a forget that cannot finish checking a kept file **holds** it (**to be confirmed after fix lane F4**) | ADR-071; [RUNBOOK.md](RUNBOOK.md) |
+| Validation | Partially implemented | Partially implemented | 12 independent checks re-read made bytes (they never import the makers; one shared module, `expr.py`, for the explorable check); since fix lane F4 the SVG check reports what a person could not see (`visible_to_a_person`: hidden marks, zero-size clips, fonts, radii or root, a later opaque cover, background-coloured paint); no person judged legibility | [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md) |
+| Persistence | Fully operational | Fully operational, plus the artifact store | forget, restore, quiet and owner scope reach the store; a forget whose scan cannot finish a kept file **holds** it (kept, never read or used, listed by id and label; `nsf artifact release ID`; fix lane F4) | ADR-071; [RUNBOOK.md](RUNBOOK.md) |
 | Export and delivery (HTTP) | Fully operational (for text) | Fully operational, plus the artifact routes | every new route needs the owner's token and the unchanged origin check; no route takes a path | ADR-079 |
 | Export and delivery (agents) | Partially implemented (text only) | unchanged | | |
 
@@ -141,9 +141,9 @@ Status words as defined below (the directive's five). "Unchanged" means OMNIMIND
 
 ## After: what now exists that did not
 
-**Commands** (`nsf artifact --help` lists 13; the help text is pinned by `tests/artifacts/test_int2_cli.py`):
-`nsf inspect FILE`; `nsf artifact add | list | show | facts | export | forget | gaps | feedback | relate | adapters |
-make | remake | forms`; `nsf form plan`, `nsf form learned`; `nsf config --artifact-max-mib`, `--artifact-store-max-mib`,
+**Commands** (`nsf artifact --help` listed 13 at integration lane 2, pinned by `tests/artifacts/test_int2_cli.py`;
+fix lane F4 added `release`): `nsf inspect FILE`; `nsf artifact add | list | show | facts | export | forget | release |
+gaps | feedback | relate | adapters | make | remake | forms`; `nsf form plan`, `nsf form learned`; `nsf config --artifact-max-mib`, `--artifact-store-max-mib`,
 `--artifact-adapters`, `--form-learning`, `--console-artifacts`, `--console-artifact-upload`. Each, with its
 setting's default and its rollback: [PRODUCTION_INTEGRATIONS.md](PRODUCTION_INTEGRATIONS.md).
 

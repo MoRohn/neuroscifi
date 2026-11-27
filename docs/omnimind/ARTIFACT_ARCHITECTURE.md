@@ -1,9 +1,10 @@
 # The artifact architecture, as built (deliverable 2)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` (schema 21), from the code and the
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged (schema 21), from the code and the
 decision records ADR-070 to ADR-079 in [../architecture/ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md).
 It replaces the first version of 2026-11-26, which described the design before anything was built. Nothing here is
-merged into `main`. Places that fix lane F4 (still working) will change are marked "to be confirmed after fix lane F4".
+merged into `main`. Places that the small fix lane F5 (still working) will change are marked "to be confirmed after fix lane
+F5".
 
 ## The first screen
 
@@ -88,9 +89,14 @@ flowchart LR
   reader charges what it will materialise before it allocates it; text formats are charged their measured cost per
   structural mark before parsing (an honest INI over about 131,000 lines is refused with a reason).
 - **The guard** (`guarded.py`, fix lane F1): always on for owner-started decodes. A child that cannot start means the
-  file is kept and not read (fail closed). Cost: the decode runs twice (child, then parent). The code reviewer
-  measured more than "about twice": a 5,000-file zip add 0.78 to 6.0 s, a 30 MP PNG 3.3 to 9.4 s, a 135 KiB crafted PNG
-  13.4 s. **To be confirmed after fix lane F4** (F4 measures and reduces the cost and states the factor).
+  file is kept and not read (fail closed). Cost, as measured by fix lane F4 (`docs/quality/evidence/omnimind_f4.json`):
+  the child starts in about 0.09 s; `add` decodes once, in the child, which returns a bounded JSON summary the parent
+  validates (`guarded.summarize`); `make`, `facts`, `relate` and the console's view decode twice (child, then parent)
+  plus about 0.1 s. `add` before and after that change: a 5,000-file zip 5.81 to 2.97 s (2.53 s of the in-process
+  decode is the injection screen run on each of the 4,096 members), a crafted 135 KiB PNG 13.19 to 6.86 s, a 30 MP PNG
+  1.31 to 1.02 s. An approved external reader that loads in the parent but not in the child is refused
+  (`external_unguarded`) and the file kept unread. A success verdict is reused per content hash, name, limits and
+  approved readers (at most 256; refusals never reused).
 - **Injection**: text decoded from a file passes `webcortex.safety.scan_injection`. `adapters.decode` refuses a flagged
   file (`Limits.refuse_flagged`, default on); the store keeps it marked flagged and never offers its words to a model.
 
@@ -109,10 +115,15 @@ flowchart LR
 - **Forget** of an artifact removes it and everything made from or contained in it, its bytes when no row names them,
   its outcomes, and makes later checkpoints stale (rewritten in place). **Forget of a root** (a partner or a camera)
   scans every kept artifact's label, index, text, specification and bytes, inside compressed and base64 layers; what
-  the scan cannot read is stated in `store.py`. At `09bfff6` a file the scan cannot finish counts as naming the root
-  and is removed (the security review's M-new-1: an unrelated forget can remove honest large files, with only a
-  count). Fix lane F4 replaces this: such an artifact is **held** (kept, never decoded, shown, used or related; listed
-  by id and label; released by `nsf artifact release ID` or forgotten). **To be confirmed after fix lane F4.**
+  the scan cannot read is stated in `store.py`. The scan has its own budget (fix lane F4: 1 GiB decompressed per
+  artifact, 128 MiB per stream, depth 16, 65,536 streams per layer), so the security reviewer's honest 47 MiB dataset
+  zip and notebook are now checked to the end. A file it still cannot finish is no longer removed (as it was at
+  `09bfff6`, security review M-new-1): it is **held**, recorded as a `deletion_log` row (`artifact_hold`; not
+  `artifacts.state`, whose CHECK would need a migration): its bytes stay, but it is never decoded, exported, made from,
+  related or offered to a model; `list`, `show` and the console say "held: it could not be checked for what you asked
+  to forget"; the forget's result lists it by id and label (`artifacts_held`) with the next step; `nsf artifact
+  release ID` (a log row) or `nsf artifact forget ID` ends the hold; restore and rewrite replay holds and releases
+  (`tests/artifacts/test_f4_forget_hold.py`).
 - **Restore** replays every forget made since the archive was taken onto the restored copy, and gives the restored file
   its own sidecar.
 
@@ -130,15 +141,20 @@ only when `imagine_scenarios` is on (off by default).
 - 30 makers (`nsf artifact forms`); every SVG follows the palette rule (grays; hue only on warned values) and scales to
   its container (328 px inside a 360 px phone).
 - 12 checked media types. A check reads the bytes the way the benchmark's reading contract says a person reads them
-  (axes, ticks, marks; nodes and edges; pitch and onsets; vertices and volume; pixels). The product's check does not
-  yet see only what a person would see (six hidings pass it; two pass it and the benchmark's reader). **To be confirmed
-  after fix lane F4.**
+  (axes, ticks, marks; nodes and edges; pitch and onsets; vertices and volume; pixels). Since fix lane F4 the SVG
+  check also reports `visible_to_a_person` (`check/visible.py`): a mark, series, axis or tick hidden by display,
+  visibility, opacity or a style rule, a zero-area clip, zero font size or radius, background-coloured paint, a
+  position off the canvas, a later opaque shape over it, a zero-size root, or a hiding rule it cannot read, is a
+  technical finding (`tests/artifacts/test_f4_visible.py`).
 - `produce.py` (ADR-076): Interpret, Conceptualize, Explore, Choose, Plan, Generate, Render, Evaluate, Repair,
   Converge, Finalize; the context's seconds (default 60) and bytes (default 16 MiB) are enforced between steps; any
   stop or failed check leaves nothing stored. Large sources are made from a stated reduction (an image over 4 MP
   downsampled; a mesh over 20,000 vertices decimated; a line series over 4,000 points kept as each window's extremes;
   a scatter over 5,000 points thinned; at most 24 children per tree node); `--partial` uses a file a limit stopped
-  part-way and says which part. When the planned form has no builder here, up to two further admitted forms that have
+  part-way and the made thing's description says which part. Open (code review N3, N4): the terminal summary after a
+  partial read does not yet say it was partial (it can print "100% of the source values"), a row count is off by one,
+  the solid viewer does not call its points a reduction, and `--partial` on a 5,000-file zip still fails; **to be
+  confirmed after fix lane F5**. When the planned form has no builder here, up to two further admitted forms that have
   one are tried and the record says so.
 
 ## The console view
@@ -149,8 +165,9 @@ list (20 a page), a detail with the made thing shown, its "why", its relations a
 page. The console's content security policy and every security header are unchanged to the character; made SVG is
 rebuilt through an 18-element allow-list importer, explorable models through the first-party runtime, PNG through a
 256-bit, 120-second, session-bound address; no `innerHTML`. The Presence entity stays on the view's stage. At
-`09bfff6` every detail view runs a guarded decode with no cache or bound (security L-new-1). **To be confirmed after
-fix lane F4** (a cache per content hash and a bound on concurrent decodes).
+`09bfff6` every detail view ran a guarded decode with no cache or bound (security L-new-1); since fix lane F4 the
+guard's success verdict is reused per content hash, one detail decode runs at a time (a second waits up to 60 s, then
+gets a plain "busy" answer), and a held artifact is shown without any decode.
 
 ## Deliberately not connected
 

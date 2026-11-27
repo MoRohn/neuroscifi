@@ -1,9 +1,9 @@
 # OMNIMIND runbook, for the owner (deliverable 11)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6`. It applies to the branch `omnimind`
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged. It applies to the branch `omnimind`
 (schema 21), **which is not merged into `main`**: on an installed 0.7.0 none of these commands exists. The general
 runbook is `docs/operations/RUNBOOK.md`; upgrades and rollback of the file are `docs/operations/MIGRATIONS.md`
-section 2. Places fix lane F4 will change are marked "to be confirmed after fix lane F4".
+section 2. Places the small fix lane F5 will change are marked "to be confirmed after fix lane F5".
 
 `nsf` below is the command for your individual (`nsfs` on an installed service, as in the general runbook).
 
@@ -18,8 +18,9 @@ So, before the first command of this software touches your individual:
    neuroscifi-checkpoint.timer`).
 2. Take and verify a checkpoint with the **current** software (`nsf checkpoint create --policy cold`, then
    `nsf checkpoint verify ID`), and keep its archive file.
-3. Keep your own copy of the individual's file with the services stopped (the file, and its `-wal` and `-shm` files
-   if they exist). After the upgrade there is also a sidecar `<name>.artifacts.sqlite` next to it.
+3. Keep your own copy of the individual's file with the services stopped, as MIGRATIONS.md section 2 step 1 now says:
+   `install -d -m 700 ~/nsf-before-upgrade && cp -p INDIVIDUAL.sqlite INDIVIDUAL.artifacts.sqlite ~/nsf-before-upgrade/`
+   (the sidecar exists only once a file was kept; with the services stopped there is no `-wal` file to copy).
 
 **The way back** (MIGRATIONS.md section 2, "Rollback"): stop the services, reinstall the old software, and put back
 either your own copy from step 3, or the old software's `nsf archive unpack SOURCE DESTINATION` of the archive from
@@ -27,8 +28,8 @@ step 2. Either way brings back whatever you forgot since: repeat those forget re
 new-schema file instead of reusing it. Not `nsf checkpoint restore` (the old software refuses the upgraded file; the
 new software's restore yields schema 21). `tests/instance/test_migrations.py::test_rollback_facts` pins the refusal
 and that a restore yields the new schema; **no test runs the old build**, so the way back itself is unverified.
-MIGRATIONS.md's rollback step 3 points to a copy its upgrade steps never take (code review N5); fix lane F4 corrects
-that text (**to be confirmed after fix lane F4**).
+Until fix lane F4, MIGRATIONS.md's rollback step 3 pointed to a copy its upgrade steps never took (code review N5);
+its upgrade step 1 now takes it.
 
 ## Turning things on and off
 
@@ -48,8 +49,8 @@ Nothing else runs on its own: every command below is one you type. The quiet swi
 stored as `NAME=DISTRIBUTION==VERSION`; if the package is upgraded or replaced, `nsf artifact adapters` lists it as
 "approve it again" and it is not loaded. An approval stored by name only, before fix lane F3, loads nothing until you
 approve it again. An approved reader still runs inside the guard. If it loads in your shell but not in the guard's
-clean child, the two would decode differently (security note N-new-4; **to be confirmed after fix lane F4**, which
-refuses that case).
+clean child, the file is refused ("external_unguarded") and kept unread, never decoded by an unguarded reader
+(security note N-new-4, fixed by fix lane F4).
 
 ## The commands, and what their answers mean
 
@@ -62,20 +63,25 @@ refuses that case).
 | `nsf artifact relate A B --question "does the total match?"` | what one measures against what the other states; recorded as the system's claim, not evidence |
 | `nsf artifact export ID PATH` | the bytes in a new file only you can read (never overwrites) |
 | `nsf artifact forget ID` | gone, with everything made from it |
+| `nsf artifact release ID` | a file a forget held is usable again (your statement that it does not name what was forgotten) |
 | `nsf artifact gaps --report` | what could not be read or made well, and how often |
 | `nsf artifact forms`, `nsf artifact adapters`, `nsf form plan`, `nsf form learned` | what can be made; what can be read; what form a request would get; what was learned |
 
 **Exit codes** (one table, `artifacts/outcome.py`): **0** done; **1** could not be done (an id you do not hold, a make
 that could not make anything well, a reaction not recorded); **2** refused (a rule or a limit, or only part of a file
-was read and you did not pass `--partial`) or a mistake in the command. The code reviewer found `make` exiting 1 for
-three refusals the table calls 2 (**to be confirmed after fix lane F4**).
+was read and you did not pass `--partial`) or a mistake in the command. `make` still exits 1 for three refusals the
+table calls 2 (a partial file without `--partial`, a recording over its decode limit, an archive over its member
+limit; code review N2), and some output still shows code words such as `too_large:` or `over_budget` (L3): **to be
+confirmed after fix lane F5**.
 
 **What a refusal means.** Every refusal is one plain sentence and never a traceback.
 - *"... is not read here"*, *"names the format: nothing in it is read"*, *"reads only the header"*: the format was
   identified and no reader for its content exists on this host. Nothing is guessed. `nsf artifact gaps` counts it.
 - *a size or time limit* ("would need about 819 MiB", "took longer than the limit"): the file is too large to read
   within the limits. With `add`, a file stopped by a size limit is still kept, unread. With `make`, `--partial` uses a
-  file read only in part and says which part.
+  file read only in part and the made thing's description says which part; the terminal summary does not yet say so
+  (it can print "100% of the source values"), and `--partial` on a 5,000-file zip still fails (code review N3, N4:
+  **to be confirmed after fix lane F5**).
 - *a safety refusal* (a pickle, a file that is two formats at once, an XML document type definition, too deep a
   nesting, an archive with a member name that climbs out or is absolute, overlapping archive members, structure
   hidden past the first 64 KiB): nothing is kept.
@@ -92,11 +98,14 @@ pairs related. Large sources are made from a stated reduction (pictures over 4 M
 over 4,000 points, scatters over 5,000 points, more than 24 children per tree node), and the made thing says so.
 
 Every decode of your file runs first in a child process limited to 256 MiB + twice the file + 512 MiB of memory (896
-MiB at the defaults; about 2.8 GiB if you raise the file limit to 1 GiB) and to 25 s; then again in the command. So a
-decode costs about twice its time or more: the code reviewer measured adding a 5,000-file zip at 6.0 s (0.78 s
-without the guard), a 30-megapixel PNG at 9.4 s (3.3 s), a crafted 135 KiB PNG at 13.4 s (**to be confirmed after fix
-lane F4**, which measures and reduces this and states the factor). On macOS and Windows only the time limit applies
-(unverified: no such host was available).
+MiB at the defaults; about 2.8 GiB if you raise the file limit to 1 GiB) and to 25 s. The cost, as fix lane F4
+measured it (`docs/quality/evidence/omnimind_f4.json`): the child starts in about 0.1 s; `nsf artifact add` decodes
+once, in the child; `make`, `facts`, `relate` and the console's detail view decode twice (in the child, then in the
+command) plus about 0.1 s. Adding a 5,000-file zip took 2.97 s (5.81 s before that change; most of it is the screen
+for instructions aimed at an AI, run on each member), a crafted 135 KiB PNG 6.86 s (13.19 s), a 30-megapixel PNG
+1.02 s. The second, in-command decode of `make`, `facts` and `relate` can use as much memory as the child was allowed;
+the help of `--artifact-max-mib` does not yet say so (**to be confirmed after fix lane F5**). On macOS and Windows
+only the time limit applies (unverified: no such host was available).
 
 ## Forget, the hold, and restore
 
@@ -106,14 +115,16 @@ lane F4**, which measures and reduces this and states the factor). On macOS and 
   label, read text, specification and bytes for the name, inside compressed and base64 layers. What it cannot find
   is stated in `store.py`: other letter case, look-alike letters, text drawn in a picture, a name split by spaces or
   table cells, encodings it does not undo.
-- **A kept file the search cannot finish.** At `09bfff6` such a file counts as naming the forgotten name and is
-  **removed**, even when it does not name it; the forget's result gives only a count (security review M-new-1: an
-  unrelated forget removed an honest 47 MiB dataset zip and a notebook). Fix lane F4 replaces this: such a file is
-  **held** (kept, never read, shown, used or related), listed by id and label in the forget's output and in `nsf
-  artifact list` with the reason "could not be checked for what you asked to forget"; you end the hold with `nsf
-  artifact forget ID` or `nsf artifact release ID` (your statement that it does not name what was forgotten); a
-  restore replays holds; and the search gets a larger budget so that such honest files are checked. **To be confirmed
-  after fix lane F4.**
+- **The search's own budget** (fix lane F4): 1 GiB decompressed per kept file, 128 MiB per stream, 16 layers deep,
+  65,536 streams per layer. An honest 47 MiB dataset zip and a notebook are checked to the end (the security
+  reviewer's reproduction: neither held nor removed; the forget took 6.9 s).
+- **A kept file the search still cannot finish is held, not deleted** (until fix lane F4 it was removed even when it
+  did not name the forgotten name, with only a count: security review M-new-1). A held file keeps its bytes but is
+  never read, exported, made from, related or offered to a model. The forget's output lists each held file by id and
+  label and says what to do next; `nsf artifact list`, `show` and the console say "held: it could not be checked for
+  what you asked to forget". End the hold with `nsf artifact forget ID`, or with `nsf artifact release ID` (your
+  statement that it does not name what was forgotten; a log row records it). A hold is a log row, so a restore or a
+  checkpoint rewrite replays holds and releases.
 - **A restore** (`nsf checkpoint restore`) gives the restored file its own sidecar, removes every artifact forgotten
   since the checkpoint was taken, and replays `nsf artifact feedback --reset`. Settings are carried. The restored file
   is at schema 21.
@@ -125,8 +136,9 @@ or PNG picture, its "why", its relations and its check, and has Make (one at a t
 buttons (recorded only when form learning records) and Forget (with a confirmation). The Presence entity stays on the
 view's stage. Other pictures (JPEG, WebP, GIF, TIFF), raw meshes and figures inside DOCX or PDF files are described in
 words with the export command. Upload appears only when turned on; files go through the same keeping as `nsf artifact
-add`. Pocket shows no artifact. Each opening of a detail decodes the file again (**to be confirmed after fix lane F4**:
-a cache per content and a bound on how many decodes run at once).
+add`. Pocket shows no artifact. Opening a detail reuses the guard's verdict for the same content, one detail decode
+runs at a time (a second waits up to 60 s, then is told the view is busy), and a held file is shown without any
+decode.
 
 ## Models
 

@@ -1,9 +1,10 @@
 # Project OMNIMIND
 
 Status: 2026-11-27. Waves O-0 and O-1, three independent reviews with second passes, and fix lanes F1 to F3 are
-merged into the integration branch `omnimind` (`09bfff6`, schema 21), a **local branch: not merged into `main`, not
-pushed, never run on CI**. Fix lane F4 is still working; places it will change are marked "to be confirmed after fix
-lane F4" in these documents. The main session's final validation and the withheld looks have not been taken.
+merged into the integration branch `omnimind` (`09bfff6`, schema 21); fix lane F4 (`1aa7eb6`) is merged into these
+documents' branch and goes into `omnimind` with them. It is a **local branch: not merged into `main`, not pushed,
+never run on CI**. A small fix lane F5 is still working; places it will change are marked "to be confirmed after fix
+lane F5" in these documents. The main session's final validation and the withheld looks have not been taken.
 
 Project OMNIMIND is the owner's programme to let NeuroSciFi take in information in many forms and make results that
 are not only text, on top of the system that exists and without replacing any of it. Every capability is a function
@@ -71,7 +72,7 @@ These documents make no claim of consciousness, understanding, general or superh
 | No fabricated understanding: a reader decodes, or says what it could and could not establish; an unknown format gets the capability-discovery answer | `adapters.catalog()` is the only statement of what can be read; the benchmark counts every false answer as wrong: 0 on development and held-out |
 | Untrusted bytes: allocation charged before it is made; no extraction to disk, execution, `eval` or unpickling; no DTD; text screened for instructions aimed at an AI | `Limits`, `artifacts/safe*.py`, the guarded child process (`artifacts/guarded.py`); the hostile family (23 of 23, 22 of 23); the security review's second pass |
 | Nothing generated becomes evidence | `provenance.MADE` (ADR-071 after ADR-049); schema 20's triggers refuse an artifact id in 15 evidence-side tables; every listing labels made things |
-| Forget, restore, quiet and scopes reach everything stored | `store.py` forget and `scan_root`, `checkpoints` replay, owner-only readers; lane A's and fix lane F1's tests; the hold (**to be confirmed after fix lane F4**) |
+| Forget, restore, quiet and scopes reach everything stored | `store.py` forget and `scan_root`, `checkpoints` replay, owner-only readers; lane A's and fix lane F1's tests; a file the scan cannot finish is held, not deleted (fix lane F4, `test_f4_forget_hold.py`) |
 | No self-grading: checks never import makers; benchmark answers come from the benchmark's own generators | an import test over `artifacts/check/`; `acceptance/omni/` never imported by product code; the drivers only translate (`test_the_drivers_only_translate`) and are pinned for the looks |
 | Honest words | these documents; the measurement review reads them against the evidence |
 | The interface: the Presence entity centred; grayscale; plain words; light and dark; keyboard; axe-clean | `tests/e2e/test_console_artifacts_e2e.py`, `tests/console/test_palette_rule.py` |
@@ -88,7 +89,8 @@ These documents make no claim of consciousness, understanding, general or superh
 | O-1 | P production pipeline (`b87d90f`); R relating (`e0e056a`); L learning, schema 21 (`2d19a76`, `d8aaf04`); int2 integration (`505b55b`); U console view (`841c3a0`) | yes |
 | reviews | security, measurement, code on `505b55b`; second passes on `09bfff6`: all three "offer to the owner: yes", with residues | (reports, not code) |
 | fixes | F2 benchmark (`4a6986e`); F1 product (`b4798aa`, `bb113ab`); F3 the rest (`a0c7491`) | yes (`09bfff6`) |
-| last | F4 the second passes' residues; docs-2 these documents | **in progress** |
+| last | F4 the second passes' residues (`1aa7eb6`); docs-2 these documents | F4: merged into docs-2 |
+| after | F5: the make summary after a partial read, `--partial` on a large archive, `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help | **in progress** |
 | then | pins, full validation, the withheld looks, the owner's questions | not started |
 
 ## Where to read next

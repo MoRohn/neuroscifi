@@ -1,10 +1,10 @@
 # What exists, with its limits and its rollback (deliverable 6: "Production-Ready Integrations")
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6`, from the catalogs the system prints
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged, from the catalogs the system prints
 (`nsf artifact adapters`, `nsf artifact forms`, `nsf artifact --help`, as recorded by the integration lane 2) and the
 code. "Production-ready" in the directive's sense is not claimed: this is a local branch, not merged into `main`,
 never run on CI, measured on synthetic files and simulated people, with the withheld examination not yet taken.
-Places fix lane F4 will change are marked "to be confirmed after fix lane F4".
+Places the small fix lane F5 will change are marked "to be confirmed after fix lane F5".
 
 ## The first screen
 
@@ -36,18 +36,20 @@ Places fix lane F4 will change are marked "to be confirmed after fix lane F4".
 | `nsf artifact forms [--json]` | what can be made here and which check reads it back | reads no individual |
 | `nsf form plan --request "..." [--content FILE... \| --shape JSON] [--device D] [--accessibility NEED]` | prints the form a result would take, and why; nothing is made |  |
 | `nsf form learned` | what was learned per key, and what it changes |  |
-| `nsf artifact release ID` | ends a forget's hold on an artifact (the owner's statement that it does not name what was forgotten) | **to be confirmed after fix lane F4** (added by F4; not in `09bfff6`) |
+| `nsf artifact release ID` | ends a forget's hold on an artifact (the owner's statement that it does not name what was forgotten) | added by fix lane F4; writes a log row; a restore replays it |
 
 Exit codes follow one table (`artifacts/outcome.py`, fix lane F1): 0 done; 1 could not be done (an id not held,
 a make that failed or could not, a feedback not recorded); 2 refused (a rule or a limit, or only part of a file read
-without `--partial`) or misuse. The code reviewer found `make` exiting 1 for three refusals the table calls 2
-(**to be confirmed after fix lane F4**).
+without `--partial`) or misuse. `make` still exits 1 for three refusals the table calls 2 (a partial file without
+`--partial`, a recording over its decode limit, an archive over its member limit; code review N2); its terminal summary
+after a partial read does not say it was partial (N3), and `--partial` on a 5,000-file zip still fails (N4): **to be
+confirmed after fix lane F5**.
 
 ## Settings
 
 | setting | default | command | what it does | rollback |
 |---|---|---|---|---|
-| `artifact_max_bytes` | 64 MiB (1 KiB to 1 GiB) | `nsf config --artifact-max-mib N` | the largest file kept or read; memory in the guard's child can reach 256 MiB + 2 x the input + 2 x 256 MiB (896 MiB at the default, about 2.8 GiB at 1 GiB) | set it back |
+| `artifact_max_bytes` | 64 MiB (1 KiB to 1 GiB) | `nsf config --artifact-max-mib N` | the largest file kept or read; memory in the guard's child can reach 256 MiB + 2 x the input + 2 x 256 MiB (896 MiB at the default, about 2.8 GiB at 1 GiB), and the second decode of `make`, `facts` and `relate` in the command can use as much; the help does not yet say so (**to be confirmed after fix lane F5**) | set it back |
 | `artifact_store_max_bytes` | 2 GiB (0 to 1 TiB) | `nsf config --artifact-store-max-mib N` | the sidecar's total | set it back |
 | `artifact_adapters` | none | `nsf config --artifact-adapters NAME,...` | approves external readers by entry point, distribution and version (`NAME=DIST==VERSION`); another distribution or version is listed "approve it again" and not loaded | `nsf config --artifact-adapters ""` |
 | `form_learning` | `off` | `nsf config --form-learning off\|record\|apply` | record: check verdicts and reactions are kept; apply: plans go through `learn.plan` and the "why" says when a habit decided | `off`; `nsf artifact feedback --reset` removes what was learned |
@@ -92,9 +94,10 @@ new modules nothing existing calls.
 | `explorable.model`, `explorable.steps`, `solid.view` | `application/vnd.neuroscifi.explorable+html` | `g2.explorable` |
 
 Every maker is deterministic, grayscale (hue only on warned values), and every SVG scales to its container. The checks
-never import the makers (one shared module: `expr.py`, for the explorable expression language). At `09bfff6` the SVG
-check passes six hidings the benchmark's reader rejects, and both pass an opaque covering rectangle and a zero-width
-root (**to be confirmed after fix lane F4**). Repairs: at most three rounds of the makers' own named repairs. Rollback:
+never import the makers (one shared module: `expr.py`, for the explorable expression language). Since fix lane F4 the
+SVG check reports `visible_to_a_person` (`check/visible.py`): until then it passed six hidings the benchmark's reader
+rejects, and both passed an opaque covering rectangle and a zero-width root; the reader was made stricter on those two
+in a separate commit and re-pinned. Repairs: at most three rounds of the makers' own named repairs. Rollback:
 revert lanes G1, G2 and their fixes.
 
 ## The pipeline, the planner, the relater, the learner
@@ -114,7 +117,7 @@ to `main`'s; no route takes a path; ids are `artifact-` and 32 hex digits.
 | route | what it does |
 |---|---|
 | `GET /api/artifacts?page=N` | a page of 20 kept artifacts, newest first, in plain words |
-| `GET /api/artifacts/<id>` | one artifact: what it is, how to show it, facts, why, relations (each view runs a guarded decode; a cache and a bound on concurrent decodes are **to be confirmed after fix lane F4**) |
+| `GET /api/artifacts/<id>` | one artifact: what it is, how to show it, facts, why, relations (the guard's success verdict reused per content hash; one detail decode at a time, a second waits up to 60 s then gets a plain "busy" answer; a held artifact shown without a decode) |
 | `GET /api/artifacts/<id>/content` | its bytes, `application/octet-stream`, streamed in bounded chunks |
 | `POST /api/artifacts/<id>/image`, then `GET /artifact-image/<token>` | a 256-bit, 120-second, session-bound address for a PNG the store holds (an `<img>` cannot send the bearer header) |
 | `POST /api/artifacts/<id>/feedback` | kept / dismissed / replaced, only while `form_learning` records |
@@ -128,8 +131,14 @@ Rollback: `nsf config --console-artifacts off`, or revert lane U's commits; noth
 
 `artifacts/guarded.py` (fix lane F1): always on for owner-started decodes; only tests can switch it off. The child
 gets `RLIMIT_AS` = 256 MiB + 2 x the input + 2 x `max_decoded_bytes`, CPU = `max_seconds` + 5 s, no file writes, no
-core file, a clean environment and an empty private directory; its verdict is a JSON line read from at most 16 KiB of
-its output; a child that cannot start means the file is kept but not read. Where `RLIMIT_AS` cannot be set (macOS,
-Windows: **unverified**, no such host was available) only the wall-clock kill bounds it. Its cost: every decode runs
-twice; measured by the code reviewer from about 1.0 (a WAV) to 7.7 (a 5,000-file zip) times the unguarded time (**to be confirmed after fix lane F4**).
+core file, a clean environment and an empty private directory; its verdict is a JSON line (for `add`, since fix lane
+F4, a summary of at most 4 MiB that the parent validates field by field; a malformed one means the file is kept unread);
+a child that cannot start means the file is kept but not read; an approved external reader that loads in the parent
+but not in the child is refused (`external_unguarded`); a success verdict is reused per content hash, name, limits and
+approved readers (at most 256 entries; refusals are never reused). Where `RLIMIT_AS` cannot be set (macOS,
+Windows: **unverified**, no such host was available) only the wall-clock kill bounds it. Its cost (fix lane F4,
+`docs/quality/evidence/omnimind_f4.json`): the child starts in about 0.09 s; `add` decodes once, in the child (a
+5,000-file zip 5.81 to 2.97 s, a crafted 135 KiB PNG 13.19 to 6.86 s, a 30 MP PNG 1.31 to 1.02 s); `make`, `facts`,
+`relate` and the console's view decode twice plus about 0.1 s. Before that change the code reviewer measured from
+about 1.0 (a WAV) to 7.7 (the zip) times the unguarded time.
 Rollback: revert `5faab9a` and its call sites (this removes a security bound; not advised).
