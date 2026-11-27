@@ -1,0 +1,189 @@
+{
+ "label": "OMNIMIND lane FX3: diagnosis of the spent withheld cases (families unknown, hostile, cross), written before any fix",
+ "decision": "owner, 2026-11-27 (WAVE3 item 1): the two used withheld splits are opened for these three families only and are development cases from now on",
+ "diagnosed_at": "562b8f0 (product code identical to ae6120f)",
+ "opened": [
+  "acceptance/omni/withheld2_unknown_hostile.py",
+  "acceptance/omni/withheld2_cross.py",
+  "acceptance/omni/withheld_cross.py"
+ ],
+ "not_opened": {
+  "acceptance/omni/withheld_cases.py": "also holds the first split's intake, honest, compound, made and transform cases: the first split's 3 unknown wrong and 3 hostile answered are not diagnosed from cases"
+ },
+ "reproduced": {
+  "withheld2/unknown": {
+   "right": 158,
+   "cannot": 8,
+   "wrong": 5,
+   "failed": 0,
+   "n": 171,
+   "look": "same"
+  },
+  "withheld2/hostile": {
+   "refused": 51,
+   "answered": 11,
+   "n": 62,
+   "look": "same"
+  },
+  "withheld2/cross": {
+   "right": 65,
+   "answered": 48,
+   "wrong": 1,
+   "n": 98,
+   "decidable_right": "47 of 80",
+   "look": "same, every kind"
+  },
+  "withheld/cross at 55f89be": {
+   "right": 48,
+   "cannot": 24,
+   "wrong": 6,
+   "n": 78,
+   "look": "same, every kind"
+  },
+  "withheld/cross at ae6120f": {
+   "right": 44,
+   "cannot": 32,
+   "wrong": 2,
+   "n": 78
+  }
+ },
+ "hostile_columns": {
+  "a_real_failures": 11,
+  "b_owner_rule_2": 0,
+  "c_truth_in_doubt": 0
+ },
+ "classes": {
+  "unknown": [
+   {
+    "class": "U-A binary signature at the start of text",
+    "wrong": 1,
+    "cannot": 4,
+    "cause": "detect.py:854-866 (signature before structure); detect.py:163-170, 544"
+   },
+   {
+    "class": "U-B Python source without a name that says so",
+    "wrong": 2,
+    "cannot": 1,
+    "cause": "detect.py:761-804 (code only by shebang, 785-788)"
+   },
+   {
+    "class": "U-C Markdown whose only marker is its headings",
+    "wrong": 1,
+    "cannot": 0,
+    "cause": "detect.py:711-722 (two kinds of marker); adapters/plain.py"
+   },
+   {
+    "class": "U-D ZIP after leading bytes no format claims",
+    "wrong": 1,
+    "cannot": 2,
+    "cause": "adapters/__init__.py:441, 457-461, 279-298 (shifted ZIP never identified; safe_b1.py:122-129 already reads it)"
+   },
+   {
+    "class": "U-E two compression layers",
+    "wrong": 0,
+    "cannot": 1,
+    "cause": "DRIVER: acceptance/omni/subject.py:104-110 descends one wrapper (not fixed)"
+   }
+  ],
+  "hostile": [
+   {
+    "class": "H-A nesting depth of documents (HTML, Markdown quotes)",
+    "answered": 2,
+    "cause": "adapters/documents.py:294-392, 205-212 (no depth bound)"
+   },
+   {
+    "class": "H-B instructions to an AI reader in other words",
+    "answered": 2,
+    "cause": "adapters/__init__.py:591-603 (scan_injection only)"
+   },
+   {
+    "class": "H-C PDF cross-reference chain that loops",
+    "answered": 1,
+    "cause": "adapters/pdf.py:161-243 (pypdf strict=False, no /Prev check)"
+   },
+   {
+    "class": "H-D two members under one name",
+    "answered": 3,
+    "cause": "safe_b1.py:139-157; workbook reader keeps duplicate sheet names"
+   },
+   {
+    "class": "H-E local header names the member differently",
+    "answered": 1,
+    "cause": "safe_b1.py:205-218"
+   },
+   {
+    "class": "H-F zero divisor in a WAV header",
+    "answered": 1,
+    "cause": "adapters/wav.py:173, 206-207"
+   },
+   {
+    "class": "H-G member name not valid in its declared encoding",
+    "answered": 1,
+    "cause": "safe_b1.py:148"
+   }
+  ],
+  "cross": [
+   {
+    "class": "X-A unread statement beside agreeing ones",
+    "wrong": 2,
+    "cannot": 0,
+    "cause": "relate.py:1550, 1562-1580"
+   },
+   {
+    "class": "X-B count question answered by another comparison",
+    "wrong": 1,
+    "cannot": 0,
+    "cause": "relate.py:1510-1520, 1381-1388"
+   },
+   {
+    "class": "X-C archive against a listing of its members (sizes, digests)",
+    "wrong": 0,
+    "cannot": 18,
+    "cause": "relate.py:628-631, 504-555"
+   },
+   {
+    "class": "X-D drawn links against written links",
+    "wrong": 0,
+    "cannot": 8,
+    "cause": "relate.py:599-603"
+   },
+   {
+    "class": "X-E sound onsets against a cue sheet",
+    "wrong": 0,
+    "cannot": 8,
+    "cause": "relate.py:250, 1257-1259; relate_read.py:645-672"
+   },
+   {
+    "class": "X-F image size by axis, or asked with 'describe'",
+    "wrong": 0,
+    "cannot": 4,
+    "cause": "relate.py:1530-1537"
+   },
+   {
+    "class": "X-G chart questions (marks named otherwise; 'counts' as a data name)",
+    "wrong": 0,
+    "cannot": 4,
+    "cause": "relate.py:1392-1394, 1510-1520"
+   },
+   {
+    "class": "X-H GPX waypoints against stated stops",
+    "wrong": 0,
+    "cannot": 10,
+    "cause": "relate.py:606-612"
+   },
+   {
+    "class": "X-I total stated as a count of the column's noun",
+    "wrong": 0,
+    "cannot": 2,
+    "cause": "relate.py:1262-1300"
+   },
+   {
+    "class": "X-J not decidable by what the relater measures (by design, not changed)",
+    "wrong": 0,
+    "cannot": 10,
+    "cause": "relate.py:1525-1537 (first split image_caption: counts of drawn squares; tones_rows question naming nothing measurable)"
+   }
+  ]
+ },
+ "full_text": "scratchpad lane-fx3-diagnosis.md (not committed); summarised in ADR-081"
+}

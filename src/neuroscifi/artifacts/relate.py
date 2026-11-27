@@ -609,6 +609,11 @@ def quantities(representation, *, unit: Unit | None = None, unit_how: str = "", 
                 mg.counts(r).get("by_geometry"), dict) else []:
             out.append(_q("count", f"features.{geom}", n, nouns=(rr.singular(geom.lower()),), aggregate="count",
                           how=f"features of geometry {geom}"))
+        waypoints = sum(1 for f in r.features if f.properties.get("_kind") == "waypoint")
+        if waypoints:
+            # lane FX3 (class X-H): a GPX waypoint is a named place on the route (a stop, a point of interest)
+            out.append(_q("count", "features.waypoints", waypoints, nouns=("waypoint", "stop"), aggregate="count",
+                          how="GPX waypoints (wpt elements)"))
         length = mg.lengths_m(r).get("total_m")
         if length is not None:
             out.append(_q("number", "features.length", float(length) * 1000.0, unit=unit_of("mm"),
@@ -716,6 +721,8 @@ class Side:
     names: dict                     # normalised name -> shown name
     words: str                      # the artifact's own words, for mentions (untrusted)
     notes: list = field(default_factory=list)
+    rep: object = field(default=None, repr=False)       # the representation (lane FX3: structure across sides)
+    raw: bytes | None = field(default=None, repr=False)  # the file's bytes (lane FX3: an archive's member digests)
 
 
 def side(source, *, name: str | None = None, data: bytes | None = None) -> Side:
@@ -732,7 +739,7 @@ def side(source, *, name: str | None = None, data: bytes | None = None) -> Side:
     if kind == "mesh" and declared:
         notes.append(f"the mesh's unit ({declared.symbol}) is the one its own comment states")
     facts = (qs + said)[:MAX_FACTS]
-    return Side(name, kind, facts, _names(rep, name, facts), _own_words(rep, data), notes)
+    return Side(name, kind, facts, _names(rep, name, facts), _own_words(rep, data), notes, rep, data)
 
 
 def _own_words(rep, data) -> str:
@@ -795,6 +802,8 @@ class Pair:
     unit: str | None = None
     conn: int = 0                   # for a number: how strongly the statement names the quantity
     name_only: tuple = ()           # for a count joined only by a file's or table's name: the joining words
+    complete: bool = False          # lane FX3: a structure comparison that used every line of its document and
+    #                                 every part of the other artifact (what the document states is that structure)
 
     def basis(self) -> str:
         tol = "none" if self.tolerance is None else f"{self.tolerance:.6g}"
@@ -944,6 +953,18 @@ def _cmp_extent(fa: Fact, fb: Fact) -> Pair | None:
     if not isinstance(stmt, Statement) or isinstance(meas, Statement):
         return None
     sv, mv = tuple(stmt.value), tuple(meas.value)
+    axes = tuple(stmt.get("axes") or ())
+    if meas.get("ordered") and axes and len(axes) == len(sv) and set(axes) <= {"width", "height"} \
+            and len(set(axes)) == len(axes) and (stmt.unit is None or stmt.unit.dim == "pixels"):
+        # lane FX3 (class X-F): lengths tied to an axis by their word ("120 pixels wide", "210 px tall") against
+        # the measured width x height, axis by axis
+        picked = tuple(mv[{"width": 0, "height": 1}[a]] for a in axes)
+        tol = stmt.tolerance
+        ok = all(_close(x, y, tol) for x, y in zip(sv, picked))
+        a_val, b_val = (sv, picked) if stmt is fa else (picked, sv)
+        return Pair("consistent" if ok else "inconsistent", fa, fb, a_val, b_val, tol, True,
+                    " and ".join(axes) + " as stated, against the measured size",
+                    unit=(meas.unit or stmt.unit).symbol if (meas.unit or stmt.unit) else None)
     if not 2 <= len(sv) <= len(mv):
         return None
     if stmt.unit is not None and meas.unit is not None and stmt.unit.dim != meas.unit.dim:
@@ -1265,6 +1286,19 @@ def _candidates(A: Side, B: Side, q_aggs) -> list:
     explicit = {f.ref for f in A.facts + B.facts if f.kind == "number" and f.aggregate}
     for fa in A.facts:
         for fb in B.facts:
+            if len(q_aggs) == 1 and {fa.kind, fb.kind} == {"count", "number"}:
+                # lane FX3 (class X-I): "Swimmers completed 943 laps" beside a column named Laps, when the question
+                # names the aggregate (the season's total): the stated count is that column's aggregate
+                cnt, num = (fa, fb) if fa.kind == "count" else (fb, fa)
+                if isinstance(cnt, Statement) and isinstance(num, Quantity) and num.aggregate == q_aggs[0] \
+                        and set(cnt.nouns) & set(num.words) and not cnt.get("bound") and not cnt.get("approx"):
+                    as_number = replace(cnt, kind="number", value=float(cnt.value), aggregate=None)
+                    p = _cmp_number(as_number, num, q_aggs, explicit) if cnt is fa else \
+                        _cmp_number(num, as_number, q_aggs, explicit)
+                    if p is not None:
+                        p.note = "; ".join(x for x in (p.note, "a stated count of what the column holds") if x)
+                        out.append(p)
+                continue
             if (fa.kind, fb.kind) not in _KIND_PAIRS:
                 continue
             if isinstance(fa, Quantity) and isinstance(fb, Quantity) and fa.kind not in (
@@ -1391,7 +1425,16 @@ def _focus(p: Pair, q_words: set, q_aggs) -> int:
 # decides only when the question names its aggregate, its count, its subject's words, or its kind by one of these.
 KIND_CUES = {
     "series": frozenset("series value values number numbers point points data plotted plot line lines bar bars chart "
-                        "charts graph graphs drawn".split()),
+                        "charts graph graphs drawn dot dots mark marks marker markers reading readings curve curves "
+                        "scatter".split()),
+    # lane FX3: the structure comparisons (STRUCTURE_KINDS)
+    "members": frozenset("file files member members content contents size sizes byte bytes checksum checksums hash "
+                         "hashes hashed digest digests sum sums manifest listing listed list inventory packing "
+                         "archive".split()),
+    "links": frozenset("link links linked linking connect connects connected connection connections edge edges arrow "
+                       "arrows relation relations relationship relationships line lines".split()),
+    "times": frozenset("time times timing timings when start starts started begin begins onset onsets cue cues "
+                       "timestamp timestamps moment moments happen happens".split()),
     "pairs": frozenset("trace traces call calls called calling".split()),
     "sequence": frozenset("order ordered sequence event events step steps timeline before after chronology first last "
                           "then earlier later happened when".split()),
@@ -1496,6 +1539,7 @@ def compare(a, b, question: str | None = None) -> Relation:
     pairs = _candidates(A, B, q_aggs)
     if set(rr.tokens(question or "")) & rr.COUNT_CUES:
         pairs += _question_pairs(A, B, q_words)
+    pairs += _structure_pairs(A, B)
     for p in pairs:
         p.focus = _focus(p, q_words, q_aggs) if question else 0
         if isinstance(p.a, Quantity) and isinstance(p.b, Quantity) and p.verdict != "not_comparable" and \
@@ -1509,15 +1553,34 @@ def compare(a, b, question: str | None = None) -> Relation:
     strong = [k for k, p in enumerate(pairs) if p.strong]
     named_counts = {n for f in A.facts + B.facts if f.kind == "count" and f.primary for n in f.nouns} & q_words \
         if set(rr.tokens(question or "")) & rr.COUNT_CUES else set()
-    if q_aggs:
+    structure = [k for k in strong if pairs[k].a.kind in STRUCTURE_KINDS]
+    asked = _counts_asked(question or "")
+    decide = None
+    if question and structure and any(_named_kind(pairs[k], q_tokens) for k in structure):
+        # lane FX3: a structure comparison the question names (by KIND_CUES) answers it
+        decide = [k for k in structure if _named_kind(pairs[k], q_tokens)]
+        scope = "the comparison the question names (" + ", ".join(sorted({pairs[k].a.kind for k in decide})) + ")"
+    elif q_aggs:
         # the question asks about an aggregate: only a comparison of that aggregate may answer it
         decide = [k for k in strong if pairs[k].a.aggregate in q_aggs or pairs[k].b.aggregate in q_aggs]
         scope = "what the question asks about (" + ", ".join(q_aggs) + ")"
+    elif asked:
+        # lane FX3 (class X-B): "how many squares", "the number of stops": only a comparison of counts of that
+        # thing answers it; a size or another count that agrees never stands in for it
+        decide = [k for k in strong if pairs[k].a.kind == "count" and asked & _counted(pairs[k])]
+        scope = "the count the question asks for (" + ", ".join(sorted(asked)) + ")"
+        if not decide:
+            rel.reason = ("cannot tell: the question asks for a count (" + ", ".join(sorted(asked)) + "); nothing "
+                          "measured in one artifact counts that to compare with the other")
+            return rel
     elif named_counts:
         decide = [k for k in strong if pairs[k].a.kind == "count" and
                   (set(pairs[k].a.nouns) | set(pairs[k].b.nouns)) & named_counts]
         scope = "the counts the question names"
-    else:
+        if not decide:
+            decide = None       # lane FX3 (class X-G): "citation counts" names data, not a count to compare
+    general = decide is None           # nothing in particular asked: the document as a whole against the other
+    if decide is None:
         top = max((pairs[k].focus for k in strong), default=0)
         decide = [k for k in strong if pairs[k].focus == top] if top > 0 else strong
         scope = "what the question names" if top > 0 else "everything the two artifacts let me compare"
@@ -1526,8 +1589,14 @@ def compare(a, b, question: str | None = None) -> Relation:
             # does not name never stands in for it
             decide = [k for k in decide if _named_kind(pairs[k], q_tokens)]
             scope = "the kind of comparison the question names"
+            if not decide:
+                # lane FX3: a document that is, line by line, a statement of the other artifact's structure (a
+                # listing of its members, the links of its drawing, the times of its sounds) is compared by it
+                decide = [k for k in structure if pairs[k].complete]
+                scope = "the one comparison that accounts for every line of the document"
     measured_only = [s for s in (A, B) if s.kind in MEASURED_ONLY]
-    if question and measured_only and q_tokens & DEPICTION_CUES:
+    names_a_measure = any(_named_kind(pairs[k], q_tokens) for k in decide) if question else False
+    if question and measured_only and q_tokens & DEPICTION_CUES and not names_a_measure:
         rel.decided_by = []
         rel.reason = ("cannot tell: the question asks what " + ("an image depicts" if measured_only[0].kind != "signal"
                                                                else "a sound says") +
@@ -1551,12 +1620,59 @@ def compare(a, b, question: str | None = None) -> Relation:
         st = _dangling(A, B, pairs)[0]
         rel.reason = ("cannot tell: what could be compared agrees, but a statement about the same subject could not "
                       f"be compared ({st.how}: it does not say which total, mean or extreme it is)")
+    elif all(v == "consistent" for v in verdicts) and general and _unread_about_table(A, B, pairs):
+        st = _unread_about_table(A, B, pairs)[0]
+        rel.reason = ("cannot tell: what could be compared agrees, but the document states a number about the table "
+                      f"that could not be compared ({st.how}: it does not say which total, mean or extreme it is)")
     elif all(v == "consistent" for v in verdicts):
         rel.answer = True
         rel.reason = f"they agree ({len(decide)} comparison(s) of {scope}, each within its stated tolerance)"
     else:
         rel.reason = f"cannot tell: {scope} cannot be compared fully"
     return rel
+
+
+_COUNT_ASKED = re.compile(r"\b(?:number|count|amount)\s+of\s+(?:the\s+|all\s+)?([a-z][a-z-]{2,})"
+                          r"|\bhow\s+many\s+([a-z][a-z-]{2,})|\bas\s+many\s+([a-z][a-z-]{2,})", re.I)
+
+
+def _counts_asked(question: str) -> set:
+    """What a question asks to be counted ("the number of squares", "how many stops", "as many beeps"), singular."""
+    out = set()
+    for m in _COUNT_ASKED.finditer(question or ""):
+        word = next(g for g in m.groups() if g)
+        if word.lower() not in ("the", "them", "these", "those", "times"):
+            out.add(rr.singular(word.lower()))
+    return out
+
+
+def _counted(p: Pair) -> set:
+    """What a count comparison counts: its nouns, and for a stated count the words of its sentence."""
+    out = set(p.a.nouns) | set(p.b.nouns)
+    for f in (p.a, p.b):
+        if isinstance(f, Statement):
+            out |= set(f.words)
+    return out
+
+
+def _unread_about_table(A: Side, B: Side, pairs: list) -> list:
+    """Lane FX3 (class X-A): number statements of a document that no comparison used, beside a table whose numeric
+    columns they could be about (a unit of the same dimension, or a unit on one side only): "Fuel bought: 778.54
+    litres" when nothing says which aggregate it is. While one exists, the agreement of the other comparisons is not
+    the document's agreement with the table."""
+    used = {id(p.a) for p in pairs} | {id(p.b) for p in pairs}
+    out = []
+    for S, O in ((A, B), (B, A)):
+        if S.kind != "document" or O.kind not in ("table", "tree"):
+            continue
+        columns = [q for q in O.facts if q.kind == "number" and q.aggregate and isinstance(q, Quantity)]
+        for st in S.facts:
+            if st.kind != "number" or not isinstance(st, Statement) or st.get("derived") or id(st) in used or \
+                    _yearlike(st):
+                continue
+            if any(rr.compatible(st.unit, q.unit) for q in columns):
+                out.append(st)
+    return out
 
 
 def _dangling(A: Side, B: Side, pairs: list) -> list:
@@ -1575,6 +1691,329 @@ def _dangling(A: Side, B: Side, pairs: list) -> list:
                 if same_dim or (rr.compatible(st.unit, q.unit) and set(st.words) & set(q.words)):
                     out.append(st)
                     break
+    return out
+
+
+# ---- structure across two sides (lane FX3, ADR-081) ------------------------------------------------------------------
+# Three measured comparisons that need both artifacts at once: what one artifact holds is the vocabulary in which the
+# other's lines are read (an archive's member names, a drawing's node labels), or the other's lines are elapsed times
+# measured against a sound's onsets. Each compares only what was measured in one artifact with what the other states
+# line by line; a line that cannot be read that way makes the comparison incomplete, never a guess.
+
+STRUCTURE_KINDS = ("members", "links", "times")
+_DIGESTS = {32: "md5", 40: "sha1", 64: "sha256", 128: "sha512"}
+_LIST_MARK = re.compile(r"^\s*(?:[-*+•]|\d{1,4}[.)])\s+")
+_HEX_LINE = re.compile(r"^\s*([0-9a-fA-F]{32,128})\s+\*?(\S(?:.*\S)?)\s*$")
+_SIZE_FIRST = re.compile(r"^\s*(\d{1,15})\s+(\S(?:.*\S)?)\s*$")
+_SIZE_LAST = re.compile(r"^\s*(\S+)\s+(\d{1,15})\s*(?:b|bytes?)?\s*$", re.I)
+_ELAPSED = re.compile(r"^\s*(?:(\d{1,2}):)?(\d{1,2}):(\d{2}(?:[.,]\d{1,6})?)(?![\d:])")
+_NEGATION = frozenset("not no never nor without isn't doesn't don't aren't wasn't weren't".split())
+SIZE_KEYS = frozenset("bytes byte size sizes length octets".split())
+MAX_LISTING_LINES = 20_000
+MAX_DIGEST_BYTES = 256 << 20            # member bytes hashed per comparison, at most (as max_decoded_bytes)
+TIMES_TOLERANCE_S = 0.05                # ten 5 ms analysis frames of `tone_segments`
+
+
+def _text_lines(S: Side) -> list[str]:
+    """A document's lines as the file has them (a plain or Markdown file's own line breaks, which its reader joins
+    into paragraphs), list markers dropped; for other documents (DOCX, PDF, HTML) the reader's text."""
+    rep = S.rep
+    text = ""
+    if S.raw and b"\x00" not in S.raw[:4096]:
+        from .adapters.plain import decode_text
+        try:
+            text = decode_text(bytes(S.raw[:rr.MAX_TEXT]))[0]
+        except Exception:
+            text = ""
+        if text.lstrip()[:1] == "<":
+            text = ""                        # markup: its reader's text, not its tags
+    if not text:
+        try:
+            text = rep.text() if getattr(rep, "kind", None) == "document" else ""
+        except Exception:
+            text = ""
+    return [_LIST_MARK.sub("", ln) for ln in (text or "")[:rr.MAX_TEXT].splitlines()][:MAX_LISTING_LINES]
+
+
+def _member_table(B: Side) -> dict:
+    """{member path (as a question would name it): (size, member)} of a decoded archive; {} when a name repeats."""
+    from .outcome import member_path
+    out = {}
+    for m in getattr(B.rep, "members", ()) or ():
+        if getattr(m.detected, "format", None) == "directory":
+            continue
+        path = member_path(str(m.path))
+        if not path or path in out:
+            return {}
+        out[path] = (int(m.size), m)
+    return out
+
+
+def _listing_from_lines(lines: list[str]) -> tuple[list[tuple[str, str, object]], int, int]:
+    """((path, property, value) per listed line, lines read, non-empty lines): "<hex digest>  <path>" (sha256sum
+    and kin), "<size>  <path>" or "<path>  <size>" (a size in bytes)."""
+    out, nonempty = [], 0
+    for ln in lines:
+        if not ln.strip():
+            continue
+        nonempty += 1
+        m = _HEX_LINE.match(ln)
+        if m and len(m.group(1)) in _DIGESTS:
+            out.append((m.group(2).strip(), _DIGESTS[len(m.group(1))], m.group(1).lower()))
+            continue
+        m = _SIZE_FIRST.match(ln)
+        if m and not rr.is_number_like(m.group(2)):
+            out.append((m.group(2).strip(), "size", int(m.group(1))))
+            continue
+        m = _SIZE_LAST.match(ln)
+        if m and not rr.is_number_like(m.group(1)):
+            out.append((m.group(1).strip(), "size", int(m.group(2))))
+    return out, len(out), nonempty
+
+
+def _listing_from_tree(tree) -> tuple[list[tuple[str, str, object]], int, int]:
+    """A JSON or XML list of records, each a path and a size in bytes ({"path": ..., "bytes": ...})."""
+    from .types import _walk
+    out, records = [], 0
+    for node, _ in _walk(tree.root, limit=200_000):
+        kids = getattr(node, "children", ()) or ()
+        if not kids or len(kids) > 16:
+            continue
+        texts = [c for c in kids if isinstance(c.value, str) and ("/" in c.value or "." in c.value)
+                 and not rr.is_number_like(c.value)]
+        sizes = [c for c in kids if str(c.name).lower() in SIZE_KEYS and not isinstance(c.value, bool)
+                 and (isinstance(c.value, (int, float)) or isinstance(c.value, str) and c.value.isdigit())]
+        if len(texts) == 1 and len(sizes) == 1:
+            records += 1
+            out.append((texts[0].value.strip(), "size", int(float(sizes[0].value))))
+    return out, records, records
+
+
+def _digest(B: Side, path: str, algo: str, budget: list) -> str | None:
+    """The hex digest of one member's bytes, read again from the archive by the safe reader (ZIP only)."""
+    import hashlib
+    if not B.raw:
+        return None
+    try:
+        from .outcome import member_path
+        from .safe_b1 import ZipReader
+        from .types import Limits
+        limits = Limits()
+        reader = ZipReader(B.raw, max_members=limits.max_members, partial_ok=False)
+        entry = next((e for e in reader.entries if member_path(e.name) == path), None)
+        if entry is None or entry.size > budget[0]:
+            return None
+        body = reader.read(entry, limits=limits, out_limit=budget[0])
+    except Exception:
+        return None
+    budget[0] -= len(body)
+    return hashlib.new(algo, body).hexdigest()
+
+
+def _members_pair(B: Side, D: Side) -> Pair | None:
+    """B an archive, D a listing of its members with a size or a digest each."""
+    table = _member_table(B)
+    if len(table) < 1:
+        return None
+    if getattr(D.rep, "kind", None) == "tree":
+        listed, read, nonempty = _listing_from_tree(D.rep)
+    else:
+        listed, read, nonempty = _listing_from_lines(_text_lines(D))
+    if len(listed) < 1 or len({p for p, _, _ in listed}) != len(listed):
+        return None
+    from .outcome import member_path
+    matched = [(member_path(p), prop, v) for p, prop, v in listed if member_path(p) in table]
+    if not matched or len(matched) * 2 < len(listed):
+        return None                         # not a listing of this archive
+    budget = [MAX_DIGEST_BYTES]
+    agree, disagree, absent, unhashed = [], [], [], 0
+    for path, prop, value in ((member_path(p), prop, v) for p, prop, v in listed):
+        if path not in table:
+            absent.append(path)
+            continue
+        if prop == "size":
+            got = table[path][0]
+        else:
+            got = _digest(B, path, prop, budget)
+            if got is None:
+                unhashed += 1
+                continue
+        (agree if got == value else disagree).append(path)
+    props = sorted({prop for _, prop, _ in listed})
+    what = "sizes in bytes" if props == ["size"] else " and ".join(p.upper() if p != "size" else "sizes"
+                                                                    for p in props)
+    meas = _q("members", "bundle.members.listing", tuple(sorted(table)), how=f"each member's {what}, measured "
+              f"from its bytes", nouns=("member", "file"))
+    stmt = _s("members", "document.listing", tuple(p for p, _, _ in listed), how=f"{len(listed)} line(s) listing "
+              f"a member with its {what}", nouns=("member", "file"))
+    note = []
+    if absent:
+        note.append(f"{len(absent)} listed member(s) are not in the archive")
+    unlisted = len(set(table) - {member_path(p) for p, _, _ in listed})
+    if unlisted:
+        note.append(f"{unlisted} member(s) of the archive are not listed")
+    if unhashed:
+        note.append(f"{unhashed} member(s) could not be read again to compute a digest")
+    if disagree or absent:
+        verdict = "inconsistent"
+    elif unhashed or not agree:
+        verdict = "not_comparable"
+    else:
+        verdict = "consistent"
+    pair = Pair(verdict, meas, stmt, len(agree), len(listed), 0.0, True,
+                f"each listed member's {what} against the archive's member ({len(agree)} of {len(listed)} agree)",
+                "; ".join(note))
+    pair.complete = read == nonempty and not unlisted
+    return pair
+
+
+def _node_links(drawing) -> tuple[dict, set] | None:
+    """(label -> centre, {frozenset of two labels}) of a node-link drawing: closed shapes as nodes, each with exactly
+    one text near it as its label, and lines or paths whose two ends lie on two different nodes. None unless every
+    line joins two nodes and every node has its own label (a chart, a map or a picture is not read as one)."""
+    nodes = []
+    for sh in drawing.shapes:
+        if sh.kind in ("circle", "ellipse", "rect", "polygon") and len(sh.points) >= 3:
+            pts = sh.points[1:] if sh.kind in ("circle", "ellipse") else sh.points
+            cx = sum(x for x, _ in pts) / len(pts)
+            cy = sum(y for _, y in pts) / len(pts)
+            r = max(math.hypot(x - cx, y - cy) for x, y in pts)
+            if r > 0:
+                nodes.append((cx, cy, r))
+    if not 2 <= len(nodes) <= 500:
+        return None
+    labels: dict[int, str] = {}
+    for sh in drawing.shapes:
+        if sh.kind != "text" or not sh.text or not sh.points:
+            continue
+        x, y = sh.points[0]
+        dist = [(math.hypot(x - cx, y - cy) / r, i) for i, (cx, cy, r) in enumerate(nodes)]
+        d, i = min(dist)
+        if d > 3.0:
+            continue                         # a title or a note, not a node's label
+        if i in labels:
+            return None
+        labels[i] = clean(sh.text, 80).strip()
+    if len(labels) != len(nodes) or len(set(labels.values())) != len(nodes) or not all(labels.values()):
+        return None
+    links = set()
+    for sh in drawing.shapes:
+        if sh.kind not in ("line", "polyline", "path") or len(sh.points) < 2:
+            continue
+        ends = []
+        for x, y in (sh.points[0], sh.points[-1]):
+            d, i = min((math.hypot(x - cx, y - cy) / r, i) for i, (cx, cy, r) in enumerate(nodes))
+            if d > 1.5:
+                return None                  # a line that does not end on a node: not a node-link drawing
+            ends.append(i)
+        if ends[0] == ends[1]:
+            return None
+        links.add(frozenset((labels[ends[0]], labels[ends[1]])))
+    if not links:
+        return None
+    centres = {labels[i]: (n[0], n[1]) for i, n in enumerate(nodes)}
+    return centres, links
+
+
+def _links_pair(G: Side, D: Side) -> Pair | None:
+    """G a node-link drawing, D text whose lines each name two of its labels ("Kofi reports to Tomas")."""
+    found = _node_links(G.rep) if getattr(G.rep, "kind", None) == "drawing" else None
+    if found is None:
+        return None
+    centres, drawn = found
+    patterns = {lab: re.compile(r"(?<![\w-])" + re.escape(lab) + r"(?![\w-])") for lab in centres}
+    stated, nonempty, used = set(), 0, 0
+    for ln in _text_lines(D):
+        if not ln.strip():
+            continue
+        nonempty += 1
+        named = [lab for lab, pat in patterns.items() if pat.search(ln)]
+        if not named:
+            continue
+        if len(named) != 2 or set(rr.tokens(ln)) & _NEGATION:
+            return None                      # a line naming one, three or more labels, or a negation: not read
+        stated.add(frozenset(named))
+        used += 1
+    if len(stated) < 2:
+        return None
+    complete = used == nonempty
+    if stated == drawn:
+        verdict = "consistent"
+    elif stated - drawn or complete:
+        verdict = "inconsistent"
+    else:
+        verdict = "not_comparable"
+    meas = _q("links", "drawing.links", tuple(sorted("-".join(sorted(x)) for x in drawn)),
+              how=f"{len(drawn)} line(s) joining two labelled nodes of the drawing", nouns=("link", "line"))
+    stmt = _s("links", "document.links", tuple(sorted("-".join(sorted(x)) for x in stated)),
+              how=f"{len(stated)} line(s) of text each naming two of the drawing's labels", nouns=("link", "line"))
+    note = []
+    if stated - drawn:
+        note.append(f"{len(stated - drawn)} pair(s) named in the text are not joined in the drawing")
+    if drawn - stated:
+        note.append(f"{len(drawn - stated)} drawn link(s) are not named in the text")
+    pair = Pair(verdict, meas, stmt, len(drawn), len(stated), 0.0, True,
+                "the pairs of labels the drawing joins against the pairs the text names (direction not shown)",
+                "; ".join(note))
+    pair.complete = complete            # every line of the text is a link between two of the drawing's labels
+    return pair
+
+
+def _times_pair(Sg: Side, D: Side) -> Pair | None:
+    """Sg a sound whose tone onsets were measured, D lines that each begin with an elapsed time (m:ss.fff)."""
+    onsets = next((f for f in Sg.facts if f.kind == "times" and f.ref == "signal.tone_starts"), None)
+    duration = next((f.value for f in Sg.facts if f.ref == "signal.duration"), None)
+    if onsets is None or duration is None:
+        return None
+    stated, nonempty, precision = [], 0, 0.0
+    for ln in _text_lines(D):
+        if not ln.strip():
+            continue
+        nonempty += 1
+        m = _ELAPSED.match(ln)
+        if m is None:
+            continue
+        h, mi, sec = m.groups()
+        sec = sec.replace(",", ".")
+        stated.append((int(h) if h else 0) * 3600 + int(mi) * 60 + float(sec))
+        frac = sec.split(".")[1] if "." in sec else ""
+        precision = max(precision, 10.0 ** -len(frac) if frac else 1.0)
+    if len(stated) < 2 or len(stated) != nonempty:
+        return None
+    if max(stated) > float(duration) + TIMES_TOLERANCE_S:
+        return None                          # not times into this recording (a clock of day, another file)
+    tol = max(TIMES_TOLERANCE_S, precision)
+    measured = sorted(float(t) for t in onsets.value)
+    stated = sorted(stated)
+    if len(measured) != len(stated):
+        verdict = "inconsistent"
+        how = f"{len(stated)} time(s) listed against {len(measured)} onset(s) measured"
+    else:
+        worst = max(abs(a - b) for a, b in zip(stated, measured))
+        verdict = "consistent" if worst <= tol + REL_EPS else "inconsistent"
+        how = f"each listed time against the measured onset in the same place, within {_fmt(tol)} s " \
+              f"(largest difference {_fmt(worst)} s)"
+    stmt = _s("times", "document.times", tuple(stated), unit=unit_of("s"),
+              how="an elapsed time at the start of every line", nouns=("time", "cue"))
+    pair = Pair(verdict, onsets, stmt, tuple(measured), tuple(stated), tol, True, how, unit="s")
+    pair.complete = True
+    return pair
+
+
+def _structure_pairs(A: Side, B: Side) -> list:
+    out = []
+    for X, Y, flip in ((A, B, False), (B, A, True)):
+        made = None
+        if X.kind == "bundle" and Y.kind in ("document", "tree"):
+            made = _members_pair(X, Y)
+        elif X.kind == "drawing" and Y.kind == "document":
+            made = _links_pair(X, Y)
+        elif X.kind == "signal" and Y.kind == "document":
+            made = _times_pair(X, Y)
+        if made is not None:
+            if flip:
+                made = replace(made, a=made.b, b=made.a, a_value=made.b_value, b_value=made.a_value)
+            out.append(made)
     return out
 
 

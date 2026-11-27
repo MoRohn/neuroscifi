@@ -551,7 +551,7 @@ def statements_of_text(text: str, *, base: int = 0, default_unit: Unit | None = 
             if k in used:
                 continue
             unit = n.unit or here_default
-            if unit is None or unit.dim != "length":
+            if unit is None or unit.dim not in ("length", "pixels"):
                 continue
             after = tokens(sentence[n.end:n.end + 16])[:1]
             before = tokens(sentence[max(0, n.start - 24):n.start])[-2:]
@@ -560,12 +560,17 @@ def statements_of_text(text: str, *, base: int = 0, default_unit: Unit | None = 
                 tag = next((DIMENSION_WORDS[w] for w in reversed(before) if w in DIMENSION_WORDS), None)
             if tag and tag not in tagged:
                 tagged[tag] = (k, convert(n.value, unit, unit), unit, n.tolerance())
-        if len(tagged) >= 2:
+        if len(tagged) >= 2 and len({v[2].dim for v in tagged.values()}) == 1:
             unit = next(iter(tagged.values()))[2]
             values = tuple(convert(v[1], v[2], unit) for v in tagged.values())
             out.append(Said("extent", values, unit, words, None, None, kept, base + index,
                             max(v[3] for v in tagged.values()), axes=tuple(tagged)))
             used.update(v[0] for v in tagged.values())
+        elif len(tagged) == 1 and next(iter(tagged.values()))[2].dim == "pixels":
+            # lane FX3 (class X-F): one pixel length tied to an axis ("210 px tall"): a size along that axis
+            (tag, (k, value, unit, tol)), = tagged.items()
+            out.append(Said("extent", (value,), unit, words, None, None, kept, base + index, tol, axes=(tag,)))
+            used.add(k)
         # the rest: single numbers
         for k, n in enumerate(nums):
             if k in used:

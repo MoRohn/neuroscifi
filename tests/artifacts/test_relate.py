@@ -258,7 +258,8 @@ def test_relate_imports_nothing_beyond_the_default_path():
         tree = ast.parse((root / name).read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                assert all(a.name.split(".")[0] in ("re", "math", "itertools", "numpy", "datetime")
+                # hashlib (standard library): lane FX3's member digests against a checksum listing
+                assert all(a.name.split(".")[0] in ("re", "math", "itertools", "numpy", "datetime", "hashlib")
                            for a in node.names), name
             if isinstance(node, ast.ImportFrom) and node.level == 0:
                 assert node.module.split(".")[0] in ("__future__", "dataclasses", "datetime", "math", "re"), name

@@ -29,6 +29,14 @@ from .tables import table_from_rows
 
 FEED_CHUNK = 1 << 16
 MAX_RTF_DEPTH = 256
+# Lane FX3 (class H-A): nesting of HTML elements and of Markdown quote markers is bounded as RTF groups, trees,
+# JSON and XML are: a document nested deeper is refused whole (rule max_depth), never read flat.
+MAX_MARKUP_DEPTH = 256
+# Elements whose end tag HTML lets a writer leave out: they are not counted as nesting (an honest page may leave a
+# thousand <p> or <li> open).
+_OPTIONAL_END = {"p", "li", "dt", "dd", "tr", "td", "th", "option", "optgroup", "thead", "tbody", "tfoot",
+                 "colgroup", "caption", "rb", "rt", "rp", "rtc", "head", "body", "html"}
+_QUOTE_MARKERS = re.compile(r"[ \t]*((?:>[ \t]?)+)")
 
 _ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*))?$")
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([\w+.#-]*)")
@@ -206,6 +214,10 @@ def markdown_blocks(text: str, *, budget: DecodeBudget | None = None, deadline: 
             flush()
             quote = []
             while i < len(lines) and lines[i].strip().startswith(">"):
+                markers = _QUOTE_MARKERS.match(lines[i])
+                if markers and markers.group(1).count(">") > MAX_MARKUP_DEPTH:
+                    raise Refused(f"the Markdown nests block quotes deeper than {MAX_MARKUP_DEPTH} levels",
+                                  rule="max_depth")
                 quote.append(lines[i].strip()[1:].strip())
                 i += 1
             words, figures = _inline(" ".join(q for q in quote if q))
@@ -259,6 +271,7 @@ class _HtmlReader(HTMLParser):
         self.blockquote = 0
         self.tags = 0
         self.nested_tables = 0
+        self.depth = 0                       # open elements whose end tag is required (lane FX3, H-A)
 
     # -- helpers
     def _emit(self, block: Block) -> None:
@@ -293,6 +306,10 @@ class _HtmlReader(HTMLParser):
     # -- parser callbacks
     def handle_starttag(self, tag, attrs):
         self.tags += 1
+        if tag not in _VOID and tag not in _OPTIONAL_END:
+            self.depth += 1
+            if self.depth > MAX_MARKUP_DEPTH:
+                raise Refused(f"the HTML nests elements deeper than {MAX_MARKUP_DEPTH} levels", rule="max_depth")
         if not self.budget.fits_elements(1) or self.tags > self.budget.max_elements:
             self.partial = True
         if self.partial:
@@ -396,6 +413,8 @@ class _HtmlReader(HTMLParser):
             self.handle_endtag(tag)
 
     def handle_endtag(self, tag):
+        if tag not in _VOID and tag not in _OPTIONAL_END:
+            self.depth = max(0, self.depth - 1)
         if self.partial:
             return
         if self.skip_tag:

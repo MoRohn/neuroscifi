@@ -1,0 +1,271 @@
+{
+ "label": "OMNIMIND lane FX3 (ADR-081): fixes by class from the spent withheld cases of unknown, hostile and cross; development evidence (the fixes saw these cases), never a look",
+ "branch": "omni-fx3",
+ "base": "06a6b30 (product code identical to ae6120f, the second look's commit)",
+ "spent_cases_regression": {
+  "note": "scripts/omnimind_spent.py through the looks' own functions; these are development numbers now",
+  "withheld2/unknown": {
+   "before": {
+    "right": 158,
+    "cannot": 8,
+    "wrong": 5,
+    "failed": 0
+   },
+   "after": {
+    "right": 170,
+    "cannot": 1,
+    "wrong": 0,
+    "failed": 0
+   },
+   "n": 171,
+   "remaining_cannot": "json-gzip-twice tree.value: the benchmark driver descends one compression wrapper (subject.py:104-110); not fixed"
+  },
+  "withheld2/hostile": {
+   "before": {
+    "refused": 51,
+    "answered": 11
+   },
+   "after": {
+    "refused": 62,
+    "answered": 0
+   },
+   "n": 62,
+   "answered_columns_before": {
+    "a_real_failures": 11,
+    "b_owner_rule_2": 0,
+    "c_truth_in_doubt": 0
+   }
+  },
+  "withheld2/cross": {
+   "before": {
+    "right": 65,
+    "answered": 48,
+    "wrong": 1,
+    "decidable_right": "47 of 80",
+    "both_twins": "32 of 49"
+   },
+   "after": {
+    "right": 96,
+    "answered": 78,
+    "wrong": 0,
+    "decidable_right": "78 of 80",
+    "both_twins": "48 of 49",
+    "undecidable_cannot": "18 of 18"
+   },
+   "n": 98,
+   "remaining_cannot": "report_total, one pair (both twins): the report states a total no comparison can read (class X-A, by design)"
+  },
+  "withheld/cross": {
+   "before_at_55f89be": {
+    "right": 48,
+    "cannot": 24,
+    "wrong": 6
+   },
+   "before_at_ae6120f": {
+    "right": 44,
+    "cannot": 32,
+    "wrong": 2
+   },
+   "after": {
+    "right": 64,
+    "cannot": 14,
+    "wrong": 0
+   },
+   "n": 78,
+   "remaining_cannot": "image_caption 10 (counts of drawn squares, depiction questions: by design), tones_rows 2 (question names nothing measurable), report_total 2 (X-A)"
+  },
+  "withheld/unknown_and_hostile": "not run: withheld_cases.py also holds five other families and was not opened"
+ },
+ "own_corpora": {
+  "fx3_relater (scripts/omnimind_fx3/corpus_relate.py, seeds 31000-31999)": {
+   "before": {
+    "right": 80,
+    "cannot": 184,
+    "wrong": 12
+   },
+   "after": {
+    "right": 276,
+    "cannot": 0,
+    "wrong": 0
+   },
+   "n": 276,
+   "per_class_after": {
+    "members_digest": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "members_size": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_listing_of_other_files": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_digest_of_tar": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "links": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_links_three_names": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_links_line_off_nodes": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "times": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_times_clock_of_day": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "image_axis": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_image_depiction": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_count_of_drawn_things": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "waypoints": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "count_as_total": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "chart_words": {
+     "right": 24,
+     "cannot": 0,
+     "wrong": 0
+    }
+   },
+   "per_class_before": {
+    "members_digest": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "members_size": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "trap_listing_of_other_files": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_digest_of_tar": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "links": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "trap_links_three_names": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_links_line_off_nodes": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "times": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "trap_times_clock_of_day": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "image_axis": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "trap_image_depiction": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "trap_count_of_drawn_things": {
+     "right": 0,
+     "cannot": 0,
+     "wrong": 12
+    },
+    "waypoints": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "count_as_total": {
+     "right": 0,
+     "cannot": 24,
+     "wrong": 0
+    },
+    "chart_words": {
+     "right": 8,
+     "cannot": 16,
+     "wrong": 0
+    }
+   }
+  },
+  "tests": {
+   "tests/artifacts/test_fx3_identify.py": "26 tests, 14 fail on 06a6b30",
+   "tests/artifacts/test_fx3_refusal.py": "21 tests, 16 fail on 06a6b30",
+   "tests/artifacts/test_fx3_relate.py": "25 tests, 21 fail on 06a6b30"
+  },
+  "lane_fx_corpora_after": {
+   "identification": "3664 right / 5 abstained / 0 wrong of 3669 (lane FX2: 3663 / 6 / 0)",
+   "hostile_parts": "165 refused / 3 answered of 168 (unchanged: H6 SVG outside image, answered with its note by ADR-080 rule 2)",
+   "honest_edges": "16 / 1 / 2 of 19 (unchanged)",
+   "relater": "84 right / 60 cannot / 0 wrong of 144 (unchanged)"
+  }
+ },
+ "unchanged": {
+  "development_seven_families": "512 right / 12 cannot / 0 wrong / 0 failed of 524 (per family identical)",
+  "development_cross": "72 of 72",
+  "lane_r_evidence": "identical apart from its commit field",
+  "guard_differential": "compared 1937, different 0",
+  "offline_digest": "68731d72...cdf9d5 in both regimes (defaults, all_off), equal to offline_deterministic_aarch64.json",
+  "reviewer_probe_files": "150 files of review1/s (in5, in7, r3/in, r3/h) as nsf inspect reads them: 149 identical; pdf_xrefloop.pdf refused before and after, now by rule self_reference (was: reader failure)"
+ },
+ "changed_outputs_inside_the_artifact_package": [
+  "detect: Python source is identified by parsing (basis structure, was declared for a .py name); 3 of 2772 truncated prefixes with the size unknown ('fLaC', 'BZh9', 'BZh91AY&') are called text (lane K evidence regenerated)",
+  "relate: listings, drawn links, cue times, pixel axes, waypoints, stated counts of a column's noun are now compared; a count question, or an unread number about a table under a general question, now gives 'cannot'"
+ ]
+}
