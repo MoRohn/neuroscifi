@@ -1,6 +1,7 @@
 """Lane B1 office packages: DOCX, ODT, PPTX, ODP, EPUB assembled by hand in the test, plus hostile variants."""
 import pytest
 
+from neuroscifi.artifacts import outcome
 from neuroscifi.artifacts import types as T
 
 import _b1_support
@@ -62,7 +63,7 @@ def test_docx_with_dtd_is_refused(b1reg):
 
 def test_docx_macros_reported_not_read(b1reg):
     out = b1reg.decode(docx(extra=[("word/vbaProject.bin", b"\xd0\xcf\x11\xe0" + b"\x00" * 60)]), name="m.docm")
-    assert any("macros" in n for n in out.notes)
+    assert outcome.active("a macro project") in out.notes     # one wording for active content (ADR-080, lane FX2)
 
 
 def test_docx_inflation_bomb_is_refused(b1reg):

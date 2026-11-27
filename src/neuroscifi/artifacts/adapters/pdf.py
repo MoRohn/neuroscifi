@@ -12,6 +12,13 @@ call inside the decode and raises a `BaseException` subclass (which pypdf's `exc
 swallow); the guard is removed however the decode ends. A single C-level step (one zlib inflate of one stream) is
 not interruptible; it is bounded by the input size (`max_bytes`) and pypdf's own per-stream output limit.
 
+Active content and outside references (ADR-080 rules 2 and 3) are never run or followed and never refuse the file:
+a script (`/JavaScript`, `/JS`), an auto-run action (an `/OpenAction` that is an action, `/AA`), a launch action
+(`/Launch`, which would start a program), an embedded file (`/EmbeddedFile`), a link address (`/URI`) or another
+document (`/GoToR`, `/GoToE`) is named in the notes (`outcome.active`, `outcome.outside`). They are found by name in
+the uncompressed bytes (escaped names decoded) and in the document catalog as pypdf reads it; one hidden inside a
+compressed stream elsewhere is not found (unverified as complete).
+
 Without pypdf: `Unsupported(needs=("pypdf",))` whose message and `.facts` carry what the bytes show without a
 parser: the header version, whether the trailer names `/Encrypt`, linearisation, and the page count when a
 `/Type /Pages` object with `/Count` is visible uncompressed.
@@ -26,6 +33,7 @@ import sys
 import time
 from contextlib import contextmanager
 
+from .. import outcome
 from ..safe import Deadline
 from ..safe_b1 import DecodeBudget
 from ..types import Block, Malformed, Refused, TEXT_MAX_CHARS, Unsupported
@@ -36,6 +44,14 @@ _VERSION = re.compile(rb"%PDF-(\d\.\d)")
 _PAGES = re.compile(rb"/Type\s*/Pages\b(?:(?!endobj).){0,2048}?/Count\s+(\d{1,9})", re.S)
 _PAGES_REV = re.compile(rb"/Count\s+(\d{1,9})(?:(?!endobj|obj).){0,2048}?/Type\s*/Pages\b", re.S)
 SCAN_BYTES = 8 << 20
+_NAME = re.compile(rb"/((?:[A-Za-z0-9]|#[0-9A-Fa-f]{2}){1,40})")
+# name -> ("active" | "outside", plain words); OpenAction counts only when it is an action (a dictionary), not a view
+ACTIVE_NAMES = {"JavaScript": ("active", "a script"), "JS": ("active", "a script"),
+                "AA": ("active", "an auto-run action"), "Launch": ("active", "a launch action (it would start a program)"),
+                "EmbeddedFile": ("active", "an embedded file"), "EmbeddedFiles": ("active", "an embedded file"),
+                "URI": ("outside", "link address"), "GoToR": ("outside", "other document"),
+                "GoToE": ("outside", "other document")}
+_OPEN_ACTION = re.compile(rb"/OpenAction\s*<<")
 
 
 class _Timeout(BaseException):
@@ -71,6 +87,39 @@ def header_facts(data: bytes) -> dict:
     counts = [int(x) for x in _PAGES.findall(head)] + [int(x) for x in _PAGES_REV.findall(head)]
     facts["pages"] = max(counts) if counts else None
     return facts
+
+
+def _active(data: bytes, reader=None) -> tuple[list[str], list[str]]:
+    """(active content, outside references) the PDF names, as plain words (ADR-080): never run, never followed."""
+    found: set[tuple[str, str]] = set()
+    head = data[:SCAN_BYTES]
+    for m in _NAME.finditer(head):
+        name = re.sub(rb"#([0-9A-Fa-f]{2})", lambda h: bytes([int(h.group(1), 16)]), m.group(1)).decode("latin-1")
+        if name in ACTIVE_NAMES:
+            found.add(ACTIVE_NAMES[name])
+    if _OPEN_ACTION.search(head):
+        found.add(("active", "an auto-run action"))
+    if reader is not None:
+        try:
+            root = reader.trailer["/Root"].get_object()
+            action = root.get("/OpenAction")
+            action = action.get_object() if action is not None else None
+            if isinstance(action, dict) and "/S" in action:
+                found.add(("active", "an auto-run action"))
+                kind = str(action.get("/S"))[1:]
+                if kind in ACTIVE_NAMES:
+                    found.add(ACTIVE_NAMES[kind])
+            if root.get("/AA") is not None:
+                found.add(("active", "an auto-run action"))
+            names = root.get("/Names")
+            names = names.get_object() if names is not None else None
+            if isinstance(names, dict):
+                for key in ("/JavaScript", "/EmbeddedFiles"):
+                    if names.get(key) is not None:
+                        found.add(ACTIVE_NAMES[key[1:]])
+        except Exception:       # a catalog pypdf cannot walk: what the bytes showed stands
+            pass
+    return (sorted(w for k, w in found if k == "active"), sorted(w for k, w in found if k == "outside"))
 
 
 def _facts_sentence(facts: dict) -> str:
@@ -174,6 +223,10 @@ def read_pdf(data: bytes, detected, limits):
                     if partial:
                         notes.append(f"stopped in page {i + 1}: the text or element limit was reached")
                         break
+                active, outside = _active(data, reader)
+                notes += [outcome.active(", ".join(active[:-1]) + " and " + active[-1] if len(active) > 1 else
+                                         active[0])] if active else []
+                notes += [outcome.outside(", ".join(outside))] if outside else []
             except (Refused, Unsupported):
                 raise
             except _Timeout:
