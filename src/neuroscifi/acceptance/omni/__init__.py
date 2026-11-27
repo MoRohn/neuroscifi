@@ -60,6 +60,7 @@ OUTCOMES = ("right", "abstained", "wrong", "failed")
 DEV_SEEDS = range(3100, 3600)
 HELD_OUT_SEEDS = range(3600, 4100)
 WITHHELD_SEEDS = range(9100, 9600)          # reserved for the withheld lane; no case here uses them
+WITHHELD2_SEEDS = range(9600, 10000)        # reserved for the second withheld split (lane ZW2)
 # Lane R's own-variant sweep (scripts/omnimind_r_evidence.py): six kinds x three seeds x up to 30 pairs, at
 # 20000 + 1000 kind + 100 seed + i. Moved here by fix lane F2 out of the withheld range (review finding B3);
 # tests/acceptance/test_omni_bench.py checks that no script or test outside the withheld machinery draws a
