@@ -203,7 +203,7 @@ def test_kml_and_kmz():
     assert f.features[0].coordinates.tolist() == [[8.5, 47.3, 500.0]]
     assert f.features[1].properties["_parts"] == (4, 3)
     assert f.features[2].properties["times_s"][1] - f.features[2].properties["times_s"][0] == 600
-    assert any("never fetched" in n for n in out.notes)
+    assert any(outcome.OUTSIDE in n for n in out.notes)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("doc.kml", KML)

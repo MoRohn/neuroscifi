@@ -19,6 +19,7 @@ from array import array
 
 import numpy as np
 
+from .. import outcome
 from .. import repr_b2 as R
 from ..safe import Deadline, injection_notes
 from ..safe_b2 import Reader, count, need
@@ -125,7 +126,7 @@ def decode_obj(data: bytes, detected: Detected, limits: Limits) -> Decoded:
             skipped["curves"] += 1
     groups = sum(1 for _ in words)
     if libs:
-        notes.append(f"{libs} material librar{'y' if libs == 1 else 'ies'} named; never opened")
+        notes.append(outcome.outside(f"{libs} material librar{'y' if libs == 1 else 'ies'}"))
     if skipped["vt"] or skipped["vn"]:
         notes.append(f"texture coordinates ({skipped['vt']}) and normals ({skipped['vn']}) are not kept")
     if skipped["l"] or skipped["p"]:
