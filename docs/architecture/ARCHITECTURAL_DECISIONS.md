@@ -5932,3 +5932,118 @@ Written by a lane that read no product code and no lane report of B1, B2, C, G1 
   of 35; made 0 / 16; transform 0 / 11. Forms: today good 66 (0.44), shape_only good 72 (0.48), richest 13 (0.087),
   random 20.8 (0.139); 0 hard-constraint violations for all four. Cross: today 0 / 78 answered. Learn: today late kept
   0.384 (sd 0.028).
+
+# ADR-078 Learning the form of a result from outcomes: a per-key majority, because nothing tried beat it
+
+Status: built, off by default (OMNIMIND Wave O-1, lane L). Schema 21 (`form_outcomes`), one owner setting
+(`form_learning`: "off" | "record" | "apply", default "off"), `artifacts/learn.py`, the commands `nsf artifact feedback
+ID kept|dismissed|replaced:FORM`, `nsf artifact feedback --reset`, `nsf form learned`, `nsf artifact gaps --report` and
+`nsf config --form-learning`. Nothing calls it yet but the owner's commands: the production pipeline (lane P) is the
+caller that will record a check verdict when it makes an artifact (`learn.record_outcome`) and plan through what was
+learned (`learn.plan`, or `learn.adjustments_for` and `Learned.context`). The planner (ADR-073) is unchanged.
+
+## Context
+
+DESIGN §5 asks for the planner's weights to be adjusted per (content kind, purpose, device) from outcomes that come
+from outside the system, never from the planner's opinion of its own plan; bounded, reversible, off by default. This
+project has several learning mechanisms that showed no gain when measured honestly (RECURSIVE_KNOWLEDGE_ASSESSMENT.md);
+the brief therefore set the bar before anything was built: on the benchmark's `learn` family (SIMULATED people with
+hidden, stable preferences; OMNIMIND_BENCHMARK_FORMS.md), a learner that does not clear the visibility margins over the
+per-key majority is "no better than a majority rule", and then the majority rule ships.
+
+## What was measured (development split only; SIMULATED people; `docs/quality/evidence/omnimind_l.json`)
+
+Kept share, mean (sd over 10 seeds), late = cycles 5-8; "rejected early" = choices dismissed or replaced in cycles 1-4
+(of 2,400). Every product row goes through the frozen planner; the driver maps names only and passes the case's
+candidates as what can be made here.
+
+| subject | late kept | all kept | rejected early |
+|---|---|---|---|
+| today (always prose) | 0.403 (0.022) | 0.409 (0.015) | 1406 |
+| never_learns (reference) | 0.581 (0.017) | 0.579 (0.018) | 1017 |
+| person_majority (reference) | 0.757 (0.029) | 0.738 (0.021) | 675 |
+| key_majority (reference, chooses directly) | 0.859 (0.027) | 0.794 (0.025) | 650 |
+| oracle (reference bound) | 0.907 (0.025) | 0.902 (0.022) | 245 |
+| the planner alone (form_learning "record") | 0.587 (0.026) | 0.584 (0.016) | 1005 |
+| **shipped: per-key majority through the planner** | **0.816 (0.024)** | **0.762 (0.018)** | 702 |
+| not shipped: the planner's weights through `adjustments` | 0.618 (0.022) | 0.601 (0.019) | 997 |
+| not shipped: per-key majority backed off to the person | 0.826 (0.029) | 0.797 (0.020) | 558 |
+| bound: the hidden preference handed to the planner | 0.855 (0.022) | 0.854 (0.020) | 350 |
+
+- **The weight seam moves almost nothing.** Shifting the planner's criterion weights within its clamps (±0.10 each)
+  reaches the person's wanted form on few keys: a learner of those weights gains +0.036 late over never_learns, below
+  the visible margin (0.063). On most keys no weight table within the clamps changes the planner's choice at all.
+- **The shipped rule** gains +0.235 late / +0.183 overall over never_learns (visible above 0.068 / 0.051) and is BELOW
+  the benchmark's own per-key majority (−0.043 late, −0.033 overall): the planner keeps its hard constraints and its
+  proportion rules (a single value stays a sentence; data heard as tones only when hearing is the purpose; forms the
+  planner does not admit for the content), which the reference, choosing a form directly, ignores.
+- **No learner through the frozen planner can clear the margin over the per-key majority here**: the bound (the
+  hidden preference itself handed to the planner) reaches 0.855 late and 0.854 overall, below key_majority plus the
+  margin (0.937 and 0.865). The back-off learner, the one attempt to generalise across keys, gains +0.010 late and
+  +0.035 overall over the shipped rule (margins 0.081 and 0.056): **no better than a majority rule**. So the majority
+  rule ships.
+
+## Decision
+
+- **Signals.** Only from outside the system: the owner's reaction to a made artifact (kept, dismissed, replaced by a
+  named form; the latest reaction to an artifact counts) and the independent check's verdict on its bytes at make time.
+  The planner's scores are never a reward; they are not even read.
+- **The rule.** Per key, a tally: +1 kept, −1 dismissed, −1 replaced and +1 the form named, −1 a failed check, 0 a
+  passed check. Evidence: 1 per reaction, 2 per replacement, 1 per failed check; below MIN_EVIDENCE = 2 the key is
+  "not enough yet" and nothing changes (development: minimum 1 gives the same late share, 0.816; minimum 3 gives
+  0.792). Each form with a positive tally becomes a preference tally / highest tally, in (0, 1], handed to the planner
+  through `Context.preferences` (DESIGN §5's "the person's recorded preferences"); `adjustments` stays None.
+- **Out of its reach, by construction and by test.** A learned value is never 0 or below, so nothing learned removes a
+  form; the planner follows a preference only among the forms it admitted and after its proportion rules; the owner's
+  stated preferences win (any positive one stated: nothing learned is added; a form whose name, family or medium the
+  owner named: nothing learned for it). Lane C's own property tests (hard constraints, a sentence's worth stays words,
+  an explicit form is honoured, cost floors) pass with a random learned policy and random weight adjustments on every
+  plan (600 to 3,000 plans each; 0 violations); monotonicity holds under learned preferences that name no words form.
+  A learned preference FOR words is the stated exception: a person who keeps sentences gets sentences.
+- **What is and is not learned** (directive §10.4). Stored examples: the made artifacts and their specifications (the
+  artifact store; not copied). Procedural policy: the per-key tally, computed on read from `form_outcomes`. No model
+  weight is updated anywhere; no model is called. `nsf form learned` says this, and per key what was observed and
+  what it changes.
+- **Storage.** Schema 21: `form_outcomes` (artifact id, key, form, outcome, the form named, source, time), words of
+  the planner's vocabularies only (CHECK constraints), on the artifact side (no evidence-side column may name an
+  artifact: ADR-071), a row only for a made artifact the individual holds (trigger), never rewritten (trigger), bounded
+  to 100,000 rows (the oldest go first).
+- **Forget, restore, quiet, scopes.** A row goes with its artifact by trigger (`AFTER DELETE ON artifacts`), so every
+  path that removes an artifact takes its outcomes: the owner's forget of it, a root forget's cascade, a restore's or
+  rewrite's replay. `nsf artifact feedback --reset` deletes every row and writes one deletion_log row (kind
+  `form_outcomes`, with the state version) that `checkpoints._replay` applies to any older copy, as Wave 4's own-text
+  forget; archives holding rows become stale and are rewritten in place (`REWRITABLE_KINDS`). Nothing runs unasked, so
+  quiet has nothing to hold. Owner scope only: every function refuses a family or agent viewer.
+- **Reversible in one command.** `nsf config --form-learning off` (or `record`) stops applying at the next call;
+  `nsf artifact feedback --reset` removes what was learned.
+- **Gap detection** (directive §10.5): `nsf artifact gaps --report`, read-only, each line with its count and evidence
+  ids: formats nothing decodes (lane A's gap counts, with the given artifacts that ended so), made artifacts whose
+  independent check failed (by generator, with the failed rules), repairs that recur (from the stored specifications'
+  repair history), answers in words where the content was of a kind another form carries fully (from the make-time
+  rows), artifacts linked as contradicting each other. Productions that ended "could not make this well" are not
+  recorded anywhere on this branch; the report says so. No action follows from it.
+
+## Rejected alternatives
+
+- **Learning the planner's weights** (DESIGN §5's literal reading): measured, it moves almost no choice (above).
+- **A learned −1** (to stop offering a form the person keeps dismissing): that is the planner's hard exclusion; only
+  the owner states one.
+- **Choosing the majority form directly, bypassing the planner** (what the reference does, and what would score
+  higher): it would override the hard constraints and the proportion rules the brief requires the learner never to
+  reach.
+- **The back-off learner**: no visible gain over the majority rule; more to explain to the owner.
+- **Counting a passed check as a keep**: that the system could make a form is the system's own success, not the
+  person's choice.
+
+## Consequences and limits
+
+- This measures adaptation to SIMULATED, stable preferences from simulated, honest-but-noisy feedback, not benefit to a
+  person. Real people seldom give feedback; with the minimum of 2, a key changes only after two reactions to it.
+- The planner's sentence for a learned choice would credit "the preferences you have stated"; `learn.plan` replaces it
+  with one that says the choice was learned, and notes what the planner alone would have chosen.
+- Held-out has not been run (it is the main session's). The rule I propose for it: run `bench_omni_forms.py run
+  --family learn --split held_out --subject neuroscifi.acceptance.omni.subject:make_learner` once; report late_kept and
+  all_kept (mean, sd over seeds, per person); "supported" = the shipped rule beats never_learns by more than the
+  held-out visible gain (0.058 late, 0.067 overall, the benchmark's own); it is NOT claimed to beat key_majority, and
+  "better than a majority rule" is claimed only if it beats key_majority by more than 0.068 / 0.067 (not expected: the
+  development bound says it cannot).
