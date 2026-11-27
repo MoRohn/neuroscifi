@@ -682,3 +682,132 @@ def test_cross_generation_is_deterministic():
     assert [t.files for t in X.tasks()] == [t.files for t in X.tasks()]
     assert [t.files for t, _ in W.hostile_tasks()][:5] == [W._hostile(c)[0] for c in W.HOSTILE[:5]]
     assert [t.files for t in W.tasks("unknown")] == [t.files for t in W.tasks("unknown")]
+
+
+# ---- the look machinery for this split (references and probes only; never a product subject) ---------------------------
+
+CLEAN = {"git_commit": "0" * 40, "git_dirty": False}
+
+
+@pytest.fixture
+def drivers_as_they_are(monkeypatch):
+    monkeypatch.setattr(final, "pinned_drivers", lambda path=None: final.driver_hashes())
+
+
+def _script(name, *args):
+    import subprocess
+    import sys
+    return subprocess.run([sys.executable, str(ROOT / "scripts" / name), *args], capture_output=True, text=True,
+                          timeout=300, cwd=ROOT)
+
+
+def _ledger_bytes():
+    return final.LEDGER.read_bytes() if final.LEDGER.exists() else b""
+
+
+def test_run_refuses_the_third_split():
+    before = _ledger_bytes()
+    done = _script("bench_omni.py", "run", "--split", "withheld3", "--out", "/tmp/never-written.json")
+    assert done.returncode == 2 and "refused" in done.stderr and "final" in done.stderr
+    done = _script("bench_omni_forms.py", "run", "--family", "cross", "--split", "withheld3")
+    assert done.returncode == 2 and "refused" in done.stderr and "final" in done.stderr
+    assert "withheld3" not in omni.SPLITS and _ledger_bytes() == before
+
+
+@pytest.mark.parametrize("script,family,other", [("bench_omni.py", "hostile", "intake"),
+                                                 ("bench_omni_forms.py", "cross", "forms")])
+def test_final_on_the_third_split_refuses_before_recording(tmp_path, script, family, other):
+    before = _ledger_bytes()
+    base = ["final", "--split", "withheld3", "--subject", "today"]
+    done = _script(script, *base, "--family", family, "--note", "  ", "--out", str(tmp_path / "x.json"))
+    assert done.returncode == 2 and "note" in done.stderr
+    inside = ROOT / "omni_w3_should_not_exist.json"
+    done = _script(script, *base, "--family", family, "--note", "t", "--out", str(inside))
+    assert done.returncode == 2 and "inside the checkout" in done.stderr and not inside.exists()
+    done = _script(script, *base, "--family", other, "--note", "t", "--out", str(tmp_path / "x.json"))
+    assert done.returncode == 2 and "third withheld split has only" in done.stderr
+    assert not (tmp_path / "x.json").exists() and _ledger_bytes() == before
+
+
+def test_check_on_the_third_split(monkeypatch, drivers_as_they_are):
+    final.check("a note", ["unknown", "hostile", "cross"], CLEAN, split="withheld3")          # the pins pass
+    with pytest.raises(final.Refused, match="clean and committed"):
+        final.check("a note", ["cross"], {"git_commit": "a", "git_dirty": True}, split="withheld3")
+    with pytest.raises(final.Refused, match="family"):
+        final.check("a note", ["forms"], CLEAN, split="withheld3")
+    with pytest.raises(final.Refused, match="unknown withheld split"):
+        final.check("a note", ["cross"], CLEAN, split="withheld4")
+    monkeypatch.setitem(final.WITHHELD3_SHA256, "withheld3_cross.py", "0" * 64)
+    with pytest.raises(final.Refused, match="changed"):
+        final.check("a note", ["cross"], CLEAN, split="withheld3")
+    final.check("a note", ["hostile"], CLEAN, split="withheld3")                             # the other file passes
+
+
+def test_the_ledger_line_comes_before_scoring(tmp_path, monkeypatch, drivers_as_they_are):
+    ledger = tmp_path / "ledger.jsonl"
+
+    def boom(subject):
+        raise RuntimeError("scoring started")
+    monkeypatch.setattr(final, "score_cross3", boom)
+    with pytest.raises(RuntimeError, match="scoring started"):
+        final.look(["cross"], "today", "today", "a crash still counts", script="t", ledger=ledger, env=CLEAN,
+                   split="withheld3")
+    (line,) = [json.loads(x) for x in ledger.read_text().splitlines()]
+    assert line["split"] == "withheld3" and line["withheld_file"] == "withheld3_cross.py"
+    assert line["withheld_sha256"] == PINNED["withheld3_cross.py"] and line["drivers"] == final.driver_hashes()
+
+
+def _no_case_in(text: str):
+    assert "/withheld3/" not in text
+    assert not any(f'"{c["name"]}"' in text for c in (*W.UNKNOWN, *W.HOSTILE))
+    assert not any(f'"{p["id"]}' in text or p["question"] in text for p in X.PAIRS)
+
+
+def test_the_references_on_cross(tmp_path, drivers_as_they_are):
+    ledger = tmp_path / "ledger.jsonl"
+    n_undecidable = sum(t.expect is None for t in X.tasks())
+    n_matching = sum(t.expect is True for t in X.tasks())
+    got = {}
+    for ref in ("today", "always_consistent", "always_inconsistent"):
+        got[ref] = final.look(["cross"], ref, ref, "test", script="t", ledger=ledger, env=CLEAN,
+                              split="withheld3")["families"]["cross"]
+        _no_case_in(json.dumps(got[ref]))
+    today, yes, no = got["today"], got["always_consistent"], got["always_inconsistent"]
+    assert today["correct"]["k"] == n_undecidable == 24 and today["answered"]["k"] == 0 and today["wrong"] == 0
+    assert yes["correct"]["k"] == n_matching and yes["undecidable"]["correct"]["k"] == 0
+    assert yes["wrong"] == 112 - n_matching and yes["both_twins_correct"]["k"] == 0
+    assert no["correct"]["k"] == n_matching and no["wrong"] == yes["wrong"]
+    assert set(today["by_kind"]) == set(X.KINDS) and today["split"] == "withheld3"
+
+
+def test_a_reader_of_the_bytes_scores_every_case():
+    by_files = {frozenset(p["knobs"][k] for k in p["knobs"] if isinstance(p["knobs"][k], str)
+                          and p["knobs"][k] in X.build(p, True)): p for p in X.PAIRS}
+
+    def relate(files, question):
+        pair = next(p for key, p in by_files.items() if key == frozenset(files))
+        if not X.DECIDABLE[pair["kind"]][0]:
+            return {"answer": None, "because": ["the meaning of one side is not measurable"]}
+        read = public_cross.truth_from_bytes if pair["kind"] in X.PUBLIC_KINDS else _new_kind_truth
+        return {"answer": read(pair, files), "because": ["read from both files"]}
+    out = final.score_cross3(relate)
+    assert out["correct"]["k"] == out["n_cases"] == 112 and out["wrong"] == 0
+    assert out["both_twins_correct"]["k"] == 56 and out["undecidable"]["correct"]["k"] == 24
+
+
+def test_the_refusing_probe_on_unknown_and_hostile(tmp_path, drivers_as_they_are):
+    """The harness's own refusing probe: every hostile construction refused (right), unknown exactly its floor, nothing
+    wrong; the outputs carry a breakdown by class, class names only."""
+    from neuroscifi.acceptance.omni import subject
+    out = final.look(["unknown", "hostile"], subject.get("probe:refuse"), "probe:refuse", "test", script="t",
+                     ledger=tmp_path / "ledger.jsonl", env=CLEAN, scratch=str(tmp_path), split="withheld3")
+    unknown, hostile = out["families"]["unknown"], out["families"]["hostile"]
+    assert unknown["n"] == len(W.tasks("unknown")) and unknown["wrong"] == 0
+    assert unknown["right"] == unknown["abstention_floor"] == 27
+    assert hostile["right"] == hostile["n"] == len(W.HOSTILE) and hostile["failed"] == 0
+    assert list(unknown["by_class"]) == list(W.UNKNOWN_CLASSES) and list(hostile["by_class"]) == list(W.HOSTILE_CLASSES)
+    assert sum(v["in_no_public_split"] for v in hostile["by_class"].values()) == len(W.HOSTILE_NEW_CLASSES)
+    assert all(v["right"] == v["n"] for v in hostile["by_class"].values())
+    for v in (unknown, hostile):
+        assert not {"tasks", "failures", "cases"} & set(v)
+    _no_case_in(json.dumps(out["families"]))
