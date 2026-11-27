@@ -59,6 +59,11 @@ OUTCOMES = ("right", "abstained", "wrong", "failed")
 DEV_SEEDS = range(3100, 3600)
 HELD_OUT_SEEDS = range(3600, 4100)
 WITHHELD_SEEDS = range(9100, 9600)          # reserved for the withheld lane; no case here uses them
+# Lane R's own-variant sweep (scripts/omnimind_r_evidence.py): six kinds x three seeds x up to 30 pairs, at
+# 20000 + 1000 kind + 100 seed + i. Moved here by fix lane F2 out of the withheld range (review finding B3);
+# tests/acceptance/test_omni_bench.py checks that no script or test outside the withheld machinery draws a
+# seed from HELD_OUT_SEEDS or WITHHELD_SEEDS.
+LANE_R_SWEEP_SEEDS = range(20000, 26000)
 LABEL = ("OMNIMIND benchmark: synthetic files assembled by the benchmark's own encoders from known values; offline; "
          "no model; exact comparison within stated tolerances")
 

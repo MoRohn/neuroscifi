@@ -266,6 +266,126 @@ def test_the_drivers_only_translate():
     assert findings == {rel: [] for rel in DRIVER_FILES}
 
 
+# ---- reserved seed ranges (review finding B3) -----------------------------------------------------------------------
+
+# Calls whose argument at this position (or keyword `seed`) is a seed; `P` is cross_cases.P(pid, kind, seed, ...).
+_SEED_ARG = {"rng_for": 0, "default_rng": 0, "Random": 0, "RandomState": 0, "seed": 0, "P": 2}
+# The case tables themselves own their seeds; the withheld machinery is never read here.
+_TABLES = {"cases.py", "forms_cases.py", "cross_cases.py", "learn_people.py"}
+
+
+def _int_values(node, known: dict) -> frozenset[int] | None:
+    import ast
+    if isinstance(node, ast.Constant) and type(node.value) is int:
+        return frozenset([node.value])
+    if isinstance(node, ast.Name):
+        return known.get(node.id)
+    if isinstance(node, (ast.Tuple, ast.List)) and all(isinstance(e, ast.Constant) and type(e.value) is int
+                                                         for e in node.elts):
+        return frozenset(e.value for e in node.elts)
+    if (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "range" and node.args
+            and all(isinstance(a, ast.Constant) and type(a.value) is int for a in node.args)):
+        r = range(*[a.value for a in node.args])
+        return frozenset(r) if 0 < len(r) <= 100_000 else None
+    return None
+
+
+def seed_intervals(source: str) -> list[tuple[int, int, int]]:
+    """(line, lowest, highest) of every seed expression whose values can be worked out from the source: integer
+    arithmetic over loop variables bound by `for x in range(..)`, a literal tuple or a name bound so, and parameters
+    whose default is an integer or a tuple of integers. The values are enumerated exactly (a seed that is reserved
+    only between two values it never takes is not reported). A seed that depends on anything else (a case's own
+    seed) is not reported."""
+    import ast
+    import itertools
+    tree = ast.parse(source)
+    known: dict[str, frozenset[int]] = {}
+    for _ in range(2):                                   # defaults first, then loops over them
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.For, ast.comprehension)) and isinstance(node.target, ast.Name):
+                values = _int_values(node.iter, known)
+                if values:
+                    known[node.target.id] = values
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                args = node.args.args[len(node.args.args) - len(node.args.defaults):]
+                for arg, default in zip(args, node.args.defaults):
+                    values = _int_values(default, {})
+                    if values:
+                        known[arg.arg] = values
+            elif (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                  and isinstance(node.value, ast.Constant) and type(node.value.value) is int):
+                known[node.targets[0].id] = frozenset([node.value.value])
+
+    def values(node):
+        if isinstance(node, (ast.Constant, ast.Name)):
+            return _int_values(node, known)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            inner = values(node.operand)
+            return frozenset(-v for v in inner) if inner else None
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult)):
+            a, b = values(node.left), values(node.right)
+            if not a or not b or len(a) * len(b) > 1_000_000:
+                return None
+            op = {ast.Add: int.__add__, ast.Sub: int.__sub__, ast.Mult: int.__mul__}[type(node.op)]
+            return frozenset(op(x, y) for x, y in itertools.product(a, b))
+        return None
+
+    out = []
+    for node in ast.walk(tree):
+        exprs = []
+        if isinstance(node, ast.Call):
+            func = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+            if func in _SEED_ARG and len(node.args) > _SEED_ARG[func]:
+                exprs.append(node.args[_SEED_ARG[func]])
+            exprs += [k.value for k in node.keywords if k.arg == "seed"]
+        elif isinstance(node, ast.Dict):
+            exprs += [v for k, v in zip(node.keys, node.values) if isinstance(k, ast.Constant) and k.value == "seed"]
+        for expr in exprs:
+            got = values(expr)
+            if got:
+                for name, r in (("HELD_OUT_SEEDS", omni.HELD_OUT_SEEDS), ("WITHHELD_SEEDS", omni.WITHHELD_SEEDS)):
+                    inside = sorted(v for v in got if v in r)
+                    if inside:
+                        out.append((expr.lineno, inside[0], inside[-1], name))
+                if not any(v in omni.HELD_OUT_SEEDS or v in omni.WITHHELD_SEEDS for v in got):
+                    out.append((expr.lineno, min(got), max(got), None))
+    return out
+
+
+def test_seed_intervals_are_worked_out_from_the_source():
+    src = ("def sweep(seeds=(1, 2, 3)):\n    for seed in seeds:\n        for k in range(30):\n"
+           "            P('s', 'kind', 9000 + 100 * seed + k, 'q', 'csv')\n"
+           "rng = np.random.default_rng(4100)\nr = random.Random(seed=7)\nx = {'seed': 3599}\n"
+           "y = rng_for(case['seed'])\n")
+    got = sorted(seed_intervals(src))
+    assert got == [(4, 9100, 9329, "WITHHELD_SEEDS"), (5, 4100, 4100, None), (6, 7, 7, None), (7, 3599, 3599, None)]
+    spaced = "for n in (100, 1000, 10000, 50000):\n    r = random.Random(n)\n"     # never inside: not reported
+    assert seed_intervals(spaced) == [(2, 100, 50000, None)]
+
+
+def test_no_script_or_test_draws_a_seed_from_a_reserved_range():
+    """The held-out and withheld seed ranges belong to their case tables (development seeds are for tuning). Lane R's
+    sweep used 9100-9329 before fix lane F2 moved it to LANE_R_SWEEP_SEEDS. Scope: OMNIMIND's own scripts and tests
+    (a seed elsewhere, such as another programme's test of its own, never reaches these generators)."""
+    root = Path(omni.__file__).resolve().parents[4]
+    files = [*(root / "scripts").glob("*omni*.py"), *(root / "tests" / "acceptance").glob("*omni*.py"),
+             *(root / "tests" / "artifacts").rglob("*.py")]
+    files += [p for p in Path(omni.__file__).parent.glob("*.py") if p.name not in _TABLES]
+    found, checked = [], 0
+    for path in files:
+        if "withheld" in path.name or path.name == "final.py":          # the withheld machinery is never read here
+            continue
+        for line, lo, hi, reserved in seed_intervals(path.read_text(encoding="utf-8")):
+            checked += 1
+            if reserved:
+                found.append(f"{path.relative_to(root)}:{line} seeds {lo}-{hi} in {reserved}")
+    assert checked > 10 and found == []
+    lane_r = seed_intervals((root / "scripts" / "omnimind_r_evidence.py").read_text(encoding="utf-8"))
+    sweep = [(lo, hi) for _, lo, hi, _ in lane_r if lo >= 1000]
+    assert len(sweep) == 6 and all(omni.LANE_R_SWEEP_SEEDS.start <= lo and hi < omni.LANE_R_SWEEP_SEEDS.stop
+                                   for lo, hi in sweep)
+
+
 # ---- truths against an independent reading --------------------------------------------------------------------------
 
 def _oracle_check(family_name):
