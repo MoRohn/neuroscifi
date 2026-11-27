@@ -55,8 +55,9 @@ def refuse_unsafe(container: str, offending: list[tuple[str, str]], listing: lis
     every member seen. Nothing inside has been decoded."""
     name, why = offending[0]
     more = f" (and {len(offending) - 1} more unsafe member(s))" if len(offending) > 1 else ""
-    error = Refused(f"the {container} archive is refused as a whole: member {_quoted(name)} {why}{more}; nothing "
-                    "inside was decoded", rule="unsafe_member_name")
+    # the member's name is the file's own text: it goes into the findings (the listing), never into the message
+    error = Refused(f"the {container} archive is refused as a whole: a member {why}{more}; nothing inside was "
+                    "decoded", rule="unsafe_member_name")
     error.findings = tuple(f"member {_quoted(n)}: {int(max(0, size))} bytes" for n, size in listing[:LISTING_MAX]) \
         + ((f"{len(listing) - LISTING_MAX} more member(s) not listed",) if len(listing) > LISTING_MAX else ())
     raise error

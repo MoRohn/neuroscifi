@@ -53,3 +53,16 @@ def test_the_driver_decides_nothing_itself():
     assert "scan_injection" not in names | imports
     source = SUBJECT.read_text()
     assert '"unsupported", "missing_capability"' not in source and "of_error" in source and "of_decoded" in source
+
+
+def test_what_reaches_a_terminal_is_inert():
+    from neuroscifi.artifacts import cli, inspect_cli
+    hostile = "name\x1b]0;PWNED\x07\x1b[31m y‮evil ⁦x‏"
+    assert not inspect_cli._CONTROL.search(inspect_cli._clean(hostile))
+    escaped = inspect_cli.inert_json('{"a": "' + hostile.replace("\x1b", "").replace("\x07", "") + '"}')
+    assert "‮" not in escaped and "\\u202e" in escaped and "⁦" not in escaped
+    import json
+    assert json.loads(escaped)["a"].endswith("x‏")              # the same JSON value
+    assert cli._note_label("delimiter ',': 3 fields on 100% of the first lines") == "read"
+    assert cli._note_label("a style sheet is present; it is not applied") == "not recovered"
+    assert cli._note_label("binary STL (size rule: 84 + 50 x triangles)") == "read"

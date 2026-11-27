@@ -104,7 +104,7 @@ def plist_tree(el, name: str, budget: DecodeBudget, depth: int = 0) -> Node:
         return Node(name, text.strip(), {"type": "date"})
     if tag == "string":
         return Node(name, text, {"type": "string"})
-    raise Malformed(f"unknown property-list element <{tag[:40]}>")
+    raise Malformed("the property list holds an element that is not a property-list type")
 
 
 def read_xml(data, detected, limits):

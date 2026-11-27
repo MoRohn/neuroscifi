@@ -457,8 +457,10 @@ def test_the_commands_speak_plain_words_and_json(individual, tmp_path, capsys):
     assert main(["artifact", "gaps", "--db", str(path)]) == 0
     assert main(["artifact", "forget", "--db", str(path), artifact_id]) == 0
     assert "Forgotten: 1 artifact(s)" in capsys.readouterr().out
-    assert main(["artifact", "show", "--db", str(path), artifact_id]) == 2
-    assert main(["artifact", "add", "--db", str(path), str(tmp_path / "absent.txt")]) == 1
+    # the one exit-code table (artifacts/outcome.py, fix lane F1 ruling C): an id not held is 1, a refused file is 2
+    assert main(["artifact", "show", "--db", str(path), artifact_id]) == 1
+    assert main(["artifact", "forget", "--db", str(path), artifact_id]) == 1
+    assert main(["artifact", "add", "--db", str(path), str(tmp_path / "absent.txt")]) == 2
     assert "Not kept" in capsys.readouterr().out
     with closing(store.open_existing(path)) as again:
         assert count(again, "artifacts") == 0

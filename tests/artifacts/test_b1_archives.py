@@ -44,7 +44,8 @@ def test_zip_hostile_names_and_links_refuse_the_whole_archive(b1reg):
                     symlinks=("link",))
     with pytest.raises(T.Refused) as err:
         b1reg.decode(data, name="h.zip")
-    assert err.value.rule == "unsafe_member_name" and '"../../etc/passwd"' in str(err.value)
+    # the name is the file's own text: in the findings, never in the message (fix lane F1, security N5)
+    assert err.value.rule == "unsafe_member_name" and "passwd" not in str(err.value)
     assert "climbs out" in str(err.value) and "3 more" not in str(err.value) and "2 more" in str(err.value)
     assert "nothing inside was decoded" in str(err.value)
     assert err.value.findings == ('member "../../etc/passwd": 4 bytes', 'member "/abs.txt": 1 bytes',
