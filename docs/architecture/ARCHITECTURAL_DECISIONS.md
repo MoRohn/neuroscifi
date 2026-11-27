@@ -6757,8 +6757,15 @@ undecidable "cannot" 18 of 18; cross (first split) 44/32/2 -> 64/14/0 of 78. Lan
 
 ## Rollback
 
-Revert lane FX3's commits; nothing stored changes shape (kept artifacts are re-read with the code present). The spent
-files themselves were never changed.
+Revert lane FX3's commits AND remove the relation links its comparisons recorded: a revert changes no stored shape
+(kept artifacts are re-read with the code present), but a `consistent_with` or `contradicts` link that
+`relate_cli.record_links` stored from the members, links or times comparison stays in the store. Which comparison
+decided a link is in its `how` (the deciding refs; no new column, no migration). Before reverting, for each of
+`members`, `links` and `times`:
+`PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by members` lists them (ids and bases
+only) and `... --remove` deletes exactly those links (artifacts, events and every other link stay; no event is written,
+as `artifact_events`' actions are fixed by the schema). Proved on a seeded store:
+`tests/artifacts/test_fx4_link_rollback.py`. The spent files themselves were never changed.
 
 ## ADR-081, addition (2026-11-27, lane FX3 second part, "FX4"): the first relater fixes fitted the opened cases
 
@@ -6800,5 +6807,5 @@ pairs 0 wrong (12 right, 16 cannot; 24 wrong on the first version); the lane's o
 lose right answers as expected: cross second split 96 -> 82 right (decidable 78 -> 64 of 80, 0 wrong), first split
 64 -> 58 (0 wrong); unknown 170/1/0 and hostile 62/62 unchanged. Development unchanged: 512/12/0/0, cross 72 of 72.
 Lane R's own-variant sweep: its timeline question names no artifact, so those 90 answers became "cannot".
-Rollback addendum (review): links recorded by the first version's relater (a `how` basis naming members, links or
-times) stay in a store after a revert and would have to be deleted.
+Rollback (R9): see the corrected Rollback above: links recorded by these comparisons (from the first version or this
+one) are listed and removed by naming the comparison with `scripts/omnimind_fx3/links_decided_by.py`.
