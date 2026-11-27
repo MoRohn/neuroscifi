@@ -365,3 +365,24 @@ checks all three). Cue-word purity over the withheld requests (words in at least
 - One look per mechanism, by the main session, at the end, after a pass rule is committed. The ledger's first lines
   are lane ZW's machinery check with the references only; the forms file was reworded once, before any product look,
   so four of those lines name its earlier digest.
+
+## The second withheld split: cross (lane ZW2)
+
+Written by lane ZW2 without reading product code or the first withheld files, because the relater was "not
+supported" on the first withheld split; counts and rules only. Nobody else opens `acceptance/omni/withheld2_cross.py`.
+
+- 49 pairs (98 cases), seeds from `omni.WITHHELD2_SEEDS`: 24 pairs of the six public kinds (new values) and 25 pairs
+  of six kinds no public split has. For each kind the module states whether a relater that only measures structure and
+  samples can decide it in principle: ten kinds can; two kinds (9 pairs) cannot, because one side's meaning is not
+  measurable from structure and samples. On those, the expected answer on BOTH twins is "cannot" and any answer is
+  wrong, so a guess gains nothing.
+- The twins of every pair differ in exactly one file and one value; truths are re-derived from the bytes in
+  `test_omni_withheld2.py` (the public kinds with `test_omni_cross_bench.py`'s readers, the new kinds with readers of
+  its own).
+- **The look**: `scripts/bench_omni_forms.py final --split withheld2 --family cross --subject S --note TEXT --out
+  FILE`, with the refusals and ledger of the first split (`"split": "withheld2"` on its lines). Scored by
+  `final.score_cross2`: correct when the answer equals the case's expectation; blocks for all cases, the decidable
+  cases (matching and non-matching), the undecidable cases, the kinds only this split has and each kind, with
+  `wrong` (answered and not correct) in every block. `run --split withheld2` is refused.
+- The pass rule for its look is to be committed before any product look. The ledger's first withheld2 cross lines are
+  lane ZW2's machinery check with the references (`today`, `always_consistent`, `always_inconsistent`).
