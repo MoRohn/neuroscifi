@@ -377,6 +377,11 @@ def _artifact_store():
     return artifact_store
 
 
+def _learn():
+    from ..artifacts import learn                        # lazy, as the artifact store (ADR-078)
+    return learn
+
+
 def _read_forgets(db, now, wanted=None):
     from ..webcortex.signing import FRESH_SECONDS
     settings, warnings = _live_settings(db)
@@ -422,6 +427,9 @@ def _read_forgets(db, now, wanted=None):
         if imagined.present(db) else [],
         # Artifacts the live file forgot (ADR-071): their index rows go from the copy too (artifacts/store.py).
         "artifacts": _artifact_store().read_forgotten(db),
+        # The owner's resets of the form outcomes (`nsf artifact feedback --reset`, ADR-078): no tombstone, so the
+        # deletion log is the record, as for own text above (artifacts/learn.replay).
+        "form_outcomes": _learn().read_resets(db),
         # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
         "streams": set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()),
         # Retained raw audio likewise: a row the live instance no longer holds was forgotten, swept or expired.
@@ -634,6 +642,8 @@ def _replay(copy, forgets, now):
     # what the live tombstones already removed is gone, so this finds only what they do not name.
     imagined_removed += imagined.remove_naming(copy, named, now)[0]
     artifacts_removed = _artifact_store().replay(copy, forgets.get("artifacts", []) if forgets else [], now)
+    # (an artifact removed above took its form outcomes with it, by schema 21's trigger)
+    outcomes_removed = _learn().replay(copy, forgets.get("form_outcomes") if forgets else None, version)
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
@@ -647,7 +657,8 @@ def _replay(copy, forgets, now):
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked,
             "imagined_removed": imagined_removed,
-            **({"artifacts_removed": artifacts_removed} if artifacts_removed else {})} | (
+            **({"artifacts_removed": artifacts_removed} if artifacts_removed else {}),
+            **({"form_outcomes_removed": outcomes_removed} if outcomes_removed else {})} | (
                 {"own_text_removed": own_text_removed} if own_text else {})
 
 
@@ -659,7 +670,8 @@ def _replay(copy, forgets, now):
 # stale until `rebuild` replaces them.
 REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND,
                               "artifact",        # artifacts/store.py DELETION_KIND: replay() is its whole cascade
-                              "own_text"})       # webcortex.emitted.DELETION_KIND: its replay is the whole removal
+                              "own_text",        # webcortex.emitted.DELETION_KIND: its replay is the whole removal
+                              "form_outcomes"})  # artifacts/learn.DELETION_KIND: its replay is the whole removal
 JOURNAL_SUFFIX = ".rewrite"
 
 

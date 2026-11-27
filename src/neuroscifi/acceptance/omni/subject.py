@@ -998,6 +998,60 @@ def choose_form(view) -> str:
     return "+".join(FORMS_TO_BENCH[f] for f in plan.chosen)
 
 
+# ---- the learn family's product subject: lane L's learner (artifacts/learn.py) through the frozen planner ----------
+# `bench_omni_forms.py run --family learn --subject neuroscifi.acceptance.omni.subject:make_learner`. SIMULATED people:
+# this measures adaptation to simulated preferences, not benefit to a person. The driver maps names only (the same
+# FORMS_TO_BENCH / FORMS_FROM_BENCH as the forms subject) and passes the case's candidates as what can be made here
+# (the generators of those forms); the planner decides, and the product's Tally learns from the person's reactions
+# exactly as `nsf artifact feedback` rows are counted (learn.plan_with, learn.Tally, mode "apply").
+
+def _learn_context(P, case):
+    generators = sorted({P.FORMS[FORMS_FROM_BENCH[c]].generator for c in case["candidates"]
+                         if c in FORMS_FROM_BENCH and P.FORMS[FORMS_FROM_BENCH[c]].generator})
+    return P.Context(device=case["device"], generators=tuple(generators))
+
+
+def _learn_shape(case):
+    ContentShape = importlib.import_module("neuroscifi.artifacts.types").ContentShape
+    c = case["content"]
+    return ContentShape(kinds=tuple(c["kinds"]), n_items=c["n_items"], n_series=c["n_series"],
+                        has_time=c["has_time"], has_space=c["has_space"], has_parameters=c["has_parameters"],
+                        duration_s=c["duration_s"], text_chars=c["text_chars"])
+
+
+class ProductLearner:
+    """One simulated person's learner: plan, apply what was learned for the plan's key, learn from the reaction."""
+
+    def __init__(self, mode: str = "apply"):
+        self.P = importlib.import_module("neuroscifi.artifacts.forms")
+        self.L = importlib.import_module("neuroscifi.artifacts.learn")
+        self.tally, self.mode, self._shown = self.L.Tally(), mode, {}
+
+    def choose(self, case) -> str:
+        plan, learned = self.L.plan_with(lambda key: self.L.Learned.of(self.tally.policy(key), self.mode),
+                                         self.P.Request(), (_learn_shape(case),), _learn_context(self.P, case))
+        self._shown[case["index"]] = (learned.key, plan.chosen)
+        return "+".join(FORMS_TO_BENCH[f] for f in plan.chosen)
+
+    def feedback(self, case, form, outcome) -> None:
+        key, chosen = self._shown.pop(case["index"])
+        if not chosen:
+            return
+        by = FORMS_FROM_BENCH.get(outcome.get("by")) if outcome["outcome"] == "replaced" else None
+        reaction = outcome["outcome"] if outcome["outcome"] != "replaced" or by else "dismissed"
+        self.tally.add(*key, "+".join(chosen), reaction, by)
+
+
+def make_learner():
+    """The zero-argument factory the learn family takes: lane L's shipped rule, applied."""
+    return ProductLearner("apply")
+
+
+def make_planner_only():
+    """The same driver with nothing learned applied (form_learning "record"): the planner's own choices."""
+    return ProductLearner("record")
+
+
 SUBJECTS = {"today": TodaySubject, "artifacts": ArtifactsSubject}
 
 

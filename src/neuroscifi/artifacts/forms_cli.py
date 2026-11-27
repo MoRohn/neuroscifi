@@ -35,6 +35,12 @@ def register(sub):
                    help="also list up to N forms that differ in kind")
     p.add_argument("--json", action="store_true", help="print the whole plan as JSON")
     p.set_defaults(handler=_plan)
+    from ..instance import store
+    q = ops.add_parser("learned", help="what was learned from your reactions to made forms, per kind of content, "
+                                       "purpose and device, and what it changes (ADR-078)")
+    store.add_db_argument(q)
+    q.add_argument("--json", action="store_true", help="print the record as JSON")
+    q.set_defaults(handler=_learned)
 
 
 def _fail(message: str) -> int:
@@ -138,4 +144,45 @@ def _plan(a) -> int:
         print("Different kinds of form that would also work:")
         for cand in others:
             print(f"  {forms.label_of(cand.forms)} ({cand.total:.2f})")
+    return 0
+
+
+_MODE_WORDS = {"off": "Form learning is off: nothing is recorded and nothing learned is used "
+                      "(`nsf config --form-learning record` or `apply`).",
+               "record": "Form learning records your reactions and uses nothing learned "
+                         "(`nsf config --form-learning apply` uses it).",
+               "apply": "Form learning is on: what was learned is used when a form is chosen."}
+
+
+def _learned(a) -> int:
+    import sqlite3
+    from ..instance import store
+    from ..instance.errors import InstanceError
+    from . import learn
+    try:
+        db = store.open_existing(store.resolve_db(a))
+    except (InstanceError, sqlite3.Error) as error:
+        print(f"nsf: {error}", file=sys.stderr)
+        return 2
+    try:
+        value = learn.report(db)
+    except (ArtifactError, InstanceError, sqlite3.Error) as error:
+        print(f"nsf: {error}", file=sys.stderr)
+        return 2
+    finally:
+        db.close()
+    if a.json:
+        print(json.dumps(value, indent=2, sort_keys=True))
+        return 0
+    print(_MODE_WORDS[value["mode"]])
+    print("What is learned here: " + value["what_is_learned"]["procedural_policy"] + ".")
+    print("What is not: the examples (" + value["what_is_learned"]["stored_examples"] + "); model weights ("
+          + value["what_is_learned"]["model_weights"] + ").")
+    print(f"A kind of content acts on what was learned from {value['min_evidence']} reactions (a replacement counts "
+          f"2). {value['rows']} reaction(s) and check(s) recorded (at most {value['max_rows']}).")
+    if not value["keys"]:
+        print("Nothing has been recorded yet.")
+    for key in value["keys"]:
+        print(f"  {key['words']}.")
+    print("To undo: `nsf config --form-learning off` stops using it; `nsf artifact feedback --reset` removes it.")
     return 0
