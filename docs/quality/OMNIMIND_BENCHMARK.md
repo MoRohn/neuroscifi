@@ -172,7 +172,7 @@ refused where an answer was expected) / wrong / failed, of n:
 | transform | 8 / 0 / 0 / 0 of 8 | 8 / 0 / 0 / 0 of 8 | `505b55b` | generalizes, **with lane P's disclosure**: lane P once saw the held-out transform rows, so this proves less |
 | **all** | **512 / 12 / 0 / 0 of 524** | **510 / 18 / 0 / 0 of 528** | | no fabrication, no crash: holds in every family |
 
-Today's system on the held-out split: 55 right (52 of them the floor), 1 wrong, 1 crash. Every held-out run was
+Today's system on the held-out split: 55 right (25 intake answers and 30 abstentions where abstaining is right; the floor is 52), 1 wrong, 1 crash. Every held-out run was
 taken once, by the main session, on a clean tree, after its rule was written in the main session's log; the files,
 each rule and result quoted verbatim, the commits and the verdicts are in `evidence/omnimind_heldout/` (README). That
 log is not in the repository, so **the order of rule and run cannot be verified from git**; the withheld looks are
