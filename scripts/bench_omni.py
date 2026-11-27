@@ -6,6 +6,7 @@
     bench_omni.py hash [--split development|held_out]
     bench_omni.py list
     bench_omni.py final --family F [--family F ...] --subject today|artifacts --note TEXT --out FILE [--scratch DIR]
+    bench_omni.py pin-driver
 
 `run` writes a summary (per family: counts with denominators, the fabrication count on its own, per-task outcomes,
 cost) and refuses to write inside the repository unless --evidence is given (the recorded baseline is
@@ -15,9 +16,15 @@ families, the measures, the outcomes and the rules for the withheld split.
 
 `final` is THE look at the withheld split (acceptance/omni/final.py; one look per mechanism, by the main session, at
 the end): it refuses a missing or blank note, an --out inside this checkout or not writable, another tree's source, a
-dirty or uncommitted tree and a changed withheld file; then it appends one line per family to
+dirty or uncommitted tree, a changed withheld file and a driver (acceptance/omni/subject.py,
+scripts/omni_forms_driver.py) that differs from its pin in docs/quality/evidence/omnimind_driver_pins.json; then it
+appends one line per family to
 docs/quality/evidence/omnimind_final_uses.jsonl BEFORE it loads or scores anything, and writes summaries only.
 `run` refuses the withheld split: only `final` loads it.
+
+`pin-driver` prints that pin file's content with the drivers' current SHA-256 and the commit; it writes nothing. The
+main session redirects it into docs/quality/evidence/omnimind_driver_pins.json and commits it deliberately, once the
+driver is final, before a look.
 """
 from __future__ import annotations
 
@@ -136,6 +143,12 @@ def cmd_final(args) -> int:
     return 0
 
 
+def cmd_pin_driver(args) -> int:
+    from neuroscifi.acceptance.omni import final
+    print(json.dumps(final.pin_document(REPO, _commit()), indent=1, sort_keys=True))
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -159,6 +172,8 @@ def main(argv=None) -> int:
     fin.add_argument("--out", required=True, help="a path OUTSIDE this checkout")
     fin.add_argument("--scratch", default=None, help="directory for the hostile family's per-task folders")
     fin.set_defaults(func=cmd_final)
+    pin = sub.add_parser("pin-driver", help="print the drivers' pin file with their current SHA-256 (writes nothing)")
+    pin.set_defaults(func=cmd_pin_driver)
     args = parser.parse_args(argv)
     return args.func(args)
 

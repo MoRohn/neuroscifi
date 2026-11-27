@@ -274,6 +274,17 @@ Written by lane ZW without reading any product code; counts and rules only here.
 - This supersedes two details of the rules above: the ledger is `omnimind_final_uses.jsonl` (not
   `omnimind_withheld_uses.jsonl`), and `bench_omni.py` now has the `final` subcommand that rule 2 said it lacked.
   The rest stands: one look per mechanism, by the main session, at the end, after a pass rule is committed.
+- **The driver is pinned for the looks** (fix lane F2, review finding B4). The drivers translate the product's
+  answers into the benchmark's outcomes (`acceptance/omni/subject.py`, `scripts/omni_forms_driver.py`), so
+  `final.check` also refuses a look when either driver's SHA-256 differs from its pin in the tracked file
+  `docs/quality/evidence/omnimind_driver_pins.json`, or is not pinned there (as committed by lane F2: both null, so
+  every look is refused until the main session runs `scripts/bench_omni.py pin-driver`, which prints the file with
+  the current hashes and writes nothing, after lane F1's driver rewrite, and commits it). Each ledger line now also
+  records the drivers' SHA-256 (`drivers`). `test_omni_bench.py::test_the_drivers_only_translate` checks that a driver
+  imports no `make` internal or private product name, never calls `scan_injection`, decodes with no limits of its
+  own, chooses no outcome by an error's words or from a partial decode, and names no task or case; today's
+  `subject.py` fails it (it calls `scan_injection`, maps reasons and partial decodes), so it is marked
+  expected-to-fail ("waits for lane F1's driver") for the main session to unmark at merge.
 - The ledger's first lines are lane ZW's machinery check, every one noted "machinery check: references only": the
   unchanged system (`today`) on the seven families and the references of the forms, cross and learn families. No
   product subject has looked.

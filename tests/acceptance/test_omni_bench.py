@@ -4,6 +4,7 @@ judge against a reference maker and its deliberately flawed variants (omni_refer
 isolation of hostile tasks (probe subjects), and the two subjects' honesty (today's answers; "not built")."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import tempfile
 
@@ -152,6 +153,117 @@ def test_nothing_in_the_benchmark_imports_the_product_except_the_driver():
                 assert not (node.module or "").startswith("neuroscifi"), (path.name, node.module)
             elif isinstance(node, ast.Import):
                 assert not any(a.name.startswith("neuroscifi") for a in node.names), path.name
+
+
+DRIVER_FILES = ("src/neuroscifi/acceptance/omni/subject.py", "scripts/omni_forms_driver.py")
+_ID_LIKE = re.compile(r"(intake|honest|unknown|compound|hostile|made|transform|forms|cross|learn)/"
+                      r"(development|held_out|withheld)\b")
+
+
+def _case_names() -> set[str]:
+    """Every case name and id in the frozen development and held-out tables (the withheld files are never read)."""
+    from neuroscifi.acceptance.omni import cross_cases, forms_cases, learn_people
+    found: set[str] = set()
+
+    def walk(value):
+        if isinstance(value, dict):
+            for k, v in value.items():
+                if k in ("name", "id") and isinstance(v, str) and len(v) >= 4:
+                    found.add(v)
+                walk(v)
+        elif isinstance(value, (list, tuple)):
+            for v in value:
+                walk(v)
+
+    for module in (cases, forms_cases, cross_cases, learn_people):
+        for name, value in vars(module).items():
+            if not name.startswith("_"):
+                walk(value)
+    return found
+
+
+def driver_findings(source: str, names: set[str]) -> list[str]:
+    """What a benchmark driver may not do (review finding B4): the drivers may import the product, but they only
+    TRANSLATE its answers. They may not import `make` internals or a private product name, call scan_injection,
+    decode with limits of their own, choose an outcome by matching an error's words, turn a partial decode into an
+    outcome themselves, or name a task, a case or a split's task path."""
+    import ast
+    out = []
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            module = node.module or "" if isinstance(node, ast.ImportFrom) else ""
+            for alias in node.names:
+                full = f"{module}.{alias.name}" if module else alias.name
+                if "artifacts.make." in full or (module.endswith("artifacts.make") and alias.name.startswith("_")):
+                    out.append(f"imports a make internal: {full}")
+                if "artifacts" in module and alias.name.startswith("_"):
+                    out.append(f"imports a private product name: {full}")
+                if alias.name == "scan_injection":
+                    out.append("imports scan_injection")
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            v = node.value
+            if v.startswith("neuroscifi.artifacts.make.") or v.startswith("neuroscifi.artifacts._"):
+                out.append(f"loads a product internal: {v}")
+            if _ID_LIKE.search(v) or v in names:
+                out.append(f"names a task or case: {v[:60]!r}")
+        elif isinstance(node, (ast.Name, ast.Attribute)):
+            if (node.id if isinstance(node, ast.Name) else node.attr) == "scan_injection":
+                out.append("calls scan_injection")
+        if isinstance(node, ast.Call):
+            func = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+            if func == "Limits" and (node.args or node.keywords):
+                out.append("builds Limits of its own")
+            if func == "decode" and any(k.arg == "limits" for k in node.keywords):
+                out.append("decodes with limits of its own")
+        if isinstance(node, ast.Compare):
+            sides = [node.left, *node.comparators]
+            words = any(isinstance(s, ast.Constant) and isinstance(s.value, str) or isinstance(s, (ast.Tuple, ast.List,
+                        ast.Set)) and s.elts and all(isinstance(e, ast.Constant) for e in s.elts) for s in sides)
+            reason = any(isinstance(s, ast.Name) and s.id in ("reason", "message")
+                         or isinstance(s, ast.Attribute) and s.attr in ("reason", "message", "args")
+                         or isinstance(s, ast.Call) and getattr(s.func, "id", "") == "str" for s in sides)
+            if words and reason:
+                out.append(f"chooses by an error's words (line {node.lineno})")
+        if isinstance(node, ast.If) and any(isinstance(n, ast.Attribute) and n.attr == "partial"
+                                            for n in ast.walk(node.test)):
+            if any(isinstance(n, ast.Constant) and n.value in ("refused", "cannot") for b in node.body
+                   for n in ast.walk(b)):
+                out.append(f"turns a partial decode into an outcome (line {node.lineno})")
+    return out
+
+
+def test_driver_rules_catch_each_way_of_deciding():
+    names = {"line-one-series"}
+    bad = {
+        "from neuroscifi.artifacts.make import _g1": "make internal",
+        "import neuroscifi.artifacts.make.svg": "make internal",
+        "m = importlib.import_module('neuroscifi.artifacts.make._g2')": "product internal",
+        "from neuroscifi.webcortex.safety import scan_injection": "scan_injection",
+        "x = safety.scan_injection(text)": "scan_injection",
+        "d = adapters.decode(b, limits=types.Limits(max_members=9))": "limits of its own",
+        "status = 'cannot' if reason in ('unsupported',) else 'refused'": "error's words",
+        "if 'bomb' in str(error): pass": "error's words",
+        "if decoded.partial:\n    return Answer(None, 'refused', 'partial')": "partial decode",
+        "if task.id == 'made/development/line-one-series': pass": "names a task",
+        "if case == 'line-one-series': pass": "names a task",
+    }
+    for source, expected in bad.items():
+        assert any(expected in f for f in driver_findings(source, names)), source
+    fine = ("from neuroscifi.artifacts import adapters, make, outcome\n"
+            "a = outcome.answer(adapters.decode(b, name=n, declared=d))\n"
+            "made = make.make(spec, types.Limits())\nif split != 'development': raise SystemExit(1)")
+    assert driver_findings(fine, names) == []
+
+
+@pytest.mark.xfail(strict=True, reason="waits for lane F1's driver: today's subject.py calls scan_injection, maps "
+                                       "error reasons and partial decodes to outcomes itself (review B4); the main "
+                                       "session removes this mark at merge")
+def test_the_drivers_only_translate():
+    names = _case_names()
+    root = Path(omni.__file__).resolve().parents[4]
+    findings = {rel: driver_findings((root / rel).read_text(encoding="utf-8"), names) for rel in DRIVER_FILES}
+    assert findings == {rel: [] for rel in DRIVER_FILES}
 
 
 # ---- truths against an independent reading --------------------------------------------------------------------------
