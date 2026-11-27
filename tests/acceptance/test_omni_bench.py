@@ -256,9 +256,6 @@ def test_driver_rules_catch_each_way_of_deciding():
     assert driver_findings(fine, names) == []
 
 
-@pytest.mark.xfail(strict=True, reason="waits for lane F1's driver: today's subject.py calls scan_injection, maps "
-                                       "error reasons and partial decodes to outcomes itself (review B4); the main "
-                                       "session removes this mark at merge")
 def test_the_drivers_only_translate():
     names = _case_names()
     root = Path(omni.__file__).resolve().parents[4]
