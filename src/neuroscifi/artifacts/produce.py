@@ -1278,16 +1278,19 @@ def converge(candidates) -> tuple[int | None, str]:
 
 
 def _failure_words(candidates) -> str:
+    """One sentence (code review L3): each form that was tried, and why it was not good enough to keep."""
     parts = []
     for c in candidates:
         label = forms.label_of(tuple(c["forms"])) if c["forms"][0] in forms.FORMS else c["forms"][0]
         if c.get("cannot") and not c.get("verdict"):
-            parts.append(f"{label}: {c['cannot']}")
+            parts.append(f"{label} was tried and could not be made ({str(c['cannot']).rstrip('.')})")
         elif c.get("verdict"):
             failed = [f for f in c["verdict"]["findings"] if not f["passed"]]
-            parts.append(f"{label}: the independent check found " + "; ".join(
-                f["detail"] for f in failed[:3]) if failed else f"{label}: the independent check failed")
-    return ("Could not make this well. " + " ".join(p.rstrip(".") + "." for p in parts))[:1200]
+            parts.append(f"{label} was made, but the independent check found that it is not good enough ("
+                         + "; ".join(str(f["detail"]).rstrip(".") for f in failed[:3]) + ")" if failed else
+                         f"{label} was made, but the independent check failed")
+    return ("Could not make this well: " + ("; ".join(parts) or "nothing could be tried")
+            + ", so nothing was kept.")[:1200]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1339,9 +1342,12 @@ def remake(db, artifact_id: str, *, form: str | None = None, options: dict | Non
            "candidates": [{"forms": [old.get("spec")], "form": old.get("spec"), "rounds": result["rounds"]}]}
     if result["made"] is None or not result["verdict"].ok:
         rec["outcome"] = "could not make this well"
-        rec["why"] = ("Could not make this well: " + "; ".join(
-            f["detail"] for f in (_verdict_summary(result["verdict"])["findings"] if result["verdict"] else [])
-            if not f["passed"])[:800] or (result["refusal"] or {}).get("message", "nothing could be made"))
+        found = "; ".join(str(f["detail"]).rstrip(".") for f in (_verdict_summary(result["verdict"])["findings"]
+                                                                  if result["verdict"] else []) if not f["passed"])
+        rec["why"] = ("Could not make this well: it was made again with the changed options, but "
+                      + (f"the independent check found that it is not good enough ({found[:800]})" if found else
+                         f"it could not be made ({(result['refusal'] or {}).get('message', 'nothing was made')})")
+                      + ", so nothing was kept.")
         rec["steps"] = run.steps
         return Production("failed", bound_record(rec))
     made, new_spec = result["made"], Spec.from_dict(result["made"].spec.to_dict())
@@ -1390,6 +1396,33 @@ def carried_words(carried: float, record: dict, where: str) -> str:
             "as said above, not the whole source)")
 
 
+FORESIGHT_WORDS = {"bytes": "its size", "seconds": "the time it took", "over_budget": "going over the budget",
+                   "label_overlap": "labels overlapping", "too_long": "being too long"}
+
+
+def _foreseen_word(what: str) -> str:
+    return FORESIGHT_WORDS.get(what, str(what).replace("_", " "))
+
+
+def made_instead(record: dict) -> str:
+    """When the form made is not the one planned (a fallback: the planned form has no maker here, or could not be
+    made from this content), the sentence that says so (code review L3); else ""."""
+    made, cands = record.get("made") or {}, record.get("candidates") or []
+    chosen = list((record.get("plan") or {}).get("chosen") or [])
+    winner = next((c for c in cands if c.get("fallback") and c.get("forms", [None])[0] == made.get("planner_form")),
+                  None)
+    if not chosen or winner is None:
+        return ""
+
+    def label(fs):
+        return forms.label_of(tuple(fs)) if all(f in forms.FORMS for f in fs) else str(fs[0])
+    tried = next((c for c in cands if c.get("forms") == chosen), None)
+    why = ("nothing here can make one" if chosen[0] not in B.BUILDERS else
+           f"it could not be made from this content ({str(tried['cannot']).rstrip('.')})" if tried and
+           tried.get("cannot") else "it could not be made from this content")
+    return f"Planned {label(chosen)}; {why}, so {label(winner['forms'])} was made instead."
+
+
 def why_text(record: dict, *, short: bool = False) -> str:
     """The production record in plain words: what was asked, what the sources were measured to be, which forms were
     considered with their scores, what was foreseen, what was made, what the independent check found, what was
@@ -1414,6 +1447,8 @@ def why_text(record: dict, *, short: bool = False) -> str:
     plan = record.get("plan") or {}
     if plan:
         lines.append(f"Planned: {plan.get('reason')}")
+        if made_instead(record):
+            lines.append(f"Made instead: {made_instead(record)}")
         if plan.get("learned"):
             lines.append(f"Learned: {plan['learned']}")
         if not short:
@@ -1464,8 +1499,10 @@ def why_text(record: dict, *, short: bool = False) -> str:
                      (f"; style notes: {', '.join(check['style_failed'])}" if check.get("style_failed") else ""))
     if record.get("foresight") and not short:
         lines.append("Foreseen against found: " + "; ".join(
-            f"{p['what']} {p['outcome']}" for p in record["foresight"]))
-    if record.get("outcome") in ("words", "could not make this well", "nothing to make"):
+            f"{_foreseen_word(p['what'])}: {p['outcome']}" for p in record["foresight"]))
+    if record.get("outcome") == "nothing to make":     # each source's reason is said once, above (code L3)
+        lines.append("Nothing was made: none of the sources could be read as content, for the reason given above.")
+    elif record.get("outcome") in ("words", "could not make this well"):
         lines.append(record.get("why", ""))
         if record.get("next"):
             lines.append(f"The next form to try: {record['next']['label']} (`--form {record['next']['forms'][0]}`).")
@@ -1476,4 +1513,5 @@ def why_text(record: dict, *, short: bool = False) -> str:
 
 
 __all__ = ["Given", "LABEL", "Production", "ProductionStopped", "RECORD", "bound_record", "carried_words", "converge",
-           "foresight_pairs", "interpret", "parse_options", "produce", "remake", "used_part_lines", "why_text"]
+           "foresight_pairs", "interpret", "made_instead", "parse_options", "produce", "remake", "used_part_lines",
+           "why_text"]

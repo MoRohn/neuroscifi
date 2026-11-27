@@ -146,7 +146,7 @@ def check(data: bytes, *, name: str | None = None, declared: str | None = None, 
         raise _refused(limits, len(data), memory, "the reading process ended without an answer")
     if verdict.get("status") == "error" and verdict.get("reason") == "timeout":
         # the decoder's own deadline stopped it: the same decode here would only spend that time again
-        raise ArtifactError(f"decoding took longer than the limit of {limits.max_seconds:g} s", reason="timeout")
+        raise ArtifactError(f"decoding took longer than the limit of {limits.max_seconds:.3g} s", reason="timeout")
     if sorted(str(e) for e in verdict.get("external") or ()) != sorted(external):
         raise Refused("an external reader you approved could not be loaded in the separate process that reads files "
                       "safely, so it is not used: the file is kept, not read", rule="external_unguarded")

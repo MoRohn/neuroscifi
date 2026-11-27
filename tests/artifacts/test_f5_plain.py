@@ -164,3 +164,74 @@ def test_make_exits_with_the_outcome_tables_code(held_one, tmp_path, monkeypatch
         out = capsys.readouterr().out
         assert rc == outcome.exit_code(expected), (sources, extra, out)
     assert outcome.of_production("failed", {}) == outcome.CANNOT
+
+
+# Item 4 (code L3): plain words
+
+
+def _stl(n: int) -> bytes:
+    tris = np.random.default_rng(4).normal(0, 5, (n, 3, 3)).astype(np.float32)
+    rec = np.zeros(len(tris), dtype=[("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
+    rec["v"] = tris
+    return b"binary".ljust(80, b" ") + struct.pack("<I", len(tris)) + rec.tobytes()
+
+
+def test_the_why_says_which_form_was_made_when_the_planned_one_has_no_maker():
+    made = P.produce(None, "show me the shape", [P.Given("shape.stl", _stl(200))])
+    assert made.status == "made", made.record.get("candidates")
+    instead = P.made_instead(made.record)
+    planned = made.record["plan"]["chosen"]
+    assert planned[0] not in B.BUILDERS
+    assert instead.startswith(f"Planned {P.forms.label_of(tuple(planned))}; nothing here can make one, so ")
+    assert instead.endswith(" was made instead.")
+    assert f"Made instead: {instead}" in P.why_text(made.record)
+    assert instead in _summary(made)
+
+
+def test_failure_is_one_sentence_naming_what_was_tried_and_why_not():
+    words = P._failure_words([
+        {"forms": ["bar_chart"], "verdict": {"findings": [{"passed": False, "detail": "the labels overlap."}]}},
+        {"forms": ["tree_diagram"], "cannot": "the diagram needs 9000 x 300 px, more than 4000"}])
+    assert words == ("Could not make this well: a bar chart was made, but the independent check found that it is not "
+                     "good enough (the labels overlap); a tree diagram was tried and could not be made (the diagram "
+                     "needs 9000 x 300 px, more than 4000), so nothing was kept.")
+
+
+def test_no_rule_names_or_long_fractions_in_plain_output(monkeypatch):
+    made = P.produce(None, "show the value over t", [P.Given("rows.csv", _rows(50))])
+    text = P.why_text(made.record)
+    assert "Foreseen against found:" in text
+    assert not any(name in text for name in ("label_overlap", "over_budget", "too_long"))
+    wide = ",".join(f"c{i}" for i in range(16_385)) + "\n"
+    refused = P.produce(None, "show it", [P.Given("wide.csv", wide.encode())])
+    why = refused.record["sources"][0]["why"]
+    assert why and not why.startswith("too_large") and ":" not in why.split(" ")[0]
+    from neuroscifi.artifacts.safe import Deadline
+    from neuroscifi.artifacts.types import ArtifactError
+    late = Deadline(0.99998, clock=iter([0.0, 5.0]).__next__)
+    try:
+        late.check()
+    except ArtifactError as error:
+        assert str(error) == "decoding took longer than the limit of 1 s"
+    else:
+        raise AssertionError("the deadline did not stop")
+
+
+def test_the_facts_say_how_once_for_the_facts_that_share_it():
+    value = {"id": "artifact-x", "provenance": "given by the owner", "decoded": True,
+             "facts": [{"name": "a", "value": 1, "how": "counted"}, {"name": "b", "value": 2, "how": "counted"},
+                       {"name": "c", "value": 3.5, "how": "measured"}]}
+    assert cli._plain("facts", value) == ("artifact-x (given by the owner)\n  counted:\n    a: 1\n    b: 2\n"
+                                          "  measured:\n    c: 3.5")
+
+
+def test_form_plan_takes_r(capsys):
+    from neuroscifi.cli import build_parser
+    assert build_parser().parse_args(["form", "plan", "-r", "how did it change"]).request == "how did it change"
+
+
+def test_the_settings_help_says_what_memory_a_largest_file_can_need():
+    from neuroscifi.cli import build_parser
+    sub = next(a for a in build_parser()._subparsers._group_actions[0].choices["config"]._actions
+               if "--artifact-max-mib" in a.option_strings)
+    assert "896 MiB at 64" in sub.help and "measured: 344 MiB" in sub.help

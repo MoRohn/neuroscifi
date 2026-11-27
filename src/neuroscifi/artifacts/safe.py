@@ -100,7 +100,7 @@ class Deadline:
 
     def check(self, where: str = "decoding") -> None:
         if self.elapsed() > self.seconds:
-            raise ArtifactError(f"{where} took longer than the limit of {self.seconds:g} s", reason="timeout")
+            raise ArtifactError(f"{where} took longer than the limit of {self.seconds:.3g} s", reason="timeout")
 
 
 class Budget:
