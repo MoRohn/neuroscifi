@@ -16,7 +16,7 @@ its addition of 2026-11-27 in [../architecture/ARCHITECTURAL_DECISIONS.md](../ar
   recorded or measured.
 - **Every figure is of SIMULATED people** with hidden, stable preferences and simulated feedback. None measures
   benefit to a real person.
-- **On the withheld simulated people (one look, on `55f89be`) it is supported on unseen cases**: late / all kept 0.713 /
+- **On the withheld simulated people (one look, on `55f89be`) it is VOID by the rule (two controls were not run; figures reported as measured, establishing nothing under the rule)**; as measured: late / all kept 0.713 /
   0.656 against the planner alone 0.440 / 0.448 (gains 0.273 and 0.208 against the rule's thresholds 0.088 and 0.039),
   and **0.118 below the benchmark's own majority rule** late (key_majority 0.831 / 0.756). It stays off.
 - **On held-out it beat the planner alone** by more than the margins written before the run (+0.260 late, +0.203 all)
@@ -77,7 +77,7 @@ share of made forms the simulated person kept; "late" is cycles 5 to 8. Mean (sd
 - **The withheld look** (taken once, on `55f89be`; `docs/quality/evidence/omnimind_looks/summary.json`): the rule was
   "supported on unseen cases (simulated people)" iff both gains exceed 2 times the square root of 2 times the larger
   sd over seeds. Result: shipped rule 0.713 / 0.656, planner alone 0.440 / 0.448, gains 0.273 / 0.208 against
-  thresholds 0.088 / 0.039: **supported on unseen simulated people**. Beside it: never learns 0.444 / 0.454,
+  thresholds 0.088 / 0.039: **VOID by the rule (two controls were not run; figures reported as measured, establishing nothing under the rule)** (the forms oracle and the identical-rerun control were not run). Beside it: never learns 0.444 / 0.454,
   key_majority 0.831 / 0.756, oracle 0.891 / 0.894 (the control order oracle >= key_majority >= never learns held).
   The shipped rule is 0.118 below key_majority late: "better than a majority rule" is not claimed. `form_learning`
   stays off. Nothing here is a real person.
@@ -110,5 +110,5 @@ the owner, not a learning signal.
 | criterion (directive §18) | status | evidence |
 |---|---|---|
 | Knowledge can be accumulated across different modalities | **Unverified** | nothing measures accumulation; nothing decoded enters memory by design |
-| Recursive improvement produces measurable benefits | **Partially implemented** | learn held-out +0.260 / +0.203 and withheld +0.273 / +0.208 over the planner alone, SIMULATED; below key_majority (withheld 0.118 late); `form_learning` off by default |
+| Recursive improvement produces measurable benefits | **Partially implemented** | learn held-out +0.260 / +0.203 over the planner alone, and withheld +0.273 / +0.208 as measured (VOID by the rule), SIMULATED; below key_majority (withheld 0.118 late); `form_learning` off by default |
 | Creative synthesis has demonstrably improved | **Unverified** | no measure exists |

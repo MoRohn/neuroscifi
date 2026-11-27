@@ -79,6 +79,23 @@ about 131,000 INI lines, 335,000 JavaScript or requirements lines, 1.5 million M
 refused (its samples would need more than 256 MiB). Rollback: revert lanes K, B1, B2 and their fixes; the readers are
 new modules nothing existing calls.
 
+**What refuses a whole file, and what does not** (ADR-080 decision 4; `artifacts/outcome.py`, rules 1 to 3; lane
+FX2):
+1. **Parser-level attacks refuse the whole file**, even when the attack sits in one part beside honest parts: entities,
+   document type definitions, XInclude, decompression bombs, lying sizes, overlapping members, unsafe member names and
+   links, damage, nesting past the limit, and text addressed to an AI agent (injection).
+2. **A reference to something outside the file is never followed and never refuses by itself.** It is named in a note;
+   whatever needs it is "cannot": a glTF whose geometry sits in an outside buffer is read as its header only (counts,
+   buffers by index); an SVG linking an outside image is read, with its note. OOXML relationships to outside targets
+   are counted by kind, never by address.
+3. **Embedded active content is never run and never refuses by itself**: a macro project, a PDF script, auto-run or
+   launch action, an embedded file are named in a note.
+Stated limits: a spreadsheet cell with no cached value is "cannot" only in the note (in the table it is an empty cell);
+a PDF action inside a compressed stream other than the catalog is not found (without `pypdf` a PDF is header facts
+only); a text note that quotes the ZIP signature bytes is left unknown; ODF outside links are not counted. Lane FX's own
+refusal corpus now reads 165 refused, 3 answered of 168: the 3 are the SVG-with-an-outside-image class, answered with
+its note as ruled (its truth file still says "refused").
+
 ## Makers (generators) and checks (validators)
 
 | maker | media type | checked by |

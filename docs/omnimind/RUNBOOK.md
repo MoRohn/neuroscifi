@@ -84,9 +84,29 @@ names or raw timings (time limits print as "1 s", not "0.99998 s"; fix lane F5).
   from "the part that was read", never "100% of the source values". A very large archive is drawn as its folders with
   their file counts (`--partial` on a 5,000-file zip makes a 16 KiB tree saying 4,096 of 5,000 members were read).
   A reduced solid says its points are a reduction of its vertices (fix lane F5).
-- *a safety refusal* (a pickle, a file that is two formats at once, an XML document type definition, too deep a
-  nesting, an archive with a member name that climbs out or is absolute, overlapping archive members, structure
-  hidden past the first 64 KiB): nothing is kept.
+- *a safety refusal* (a pickle, a file that is two formats at once, an XML document type definition or entity,
+  XInclude, a bomb, a lying size, too deep a nesting, an archive with a member name that climbs out or is absolute or
+  a link, overlapping archive members, damage, structure hidden past the first 64 KiB): nothing is kept. One such part
+  refuses the whole file, honest parts beside it included.
+- *a note, not a refusal*: a reference to something outside the file (never followed; what needs it is "cannot") or
+  embedded active content (a macro project, a PDF script or launch action, an embedded file: never run).
+
+**What refuses a whole file, and what does not** (ADR-080 decision 4; `artifacts/outcome.py`, rules 1 to 3; lane
+FX2):
+1. **Parser-level attacks refuse the whole file**, even when the attack sits in one part beside honest parts: entities,
+   document type definitions, XInclude, decompression bombs, lying sizes, overlapping members, unsafe member names and
+   links, damage, nesting past the limit, and text addressed to an AI agent (injection).
+2. **A reference to something outside the file is never followed and never refuses by itself.** It is named in a note;
+   whatever needs it is "cannot": a glTF whose geometry sits in an outside buffer is read as its header only (counts,
+   buffers by index); an SVG linking an outside image is read, with its note. OOXML relationships to outside targets
+   are counted by kind, never by address.
+3. **Embedded active content is never run and never refuses by itself**: a macro project, a PDF script, auto-run or
+   launch action, an embedded file are named in a note.
+Stated limits: a spreadsheet cell with no cached value is "cannot" only in the note (in the table it is an empty cell);
+a PDF action inside a compressed stream other than the catalog is not found (without `pypdf` a PDF is header facts
+only); a text note that quotes the ZIP signature bytes is left unknown; ODF outside links are not counted. Lane FX's own
+refusal corpus now reads 165 refused, 3 answered of 168: the 3 are the SVG-with-an-outside-image class, answered with
+its note as ruled (its truth file still says "refused").
 - *flagged*: the file's own words hold passages addressed to an AI agent. `add` keeps it marked flagged; nothing is
   made from it; its words are never offered to a model.
 - *"guard unavailable"*: the limited child process could not start; the file is kept and not read. Check memory and

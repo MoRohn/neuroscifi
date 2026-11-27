@@ -5732,6 +5732,16 @@ examiner's labels; no second reader on these cases; about 30 of 150 close calls 
 oracle control `first_good` could not be run through `final`. The P1 sentence ("the best form this situation allows")
 may now be reworded in its own commit that changes no choice. Nothing of this reaches the answer path.
 
+## ADR-073, correction (2026-11-27, the main session's, after the measurement review's third pass, finding 2)
+
+The withheld-look addition above stays as written. By the letter of the committed rule a control that was not run
+voids that family's look, and two controls of the forms and learn looks were not run: the forms oracle `first_good`
+(`scripts/bench_omni_forms.py` refuses it as a `final` subject, although the committed rule said it could run) and
+"every reference run twice gives identical figures"; the statement that the oracle's absence was "stated before the
+product looks" cannot be verified (a refused `final` writes no ledger line). The verdict is therefore: **VOID by the
+rule (two controls were not run); the figures are reported as measured and establish nothing under the rule.** The
+figures above are kept exactly as measured.
+
 # ADR-074 Things the system makes: specifications instead of generated markup, a reading contract, and checks that never ask the maker
 
 Status: built (OMNIMIND Wave O-0, lane G1: pictures, documents and data files; lane G2 appends its section below).
@@ -6472,6 +6482,16 @@ the planner alone 0.440 / 0.448; gains 0.273 and 0.208 against the rule's thresh
 and 0.039: **supported on unseen simulated people**. References: never learns 0.444 / 0.454, key_majority 0.831 /
 0.756, oracle 0.891 / 0.894. The shipped rule is **0.118 below key_majority** late: "better than a majority rule" is not
 claimed. `form_learning` stays off by default; nothing here measures benefit to a real person.
+
+## ADR-078, correction (2026-11-27, the main session's, after the measurement review's third pass, finding 2)
+
+The withheld-look addition above stays as written. By the letter of the committed rule a control that was not run
+voids that family's look, and two controls of the forms and learn looks were not run: the forms oracle `first_good`
+(`scripts/bench_omni_forms.py` refuses it as a `final` subject, although the committed rule said it could run) and
+"every reference run twice gives identical figures"; the statement that the oracle's absence was "stated before the
+product looks" cannot be verified (a refused `final` writes no ledger line). The verdict is therefore: **VOID by the
+rule (two controls were not run); the figures are reported as measured and establish nothing under the rule.** The
+figures above are kept exactly as measured.
 
 ## ADR-079: the owner console shows, makes and keeps artifacts (OMNIMIND Wave O-1, lane U)
 

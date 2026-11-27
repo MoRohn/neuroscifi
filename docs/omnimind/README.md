@@ -25,9 +25,10 @@ families (3 disguised or unknown files answered falsely; 3 hostile files answere
 two artifacts (an image against its caption was answered every time and right on 5 of 10, no better than a coin).
 Those three looks are **not supported**; the weaknesses are known now and must be examined afresh on new withheld
 cases. Supported on unseen cases: intake, honest, compound, made and transform (629 right, 17 "cannot", 6 wrong, 0
-failed of 652 in all; today's system 72 right, 2 wrong, 3 failed), the frozen form planner (good 0.687 against the
-shape-only table's 0.480 and always-prose's 0.440, and on these cases it reads the request's words) and the learner
-over the planner alone with simulated people (still below the benchmark's own majority rule). On held-out it had
+failed of 652 in all; today's system 72 right, 2 wrong, 3 failed), and nothing else: the form planner's and the learner's withheld looks are VOID by the rule (two controls were not run; figures reported as measured, establishing nothing under the rule) (as measured: the
+planner's good 0.687 against the shape-only table's 0.480; the learner 0.713 against the planner alone's 0.440 with
+simulated people, below the benchmark's own majority rule). The first withheld split is spent for identification,
+refusal and the relater; only the second can measure the fix wave. On held-out it had
 answered 510 of 528 with 0 wrong. It **cannot** see or hear (no such model here), decode JPEG, MP3 or video frames, or
 say what a picture depicts. **Nothing reaches the answer path** (every answer in conversation is still sentences),
 Pocket, voice or agents; **nothing is on by default except viewing in the console**; and **nothing is merged into
@@ -95,6 +96,18 @@ These documents make no claim of consciousness, understanding, general or superh
 | last | F4 the second passes' residues (`1aa7eb6`); docs-2 these documents | F4: merged (`5c29da4`); docs-2: merged |
 | after | F5: the make summary after a partial read, `--partial` on a large archive, `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help (`bf3dac6`) | merged (`20a86ec`) |
 | then | driver pins with the look rule (`55f89be`); the main session's full validation there; the withheld looks, once each (`21193c4`) | done; the owner's questions next |
+
+## Wave O-2: fix what the withheld look found
+
+On 2026-11-27 the owner decided that the three weaknesses the first withheld look found (false answers on disguised
+or unknown files; hostile files answered instead of refused; the relater answering a pair it cannot measure) be fixed,
+and nothing else added: no new format, form, command or setting. Lane FX fixed them by class (ADR-080); lane ZW2 wrote a
+second withheld split without reading product code (unknown 171 tasks, hostile 62, cross 98); lane FX2 made the
+refusal rule one rule (parser-level attacks refuse the whole file; references outside the file and embedded active
+content are named in a note, never followed or run, and never refuse by themselves). The third review passes found the
+first withheld split spent for these mechanisms, the forms and learn looks VOID by the rule, and FX's corpora to be
+regression evidence only. **The one look at the second withheld split is not yet taken**; its rule is committed in
+[../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md).
 
 ## Where to read next
 

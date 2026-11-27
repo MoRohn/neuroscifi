@@ -23,10 +23,10 @@ reaches the answer path**: every answer in conversation is still sentences; Pock
 no model sees or hears.
 
 **What was supported on unseen cases, by the rule committed before the looks.** intake 347 of 358, honest 52 of 55,
-compound 64 of 66, made 16 of 16, transform 11 of 11 (each 0 wrong, 0 failed); the frozen form planner (good 0.687
-against the shape-only table's 0.480 and always-prose's 0.440, 0 violations, and on these cases it does read the
-request's words: word-decided cases 35 of 52 against 18 and 27); the learner over the planner alone with simulated
-people (0.713 against 0.440 late). Seven families in all: 629 right, 17 "cannot", 6 wrong, 0 failed of 652 (today's
+compound 64 of 66, made 16 of 16, transform 11 of 11 (each 0 wrong, 0 failed). The form planner's and the
+learner's looks are VOID by the rule (two controls were not run; figures reported as measured, establishing nothing under the rule): as measured, the planner's good was 0.687 against the shape-only table's 0.480 and
+always-prose's 0.440, word-decided cases 35 of 52 against 18 and 27; the learner 0.713 against the planner alone's
+0.440 late (simulated people). The first withheld split is now spent for identification, refusal and the relater. Seven families in all: 629 right, 17 "cannot", 6 wrong, 0 failed of 652 (today's
 system: 72 right, 2 wrong, 3 failed). The main session's final validation at `55f89be` passed every check run
 (8,472 passed in the non-browser suite, 235 in the browser suite, 0 different in the sentence guard, the offline digest
 unchanged, acceptance 7 of 7, two accounts 56 of 56). What a look cannot establish: real files, real people, visual
@@ -48,6 +48,7 @@ console's view of all this is on by default.
 | O-1 | P, R, L, U; integration lane 2 | the production pipeline; relating artifacts; learning from outcomes; the console view |
 | reviews | security, measurement, code (each with a second pass) | first pass: 4 blockers (measurement), H1-H2 (security), H1 and M1-M4 (code); second pass: all three "offer to the owner: yes", with residues |
 | fixes | F1, F2, F3, F4 (`1aa7eb6`), F5 (`bf3dac6`) | the guard; the product decides outcomes; forget's matcher; the benchmark reads only what a person sees; driver pins machinery; `--partial` and reductions; plain words; F4: a forget holds what its scan cannot finish (and the scan's own budget), the product check's `visible_to_a_person`, the reader's two blind spots (re-pinned), the driver's last decisions in the product, `add` decoding once, console verdict reuse; F5: the make summary after a partial read, `--partial` on a large archive (drawn as its folders), `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help |
+| Wave O-2 (fix what the withheld look found; the owner's decision of 2026-11-27) | FX, ZW2, FX2; third review passes | FX: a name or declared type never identifies a file alone; a hostile part refuses the whole file; the relater answers only quantities it can measure (ADR-080); its own corpora 344 to 0 wrong of 3,669 disguises, 132 to 0 of 168 hostile parts, 24 to 0 of 144 relater twins (regression evidence by the same lane, not generality). ZW2: a second withheld split (unknown 171 tasks, hostile 62, cross 98). FX2: one refusal rule (parser-level attacks refuse; outside references and active content are named, never followed or run); FX's refusal corpus 165 refused, 3 answered of 168 (the SVG-with-an-outside-image class, as ruled). **The look at the second withheld split is not yet taken** |
 
 Details per row: [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md); what exists with its limits and rollback:
 [PRODUCTION_INTEGRATIONS.md](PRODUCTION_INTEGRATIONS.md); architecture: [ARTIFACT_ARCHITECTURE.md](ARTIFACT_ARCHITECTURE.md).
@@ -60,9 +61,9 @@ Every figure is from a committed evidence file ([BENCHMARKS.md](BENCHMARKS.md) n
 |---|---|---|---|---|---|
 | taking things in and making things (7 families) | today 55 right of 524 / 528; floor 52 (refuse everything); 29 (say "cannot" to everything) | 512 / 12 / 0 / 0 of 524 | 510 / 18 / 0 / 0 of 528 | no fabrication, no crash: holds; generalizes in five families; hostile refused: not fully (22 of 23); made: does not generalize (13 of 14); transform: holds, with lane P's disclosure | 629 / 17 / **6 wrong** / 0 of 652; supported: intake, honest, compound, made, transform; **not supported: unknown (3 wrong), hostile (3 answered instead of refused)** |
 | of which: format identification / measurements / refusals / either / made read back | | 128 / 310 of 322 / 50 / 2 / 22 | 128 / 310 of 326 / 49 of 50 / 2 / 21 of 22 | | |
-| choosing a form (good share) | always prose 0.399 / 0.442; shape-only 0.459 / 0.500; second reader 0.902 / 0.877 | blind 0.489; tuned 0.850; frozen 0.805 | 0.659 (tuned planner) | does not beat the references; overfit; not shown to read the words | 0.687 (shape-only 0.480, always prose 0.440); supported; reads the words there |
+| choosing a form (good share) | always prose 0.399 / 0.442; shape-only 0.459 / 0.500; second reader 0.902 / 0.877 | blind 0.489; tuned 0.850; frozen 0.805 | 0.659 (tuned planner) | does not beat the references; overfit; not shown to read the words | 0.687 (shape-only 0.480, always prose 0.440); VOID by the rule (two controls not run) |
 | relating two artifacts (correct of 72) | always consistent 36; today 0 answered | 72 (58 / 14 / 0 without the question) | 66, 6 "cannot", 0 wrong; report totals 6 of 12 | supported | 48 right, 24 cannot, **6 wrong** of 78; **not supported** |
-| learning (late kept, SIMULATED) | planner alone 0.587 / 0.450; key_majority 0.859 / 0.802 | 0.816 | 0.710 | supported over the planner alone; below key_majority | 0.713 (planner alone 0.440; key_majority 0.831); supported over the planner alone |
+| learning (late kept, SIMULATED) | planner alone 0.587 / 0.450; key_majority 0.859 / 0.802 | 0.816 | 0.710 | supported over the planner alone; below key_majority | 0.713 (planner alone 0.440; key_majority 0.831); VOID by the rule (two controls not run) |
 | foresight: predicted / observed seconds | | median 102, range 4.9 to 560, never under | | recorded, not corrected (the planner is frozen) | |
 
 The held-out rules lived in the main session's untracked log, so their order before the runs **cannot be verified
@@ -80,18 +81,18 @@ validation and the withheld looks cited; the failures of the looks are named in 
 | 2 | Ingestion extensible beyond a fixed list | Partially implemented | the reader registry; external readers approved by entry point, distribution and version (F3 `4597e73`); unknown family 51 of 51 development, 49 of 49 held-out, but **on the withheld split 107 of 111 with 3 wrong answers (disguised or unknown files answered falsely): not supported**; "identified" is not "decoded" |
 | 3 | Native information retained where important | Partially implemented | measurements 310 of 326 right on held-out (310 of 322 development); intake supported on the withheld split (347 of 358, 0 wrong); lost: an array's dtype and 3-D shape, a DOCX's embedded pixels, video frames |
 | 4 | Cross-modal relationships represented and reasoned over | Partially implemented | cross 72 of 72 development, 66 / 6 / 0 held-out, and **on the withheld split not supported: 48 right, 24 cannot, 6 wrong of 78; an image against its caption answered every time and right on 5 of 10**; only comparisons the question names |
-| 5 | Context-driven output selection operational | Partially implemented | the planner's held-out verdict "does not beat the references" (one violation, since impossible by construction); the frozen planner **supported on the withheld cases** (good 0.687 against 0.480 and 0.440, 0 violations, reads the words there); owner commands and the console only: **nothing reaches the answer path** |
-| 6 | Non-text responses where useful and feasible | Partially implemented | 30 makers; the console's "Made and kept" (ADR-079); the planner's supported withheld look; Pocket not covered; answers in conversation are sentences |
+| 5 | Context-driven output selection operational | Partially implemented | the planner's held-out verdict "does not beat the references" (one violation, since impossible by construction); the frozen planner's withheld look **VOID by the rule** (two controls not run; as measured good 0.687 against 0.480, 0 violations); owner commands and the console only: **nothing reaches the answer path** |
+| 6 | Non-text responses where useful and feasible | Partially implemented | 30 makers; the console's "Made and kept" (ADR-079); the planner's withheld look (VOID by the rule: two controls not run; figures 0.687 against 0.480 as measured); Pocket not covered; answers in conversation are sentences |
 | 7 | Artifact generation gives usable, validated results | Partially implemented | made 14 of 14 development, 13 of 14 held-out, **16 of 16 withheld (supported)**; transform 11 of 11 withheld; the product check's `visible_to_a_person` and the stricter reader (F4); no person judged usability |
 | 8 | Creative synthesis demonstrably improved | **Unverified** | no measure exists |
 | 9 | Complex multi-file artifacts through reliable workflows | Partially implemented | the several-source document with "How the sources relate"; transform 8 of 8 development and held-out, 11 of 11 withheld; no multi-file project measured |
 | 10 | Large workloads managed by resource-aware execution | Partially implemented | `Limits`; the store's caps; decoding in a limited child (F1, F4); bounded reductions (F3, F5); planner time estimates 5 to 560 times high; no durable jobs |
 | 11 | Knowledge accumulated across modalities | **Unverified** | nothing measures accumulation |
-| 12 | Recursive improvement gives measurable benefits | Partially implemented | learn held-out +0.260 / +0.203 and withheld +0.273 / +0.208 over the planner alone, SIMULATED people; 0.118 below key_majority late on the withheld split; `form_learning` off |
+| 12 | Recursive improvement gives measurable benefits | Partially implemented | learn held-out +0.260 / +0.203 over the planner alone, and withheld +0.273 / +0.208 as measured (that look VOID by the rule: two controls not run), SIMULATED people; 0.118 below key_majority late on the withheld split; `form_learning` off |
 | 13 | New capabilities integrate with existing systems | Partially implemented | forget, restore, quiet and governance tests over artifacts; not on the answer path, the workspace or memory |
 | 14 | Original memory, inference, autonomy, device and interface features operational | Partially implemented | the same run as item 1 at `55f89be`; not run: CI, x86_64, a real model, real phones, a screen reader |
 | 15 | Security and resource boundaries enforced | Partially implemented | hostile 23 of 23 development, 22 of 23 held-out, and **on the withheld split 32 of 35 with 3 hostile files answered instead of refused: not supported** (8 withheld constructions belong to 7 classes no earlier split had); the security review's second pass ("offer: yes"); F1, F3 and F4's fixes |
-| 16 | End-to-end tests and benchmarks support the claims | Partially implemented | the committed held-out record; development reproduced exactly at `55f89be`; the withheld looks taken once each under the rule committed before them: supported for intake, honest, compound, made, transform, forms and learn; **not supported for unknown, hostile and cross** |
+| 16 | End-to-end tests and benchmarks support the claims | Partially implemented | the committed held-out record; development reproduced exactly at `55f89be`; the withheld looks taken once each under the rule committed before them: supported for intake, honest, compound, made and transform; VOID by the rule for forms and learn (two controls not run); **not supported for unknown, hostile and cross** |
 | 17 | Rollback and recovery for significant changes | Partially implemented | console viewing (`console_artifacts`) is ON by default; everything that lets bytes in or changes a choice (upload, form learning, external readers) is off; schemas 20-21 forward-only, rolled back by the owner's own copy, not by restore (MIGRATIONS.md section 2, F1 `480b009`); [RUNBOOK.md](RUNBOOK.md) |
 
 ## Remaining gaps
@@ -99,6 +100,12 @@ validation and the withheld looks cited; the failures of the looks are named in 
 [COGNITIVE_GAP_ANALYSIS.md](COGNITIVE_GAP_ANALYSIS.md), first screen: no model that sees or hears; no decoder for
 compressed images, audio or video; nothing on the answer path; no durable jobs; Pocket, voice, agents; real files
 beyond this host's tools; creativity and accumulation unmeasured.
+
+Unchecked by any reviewer: whether text planted inside an artifact can steer the relater; and
+`scripts/bench_omni_forms.py` refuses the forms oracle `first_good` as a look subject (so a forms look cannot run that
+control as it stands). Stated limits of the refusal rule (ADR-080 decision 4): a cell with no cached value is "cannot"
+only in the note; a PDF action inside a compressed stream other than the catalog is not found; a text note quoting the
+ZIP signature bytes is left unknown.
 
 Reported as open, not to be fixed in this programme's remaining lanes:
 - a failed check cannot count as a learning outcome without a migration (`form_outcomes` needs a held made artifact;
@@ -150,12 +157,20 @@ whose figures and verdict words are copied here. A "not supported" is never retr
 of 524; forms 107 good of 133, 0 bad, 0 violations; cross 72 of 72; learn 0.8158 / 0.7617 against the planner alone
 0.5871 / 0.5842).
 
-**Controls: held, with two exceptions stated.** Today's system on the seven families: 0 failed outside hostile and
+**Controls: held for the seven families and cross; two were not run for forms and learn.** Today's system on the seven families: 0 failed outside hostile and
 nothing made (made 0 of 16, transform 0 of 11). Always-consistent on cross: 39 of 78, 0 of 39 twins. Learn: oracle
 0.891 >= key_majority 0.831 >= never-learns 0.444. Not done: the forms oracle `first_good` could not be run through
-`final` (stated before the product looks; not run), and "reference reruns identical" was not checked. The
-refuse-everything control of the seven families was dropped before the looks by the main session's ruling (it holds by
-construction).
+`final` (`scripts/bench_omni_forms.py` refuses it as a `final` subject) and "reference reruns identical" was not
+checked. The refuse-everything control of the seven families was dropped before the looks by the main session's ruling
+(it holds by construction).
+
+**Correction (2026-11-27, the main session's, after the measurement review's third pass, finding 2).** By the letter
+of the committed rule a control that was not run voids that family's look. Two controls of the forms and learn
+looks were not run: the forms oracle `first_good` (`scripts/bench_omni_forms.py` refuses it as a `final` subject,
+although the committed rule said it could run) and "every reference run twice gives identical figures". The
+statement that the oracle's absence was "stated before the product looks" cannot be verified: a refused `final`
+writes no ledger line. So the forms and learn looks are **VOID by the rule (two controls were not run); the figures are reported as measured and establish nothing under the rule**. The seven-family and cross verdicts stand: their
+controls ran.
 
 **The seven families** (`bench_omni.py final --subject artifacts`; right / "cannot" / wrong / failed of n):
 
@@ -182,10 +197,10 @@ held-out.
 | shape-only table | 0.480 | 0.773 | 0.227 (too much 22) | 18 of 52 | 14 of 40 | 0 of 25 |
 | always prose (today) | 0.440 | 0.820 | 0.180 (too poor 21) | 27 of 52 | | |
 
-Verdict: **supported on unseen cases** (good 0.687 >= 0.480 + 0.10; 0 violations; bad and too-much below the shape-only
-table's); explicit forms honoured 6 of 7; no unmapped name. **"Reads the request's words" holds on these cases**
-(words slice 0.673 against 0.346 and 0.519; pairs 20 against 14 of 40), where it did not on held-out before the fitted
-rules were deleted. Caveats: the labels are one model-written examiner's; no second reader labelled these cases, so
+Verdict: **VOID by the rule (two controls were not run); the figures are reported as measured and establish nothing under the rule** (correction of 2026-11-27, above). As measured, the figures would have met the
+"supported" thresholds (good 0.687 >= 0.480 + 0.10; 0 violations; bad and too-much below the shape-only table's) and the
+"reads the words" thresholds (words slice 0.673 against 0.346 and 0.519; pairs 20 against 14 of 40); explicit forms
+honoured 6 of 7; no unmapped name. They establish nothing under the rule. Caveats: the labels are one model-written examiner's; no second reader labelled these cases, so
 there is no ceiling to quote; about 30 of the 150 are close calls by the examiner's own count.
 
 **cross** (the relater; 78 cases):
@@ -213,11 +228,26 @@ or "inconsistent" given where nothing could be measured.
 | key_majority (reference) | 0.831 | 0.756 |
 | oracle (reference) | 0.891 | 0.894 |
 
-Verdict: **supported on unseen simulated people** (gains 0.273 and 0.208 against thresholds 0.088 and 0.039); **0.118
-below the reference majority rule** late; `form_learning` stays off.
+Verdict: **VOID by the rule (two controls were not run); the figures are reported as measured and establish nothing under the rule** (correction of 2026-11-27, above). As measured: gains 0.273 and 0.208 against
+thresholds 0.088 and 0.039; **0.118 below the reference majority rule** late; `form_learning` stays off.
 
 **What these looks cannot establish** (the rule's part C): anything about real files, real people, the owner's taste,
 visual quality or usability; any version after `55f89be`; formats or kinds absent from the tables; generality from
 small n (made 16, transform 11); and a second look at the same cases, which would not be a fresh measure. **The
 unknown, hostile and cross findings are known weaknesses now: they are to be fixed and examined afresh on NEW withheld
 cases, never on these.**
+
+**What the first withheld split can still measure.** It is spent for identification, refusal and the relater: the
+fix wave (lane FX) read the look summary and WAVE2.md, written by the main session, which named the cross kind
+answered at coin level, so re-scoring these cases would measure the fixes against the cases that motivated them;
+only the second withheld split can measure them (measurement review, third pass, finding 5). Lane FX's own corpus
+figures (wrong answers 344 to 0 of 3,669 disguises, 132 to 0 of 168 hostile parts inside honest files, 24 to 0 of
+144 relater twins) are regression evidence for the classes it named, written by the same lane that wrote the fixes,
+not evidence of generality (finding 6).
+
+## The look at the second withheld split (placeholder)
+
+**Not yet taken.** To be filled by the main session after the one look at `final --split withheld2` (unknown,
+hostile, cross), beside its rule ([../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md), "The rule for
+the look at the second withheld split"), its controls and its ledger lines; a VOID look reported as void; failures
+first.

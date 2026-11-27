@@ -99,6 +99,11 @@ flowchart LR
 - **Injection**: text decoded from a file passes `webcortex.safety.scan_injection`. `adapters.decode` refuses a flagged
   file (`Limits.refuse_flagged`, default on); the store keeps it marked flagged and never offers its words to a model.
 
+- **What refuses** (ADR-080 decision 4, `outcome.py` rules 1 to 3): a parser-level attack in any part refuses the whole
+  file; a reference outside the file is named in a note, never followed, and what needs it is "cannot"; embedded active
+  content (a macro project, a PDF script or launch action, an embedded file) is named, never run. Neither of the last
+  two refuses by itself. Details: [RUNBOOK.md](RUNBOOK.md), "What a refusal means".
+
 ## The store and its two schema steps
 
 - **Bytes** live in a sidecar `<individual>.artifacts.sqlite` next to the individual's file: content-addressed by

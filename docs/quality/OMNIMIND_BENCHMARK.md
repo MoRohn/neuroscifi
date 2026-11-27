@@ -260,7 +260,8 @@ answered falsely); **hostile 32 / 0 / 3 / 0 of 35: not supported, 3 hostile file
 629 / 17 / 6 / 0 of 652 (today's system: 72 right, 2 wrong, 3 failed). These six wrong answers are the first
 fabrications and failures to refuse seen on any split. Controls: held, except that "reference reruns identical" was
 not checked (and the refuse-everything control was dropped before the looks, by ruling). By the rule, none of these
-is retried on these cases: the unknown and hostile weaknesses are to be fixed and examined on NEW withheld cases. The
+is retried on these cases: the unknown and hostile weaknesses are to be fixed and examined on NEW withheld cases. The first withheld split is now spent for identification and refusal: the fix wave read the look summary (measurement
+review, third pass, finding 5); only the second withheld split can measure the fixes. The
 forms, cross and learn looks: [OMNIMIND_BENCHMARK_FORMS.md](OMNIMIND_BENCHMARK_FORMS.md), "The withheld split:
 status"; all of it: [../omnimind/BENCHMARKS.md](../omnimind/BENCHMARKS.md), "The withheld looks".
 
@@ -564,6 +565,11 @@ and counts as not honoured.
   `cross.py`: `today`, `always_consistent`, `always_inconsistent`; `learn.py`: `today`, `never_learns`,
   `key_majority`, `person_majority`, `oracle`) or a dotted `module:attribute` such as the product's
   `make_planner_only`. Every control the rule names for these three families can be run.
+  **Correction (2026-11-27, after the measurement review's third pass, finding 2): this sentence was wrong.**
+  `scripts/bench_omni_forms.py` (`final`) refuses any subject that is not in every named family's REFERENCES, so the
+  forms oracle `first_good` cannot be run through `final`, and it was not; nor was "every reference run twice gives
+  identical figures" checked. By the rule's A.3 the forms and learn looks are therefore VOID (see "The withheld split:
+  status").
 - the seven families of lane Z (`scripts/bench_omni.py final`): `--subject` accepts only `today` and `artifacts`
   (`subject.SUBJECTS`). The `today` control can be run. **A refuse-everything subject cannot be run through `final`
   as it stands**: the harness's `probe:refuse` subject exists for the tests and is not a `final` choice. By the
@@ -598,3 +604,85 @@ once on these NEW cases. Nobody else opens `acceptance/omni/withheld2_*.py` or
 - The rule for its looks is not this lane's to write: it must be committed before any product look, as for the first
   split. The ledger's first withheld2 lines are lane ZW2's machinery check (`today` only, noted "machinery check:
   references only"); no product subject has looked.
+
+## The rule for the look at the second withheld split (written before it)
+
+Committed by documentation lane 2 on 2026-11-27, before any product look at the second withheld split (`final --split
+withheld2`; lane ZW2's files, pinned in `acceptance/omni/final.py`). The look must be taken at a commit that has this
+section as an ancestor. **The rule is the measurement reviewer's text (third pass, "The rule I would hold the withheld2
+look to"), verbatim:**
+
+**A. Preconditions (VOID without them).**
+1. The rule is committed in an ancestor of the look commit. The driver pins are unchanged or re-pinned in that commit.
+   The tree is clean. `final`'s withheld2 SHA pins and refusals all pass.
+2. Development reproduces exactly at the look commit, using the figures in finding 4.
+3. Controls, run first as reference-only ledger lines on withheld2. Each must be one `final` can actually run: verify that
+   from the code and say so in the rule (finding 2).
+   - unknown / hostile, today: the figures equal those of ZW2's machinery check (ledger lines 43-44 at 5dd1148): the same
+     right / abstained / wrong / failed, the known crash included. The rule commits those numbers first. Any difference
+     voids the look.
+   - cross, today (answers nothing): exactly 18 of 98 right (the undecidable cases), 0 wrong.
+   - cross, always_consistent: right on exactly the decidable matching cases and wrong on every undecidable case. Commit
+     the expected number from ZW2's machinery line 46.
+   - cross, always_inconsistent: the complement.
+   - Determinism: each reference run twice, figures identical.
+4. One product look per family, once. Then **these cases are spent**: never re-scored, never used to tune, and later
+   versions need a third split.
+
+**B. Words.** "supported on unseen cases", "not supported", "not exercised", or VOID. Any wrong answer is the headline, as a
+fabrication count.
+
+- **unknown.**
+  - "Supported" iff 0 wrong AND 0 failed AND right/n ≥ 0.914 (the first withheld share 107/111 = 0.964, minus 0.05). Zero
+    wrong alone would let a subject that says "cannot" to everything pass.
+  - Report right − abstention_floor, and missed_decodable / false_identification.
+- **hostile.**
+  - "Supported" iff 0 wrong AND 0 failed.
+  - "Hostile inputs refused" only if right == n.
+  - Report the 25 classes separately: any class with a wrong answer is named by class (never by construction id).
+- **cross.** Denominators are taken over the decidable pairs (40 pairs, 80 cases) and the 18 undecidable cases, separately.
+  - "Supported" iff wrong ≤ 2 AND correct of answered ≥ 0.95 AND correct ≥ 60 of 80 decidable AND both twins right on at
+    least 27 of 40 decidable pairs AND "cannot" on at least 16 of 18 undecidable AND no kind with more than 1 wrong.
+  - An answer on an undecidable case counts as wrong (fabrication).
+  - A kind answered only "cannot" is "not exercised".
+  - always_consistent, always_inconsistent and today go beside the result.
+
+**C. What the look cannot establish.**
+- Real files or real people.
+- Kinds and classes not in the split.
+- Versions after the look commit.
+- Generality from 98 or 171 cases.
+- Anything about forms, learn, made or transform (not in this split).
+- A pass after FX shows that the classes FX named do not recur in new constructions; it does not show that no other class
+  of attack or disguise exists.
+
+**The figures control A.3 must reproduce** (lane ZW2's machinery check, ledger lines 43 to 47, commit `5dd1148`,
+references only; from lane ZW2's report):
+
+| control | subject | figures to reproduce exactly |
+|---|---|---|
+| unknown, today | `bench_omni.py final --split withheld2 --family unknown --subject today` | 25 right, 145 "cannot", 0 wrong, **1 failed** (a crash of today's system on a question whose right answer is "cannot") of 171; missed 101 of 103 disguised tasks; 0 false identifications |
+| hostile, today | `bench_omni.py final --split withheld2 --family hostile --subject today` | 4 right, 56 "cannot", 1 wrong, **1 failed** (a crash) of 62 |
+| cross, today | `bench_omni_forms.py final --split withheld2 --family cross --subject today` | correct 18 of 98 (exactly the undecidable cases), answered 0 (so 0 wrong), both twins 9 of 49 |
+| cross, always_consistent | `... --subject always_consistent` | correct 40 of 98 (decidable 40 of 80, undecidable 0 of 18), both twins 0; its wrong count: **to be taken from the first control run and compared with a second, identical run** (lane ZW2's report gives the correct counts, not the wrong ones) |
+| cross, always_inconsistent | `... --subject always_inconsistent` | the same figures as always_consistent (correct 40 of 98, decidable 40 of 80, undecidable 0 of 18, both twins 0); its wrong count: **to be taken from the first control run and compared with a second, identical run** |
+| determinism | each reference above run twice | the second run identical to the first (no stored figure: **to be taken from the first control run and compared with a second, identical run**) |
+| hostile, per class, today | | not stated by lane ZW2 (only totals): **to be taken from the first control run and compared with a second, identical run** if the per-class report is used |
+
+The first look rule's control "today scores 0 failed outside hostile" does not hold on this split (today crashes once in
+`unknown`): here the control is equality with the figures above, the crash included. A subject that says "cannot" to
+everything scores 18 of 98 on cross: read "correct" against that.
+
+**Which controls `final --split withheld2` can run** (read from `scripts/bench_omni.py`, `scripts/bench_omni_forms.py`
+and `acceptance/omni/final.py` at `3849b9f`; no `withheld*` file opened; nothing run):
+- `bench_omni.py final --split withheld2 --family unknown|hostile|all --subject today|artifacts`: `--subject` accepts only
+  `subject.SUBJECTS` (`today`, `artifacts`), so the `today` controls can be run; a refuse-everything subject cannot (the
+  harness's `probe:refuse` is test-only; lane ZW2 ran it in a test with a temporary ledger: hostile 62 of 62, unknown
+  exactly its floor, 0 wrong). Any other family is refused for this split.
+- `bench_omni_forms.py final --split withheld2 --family cross --subject S`: `S` may be one of cross's REFERENCES
+  (`today`, `always_consistent`, `always_inconsistent`) or a dotted `module:attribute` (the product's `relate`), so
+  every cross control named above can be run; any other family is refused for this split.
+- Every control runs through `final`, so each writes a reference-only ledger line before it scores; running a reference
+  twice writes two lines.
+- **No forms or learn look is taken on this split** (it holds no forms, learn, made or transform cases), and none is
+  taken again on the first withheld split.

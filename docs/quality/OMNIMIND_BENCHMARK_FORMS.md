@@ -303,7 +303,7 @@ look can measure it.
 the rule committed in `docs/quality/OMNIMIND_BENCHMARK.md` with the driver pins; ledger
 `docs/quality/evidence/omnimind_final_uses.jsonl`; evidence and the main session's reading in
 `docs/quality/evidence/omnimind_looks/summary.json`).
-- **forms** (frozen planner `4388f4d`, learning off, 150 cases): **supported on unseen cases**: good 0.687 against the
+- **forms** (frozen planner `4388f4d`, learning off, 150 cases): **VOID by the rule (two controls were not run; figures reported as measured, establishing nothing under the rule)**; as measured: good 0.687 against the
   shape-only table's 0.480 and always-prose's 0.440; good or fine 0.927; bad 0.073 (too poor 3, too much 4, unfit 4)
   against 0.227 and 0.180; 0 violations; explicit honoured 6 of 7; no unmapped name. "Reads the request's words"
   holds here: words slice 35 of 52 against 18 and 27; pairs both good 20 of 40 against 14; twins 11 of 25 against 0.
@@ -315,9 +315,11 @@ the rule committed in `docs/quality/OMNIMIND_BENCHMARK.md` with the driver pins;
   right, 1 wrong, 2 cannot; of the three kinds only this split has, route stops and archive manifests were answered
   "cannot" throughout (not exercised), and an image against its caption was answered all 10 times and right on 5: no
   better than a coin, the fabrication this family was written to catch. Always-consistent: 39 of 78, 0 twins.
-- **learn** (SIMULATED people): **supported on unseen simulated people**: late / all kept 0.713 / 0.656 against the
+- **learn** (SIMULATED people): **VOID by the rule (two controls were not run; figures reported as measured, establishing nothing under the rule)**; as measured: late / all kept 0.713 / 0.656 against the
   planner alone 0.440 / 0.448 (gains 0.273 and 0.208 against thresholds 0.088 and 0.039); 0.118 below the reference
   majority rule late (key_majority 0.831 / 0.756); `form_learning` stays off.
+- **Correction (2026-11-27, the main session's, after the measurement review's third pass, finding 2).** By the letter of the committed rule a control that was not run voids that family's look. Two controls of the forms and learn looks were not run: the forms oracle `first_good` (`scripts/bench_omni_forms.py` refuses it as a `final` subject, although the committed rule said it could run) and "every reference run twice gives identical figures". The statement that the oracle's absence was "stated before the product looks" cannot be verified: a refused `final` writes no ledger line. So the forms and learn looks are **VOID by the rule (two controls were not run); the figures are reported as measured and establish nothing under the rule**. The seven-family and cross verdicts stand: their controls ran.
+- **What the first withheld split can still measure.** It is spent for identification, refusal and the relater: the fix wave (lane FX) read the look summary and WAVE2.md, written by the main session, which named the cross kind answered at coin level, so re-scoring these cases would measure the fixes against the cases that motivated them; only the second withheld split can measure them (measurement review, third pass, finding 5). Lane FX's own corpus figures (wrong answers 344 to 0 of 3,669 disguises, 132 to 0 of 168 hostile parts inside honest files, 24 to 0 of 144 relater twins) are regression evidence for the classes it named, written by the same lane that wrote the fixes, not evidence of generality (finding 6).
 - A "not supported" is never retried on these cases: the relater's weakness is to be fixed and examined on NEW
   withheld cases. What a look cannot establish: real files, real people, the owner's taste, visual quality or
   usability, later versions, absent kinds, generality from small n.
