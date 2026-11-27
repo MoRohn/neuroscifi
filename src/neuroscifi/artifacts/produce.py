@@ -48,7 +48,7 @@ import re
 import time
 from dataclasses import dataclass, field, replace
 
-from . import forms, guarded
+from . import forms, guarded, outcome
 from . import produce_builders as B
 from .spec import Spec, canonical_json
 from .types import ArtifactError, ContentShape, HeaderOnly, Limits, Malformed, Refused
@@ -158,21 +158,25 @@ def part_read(decoded) -> str:
 
 
 def _decode(data: bytes, name: str, limits: Limits, partial_ok: bool = False):
-    """(representation, detected format, None, part) or (None, format, why not, ""). A partly decoded file is used
-    only when the owner agreed (`partial_ok`, `nsf artifact make --partial`); `part` then says what was read."""
+    """(representation, detected format, None, part, "answered") or (None, format, why not, "", outcome): the
+    outcome (artifacts/outcome.py) of a source that is not used is "refused" (a rule or limit, or a part the owner
+    did not agree to use) or "cannot". A partly decoded file is used only when the owner agreed (`partial_ok`,
+    `nsf artifact make --partial`); `part` then says what was read."""
     try:
         decoded = guarded.decode(data, name=name, limits=replace(limits, refuse_flagged=True))
     except HeaderOnly as error:
-        return None, "unknown", f"only its header is read here ({error})"[:300], ""
+        return None, "unknown", f"only its header is read here ({error})"[:300], "", outcome.of_error(error)
     except ArtifactError as error:
-        return None, "unknown", f"{error.reason}: {error}"[:300], ""
+        # the message alone: it is the plain reason ("too_large: ..." was a rule's name in front of it, code L3)
+        return None, "unknown", str(error)[:300], "", outcome.of_error(error)
     rep = decoded.representation
     if getattr(rep, "kind", None) == "opaque":
-        return None, decoded.detected.format, "nothing here reads its format", ""
+        return None, decoded.detected.format, "nothing here reads its format", "", outcome.CANNOT
     if decoded.partial and not partial_ok:
         return None, decoded.detected.format, ("only part of it could be read, and a part is used only when you "
-                                               "agree (--partial): " + part_read(decoded))[:400], ""
-    return rep, decoded.detected.format, None, part_read(decoded) if decoded.partial else ""
+                                               "agree (--partial): " + part_read(decoded))[:400], "", \
+            outcome.of_decoded(decoded, partial_ok=False)
+    return rep, decoded.detected.format, None, part_read(decoded) if decoded.partial else "", outcome.ANSWERED
 
 
 MAX_RASTER_PIXELS = 4_000_000   # a larger image is measured and drawn from a downsample (fix lane F3, item 3)
@@ -247,19 +251,22 @@ def interpret(db, sources, limits: Limits, deadline: float | None = None,
             record = store.get(db, source)
             sid, label, kind = record.id, record.label, record.origin
             if record.held:
-                notes.append({"id": sid, "label": label, "used": False, "why": store.HELD_WORDS})
+                notes.append({"id": sid, "label": label, "used": False, "why": store.HELD_WORDS,
+                              "outcome": outcome.REFUSED})
                 continue
             if record.flagged:
                 notes.append({"id": sid, "label": label, "used": False,
-                              "why": "its text looked like instructions to an AI, so it is not used as content"})
+                              "why": "its text looked like instructions to an AI, so it is not used as content",
+                              "outcome": outcome.REFUSED})
                 continue
             if record.state != "stored":
-                notes.append({"id": sid, "label": label, "used": False, "why": f"its bytes are {record.state}"})
+                notes.append({"id": sid, "label": label, "used": False, "why": f"its bytes are {record.state}",
+                              "outcome": outcome.CANNOT})
                 continue
             data = store.read_bytes(db, sid)
-        rep, fmt, why, part = _decode(data, label, _within(limits, deadline), partial_ok)
+        rep, fmt, why, part, answer = _decode(data, label, _within(limits, deadline), partial_ok)
         if rep is None:
-            notes.append({"id": sid, "label": label, "format": fmt, "used": False, "why": why})
+            notes.append({"id": sid, "label": label, "format": fmt, "used": False, "why": why, "outcome": answer})
             continue
         if fmt == "python":
             python.append((label, data, sid))

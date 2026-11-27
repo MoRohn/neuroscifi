@@ -407,8 +407,8 @@ def _command(what, handler):
             return outcome.exit_code(outcome.REFUSED)
         if what == "feedback" and value.get("recorded") is False:
             return outcome.exit_code(outcome.CANNOT)
-        if what in ("make", "remake") and value["status"] not in ("made", "words", "remade"):
-            return outcome.exit_code(outcome.CANNOT)
+        if what in ("make", "remake"):
+            return outcome.exit_code(outcome.of_production(value["status"], value["record"]))
         if what == "forget" and value.get("status") == "absent":
             return outcome.exit_code(outcome.CANNOT)
         return outcome.exit_code(outcome.ANSWERED)

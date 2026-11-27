@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import struct
 import zipfile
+from dataclasses import replace
 
 import numpy as np
 
@@ -118,3 +119,48 @@ def test_a_small_archive_is_still_drawn_member_by_member():
     assert made.status == "made"
     assert "note_0000.txt" in [n["label"] for n in made.spec.data["nodes"]]
 
+
+
+# Item 3 (code N2): `make` exits with the code the outcome table gives, for every refusal
+
+import pytest  # noqa: E402
+from test_f4_forget_hold import T0, held_one  # noqa: E402,F401  (a fixture)
+
+from neuroscifi import cli as top  # noqa: E402
+from neuroscifi.artifacts import outcome  # noqa: E402
+from neuroscifi.artifacts import store as A  # noqa: E402
+from neuroscifi.instance import store as instance_store  # noqa: E402
+
+
+@pytest.fixture
+def individual(tmp_path):
+    """An individual with every adapter here (held_one's own individual reads text and JSON only)."""
+    path = tmp_path / "individual.sqlite"
+    db = instance_store.create(path, T0)
+    try:
+        yield db, path
+    finally:
+        db.close()
+
+
+def test_make_exits_with_the_outcome_tables_code(held_one, tmp_path, monkeypatch, capsys):  # noqa: F811
+    _, path, unchecked, _, _ = held_one
+    real = A.limits
+    monkeypatch.setattr(A, "limits", lambda cfg: replace(real(cfg), max_decoded_bytes=SMALL.max_decoded_bytes))
+    wide = ",".join(f"c{i}" for i in range(16_385)) + "\n" + ",".join("1" * 16_385) + "\n"   # over MAX_COLUMNS
+    files = {"rows.csv": _rows(20_000), "wide.csv": wide.encode(), "x.bin": bytes(range(256)) * 64}
+    for name, data in files.items():
+        (tmp_path / name).write_bytes(data)
+    cases = [  # (sources, extra arguments, the table's outcome)
+        ([str(tmp_path / "rows.csv")], [], outcome.REFUSED),             # a part, and the owner did not agree
+        ([str(tmp_path / "rows.csv")], ["--partial"], outcome.ANSWERED),
+        ([str(tmp_path / "wide.csv")], [], outcome.REFUSED),            # a limit
+        ([unchecked.id], [], outcome.REFUSED),                           # a held artifact
+        ([str(tmp_path / "x.bin")], [], outcome.CANNOT),                 # nothing here reads its format
+        ([str(tmp_path / "x.bin"), str(tmp_path / "wide.csv")], [], outcome.REFUSED),
+    ]
+    for sources, extra, expected in cases:
+        rc = top.main(["artifact", "make", *sources, "-r", "show the value over t", "--db", str(path), *extra])
+        out = capsys.readouterr().out
+        assert rc == outcome.exit_code(expected), (sources, extra, out)
+    assert outcome.of_production("failed", {}) == outcome.CANNOT

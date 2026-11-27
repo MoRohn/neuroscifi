@@ -53,6 +53,19 @@ def of_member(member, *, partial_ok: bool = False) -> str:
     return ANSWERED
 
 
+def of_production(status: str, record: dict) -> str:
+    """The outcome of `nsf artifact make` / `remake` (code review N2): made, or answered in words, is "answered";
+    nothing made because no source could be used is "refused" when a rule or limit refused one of them (too large,
+    over time, a part the owner did not agree to use, a held or flagged file: each unused source's own outcome, set
+    where it was read, `produce.interpret`), else "cannot"; a production whose every candidate failed is "cannot"."""
+    if status in ("made", "words", "remade"):
+        return ANSWERED
+    unused = [s.get("outcome") for s in (record or {}).get("sources") or () if not s.get("used")]
+    if status == "cannot" and REFUSED in unused:
+        return REFUSED
+    return CANNOT
+
+
 def member_path(path) -> str | None:
     """The name a question may give a Bundle member by: its path with a leading "./" dropped; None for a climbing
     ("..") or absolute path, which names no member (fix lane F4, measurement R2-4: the product says it, not the
@@ -70,4 +83,4 @@ def exit_code(outcome: str) -> int:
 
 
 __all__ = ["ANSWERED", "CANNOT", "CANNOT_REASONS", "EXIT_CODES", "MISUSE", "OUTCOMES", "REFUSED", "exit_code",
-           "member_path", "of_decoded", "of_error", "of_member"]
+           "member_path", "of_decoded", "of_error", "of_member", "of_production"]
