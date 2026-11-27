@@ -14,9 +14,9 @@ artifacts, learning from outcomes). Every held-out run, its rule quoted verbatim
   supported) and **3 hostile files answered instead of refused** (`hostile`, 32 of 35, not supported). **The relater
   gave 6 wrong answers of 78** (cross, not supported); on an image against its caption it answered every time and was
   right on 5 of 10. Nothing of the kind happened on development or held-out. These are known weaknesses now, to be
-  fixed and examined on NEW withheld cases, never on these. Supported on unseen cases: intake, honest, compound, made,
-  transform, the form planner (good 0.687 against 0.480; it reads the words there) and the learner over the planner
-  alone (simulated people). Section "The withheld looks" at the end.
+  fixed and examined on NEW withheld cases, never on these. Supported on unseen cases: intake, honest, compound, made and
+  transform. The form planner's and the learner's looks are VOID by the rule (two controls were not run; as measured,
+  the planner's good 0.687 against 0.480, the learner 0.713 against 0.440). Section "The withheld looks" at the end.
 - **One held-out making task the product could not do.** `made`: 13 of 14 on held-out against 14 of 14 on development.
   By the rule written before the run this is **not a pass** (a drop over 0.05).
 - **One hostile held-out file was answered "cannot", not refused** (22 of 23 refused). Nothing wrong was answered,
@@ -92,7 +92,7 @@ The full assessment: [CREATIVE_INTELLIGENCE_ASSESSMENT.md](CREATIVE_INTELLIGENCE
 | random form (reference) | 0.110 | 0.761 | 0.104 | (not quoted) | 0 |
 | the planner, blind (`8d84f29`, before its author saw a case) | 0.489 | 0.195 | not run | | |
 | the planner tuned (`c5d3230`) | 0.850 (optimistic: tuned on these cases) | 0 | **0.659** | 0.080 | **1** |
-| the planner frozen (`4388f4d`, after the limited round) | 0.805 (107 of 133) | 0 | not run; withheld: **0.687** (supported; see the end) | 0.073 | 0 |
+| the planner frozen (`4388f4d`, after the limited round) | 0.805 (107 of 133) | 0 | not run; withheld: 0.687 as measured (VOID by the rule; see the end) | 0.073 | 0 |
 | a second reader's first choice (a ceiling; a model, not a person) | 0.902 | | 0.877 | | |
 
 Held-out verdict by the rule written before the run: "beats the references" **no** (one violation); "overfit to
@@ -155,12 +155,20 @@ whose figures and verdict words are copied here. A "not supported" is never retr
 of 524; forms 107 good of 133, 0 bad, 0 violations; cross 72 of 72; learn 0.8158 / 0.7617 against the planner alone
 0.5871 / 0.5842).
 
-**Controls: held, with two exceptions stated.** Today's system on the seven families: 0 failed outside hostile and
+**Controls: held for the seven families and cross; two were not run for forms and learn.** Today's system on the seven families: 0 failed outside hostile and
 nothing made (made 0 of 16, transform 0 of 11). Always-consistent on cross: 39 of 78, 0 of 39 twins. Learn: oracle
 0.891 >= key_majority 0.831 >= never-learns 0.444. Not done: the forms oracle `first_good` could not be run through
-`final` (stated before the product looks; not run), and "reference reruns identical" was not checked. The
-refuse-everything control of the seven families was dropped before the looks by the main session's ruling (it holds by
-construction).
+`final` (`scripts/bench_omni_forms.py` refuses it as a `final` subject) and "reference reruns identical" was not
+checked. The refuse-everything control of the seven families was dropped before the looks by the main session's ruling
+(it holds by construction).
+
+**Correction (2026-11-27, the main session's, after the measurement review's third pass, finding 2).** By the letter
+of the committed rule a control that was not run voids that family's look. Two controls of the forms and learn
+looks were not run: the forms oracle `first_good` (`scripts/bench_omni_forms.py` refuses it as a `final` subject,
+although the committed rule said it could run) and "every reference run twice gives identical figures". The
+statement that the oracle's absence was "stated before the product looks" cannot be verified: a refused `final`
+writes no ledger line. So the forms and learn looks are **VOID by the rule (two controls were not run); the figures are reported as measured and establish nothing under the rule**. The seven-family and cross verdicts stand: their
+controls ran.
 
 **The seven families** (`bench_omni.py final --subject artifacts`; right / "cannot" / wrong / failed of n):
 
@@ -187,10 +195,10 @@ held-out.
 | shape-only table | 0.480 | 0.773 | 0.227 (too much 22) | 18 of 52 | 14 of 40 | 0 of 25 |
 | always prose (today) | 0.440 | 0.820 | 0.180 (too poor 21) | 27 of 52 | | |
 
-Verdict: **supported on unseen cases** (good 0.687 >= 0.480 + 0.10; 0 violations; bad and too-much below the shape-only
-table's); explicit forms honoured 6 of 7; no unmapped name. **"Reads the request's words" holds on these cases**
-(words slice 0.673 against 0.346 and 0.519; pairs 20 against 14 of 40), where it did not on held-out before the fitted
-rules were deleted. Caveats: the labels are one model-written examiner's; no second reader labelled these cases, so
+Verdict: **VOID by the rule (two controls were not run); the figures are reported as measured and establish nothing under the rule** (correction of 2026-11-27, above). As measured, the figures would have met the
+"supported" thresholds (good 0.687 >= 0.480 + 0.10; 0 violations; bad and too-much below the shape-only table's) and the
+"reads the words" thresholds (words slice 0.673 against 0.346 and 0.519; pairs 20 against 14 of 40); explicit forms
+honoured 6 of 7; no unmapped name. They establish nothing under the rule. Caveats: the labels are one model-written examiner's; no second reader labelled these cases, so
 there is no ceiling to quote; about 30 of the 150 are close calls by the examiner's own count.
 
 **cross** (the relater; 78 cases):
@@ -218,11 +226,19 @@ or "inconsistent" given where nothing could be measured.
 | key_majority (reference) | 0.831 | 0.756 |
 | oracle (reference) | 0.891 | 0.894 |
 
-Verdict: **supported on unseen simulated people** (gains 0.273 and 0.208 against thresholds 0.088 and 0.039); **0.118
-below the reference majority rule** late; `form_learning` stays off.
+Verdict: **VOID by the rule (two controls were not run); the figures are reported as measured and establish nothing under the rule** (correction of 2026-11-27, above). As measured: gains 0.273 and 0.208 against
+thresholds 0.088 and 0.039; **0.118 below the reference majority rule** late; `form_learning` stays off.
 
 **What these looks cannot establish** (the rule's part C): anything about real files, real people, the owner's taste,
 visual quality or usability; any version after `55f89be`; formats or kinds absent from the tables; generality from
 small n (made 16, transform 11); and a second look at the same cases, which would not be a fresh measure. **The
 unknown, hostile and cross findings are known weaknesses now: they are to be fixed and examined afresh on NEW withheld
 cases, never on these.**
+
+**What the first withheld split can still measure.** It is spent for identification, refusal and the relater: the
+fix wave (lane FX) read the look summary and WAVE2.md, written by the main session, which named the cross kind
+answered at coin level, so re-scoring these cases would measure the fixes against the cases that motivated them;
+only the second withheld split can measure them (measurement review, third pass, finding 5). Lane FX's own corpus
+figures (wrong answers 344 to 0 of 3,669 disguises, 132 to 0 of 168 hostile parts inside honest files, 24 to 0 of
+144 relater twins) are regression evidence for the classes it named, written by the same lane that wrote the fixes,
+not evidence of generality (finding 6).

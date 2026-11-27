@@ -671,8 +671,8 @@ a sound, a solid, an explorable model or words), makes it, checks it with an ind
 it marked "made by the system, not evidence"; `nsf artifact relate` compares what one file measures with what another
 states. Measured on synthetic files: 510 of 528 held-out tasks right with 0 wrong, but on the withheld split, which no
 lane tuned against, it gave 6 wrong answers in 652 (3 disguised or unknown files answered falsely, 3 hostile files
-answered instead of refused) and the relater 6 wrong in 78: those three looks are not supported. The form planner
-and the learner (simulated people) were supported on their withheld cases. Nothing decodes JPEG, MP3 or video frames;
+answered instead of refused) and the relater 6 wrong in 78: those three looks are not supported. The form planner's
+and the learner's withheld looks are void by the rule (two controls were not run). Nothing decodes JPEG, MP3 or video frames;
 no model sees or hears; answers in conversation are still sentences. Details: [docs/omnimind/README.md](docs/omnimind/README.md).
 
 ## Known limitations

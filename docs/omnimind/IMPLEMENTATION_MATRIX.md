@@ -68,7 +68,7 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 | L5 | an upload route in the console and Pocket | built for the console (off by default); **open** for Pocket | U | `test_console_artifacts.py` |
 | L6 | durable production jobs | **open** | none | a production runs in the owner's command |
 | L7 | learning form choices from outcomes | built and measured, off by default | L, `2d19a76`; int2 wiring `adae698` | learn held-out 0.710 / 0.656 against 0.450 / 0.454, SIMULATED; ADR-078 |
-| L8 | the withheld split and one look per mechanism | built and measured: **looks taken once each on `55f89be`** | ZW, `df5c820`; F2 (driver pins); docs-2 (the rule); the main session (pins, looks) | supported: intake, honest, compound, made, transform, forms, learn; **not supported: unknown, hostile, cross** (`omnimind_looks/summary.json`) |
+| L8 | the withheld split and one look per mechanism | built and measured: **looks taken once each on `55f89be`** | ZW, `df5c820`; F2 (driver pins); docs-2 (the rule); the main session (pins, looks) | supported: intake, honest, compound, made, transform; VOID by the rule: forms, learn (two controls not run); **not supported: unknown, hostile, cross** (`omnimind_looks/summary.json`) |
 | L9 | optional engines (ffmpeg, Chromium) on the system's own bytes | **open** | none | an owner decision |
 
 ## Rows the later waves added

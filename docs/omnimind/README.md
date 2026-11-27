@@ -25,9 +25,10 @@ families (3 disguised or unknown files answered falsely; 3 hostile files answere
 two artifacts (an image against its caption was answered every time and right on 5 of 10, no better than a coin).
 Those three looks are **not supported**; the weaknesses are known now and must be examined afresh on new withheld
 cases. Supported on unseen cases: intake, honest, compound, made and transform (629 right, 17 "cannot", 6 wrong, 0
-failed of 652 in all; today's system 72 right, 2 wrong, 3 failed), the frozen form planner (good 0.687 against the
-shape-only table's 0.480 and always-prose's 0.440, and on these cases it reads the request's words) and the learner
-over the planner alone with simulated people (still below the benchmark's own majority rule). On held-out it had
+failed of 652 in all; today's system 72 right, 2 wrong, 3 failed), and nothing else: the form planner's and the learner's withheld looks are VOID by the rule (two controls were not run; figures reported as measured, establishing nothing under the rule) (as measured: the
+planner's good 0.687 against the shape-only table's 0.480; the learner 0.713 against the planner alone's 0.440 with
+simulated people, below the benchmark's own majority rule). The first withheld split is spent for identification,
+refusal and the relater; only the second can measure the fix wave. On held-out it had
 answered 510 of 528 with 0 wrong. It **cannot** see or hear (no such model here), decode JPEG, MP3 or video frames, or
 say what a picture depicts. **Nothing reaches the answer path** (every answer in conversation is still sentences),
 Pocket, voice or agents; **nothing is on by default except viewing in the console**; and **nothing is merged into
