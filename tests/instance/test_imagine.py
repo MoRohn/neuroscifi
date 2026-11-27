@@ -6,10 +6,12 @@ import hashlib
 import json
 import random
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
 from neuroscifi.cli import main
+from neuroscifi.instance import cli as icli
 from neuroscifi.instance import beliefs, evidence, executive, governance, imagine, imagined, store
 
 T0 = 1_800_000_000.0
@@ -25,8 +27,11 @@ def _file_state(path, db):
 
 
 @pytest.fixture
-def individual(tmp_path):
+def individual(tmp_path, monkeypatch):
     """An epoch with three reference roots (mechanism pinned), a partner and a camera."""
+    # `nsf` commands take their `now` from instance.cli.with_db: pin it to the file's own clock, or the real one
+    # passes T0 + the evidence lifetime and the sweep expires the readings these tests build
+    monkeypatch.setattr(icli, "time", SimpleNamespace(time=lambda: T0))
     path = tmp_path / "x.sqlite"
     db = store.create(path, T0)
     rng = random.Random(5)

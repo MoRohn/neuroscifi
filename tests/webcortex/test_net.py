@@ -893,12 +893,13 @@ def test_fetch_deadline_starts_after_the_politeness_wait():
 def test_robots_are_scoped_to_scheme_host_and_port(web, tmp_path):
     web.add("origin.example", "/robots.txt", "User-agent: *\nAllow: /\n", content_type="text/plain")
     web.add("origin.example", "/a", "a")
-    fetcher, *_ = make(web, tmp_path)
+    fetcher, clock, *_ = make(web, tmp_path)
     fetcher.fetch("http://origin.example/a")
     fetcher.fetch("http://origin.example:8080/a")
     fetcher.fetch("http://origin.example:8080/a", conditional=False)
     assert len(web.requests_to("origin.example", "/robots.txt")) == 2     # one per origin, then cached
-    fresh = SafeFetcher(NetPolicy(), resolver=web.resolver, connector=web.connector, cache=fetcher.cache)
+    fresh = SafeFetcher(NetPolicy(), resolver=web.resolver, connector=web.connector, cache=fetcher.cache,
+                        clock=clock)       # the same pinned clock: on the real one the cached robots age out once it passes it
     fresh.robots_allowed("http://origin.example:8080/a")                   # persisted per origin too
     assert len(web.requests_to("origin.example", "/robots.txt")) == 2
     assert fetcher.cache.forget_domain("origin.example") >= 2              # rows still found by domain

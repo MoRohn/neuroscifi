@@ -1,10 +1,12 @@
 """`nsf web …` and `nsf forget research|knowledge|source` through neuroscifi.cli.main, offline: FixtureWeb serves
 the pages and CorpusProvider stands in for the search engines (via the cli.SERVICES_OPTIONS test hook)."""
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from neuroscifi.cli import main
+from neuroscifi.instance import cli as icli
 from neuroscifi.webcortex import cli as wcli
 from test_orchestrator import PAGES, QUESTION, T0, corpus, serve
 
@@ -25,6 +27,10 @@ def db(tmp_path, capsys):
 @pytest.fixture
 def offline(web, monkeypatch):
     serve(web)
+    # `now` for every `nsf web` handler is read by instance.cli.with_db, not taken from the services clock below, so
+    # pin it there too: otherwise the fixture's pages and predictions live at T0 while the commands judge them against
+    # the real clock (a prediction made at T0 with check_after T0+7d becomes "due" the day that date passes).
+    monkeypatch.setattr(icli, "time", SimpleNamespace(time=lambda: T0))
     monkeypatch.setattr(wcli, "SERVICES_OPTIONS", {"fixture": web, "providers": [corpus()], "clock": lambda: T0})
     return web
 
