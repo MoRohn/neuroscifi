@@ -6763,7 +6763,7 @@ Revert lane FX3's commits AND remove the relation links its comparisons recorded
 decided a link is in its `how` (the deciding refs; no new column, no migration). Before reverting, for each of
 `members`, `links` and `times`:
 `PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by members` lists them (ids and bases
-only) and `... --remove` deletes exactly those links (artifacts, events and every other link stay; no event is written,
+only) and it is a dry run that prints what it would remove and removes nothing; `... --remove` deletes exactly those links (artifacts, events and every other link stay; no event is written,
 as `artifact_events`' actions are fixed by the schema). Proved on a seeded store:
 `tests/artifacts/test_fx4_link_rollback.py`. The spent files themselves were never changed.
 
@@ -6782,7 +6782,9 @@ not their variants. Replaced, on principle (rulings R1-R8 of the team lead):
 - **R2**: only what a reader sees is evidence (a plain text file's lines, else the reader's text); a document holding
   a comment or hidden group answers "cannot"; invisible drawing marks disable the link reading.
 - **R3**: `record_links` stores consistent_with/contradicts only for an answer decided under R1 (`Relation.specific`);
-  the production pipeline, which asks no question, now shows its sources' relations without recording them.
+  `nsf artifact relate` without such a question shows its answer and records no consistent_with/contradicts link.
+  The production pipeline records its sources' relations exactly as before this wave (team lead's ruling, lane FX4
+  follow-up: `record_links(..., require_specific=False)`); its derived_from links were never affected.
 - **R4/R5**: link lines need a relation word; listing lines that are not a member and its value make the listing
   unread; whole-second cue times get half a second and truncation-only agreement is "cannot"; per-item counts are
   never a total; pixels only against pixels; depiction questions stay "cannot" unless every content word is an
