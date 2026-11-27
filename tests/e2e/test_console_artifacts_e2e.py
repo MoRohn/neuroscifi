@@ -6,7 +6,6 @@ picture from its short-lived address, making from the console (a picture, and wo
 import json
 import math
 import os
-import re
 import shutil
 import struct
 import threading
