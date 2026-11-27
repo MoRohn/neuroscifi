@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import tracemalloc
 
+import pytest
+
 from neuroscifi.artifacts import adapters
 from neuroscifi.artifacts import types as T
 
@@ -38,3 +40,18 @@ def test_a_csv_whose_text_alone_is_over_the_limit_is_refused_before_it_is_split(
         assert error.rule == "max_decoded_bytes"
     else:
         raise AssertionError("a text over the limit was split into rows")
+
+
+def test_valid_python_too_long_for_the_parser_is_named_as_that_not_as_invalid():
+    # security review N2: a long chain is valid Python the parser cannot build within its recursion limit
+    chain = ("x = " + " + ".join(["a"] * 50_000) + "\n").encode()
+    try:
+        adapters.decode(chain, name="chain.py")
+    except T.Refused as error:
+        assert error.rule == "max_depth"
+        assert "too long an expression" in str(error) and "may be valid Python" in str(error)
+        assert "no file holds valid Python" not in str(error)
+    else:
+        raise AssertionError("the chain was read")
+    with pytest.raises(T.Malformed, match="no file holds valid Python"):       # invalid Python is still named so
+        adapters.decode(b"def f(:\n    pass\n", name="broken.py")
