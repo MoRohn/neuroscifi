@@ -116,5 +116,7 @@ def test_the_command_speaks_plain_words_and_json(individual, capsys):
     assert "they DISAGREE" in text and "recorded:" in text and "not evidence" in text
     assert main(["artifact", "relate", "--db", str(path), a, b, "--json"]) == 0
     value = json.loads(capsys.readouterr().out)
-    assert value["answer"] is False and value["links"][0]["status"] == "exists"
+    # lane FX4 (R3): without a question the answer is shown, and no consistent_with/contradicts link is recorded
+    assert value["answer"] is False
+    assert not [x for x in value["links"] if x["relation"] in ("consistent_with", "contradicts")]
     assert main(["artifact", "relate", "--db", str(path), a, a]) == 2

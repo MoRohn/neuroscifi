@@ -82,7 +82,7 @@ def test_zip_lying_sizes_and_crc(b1reg):
     corrupt[pos + 16:pos + 20] = b"\x00\x00\x00\x00"           # central CRC
     with pytest.raises(T.Refused) as err:                       # lane FX: a damaged stored member refuses it all
         b1reg.decode(bytes(corrupt), name="c.zip")
-    assert err.value.rule == "damaged_member"
+    assert err.value.rule == "header_mismatch"  # lane FX4: only the central entry was changed, so the two headers disagree (refused before reading)
     lying = make_zip([("t.csv", CSV)])
     pos = lying.find(b"PK\x01\x02")
     lying = lying[:pos + 24] + (len(CSV) - 3).to_bytes(4, "little") + lying[pos + 28:]   # central size lies

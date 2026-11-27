@@ -57,15 +57,45 @@ _PREV = re.compile(rb"/Prev\s+(\d{1,12})")
 MAX_XREF_SECTIONS = 4096
 
 
+def _dictionary_tokens(raw: bytes) -> bytes:
+    """A trailer's bytes with its literal strings, hex strings and comments blanked out (lane FX4, R6): a "/Prev 9"
+    inside a string is a decoy, and a comment may stand between /Prev and its number."""
+    out, i, n = bytearray(), 0, len(raw)
+    while i < n:
+        c = raw[i:i + 1]
+        if c == b"(":
+            depth, i = 1, i + 1
+            while i < n and depth:
+                if raw[i:i + 1] == b"\\":
+                    i += 2
+                    continue
+                depth += {b"(": 1, b")": -1}.get(raw[i:i + 1], 0)
+                i += 1
+            out += b" "
+        elif c == b"<" and raw[i + 1:i + 2] != b"<" and (i == 0 or raw[i - 1:i] != b"<"):
+            j = raw.find(b">", i)
+            i = n if j < 0 else j + 1
+            out += b" "
+        elif c == b"%":
+            j = raw.find(b"\n", i)
+            i = n if j < 0 else j + 1
+            out += b" "
+        else:
+            out += c
+            i += 1
+    return bytes(out)
+
+
 def xref_chain_loops(data: bytes) -> bool:
     """Lane FX3 (class H-C): whether the chain of cross-reference sections (the last `startxref`, then each section's
     /Prev) comes back to a section it has already visited (a /Prev that points at itself or at a later section).
     A reader that follows it never ends, or stops quietly at a place of its own choosing; either way what the file
     holds is not established. Read from the bytes only, within MAX_XREF_SECTIONS steps."""
-    found = list(_STARTXREF.finditer(data, max(0, len(data) - 4096)))
-    if not found:
+    at = data.rfind(b"startxref")            # lane FX4 (R6): anywhere, not only in the last 4 KiB
+    found = _STARTXREF.match(data, at) if at >= 0 else None
+    if found is None:
         return False
-    offset, seen = int(found[-1].group(1)), set()
+    offset, seen = int(found.group(1)), set()
     for _ in range(MAX_XREF_SECTIONS):
         if offset in seen:
             return True
@@ -82,7 +112,7 @@ def xref_chain_loops(data: bytes) -> bool:
         else:                                   # a cross-reference stream: its dictionary, up to its stream
             stop = section.find(b"stream")
             trailer = section[:stop if stop > 0 else 4096]
-        prev = _PREV.search(trailer)
+        prev = _PREV.search(_dictionary_tokens(trailer))
         if prev is None:
             return False
         offset = int(prev.group(1))

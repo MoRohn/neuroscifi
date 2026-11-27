@@ -709,9 +709,11 @@ def _delimited(lines: list[str], complete: bool) -> tuple[str, list[str]] | None
 
 
 _MD_MARKERS = (("an ATX heading", re.compile(r"^#{1,6} \S", re.M)), ("a fenced code block", re.compile(r"^```", re.M)),
-               ("a Markdown table rule", re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", re.M)),
+               # lane FX4 (review L3): [ \t]* never crosses a line, so a file of blank lines is not quadratic
+               ("a Markdown table rule", re.compile(r"^\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$",
+                                                    re.M)),
                ("a Markdown link", re.compile(r"\[[^\]\n\[]{1,200}\]\([^)\s]{1,500}\)")),
-               ("a task list item", re.compile(r"^\s*[-*] \[[ xX]\] ", re.M)),
+               ("a task list item", re.compile(r"^[ \t]*[-*] \[[ xX]\] ", re.M)),
                ("bold text", re.compile(r"\*\*[^*\n]{1,200}\*\*")), ("a bullet list", re.compile(r"^[-*+] \S.*\n[-*+] \S", re.M)))
 
 
@@ -786,7 +788,8 @@ _STL_FACET = re.compile(rf"^\s*facet\s+normal\s+{_NUM}\s+{_NUM}\s+{_NUM}\s*$", r
 _STL_VERTEX = re.compile(rf"^\s*vertex\s+{_NUM}\s+{_NUM}\s+{_NUM}\s*$", re.M)
 
 
-def _structure(h: bytes, complete: bool, headings_alone: bool = False) -> tuple[str, list[str]] | None:
+def _structure(h: bytes, complete: bool, headings_alone: bool = False,
+               markdown_named: bool = False) -> tuple[str, list[str]] | None:
     decoded = _as_text(h, complete)
     if decoded is None:
         return None
@@ -816,7 +819,7 @@ def _structure(h: bytes, complete: bool, headings_alone: bool = False) -> tuple[
         code = _shebang(stripped)
         if code is not None:
             return code[0], head + code[1]
-    if complete:
+    if complete and not markdown_named:
         code = _python(text)
         if code is not None:
             return code[0], head + code[1]
@@ -890,7 +893,8 @@ TEXT_SIGNATURES = frozenset({"pdf", "ps", "rtf", "ply", "fits", "pbm", "pgm", "p
 PROSE_PREFIX = 4096     # a prefix of a longer file this long, all text, is enough to doubt a binary signature
 
 
-def _binary_signature_in_text(fmt: str, head: bytes, size: int | None, headings_alone: bool):
+def _binary_signature_in_text(fmt: str, head: bytes, size: int | None, headings_alone: bool,
+                              markdown_named: bool = False):
     """What the structure test finds when a BINARY format's signature begins bytes that are all text (a note that
     starts "RIFF....WAVE is how a sound file begins", a table whose first header cell is "GIF89a"): the signature is
     then part of the words, not a file of that format. None when the signature stands."""
@@ -901,15 +905,15 @@ def _binary_signature_in_text(fmt: str, head: bytes, size: int | None, headings_
         return None
     if _as_text(head, complete) is None:
         return None
-    found = _structure(head, complete, headings_alone)
+    found = _structure(head, complete, headings_alone, markdown_named)
     if found is None:
         return None
     return found[0], list(found[1]) + [f"it begins with the bytes of a {fmt} signature, but every byte is text, "
                                        f"which no {fmt} file is: the signature is part of the words"], None, "structure"
 
 
-def _identify(head: bytes, size: int | None,
-              headings_alone: bool = False) -> tuple[str, list[str], str | None, str] | None:
+def _identify(head: bytes, size: int | None, headings_alone: bool = False,
+              markdown_named: bool = False) -> tuple[str, list[str], str | None, str] | None:
     for test in SIGNATURES:
         try:
             found = test(head, size)
@@ -920,14 +924,14 @@ def _identify(head: bytes, size: int | None,
             # that its answer rests on structure, not on a signature: a fourth element names the basis
             basis = found[3] if len(found) > 3 and found[3] in ("signature", "structure") else "signature"
             if basis == "signature":
-                prose = _binary_signature_in_text(found[0], head, size, headings_alone)
+                prose = _binary_signature_in_text(found[0], head, size, headings_alone, markdown_named)
                 if prose is not None:
                     return prose
             return found[0], list(found[1]), found[2], basis
     complete = (size is not None and len(head) >= size) or (size is None and len(head) < HEAD_MAX)
     if size is not None and not complete and len(head) < MIN_STRUCTURE_PREFIX:
         return None   # a few bytes of a longer input say nothing about its structure
-    found = _structure(head, complete, headings_alone)
+    found = _structure(head, complete, headings_alone, markdown_named)
     if found is not None:
         return found[0], list(found[1]), None, "structure"
     return None
@@ -989,8 +993,10 @@ def detect(head: bytes, *, name: str | None = None, declared: str | None = None,
         return _unknown(["the input is empty"] + [w + f", which names {f}: an empty input is not one" for f, w in hints])
     # Markdown by its headings alone only when no hint names another text format whose comments begin with '#'
     headings_alone = not any(f in TEXT_FORMATS and f not in ("text", "markdown") for f, _ in hints)
+    # lane FX4 (review L2): a file named or declared Markdown is not taken for Python because it parses as Python
+    markdown_named = any(f == "markdown" for f, _ in hints)
     try:
-        found = _identify(head, size, headings_alone)
+        found = _identify(head, size, headings_alone, markdown_named)
     except (RecursionError, MemoryError):
         found = None
     if found is None:

@@ -69,9 +69,11 @@ def record_links(db, first: str, second: str, rel, *, now=None) -> list[dict]:
     from . import store
     shared = rel.shared
     links = []
-    if rel.answer is True:
+    # lane FX4 (R3): only an answer decided under a question that names what is compared and where becomes a
+    # durable link; an answer from "everything the two artifacts let me compare" is shown, never recorded
+    if rel.answer is True and getattr(rel, "specific", False):
         links.append(("consistent_with", first, second, rel.basis()))
-    elif rel.answer is False:
+    elif rel.answer is False and getattr(rel, "specific", False):
         links.append(("contradicts", first, second, rel.basis()))
     for m in rel.describes:
         src, dst = (first, second) if m["describes"] == "first" else (second, first)

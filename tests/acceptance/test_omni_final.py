@@ -81,7 +81,7 @@ def test_nothing_but_final_imports_a_withheld_module():
                 if path == ROOT / "scripts" / "omnimind_spent.py":
                     # the owner's decision of 2026-11-27 (WAVE3, ADR-081): the SPENT cases of unknown, hostile and
                     # cross are development cases; this script may import exactly these three files, nothing else
-                    spent = {p for p in parts if p.startswith(("withheld_", "withheld2_"))}
+                    spent = {p for p in parts if p.startswith(("withheld_", "withheld2_", "withheld3_"))}
                     assert spent <= {"withheld_cross", "withheld2_cross", "withheld2_unknown_hostile"}, (module, names)
                     continue
                 assert path == OMNI / "final.py", (str(path.relative_to(ROOT)), module, names)
