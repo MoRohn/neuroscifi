@@ -486,3 +486,25 @@ def test_a_made_artifacts_record_outranks_a_long_description_of_its_bytes():
     plain, _ = A._index(detect(b"<svg/>"), big, None, text_chars=0, text_truncated=False,
                         injection={"flagged": False}, extra={"pad": "y" * 9000})
     assert plain.get("truncated") is True                 # without a production record: unchanged behaviour
+
+
+def test_quiet_and_scopes_a_production_runs_only_when_asked_and_only_for_the_owner(individual):
+    """No background activity makes anything (the pipeline imports nothing that runs on its own); with quiet on, the
+    owner's own command still works; what it made is reachable by no family or agent scope."""
+    from pathlib import Path
+    from neuroscifi import background
+    db, _ = individual
+    assert not [name for name in background.ACTIVITIES if "produc" in name or "artifact" in name]
+    for module in ("produce.py", "produce_builders.py", "adapters/model_file.py"):
+        source = (Path(P.__file__).parent / module).read_text()
+        imports = [line for line in source.splitlines() if line.strip().startswith(("import ", "from "))]
+        for word in ("background", "scheduler", "autonomy", "worker", "threading", "subprocess"):
+            assert not [line for line in imports if word in line], (module, word)
+    store.set_config(db, {"quiet": True}, T0)
+    result = P.produce(db, "how did it change?", [P.Given("temps.csv", temps_csv())], now=T0)
+    assert result.status == "made"
+    for viewer in ("family", "agent"):
+        with pytest.raises(A.StoreRefused):
+            A.get(db, result.artifact, viewer=viewer)
+        with pytest.raises(A.StoreRefused):
+            A.read_bytes(db, result.artifact, viewer=viewer)
