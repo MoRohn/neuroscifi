@@ -147,3 +147,35 @@ def test_the_store_keeps_the_refused_archive_with_its_listing_and_inspect_says_t
     captured = capsys.readouterr()
     assert 'member "readme.txt": 13 bytes' in captured.out and "refused as a whole" in captured.err
     assert "benign words" not in captured.out + captured.err
+
+
+# ---- a CSV cell that starts like a spreadsheet formula (the main session's ruling: exactness wins in the file) ----
+
+def test_formula_like_cells_are_written_exactly_said_in_the_notes_and_recorded_as_a_warning(tmp_path, capsys):
+    import csv
+    from neuroscifi import cli
+    from neuroscifi.artifacts import check, make
+    from neuroscifi.artifacts import store as A
+    from neuroscifi.instance import store
+    spec = {"spec": "data.csv", "version": 1, "title": "Ledger", "description": "", "sources": ["request"],
+            "made_by": {"generator": "", "version": 0}, "options": {},
+            "data": {"columns": [{"name": "item", "kind": "text", "values": ["=SUM(A1)", "-3 apples", "@home", "pear"]},
+                                 {"name": "n", "kind": "number", "values": [1, 2, 3, 4]}]}}
+    made = make.make(spec)
+    rows = list(csv.reader(io.StringIO(made.bytes.decode("utf-8"), newline="")))
+    assert [r[0] for r in rows[1:]] == ["=SUM(A1)", "-3 apples", "@home", "pear"]      # the default: exact, unguarded
+    assert any(n.startswith("3 text cell(s) begin with =, +, - or @") for n in made.notes)
+    verdict = check.check(made.bytes, made.media_type, made.spec)
+    note = next(f for f in verdict.technical if f.rule == "formula_like_cells")
+    assert verdict.ok and note.passed and note.measure == 3.0
+    db = store.create(tmp_path / "i.sqlite", 1.8e9)
+    try:
+        record = A.add_made(db, made, made.spec, now=1.8e9)
+        checked = A.show(db, record.id)["index"]["check"]
+        assert checked["ok"] is True and checked["failed"] == [] and "spreadsheet program" in checked["warnings"][0]
+        db.commit()
+    finally:
+        db.close()
+    assert cli.main(["artifact", "show", "--db", str(tmp_path / "i.sqlite"), record.id]) == 0
+    out = capsys.readouterr().out
+    assert "independent check: passed" in out and "warning: 3 text field(s) start like a spreadsheet formula" in out

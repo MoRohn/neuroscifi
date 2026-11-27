@@ -216,6 +216,33 @@ def _request_of(spec, reverse):
                 "z": data["values"], "format": options.get("format", "stl")}
     elif form == "animation":
         data = {"frames": data["frames"], "delays_s": [d / 1000 for d in data["delays_ms"]]}
+    elif form in ("line", "scatter", "bar"):
+        labels = {"x_label": data["x"]["label"], "y_label": data["y"]["label"]}
+        if form == "line":
+            data = {"series": [{"name": s["name"], "x": [p[0] for p in s["points"]], "y": [p[1] for p in s["points"]]}
+                               for s in data["series"]]} | labels
+        elif form == "scatter":
+            data = {"points": data["series"][0]["points"]} | labels
+        else:
+            data = {"categories": data["categories"], "values": data["series"][0]["values"],
+                    "warn": data["series"][0].get("warning", [])} | labels
+    elif form == "histogram":
+        import math
+        w, values = options["bin_width"], data["values"]
+        data = {"values": values, "bin_edges": [k * w for k in range(math.floor(min(values) / w),
+                                                                     math.ceil(max(values) / w) + 1)]}
+    elif form == "timeline":
+        from datetime import datetime, timezone
+        data = {"events": [{"label": e["label"], "date": datetime.fromtimestamp(e["at"], tz=timezone.utc)
+                            .strftime("%Y-%m-%d")} for e in data["events"]]}
+    elif form == "diagram":
+        label = {n["id"]: n["label"] for n in data["nodes"]}
+        data = {"nodes": [n["label"] for n in data["nodes"]], "edges": [[label[e["from"]], label[e["to"]]]
+                                                                         for e in data["edges"]]}
+    elif form == "data_file":
+        cols = data["columns"]
+        data = {"format": "csv", "columns": [c["name"] for c in cols],
+                "rows": [list(r) for r in zip(*[c["values"] for c in cols])]}
     return dict(data, form=form)
 
 

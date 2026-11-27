@@ -80,8 +80,22 @@ ADAPTERS = (
     ('refuse-pickle', ('pickle',), 'nothing', False),
 )
 GENERATORS = (
+    ('animation.svg', 'g1.animation.svg'),
+    ('chart.bar', 'g1.chart.bar'),
+    ('chart.heatmap', 'g1.chart.heatmap'),
+    ('chart.histogram', 'g1.chart.histogram'),
+    ('chart.line', 'g1.chart.line'),
+    ('chart.scatter', 'g1.chart.scatter'),
+    ('chart.small_multiples', 'g1.chart.small_multiples'),
+    ('data.csv', 'g1.data.csv'),
+    ('data.json', 'g1.data.json'),
+    ('document.html', 'g1.document.html'),
+    ('document.md', 'g1.document.md'),
     ('explorable.model', 'g2.explorable'),
     ('explorable.steps', 'g2.explorable'),
+    ('flow.steps', 'g1.flow.steps'),
+    ('graph.nodelink', 'g1.graph.nodelink'),
+    ('graph.tree', 'g1.graph.tree'),
     ('image.apng', 'g2.raster'),
     ('image.raster', 'g2.raster'),
     ('solid.box', 'g2.solids'),
@@ -93,15 +107,22 @@ GENERATORS = (
     ('sound.sonify', 'g2.sound'),
     ('sound.tone', 'g2.sound'),
     ('surface.grid', 'g2.solids'),
+    ('table.html', 'g1.table.html'),
+    ('timeline', 'g1.timeline'),
 )
 VALIDATORS = (
+    ('application/json', 'g1.json'),
     ('application/vnd.neuroscifi.explorable+html', 'g2.explorable'),
     ('audio/wav', 'g2.wav'),
     ('audio/x-wav', 'g2.wav'),
     ('image/apng', 'g2.png'),
     ('image/png', 'g2.png'),
+    ('image/svg+xml', 'g1.svg'),
     ('model/obj', 'g2.mesh'),
     ('model/stl', 'g2.mesh'),
+    ('text/csv', 'g1.csv'),
+    ('text/html', 'g1.html'),
+    ('text/markdown', 'g1.markdown'),
 )
 
 
@@ -129,15 +150,16 @@ def test_the_generator_and_validator_catalogs_are_pinned():
 def test_every_made_media_type_has_a_validator():
     # a generator whose output no validator reads could never pass a check: none may be registered
     checked = {r["media_type"] for r in check.catalog()}
-    from neuroscifi.artifacts.make import _g2
+    from neuroscifi.artifacts.make import _g1, _g2
     made = {"audio/wav", "model/stl", "model/obj", "image/png", "image/apng", _g2.explorable.MEDIA_TYPE}
-    assert made <= checked
+    assert made | set(_g1.FORMS.values()) <= checked
 
 
 def test_the_commands_print_the_catalogs_in_plain_words(capsys):
     assert cli.main(["artifact", "forms"]) == 0
     out = capsys.readouterr().out
     assert "sound.sonify: made by g2.sound version 1: ready" in out and "audio/wav: g2.wav" in out
+    assert "chart.line: made by g1.chart.line version 1: ready" in out and "image/svg+xml: g1.svg" in out
     assert cli.main(["artifact", "forms", "--json"]) == 0
     value = json.loads(capsys.readouterr().out)
     assert [(r["form"], r["generator"]) for r in value["generators"]] == list(GENERATORS)

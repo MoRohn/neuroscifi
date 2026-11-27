@@ -115,6 +115,10 @@ def test_made_forms_go_through_the_real_generators_and_the_benchmarks_readers(ar
     assert a.status == "cannot"                      # no product form makes a solid from given vertices and faces
     produced = made.score(artifacts, "development")
     assert produced["wrong"] == 0 and produced["failed"] == 0
+    # every development form a product generator makes is read right by the examiner's own readers (lanes G1, G2);
+    # the one left is the solid from given vertices and faces, which no product form makes
+    unmade = [t for t in made.tasks("development") if subject.FORM_NAMES[t.question.split(":")[1]] is None]
+    assert produced["right"] == produced["n"] - len(unmade)
 
 
 def test_the_planner_is_a_subject_of_the_forms_family():

@@ -84,6 +84,14 @@ def _plain(what, value) -> str:
                  f"  sha256: {value['sha256']}"]
         for note in (value["index"].get("notes") or [])[:8]:
             lines.append(f"  not recovered: {note}")
+        for note in (value["index"].get("made_notes") or [])[:8]:
+            lines.append(f"  made: {note}")
+        checked = value["index"].get("check")
+        if checked:
+            lines.append("  independent check: " + ("passed" if checked.get("ok") else
+                                                     "FAILED (" + ", ".join(checked.get("failed") or []) + ")"))
+            for warning in checked.get("warnings") or []:
+                lines.append(f"  warning: {warning}")
         for link in value["links"]:
             lines.append(f"  link: {link['src']} {link['relation']} {link['dst_id']} ({link['how']})")
         return "\n".join(lines)

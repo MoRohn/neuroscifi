@@ -645,6 +645,19 @@ def add(db, source, *, name=None, origin="given", scope="owner", follow_symlinks
                   now=now)
 
 
+# Technical findings that PASS but that a later path must warn about (opening a CSV in a spreadsheet program).
+CHECK_WARNINGS = frozenset({"formula_like_cells"})
+
+
+def _check_summary(data: bytes, media_type: str, spec) -> dict:
+    """The independent check's verdict on a made artifact, recorded on it: ok, the failed technical rules, and the
+    warnings a later path must give (CHECK_WARNINGS). The check re-reads the bytes; it never asks the generator."""
+    from .check import check
+    verdict = check(data, media_type, spec.to_dict() if hasattr(spec, "to_dict") else spec)
+    return {"ok": bool(verdict.ok), "failed": [f.rule for f in verdict.technical if not f.passed][:16],
+            "warnings": [f.detail[:300] for f in verdict.technical if f.passed and f.rule in CHECK_WARNINGS][:8]}
+
+
 def add_made(db, made, spec, sources=(), *, now=None) -> ArtifactRecord:
     """Keep what the system made (artifacts.make.Made) with its specification as the editable source and a
     `derived_from` link to every source artifact. Origin 'made': never evidence (ADR-071)."""
@@ -674,7 +687,8 @@ def add_made(db, made, spec, sources=(), *, now=None) -> ArtifactRecord:
     maker = f"{generator}@{int(spec.made_by.get('version', 0))}"[:80]
     extra = {"spec": {"form": spec.spec, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
                       "bytes": len(text.encode("utf-8"))},
-             "made_notes": [str(n)[:200] for n in tuple(getattr(made, "notes", ()))[:16]]}
+             "made_notes": [str(n)[:400] for n in tuple(getattr(made, "notes", ()))[:16]],
+             "check": _check_summary(data, str(getattr(made, "media_type", "") or ""), spec)}
     return _store(db, data, label=_label(spec.title or spec.spec), origin="made", maker=maker, scope="owner",
                   name_hint=None, declared=str(getattr(made, "media_type", "") or "") or None, now=now,
                   # the generator's own media type is kept: detection cannot tell lane G2's explorable document

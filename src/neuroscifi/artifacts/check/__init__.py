@@ -87,5 +87,8 @@ def check(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
 
 __all__ = ["Finding", "Validator", "Verdict", "catalog", "check", "register", "unregister"]
 
-# The built-in validators (lane G2), registered by media type. Imported last: they register through `register`.
+# The built-in validators (lanes G1 and G2), registered by media type. Imported last: they register through
+# `register`. G1's media types (SVG, HTML, Markdown, CSV, JSON) and G2's (WAV, PNG/APNG, STL/OBJ, the explorable
+# vendor type) do not overlap, so no validator judges another lane's document.
+from . import _g1  # noqa: E402,F401
 from . import _g2  # noqa: E402,F401

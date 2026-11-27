@@ -108,8 +108,10 @@ def make(spec: Spec | dict, limits: Limits = Limits()) -> Made:
                    notes=tuple(made.notes))
 
 
-__all__ = ["Generator", "Made", "catalog", "make", "register", "unregister"]
+__all__ = ["Generator", "Made", "catalog", "make", "register", "repair", "repair_loop", "unregister"]
 
-# The built-in generators (lane G2: sound, solids, raster images, explorable documents). Imported last: each module
-# registers through the functions defined above.
+# The built-in generators (lane G1: charts, diagrams, tables, documents, data files, animated SVG; lane G2: sound,
+# solids, raster images, explorable documents). Imported last: each module registers through the functions above.
+from . import _g1  # noqa: E402,F401
 from . import _g2  # noqa: E402,F401
+from .repair import repair, repair_loop  # noqa: E402,F401  (DESIGN's make.repair(spec, verdict): lane G1's bounded rules)

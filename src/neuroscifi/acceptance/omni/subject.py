@@ -696,8 +696,10 @@ class ArtifactsSubject:
                 return _value_list(match[0])
             if kind == "csv_to_chart":
                 xs, ys = column(request["x"]), column(request["y"])
-                made = ({"form": "line", "series": [{"name": request["y"], "x": xs, "y": ys}]}
-                        if request["form"] == "line" else {"form": "scatter", "points": [list(p) for p in zip(xs, ys)]})
+                labels = {"x_label": request["x"], "y_label": request["y"]}      # the columns' own names
+                made = ({"form": "line", "series": [{"name": request["y"], "x": xs, "y": ys}]} | labels
+                        if request["form"] == "line" else
+                        {"form": "scatter", "points": [list(p) for p in zip(xs, ys)]} | labels)
             else:
                 values = column(request["column"])
                 made = {"form": "sonify", "values": values, "low_hz": request["low_hz"], "high_hz": request["high_hz"],
@@ -788,6 +790,42 @@ def _data_and_options(form: str, request: dict) -> tuple[dict, dict]:
     if form == "animation":
         options |= {"range": [0, 255], "ramp": "dark_low", "bits": 8, "cell_px": 1}   # the request's values are gray levels
         return {"frames": rest["frames"], "delays_ms": [int(round(d * 1000)) for d in rest["delays_s"]]}, options
+    axis = {"x": {"label": str(rest.get("x_label", ""))}, "y": {"label": str(rest.get("y_label", ""))}}
+    if form == "line":
+        return axis | {"series": [{"name": s["name"], "points": [[x, y] for x, y in zip(s["x"], s["y"])]}
+                                  for s in rest["series"]]}, options
+    if form == "scatter":
+        return axis | {"series": [{"name": str(rest.get("y_label", "")), "points": rest["points"]}]}, options
+    if form == "bar":
+        series = {"name": str(rest.get("y_label", "")), "values": rest["values"]}
+        if rest.get("warn"):
+            series["warning"] = list(rest["warn"])                        # the request's warned values, by index
+        return axis | {"categories": rest["categories"], "series": [series]}, options
+    if form == "histogram":
+        edges = [float(e) for e in rest["bin_edges"]]
+        width = edges[1] - edges[0]
+        # lane G1's bins are multiples of a stated width: the request's edges must be exactly that
+        if not (np.allclose(np.diff(edges), width) and abs(edges[0] / width - round(edges[0] / width)) < 1e-9):
+            raise Cannot("the request's bin edges are not multiples of one width, which is how the histogram bins")
+        return {"x": axis["x"], "values": rest["values"]}, options | {"bin_width": width}
+    if form == "timeline":
+        from datetime import datetime, timezone
+        events = [{"lane": "events", "label": e["label"], "at": datetime.strptime(e["date"], "%Y-%m-%d").replace(
+            tzinfo=timezone.utc).timestamp()} for e in rest["events"]]          # an ISO date as epoch seconds (UTC)
+        return {"x": {"label": "date", "scale": "time"}, "lanes": ["events"], "events": events}, options
+    if form == "diagram":
+        ids = {}
+        for name in rest["nodes"]:
+            ids.setdefault(name, f"n{len(ids)}")                               # ids by position; labels are the names
+        return {"nodes": [{"id": ids[n], "label": n} for n in ids],
+                "edges": [{"from": ids[a], "to": ids[b]} for a, b in rest["edges"]]}, options
+    if form == "data_file":
+        columns = []
+        for k, name in enumerate(rest["columns"]):
+            values = [row[k] for row in rest["rows"]]
+            numeric = all(isinstance(v, (int, float)) and not isinstance(v, bool) or v is None for v in values)
+            columns.append({"name": name, "kind": "number" if numeric else "text", "values": values})
+        return {"columns": columns}, options
     return rest, options
 
 
