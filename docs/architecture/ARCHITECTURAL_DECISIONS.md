@@ -6689,3 +6689,70 @@ identical, equal to the rule's table).
   never followed or run, and refuses nothing by itself) was made on principle before the look and may account for part
   of the hostile count; this is not known, because no task is opened. Both withheld splits are spent for these
   families; a further fix needs a third set of unseen cases written first. The owner's merge condition is not met.
+
+# ADR-081 The spent withheld cases opened for unknown, hostile and cross; failures diagnosed and fixed by class
+
+Status: built by lane FX3 (OMNIMIND Wave O-3), 2026-11-27, on branch `omni-fx3`. No setting, no migration, no new
+format, form or command; `artifacts/forms.py`, `acceptance/omni/final.py`, the bench scripts and both benchmark drivers
+unchanged. Nothing outside the artifact package changes (offline digest equal in both regimes; guard differential 0
+different). **Unverified on unseen cases**: judged once on the third withheld set, written by lane ZW3 before any fix
+was looked at. The numbers below are development evidence: the fixes saw the spent cases.
+
+## Context
+
+The look at the second withheld split (`docs/quality/evidence/omnimind_looks2/summary.json`, on `ae6120f`) found
+unknown 5 wrong of 171, hostile 11 answered of 62, and a relater that stopped guessing but answered only 47 of 80
+decidable cases (three kinds never). The owner then decided (WAVE3, verbatim labels): "Open spent cases, fix
+(Recommended)": both used withheld sets are opened for these three families only and are development cases from now
+on; a third unseen set is written first; and "Read with a note (Recommended)": an outside reference or embedded
+active content is read with a plain note and never refused for that alone (ADR-080 decision 4 stands).
+
+## Decision
+
+1. **Opened, and not opened.** `withheld2_unknown_hostile.py`, `withheld2_cross.py` and `withheld_cross.py` were
+   opened. `withheld_cases.py` was NOT: it also holds the first split's intake, honest, compound, made and transform
+   cases, so the first split's 3 unknown wrong and 3 hostile answered are not diagnosed from cases.
+   `scripts/omnimind_spent.py` runs the product on the opened cases through the looks' own functions (never `final`)
+   and reproduces both looks exactly (second split on `ae6120f`'s code; first-split cross on a `git archive` of
+   `55f89be`). `test_omni_final`'s import scan allows exactly those three modules in that one script.
+2. **Diagnosis before any fix** (`docs/quality/evidence/omnimind_spent_diagnosis.json`): every wrong and every
+   declined decidable case by class, with its cause in the code. Hostile answers: **(a) 11 real failures, (b) 0
+   expecting refusal only for an outside reference or active content, (c) 0 truths in doubt.** One unknown "cannot"
+   (two gzip layers) is caused by the benchmark driver's one-level descent (`subject.py`): not fixed here.
+3. **Identification** (`detect.py`, `adapters/__init__.py`): a binary format's signature at the start of bytes that are
+   all text yields to the structure test (formats that are text by design keep theirs); text that parses as a Python
+   module (`ast.parse`, syntax only, never run) with a def, class or import is Python; two or more ATX headings, each
+   a block of its own, make Markdown unless a hint names a format whose comments begin with '#'; an unknown head whose
+   file ends in a ZIP the safe reader reads with every local header in place is a ZIP (a recognised head stays a
+   refused polyglot).
+4. **Refusal** (one rule each, all refusing the whole file): HTML elements with required end tags and Markdown quote
+   markers nest at most 256 levels; an address to an AI reader followed by a directive to set aside its rules or to
+   act against the owner is flagged by a second, artifacts-only screen beside `scan_injection` (which is shared with
+   research and unchanged); a PDF cross-reference chain that returns to a section (`self_reference`); members that
+   collide in name, or two sheets of one name (`duplicate_names`); a ZIP local header that names a member otherwise
+   (`name_mismatch`); a UTF-8-flagged name that is not UTF-8 (`unsafe_member_name`); a WAV block alignment or byte
+   rate of zero (malformed).
+5. **Relater** (`relate.py`, `relate_read.py`): three comparisons that need both artifacts at once
+   (`STRUCTURE_KINDS`): an archive against a listing of its members (sizes; digests computed from each ZIP member's
+   bytes read again by the safe reader), a node-link drawing against text lines naming two of its labels, a sound's
+   tone onsets against lines beginning with elapsed times (0.05 s). Each decides when the question names it, or, when
+   the question names nothing else, when it used every line of its document. Pixel lengths tied to an axis are
+   compared axis by axis, and a question naming a size is not a depiction question; a question asking a count is
+   decided only by a count of that thing; marks named otherwise and "counts" naming data no longer silence a chart
+   comparison; GPX waypoints are counted as stops; a stated count of a column's own noun is its aggregate when the
+   question names one; under a general question an unread number about the table withholds agreement. Undecidable
+   meaning (what a picture depicts, a translation) stays "cannot".
+
+## Measured (`docs/quality/evidence/omnimind_fx3.json`; development numbers)
+
+Spent cases, before -> after: unknown (second split) 158/8/5 -> 170/1/0 of 171; hostile 51 refused/11 answered ->
+62/0 of 62; cross (second split) 65 right, 1 wrong, decidable 47 of 80 -> 96 right, 0 wrong, decidable 78 of 80,
+undecidable "cannot" 18 of 18; cross (first split) 44/32/2 -> 64/14/0 of 78. Lane FX3's own relater corpus (seeds
+31000-31999, traps included) 80/184/12 -> 276/0/0 of 276; lane FX's corpora unchanged in wrong answers (identification
+0 of 3,669, relater 0 of 144). Development unchanged (512/12/0/0 of 524; cross 72 of 72).
+
+## Rollback
+
+Revert lane FX3's commits; nothing stored changes shape (kept artifacts are re-read with the code present). The
+spent files' header lines, if added, are comments only (their pinned SHA-256 in `final.py` and the tests then need the
+main session's re-pin).
