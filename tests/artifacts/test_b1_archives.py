@@ -37,15 +37,29 @@ def test_zip_members_decoded_recursively(b1reg):
     assert out.notes[0].startswith("4 member(s): 3 decoded")
 
 
-def test_zip_hostile_names_links_and_encryption(b1reg):
+def test_zip_hostile_names_and_links_refuse_the_whole_archive(b1reg):
+    """The main session's ruling (integration): a member that climbs out, an absolute name or a link makes the
+    WHOLE archive refused; nothing inside, not even the benign ok.csv, is decoded; the listing is inspection only."""
     data = make_zip([("../../etc/passwd", b"root"), ("/abs.txt", b"x"), ("ok.csv", CSV), ("link", b"/etc/shadow")],
                     symlinks=("link",))
-    out = b1reg.decode(data, name="h.zip")
-    m = by_path(out.representation)
-    assert m["../../etc/passwd"].inner is None and "climbs out" in m["../../etc/passwd"].note
-    assert m["/abs.txt"].inner is None and "absolute" in m["/abs.txt"].note
-    assert m["link"].inner is None and "symbolic link" in m["link"].note
-    assert m["ok.csv"].inner is not None
+    with pytest.raises(T.Refused) as err:
+        b1reg.decode(data, name="h.zip")
+    assert err.value.rule == "unsafe_member_name" and '"../../etc/passwd"' in str(err.value)
+    assert "climbs out" in str(err.value) and "3 more" not in str(err.value) and "2 more" in str(err.value)
+    assert "nothing inside was decoded" in str(err.value)
+    assert err.value.findings == ('member "../../etc/passwd": 4 bytes', 'member "/abs.txt": 1 bytes',
+                                  f'member "ok.csv": {len(CSV)} bytes', 'member "link": 11 bytes')
+    for alone, why in ((("/abs.txt", b"x"), "absolute"), (("link", b"/etc/shadow"), "symbolic link")):
+        with pytest.raises(T.Refused) as err:
+            b1reg.decode(make_zip([alone, ("ok.csv", CSV)], symlinks=("link",)), name="h.zip")
+        assert err.value.rule == "unsafe_member_name" and why in str(err.value)
+    odd = make_zip([("ok\u202e\x1b.csv", CSV), ("../x", b"x")])
+    with pytest.raises(T.Refused) as err:                           # the name is data: escaped in the reason
+        b1reg.decode(odd, name="o.zip")
+    assert "\x1b" not in str(err.value) and "\u202e" not in str(err.value)
+
+
+def test_zip_encrypted_members_are_refused_one_by_one(b1reg):
     enc = make_zip([("secret.csv", CSV), ("open.csv", CSV)], flags=1)
     m = by_path(b1reg.decode(enc, name="e.zip").representation)
     assert m["secret.csv"].inner is None and "encrypted" in m["secret.csv"].note
@@ -117,24 +131,32 @@ def tar_bytes(entries):
     return buf.getvalue()
 
 
-TAR_ENTRIES = [("d", "dir", None), ("d/t.csv", "file", CSV), ("../up.txt", "file", b"x"),
-               ("s", "sym", "/etc/passwd"), ("h", "hard", "d/t.csv"), ("p", "fifo", None)]
+TAR_ENTRIES = [("d", "dir", None), ("d/t.csv", "file", CSV)]
+UNSAFE_TAR = {"climbs": (("../up.txt", "file", b"x"), "climbs out"),
+              "sym": (("s", "sym", "/etc/passwd"), 'symbolic link to "/etc/passwd"'),
+              "hard": (("h", "hard", "d/t.csv"), "hard link"),
+              "fifo": (("p", "fifo", None), "special entry")}
 
 
 def check_tar(bundle):
     m = by_path(bundle)
     assert m["d"].detected.format == "directory"
     assert m["d/t.csv"].inner.n_rows == 2
-    assert m["../up.txt"].inner is None and "climbs out" in m["../up.txt"].note
-    assert "symbolic link to '/etc/passwd'" in m["s"].note and m["s"].inner is None
-    assert "hard link" in m["h"].note and m["h"].inner is None
-    assert "special" in m["p"].note
 
 
 def test_tar_plain(b1reg):
     out = b1reg.decode(tar_bytes(TAR_ENTRIES), name="a.tar")
     assert out.detected.format == "tar"
     check_tar(out.representation)
+
+
+@pytest.mark.parametrize("kind", list(UNSAFE_TAR))
+def test_an_unsafe_tar_member_refuses_the_whole_archive(b1reg, kind):
+    entry, why = UNSAFE_TAR[kind]
+    with pytest.raises(T.Refused) as err:
+        b1reg.decode(tar_bytes(TAR_ENTRIES + [entry]), name="a.tar")
+    assert err.value.rule == "unsafe_member_name" and why in str(err.value)
+    assert any('"d/t.csv"' in f for f in err.value.findings)       # listed, never decoded
 
 
 @pytest.mark.parametrize("fmt,pack", [("gzip", gzip.compress),

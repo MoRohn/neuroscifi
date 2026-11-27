@@ -111,3 +111,39 @@ def test_an_odt_paragraph_in_a_heading_style_is_a_heading():
     assert [(b.kind, b.level, b.text) for b in doc.blocks] == [
         ("heading", 1, "Harbour survey"), ("heading", 3, "A lead paragraph under a custom outline style."),
         ("paragraph", 0, "Plain words."), ("heading", 2, "Readings")]
+
+
+# ---- an archive with an unsafe member is refused as a whole (the main session's ruling on the hostile truths) ----
+
+def _unsafe_zip() -> bytes:
+    return _zip([("readme.txt", b"benign words\n"), ("../../escape.txt", b"x\n")])
+
+
+def test_an_archive_with_an_unsafe_member_is_refused_as_a_whole_even_inside_a_gzip():
+    import gzip
+    for data in (_unsafe_zip(), gzip.compress(_unsafe_zip())):
+        with pytest.raises(T.Refused) as e:
+            adapters.decode(data)
+        assert e.value.rule == "unsafe_member_name" and "nothing inside was decoded" in str(e.value)
+
+
+def test_the_store_keeps_the_refused_archive_with_its_listing_and_inspect_says_the_same(tmp_path, capsys):
+    from neuroscifi import cli
+    from neuroscifi.artifacts import store as A
+    from neuroscifi.instance import store
+    db = store.create(tmp_path / "i.sqlite", 1.8e9)
+    try:
+        record = A.add(db, _unsafe_zip(), name="delivery.zip", now=1.8e9)
+        error = A.show(db, record.id)["index"]["error"]
+        assert error["rule"] == "unsafe_member_name"
+        assert error["findings"] == ['member "readme.txt": 13 bytes', 'member "../../escape.txt": 2 bytes']
+        assert A.text_for_model(db, record.id) == ""                 # nothing inside was decoded
+        assert A.read_bytes(db, record.id) == _unsafe_zip()
+    finally:
+        db.close()
+    path = tmp_path / "delivery.zip"
+    path.write_bytes(_unsafe_zip())
+    assert cli.main(["inspect", str(path)]) == 2
+    captured = capsys.readouterr()
+    assert 'member "readme.txt": 13 bytes' in captured.out and "refused as a whole" in captured.err
+    assert "benign words" not in captured.out + captured.err

@@ -99,9 +99,14 @@ def _inspect(args) -> int:
         data = read_file(args.file, limits.max_bytes)
         out = report(data, os.path.basename(str(args.file)))
     except ArtifactError as error:
+        findings = [str(f) for f in getattr(error, "findings", ()) or ()]
         if args.json:
-            print(json.dumps({"error": error.reason, "message": str(error)}))
-        print(f"nsf inspect: {error.reason}: {error}", file=sys.stderr)
+            print(json.dumps({"error": error.reason, "rule": getattr(error, "rule", None), "message": str(error),
+                              "findings": findings}))
+        elif findings:                          # e.g. an archive refused as a whole: its listing, never its content
+            print("What could be established (inspection only, nothing inside was decoded):")
+            print("\n".join(f"  - {_clean(f)}" for f in findings))
+        print(f"nsf inspect: {error.reason}: {_clean(error)}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(out, ensure_ascii=True, sort_keys=True))

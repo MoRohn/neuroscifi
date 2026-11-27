@@ -6,9 +6,13 @@ with its name (as stored, data only), its size, and a `Detected`; regular member
 recursively through `adapters.decode` with `nested()` limits (one level less of `max_depth`, the remaining
 `max_decoded_bytes`, the remaining seconds). Per-member outcomes are in `Member.note`:
 
-- refused as members to decode (listed, never read): names that are absolute, hold `..` or NUL; symbolic and hard
-  links (the link target is recorded as text); device and FIFO entries; sparse TAR members (their holes would be
-  materialised); encrypted ZIP members (`Refused` per member, not for the archive);
+- the WHOLE archive is refused (`Refused(rule="unsafe_member_name")`, nothing inside decoded) when any member's
+  name is absolute or holds `..` or NUL, or a member is a symbolic or hard link, a device, FIFO or other special
+  entry: such a member is an attack on whoever extracts the archive, and the main session's ruling (integration,
+  ADR-072) is that its siblings are not read either. The refusal names the first offending member (JSON-escaped,
+  as data) and carries the listing of member names and sizes as `findings` (inspection, never content);
+- refused as members to decode (listed, never read): sparse TAR members (their holes would be materialised);
+  encrypted ZIP members (`Refused` per member, not for the archive: not an attack on the reader);
 - refused while reading: a member that would pass the remaining `max_decoded_bytes` or `max_ratio`;
 - not decoded: members nested deeper than `max_depth`;
 - an `ArtifactError` from the member's own adapter is recorded in its note; the archive goes on.
@@ -35,6 +39,27 @@ NOTE_MAX = 300
 
 def _cut(text: str, n: int = NOTE_MAX) -> str:
     return text if len(text) <= n else text[:n] + "…"
+
+
+LISTING_MAX = 256          # member names and sizes carried by a whole-archive refusal
+
+
+def _quoted(name: str) -> str:
+    """A member name as data: JSON-escaped (control and non-ASCII characters escaped), cut to 120 characters."""
+    import json
+    return json.dumps(_cut(str(name), 120), ensure_ascii=True)
+
+
+def refuse_unsafe(container: str, offending: list[tuple[str, str]], listing: list[tuple[str, int]]):
+    """Raise the whole-archive refusal: `offending` is (name, why) of each unsafe member, `listing` (name, size) of
+    every member seen. Nothing inside has been decoded."""
+    name, why = offending[0]
+    more = f" (and {len(offending) - 1} more unsafe member(s))" if len(offending) > 1 else ""
+    error = Refused(f"the {container} archive is refused as a whole: member {_quoted(name)} {why}{more}; nothing "
+                    "inside was decoded", rule="unsafe_member_name")
+    error.findings = tuple(f"member {_quoted(n)}: {int(max(0, size))} bytes" for n, size in listing[:LISTING_MAX]) \
+        + ((f"{len(listing) - LISTING_MAX} more member(s) not listed",) if len(listing) > LISTING_MAX else ())
+    raise error
 
 
 def _listed(name: str, container: str, why: str) -> Detected:
@@ -131,18 +156,19 @@ def read_zip(data: bytes, detected: Detected, limits) -> Decoded:
         walk.partial = True
         walk.notes.append(f"the archive declares more than {limits.max_members} members: the first "
                           f"{len(reader.entries)} are listed")
+    offending = []
+    for entry in reader.entries:
+        unsafe = unsafe_member_name(entry.name)
+        if unsafe:
+            offending.append((entry.name, f"has an unsafe name ({unsafe})"))
+        elif entry.is_link:
+            offending.append((entry.name, "is a symbolic link"))
+    if offending:
+        refuse_unsafe("ZIP", offending, [(e.name, e.size) for e in reader.entries])
     for entry in reader.entries:
         walk.deadline.check()
         if entry.is_dir:
             walk.members.append(Member(entry.name, 0, _directory("zip"), None, "directory"))
-            continue
-        unsafe = unsafe_member_name(entry.name)
-        if unsafe:
-            walk.listed(entry.name, entry.size, f"refused as a member to decode: {unsafe}", refused=True)
-            continue
-        if entry.is_link:
-            walk.listed(entry.name, entry.size, "refused as a member to decode: a symbolic link (never followed)",
-                        refused=True)
             continue
         if entry.encrypted:
             walk.listed(entry.name, entry.size, "refused: the member is encrypted and is not decrypted", refused=True)
@@ -167,9 +193,37 @@ def read_zip(data: bytes, detected: Detected, limits) -> Decoded:
     return walk.finish(detected)
 
 
+def _tar_check(data: bytes, limits) -> None:
+    """A first pass over the TAR headers only (no member is read): refuse the whole archive when a member is unsafe."""
+    tf = tarfile.open(fileobj=io.BytesIO(data), mode="r:")
+    deadline = Deadline(limits.max_seconds)
+    offending, listing = [], []
+    while len(listing) < limits.max_members:
+        deadline.check()
+        try:
+            info = tf.next()
+        except tarfile.TarError:
+            break                                   # the decoding pass reports the damage
+        if info is None:
+            break
+        tf.members = []
+        listing.append((info.name, info.size))
+        unsafe = unsafe_member_name(info.name)
+        if unsafe:
+            offending.append((info.name, f"has an unsafe name ({unsafe})"))
+        elif info.issym() or info.islnk():
+            kind = "symbolic" if info.issym() else "hard"
+            offending.append((info.name, f"is a {kind} link to {_quoted(info.linkname)}"))
+        elif not (info.isdir() or info.isreg()):
+            offending.append((info.name, "is a device, FIFO or other special entry"))
+    if offending:
+        refuse_unsafe("TAR", offending, listing)
+
+
 def read_tar(data: bytes, detected: Detected, limits) -> Decoded:
     walk = _Walk(limits, "tar")
     try:
+        _tar_check(data, limits)
         tf = tarfile.open(fileobj=io.BytesIO(data), mode="r:")
     except tarfile.TarError:
         raise Malformed("the bytes are not a readable TAR archive") from None

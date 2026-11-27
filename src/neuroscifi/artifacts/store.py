@@ -27,7 +27,8 @@ Rules
   the format still leaves the artifact stored with what was established (the owner gave it), and so does a decode a
   SIZE bound stopped (`Refused` with reason "too_large": a recording or picture too large to decode within
   `max_decoded_bytes`, an archive member past its ratio; the bytes are within the owner's own `artifact_max_bytes`
-  and are never expanded beyond the limits); any other SAFETY refusal (`Refused`: pickle, a polyglot, a DTD, nesting,
+  and are never expanded beyond the limits) and an archive refused as a whole for an unsafe member (`KEPT_REFUSALS`:
+  its listing of member names and sizes is kept as findings, nothing inside was decoded); any other SAFETY refusal (`Refused`: pickle, a polyglot, a DTD, nesting,
   resources) stores nothing.
 - The text layer passes `webcortex.safety.scan_injection`; a flagged artifact is stored and marked `flagged`, and
   `text_for_model` refuses its text: the gate a later wave that shows artifact text to a model must go through.
@@ -430,6 +431,11 @@ def apply_adapter_setting(approved) -> list[str]:
     return loaded
 
 
+# Refusals after which the owner's file is still kept with what was established: the archive whose members were not
+# read because one of them is unsafe (the listing of names and sizes is recorded as findings).
+KEPT_REFUSALS = frozenset({"unsafe_member_name"})
+
+
 def _decode(data: bytes, *, name, declared, lim: Limits):
     """(decoded or None, error or None, [(format, outcome)] gaps) for these bytes. A safety refusal propagates.
     A header-only format (`HeaderOnly`) is an error that still established something: its `facts` go into the error
@@ -445,9 +451,12 @@ def _decode(data: bytes, *, name, declared, lim: Limits):
         try:
             return adapters.decode(data, name=name, declared=declared, limits=lim), None, gaps
         except Refused as error:
-            if error.reason != "too_large":
+            if error.reason != "too_large" and error.rule not in KEPT_REFUSALS:
                 raise
-            return None, {"reason": error.reason, "rule": error.rule, "message": str(error)[:300], "needs": []}, gaps
+            record = {"reason": error.reason, "rule": error.rule, "message": str(error)[:300], "needs": []}
+            if getattr(error, "findings", None):
+                record["findings"] = [str(f)[:200] for f in error.findings][:64]
+            return None, record, gaps
         except ArtifactError as error:
             record = {"reason": error.reason, "message": str(error)[:300],
                       "needs": list(getattr(error, "needs", ()))[:16]}

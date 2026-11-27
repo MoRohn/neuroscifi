@@ -4558,6 +4558,18 @@ Status: built by the integration lane. No setting, no schema change.
    file's notes are `repr_b2.NotesTable` (a sequence and timeline), word-carrying representations count their words.
    `nsf form plan --content` hands the planner each file's shape and an archive's members' shapes
    (`shapes_b1.content_shapes`); feasibility is `make.catalog()`.
+9. **An archive with an unsafe member is refused as a whole** (the main session's ruling on three disputed hostile
+   truths of the benchmark's development split, 2026-11-26; this CHANGES lane B1's per-member policy). Lane B1 refused
+   an unsafe member and decoded its siblings, so the benign `readme.txt` beside a `../../` member was answered, which
+   the examination (written before the mechanism) scores as wrong. Ruled: such a member is an attack on whoever
+   extracts the archive, and the stricter reading is to read nothing of it. Now a ZIP or TAR (also inside gzip, zstd,
+   bzip2 or xz) with a member whose name is absolute or holds `..` or NUL, or a member that is a symbolic or hard
+   link, a device, FIFO or other special entry, raises `Refused(rule="unsafe_member_name")` whose message names the
+   first offending member JSON-escaped (as data) and says nothing inside was decoded; it carries the listing of member
+   names and sizes as `findings` (inspection, never content). The TAR check is a first pass over headers only. The
+   store keeps the owner's file with that refusal and listing (`store.KEPT_REFUSALS`); `nsf inspect` prints the listing
+   and exits 2. Encrypted members stay a per-member refusal (not an attack on the reader); sparse TAR members too.
+   Tests: `tests/artifacts/test_b1_archives.py` (updated), `tests/artifacts/test_integration_fixes.py`.
 
 # ADR-073 The form planner: deciding the form of a result before anything is made, and saying why
 
