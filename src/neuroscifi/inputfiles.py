@@ -30,8 +30,6 @@ NPY_MAX_ITEMSIZE = 16            # complex128 / longdouble
 ZIP_METHODS = (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)     # what np.savez and np.savez_compressed write
 ZIP_MAX_DIRECTORY = 64 << 10     # bytes of central directory: room for far more members than any accepted file has
 ZIP_MAX_MEMBERS = 64
-ZIP_MAX_RATIO = 200              # declared size / stored size of one member, once it declares more than ZIP_RATIO_FLOOR
-ZIP_RATIO_FLOOR = 1 << 20
 _EOCD = struct.Struct("<4s4H2LH")    # zipfile.structEndArchive
 _EOCD_SIG, _ZIP64_LOCATOR_SIG = b"PK\x05\x06", b"PK\x06\x07"
 
@@ -122,7 +120,9 @@ def check_npz(fp, size, *, max_elements, max_member_bytes):
     """Check the .npz archive `fp` (its `size` bytes) before np.load reads it: a central directory of at most
     ZIP_MAX_DIRECTORY bytes and ZIP_MAX_MEMBERS members and no ZIP64 end record (np.savez writes none below 4 GiB);
     every member stored or deflated, its stored size within the file, its declared size at most `max_member_bytes`
-    and, past ZIP_RATIO_FLOOR, at most ZIP_MAX_RATIO times its stored size; every .npy member's header as check_npy
+    (no ratio rule: zipfile never inflates past the declared size, which this bound already caps, so a ratio refused
+    only honest arrays of constant data, as `np.savez_compressed` of zeros: code review L11, fix lane F1); every
+    .npy member's header as check_npy
     with `max_elements`, its declared data within the member's declared size. zipfile stops a member's
     decompression at the declared size, so nothing larger is ever decompressed. Returns {name: (shape, dtype)};
     fp is back at its start."""
@@ -155,9 +155,6 @@ def check_npz(fp, size, *, max_elements, max_member_bytes):
                 if info.file_size > max_member_bytes:
                     raise InputRefused(f"member {name!r} declares {info.file_size} bytes; at most "
                                        f"{max_member_bytes} are read")
-                if info.file_size > ZIP_RATIO_FLOOR and info.file_size > ZIP_MAX_RATIO * max(1, info.compress_size):
-                    raise InputRefused(f"member {name!r} would expand {info.file_size // max(1, info.compress_size)} "
-                                       f"times; at most {ZIP_MAX_RATIO} times is read")
                 if not info.filename.endswith(".npy"):
                     continue
                 with archive.open(info) as member:

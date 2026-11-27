@@ -115,8 +115,13 @@ def check_content(messages) -> None:
     still sent as given. A multimodal provider must extend the estimate and the screen before this is relaxed."""
     for m in messages:
         content = m.get("content") if isinstance(m, dict) else None
-        if not isinstance(content, list):
+        if content is None or isinstance(content, str):
             continue
+        if not isinstance(content, list):
+            # a dict (or any other value) would be screened as its repr and sent as given (security review L3)
+            raise InferenceError("unsupported_content", f"a message carries content of type "
+                                 f"{type(content).__name__[:40]!r}; only text can be counted and privacy-screened, "
+                                 "so nothing was sent")
         for part in content:
             if not (isinstance(part, dict) and set(part) == {"type", "text"} and part["type"] == "text"
                     and isinstance(part["text"], str)):
@@ -277,7 +282,9 @@ class Gateway:
                                      "(nsf llm config --remote-private-memory to authorise)")
             if authorization == AUTHORIZED_DISCLOSURE:
                 continue
-            found = safety.privacy_screen(_content_text(m.get("content")))
+            # tool-call arguments leave this host as text too: screened as the content is (security review L3)
+            calls = " ".join(json.dumps(c, sort_keys=True, default=str) for c in m.get("tool_calls") or [])
+            found = safety.privacy_screen(_content_text(m.get("content")) + ("\n" + calls if calls else ""))
             if found:
                 kinds = ", ".join(sorted({f["kind"] for f in found}))
                 raise InferenceError("private_blocked", f"message contains private data ({kinds}); not sent to a "

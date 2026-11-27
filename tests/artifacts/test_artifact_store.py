@@ -423,7 +423,7 @@ def test_an_external_adapter_runs_only_while_the_owner_approves_it(individual, m
     kinds = []
     for approved in ([], ["outside"], []):
         store.set_config(db, {"artifact_adapters": approved}, T0)
-        kinds.append(A.add(db, data, name="o.bin", now=T0).index["representation"]["kind"])
+        kinds.append(A.add(db, data, name=f"o{len(kinds)}.bin", now=T0).index["representation"]["kind"])
     assert kinds == ["opaque", "document", "opaque"]
     rows = {r["name"]: r for r in A.adapter_catalog(db)["adapters"]}
     assert rows["outside"]["reason"] == "found, not approved"

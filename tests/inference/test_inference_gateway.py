@@ -394,3 +394,18 @@ def test_text_only_list_content_is_counted_screened_and_sent_as_given(gateway, f
     with pytest.raises(InferenceError) as err:
         remote.screen([{"role": "user", "content": [{"type": "text", "text": "mail me at owner@example.org"}]}])
     assert err.value.code == "private_blocked"
+
+
+def test_dict_content_is_refused_and_tool_call_arguments_are_screened():
+    """Security review L3 (fix lane F1, ruling F): a dict content was screened as its repr and sent as the dict; a
+    tool call's arguments left the host unscreened."""
+    gw = remote_gateway(remote_allowed=True)
+    with pytest.raises(InferenceError) as err:
+        gw.screen([{"role": "user", "content": {"type": "text", "text": "hi"}}])
+    assert err.value.code == "unsupported_content"
+    call = {"id": "c1", "type": "function", "function": {"name": "send", "arguments": '{"to": "owner@example.org"}'}}
+    with pytest.raises(InferenceError) as err:
+        gw.screen([{"role": "assistant", "content": None, "tool_calls": [call]}])
+    assert err.value.code == "private_blocked"
+    gw.screen([{"role": "assistant", "content": None, "tool_calls": [dict(call, function={"name": "noop",
+                                                                                         "arguments": "{}"})]}])

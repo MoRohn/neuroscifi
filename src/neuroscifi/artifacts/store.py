@@ -214,9 +214,18 @@ class Sidecar:
             except OSError as error:        # a link planted in its place, a folder without write access, ...
                 raise StoreRefused(f"the artifact store file cannot be opened ({type(error).__name__})",
                                    rule="sidecar") from None
-            os.close(fd)
-            os.chmod(self.path, 0o600)
-            self.db = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False, timeout=30)
+            try:
+                # the mode is set on the descriptor opened without following a link, and the file sqlite opens by
+                # path must be that same file (security review N3; fix lane F1, ruling F)
+                os.fchmod(fd, 0o600)
+                opened = os.fstat(fd)
+                self.db = sqlite3.connect(self.path, isolation_level=None, check_same_thread=False, timeout=30)
+                now_there = os.stat(self.path, follow_symlinks=False)
+                if (now_there.st_dev, now_there.st_ino) != (opened.st_dev, opened.st_ino):
+                    self.db.close()
+                    raise StoreRefused("the artifact store file was replaced while it was opened", rule="sidecar")
+            finally:
+                os.close(fd)
             try:
                 self.db.execute("PRAGMA journal_mode=WAL")
                 self.db.execute("PRAGMA journal_size_limit=0")
@@ -668,6 +677,13 @@ def add(db, source, *, name=None, origin="given", scope="owner", follow_symlinks
     else:
         raise Malformed("give the bytes or a path")
     label = _label(hint)
+    # The same bytes under the same name are the same file handed over again: the artifact already held is returned,
+    # with no second row (code review L13; fix lane F1, ruling F). Under another name it is a second artifact (the
+    # name is the owner's own label and the decode's hint), sharing the stored bytes.
+    same = db.execute("SELECT id FROM artifacts WHERE sha256=? AND label=? AND origin='given' AND state='stored' "
+                      "ORDER BY seq LIMIT 1", (hashlib.sha256(data).hexdigest(), label)).fetchone()
+    if same is not None:
+        return get(db, same[0])
     return _store(db, data, label=label, origin="given", maker=None, scope=scope, name_hint=label, declared=None,
                   now=now)
 

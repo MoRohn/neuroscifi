@@ -122,3 +122,39 @@ def test_the_parent_decodes_only_after_the_child(monkeypatch, guard_on):
     monkeypatch.setattr(adapters, "decode", lambda *a, **k: order.append("here") or real_decode(*a, **k))
     guarded.decode(CSV, name="t.csv")
     assert order == ["child", "here"]
+
+
+def test_the_same_file_twice_is_the_same_artifact(tmp_path):
+    """Code review L13 (fix lane F1, ruling F): same bytes and name -> the held artifact; another name -> a second
+    artifact sharing the bytes."""
+    db = store.create(tmp_path / "i.sqlite", T0)
+    try:
+        first = A.add(db, CSV, name="t.csv", now=T0)
+        again = A.add(db, CSV, name="t.csv", now=T0 + 1)
+        other = A.add(db, CSV, name="copy.csv", now=T0 + 2)
+        assert again.id == first.id and other.id != first.id
+        assert db.execute("SELECT count(*) FROM artifacts").fetchone()[0] == 2
+    finally:
+        db.close()
+
+
+def test_a_sidecar_swapped_while_it_is_opened_is_refused(tmp_path, monkeypatch):
+    """Security review N3: the sidecar was opened without following a link, then reopened by path. Its mode is now
+    set on that descriptor, and the file sqlite opens must be the same file."""
+    import os
+    import sqlite3
+    db = store.create(tmp_path / "i.sqlite", T0)
+    real = sqlite3.connect
+
+    def swap(path, *a, **k):
+        if str(path).endswith(".artifacts.sqlite"):
+            os.replace(tmp_path / "planted", path)
+        return real(path, *a, **k)
+    (tmp_path / "planted").write_bytes(b"")
+    monkeypatch.setattr(A.sqlite3, "connect", swap)
+    try:
+        with pytest.raises(A.StoreRefused) as caught:
+            A.add(db, CSV, name="t.csv", now=T0)
+        assert caught.value.rule == "sidecar"
+    finally:
+        db.close()
