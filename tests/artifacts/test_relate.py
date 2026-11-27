@@ -12,7 +12,8 @@ from neuroscifi.artifacts import types as T
 
 
 def side(name, data):
-    return R.side(adapters.decode(data, name=name), name=name, data=data)
+    # as the store reads a held artifact for relate (store.decoded_held: a flagged file is read, marked)
+    return R.side(adapters.decode(data, name=name, limits=T.Limits(refuse_flagged=False)), name=name, data=data)
 
 
 def run(files, question=None):
@@ -220,7 +221,8 @@ def test_hostile_words_are_bounded_and_printed_clean():
 @pytest.mark.parametrize("doc, header, truth", RP.TRANSFER, ids=[f"t{i}" for i in range(len(RP.TRANSFER))])
 def test_transfer_never_applies_a_unit_the_text_does_not_state_for_that_column(doc, header, truth):
     table = adapters.decode(RP.csv(header, [[1.5] * len(header)]), name="data.csv").representation
-    tr = R.transfer_units(table, adapters.decode(doc.encode(), name="README.md").representation,
+    tr = R.transfer_units(table, adapters.decode(doc.encode(), name="README.md",   # the store's reading
+                                                 limits=T.Limits(refuse_flagged=False)).representation,
                           source="README.md", data=doc.encode())
     for c in tr.table.columns:
         expected = truth.get(c.name, next((v for k, v in truth.items() if k.startswith(c.name + " ")), None))

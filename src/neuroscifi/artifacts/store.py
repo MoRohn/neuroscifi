@@ -418,8 +418,9 @@ def _text_layer(text: str) -> tuple[str, bool]:
 
 
 def limits(cfg) -> Limits:
-    """The decode limits the owner's settings give (DESIGN §2 defaults, input size from artifact_max_bytes)."""
-    return replace(Limits(), max_bytes=int(cfg.artifact_max_bytes))
+    """The decode limits the owner's settings give (DESIGN §2 defaults, input size from artifact_max_bytes). The
+    store keeps a flagged file (refuse_flagged False): it is marked, and its words never reach a model."""
+    return replace(Limits(), max_bytes=int(cfg.artifact_max_bytes), refuse_flagged=False)
 
 
 def apply_adapter_setting(approved) -> list[str]:

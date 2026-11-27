@@ -386,11 +386,9 @@ def measure(rep, detected, name: str, arg: str):
     if name == "text.chars":
         return len(rep.text())
     if name == "doc.safe_text":
-        from ...webcortex.safety import scan_injection        # the existing gate text passes before a model
-        text = rep.text()
-        if scan_injection(text):
-            return _Refuse("instructions aimed at an AI agent in the text")
-        return len(text)
+        # the product refuses a flagged file itself (adapters.decode, Limits.refuse_flagged): reaching here means
+        # the product read the words and did not flag them
+        return len(rep.text())
     if name.startswith("doc."):
         rep1 = _descend_single(rep)
         if name == "doc.title":
@@ -584,7 +582,7 @@ class ArtifactsSubject:
         if self._mods is None and self._missing is None:
             try:
                 self._mods = {n: importlib.import_module(f"neuroscifi.artifacts.{n}")
-                              for n in ("adapters", "types")}
+                              for n in ("adapters", "types", "outcome")}
             except ImportError as error:
                 self._missing = f"not built: {error.name or error}"
         return self._mods
@@ -594,8 +592,8 @@ class ArtifactsSubject:
 
     def _status(self, error) -> Answer:
         reason = getattr(error, "reason", "") or ""
-        status = "cannot" if reason in ("unsupported", "missing_capability") else "refused"
-        return Answer(None, status, f"{type(error).__name__}: {reason}: {str(error)[:120]}")
+        return Answer(None, self._mods["outcome"].of_error(error), f"{type(error).__name__}: {reason}: "
+                                                                    f"{str(error)[:120]}")
 
     def _decode(self, name, data, declared):
         key = (name, declared, len(data), hash(data))
@@ -621,9 +619,10 @@ class ArtifactsSubject:
                 decoded = self._decode(name, data, declared)
             except error_type as error:
                 return self._undecoded(error, name, data, declared, members, measure_name)
-            if decoded.partial and not measure_name.startswith("detect."):
-                # a limit stopped the decode early: a measurement over what was read could misstate the whole
-                return Answer(None, "refused", "partial: " + "; ".join(decoded.notes)[:200])
+            if self._mods["outcome"].of_decoded(decoded) != "answered" and not measure_name.startswith("detect."):
+                # the product's table: a partial decode is refused for a question about the content
+                return Answer(None, self._mods["outcome"].of_decoded(decoded), "partial: "
+                              + "; ".join(decoded.notes)[:200])
             rep, detected = decoded.representation, decoded.detected
             for member in members:
                 try:

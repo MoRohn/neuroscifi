@@ -137,7 +137,7 @@ class _Run:
 def _decode(data: bytes, name: str, limits: Limits):
     """(representation, detected format, None) or (None, format, why not)."""
     try:
-        decoded = guarded.decode(data, name=name, limits=limits)
+        decoded = guarded.decode(data, name=name, limits=replace(limits, refuse_flagged=True))
     except HeaderOnly as error:
         return None, "unknown", f"only its header is read here ({error})"[:300]
     except ArtifactError as error:

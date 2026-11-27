@@ -16,6 +16,7 @@ import pytest
 
 from neuroscifi.acceptance import omni
 from neuroscifi.acceptance.omni import Answer, made, readers, subject, transform
+from neuroscifi.artifacts import outcome as OUTCOME
 
 import omni_oracle as oracle
 import omni_reference_maker as reference
@@ -200,7 +201,9 @@ def _stand_in():
     P = types.ModuleType("neuroscifi.artifacts")
     # no production pipeline in the stand-in (None in sys.modules: importing it fails, even after the real package
     # was imported by another test)
+    # the product's outcome table is pure (it imports nothing of the package): the stand-in uses the real one
     return {"neuroscifi.artifacts": P, "neuroscifi.artifacts.types": T, "neuroscifi.artifacts.adapters": A,
+            "neuroscifi.artifacts.outcome": OUTCOME,
             "neuroscifi.artifacts.make": M, "neuroscifi.artifacts.produce": None}
 
 

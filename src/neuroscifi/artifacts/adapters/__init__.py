@@ -349,7 +349,27 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         raise _resources() from None
     if not isinstance(result, Decoded):
         raise Malformed(f"the {adapter.name} adapter returned {type(result).__name__}, not Decoded")
+    flagged = _flags(result)
+    if flagged:
+        if limits.refuse_flagged:
+            raise Refused("the file's own words include passages addressed to an AI agent: it is not read for an "
+                          "answer (it may be kept, marked flagged; its words are never offered to a model)",
+                          rule="injection")
+        result = replace(result, flagged=flagged)
     return result
+
+
+def _flags(decoded: Decoded) -> tuple[str, ...]:
+    """The injection patterns `webcortex.safety.scan_injection` finds in the representation's own words (the
+    product's one screen before a model; ruling G of fix lane F1)."""
+    try:
+        text = decoded.representation.text() or ""
+    except Exception:
+        return ()
+    if not text:
+        return ()
+    from ...webcortex.safety import scan_injection
+    return tuple(sorted({f["pattern"] for f in scan_injection(text[:1 << 20])}))
 
 
 def _register_builtins() -> None:
