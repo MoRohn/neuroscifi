@@ -11,6 +11,8 @@ has.
   as its package (the combined graph of its modules: the files' relations are its structure, the listing is a
   by-product of packing); an archive or compressed stream holding exactly one decoded file is read as that file;
   several Python files given together are read together as one package.
+  A table whose columns the request names is read as those columns (and its column of times): what was asked about
+  is the content planned for.
 - conceptualize: the frozen form planner decides the form (`forms.plan`); `form=` names one (the planner's explicit
   path: honoured when feasible, else the plan's stated nearest feasible form). A generator form the planner has no
   form for (such as `solid.mesh`, a given mesh as an STL file) is made as named when it is registered here, and the
@@ -208,6 +210,35 @@ def interpret(db, sources, limits: Limits) -> tuple[list, list]:
                 if note.get("id") in ids:
                     note["reading"] = reading
     return pieces, notes
+
+
+def narrow(pieces, request: str, notes: list) -> list:
+    """A table whose columns the request names is read as those columns (with its first column of times, when it has
+    one, and in the table's own order): the content planned for is what was asked about, and a column the request
+    does not name is not used, not even the rows' names (the words "n for each who" name both; no model reads a
+    request more finely here). The rest is noted as not used. Other pieces are unchanged."""
+    from .types import Table
+    out = []
+    for p in pieces:
+        rep = p.representation
+        if getattr(rep, "kind", None) != "table" or len(rep.columns) < 2:
+            out.append(p)
+            continue
+        named = set(B.named_in(request, [c.name for c in rep.columns]))
+        if not named or len(named) == len(rep.columns):
+            out.append(p)
+            continue
+        time = next((c.name for c in rep.columns if c.kind == "time"), None)
+        keep = [c for c in rep.columns if c.name in named or c.name == time]
+        table = Table(tuple(keep), rep.n_rows, rep.title)
+        left = [c.name for c in rep.columns if c not in keep]
+        reading = (p.reading if p.reading != "as decoded" else "") + ("; " if p.reading != "as decoded" else "") + \
+            f"the columns the request names ({', '.join(c.name for c in keep)}); {len(left)} other column(s) not used"
+        out.append(replace(p, representation=table, shape=table.shape(), reading=reading))
+        for note in notes:
+            if note.get("id") == p.source:
+                note["reading"], note["shape"] = reading, _shape(table.shape())
+    return out
 
 
 def _shape(shape: ContentShape) -> dict:
@@ -706,6 +737,7 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
                              summary_in={"sources": len(sources)},
                              summary_out=lambda r: {"pieces": len(r[0]), "unused": sum(1 for n in r[1]
                                                                                         if not n["used"])})
+    pieces = narrow(pieces, request, notes)
     record["sources"] = notes
     if not pieces:
         record["outcome"] = "nothing to make"

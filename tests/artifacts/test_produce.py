@@ -173,6 +173,17 @@ def test_a_model_file_that_cannot_run_is_refused_with_its_reasons():
     assert plain.format == "json" and not hasattr(plain.representation, "model")
 
 
+def test_a_request_naming_columns_plans_for_those_columns_only():
+    data = b"who,calls,t\nana,3,1.5\nbo,5,2.5\ncy,4,3.5\n"
+    pieces, notes = P.interpret(None, [P.Given("c.csv", data)], Limits())
+    narrowed = P.narrow(pieces, "let me hear calls", notes)
+    assert [c.name for c in narrowed[0].representation.columns] == ["calls"]
+    assert "2 other column(s) not used" in notes[0]["reading"]
+    assert P.narrow(pieces, "how did it go?", notes)[0] is pieces[0]
+    both = P.narrow(pieces, "calls for each who", notes)[0].representation
+    assert [c.name for c in both.columns] == ["who", "calls"]
+
+
 def test_coverage_table_names_what_each_builder_takes():
     assert set(B.BUILDERS) == set(B.TAKES)
     for form in B.BUILDERS:
@@ -393,7 +404,7 @@ def test_a_forgotten_root_named_in_a_source_removes_what_was_made_and_a_restore_
     evidence.start_epoch(db, "e1", T0)
     evidence.observe(db, {"id": "ev1", "epoch": "e1", "channel": "word", "action": 0, "bit": 1, "root": ROOT}, T0)
     named = f"who,n\n{ROOT},3\nothers,4\n".encode()
-    result = P.produce(db, "compare n", [P.Given("people.csv", named)], form="bar_chart", now=T0)
+    result = P.produce(db, "compare n for each who", [P.Given("people.csv", named)], form="bar_chart", now=T0)
     plain = P.produce(db, "how did it change?", [P.Given("temps.csv", temps_csv())], now=T0)
     assert result.status == plain.status == "made"
     ck = checkpoints.create(db, path, tmp_path / "ck", T0 + 1)

@@ -10,7 +10,7 @@ import zipfile
 import numpy as np
 import pytest
 
-from neuroscifi.acceptance.omni import Task, forms, made, readers, subject
+from neuroscifi.acceptance.omni import Task, forms, made, readers, subject, transform
 
 
 @pytest.fixture(scope="module")
@@ -112,13 +112,27 @@ def test_made_forms_go_through_the_real_generators_and_the_benchmarks_readers(ar
     mesh = {"form": "mesh", "title": "B", "format": "stl", "vertices": [[0, 0, 0]], "faces": []}
     a = artifacts.answer(Task("t/mesh", "made", {"request.json": json.dumps(mesh).encode()}, {}, "make:mesh", None,
                               None, "make"))
-    assert a.status == "cannot"                      # no product form makes a solid from given vertices and faces
+    assert a.status == "refused"                     # lane P's solid.mesh: a mesh without faces is not valid
     produced = made.score(artifacts, "development")
     assert produced["wrong"] == 0 and produced["failed"] == 0
-    # every development form a product generator makes is read right by the examiner's own readers (lanes G1, G2);
-    # the one left is the solid from given vertices and faces, which no product form makes
+    # every development form is made by a product generator (lanes G1, G2; lane P's solid.mesh for a solid from
+    # given vertices and faces) and read right by the examiner's own readers
     unmade = [t for t in made.tasks("development") if subject.FORM_NAMES[t.question.split(":")[1]] is None]
-    assert produced["right"] == produced["n"] - len(unmade)
+    assert unmade == [] and produced["right"] == produced["n"]
+
+
+def test_transforms_go_through_the_production_pipeline(artifacts, monkeypatch):
+    from neuroscifi.artifacts import produce
+    calls = []
+    real = produce.produce
+    monkeypatch.setattr(produce, "produce", lambda *a, **k: calls.append((a[0], a[1], k.get("form"))) or real(*a, **k))
+    tasks = transform.tasks("development")
+    for t in tasks:
+        result = transform.judge(t, artifacts.answer(t), artifacts.answer(t))
+        assert result.outcome == "right", (t.id, result.detail)
+    assert len(calls) == 2 * len(tasks) and all(db is None for db, _, _ in calls)      # nothing is stored
+    assert {form for _, _, form in calls} == {"line_chart", "scatter_chart", "sonification", "solid.mesh",
+                                               "node_link", "data_file"}
 
 
 def test_the_planner_is_a_subject_of_the_forms_family():
