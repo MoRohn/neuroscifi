@@ -18,7 +18,9 @@ standard library only. docs/quality/OMNIMIND_BENCHMARK_FORMS.md says what each m
 the end): it refuses a missing or blank note, an --out inside this checkout or not writable, another tree's source, a
 dirty or uncommitted tree and a changed withheld file; then it appends one line per family to
 docs/quality/evidence/omnimind_final_uses.jsonl BEFORE it loads or scores anything, and writes summaries only.
-`run` refuses the withheld split: only `final` loads it.
+`run` refuses the withheld split: only `final` loads it. `final --split withheld2 --family cross` is the second
+withheld split's cross family (lane ZW2, acceptance/omni/withheld2_cross.py), with the same refusals and ledger; `run`
+refuses it too.
 """
 from __future__ import annotations
 
@@ -93,6 +95,10 @@ def _final(a) -> int:
         print(f"refused: {problem}", file=sys.stderr)
         return 2
     families = tuple(dict.fromkeys(a.family))
+    if a.split == "withheld2" and families != ("cross",):
+        print("refused: the second withheld split has only the family cross here (unknown and hostile are in "
+              "bench_omni.py)", file=sys.stderr)
+        return 2
     if ":" in a.subject and len(families) > 1:
         problem = "a product subject is looked at one family at a time"
     elif ":" not in a.subject and any(a.subject not in FAMILIES[f].REFERENCES for f in families):
@@ -102,7 +108,7 @@ def _final(a) -> int:
         return 2
     subject = _subject(families[0], a.subject) if ":" in a.subject else a.subject
     try:
-        value = final.look(families, subject, a.subject, a.note, script="bench_omni_forms.py final")
+        value = final.look(families, subject, a.subject, a.note, script="bench_omni_forms.py final", split=a.split)
     except final.Refused as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
@@ -116,7 +122,7 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run", help="one family, one split, one subject")
     r.add_argument("--family", required=True, choices=sorted(FAMILIES))
-    r.add_argument("--split", default="development", choices=("development", "held_out", "withheld"))
+    r.add_argument("--split", default="development", choices=("development", "held_out", "withheld", "withheld2"))
     r.add_argument("--subject", default="today")
     r.add_argument("--out")
     r.add_argument("--evidence", action="store_true", help="allow --out inside this checkout")
@@ -129,6 +135,8 @@ def main(argv=None) -> int:
     f.add_argument("--subject", required=True, help="a reference of the family, or dotted.module:attribute")
     f.add_argument("--note", required=True, help="the reason for the look (the ledger line's note)")
     f.add_argument("--out", required=True, help="a path OUTSIDE this checkout")
+    f.add_argument("--split", default="withheld", choices=("withheld", "withheld2"),
+                   help="which withheld split (withheld2: lane ZW2's cross pairs)")
     sub.add_parser("list", help="families and their reference subjects")
     a = ap.parse_args(argv)
 
@@ -140,7 +148,7 @@ def main(argv=None) -> int:
         return 0
     if a.command == "final":
         return _final(a)
-    if a.command == "run" and a.split == "withheld":
+    if a.command == "run" and a.split in ("withheld", "withheld2"):
         print("refused: the withheld split is scored only by `final`, once per mechanism, and every look is recorded "
               "in the ledger first (docs/quality/OMNIMIND_BENCHMARK_FORMS.md)", file=sys.stderr)
         return 2
