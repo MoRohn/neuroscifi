@@ -126,6 +126,7 @@ def test_splits_are_disjoint_and_seeded_from_their_own_ranges():
         omni.WITHHELD_SEEDS)
     reserved = (omni.DEV_SEEDS, omni.HELD_OUT_SEEDS, omni.WITHHELD_SEEDS, omni.LANE_R_SWEEP_SEEDS)
     assert not any(set(omni.WITHHELD2_SEEDS) & set(r) for r in reserved)          # lane ZW2's range is its own
+    assert not any(set(omni.WITHHELD3_SEEDS) & set(r) for r in (*reserved, omni.WITHHELD2_SEEDS))   # and lane ZW3's
 
 
 def test_tasks_are_deterministic():
@@ -347,12 +348,12 @@ def seed_intervals(source: str) -> list[tuple[int, int, int]]:
             got = values(expr)
             if got:
                 for name, r in (("HELD_OUT_SEEDS", omni.HELD_OUT_SEEDS), ("WITHHELD_SEEDS", omni.WITHHELD_SEEDS),
-                                ("WITHHELD2_SEEDS", omni.WITHHELD2_SEEDS)):
+                                ("WITHHELD2_SEEDS", omni.WITHHELD2_SEEDS), ("WITHHELD3_SEEDS", omni.WITHHELD3_SEEDS)):
                     inside = sorted(v for v in got if v in r)
                     if inside:
                         out.append((expr.lineno, inside[0], inside[-1], name))
                 if not any(v in omni.HELD_OUT_SEEDS or v in omni.WITHHELD_SEEDS or v in omni.WITHHELD2_SEEDS
-                           for v in got):
+                           or v in omni.WITHHELD3_SEEDS for v in got):
                     out.append((expr.lineno, min(got), max(got), None))
     return out
 
@@ -366,6 +367,7 @@ def test_seed_intervals_are_worked_out_from_the_source():
     assert got == [(4, 9100, 9329, "WITHHELD_SEEDS"), (5, 4100, 4100, None), (6, 7, 7, None), (7, 3599, 3599, None)]
     spaced = "for n in (100, 1000, 10000, 50000):\n    r = random.Random(n)\n"     # never inside: not reported
     assert seed_intervals(spaced) == [(2, 100, 50000, None)]
+    assert seed_intervals("r = random.Random(70123)\n") == [(1, 70123, 70123, "WITHHELD3_SEEDS")]   # lane ZW3's
 
 
 def test_no_script_or_test_draws_a_seed_from_a_reserved_range():
