@@ -1,0 +1,717 @@
+{
+ "adr": "ADR-077",
+ "commit": "c3cbf56",
+ "coverage": {
+  "bundle": {
+   "files": 2,
+   "quantities": {
+    "count": 2,
+    "number": 2
+   },
+   "statements": {}
+  },
+  "document": {
+   "files": 59,
+   "quantities": {
+    "count": 97
+   },
+   "statements": {
+    "box": 4,
+    "count": 18,
+    "events": 12,
+    "extent": 9,
+    "number": 46,
+    "range": 1,
+    "sequence": 29
+   }
+  },
+  "drawing": {
+   "files": 14,
+   "quantities": {
+    "count": 14,
+    "extent": 14
+   },
+   "statements": {
+    "number": 72,
+    "series": 12
+   }
+  },
+  "features": {
+   "files": 4,
+   "quantities": {
+    "count": 8,
+    "number": 6,
+    "times": 2
+   },
+   "statements": {}
+  },
+  "graph": {
+   "files": 8,
+   "quantities": {
+    "count": 32,
+    "pairs": 16
+   },
+   "statements": {}
+  },
+  "mesh": {
+   "files": 13,
+   "quantities": {
+    "box": 13,
+    "count": 26,
+    "extent": 13,
+    "number": 22
+   },
+   "statements": {
+    "unit": 11
+   }
+  },
+  "raster": {
+   "files": 1,
+   "quantities": {
+    "count": 1,
+    "extent": 1
+   },
+   "statements": {}
+  },
+  "signal": {
+   "files": 15,
+   "quantities": {
+    "count": 30,
+    "number": 30,
+    "series": 11,
+    "times": 15
+   },
+   "statements": {}
+  },
+  "table": {
+   "files": 54,
+   "quantities": {
+    "count": 139,
+    "number": 497,
+    "range": 71,
+    "series": 71
+   },
+   "statements": {
+    "events": 6,
+    "sequence": 23
+   }
+  },
+  "tree": {
+   "files": 16,
+   "quantities": {
+    "count": 28,
+    "number": 28,
+    "range": 4,
+    "series": 4
+   },
+   "statements": {
+    "pairs": 12,
+    "sequence": 4
+   }
+  }
+ },
+ "development": {
+  "always_consistent": {
+   "answered": {
+    "k": 72,
+    "n": 72,
+    "share": 1.0
+   },
+   "both_twins_correct": {
+    "k": 0,
+    "n": 36,
+    "share": 0.0
+   },
+   "by_kind": {
+    "chart_series": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "code_trace": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "mesh_bbox": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "report_total": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "timeline_log": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "tones_rows": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    }
+   },
+   "correct": {
+    "k": 36,
+    "n": 72,
+    "share": 0.5
+   }
+  },
+  "always_inconsistent": {
+   "answered": {
+    "k": 72,
+    "n": 72,
+    "share": 1.0
+   },
+   "both_twins_correct": {
+    "k": 0,
+    "n": 36,
+    "share": 0.0
+   },
+   "by_kind": {
+    "chart_series": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "code_trace": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "mesh_bbox": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "report_total": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "timeline_log": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    },
+    "tones_rows": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 6,
+     "wrong": 6
+    }
+   },
+   "correct": {
+    "k": 36,
+    "n": 72,
+    "share": 0.5
+   }
+  },
+  "relate (product)": {
+   "answered": {
+    "k": 72,
+    "n": 72,
+    "share": 1.0
+   },
+   "both_twins_correct": {
+    "k": 36,
+    "n": 36,
+    "share": 1.0
+   },
+   "by_kind": {
+    "chart_series": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 12,
+     "wrong": 0
+    },
+    "code_trace": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 12,
+     "wrong": 0
+    },
+    "mesh_bbox": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 12,
+     "wrong": 0
+    },
+    "report_total": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 12,
+     "wrong": 0
+    },
+    "timeline_log": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 12,
+     "wrong": 0
+    },
+    "tones_rows": {
+     "cannot": 0,
+     "cases": 12,
+     "right": 12,
+     "wrong": 0
+    }
+   },
+   "correct": {
+    "k": 72,
+    "n": 72,
+    "share": 1.0
+   }
+  },
+  "today": {
+   "answered": {
+    "k": 0,
+    "n": 72,
+    "share": 0.0
+   },
+   "both_twins_correct": {
+    "k": 0,
+    "n": 36,
+    "share": 0.0
+   },
+   "by_kind": {
+    "chart_series": {
+     "cannot": 12,
+     "cases": 12,
+     "right": 0,
+     "wrong": 0
+    },
+    "code_trace": {
+     "cannot": 12,
+     "cases": 12,
+     "right": 0,
+     "wrong": 0
+    },
+    "mesh_bbox": {
+     "cannot": 12,
+     "cases": 12,
+     "right": 0,
+     "wrong": 0
+    },
+    "report_total": {
+     "cannot": 12,
+     "cases": 12,
+     "right": 0,
+     "wrong": 0
+    },
+    "timeline_log": {
+     "cannot": 12,
+     "cases": 12,
+     "right": 0,
+     "wrong": 0
+    },
+    "tones_rows": {
+     "cannot": 12,
+     "cases": 12,
+     "right": 0,
+     "wrong": 0
+    }
+   },
+   "correct": {
+    "k": 0,
+    "n": 72,
+    "share": 0.0
+   }
+  }
+ },
+ "fresh_pairs": {
+  "first_look": {
+   "cannot": 4,
+   "cannot_kinds": [
+    "two_logs_order",
+    "doc_rate_wav"
+   ],
+   "cases": 24,
+   "commit": "677cf22",
+   "pairs": 12,
+   "right": 20,
+   "then": "two_logs_order fixed (a log's format words), doc_rate_wav left as cannot",
+   "unrelated": {
+    "cannot": 4,
+    "cases": 4,
+    "wrong": 0
+   },
+   "wrong": 0
+  },
+  "now": {
+   "all": {
+    "cannot": 2,
+    "cases": 24,
+    "right": 22,
+    "wrong": 0
+   },
+   "by_kind": {
+    "csv_csv_rows": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "doc_count_geo": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "doc_longest_csv": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "doc_mean_ms": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "doc_min_csv": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "doc_notes_midi": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "doc_rate_wav": {
+     "cannot": 2,
+     "cases": 2,
+     "right": 0,
+     "wrong": 0
+    },
+    "doc_size_svg": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "doc_sum_json": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "made_chart_csv": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "readme_box_stl": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    },
+    "two_logs_order": {
+     "cannot": 0,
+     "cases": 2,
+     "right": 2,
+     "wrong": 0
+    }
+   },
+   "unrelated": {
+    "cannot": 4,
+    "cases": 4,
+    "wrong": 0
+   }
+  }
+ },
+ "lane": "R",
+ "own_generator_variants": {
+  "all": {
+   "cannot": 0,
+   "cases": 630,
+   "right": 630,
+   "wrong": 0
+  },
+  "by_kind": {
+   "chart_series": {
+    "cannot": 0,
+    "cases": 120,
+    "right": 120,
+    "wrong": 0
+   },
+   "code_trace": {
+    "cannot": 0,
+    "cases": 60,
+    "right": 60,
+    "wrong": 0
+   },
+   "mesh_bbox": {
+    "cannot": 0,
+    "cases": 90,
+    "right": 90,
+    "wrong": 0
+   },
+   "report_total": {
+    "cannot": 0,
+    "cases": 180,
+    "right": 180,
+    "wrong": 0
+   },
+   "timeline_log": {
+    "cannot": 0,
+    "cases": 90,
+    "right": 90,
+    "wrong": 0
+   },
+   "tones_rows": {
+    "cannot": 0,
+    "cases": 90,
+    "right": 90,
+    "wrong": 0
+   }
+  },
+  "note": "own pairs from the public generators with knobs drawn here; not the benchmark's cases",
+  "seeds": [
+   1,
+   2,
+   3
+  ]
+ },
+ "own_pairs": {
+  "all": {
+   "cannot": 0,
+   "cases": 28,
+   "right": 28,
+   "wrong": 0
+  },
+  "by_kind": {
+   "chart_peak_doc": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "csv_events_log": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_count_code": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_count_rows": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_count_zip": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_duration_gpx": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_duration_wav": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_mean_csv": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_percent_csv": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_range_csv": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_size_png": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "doc_volume_obj": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "json_records_csv": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   },
+   "midi_wav_count": {
+    "cannot": 0,
+    "cases": 2,
+    "right": 2,
+    "wrong": 0
+   }
+  },
+  "unrelated": {
+   "cannot": 6,
+   "cases": 6,
+   "wrong": 0
+  }
+ },
+ "python": "3.12.16",
+ "transfer": {
+  "all": {
+   "absent": 1,
+   "columns": 29,
+   "conflicts_reported": 1,
+   "right_absent": 14,
+   "right_unit": 14,
+   "wrong": 0
+  },
+  "cases": [
+   {
+    "absent": 0,
+    "case": 0,
+    "columns": 4,
+    "conflicts_reported": 0,
+    "right_absent": 2,
+    "right_unit": 2,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 1,
+    "columns": 4,
+    "conflicts_reported": 0,
+    "right_absent": 1,
+    "right_unit": 3,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 2,
+    "columns": 2,
+    "conflicts_reported": 0,
+    "right_absent": 2,
+    "right_unit": 0,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 3,
+    "columns": 4,
+    "conflicts_reported": 0,
+    "right_absent": 2,
+    "right_unit": 2,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 4,
+    "columns": 2,
+    "conflicts_reported": 0,
+    "right_absent": 1,
+    "right_unit": 1,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 5,
+    "columns": 2,
+    "conflicts_reported": 0,
+    "right_absent": 1,
+    "right_unit": 1,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 6,
+    "columns": 3,
+    "conflicts_reported": 0,
+    "right_absent": 1,
+    "right_unit": 2,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 7,
+    "columns": 1,
+    "conflicts_reported": 1,
+    "right_absent": 0,
+    "right_unit": 1,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 8,
+    "columns": 2,
+    "conflicts_reported": 0,
+    "right_absent": 1,
+    "right_unit": 1,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 9,
+    "columns": 1,
+    "conflicts_reported": 0,
+    "right_absent": 1,
+    "right_unit": 0,
+    "wrong": 0
+   },
+   {
+    "absent": 1,
+    "case": 10,
+    "columns": 2,
+    "conflicts_reported": 0,
+    "right_absent": 0,
+    "right_unit": 1,
+    "wrong": 0
+   },
+   {
+    "absent": 0,
+    "case": 11,
+    "columns": 2,
+    "conflicts_reported": 0,
+    "right_absent": 2,
+    "right_unit": 0,
+    "wrong": 0
+   }
+  ],
+  "note": "lane R's own cases; three reader defects were fixed against them (development numbers)"
+ },
+ "what": "relating artifacts by measurement: development split of the cross family (never held-out or withheld), own pairs, fresh pairs, own generator variants, coverage of facts, transfer"
+}

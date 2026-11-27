@@ -1,7 +1,7 @@
 """`nsf artifact add FILE… | list | show ID [--why] | facts ID | export ID PATH | forget ID | gaps [--report] |
-adapters | forms | make FILE_OR_ID… --request TEXT | remake ID --form F | --option k=v |
+adapters | forms | make FILE_OR_ID… --request TEXT | remake ID --form F | --option k=v | relate ID ID |
 feedback ID kept|dismissed|replaced:FORM | feedback --reset` (ADR-071; make, remake and --why: ADR-076;
-feedback and the gap report: ADR-078).
+relate: ADR-077, artifacts/relate_cli.py; feedback and the gap report: ADR-078).
 
 The owner's commands for the artifact store (artifacts/store.py). Plain words by default; `--json` prints the record
 instead. Nothing here runs unless the owner types it. `add` follows a symbolic link the owner names on the command
@@ -94,8 +94,10 @@ def _plain(what, value) -> str:
                                                      "FAILED (" + ", ".join(checked.get("failed") or []) + ")"))
             for warning in checked.get("warnings") or []:
                 lines.append(f"  warning: {warning}")
+        from .relate_cli import CLAIM_LABEL, CLAIM_RELATIONS
         for link in value["links"]:
-            lines.append(f"  link: {link['src']} {link['relation']} {link['dst_id']} ({link['how']})")
+            claim = f"; {CLAIM_LABEL}" if link["relation"] in CLAIM_RELATIONS else ""
+            lines.append(f"  link: {link['src']} {link['relation']} {link['dst_id']} ({link['how']}{claim})")
         if "why" in value:
             from .produce import why_text
             lines.append("Why it has this form:")
@@ -134,6 +136,9 @@ def _plain(what, value) -> str:
         for fact in value["facts"]:
             lines.append(f"  {fact['name']}: {json.dumps(fact['value'], ensure_ascii=False)}  [{fact['how']}]")
         return "\n".join(lines)
+    if what == "relate":
+        from .relate_cli import plain
+        return plain(value)
     if what == "export":
         return f"Wrote {_size(value['bytes'])} to {value['path']} (only you can read it)."
     if what == "forget":
@@ -307,6 +312,11 @@ def _instance_config(db):
     return instance_store.config(db)
 
 
+def _relate(db, args, now):
+    from .relate_cli import relate
+    return relate(db, args.first, args.second, question=(args.question or None) and args.question[:1000], now=now)
+
+
 def _list(db, args, now):
     from . import store
     store.reconcile(db, now)
@@ -398,6 +408,11 @@ def register(sub):
     q.add_argument("id", nargs="?", help="the made artifact's id")
     q.add_argument("reaction", nargs="?", metavar="kept|dismissed|replaced:FORM")
     q.add_argument("--reset", action="store_true", help="remove every recorded reaction (what was learned is gone)")
+    q = command("relate", _relate, "relate two artifacts by measuring both: what one states or shows against what "
+                                   "the other measures; records the result as the system's claim (not evidence)")
+    q.add_argument("first")
+    q.add_argument("second")
+    q.add_argument("--question", help="what to compare, in your words (e.g. \"does the total match the CSV?\")")
     command("adapters", lambda db, a, now: store.adapter_catalog(db), "the file readers here, and which external "
                                                                        "ones you approved")
     def budget(q):

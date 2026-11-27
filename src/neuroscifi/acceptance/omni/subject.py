@@ -1040,6 +1040,26 @@ def make_planner_only():
     return ProductLearner("record")
 
 
+def relate(files: dict, question: str) -> dict:
+    """The cross family's product subject (lane R): `artifacts.relate` on the two files, each decoded by the
+    product's own adapters. Thin: it maps the product's Relation onto the family's reply and decides nothing; a file
+    the product cannot read makes the answer "cannot". Use as `--subject neuroscifi.acceptance.omni.subject:relate`."""
+    adapters = importlib.import_module("neuroscifi.artifacts.adapters")
+    R = importlib.import_module("neuroscifi.artifacts.relate")
+    error_type = importlib.import_module("neuroscifi.artifacts.types").ArtifactError
+    if len(files) != 2:
+        return {"answer": None, "because": ["the relater compares exactly two files"]}
+    sides = []
+    for name, data in files.items():
+        try:
+            decoded = adapters.decode(data, name=name)
+        except error_type as error:
+            return {"answer": None, "because": [f"{name} could not be read ({error.reason})"]}
+        sides.append(R.side(decoded, name=name, data=data))
+    relation = R.compare(sides[0], sides[1], question)
+    return {"answer": relation.answer, "because": relation.because()}
+
+
 SUBJECTS = {"today": TodaySubject, "artifacts": ArtifactsSubject}
 
 
