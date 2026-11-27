@@ -6,6 +6,7 @@ import http.client
 import io
 import json
 import threading
+import time
 
 import pytest
 
@@ -131,9 +132,12 @@ def test_pocket_self_status_is_signed_family_scoped_and_hidden_while_research_is
     c = spark.server.store.pair()
     mine = spark.req("research_submit", {"objective": "Is the Okapi compiler 2.0 out yet?"}, a)[1]["id"]
     with spark.owner() as db:
-        owner = orchestrator.submit(db, "Where does the okapi live?", T0, origin="console")
+        # the Pocket bridge stamps `mine` with the real clock, so the owner's task, which must be the newer one, is
+        # stamped from the real clock too (a fixed T0 sorts before or after `mine` depending on today's date)
+        later = time.time() + 60
+        owner = orchestrator.submit(db, "Where does the okapi live?", later, origin="console")
         db.execute("INSERT INTO pending(epoch,kind,scope,question,created_at) VALUES(NULL,'ask','web:x','?',?)",
-                   (T0,))
+                   (later,))
     status, body = spark.req("self_status", {}, a)
     assert status == 200 and verifies(spark, pin)
     record = body["record"]
