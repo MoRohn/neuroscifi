@@ -307,7 +307,8 @@ def _compound_check(data: bytes, detected: Detected, limits: Limits) -> None:
     """Every part of a ZIP-based compound file (an office document, an EPUB, a KMZ, a JAR), not only the parts its
     reader uses, before anything is answered from it (lane FX, item 2, `outcome.refuses_whole`): an unsafe name, a
     link or a special entry, overlapping entries, a part that is bomb-like, lies about its size or is damaged, an
-    entity, a DTD or an external reference in any markup part refuses the WHOLE file, with the listing as findings.
+    entity, a DTD or an XInclude in any markup part refuses the WHOLE file, with the listing as findings (a document's
+    own reference to an outside file never does: ADR-080 rule 2, `outcome.outside`).
     A part met past what is left of the decoded-bytes budget ends the scan (a large file, not a hostile one)."""
     if detected.format == "zip" or not (detected.format in ZIP_BASED or detected.container == "zip"):
         return

@@ -6545,7 +6545,8 @@ nothing stored changes shape.
 
 # ADR-080 What the withheld looks found, fixed by class: identification, complete refusal, a relater that does not guess
 
-Status: built by lane FX (OMNIMIND Wave O-2), 2026-11-27, on branch `omni-fx`. No setting, no migration, no new
+Status: built by lane FX (OMNIMIND Wave O-2), 2026-11-27, on branch `omni-fx`; decision 4 by lane FX2 (branch
+`omni-fx2`), the same day. No setting, no migration, no new
 format, form or command; `artifacts/forms.py` and the benchmark's drivers unchanged. Nothing outside the artifact
 package changes: the offline digest is equal in both regimes and the sentence guard differential is 0 different.
 **Unverified on unseen cases**: the fixes are judged once on NEW withheld cases written by another lane.
@@ -6583,10 +6584,11 @@ examination) and ran them through the benchmark's own driver.
      that inflates to another size than its directory states (`lying_size`), a TAR member cut short;
    - every part of a ZIP-based compound file (office, EPUB, KMZ, JAR, NPZ) is read before its reader answers
      (`_compound_check`): unsafe names, links, special entries, bomb-like, lying or damaged parts, and an entity, a DTD
-     or an external reference in any markup part (a DOCTYPE that only names a well-known public DTD stays readable);
+     or an XInclude in any markup part (a DOCTYPE that only names a well-known public DTD stays readable);
    - markup-shaped bytes with an entity declaration, an inline or system DTD, or an XInclude are refused whichever
      reader would read them (`_markup_check`, `safe.markup_hazard`): no XML refusal is answered as text or HTML;
-     `parse_xml` refuses XInclude; an SVG that would load outside files is refused.
+     `parse_xml` refuses XInclude. (Lane FX also refused an SVG that links an outside file; lane FX2 withdrew that:
+     decision 4 below.)
 3. **The relater answers only what the question names, and never what an image depicts** (`relate.py`).
    - A raster, an animation or a sound states nothing (`statements()`): it contributes measurements only.
    - With a question, a comparison decides only when the question names its aggregate, its count, its subject's words
@@ -6596,11 +6598,35 @@ examination) and ran them through the benchmark's own driver.
    - A disagreement between a bare number and a stated unit that a unit's scale factor explains is not a disagreement;
      a column named like `weight_g` states its unit.
 
+4. **References and active content never refuse by themselves** (lane FX2, 2026-11-27, after the security
+   reviewer's third pass, finding F3-1: this record said "an external reference in any part refuses the whole file"
+   while only SVG did; the main session ruled on principle). One table, `artifacts/outcome.py` (its comment, and
+   `outcome.outside` / `outcome.active` for the one wording of the notes). Its three rows are the rules 1, 2 and 3
+   that the code and the tests cite as "ADR-080 rule N":
+
+   | what the file holds | outcome for the whole file | what is said | what is "cannot" |
+   |---|---|---|---|
+   | a parser-level attack: an entity, a DTD, an XInclude or external entity (rule `external_reference`), a bomb, a lying size, overlap, an unsafe name or link, damage, depth past the limit, words addressed to an AI agent | **refused**, the whole file (only `encrypted`, `sparse_member`, `max_decoded_bytes` concern a part alone) | the refusal and its rule; the listing as findings | everything |
+   | a reference to something outside the file: a glTF buffer or image, an OOXML relationship with `TargetMode="External"` (a remote template, a linked workbook, a sheet, a link address, an image), a KML `href` (a NetworkLink), an OBJ material library, an SVG image, `use` target or link, a PDF `/URI`, `/GoToR`, `/GoToE` | **answered**: never followed, nothing fetched; everything inside read as before | a note: "the file refers to a file or address outside itself: not fetched (what refers, counted; never the address)" | what only the outside thing holds: a glTF whose placed geometry is in an outside buffer is read as its header only (`HeaderOnly`: counts, the buffers by index, names), so its vertices and triangles are "cannot", never 0; a sheet outside the workbook is not a member ("its cells cannot be known here"); a formula cell with no cached value is left empty and the note says what it holds cannot be known here |
+   | embedded active content: a macro project (`vbaProject.bin`, ODF `Basic/`), a PDF script (`/JavaScript`, `/JS`), auto-run action (an `/OpenAction` that is an action, `/AA`), launch action, embedded file; an SVG script, `foreignObject` or event attribute | **answered**: never run; the document's own content read as before | a note: "the file holds a macro project / a script / an auto-run action ...: not run" (SVG keeps lane FX's "refused and not kept: N x script") | nothing more |
+
+   Not found (unverified as complete): a PDF action inside a compressed stream other than the catalog pypdf reads;
+   without pypdf a PDF is header facts only and names none. The reviewer's files are rebuilt as tests
+   (`tests/artifacts/test_fx2_references.py`): each is answered with its note, no address appears in any note, no
+   connection, process or open of a named path happens while it is read, and the parser-level attack beside each is
+   refused. The answers are not a cell-level "cannot" in the table representation: a cell with no cached value is an
+   empty cell there, and only the note says it is not known (a per-cell marker would be a new representation field).
+
 ## What each rule turns away (honest inputs), measured
 
 Lane FX's honest edge corpus (19 files, truth = the earlier answer): 15 unchanged, and turned away: an empty file
 named `.png` (now "unknown"), a two-frame MP3 without an ID3 tag (now "unknown"; identified before by its name only),
-a ZIP whose XML tutorial member declares a DTD (the whole ZIP refused), an SVG that links an outside image (refused).
+a ZIP whose XML tutorial member declares a DTD (the whole ZIP refused), an SVG that links an outside image (refused by
+lane FX; read again, with its note, since lane FX2).
+Known cost, accepted (the reviewer's third pass, LOW): a plain-text note that quotes the bytes `PK\x03\x04` (control
+characters inside text) is left "unknown, opaque": it starts with the ZIP signature, which no ZIP reader confirms,
+and its control characters keep it from being read as text; no reader answers from it, and an honest note is left
+unread. Nothing was changed for it.
 Also by rule, not measured on real files: a ZIP with any damaged member is refused as a whole; a ZIP nested deeper than
 `max_depth` is refused as a whole; a question to the relater that names no measurable comparison ("Was this made from
 that?") is "cannot" where an unrelated agreement used to answer it. Development: 512 / 12 / 0 / 0 of 524 and cross
@@ -6614,7 +6640,12 @@ that?") is "cannot" where an unrelated agreement used to answer it. Development:
 | refusal: a hostile part, the honest part asked | 168 | 132 answered | 0 answered |
 | relater: twin pairs in 12 kinds | 144 | 24 | 0 (84 right, 60 cannot) |
 
+The corpora are committed as generators (`scripts/omnimind_fx/`, fixed seeds, no file stored; `run_corpus.py` and
+`corpus_cross.py` recompute the figures; `tests/artifacts/test_fx_corpora.py` pins their sizes). At lane FX2 the
+refusal corpus gives 165 refused and 3 answered: its class of an SVG linking an outside image, answered with its note
+by rule 2 (decision 4) as ruled (lane FX's truth for it says refused); the other figures are unchanged (section `lane_fx2`).
+
 ## Rollback
 
-Revert lane FX's commits on `omni-fx`; nothing stored changes shape (no migration), and kept artifacts are re-read with
+Revert lane FX's commits on `omni-fx` (and lane FX2's on `omni-fx2` for rule 4 alone); nothing stored changes shape (no migration), and kept artifacts are re-read with
 whatever code is present.
