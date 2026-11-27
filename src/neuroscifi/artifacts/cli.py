@@ -426,7 +426,8 @@ def register(sub):
         q.add_argument("--bytes", type=int, help="the most bytes the made file may have (default 16 MiB)")
 
     q = command("make", _make, "make something from files you hand over (or kept artifacts) for what you want to "
-                               "know: the form is decided for you, made, checked independently and kept with why")
+                               "know: the form is decided for you, made, checked independently and kept with why; "
+                               "several files are also compared with each other")
     q.add_argument("sources", nargs="+", help="files, or ids of kept artifacts")
     q.add_argument("--request", "-r", required=True, help="what you want to know or see, in your own words")
     q.add_argument("--alternatives", type=int, default=1, help="try up to N forms that differ in kind (at most 4) "
