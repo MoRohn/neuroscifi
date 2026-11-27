@@ -305,6 +305,10 @@ def _zip_after_unknown_bytes(data: bytes, detected: Detected, limits: Limits) ->
     format (a PNG, a WAV, a PDF before the ZIP) never come here: that is a polyglot, refused (`_also_a_zip`)."""
     if len(data) < 22 or data.rfind(b"PK\x05\x06", max(0, len(data) - (1 << 16) - 22)) < 0:
         return detected
+    if data[:4] == b"MSCF" or data[:2] == b"\xac\xed" or data[2:4] == b"\r\n":
+        # lane FX4 (review L1): a head that IS a format nothing here reads (a CAB cabinet, Java serialised objects,
+        # compiled Python): two readings, so the ZIP after it is not taken as the file
+        return detected
     from ..safe_b1 import ZipReader
     try:
         reader = ZipReader(data, max_members=limits.max_members, partial_ok=True)
@@ -603,6 +607,19 @@ def _confirming(data: bytes, detected: Detected, adapter: Adapter, limits: Limit
     return replace(result, notes=(note,) + tuple(result.notes))
 
 
+def _same_name_key(path: str | None) -> str | None:
+    """Lane FX4 (R6, class H-D generalised): the name under which a member would be found on the systems people
+    use: one Unicode form (NFC), case folded, empty and "." segments dropped ("d//x", "d/./x"), and trailing dots and
+    spaces of each segment dropped (as Windows does: "x.csv." is "x.csv", "Totals " is "Totals")."""
+    if not path:
+        return path
+    import posixpath
+    import unicodedata
+    norm = posixpath.normpath(unicodedata.normalize("NFC", path)).casefold()
+    parts = [seg.rstrip(" .") for seg in norm.split("/")]
+    return "/".join(p for p in parts if p) or None
+
+
 def _refuse_duplicate_members(result: Decoded) -> None:
     """Lane FX3 (class H-D): a container whose members collide in name (the same name twice, "./name" beside "name",
     two sheets named alike) has two answers to every question that names that member, and which one a reader takes
@@ -615,7 +632,7 @@ def _refuse_duplicate_members(result: Decoded) -> None:
     for m in rep.members:
         if getattr(m.detected, "format", None) == "directory":
             continue
-        path = member_path(str(m.path).replace("\\", "/"))
+        path = _same_name_key(member_path(str(m.path).replace("\\", "/")))
         if not path:
             continue
         if path in seen:
@@ -661,12 +678,20 @@ def _flags(decoded: Decoded) -> tuple[str, ...]:
 # mentions an assistant, or that says "forget the rules of chess", is neither.
 _AI_READER = (r"(?:ai|a\.i\.|artificial\s+intelligence|(?:ai\s+)?assistant|chat\s?bot|language\s+model|llm|gpt|claude|"
               r"copilot|ai\s+(?:agent|model|system|tool))")
+# Lane FX4 (R6, H-B generalised; M5): the address is the AI reader as the HEAD of its phrase: a vocative at the start
+# of a sentence ("Assistant, ...", "Hey Claude, ..."), or a note "to/for" it, optionally followed by what it is doing
+# ("reading this file", "that summarises this page") and a colon. "Note for the assistant manager:" names a person
+# (a noun follows "assistant"), not a model, and is not an address.
+_DOING = (r"(?:that\s+|who\s+|which\s+)?(?:is\s+)?(?:reading|reads|processing|processes|parsing|parses|summari[sz]ing|"
+          r"summari[sz]es|seeing|sees|handling|handles|working\s+on|looks?\s+at|looking\s+at|given|scanning|scans|"
+          r"analy[sz]ing|analy[sz]es)\b[^.\n:]{0,80}")
 _ADDRESS = re.compile(
     rf"(?:^|[.!?]\s+|\n\s*)(?:(?:dear|hey|hi|hello|attention|listen)\s*,?\s+)?(?:the\s+)?{_AI_READER}\s*[,:!]"
+    rf"|(?:^|[.!?]\s+|\n\s*)(?:(?:dear|hey|hi|hello|attention|listen)\s*,?\s+)?(?:the\s+|any\s+|every\s+)?"
+    rf"{_AI_READER}s?\s+{_DOING}:"
     rf"|\b(?:note|message|notice|instructions?|reminder|attention|request|warning)\s+(?:to|for)\s+"
-    rf"(?:(?:any|all|every|the|each)\s+)?{_AI_READER}s?\b[^.\n:]{{0,60}}:"
-    rf"|\b(?:to|for)\s+(?:(?:any|all|every|the|each)\s+)?{_AI_READER}s?\s+(?:that\s+is\s+|who\s+is\s+)?"
-    rf"(?:reading|processing|parsing|summari[sz]ing|seeing|handling|given)\b", re.I | re.M)
+    rf"(?:(?:any|all|every|the|each|whichever|whatever)\s+)?{_AI_READER}s?(?:\s+{_DOING})?\s*:"
+    rf"|\b(?:to|for)\s+(?:(?:any|all|every|the|each|whichever|whatever)\s+)?{_AI_READER}s?\s+{_DOING}", re.I | re.M)
 _SET_ASIDE = re.compile(
     r"\b(?:forget|disregard|ignore|override|abandon|discard|drop|set\s+aside|stop\s+following|no\s+longer\s+follow)"
     r"\s+(?:(?:all|any|the|your|of|these|those|its|my|every|everything)\s+){0,3}"
@@ -678,13 +703,24 @@ _AGAINST_OWNER = re.compile(
     r"(?:(?:all|every|the|your|my|its|any|each|stored|private)\s+){0,3}(?:[\w'-]+\s+){0,2}?"
     r"(?:passwords?|credentials|keys|secrets|contacts|files|documents|backups|data|messages|history|photos|"
     r"home\s+folder|accounts?)\b", re.I)
-ADDRESS_REACH = 400        # characters after an address in which its directive must follow
+ADDRESS_REACH = 2000       # characters after an address (within its paragraph) in which its directive must follow
+# lane FX4 (R6): other directives that tell a reader to do the owner's file's bidding ("your new task is",
+# "pretend", "do not mention")
+_NEW_ORDERS = re.compile(r"\byour\s+(?:new|real|actual|true|only)\s+(?:task|job|instructions?|role|goal|purpose|orders?)"
+                         r"\b|\bpretend\b|\b(?:do\s+not|don'?t|never)\s+(?:mention|report|reveal|tell|flag)\b", re.I)
+# letters of other scripts that look like Latin ones (Cyrillic, Greek), mapped before matching (lane FX4, R6)
+_LOOKALIKE = str.maketrans("АаВЕеКМНОоРрСсТуХхІіЈјЅѕԁһԛԝΑΒΕΖΗΙΚΜΝΟοΡΤΥΧνρτ",
+                           "AaBEeKMHOoPpCcTyXxIiJjSsdhqwABEZHIKMNOoPTYXvpt")
+_INVISIBLE_CHARS = re.compile("[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]")
 
 
 def _addressed_directive(text: str) -> bool:
+    import unicodedata
+    text = _INVISIBLE_CHARS.sub("", unicodedata.normalize("NFKC", text)).translate(_LOOKALIKE)
     for m in _ADDRESS.finditer(text):
-        window = text[m.start():m.end() + ADDRESS_REACH]
-        if _SET_ASIDE.search(window) or _AGAINST_OWNER.search(window):
+        end = text.find("\n\n", m.end())
+        window = text[m.start():min(m.end() + ADDRESS_REACH, end if end >= 0 else len(text))]
+        if _SET_ASIDE.search(window) or _AGAINST_OWNER.search(window) or _NEW_ORDERS.search(window):
             return True
     return False
 

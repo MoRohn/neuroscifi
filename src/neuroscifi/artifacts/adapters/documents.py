@@ -36,7 +36,24 @@ MAX_MARKUP_DEPTH = 256
 # thousand <p> or <li> open).
 _OPTIONAL_END = {"p", "li", "dt", "dd", "tr", "td", "th", "option", "optgroup", "thead", "tbody", "tfoot",
                  "colgroup", "caption", "rb", "rt", "rp", "rtc", "head", "body", "html"}
-_QUOTE_MARKERS = re.compile(r"[ \t]*((?:>[ \t]?)+)")
+_QUOTE_MARKERS = re.compile(r"[ \t]*((?:>[ \t]*)+)")
+# lane FX4 (R6, class H-A generalised): a Markdown line's nesting is its quote markers, its list markers and its
+# indentation (two columns a level, a tab four), whatever spaces or tabs separate them
+_NEST_MARKERS = re.compile(r"[ \t]*((?:(?:>|[-*+]|\d{1,9}[.)])(?:[ \t]+|$))+)")
+
+
+def _markdown_nesting(line: str) -> int:
+    indent = 0
+    for ch in line:
+        if ch == " ":
+            indent += 1
+        elif ch == "\t":
+            indent += 4
+        else:
+            break
+    m = _NEST_MARKERS.match(line)
+    markers = len(re.findall(r">|[-*+]|\d{1,9}[.)]", m.group(1))) if m else 0
+    return markers + indent // 2
 
 _ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*))?$")
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([\w+.#-]*)")
@@ -123,6 +140,9 @@ def markdown_blocks(text: str, *, budget: DecodeBudget | None = None, deadline: 
             deadline.check()
         line = lines[i]
         stripped = line.strip()
+        if len(line) > MAX_MARKUP_DEPTH // 2 and _markdown_nesting(line) > MAX_MARKUP_DEPTH:
+            raise Refused(f"the Markdown nests quotes, lists or indentation deeper than {MAX_MARKUP_DEPTH} levels",
+                          rule="max_depth")
         fence = _FENCE.match(line)
         if fence:
             flush()
@@ -231,11 +251,46 @@ def markdown_blocks(text: str, *, budget: DecodeBudget | None = None, deadline: 
     return blocks, title, notes, partial
 
 
+# Lane FX4 (R7, the owner's rule 2): references to something outside the file are counted by kind and said in a
+# note (never followed, never fetched; the address itself is never quoted), as for SVG, DOCX and PDF.
+_MD_IMAGE = re.compile(r"!\[[^\]\n]{0,500}\]\(\s*<?([^)\s>]{1,2000})")
+_MD_LINK = re.compile(r"(?<!!)\[[^\]\n]{0,500}\]\(\s*<?([^)\s>]{1,2000})|<((?:https?|ftp|file)://[^>\s]{1,2000})>")
+_MD_HTML_REF = re.compile(r"<(img|iframe|script|video|audio|source|embed|object|link)\b[^>]{0,2000}?\b(?:src|href|data)"
+                          r"\s*=\s*[\"']?([^\"'\s>]{1,2000})", re.I)
+_HTML_REFS = {("img", "src"): "image", ("a", "href"): "link address", ("iframe", "src"): "frame",
+              ("frame", "src"): "frame", ("script", "src"): "script file", ("link", "href"): "linked file",
+              ("source", "src"): "media file", ("video", "src"): "media file", ("audio", "src"): "media file",
+              ("embed", "src"): "embedded object", ("object", "data"): "embedded object"}
+
+
+def _points_outside(ref: str) -> bool:
+    ref = ref.strip()
+    return bool(ref) and not ref.startswith("#") and not ref.lower().startswith(("data:", "javascript:"))
+
+
+def _outside_note(counts: dict) -> list[str]:
+    if not counts:
+        return []
+    from .. import outcome
+    what = ", ".join(f"{n} {kind}{'s' if n > 1 else ''}" for kind, n in sorted(counts.items()))
+    return [outcome.outside(what)]
+
+
 def read_markdown(data, detected, limits):
     text, notes = decode_text(data)
     blocks, title, more, partial = markdown_blocks(text, budget=DecodeBudget(limits), deadline=Deadline(limits.max_seconds))
-    return _finish(detected, blocks, title, list(notes) + more + ["inline emphasis markers are kept as written"],
-                   partial)
+    refs: dict[str, int] = {}
+    for kind, pattern in (("image", _MD_IMAGE), ("link address", _MD_LINK)):
+        for m in pattern.finditer(text):
+            if _points_outside(next(g for g in m.groups() if g)):
+                refs[kind] = refs.get(kind, 0) + 1
+    for m in _MD_HTML_REF.finditer(text):
+        tag = m.group(1).lower()
+        kind = next((k for (t, _), k in _HTML_REFS.items() if t == tag), "linked file")
+        if _points_outside(m.group(2)):
+            refs[kind] = refs.get(kind, 0) + 1
+    return _finish(detected, blocks, title, list(notes) + more + ["inline emphasis markers are kept as written"]
+                   + _outside_note(refs), partial)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -272,6 +327,8 @@ class _HtmlReader(HTMLParser):
         self.tags = 0
         self.nested_tables = 0
         self.depth = 0                       # open elements whose end tag is required (lane FX3, H-A)
+        self.outside: dict[str, int] = {}    # references to outside files or addresses, by kind (lane FX4, R7)
+        self.scripts = 0
 
     # -- helpers
     def _emit(self, block: Block) -> None:
@@ -306,6 +363,12 @@ class _HtmlReader(HTMLParser):
     # -- parser callbacks
     def handle_starttag(self, tag, attrs):
         self.tags += 1
+        for name, value in attrs:
+            kind = _HTML_REFS.get((tag, name))
+            if kind and value and _points_outside(value):
+                self.outside[kind] = self.outside.get(kind, 0) + 1
+        if tag == "script":
+            self.scripts += 1
         if tag not in _VOID and tag not in _OPTIONAL_END:
             self.depth += 1
             if self.depth > MAX_MARKUP_DEPTH:
@@ -530,6 +593,10 @@ def read_html(data, detected, limits):
     if reader.nested_tables or any("nested" in n for n in reader.notes):
         notes.append("nested tables are flattened into the cell that holds them")
     notes.append("scripts, styles, frames, embedded objects and inline SVG are dropped with their content")
+    notes += _outside_note(reader.outside)
+    if reader.scripts:
+        from .. import outcome
+        notes.append(outcome.active(f"{reader.scripts} script(s)"))
     if reader.partial:
         notes.append(f"stopped after {len(reader.blocks)} blocks: the element limit was reached")
     return _finish(detected, reader.blocks, reader.title, notes + reader.notes, reader.partial)

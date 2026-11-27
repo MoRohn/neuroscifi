@@ -84,7 +84,7 @@ def test_a_lying_or_damaged_member_refuses_the_whole_archive():
     good = _zip({"t.csv": CSV, "readme.txt": README}, zipfile.ZIP_STORED)
     at = good.find(b"PK\x01\x02")
     lying = good[:at + 24] + (len(CSV) + 5).to_bytes(4, "little") + good[at + 28:]
-    assert _refused(lying, name="l.zip").rule == "lying_size"
+    assert _refused(lying, name="l.zip").rule == "header_mismatch"  # lane FX4: only the central entry was changed, so the two headers disagree (refused before reading)
     cut = _tar({"t.csv": CSV * 200, "readme.txt": README})[:900]
     assert _refused(cut, name="c.tar").rule == "lying_size"
 

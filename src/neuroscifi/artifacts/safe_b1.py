@@ -93,6 +93,21 @@ _CEN = b"PK\x01\x02"
 _LOC = b"PK\x03\x04"
 
 
+def _unicode_path(extra: bytes) -> str | None:
+    """The name an Info-ZIP Unicode Path extra field (0x7075) gives, or None when there is none (lane FX4)."""
+    pos = 0
+    while pos + 4 <= len(extra):
+        tag, size = struct.unpack("<HH", extra[pos:pos + 4])
+        body = extra[pos + 4:pos + 4 + size]
+        if tag == 0x7075 and len(body) >= 5:
+            try:
+                return body[5:].decode("utf-8")
+            except UnicodeDecodeError:
+                return "\ufffd"                 # not valid: never the directory's name
+        pos += 4 + size
+    return None
+
+
 def unsafe_member_name(name: str) -> str | None:
     """Why a member name may not be treated as a member to decode (None when it is fine)."""
     if not name or "\x00" in name:
@@ -156,6 +171,11 @@ class ZipReader:
             else:
                 name = raw.decode("cp437")
             raws.append(bytes(raw))
+            if _unicode_path(extra) not in (None, name):
+                # lane FX4 (R6, H-E): an Info-ZIP Unicode Path field (0x7075) naming another file than the
+                # directory's name: two readers would see two files
+                raise Refused("the archive is refused as a whole: a member's Unicode path field names it differently "
+                              "from the directory; nothing inside was decoded", rule="name_mismatch")
             mode = (ea >> 16) & 0xFFFF if (made_by >> 8) == 3 else 0
             is_link = (mode & 0o170000) == 0o120000
             self.entries.append(ZipEntry(name, method, flags, crc, csize, usize, off + shift, mode,
@@ -171,10 +191,20 @@ class ZipReader:
             # trusts the local header would write or answer under another name (one that may climb out)
             off = entry.offset
             if data[off:off + 4] == _LOC and off + 30 <= len(data):
-                nlen = struct.unpack("<H", data[off + 26:off + 28])[0]
+                (l_flags, l_method, _t, _d, l_crc, l_csize, l_usize, nlen, xlen) = struct.unpack(
+                    "<HHHHIIIHH", data[off + 6:off + 30])
                 if data[off + 30:off + 30 + nlen] != raw:
                     raise Refused("the archive is refused as a whole: a member's local header names it differently "
                                   "from the directory; nothing inside was decoded", rule="name_mismatch")
+                local_extra = data[off + 30 + nlen:off + 30 + nlen + xlen]
+                # lane FX4 (R6, H-E): the local header must also agree on how and how much is stored (unless a data
+                # descriptor carries the sizes, or ZIP64 moved them), and carry no Unicode path naming another file
+                sizes_here = not (l_flags & 0x08) and 0xFFFFFFFF not in (l_csize, l_usize)
+                if l_method != entry.method or (sizes_here and (l_crc, l_csize, l_usize) !=
+                                                (entry.crc, entry.compressed_size, entry.size)) \
+                        or _unicode_path(local_extra) not in (None, entry.name):
+                    raise Refused("the archive is refused as a whole: a member's local header disagrees with the "
+                                  "directory about how it is stored; nothing inside was decoded", rule="header_mismatch")
 
     def _find_eocd(self) -> int:
         data = self.data

@@ -630,46 +630,37 @@ def test_final_withheld2_refuses_before_recording(tmp_path):
 
 
 def test_check_refuses_for_the_second_split(monkeypatch):
-    final.check("note", ["unknown", "hostile", "cross"], CLEAN, split="withheld2")         # pinned as committed
+    """The owner opened this split for its three families (WAVE3, decision 1; ADR-081): every other check still runs
+    first, and a well-formed request ends in `final.Spent` (lane FX4, R8: explicit, replacing an expected failure)."""
+    monkeypatch.setattr(final, "pinned_drivers", lambda path=None: final.driver_hashes())
+    for families in (["unknown", "hostile", "cross"], ["unknown"], ["cross"]):
+        with pytest.raises(final.Spent):
+            final.check("note", families, CLEAN, split="withheld2")
     with pytest.raises(final.Refused, match="unknown or missing family"):
         final.check("note", ["forms"], CLEAN, split="withheld2")
     with pytest.raises(final.Refused, match="clean"):
         final.check("note", ["cross"], {"git_commit": "a", "git_dirty": True}, split="withheld2")
-    with pytest.raises(final.Refused, match="unknown withheld split"):
-        final.check("note", ["cross"], CLEAN, split="withheld3")
     monkeypatch.setitem(final.WITHHELD2_SHA256, "withheld2_cross.py", "0" * 64)
     with pytest.raises(final.Refused, match="changed"):
         final.check("note", ["cross"], CLEAN, split="withheld2")
-    final.check("note", ["unknown"], CLEAN, split="withheld2")                             # the other file is fine
 
 
-def test_a_withheld2_look_records_first_and_reports_summaries_only(tmp_path, monkeypatch):
-    """References and the harness's refusing probe only: never a product subject."""
+def test_a_withheld2_look_is_refused_as_spent_and_recorded(tmp_path, monkeypatch):
+    """A look at the opened split is refused with `final.Spent` before anything is scored, and the refusal is on the
+    record (a ledger in tmp_path; the tracked ledger is untouched). References and the refusing probe only."""
     ledger = tmp_path / "ledger.jsonl"
+    before = _ledger_bytes()
+    monkeypatch.setattr(final, "pinned_drivers", lambda path=None: final.driver_hashes())
 
     def boom(subject):
         raise RuntimeError("scoring started")
     monkeypatch.setattr(final, "score_cross2", boom)
-    with pytest.raises(RuntimeError, match="scoring started"):
-        final.look(["cross"], "today", "today", "a crash still counts", script="test", ledger=ledger, env=CLEAN,
-                   split="withheld2")
-    line = json.loads(ledger.read_text().splitlines()[0])
-    assert line["split"] == "withheld2" and line["withheld_file"] == "withheld2_cross.py"
-    assert line["withheld_sha256"] == PINNED2["withheld2_cross.py"] and line["drivers"] == final.driver_hashes()
-    monkeypatch.undo()
-    monkeypatch.setattr(final, "pinned_drivers", lambda path=None: final.driver_hashes())
-    out = final.look(["cross"], "always_inconsistent", "always_inconsistent", "test of the machinery",
-                     script="test", ledger=ledger, env=CLEAN, split="withheld2")
-    z = final.look(["unknown", "hostile"], subject.get("probe:refuse"), "probe:refuse", "test of the machinery",
+    with pytest.raises(final.Spent):
+        final.look(["cross"], "always_inconsistent", "always_inconsistent", "test of the machinery", script="test",
+                   ledger=ledger, env=CLEAN, split="withheld2")
+    with pytest.raises(final.Spent):
+        final.look(["unknown", "hostile"], subject.get("probe:refuse"), "probe:refuse", "test of the machinery",
                    script="test", ledger=ledger, env=CLEAN, split="withheld2")
-    assert z["ledger_lines"] == 4
-    hostile_out, unknown_out = z["families"]["hostile"], z["families"]["unknown"]
-    assert hostile_out["right"] == hostile_out["n"] == len(W.HOSTILE)                 # every refusal is right
-    assert unknown_out["n"] == len(W.tasks("unknown")) and unknown_out["wrong"] == 0
-    assert unknown_out["right"] == unknown_out["abstention_floor"]
-    assert out["families"]["cross"]["both_twins_correct"]["k"] == 0
-    text = json.dumps([out, z])
-    assert "/withheld2/" not in text and not any(c["name"] in text for c in W.HOSTILE + W.DISGUISED)
-    assert not any(p["question"] in text for p in X.PAIRS)
-    for key in ("tasks", "failures", "cases"):
-        assert all(key not in v for v in z["families"].values())
+    lines = [json.loads(x) for x in ledger.read_text().splitlines()]
+    assert len(lines) == 2 and all(x["split"] == "withheld2" and "refused" in x for x in lines)
+    assert _ledger_bytes() == before
