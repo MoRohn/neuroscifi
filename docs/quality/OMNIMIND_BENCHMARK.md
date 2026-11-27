@@ -686,3 +686,45 @@ and `acceptance/omni/final.py` at `3849b9f`; no `withheld*` file opened; nothing
   twice writes two lines.
 - **No forms or learn look is taken on this split** (it holds no forms, learn, made or transform cases), and none is
   taken again on the first withheld split.
+
+## Result of the look at the second withheld split
+
+Taken once by the main session on `ae6120f` (the rule above committed in that commit, before the look). Evidence:
+`evidence/omnimind_looks2/` (`summary.json`, the look files and both runs of every control). These cases are now spent.
+
+**Preconditions and controls: held.** The rule was committed in `ae6120f` before the look; the driver pins matched; the
+tree was clean; development reproduced exactly (512 / 12 / 0 / 0; forms 107 good, 0 bad, 0 violations; cross 72 of
+72; learn 0.8158 / 0.7617 against 0.5871 / 0.5842). Every control was run twice; the two runs' result figures are
+identical (they differ only in times, notes, ledger line counts and one traced peak-memory figure) and equal the rule's
+table: unknown today 25 / 145 / 0 / 1 of 171; hostile today 4 / 56 / 1 / 1 of 62; cross today 18 of 98, 0 answered;
+always-consistent and always-inconsistent 40 of 98, twins 0 of 49. The full validation on `ae6120f` was green except
+one browser test (`tests/e2e/test_ui_matrix.py::test_pocket_matrix[dark]`, a known flake on the base commit too),
+which passed alone twice.
+
+| family | n | result | verdict by the rule |
+|---|---:|---|---|
+| **unknown** | 171 | 158 right, 8 "cannot", **5 wrong**, 0 failed | **not supported** (the rule requires 0 wrong) |
+| **hostile** | 62 | 51 refused, **11 answered instead of refused**, 0 failed | **not supported**; "hostile inputs refused" does not hold |
+| **cross** | 98 | 65 right; 48 answered, **1 wrong** (correct of answered 0.979); "cannot" on all 18 undecidable cases; decidable: 47 right of 80; both twins right on 23 of 40 decidable pairs | **not supported**: it no longer guesses, but it is right on only 47 of the 80 decidable cases (the rule needs 60) and on both twins of 23 decidable pairs (needs 27) |
+
+Cross by kind: report_total 9 right, 1 wrong of 10; chart_series 4 right, 4 cannot of 8; tones_rows 6 of 6; mesh_bbox,
+code_trace, timeline_log 8 of 8 each; image_size_caption (new) 4 right, 4 cannot of 8; image_depicts and translation
+(new, undecidable) "cannot" on 10 of 10 and 8 of 8, as expected; diagram_text, archive_checksums and audio_cues (new)
+0 answered of 8 each: **not exercised**. In plain words: the relater stopped guessing, and it declines too much to
+count as working.
+
+The rule asked for any hostile class with a wrong answer to be named by class: **the look's output carries no
+per-class breakdown, so the classes cannot be named.**
+
+**The honest reading.** The fix wave closed the classes it named (its own corpora), and those fixes did not
+generalise to new constructions. On unseen inputs the wrong answers went from 3 to 5 for unknown files and from 3 to
+11 for hostile files; this is **not a like-for-like comparison** (different splits and sizes: 111 and 35 cases then,
+171 and 62 now). The main session's ruling in lane FX2 (an outside reference or embedded active content is named,
+never followed or run, and does not refuse a file by itself) was made on principle before the look and may account
+for part of the hostile count; this is not known, because no task is opened. **Both withheld splits are now spent for
+these families**: any further fix needs a third set of unseen cases, written first. **The owner's condition for
+merging (fix what the look found and re-examine on new withheld cases) was examined and is NOT met**; the pull request
+stays unmerged pending the owner's decision.
+
+What this look cannot establish (the rule's part C): real files or real people; kinds and classes not in the split;
+versions after `ae6120f`; generality from 98 or 171 cases; anything about forms, learn, made or transform.

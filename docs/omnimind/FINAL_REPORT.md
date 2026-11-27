@@ -1,12 +1,22 @@
 # OMNIMIND final implementation report (deliverable 12)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `21193c4`: fix lanes F4 and F5 merged, the
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `ad28fcf` (the second withheld look taken on
+`ae6120f`; earlier: fix lanes F4 and F5 merged, the
 driver pins committed with the look rule in `55f89be`, the main session's final validation run on `55f89be`, and the
 withheld looks taken once each on `55f89be` (evidence `docs/quality/evidence/omnimind_looks/`, the main session's
-reading `summary.json`; ledger `omnimind_final_uses.jsonl`, 42 lines). OMNIMIND lives on the local branch `omnimind`
+reading `summary.json`; ledger `omnimind_final_uses.jsonl`, 42 lines then)). OMNIMIND lives on the local branch `omnimind`
 (schema 21); **nothing is merged into `main`, nothing is pushed, CI has not run.**
 
 ## The first screen
+
+**The fix wave was examined on new unseen cases and none of the three mechanisms earned "supported".** In the one
+look at the second withheld split (on `ae6120f`, under a rule committed before it, controls run twice and equal),
+the system answered **5 disguised or unknown files falsely** (158 right of 171), **answered 11 hostile files instead
+of refusing them** (51 of 62 refused), and the relater, which no longer guesses (1 wrong of 48 answered, "cannot" on
+all 18 undecidable cases), was right on only 47 of 80 decidable cases (the rule needs 60). The fixes closed the
+classes the fix lane named and did not generalise to new constructions. Both withheld splits are now spent for these
+families; any further fix needs a third set of unseen cases, written first. **The owner's condition for merging was
+examined and is NOT met**; the pull request stays unmerged pending the owner's decision.
 
 **On unseen inputs the system fabricated or failed to refuse.** In the withheld looks, which no lane tuned against,
 the product gave **6 wrong answers** on 652 tasks of the seven families: **3 disguised or unknown files were answered
@@ -48,7 +58,7 @@ console's view of all this is on by default.
 | O-1 | P, R, L, U; integration lane 2 | the production pipeline; relating artifacts; learning from outcomes; the console view |
 | reviews | security, measurement, code (each with a second pass) | first pass: 4 blockers (measurement), H1-H2 (security), H1 and M1-M4 (code); second pass: all three "offer to the owner: yes", with residues |
 | fixes | F1, F2, F3, F4 (`1aa7eb6`), F5 (`bf3dac6`) | the guard; the product decides outcomes; forget's matcher; the benchmark reads only what a person sees; driver pins machinery; `--partial` and reductions; plain words; F4: a forget holds what its scan cannot finish (and the scan's own budget), the product check's `visible_to_a_person`, the reader's two blind spots (re-pinned), the driver's last decisions in the product, `add` decoding once, console verdict reuse; F5: the make summary after a partial read, `--partial` on a large archive (drawn as its folders), `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help |
-| Wave O-2 (fix what the withheld look found; the owner's decision of 2026-11-27) | FX, ZW2, FX2; third review passes | FX: a name or declared type never identifies a file alone; a hostile part refuses the whole file; the relater answers only quantities it can measure (ADR-080); its own corpora 344 to 0 wrong of 3,669 disguises, 132 to 0 of 168 hostile parts, 24 to 0 of 144 relater twins (regression evidence by the same lane, not generality). ZW2: a second withheld split (unknown 171 tasks, hostile 62, cross 98). FX2: one refusal rule (parser-level attacks refuse; outside references and active content are named, never followed or run); FX's refusal corpus 165 refused, 3 answered of 168 (the SVG-with-an-outside-image class, as ruled). **The look at the second withheld split is not yet taken** |
+| Wave O-2 (fix what the withheld look found; the owner's decision of 2026-11-27) | FX, ZW2, FX2; third review passes | FX: a name or declared type never identifies a file alone; a hostile part refuses the whole file; the relater answers only quantities it can measure (ADR-080); its own corpora 344 to 0 wrong of 3,669 disguises, 132 to 0 of 168 hostile parts, 24 to 0 of 144 relater twins (regression evidence by the same lane, not generality). ZW2: a second withheld split (unknown 171 tasks, hostile 62, cross 98). FX2: one refusal rule (parser-level attacks refuse; outside references and active content are named, never followed or run); FX's refusal corpus 165 refused, 3 answered of 168 (the SVG-with-an-outside-image class, as ruled). **The look at the second withheld split (on `ae6120f`): none of the three supported** (unknown 5 wrong of 171; hostile 11 answered instead of refused of 62; cross 47 of 80 decidable) |
 
 Details per row: [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md); what exists with its limits and rollback:
 [PRODUCTION_INTEGRATIONS.md](PRODUCTION_INTEGRATIONS.md); architecture: [ARTIFACT_ARCHITECTURE.md](ARTIFACT_ARCHITECTURE.md).
@@ -78,9 +88,9 @@ validation and the withheld looks cited; the failures of the looks are named in 
 | # | criterion | status | evidence |
 |---|---|---|---|
 | 1 | Existing functionality inventoried and preserved | Partially implemented | [CAPABILITY_AUDIT.md](CAPABILITY_AUDIT.md); the main session's full validation at `55f89be` ([REGRESSION_REPORT.md](REGRESSION_REPORT.md)): `scripts/check.sh` all checks passed (8,472 passed, 22 skipped), browser suite 235 passed, guard 0 different, offline digest equal in both regimes, two-account 56 of 56, acceptance 7 of 7; not run: CI, x86_64, a real model, real phones, a screen reader |
-| 2 | Ingestion extensible beyond a fixed list | Partially implemented | the reader registry; external readers approved by entry point, distribution and version (F3 `4597e73`); unknown family 51 of 51 development, 49 of 49 held-out, but **on the withheld split 107 of 111 with 3 wrong answers (disguised or unknown files answered falsely): not supported**; "identified" is not "decoded" |
+| 2 | Ingestion extensible beyond a fixed list | Partially implemented | the reader registry; external readers approved by entry point, distribution and version (F3 `4597e73`); unknown family 51 of 51 development, 49 of 49 held-out, but **on the withheld split 107 of 111 with 3 wrong answers (disguised or unknown files answered falsely): not supported**; "identified" is not "decoded"; Second withheld split (`ae6120f`): unknown 158 right, 5 wrong of 171: **not supported**. |
 | 3 | Native information retained where important | Partially implemented | measurements 310 of 326 right on held-out (310 of 322 development); intake supported on the withheld split (347 of 358, 0 wrong); lost: an array's dtype and 3-D shape, a DOCX's embedded pixels, video frames |
-| 4 | Cross-modal relationships represented and reasoned over | Partially implemented | cross 72 of 72 development, 66 / 6 / 0 held-out, and **on the withheld split not supported: 48 right, 24 cannot, 6 wrong of 78; an image against its caption answered every time and right on 5 of 10**; only comparisons the question names |
+| 4 | Cross-modal relationships represented and reasoned over | Partially implemented | cross 72 of 72 development, 66 / 6 / 0 held-out, and **on the withheld split not supported: 48 right, 24 cannot, 6 wrong of 78; an image against its caption answered every time and right on 5 of 10**; only comparisons the question names; Second withheld split: 65 right of 98, 1 wrong of 48 answered, "cannot" on all 18 undecidable, but 47 of 80 decidable: **not supported** (declines too much). |
 | 5 | Context-driven output selection operational | Partially implemented | the planner's held-out verdict "does not beat the references" (one violation, since impossible by construction); the frozen planner's withheld look **VOID by the rule** (two controls not run; as measured good 0.687 against 0.480, 0 violations); owner commands and the console only: **nothing reaches the answer path** |
 | 6 | Non-text responses where useful and feasible | Partially implemented | 30 makers; the console's "Made and kept" (ADR-079); the planner's withheld look (VOID by the rule: two controls not run; figures 0.687 against 0.480 as measured); Pocket not covered; answers in conversation are sentences |
 | 7 | Artifact generation gives usable, validated results | Partially implemented | made 14 of 14 development, 13 of 14 held-out, **16 of 16 withheld (supported)**; transform 11 of 11 withheld; the product check's `visible_to_a_person` and the stricter reader (F4); no person judged usability |
@@ -91,8 +101,8 @@ validation and the withheld looks cited; the failures of the looks are named in 
 | 12 | Recursive improvement gives measurable benefits | Partially implemented | learn held-out +0.260 / +0.203 over the planner alone, and withheld +0.273 / +0.208 as measured (that look VOID by the rule: two controls not run), SIMULATED people; 0.118 below key_majority late on the withheld split; `form_learning` off |
 | 13 | New capabilities integrate with existing systems | Partially implemented | forget, restore, quiet and governance tests over artifacts; not on the answer path, the workspace or memory |
 | 14 | Original memory, inference, autonomy, device and interface features operational | Partially implemented | the same run as item 1 at `55f89be`; not run: CI, x86_64, a real model, real phones, a screen reader |
-| 15 | Security and resource boundaries enforced | Partially implemented | hostile 23 of 23 development, 22 of 23 held-out, and **on the withheld split 32 of 35 with 3 hostile files answered instead of refused: not supported** (8 withheld constructions belong to 7 classes no earlier split had); the security review's second pass ("offer: yes"); F1, F3 and F4's fixes |
-| 16 | End-to-end tests and benchmarks support the claims | Partially implemented | the committed held-out record; development reproduced exactly at `55f89be`; the withheld looks taken once each under the rule committed before them: supported for intake, honest, compound, made and transform; VOID by the rule for forms and learn (two controls not run); **not supported for unknown, hostile and cross** |
+| 15 | Security and resource boundaries enforced | Partially implemented | hostile 23 of 23 development, 22 of 23 held-out, and **on the withheld split 32 of 35 with 3 hostile files answered instead of refused: not supported** (8 withheld constructions belong to 7 classes no earlier split had); the security review's second pass ("offer: yes"); F1, F3 and F4's fixes; Second withheld split: 11 hostile files answered instead of refused of 62: **not supported**. |
+| 16 | End-to-end tests and benchmarks support the claims | Partially implemented | the committed held-out record; development reproduced exactly at `55f89be`; the withheld looks taken once each under the rule committed before them: supported for intake, honest, compound, made and transform; VOID by the rule for forms and learn (two controls not run); **not supported for unknown, hostile and cross**; The second withheld look (`ae6120f`): unknown, hostile and cross **not supported**; both withheld splits spent for these families. |
 | 17 | Rollback and recovery for significant changes | Partially implemented | console viewing (`console_artifacts`) is ON by default; everything that lets bytes in or changes a choice (upload, form learning, external readers) is off; schemas 20-21 forward-only, rolled back by the owner's own copy, not by restore (MIGRATIONS.md section 2, F1 `480b009`); [RUNBOOK.md](RUNBOOK.md) |
 
 ## Remaining gaps
@@ -100,6 +110,11 @@ validation and the withheld looks cited; the failures of the looks are named in 
 [COGNITIVE_GAP_ANALYSIS.md](COGNITIVE_GAP_ANALYSIS.md), first screen: no model that sees or hears; no decoder for
 compressed images, audio or video; nothing on the answer path; no durable jobs; Pocket, voice, agents; real files
 beyond this host's tools; creativity and accumulation unmeasured.
+
+After the second withheld look (`ae6120f`): false answers on disguised or unknown files (5 of 171), hostile files
+answered instead of refused (11 of 62) and a relater that declines too much (47 of 80 decidable) remain open; both
+withheld splits are spent for these families, so any further fix needs a third set of unseen cases written first. The
+owner's merge condition is not met.
 
 Unchecked by any reviewer: whether text planted inside an artifact can steer the relater; and
 `scripts/bench_omni_forms.py` refuses the forms oracle `first_good` as a look subject (so a forms look cannot run that
@@ -133,9 +148,10 @@ on a large archive (N4), `make` and `remake` exit codes (N2), the remaining non-
 ## Recommended next priorities
 
 These are recommendations for the owner and the main session, not decisions.
-1. Fix the three weaknesses the withheld looks found (false answers on disguised or unknown files; hostile files
-   answered instead of refused; the relater answering a kind of pair it cannot measure, an image against its
-   caption), and examine each fix on NEW withheld cases written by a lane that saw no product code: never on these.
+1. The three weaknesses were fixed by class (Wave O-2) and examined once on a second withheld split: none supported
+   (unknown 5 wrong of 171; hostile 11 of 62 answered instead of refused; the relater 47 of 80 decidable). Any
+   further fix needs a third set of unseen cases, written first by a lane that saw no product code, and the owner's
+   decision on whether to continue; the merge condition is not met.
 2. Run the CI check job once (it needs a push: the owner's decision) before any merge into `main`.
 3. Only then ask the owner whether to merge into `main` (schema 21 is one-way for an individual's file).
 4. A planner revision with its own new examination: the time estimates (5 to 560 times high); the P1 sentence may be
@@ -245,9 +261,45 @@ figures (wrong answers 344 to 0 of 3,669 disguises, 132 to 0 of 168 hostile part
 144 relater twins) are regression evidence for the classes it named, written by the same lane that wrote the fixes,
 not evidence of generality (finding 6).
 
-## The look at the second withheld split (placeholder)
+## The look at the second withheld split (taken once, on `ae6120f`)
 
-**Not yet taken.** To be filled by the main session after the one look at `final --split withheld2` (unknown,
-hostile, cross), beside its rule ([../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md), "The rule for
-the look at the second withheld split"), its controls and its ledger lines; a VOID look reported as void; failures
-first.
+Evidence: `docs/quality/evidence/omnimind_looks2/` (the main session's reading `summary.json`, the look and control
+files); rule: [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md), "The rule for the look at the second
+withheld split".
+
+**Preconditions and controls: held.** The rule was committed in `ae6120f` before the look; the driver pins matched; the
+tree was clean; development reproduced exactly (512 / 12 / 0 / 0; forms 107 good, 0 bad, 0 violations; cross 72 of
+72; learn 0.8158 / 0.7617 against 0.5871 / 0.5842). Every control was run twice; the two runs' result figures are
+identical (they differ only in times, notes, ledger line counts and one traced peak-memory figure) and equal the rule's
+table: unknown today 25 / 145 / 0 / 1 of 171; hostile today 4 / 56 / 1 / 1 of 62; cross today 18 of 98, 0 answered;
+always-consistent and always-inconsistent 40 of 98, twins 0 of 49. The full validation on `ae6120f` was green except
+one browser test (`tests/e2e/test_ui_matrix.py::test_pocket_matrix[dark]`, a known flake on the base commit too),
+which passed alone twice.
+
+| family | n | result | verdict by the rule |
+|---|---:|---|---|
+| **unknown** | 171 | 158 right, 8 "cannot", **5 wrong**, 0 failed | **not supported** (the rule requires 0 wrong) |
+| **hostile** | 62 | 51 refused, **11 answered instead of refused**, 0 failed | **not supported**; "hostile inputs refused" does not hold |
+| **cross** | 98 | 65 right; 48 answered, **1 wrong** (correct of answered 0.979); "cannot" on all 18 undecidable cases; decidable: 47 right of 80; both twins right on 23 of 40 decidable pairs | **not supported**: it no longer guesses, but it is right on only 47 of the 80 decidable cases (the rule needs 60) and on both twins of 23 decidable pairs (needs 27) |
+
+Cross by kind: report_total 9 right, 1 wrong of 10; chart_series 4 right, 4 cannot of 8; tones_rows 6 of 6; mesh_bbox,
+code_trace, timeline_log 8 of 8 each; image_size_caption (new) 4 right, 4 cannot of 8; image_depicts and translation
+(new, undecidable) "cannot" on 10 of 10 and 8 of 8, as expected; diagram_text, archive_checksums and audio_cues (new)
+0 answered of 8 each: **not exercised**. In plain words: the relater stopped guessing, and it declines too much to
+count as working.
+
+The rule asked for any hostile class with a wrong answer to be named by class: **the look's output carries no
+per-class breakdown, so the classes cannot be named.**
+
+**The honest reading.** The fix wave closed the classes it named (its own corpora), and those fixes did not
+generalise to new constructions. On unseen inputs the wrong answers went from 3 to 5 for unknown files and from 3 to
+11 for hostile files; this is **not a like-for-like comparison** (different splits and sizes: 111 and 35 cases then,
+171 and 62 now). The main session's ruling in lane FX2 (an outside reference or embedded active content is named,
+never followed or run, and does not refuse a file by itself) was made on principle before the look and may account
+for part of the hostile count; this is not known, because no task is opened. **Both withheld splits are now spent for
+these families**: any further fix needs a third set of unseen cases, written first. **The owner's condition for
+merging (fix what the look found and re-examine on new withheld cases) was examined and is NOT met**; the pull request
+stays unmerged pending the owner's decision.
+
+What this look cannot establish (the rule's part C): real files or real people; kinds and classes not in the split;
+versions after `ae6120f`; generality from 98 or 171 cases; anything about forms, learn, made or transform.

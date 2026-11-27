@@ -3,7 +3,8 @@
 Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged, from the catalogs the system prints
 (`nsf artifact adapters`, `nsf artifact forms`, `nsf artifact --help`, as recorded by the integration lane 2) and the
 code. "Production-ready" in the directive's sense is not claimed: this is a local branch, not merged into `main`,
-never run on CI, measured on synthetic files and simulated people, with the withheld examination not yet taken.
+never run on CI, measured on synthetic files and simulated people, and with three mechanisms (identification of unknown files, refusal of hostile ones, the relater) not
+supported on either withheld split.
 Fix lane F5 (`bf3dac6`) is merged too.
 
 ## The first screen

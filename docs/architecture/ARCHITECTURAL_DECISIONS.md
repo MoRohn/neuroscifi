@@ -6669,3 +6669,23 @@ by rule 2 (decision 4) as ruled (lane FX's truth for it says refused); the other
 
 Revert lane FX's commits on `omni-fx` (and lane FX2's on `omni-fx2` for rule 4 alone); nothing stored changes shape (no migration), and kept artifacts are re-read with
 whatever code is present.
+
+## ADR-080, addition (2026-11-27, documentation lane 2): the look at the second withheld split, not supported
+
+The earlier text stays as written. The fixes were examined once on lane ZW2's second withheld split, on `ae6120f`,
+under the rule committed there before the look (`docs/quality/OMNIMIND_BENCHMARK.md`; evidence
+`docs/quality/evidence/omnimind_looks2/summary.json`). Preconditions and controls held (every control run twice,
+identical, equal to the rule's table).
+- **unknown**: 158 right, 8 "cannot", **5 wrong**, 0 failed of 171: **not supported** (the rule requires 0 wrong).
+- **hostile**: 51 refused, **11 answered instead of refused** of 62: **not supported**; "hostile inputs refused" does
+  not hold. The look's output has no per-class breakdown, so the classes with a wrong answer cannot be named.
+- **cross**: 65 right of 98; 48 answered, 1 wrong (0.979); "cannot" on all 18 undecidable cases; no kind with more than
+  1 wrong; but 47 right of 80 decidable (needs 60) and both twins on 23 of 40 decidable pairs (needs 27): **not
+  supported**. diagram_text, archive_checksums and audio_cues: 0 answered of 8 each, not exercised. The relater stopped
+  guessing and declines too much to count as working.
+- Reading: the fixes closed the classes lane FX named (its own corpora) and did not generalise to new constructions
+  (wrong answers 3 to 5 for unknown files, 3 to 11 for hostile files; different splits and sizes, 111 and 35 cases then,
+  171 and 62 now: not like for like). Decision 4's rule (an outside reference or embedded active content is named,
+  never followed or run, and refuses nothing by itself) was made on principle before the look and may account for part
+  of the hostile count; this is not known, because no task is opened. Both withheld splits are spent for these
+  families; a further fix needs a third set of unseen cases written first. The owner's merge condition is not met.
