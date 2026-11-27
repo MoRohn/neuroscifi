@@ -191,8 +191,11 @@ AGGREGATE_WORDS = {
             "combined", "aggregate", "add", "adds", "added"),
     "mean": ("average", "averages", "averaged", "mean", "means"),
     "median": ("median",),
-    "max": ("largest", "maximum", "max", "highest", "biggest", "greatest", "peak", "peaked", "most", "top"),
-    "min": ("smallest", "minimum", "min", "lowest", "least", "fewest"),
+    "max": ("largest", "maximum", "max", "highest", "biggest", "greatest", "peak", "peaked", "most", "top",
+            "longest", "tallest", "widest", "heaviest", "hottest", "warmest", "fastest", "busiest", "oldest",
+            "deepest", "loudest", "costliest"),
+    "min": ("smallest", "minimum", "min", "lowest", "least", "fewest", "shortest", "lightest", "coldest", "coolest",
+            "slowest", "quietest", "youngest", "shallowest", "cheapest", "narrowest"),
     "first": ("first", "initial", "starting", "began", "started", "opening"),
     "last": ("last", "final", "latest", "closing", "ended", "ending"),
 }

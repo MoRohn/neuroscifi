@@ -148,8 +148,9 @@ def _key_column(table, skip: int):
 
 def _table_quantities(t, prefix: str, origin: type, label_words=()) -> list:
     make = _q if origin is Quantity else _s
+    also = tuple(label_words) + (name_words(t.title) if t.title else ())
     out = [make("count", f"{prefix}.rows", int(t.n_rows), nouns=ROW_NOUNS, primary=True, aggregate="count",
-                how="rows the decoder read", detail=(("also_nouns", tuple(label_words)),)),
+                how="rows the decoder read", detail=(("also_nouns", also),)),
            make("count", f"{prefix}.columns", len(t.columns), nouns=("column", "field", "variable"),
                 aggregate="count", how="columns")]
     numeric = _numeric_columns(t)
