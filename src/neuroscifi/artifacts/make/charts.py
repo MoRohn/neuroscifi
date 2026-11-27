@@ -656,12 +656,26 @@ def histogram_edges(values, opts):
     lo, hi = min(values), max(values)
     if "bin_width" in opts and opts["bin_width"] > 0:
         w = float(opts["bin_width"])
-        k0, k1 = math.floor(lo / w), math.ceil(hi / w)
-        k1 = max(k1, k0 + 1)
+        places = decimals_of(w)
+
+        def edge(k):
+            return float(f"{k * w:.{places}f}")
+        # Bins [k*w, (k+1)*w): a value on an edge belongs to the bin it starts, so the first edge is at or below the
+        # smallest value and the last edge is ABOVE the largest one (a largest value lying on k*w opens bin k rather
+        # than closing bin k-1: fix lane F1, the histogram finding of lane F2's fuzz, 17.5 drawn in the lower bin).
+        # Edges are compared as the rounded numbers that are drawn and stated.
+        k0, k1 = math.floor(lo / w), math.floor(hi / w) + 1
+        while edge(k0) > lo:
+            k0 -= 1
+        while edge(k0 + 1) <= lo:
+            k0 += 1
+        while edge(k1) <= hi:
+            k1 += 1
+        while k1 - 1 > k0 and edge(k1 - 1) > hi:
+            k1 -= 1
         if k1 - k0 > 500:
             raise Fit("the bin width gives more than 500 bins")
-        places = decimals_of(w)
-        return [float(f"{k * w:.{places}f}") for k in range(k0, k1 + 1)]
+        return [edge(k) for k in range(k0, k1 + 1)]
     # Sturges' rule (ceil(log2 n) + 1 bins, 5 to 50) unless the spec names a count; edges on nice numbers.
     target = int(opts.get("bins", min(50, max(5, math.ceil(math.log2(len(values))) + 1))))
     return list(linear_ticks(lo, hi, max(2, round(target * 1.5))).values)   # nice steps at or above the count
