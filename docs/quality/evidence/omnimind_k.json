@@ -690,16 +690,16 @@
   "note": "with the size unknown, a short prefix of a binary format that happens to be printable (b'GIF8', b'PK') is called text, which those bytes are; with the size given, prefixes under 32 bytes of a longer input get no structure verdict",
   "outcomes": {
    "size_given": {
-    "exact": 661,
+    "exact": 662,
     "general": 86,
     "hint_on_prefix": 6,
     "text": 18,
-    "unknown": 604
+    "unknown": 603
    },
    "size_unknown": {
-    "exact": 697,
+    "exact": 698,
     "general": 78,
-    "text": 349,
+    "text": 348,
     "unknown": 251
    }
   },

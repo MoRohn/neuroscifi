@@ -511,16 +511,18 @@ _PDF_OBJECT = re.compile(rb"(?:^|[\r\n\s])\d{1,10}\s+\d{1,5}\s+obj\b")
 
 
 def _pdf(h, size):
-    """'%PDF-n.n' within the first 1024 bytes AND what every PDF has right after it (lane FX, item 1): an indirect
-    object ('1 0 obj') in the prefix, or, at offset 0, the binary comment line writers put after the header. A
-    header alone is words ('%PDF-1.7 was mentioned'); one buried in other bytes is a coincidence, not a PDF."""
+    """'%PDF-n.n' within the first 1024 bytes AND what every PDF has after it (lane FX, item 1): an indirect object
+    ('1 0 obj') in the prefix; or, at offset 0, the header on a line of its own not followed by prose (a cut head
+    of a PDF). A header followed by words is words ('%PDF-1.7 was mentioned'); one buried in other bytes is a
+    coincidence, not a PDF."""
     at = h.find(b"%PDF-", 0, 1024)
     if at < 0 or not re.match(rb"%PDF-\d\.\d", h[at:at + 8]):
         return None
     if _PDF_OBJECT.search(h, at + 8):
         return "pdf", ["'%PDF-' header" + (f" at offset {at}" if at else "") + " and an indirect object after it"], None
-    if at == 0 and re.match(rb"%PDF-\d\.\d[ \t]*\r?\n?%[\x80-\xff]{4}", h[:24]):
-        return "pdf", ["'%PDF-' header followed by the binary comment line (no object in the prefix)"], None
+    if at == 0 and re.match(rb"%PDF-\d\.\d[ \t]*(?:\r?\n|\r|$)", h[:16]) and not re.match(
+            rb"%PDF-\d\.\d[ \t]*\r?\n[ \t]*[A-Za-z]{2,}[ \t]+[A-Za-z]{2,}", h[:64]):
+        return "pdf", ["'%PDF-' header on a line of its own at the start (no object in the prefix)"], None
     return None
 
 

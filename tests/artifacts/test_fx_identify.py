@@ -94,6 +94,7 @@ def test_a_pdf_header_needs_what_follows_every_pdf_header():
     words = b"%PDF-1.7 was mentioned in the call, nothing else.\n" * 3
     assert detect(words, size=len(words)).format != "pdf"
     assert detect(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n", size=1 << 20).format == "pdf"    # a head of a real one
+    assert detect(b"%PDF-1.4\n", size=1 << 20).format == "pdf"                        # cut right after the header
     junk_then_pdf = b"x" * 200 + b"%PDF-1.4\n1 0 obj\n<< >>\nendobj\n"
     assert detect(junk_then_pdf, size=len(junk_then_pdf)).format == "pdf"
 
@@ -124,5 +125,6 @@ def test_a_netpbm_header_followed_by_something_else_is_not_answered():
     image = b"P5\n2 2\n255\n" + bytes([1, 2, 3, 4])
     assert adapters.decode(image + b"\n").representation.kind == "raster"
     assert adapters.decode(image + image).representation.kind == "raster"      # a second image: allowed
+    assert adapters.decode(image + b"# made by hand\n").representation.kind == "raster"   # a comment line: allowed
     with pytest.raises(T.Malformed):
         adapters.decode(image + _noise(4, 40))
