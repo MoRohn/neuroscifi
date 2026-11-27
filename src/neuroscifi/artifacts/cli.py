@@ -153,7 +153,7 @@ def _plain(what, value) -> str:
         elif not value["decoded"]:
             lines.append("Nothing here can read this format, so only its size is known.")
         for fact in value["facts"]:
-            lines.append(f"  {fact['name']}: {json.dumps(fact['value'], ensure_ascii=False)}  [{fact['how']}]")
+            lines.append(f"  {fact['name']}: {_value_words(fact['value'])}  [{fact['how']}]")
         return "\n".join(lines)
     if what == "relate":
         from .relate_cli import plain
@@ -342,6 +342,20 @@ def _list(db, args, now):
     return store.listing(db, of_origin=args.origin, limit=args.limit)
 
 
+def _value_words(value) -> str:
+    """A fact's value in plain words: numbers to six significant digits, lists and records spelled out (no JSON)."""
+    if isinstance(value, bool) or value is None:
+        return {True: "yes", False: "no", None: "none"}[value]
+    if isinstance(value, float):
+        return f"{value:.6g}"
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_value_words(v) for v in value[:64]) + (f", and {len(value) - 64} more" if len(value) > 64
+                                                                    else "")
+    if isinstance(value, dict):
+        return "; ".join(f"{k} {_value_words(v)}" for k, v in list(value.items())[:64])
+    return str(value)
+
+
 def _command(what, handler):
     def run(args):
         from ..instance import store as instance_store
@@ -368,8 +382,8 @@ def _command(what, handler):
             return outcome.MISUSE
         except sqlite3.Error as error:
             busy = "locked" in str(error) or "busy" in str(error)
-            print("nsf: instance busy; retry" if busy else f"nsf: database error ({type(error).__name__})",
-                  file=sys.stderr)
+            print("nsf: instance busy; retry" if busy else "nsf: the individual's file could not be read or written "
+                  "(a database error)", file=sys.stderr)
             return 2
         finally:
             db.close()

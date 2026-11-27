@@ -179,7 +179,10 @@ def read_pdf(data: bytes, detected, limits):
             except _Timeout:
                 raise
             except Exception as error:
-                raise Malformed(f"pypdf could not read the PDF ({type(error).__name__})") from None
+                failure = Malformed("the PDF reader could not read this PDF: its structure is damaged or uses "
+                                    "something the reader does not handle")
+                failure.detail = type(error).__name__          # for a log, never printed to the owner
+                raise failure from None
     except _Timeout:
         raise Refused(f"reading the PDF took longer than the limit of {limits.max_seconds:g} seconds",
                       rule="max_seconds", reason="timeout") from None

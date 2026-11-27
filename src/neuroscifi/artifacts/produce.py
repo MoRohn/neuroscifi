@@ -58,6 +58,12 @@ MAX_RECORD_BYTES = 14 << 10
 MAX_ALTERNATIVES = 4
 MAX_SOURCES = 32
 MECHANISM, MECHANISM_VERSION = "artifacts.produce", "1"
+# the pipeline's stages in the owner's words (a stopped production names the stage it did not reach)
+STAGE_WORDS = {"interpret": "reading the files", "relate": "relating the files to each other",
+               "conceptualize": "choosing a form", "explore": "weighing the possible forms",
+               "choose": "choosing among them", "plan": "planning what to make", "generate": "making it",
+               "render": "drawing it", "evaluate": "checking it", "repair": "repairing it",
+               "finalize": "finishing"}
 # Findings whose passing means the source's values were read back from the bytes (carried information).
 CARRIED_RULES = ("values_recovered", "nodes_recovered", "edges_recovered", "cells_match", "values_exact",
                  "order_preserved", "printed_values_match", "all_values_binned")
@@ -122,8 +128,9 @@ class _Run:
 
     def step(self, name, fn, *args, summary_in=None, summary_out=None, **kwargs):
         if self.deadline is not None and time.monotonic() > self.deadline:
-            raise ProductionStopped(f"the time budget of {self.context.budget_s:g} seconds was used up before "
-                                    f"{name}: nothing was stored")
+            raise ProductionStopped(f"the time budget of {self.context.budget_s:g} second"
+                                    f"{'' if self.context.budget_s == 1 else 's'} was used up before "
+                                    f"{STAGE_WORDS.get(name, name)}: nothing was stored")
         start = time.monotonic()
         out = fn(*args, **kwargs)
         self.steps.append({"step": name, "seconds": round(time.monotonic() - start, 4),
@@ -924,7 +931,7 @@ def _simulate(db, foreseen: dict, pairs: list, made_form: str, now: float):
                               question="Did the pre-production check foresee what making this form showed?", now=now)
         imagined.observe(db, rid, observation=observed, now=now)
     except Exception as error:         # the imagined store refusing (a limit of 0, paused writes) is not fatal
-        return None, f"not kept: {type(error).__name__}: {str(error)[:120]}"
+        return None, f"not kept: the store of imagined records refused it ({str(error)[:120]})"
     return rid, None
 
 
