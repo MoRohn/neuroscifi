@@ -297,6 +297,82 @@ def _also_a_zip(data: bytes, detected: Detected) -> bool:
         return False
 
 
+# Parts of a ZIP-based compound file read as markup by the hazard scan, by name (any part whose bytes begin with
+# "<" is read as markup too).
+_MARKUP_PARTS = (".xml", ".rels", ".kml", ".gpx", ".svg", ".opf", ".ncx", ".xhtml", ".html", ".htm", ".xsl",
+                 ".plist", ".dae", ".vml")
+
+
+def _compound_check(data: bytes, detected: Detected, limits: Limits) -> None:
+    """Every part of a ZIP-based compound file (an office document, an EPUB, a KMZ, a JAR), not only the parts its
+    reader uses, before anything is answered from it (lane FX, item 2, `outcome.refuses_whole`): an unsafe name, a
+    link or a special entry, overlapping entries, a part that is bomb-like, lies about its size or is damaged, an
+    entity, a DTD or an external reference in any markup part refuses the WHOLE file, with the listing as findings.
+    A part met past what is left of the decoded-bytes budget ends the scan (a large file, not a hostile one)."""
+    if detected.format == "zip" or not (detected.format in ZIP_BASED or detected.container == "zip"):
+        return
+    from ..outcome import refuses_whole
+    from ..safe import markup_hazard
+    from ..safe_b1 import ZipReader, unsafe_member_name
+    from .archives import refuse_unsafe, refuse_whole
+    label = detected.format.upper()
+    try:
+        reader = ZipReader(data, max_members=limits.max_members, partial_ok=False)
+    except Malformed:
+        return                      # no readable directory: the format's own reader says what is wrong
+    listing = [(e.name, e.size) for e in reader.entries]
+    offending = []
+    for e in reader.entries:
+        unsafe = unsafe_member_name(e.name)
+        kind = e.mode & 0o170000
+        if unsafe:
+            offending.append((e.name, f"has an unsafe name ({unsafe})"))
+        elif e.is_link or kind not in (0, 0o100000, 0o040000):
+            offending.append((e.name, "is a link or a special entry"))
+    if offending:
+        refuse_unsafe(label, offending, listing)
+    left = limits.max_decoded_bytes
+    for e in reader.entries:
+        if e.is_dir or e.encrypted:
+            continue
+        try:
+            body = reader.read(e, limits=limits, out_limit=left)
+        except Refused as error:
+            if error.reason == "timeout" or not refuses_whole(error.rule):
+                return
+            refuse_whole(label, f"a part was refused ({error.rule})", error.rule, listing)
+        except Malformed:
+            refuse_whole(label, "a part's stored bytes are damaged or do not match the directory", "damaged_member",
+                         listing)
+        except Unsupported:
+            continue
+        left -= len(body)
+        if e.name.lower().endswith(_MARKUP_PARTS) or body.lstrip(b"\xef\xbb\xbf \t\r\n")[:1] == b"<":
+            hazard = markup_hazard(body)
+            if hazard:
+                what = "a DTD or an entity declaration" if hazard == "xml_dtd" else "an external reference"
+                refuse_whole(label, f"a part holds {what}", hazard, listing)
+
+
+def _markup_check(data: bytes, detected: Detected) -> None:
+    """Markup-shaped bytes (they begin with "<") holding an entity declaration, an inline DTD or an external
+    reference are refused whichever reader would read them (lane FX, item 2): a refused XML is never answered as
+    plain text, HTML or Markdown instead."""
+    if detected.family in ("image", "audio", "video", "mesh", "array", "archive", "database"):
+        return
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        shaped = data[:4096].decode("utf-16", "replace").lstrip()[:1] == "<"
+    else:
+        shaped = data[:4096].lstrip(b"\xef\xbb\xbf \t\r\n")[:1] == b"<"
+    if not shaped:
+        return
+    from ..safe import markup_hazard
+    hazard = markup_hazard(data)
+    if hazard:
+        raise Refused("the markup declares an entity or an inline DTD, or refers to an outside document: it is not "
+                      "read (whichever reader would read it)", rule=hazard)
+
+
 # What parsing a text format costs in memory, per structural mark, as measured on the security reviewer's inputs (fix
 # lane F1, ruling A.2: peak resident memory over the interpreter's, divided by the count of the mark; the inputs and
 # the figures are in docs/quality/evidence/omnimind_f1.json). The parsers build Python objects for every line, table,
@@ -372,6 +448,8 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         raise Refused(f"the file is named as {claimed}, its first {DETECTION_PREFIX >> 10} KiB do not show that "
                       "structure, and it is longer than what was examined: it is not read as plain text",
                       rule="unconfirmed_structure")
+    _markup_check(data, detected)
+    _compound_check(data, detected, limits)
     if detected.format == "unknown" and (name or declared):
         _probe_hinted(data, name, declared, limits)
     adapter = resolve(detected)

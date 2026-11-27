@@ -371,6 +371,11 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
     for name in root.attrib:
         if local(name).lower().startswith("on"):
             refuse("event attribute")
+    fetched = sorted(k for k in refused if k.startswith("external"))
+    if fetched:
+        # a renderer would fetch what these name (lane FX, item 2): the drawing is refused as a whole
+        raise Refused("the drawing refers to outside files a renderer would load (" + ", ".join(fetched) + "): it is "
+                      "not read", rule="external_reference")
     if refused:
         notes.append("refused and not kept: " + ", ".join(f"{n} x {k}" for k, n in sorted(refused.items())))
     drawing = Drawing(float(width or 0.0), float(height or 0.0), tuple(shapes))

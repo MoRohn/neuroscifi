@@ -53,6 +53,21 @@ def of_member(member, *, partial_ok: bool = False) -> str:
     return ANSWERED
 
 
+# Refusal rules that concern only the PART of a file they were met in (lane FX, item 2, ADR-080): an encrypted
+# member is not decrypted, a sparse TAR member's holes are not materialised, a member that would pass what is left
+# of the decoded-bytes budget is not read (a large archive, not a hostile one). Every OTHER refusal met anywhere
+# inside a container or a compound file (a bomb-like or lying member, an unsafe name or a link, overlapping
+# entries, a damaged stored member, an entity, a DTD or an external reference in any part, words addressed to an AI
+# agent, a member nested too deep) refuses the WHOLE file: its honest siblings are not answered, and the listing is
+# kept as findings. Extends the main session's ruling for unsafe member names (ADR-072 integration, item 9).
+PART_ONLY_RULES = frozenset({"encrypted", "sparse_member", "max_decoded_bytes"})
+
+
+def refuses_whole(rule) -> bool:
+    """Whether a refusal with this rule, met in one part of a file, refuses the whole file."""
+    return str(rule or "") not in PART_ONLY_RULES
+
+
 def of_production(status: str, record: dict) -> str:
     """The outcome of `nsf artifact make` / `remake` (code review N2): made, or answered in words, is "answered";
     nothing made because no source could be used is "refused" when a rule or limit refused one of them (too large,
@@ -82,5 +97,5 @@ def exit_code(outcome: str) -> int:
     return EXIT_CODES[outcome]
 
 
-__all__ = ["ANSWERED", "CANNOT", "CANNOT_REASONS", "EXIT_CODES", "MISUSE", "OUTCOMES", "REFUSED", "exit_code",
-           "member_path", "of_decoded", "of_error", "of_member", "of_production"]
+__all__ = ["ANSWERED", "CANNOT", "CANNOT_REASONS", "EXIT_CODES", "MISUSE", "OUTCOMES", "PART_ONLY_RULES", "REFUSED",
+           "exit_code", "member_path", "of_decoded", "of_error", "of_member", "of_production", "refuses_whole"]

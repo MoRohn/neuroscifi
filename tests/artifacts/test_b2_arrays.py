@@ -100,9 +100,11 @@ def test_npz_bomb_and_size_lies():
     data = bytearray(_npz([("x.npy", _saved(np.array([1.0, 2.0])))]))
     at = data.find(b"PK\x01\x02")
     struct.pack_into("<I", data, at + 24, 10)                      # central directory: uncompressed size lies
-    with pytest.raises(T.Malformed):
+    with pytest.raises(T.Refused) as err:                           # lane FX: the whole file, by the outcome table
         adapters.decode(bytes(data))
+    assert err.value.rule == "lying_size"
     data = bytearray(_npz([("x.npy", _saved(np.array([1.0, 2.0])))]))
     struct.pack_into("<I", data, data.find(b"PK\x01\x02") + 16, zlib.crc32(b"no") & 0xFFFFFFFF)
-    with pytest.raises(T.Malformed):
+    with pytest.raises(T.Refused) as err:
         adapters.decode(bytes(data))
+    assert err.value.rule == "damaged_member"

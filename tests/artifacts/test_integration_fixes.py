@@ -74,12 +74,10 @@ def test_a_member_nested_past_max_depth_is_refused_by_name():
     data = b"deep,1\n"
     for level in range(6):
         data = _zip([(f"level{level}.zip" if level else "deep.csv", data)])
-    rep = adapters.decode(data).representation
-    for _ in range(T.Limits().max_depth):
-        (member,) = rep.members
-        rep = member.inner
-    (member,) = rep.members
-    assert member.inner is None and member.note.startswith("refused:") and "max_depth" in member.note
+    # lane FX, item 2: refused by the chain's rule, and (outcome.refuses_whole) the whole archive with it
+    with pytest.raises(T.Refused) as err:
+        adapters.decode(data)
+    assert err.value.rule == "max_depth"
 
 
 # ---- an ODT heading written as a styled paragraph (LibreOffice's real files: the reality check found it) --------
