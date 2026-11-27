@@ -6040,6 +6040,33 @@ Supported when, on held-out, transform has 0 wrong and 0 failed and at least as 
 same split, and made has 0 wrong and 0 failed; a transform "abstained" because the frozen planner says a form cannot
 carry the content counts as abstained, not as right.
 
+**A known error of the planner's cost model (Wave O-1 integration, measured; not corrected).** `forms.foresee`'s
+seconds are 5 to 560 times what generating, rendering, checking and repairing the made form took on this host (183
+productions of lane P's evidence corpus, each plan's own choice and each planner form named where its builder takes
+the content, three runs each; median ratio 102; never an underestimate). Per made form, median predicted / observed:
+explorable 560, solid viewer 559, node-link 334, data file 250, tree diagram 134, table 125, image 116, document 100,
+scatter 95, bar 83, small multiples 80, histogram 59, line chart 39, waveform-and-spectrum 15, timeline 9,
+sonification 5 (`docs/quality/evidence/omnimind_int2.json`, `scripts/omnimind_int2_evidence.py`; the record keeps
+seconds to four decimals, so ratios above about 500 are bounded by that rounding). What the error can and cannot do:
+it enters the planner's cost criterion and its budget test, so it can only make the planner more cautious about slow
+forms (a form that would have fit a small time budget lowered or excluded); it can never let a production exceed a
+budget, because the pipeline enforces the budget on the clock between steps. The planner is frozen (examined on
+held-out, to be examined on the withheld cases); correcting its estimates is a planner revision that needs its own
+examination, and is left for it.
+
+**Wave O-1 integration (the three lanes wired together).** With `form_learning` record or apply, the plan goes
+through `learn.plan` (a learned habit may decide among the forms the planner admits; the "why" then carries lane L's
+sentence, "Learned: You ... (from the content alone it would be ...)", beside the planner's reason) and every stored
+made artifact gets its check verdict as an outcome row under `learn.key_of`'s key; with off (the default) the planner
+is called as before and no row is written. `nsf artifact feedback` on a made artifact that no row names finds its key
+from the production record. With two or more sources, each pair is related by `relate.compare` (at most 6 pairs, no
+pair started after 10 s; without a question: the request says what to make, not which facts to compare) and the made
+document gets a section "How the sources relate" (both values where they disagree, where each comes from, what could
+not be compared; nothing resolved); the links are recorded as `nsf artifact relate` records them. A unit a document
+among the sources states for a table's column (`relate.transfer_units`) reaches axis labels and table headers with
+where it was read ("degC, from README.md"). Every made SVG scales to its container (`max-width:100%;height:auto` on
+the scoped root; the viewBox and user units unchanged): 328 px wide inside a 360 px phone's margins in Chromium.
+
 # ADR-077 Relating artifacts of different kinds: what one measures against what the other states or shows
 
 Status: built, called only by the owner's command `nsf artifact relate` and the benchmark's `relate` subject (Wave

@@ -1,0 +1,216 @@
+{
+ "by_form": {
+  "bar_chart": {
+   "n": 15,
+   "observed_s_median": 0.0024,
+   "predicted_s_median": 0.2,
+   "ratio_max": 83.3,
+   "ratio_median": 83.3,
+   "ratio_min": 76.9,
+   "sources": [
+    "table (categories)"
+   ]
+  },
+  "data_file": {
+   "n": 12,
+   "observed_s_median": 0.0002,
+   "predicted_s_median": 0.05,
+   "ratio_max": 500.0,
+   "ratio_median": 250.0,
+   "ratio_min": 12.0,
+   "sources": [
+    "bundle",
+    "graph (code)",
+    "table (categories)",
+    "table (time series)"
+   ]
+  },
+  "document": {
+   "n": 33,
+   "observed_s_median": 0.0005,
+   "predicted_s_median": 0.0502,
+   "ratio_max": 128.2,
+   "ratio_median": 100.4,
+   "ratio_min": 71.7,
+   "sources": [
+    "bundle",
+    "document",
+    "features",
+    "graph (code)",
+    "mesh",
+    "model file",
+    "raster",
+    "signal",
+    "table (categories)",
+    "table (time series)",
+    "tree"
+   ]
+  },
+  "explorable": {
+   "n": 12,
+   "observed_s_median": 0.0009,
+   "predicted_s_median": 0.504,
+   "ratio_max": 560.0,
+   "ratio_median": 560.0,
+   "ratio_min": 458.2,
+   "sources": [
+    "model file"
+   ]
+  },
+  "histogram": {
+   "n": 3,
+   "observed_s_median": 0.0034,
+   "predicted_s_median": 0.2,
+   "ratio_max": 58.8,
+   "ratio_median": 58.8,
+   "ratio_min": 57.1,
+   "sources": [
+    "table (time series)"
+   ]
+  },
+  "image": {
+   "n": 6,
+   "observed_s_median": 0.0043,
+   "predicted_s_median": 0.5001,
+   "ratio_max": 116.3,
+   "ratio_median": 116.3,
+   "ratio_min": 106.4,
+   "sources": [
+    "raster"
+   ]
+  },
+  "line_chart": {
+   "n": 27,
+   "observed_s_median": 0.0051,
+   "predicted_s_median": 0.2,
+   "ratio_max": 95.2,
+   "ratio_median": 39.2,
+   "ratio_min": 21.5,
+   "sources": [
+    "signal",
+    "table (categories)",
+    "table (time series)"
+   ]
+  },
+  "node_link": {
+   "n": 15,
+   "observed_s_median": 0.0015,
+   "predicted_s_median": 0.5002,
+   "ratio_max": 454.8,
+   "ratio_median": 333.5,
+   "ratio_min": 263.3,
+   "sources": [
+    "bundle",
+    "document",
+    "graph (code)",
+    "tree"
+   ]
+  },
+  "scatter_chart": {
+   "n": 9,
+   "observed_s_median": 0.0021,
+   "predicted_s_median": 0.2,
+   "ratio_max": 117.6,
+   "ratio_median": 95.2,
+   "ratio_min": 90.9,
+   "sources": [
+    "features",
+    "table (categories)"
+   ]
+  },
+  "small_multiples": {
+   "n": 3,
+   "observed_s_median": 0.0025,
+   "predicted_s_median": 0.2,
+   "ratio_max": 80.0,
+   "ratio_median": 80.0,
+   "ratio_min": 80.0,
+   "sources": [
+    "table (categories)"
+   ]
+  },
+  "solid_view": {
+   "n": 9,
+   "observed_s_median": 0.0009,
+   "predicted_s_median": 0.503,
+   "ratio_max": 558.9,
+   "ratio_median": 558.9,
+   "ratio_min": 314.4,
+   "sources": [
+    "mesh"
+   ]
+  },
+  "sonification": {
+   "n": 3,
+   "observed_s_median": 0.114,
+   "predicted_s_median": 0.5662,
+   "ratio_max": 5.0,
+   "ratio_median": 5.0,
+   "ratio_min": 4.9,
+   "sources": [
+    "table (time series)"
+   ]
+  },
+  "sound_view": {
+   "n": 3,
+   "observed_s_median": 0.034,
+   "predicted_s_median": 0.5008,
+   "ratio_max": 14.8,
+   "ratio_median": 14.7,
+   "ratio_min": 14.7,
+   "sources": [
+    "signal"
+   ]
+  },
+  "table": {
+   "n": 12,
+   "observed_s_median": 0.0004,
+   "predicted_s_median": 0.0501,
+   "ratio_max": 167.0,
+   "ratio_median": 125.2,
+   "ratio_min": 5.4,
+   "sources": [
+    "bundle",
+    "graph (code)",
+    "table (categories)",
+    "table (time series)"
+   ]
+  },
+  "timeline": {
+   "n": 3,
+   "observed_s_median": 0.022,
+   "predicted_s_median": 0.2,
+   "ratio_max": 9.1,
+   "ratio_median": 9.1,
+   "ratio_min": 9.1,
+   "sources": [
+    "table (time series)"
+   ]
+  },
+  "tree_diagram": {
+   "n": 18,
+   "observed_s_median": 0.0015,
+   "predicted_s_median": 0.2,
+   "ratio_max": 200.0,
+   "ratio_median": 133.9,
+   "ratio_min": 111.1,
+   "sources": [
+    "bundle",
+    "document",
+    "graph (code)",
+    "tree"
+   ]
+  }
+ },
+ "consequence": "the planner's cost criterion and its budget test see slow forms as slower than they are: it can only exclude or lower a form that would have fit (more cautious), never admit one over the budget, because the production enforces the budget itself on the clock",
+ "label": "OMNIMIND Wave O-1 integration evidence: measured on this host, offline, no model; development split only; made artifacts are made by the system and are not evidence",
+ "overall": {
+  "n": 183,
+  "ratio_max": 560.0,
+  "ratio_median": 101.8,
+  "ratio_min": 4.9,
+  "under_estimated": 0
+ },
+ "repeats": 3,
+ "rule": "ratio = forms.foresee's seconds / the wall clock of generate, render, check and repair of the made form (the production record's foresight pair 'seconds'); one shared, loaded host"
+}
