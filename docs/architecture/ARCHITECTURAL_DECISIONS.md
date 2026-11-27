@@ -5825,6 +5825,20 @@ rendering on the default path (the Chromium run is an explicit, optional check o
 never import generators (enforced by a test); the runtime and stylesheet hashes are constants the check knows, so
 any change to either requires updating the constants (a test fails otherwise).
 
+## ADR-074, fix lane F4: the check sees only what a person would see
+
+The measurement review's second pass (R2-1, R2-2) showed product-made charts that the check passed although a person
+could not read them: the plot hidden by `visibility`, a `<style>` rule (`display:none`, `opacity:0`), a zero-size clip,
+tick text at font size zero, scatter circles without a radius, an opaque rectangle painted over the plot, a root of
+zero width. `check/visible.py` (written from the SVG and CSS rules, not from the benchmark's reader) adds the technical
+finding `visible_to_a_person` to every SVG check: the plot, each mark and series, each axis and each tick's text must
+be displayed, visible, not fully transparent, not clipped to nothing, not painted only in the background's colour or
+not at all (light and dark schemes, CSS custom properties and `currentColor` resolved), inside the canvas, and not
+covered by a later opaque shape; the root must have an area; a hiding style rule this check cannot match is itself a
+finding. An animated picture's frame counts as seen when some keyframe shows it. Tests:
+`tests/artifacts/test_f4_visible.py` (16 hidings on line, bar and scatter fail; the untouched charts pass); the
+generators' golden outputs and lane G1's and G2's evidence scripts give the same results as before.
+
 # ADR-075 The OMNIMIND benchmark: an examination written before the mechanisms (lane Z's section)
 
 Status: built and recorded (lane Z, from `omnimind` = main `8f68beb`). No schema change, no setting, no product code
