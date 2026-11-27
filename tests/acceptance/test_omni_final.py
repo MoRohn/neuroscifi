@@ -30,10 +30,6 @@ PINNED = {
     "withheld_cross.py": "ef8601bc5090deb2ad6c80c480a27038a25b9c181cc4865a2652b1a8a4104846",
     "withheld_learn.py": "511264dc08ecf02d6b796ee9b12df656f1ff48f8749fda54f53b154b3a1b4cfc",
 }
-# The spent withheld files opened as development cases by the owner's decision of 2026-11-27 (lane FX3, ADR-081):
-# only scripts/omnimind_spent.py may import them besides final.py. withheld_cases.py is NOT among them (it also holds
-# the first split's other five families).
-SPENT = {"withheld_cross", "withheld2_cross", "withheld2_unknown_hostile"}
 CLEAN = {"git_commit": "0" * 40, "git_dirty": False}
 FIELDS = {"at", "commit", "dirty", "family", "subject", "note", "script", "withheld_file", "withheld_sha256"}
 # Lines written since fix lane F2 also carry the drivers' SHA-256 (review finding B4).
@@ -84,9 +80,9 @@ def test_nothing_but_final_imports_a_withheld_module():
                     continue
                 if path == ROOT / "scripts" / "omnimind_spent.py":
                     # the owner's decision of 2026-11-27 (WAVE3, ADR-081): the SPENT cases of unknown, hostile and
-                    # cross are development cases; this script may import exactly those three files, nothing else
+                    # cross are development cases; this script may import exactly these three files, nothing else
                     spent = {p for p in parts if p.startswith(("withheld_", "withheld2_"))}
-                    assert spent <= SPENT, (module, names)
+                    assert spent <= {"withheld_cross", "withheld2_cross", "withheld2_unknown_hostile"}, (module, names)
                     continue
                 assert path == OMNI / "final.py", (str(path.relative_to(ROOT)), module, names)
     assert scanned > 100

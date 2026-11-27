@@ -6714,10 +6714,14 @@ active content is read with a plain note and never refused for that alone (ADR-0
    cases, so the first split's 3 unknown wrong and 3 hostile answered are not diagnosed from cases.
    `scripts/omnimind_spent.py` runs the product on the opened cases through the looks' own functions (never `final`)
    and reproduces both looks exactly (second split on `ae6120f`'s code; first-split cross on a `git archive` of
-   `55f89be`). `test_omni_final`'s import scan allows exactly those three modules in that one script.
+   `55f89be`). `test_omni_final`'s import scan allows exactly those three modules in that one script. The opened
+   files are NOT edited (no header line: they stay byte-identical, so their pins in `final.py` and the tests stay
+   valid); the opening is recorded here and in `src/neuroscifi/acceptance/omni/SPENT.md`.
 2. **Diagnosis before any fix** (`docs/quality/evidence/omnimind_spent_diagnosis.json`): every wrong and every
    declined decidable case by class, with its cause in the code. Hostile answers: **(a) 11 real failures, (b) 0
-   expecting refusal only for an outside reference or active content, (c) 0 truths in doubt.** One unknown "cannot"
+   expecting refusal only for an outside reference or active content, (c) 0 truths in doubt.** So the owner's
+   references ruling (WAVE3 item 2, ADR-080 decision 4) accounts for none of the 11; the first split's 3 unknown
+   and 3 hostile failures stay undiagnosed (their file stays sealed). One unknown "cannot"
    (two gzip layers) is caused by the benchmark driver's one-level descent (`subject.py`): not fixed here.
 3. **Identification** (`detect.py`, `adapters/__init__.py`): a binary format's signature at the start of bytes that are
    all text yields to the structure test (formats that are text by design keep theirs); text that parses as a Python
@@ -6753,6 +6757,5 @@ undecidable "cannot" 18 of 18; cross (first split) 44/32/2 -> 64/14/0 of 78. Lan
 
 ## Rollback
 
-Revert lane FX3's commits; nothing stored changes shape (kept artifacts are re-read with the code present). The
-spent files' header lines, if added, are comments only (their pinned SHA-256 in `final.py` and the tests then need the
-main session's re-pin).
+Revert lane FX3's commits; nothing stored changes shape (kept artifacts are re-read with the code present). The spent
+files themselves were never changed.
