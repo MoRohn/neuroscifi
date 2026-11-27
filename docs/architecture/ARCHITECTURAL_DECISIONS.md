@@ -5653,6 +5653,31 @@ bad 0, hard-constraint violations 0 (`docs/quality/evidence/omnimind_int_develop
 labels and agreement are `docs/quality/evidence/omnimind_forms_second_reader.json` (both readers are models of one
 family, not people).
 
+## ADR-073, addition (2026-11-27, documentation lane 2, after the measurement review's L2 and P1): where the references beat the planner on held-out
+
+The text above stays as written. Two facts of the one held-out run (`docs/quality/evidence/omnimind_heldout/final_c5d3230.json`,
+the `slices` and `pairs` fields) were left out of it:
+
+| held-out slice (138 cases) | the planner (`c5d3230`) | always-prose (today's system) | the shape-only table |
+|---|---:|---:|---:|
+| the words decide the form (`cue == "words"`) | 16 of 34 good | **17 of 34** | 14 of 34 |
+| the words and the content conflict (`cue == "conflict"`) | 4 of 7 | **7 of 7** | 1 of 7 |
+| request pairs, both members good | 3 of 18 | 0 of 18 | **8 of 18** |
+| twins, both members good | **2 of 10** | 0 of 10 | 0 of 10 |
+
+So on the cases where the request's words, not the content, decide the right form, the planner did not do better than
+answering every request in sentences, and on request pairs (the same words, different right answers) the table that
+reads only the content's shape did better than the planner. Nothing here is evidence that the planner reads the
+request's words. The planner's better overall figure (good 0.659 against 0.442 and 0.500) comes from the content
+slice (57 of 81 against 35 and 49) and from explicit requests (14 of 16 against 2 and 5).
+
+**P1, a sentence the planner says.** When the context decided, the planner's reason ends "...; it is the best form this
+situation allows." (`artifacts/forms.py:2048`). Nothing measures that the form is the best: the sentence overstates.
+The planner is frozen for the withheld forms look, and changing a string changes the frozen file (its examination
+commit), though not a choice. The plan: leave it unchanged until the withheld forms look is taken, then reword it to
+say what was measured ("the form the planner ranks first among those this situation admits"), in a commit of its own
+that states it changes no choice.
+
 # ADR-074 Things the system makes: specifications instead of generated markup, a reading contract, and checks that never ask the maker
 
 Status: built (OMNIMIND Wave O-0, lane G1: pictures, documents and data files; lane G2 appends its section below).
@@ -6067,6 +6092,27 @@ among the sources states for a table's column (`relate.transfer_units`) reaches 
 where it was read ("degC, from README.md"). Every made SVG scales to its container (`max-width:100%;height:auto` on
 the scoped root; the viewBox and user units unchanged): 328 px wide inside a 360 px phone's margins in Chromium.
 
+## ADR-076, addition (2026-11-27, documentation lane 2, after the measurement review's L3): the held-out rule that was applied
+
+The "Proposed held-out rule" above is lane P's proposal. It is not the rule the made and transform held-out run was
+judged by. The main session wrote its own rule in its log before the one run (`omnimind` `505b55b`), quoted verbatim in
+`docs/quality/evidence/omnimind_heldout/README.md` ("made, transform, once, at `505b55b`"):
+
+1. no fabrication, no crash: wrong == 0 and failed == 0;
+2. generalizes: right/n not more than 0.05 below development's (made 14/14, transform 8/8), so a single miss in either
+   family already fails it; `transform` carries lane P's disclosure (lane P once saw the held-out transform rows).
+
+| family | held-out result (`made.json`, `transform.json`) | the applied rule | lane P's proposal (for comparison) |
+|---|---|---|---|
+| made | 13 right / 1 cannot / 0 wrong / 0 failed of 14 | (1) holds; (2) **does not hold**: 0.929 against 1.000, a drop over 0.05. Reported as "one held-out making task the product could not do", **not a pass** | would have passed (0 wrong, 0 failed) |
+| transform | 8 / 0 / 0 / 0 of 8 | (1) and (2) hold, **with lane P's disclosure**: this result proves less than the others | would have passed |
+
+The stricter rule is the one that counts. Since that run, fix lanes F1 and F3 changed the pipeline (builder
+fall-through, `--partial`, stated reductions of large sources, the SIMULATION record only when `imagine_scenarios` is on)
+and fix lane F2 made the benchmark's reader of made pictures stricter (only what a person would see is read): the
+held-out figures above are of `505b55b`, and the next measure of making is the withheld look (rule: `docs/quality/OMNIMIND_BENCHMARK.md`,
+"The rule for the withheld looks").
+
 # ADR-077 Relating artifacts of different kinds: what one measures against what the other states or shows
 
 Status: built, called only by the owner's command `nsf artifact relate` and the benchmark's `relate` subject (Wave
@@ -6152,6 +6198,28 @@ one that guesses would score half, and a wrong "consistent" is this mechanism's 
 Revert lane R's commits: the new modules, the `relate` subcommand, `store.decoded_held`, the labelled link lines of
 `nsf artifact show` for the four claim relations and the driver's `relate`. Links already recorded stay readable
 by the old code (the relations were already in `store.RELATIONS`) and can be removed by forgetting either end.
+
+## ADR-077, addition (2026-11-27, documentation lane 2, after the measurement review's L5): what the cross figures depend on
+
+The text above stays as written. Four facts belong beside its figures:
+
+- **The relater needs the question to name the comparison.** On the development split, with the benchmark's question:
+  72 right / 0 cannot / 0 wrong. Without the question: 58 right / 14 cannot / 0 wrong (lane R's report and the main
+  session's log). It relates what the question tells it to compare; it does not find on its own which facts of two
+  artifacts belong together.
+- **The fresh pairs and the own variants are lane R's own.** The 12 fresh kinds (20 right, 4 cannot, 0 wrong of 24 at
+  the one look) and the 630 own variants were written by the lane that wrote the relater. They are development
+  evidence, not an independent examination.
+- **Held-out, once, at `7d9038c`** (`docs/quality/evidence/omnimind_heldout/cross-relate.json`): 66 right / 6 cannot /
+  0 wrong of 72; correct of answered 66 of 66; both twins right 33 of 36. By kind, right of 12: chart_series 12,
+  tones_rows 12, mesh_bbox 12, code_trace 12, timeline_log 12, **report_total 6** (the other 6 "cannot"; all 12 right on
+  development). Verdict by the rule written before the run: supported (wrong 0 of at most 2; 1.00 of at least 0.95; 66
+  of at least 54; twins 33 of at least 24; no kind with a wrong). The weakness: the statement reader did not carry over
+  to half of the held-out reports' wording. Always-consistent and always-inconsistent score 36 of 72.
+- **The relater changed after that run.** Fix lane F3 (`ba56b08`) changed how a file's or table's name counts and when
+  "in" is inches (calls.csv's rows are no longer counted as "calls"; "520 in total" is no longer 520 inches).
+  Development stayed 72 / 72 and lane R's own sets byte-identical; the held-out figure above is of the relater before
+  that change, and the next measure is the withheld cross look.
 
 # ADR-078 Learning the form of a result from outcomes: a per-key majority, because nothing tried beat it
 
@@ -6284,6 +6352,31 @@ file cannot be opened by an older build; a restore made by this build yields sch
 owner's own copy of the file taken before the upgrade, or `nsf archive unpack` of a pre-upgrade checkpoint run with
 the old software, and either brings back whatever was forgotten since (MIGRATIONS.md section 2,
 `tests/instance/test_migrations.py::test_rollback_facts`).
+
+## ADR-078, addition (2026-11-27, documentation lane 2, after the measurement review's item 6): the pipeline calls it, and the held-out result
+
+- **The caller exists now.** Since the Wave O-1 integration (`adae698`, lane int2) `nsf artifact make` plans through
+  `learn.plan` and records each made artifact's check verdict, when `form_learning` is `record` or `apply`. With `off`
+  (the default) the planner is called exactly as before and no row is written (11 productions compared byte for byte,
+  lane int2). A failed check cannot be recorded as an outcome without a migration (`form_outcomes` needs a held made
+  artifact; fix lane F3 pinned this with a test). `form_learning` stays off by default.
+- **Held-out, once, at `7d9038c`**, SIMULATED people (`docs/quality/evidence/omnimind_heldout/learn-make_learner.json`,
+  `learn-make_planner_only.json`; mean over 10 seeds, sd in brackets):
+
+  | subject | late kept | all kept |
+  |---|---:|---:|
+  | the shipped per-key majority through the planner | 0.710 (0.032) | 0.656 (0.019) |
+  | the planner alone (the product's never-learns) | 0.450 (0.024) | 0.454 (0.025) |
+  | key_majority (the benchmark's reference) | 0.802 | 0.727 |
+  | person_majority (reference) | 0.715 | 0.695 |
+  | never_learns (reference) | 0.433 | 0.429 |
+  | today's system | 0.393 | 0.396 |
+  | oracle | 0.880 | 0.878 |
+
+  Verdict by the rule written before the run: supported (gains +0.260 late and +0.203 all, over the margins 0.058 and
+  0.067). Beside it: the shipped rule is **0.092 below the reference key_majority** late, at the level of
+  person_majority. "Better than a majority rule" is not claimed. Every number is of simulated people with hidden,
+  stable preferences; none measures benefit to a real person.
 
 ## ADR-079: the owner console shows, makes and keeps artifacts (OMNIMIND Wave O-1, lane U)
 
