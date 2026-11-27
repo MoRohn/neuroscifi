@@ -1,5 +1,5 @@
-"""`nsf artifact add FILE… | list | show ID | facts ID | export ID PATH | forget ID | gaps | adapters | forms`
-(ADR-071).
+"""`nsf artifact add FILE… | list | show ID | facts ID | export ID PATH | forget ID | gaps | adapters | forms |
+relate ID ID` (ADR-071; relate: ADR-077, artifacts/relate_cli.py).
 
 The owner's commands for the artifact store (artifacts/store.py). Plain words by default; `--json` prints the record
 instead. Nothing here runs unless the owner types it. `add` follows a symbolic link the owner names on the command
@@ -92,8 +92,10 @@ def _plain(what, value) -> str:
                                                      "FAILED (" + ", ".join(checked.get("failed") or []) + ")"))
             for warning in checked.get("warnings") or []:
                 lines.append(f"  warning: {warning}")
+        from .relate_cli import CLAIM_LABEL, CLAIM_RELATIONS
         for link in value["links"]:
-            lines.append(f"  link: {link['src']} {link['relation']} {link['dst_id']} ({link['how']})")
+            claim = f"; {CLAIM_LABEL}" if link["relation"] in CLAIM_RELATIONS else ""
+            lines.append(f"  link: {link['src']} {link['relation']} {link['dst_id']} ({link['how']}{claim})")
         return "\n".join(lines)
     if what == "facts":
         lines = [f"{value['id']} ({value['provenance']})"]
@@ -105,6 +107,9 @@ def _plain(what, value) -> str:
         for fact in value["facts"]:
             lines.append(f"  {fact['name']}: {json.dumps(fact['value'], ensure_ascii=False)}  [{fact['how']}]")
         return "\n".join(lines)
+    if what == "relate":
+        from .relate_cli import plain
+        return plain(value)
     if what == "export":
         return f"Wrote {_size(value['bytes'])} to {value['path']} (only you can read it)."
     if what == "forget":
@@ -176,6 +181,11 @@ def _forget(db, args, now):
     if result["checkpoints_stale"]:
         result["next_steps"] = [governance.REBUILD_HINT.format(n=len(result["checkpoints_stale"]))]
     return result
+
+
+def _relate(db, args, now):
+    from .relate_cli import relate
+    return relate(db, args.first, args.second, question=(args.question or None) and args.question[:1000], now=now)
 
 
 def _list(db, args, now):
@@ -254,6 +264,11 @@ def register(sub):
                                    "archives are rewritten without it")
     q.add_argument("id")
     command("gaps", lambda db, a, now: store.gaps(db), "which formats nothing here could read, and how often")
+    q = command("relate", _relate, "relate two artifacts by measuring both: what one states or shows against what "
+                                   "the other measures; records the result as the system's claim (not evidence)")
+    q.add_argument("first")
+    q.add_argument("second")
+    q.add_argument("--question", help="what to compare, in your words (e.g. \"does the total match the CSV?\")")
     command("adapters", lambda db, a, now: store.adapter_catalog(db), "the file readers here, and which external "
                                                                        "ones you approved")
     q = asub.add_parser("forms", help="what can be made here and which independent check reads it back (reads no "

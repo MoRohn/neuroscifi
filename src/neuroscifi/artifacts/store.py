@@ -1011,6 +1011,19 @@ def facts_of(representation) -> list[dict]:
     return out
 
 
+def decoded_held(db, artifact_id, *, viewer="owner"):
+    """(record, bytes, Decoded or None, error dict or None) of a held artifact, decoded again from its verified
+    bytes under the current adapters and limits, as `facts` does (lane R's relate reads both ends this way)."""
+    from ..instance import store
+    record = get(db, artifact_id, viewer=viewer)
+    data = read_bytes(db, artifact_id, viewer=viewer)
+    cfg = store.config(db)
+    apply_adapter_setting(cfg.artifact_adapters)
+    decoded, error, _ = _decode(data, name=record.label if record.origin == "given" else None,
+                                declared=record.media_type if record.origin == "made" else None, lim=limits(cfg))
+    return record, data, decoded, error
+
+
 def facts(db, artifact_id, *, viewer="owner") -> dict:
     """What can be measured from the artifact's decoded representation (decoded again from the verified bytes under
     the current adapters and limits)."""

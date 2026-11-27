@@ -787,7 +787,8 @@ class Pair:
 
     def basis(self) -> str:
         tol = "none" if self.tolerance is None else f"{self.tolerance:.6g}"
-        return f"{self.a.ref}~{self.b.ref};tol={tol}"
+        ref = (self.a.ref + "/" + self.b.ref).replace("[", ":").replace("]", "")
+        return f"{ref};tol={tol}"
 
 
 def _connection(stmt: Fact, q: Fact) -> int:
