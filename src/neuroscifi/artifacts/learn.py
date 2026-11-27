@@ -283,6 +283,41 @@ def _made_key(db, artifact_id):
                       "source='check' DESC, id LIMIT 1", (artifact_id,)).fetchone()
 
 
+def _production_key(db, artifact_id):
+    """(kind, purpose, device, form) from a made artifact's production record (artifacts/produce.py) when no outcome
+    row names it (it was made while form learning was off, or its rows were trimmed): the key the record states, or
+    the one its plan, its device and its used sources' measured kinds give (`key_of`'s rule); the form it was made as
+    (the planner's name). None when the record does not say enough."""
+    from .types import ContentShape
+    row = db.execute("SELECT index_json FROM artifacts WHERE id=? AND origin='made'", (artifact_id,)).fetchone()
+    try:
+        production = (json.loads(row[0]) if row and row[0] else {}).get("production") or {}
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(production, dict):
+        return None
+    stated = production.get("learning") or {}
+    if isinstance(stated.get("key"), list) and len(stated["key"]) == 3 and stated.get("form"):
+        key, form = tuple(stated["key"]), stated["form"]
+    else:
+        plan, asked, made = (production.get(k) or {} for k in ("plan", "asked", "made"))
+        kinds = tuple(dict.fromkeys(k for s in production.get("sources") or () if isinstance(s, dict) and s.get("used")
+                                    for k in (s.get("shape") or {}).get("kinds", ()) if k in SHAPE_KINDS))
+        form = made.get("planner_form")
+        if form not in forms.FORMS:
+            chosen = plan.get("chosen") or []
+            generator = forms.FORMS[chosen[0]].generator if chosen and chosen[0] in forms.FORMS else None
+            form = "+".join(chosen) if generator and generator == made.get("form") else None
+        if not kinds or not form:
+            return None
+        key = (forms.primary_kind(ContentShape(kinds, 0, 0, False, 0, False, 0.0, 0)), plan.get("purpose"),
+               asked.get("device") or "console")
+    try:
+        return (*_key(*key), _form(form))
+    except Malformed:
+        return None
+
+
 def record_outcome(db, artifact_id, outcome, *, by=None, kind=None, purpose=None, device=None, form=None, now=None,
                    viewer="owner") -> dict:
     """Record one outcome of a made artifact (nothing while form_learning is "off").
@@ -316,10 +351,10 @@ def record_outcome(db, artifact_id, outcome, *, by=None, kind=None, purpose=None
         if row[0] != "made":
             raise Malformed("only a form the system made can be kept, dismissed or replaced; this one was given")
         if None in (kind, purpose, device, form):
-            made = _made_key(db, artifact_id)
+            made = _made_key(db, artifact_id) or _production_key(db, artifact_id)
             if made is None:
-                raise Malformed("nothing records what this artifact was made for (it was made outside a plan, or "
-                                "while form learning was off), so a reaction to it teaches nothing")
+                raise Malformed("nothing records what this artifact was made for (it was made outside a plan), so "
+                                "a reaction to it teaches nothing")
             kind, purpose, device, form = (given if given is not None else held
                                            for given, held in zip((kind, purpose, device, form), made))
         kind, purpose, device = _key(kind, purpose, device)

@@ -275,10 +275,48 @@ def _resolve_form(form: str | None) -> tuple[str | None, str | None]:
                     "the planner's forms")
 
 
-def conceptualize(request: str, pieces, context, form):
+def conceptualize(request: str, pieces, context, form, db=None):
+    """(plan, direct generator form, what was learned or None). With an individual whose `form_learning` is "record"
+    or "apply", the plan goes through `learn.plan` (lane L, ADR-078): with "apply" a learned habit may decide among
+    the forms the planner admits; with "off" (the default) the planner is called exactly as without learning."""
     explicit, direct = _resolve_form(form)
-    plan = forms.plan(forms.Request(request, explicit_form=explicit), tuple(p.shape for p in pieces), context)
-    return plan, direct
+    request_, shapes = forms.Request(request, explicit_form=explicit), tuple(p.shape for p in pieces)
+    if db is not None and _learning(db) != "off":
+        from . import learn
+        plan, learned = learn.plan(db, request_, shapes, context)
+        return plan, direct, learned
+    return forms.plan(request_, shapes, context), direct, None
+
+
+def _learning(db) -> str:
+    from . import learn
+    return learn.mode(db) if learn.present(db) else "off"
+
+
+def _learning_entry(db, learned) -> dict:
+    """What the production record says about form learning (present only when it is not off): the key the plan was
+    looked up under (`learn.key_of`: the content's leading kind, the plan's purpose, the device)."""
+    entry = {"mode": _learning(db), "key": list(learned.key),
+             "status": learned.status, "words": learned.words[:400]}
+    if learned.decided:
+        entry["decided"] = learned.decided[:600]
+    return entry
+
+
+def _record_check(db, artifact_id, entry: dict, planner_forms, ok: bool, now) -> dict:
+    """The independent check's verdict on a stored made artifact, as lane L's outcome row (form learning record or
+    apply only). A form the planner has no name for (a generator form named directly) records nothing, with why."""
+    from . import learn
+    if not all(f in forms.FORMS for f in planner_forms) or not 1 <= len(planner_forms) <= 2:
+        return {"recorded": False, "why": "made as a generator form the planner has no form for, so there is no "
+                                          "form to learn about"}
+    kind, purpose, device = entry["key"]
+    try:
+        out = learn.record_outcome(db, artifact_id, "check_passed" if ok else "check_failed", kind=kind,
+                                   purpose=purpose, device=device, form="+".join(planner_forms), now=now)
+    except ArtifactError as error:
+        return {"recorded": False, "why": str(error)[:200]}
+    return {"recorded": bool(out.get("recorded")), "outcome": out.get("outcome"), "why": out.get("why", "")[:200]}
 
 
 def _generator_form(planner_form: str) -> str | None:
@@ -643,7 +681,7 @@ def bound_record(record: dict, limit: int = MAX_RECORD_BYTES) -> dict:
         r["steps"] = r["steps"][: len(r["steps"]) // 2]
         cuts.append("later steps")
     if size(r) > limit:
-        r = {k: r[k] for k in ("record", "label", "asked", "outcome", "made", "check") if k in r}
+        r = {k: r[k] for k in ("record", "label", "asked", "outcome", "made", "check", "learning") if k in r}
         cuts.append("everything but the outcome")
     if cuts:
         r["cut"] = list(dict.fromkeys(cuts))
@@ -745,11 +783,16 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
             f"{n['label']}: {n['why']}" for n in notes if not n["used"])[:600]
         record["steps"] = run.steps
         return Production("cannot", bound_record(record))
-    plan, direct = run.step("conceptualize", conceptualize, request, pieces, context, form,
-                            summary_in={"shapes": [_shape(p.shape) for p in pieces][:4], "form": form},
-                            summary_out=lambda r: {"chosen": list(r[0].chosen), "decided_by": r[0].decided_by,
-                                                   "direct": r[1]})
+    plan, direct, learned = run.step("conceptualize", conceptualize, request, pieces, context, form, db,
+                                     summary_in={"shapes": [_shape(p.shape) for p in pieces][:4], "form": form},
+                                     summary_out=lambda r: {"chosen": list(r[0].chosen),
+                                                            "decided_by": r[0].decided_by, "direct": r[1]})
     record["plan"] = _plan_summary(plan)
+    learning = _learning_entry(db, learned) if learned is not None else None
+    if learning is not None:
+        record["learning"] = learning
+        if learning.get("decided"):
+            record["plan"]["learned"] = learning["decided"]
     explicit, _ = _resolve_form(form)
     if direct is None and (not plan.chosen or plan.chosen[0] in WORDS):
         # proportion: words, nothing made, nothing stored
@@ -837,12 +880,17 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
             return Production("made", bound_record(record), made=made, spec=spec)
         sim_id, sim_why = _simulate(db, best["foreseen"], record["foresight"], spec.spec, now)
         record["simulation"] = sim_id or sim_why
+        if learning is not None:
+            # said in the record before it is stored; the row itself is written once the artifact exists
+            learning["form"] = "+".join(best["forms"])
         source_ids = [p.source for p in pieces]
         record["steps"] = run.steps + [{"step": "finalize", "seconds": 0.0,
                                         "in": {"sources": len(source_ids)}, "out": {"kept": True}}]
         bounded = bound_record(record)
         out = run.step("finalize", store.add_made, db, made, spec, _source_ids(spec, source_ids), now=now,
                        production=bounded)
+        if learning is not None:
+            _record_check(db, out.id, learning, best["forms"], bool(best["verdict"]["ok"]), now)
         kept = []
         if keep:
             for i, c in enumerate(candidates):
@@ -853,8 +901,13 @@ def produce(db, request: str, sources, *, form: str | None = None, context: form
                 lose = {"record": RECORD, "label": LABEL, "outcome": "kept alternative", "winner": out.id,
                         "asked": record["asked"], "made": {"form": s.spec, "planner_form": c["forms"][0]},
                         "check": c["verdict"]}
+                if learning is not None:
+                    lose["learning"] = {**learning, "form": "+".join(c["forms"])}
+                    lose["learning"].pop("decided", None)
                 kept.append(store.add_made(db, r["made"], s, _source_ids(s, source_ids), now=now,
                                            production=bound_record(lose)).id)
+                if learning is not None:
+                    _record_check(db, kept[-1], learning, c["forms"], True, now)
         return Production("made", bounded, artifact=out.id, made=made, spec=spec, kept=tuple(kept),
                           stored_sources=tuple(stored_sources))
     except BaseException:
@@ -982,8 +1035,14 @@ def remake(db, artifact_id: str, *, form: str | None = None, options: dict | Non
                    "sha256": hashlib.sha256(made.bytes).hexdigest(), "title": new_spec.title}
     rec["check"] = _verdict_summary(result["verdict"])
     rec["steps"] = run.steps
+    old_learning = production.get("learning") if _learning(db) != "off" else None
+    if old_learning and old_learning.get("key") and old_learning.get("form"):
+        rec["learning"] = {k: old_learning[k] for k in ("mode", "key", "form") if k in old_learning} | \
+            {"mode": _learning(db), "status": "remade"}
     bounded = bound_record(rec)
     out = store.add_made(db, made, new_spec, _source_ids(new_spec, sources), now=now, production=bounded)
+    if rec.get("learning"):
+        _record_check(db, out.id, rec["learning"], rec["learning"]["form"].split("+"), True, now)
     return Production("made", bounded, artifact=out.id, made=made, spec=new_spec)
 
 
@@ -1014,6 +1073,8 @@ def why_text(record: dict, *, short: bool = False) -> str:
     plan = record.get("plan") or {}
     if plan:
         lines.append(f"Planned: {plan.get('reason')}")
+        if plan.get("learned"):
+            lines.append(f"Learned: {plan['learned']}")
         if not short:
             for c in plan.get("considered", [])[:6]:
                 scores = c.get("scores") or {}
@@ -1022,6 +1083,9 @@ def why_text(record: dict, *, short: bool = False) -> str:
                              f": {c['total']:.2f}" + (f" ({detail})" if detail else ""))
             for c in plan.get("excluded", [])[:4]:
                 lines.append(f"  not possible: {', '.join(c['forms'])}: {c['why']}")
+    learning = record.get("learning")
+    if learning and not short:
+        lines.append(f"Form learning ({learning.get('mode')}): {learning.get('words') or learning.get('status')}")
     for c in record.get("candidates") or []:
         seen = c.get("foreseen") or {}
         label = forms.label_of(tuple(c["forms"])) if all(f in forms.FORMS for f in c["forms"]) else c["forms"][0]
