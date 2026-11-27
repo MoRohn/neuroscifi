@@ -663,8 +663,9 @@ neuroscifi/
 
 ## Project OMNIMIND (on a branch, not merged)
 
-**Status: local branch `omnimind` (schema 21 there), not merged into `main`, not pushed, not run on CI; nothing below
-is part of 0.7.0.** On that branch the owner can hand NeuroSciFi a file (`nsf inspect`, `nsf artifact add`): it is
+**Status: branch `omnimind` (schema 21 there), not merged into `main` (pushed as far as `06a6b30`, carried by the draft
+pull request #9, which stays unmerged until the owner decides after the third look); nothing below is part of
+0.7.0.** On that branch the owner can hand NeuroSciFi a file (`nsf inspect`, `nsf artifact add`): it is
 identified by its content, decoded within limits in a guarded child process, and kept beside the individual where
 forget and restore reach it. `nsf artifact make` decides the form of a result (a chart, a diagram, a document, a table,
 a sound, a solid, an explorable model or words), makes it, checks it with an independent reader of its bytes and keeps
@@ -675,7 +676,12 @@ answered instead of refused) and the relater 6 wrong in 78: those three looks ar
 and the learner's withheld looks are void by the rule (two controls were not run). Nothing decodes JPEG, MP3 or video frames;
 no model sees or hears; answers in conversation are still sentences. A fix wave was then examined once on a second withheld split and none of the three fixed
 mechanisms earned "supported" (5 wrong of 171 unknown files; 11 of 62 hostile files answered instead of refused; the
-relater right on 47 of 80 decidable cases): the condition for merging is not met. Details: [docs/omnimind/README.md](docs/omnimind/README.md).
+relater right on 47 of 80 decidable cases): the condition for merging is not met. Then, by the owner's decision, the two used withheld sets were opened for
+those three families and fixed by class (Wave O-3); the relater's three new comparisons were built three times and
+each version was broken by a fresh reviewer (24 of 27, 30 of 56, 31 of 63 new pairs answered wrongly), so they are
+withdrawn, every relater verdict is shown and never stored, and the relater is not supported. One look at a third
+unseen set, for unknown and hostile files only, is ruled and not yet taken. Details:
+[docs/omnimind/README.md](docs/omnimind/README.md).
 
 ## Known limitations
 

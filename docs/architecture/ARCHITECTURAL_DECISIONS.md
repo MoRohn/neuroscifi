@@ -6317,6 +6317,30 @@ Taken once by the main session on `55f89be` on lane ZW's 78 withheld cross cases
 - Always-consistent scored 39 of 78 with 0 twins. A "not supported" is never retried on these cases: the weakness is
   known now; any fix is to be examined on NEW withheld cases.
 
+## ADR-077, addition (2026-11-27, documentation lane 3): verdicts are no longer recorded; the relater not supported
+
+The earlier text above stays as written; this addition corrects what it says about recording. Its "Binding" paragraph
+says `consistent_with` / `contradicts` links are recorded. **Since the owner's decision of 2026-11-27 (verbatim label
+"Withdraw them"; ADR-081, third addition) no path records a `consistent_with` or `contradicts` link**: not `nsf
+artifact relate` with any question or none, and not the production pipeline. Every relater answer is
+shown with the fixed line "not recorded: the relater's answers are shown only, never stored as links, until a relater
+passes an examination (ADR-081)". `describes` and `same_subject` (and the production's `derived_from`) are recorded
+exactly as before.
+- **Why.** Lane FX3 (Wave O-3) added three comparisons that need both artifacts at once (an archive's members against
+  a listing, a drawing's links against a text, a sound's tone start times against a cue sheet). They were built three
+  times, and each version was broken by a fresh security reviewer with new pairs of known truth: 24 of 27, 30 of 56
+  and 31 of 63 answered wrongly, each wrong answer stored as a durable link; the third review also found 7 of 12
+  adversarial pairs answered wrongly by the older comparisons of this ADR and marked as recordable. The three
+  comparisons are withdrawn (a question only they could decide gets "cannot: this comparison was withdrawn: it could
+  not be made reliable"); the older comparisons answer for display only, with lanes FX4 and FX5's narrowing kept.
+- **Verdict.** The relater is **not supported**: by the look at the second withheld split (ADR-080's addition) and by
+  the three breaks above. Development cross is now 70 of 72 (two "Net total" questions are declined). The third
+  withheld split's cross cases are not looked at and stay unspent.
+- **Rollback (corrects "Links already recorded stay readable ... removed by forgetting either end").** Verdict links an
+  earlier version stored stay in a store until the owner removes them: `PYTHONPATH=src python
+  scripts/omnimind_fx3/links_decided_by.py --db PATH --by any` lists them (a dry run by default) and `--remove`
+  removes them; a removal writes no history entry. Forgetting either end still removes them too.
+
 # ADR-078 Learning the form of a result from outcomes: a per-key majority, because nothing tried beat it
 
 Status: built, off by default (OMNIMIND Wave O-1, lane L). Schema 21 (`form_outcomes`), one owner setting

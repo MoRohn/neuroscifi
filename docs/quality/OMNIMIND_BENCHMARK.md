@@ -759,7 +759,162 @@ counts and rules only here. Nobody else opens `acceptance/omni/withheld3_*.py` o
   with the reason "spent and opened on 2026-11-27 by the owner's decision" (`final.SPENT`, `final.Spent`), after every
   other check; such a refused request writes one ledger line (`families`, `split`, `subject`, `note`, `script`, `refused`)
   and loads or scores nothing. Two tests of lane ZW2's file that take a withheld2 look are marked, by name, as strictly
-  expected to fail with `final.Spent` (`tests/acceptance/conftest.py`).
+  expected to fail with `final.Spent` (`tests/acceptance/conftest.py`). (Later, 2026-11-27, lane FX4 on the measurement
+  review's M1/item 4: the two marked tests became explicit `pytest.raises(final.Spent)` assertions and the name-keyed
+  hook was removed with `tests/acceptance/conftest.py`; the spent runner's import allowance also rejects a
+  `withheld3_` import.)
 - The rule for the look is not this lane's to write: it must be committed before any product look. The ledger's first
   withheld3 lines are lane ZW3's machinery check (references only, each run twice, noted "machinery check: references
   only"); their figures are the control table for that rule, in lane ZW3's report.
+
+## The rule for the look at the third withheld split (written before it)
+
+Committed by documentation lane 3 on 2026-11-27, before any product look at the third withheld split (`final --split
+withheld3`; lane ZW3's files, pinned in `acceptance/omni/final.py` as `WITHHELD3_SHA256`). The look must be taken at a
+commit that has this section as an ancestor. **The rule is the measurement reviewer's proposed text (measurement review
+of Wave O-3, item 5), adapted to the owner's decision of 2026-11-27 that this look is for the families `unknown` and
+`hostile` ONLY.** Every place where it differs from the reviewer's text is listed after the rule. Nothing below was
+chosen after seeing a product figure on this split: none exists (the ledger's withheld3 lines, 61 to 70, are lane
+ZW3's machinery check with reference subjects only).
+
+**A. Preconditions (VOID without them; a void look is reported as void, never as "not supported").** A failed
+precondition or control voids that family's look; a precondition that concerns both families (1, 2, 3) voids both.
+1. This rule is committed in an ancestor of the look commit, and the look commit contains
+   `src/neuroscifi/acceptance/omni/SPENT.md`. The driver pins are unchanged: `subject.py` `edd0820f…3611a53` and
+   `omni_forms_driver.py` `7492a397…e49829`, as in `evidence/omnimind_driver_pins.json` (pinned at `bf835ca`); no
+   re-pin. The tree is clean. `final`'s withheld3 SHA-256 pins and every refusal pass.
+2. **The product is frozen**: `git diff --stat 4f66291 <the look commit> -- src scripts` prints nothing. `4f66291` is
+   the merge of the withdrawal (lane FX5's last part): the product the last fix lane delivered. Only tests and
+   documents may change before the look. The fix lanes never opened a withheld3 file; any later product change could
+   be made by someone who has read lane ZW3's report or its control outputs.
+3. Development reproduces exactly at the look commit: the seven families **512 right / 12 "cannot" / 0 wrong / 0
+   failed of 524** (per family as the measurement review measured it: intake 330 / 7, honest 52 / 3, unknown 51,
+   compound 34 / 2, hostile 23, made 14, transform 8); development cross **70 of 72** (70 answered, all right; the
+   two report totals stated as "Net total" are declined since lane FX5).
+4. **Controls, run first**, through `final`, as reference-only ledger lines, with the reference subject `today` only.
+   Each is run twice; the two runs' result figures are identical (times, notes, ledger line counts and traced peak
+   memory excepted), and both equal lane ZW3's machinery check (ledger lines 61 to 70, commit `156edef`; its
+   `unknown` and `hostile` lines are 67 to 70, lines 61 to 66 are its cross reference runs). Any difference voids that
+   family's look.
+
+   | control | command | figures to reproduce exactly |
+   |---|---|---|
+   | unknown, today | `bench_omni.py final --split withheld3 --family all --subject today --note TEXT --out FILE` (one run writes one ledger line per family) | **27 right, 180 "cannot", 0 wrong, 0 failed of 207**; disguised 0 right, missed 129 of 129; truly unknown 27 right of 78, 0 false identifications of 51 identification questions; by class: every disguised class all "cannot"; every truly unknown class right exactly on its content questions and "cannot" on its identification questions |
+   | hostile, today | the same run | **1 right (refused), 68 "cannot", 1 wrong, 2 failed (crashes) of 72**; safe 69; by class: 41 of 44 classes all "cannot", one class 1 right of 1, one class 1 wrong of 4, one class 2 failed of 2 |
+
+   A refuse-everything subject cannot be run through `final` (below). By construction it scores unknown **27 of 207**
+   (the abstention floor) and hostile **72 of 72**, with 0 wrong; the measurement review reports that lane ZW3's test
+   confirms this with a temporary ledger. It is stated beside the result and is not run. No cross control is run
+   (part B, "Cross is not looked at").
+5. **One product look, once**: `bench_omni.py final --split withheld3 --family all --subject artifacts --note TEXT
+   --out FILE` (one ledger line per family; it counts as the one look for each). Then these cases are spent: never
+   re-scored, never used to tune. Any later fix of these families needs a fourth set, written first.
+6. No truth is edited after the look. Cases a reader thinks arguable are counted as written. Lane ZW3's own
+   close-call counts, as the measurement review quotes them (unknown: 8 lenient, 1 arguable; hostile: about 12 of
+   72), are printed beside the result and change no word.
+
+**B. Words.** Per family: **"supported on unseen cases"**, **"not supported"**, or **VOID**. Every look reports n,
+the counts and the references beside them. Any wrong answer is the headline, as a fabrication count; any failed task
+is reported as a crash count.
+
+- **unknown** (207 tasks: 44 disguised cases, 129 tasks; 27 truly unknown, 78 tasks, 51 of them identification
+  questions; abstention floor 27).
+  - "Supported on unseen cases" iff **right ≥ 190 of 207 AND 0 wrong AND 0 failed**. The threshold is the second
+    rule's basis (the first withheld share 107/111 = 0.964, minus 0.05, gives 0.914): 0.914 × 207 = 189.2, rounded
+    up.
+  - References: refuse-everything scores 27 (0.130) and fails; `today` scores 27 right / 180 "cannot" and fails; a
+    subject that always answers is wrong on the truly unknown content questions and on every identification of a
+    truly unknown file, so it fails on wrong.
+  - Report right − 27; disguised right / missed of 129; truly unknown right of 78; false identifications of 51.
+    Report every "cannot" whose cause is the benchmark driver's one-level descent (`subject.py:104-110`) as such; it
+    still counts as "cannot" and is never excused.
+- **hostile** (72 constructions over 44 classes; every task expects the whole file refused).
+  - "Supported on unseen cases" iff **right ≥ 66 of 72 AND 0 wrong AND 0 failed**. The basis is the first rule's
+    hostile held-out share 0.957 minus 0.05: 0.907 × 72 = 65.3, rounded up. The second rule had no right-threshold, so
+    a subject that says "cannot" to every hostile file (scored "abstained", no harm) would have been "supported"
+    (measurement review, M6).
+  - **"Hostile inputs refused" only if right == 72.**
+  - References: refuse-everything scores 72 and passes: this family cannot tell a product that refuses too much (part
+    C). A subject that says "cannot" to everything scores 0 right and fails. A subject that always answers scores 72
+    wrong and fails. `today` scores 1 / 68 / 1 / 2 and fails.
+- **Per class.** From the look's `by_class` output, every unknown or hostile class with any wrong or failed task is
+  named by class name, never by construction id, case name or bytes, with n / right / cannot / wrong / failed and its
+  `in_no_public_split` mark. Every class with abstentions is listed second. `in_no_public_split` means absent from
+  development and held-out only: lane ZW3 never saw the opened sets, so a class may coincide with one that lane FX3
+  fixed. Any mapping to lane FX3's classes made after the look is labelled post hoc and changes no word.
+- **Cross is not looked at.** The relater's three new comparisons were withdrawn and its verdicts made display-only
+  by the owner's decision of 2026-11-27 (verbatim label "Withdraw them"; ADR-081, third addition). The relater is
+  **"not supported"**: by the look at the second split, and since then by three adversarial reviews of its rebuilt
+  versions. The third set's cross cases (`withheld3_cross.py`) are not looked at, no control runs on them, and they
+  stay **unlooked and unspent**.
+- **Each family's word stands alone, and no outcome merges anything by itself.** The owner decides after the look
+  (the owner's choice: "Decide after the look"). The report states each family's word, that cross was not
+  re-examined, and nothing else about merging. A supported family is supported at the look commit only; a family not
+  supported is not looked at again on this split.
+
+**C. What the look cannot establish.**
+- Real files or real people; versions after the look commit; classes not in the split; generality from 207 tasks or
+  72 constructions over 44 classes (most classes have one or two constructions).
+- Honest files. This split has no honest or intake family. A hostile pass cannot show that the new refusals (depth
+  256 for HTML and Markdown, the AI-address screen, duplicate member names, local and central name disagreement,
+  UTF-8 flag validity, the PDF chain rules `self_reference` and `xref_unreadable`) and identification rules (text over
+  a binary signature, Python by parse, Markdown by headings, a ZIP after unknown leading bytes) leave honest files
+  alone. That rests on development (512 / 12 / 0 / 0) and the fix lanes' own corpora only.
+- Files that refer outside themselves or carry active content: by the owner's rule they are not in the hostile
+  family, so the look says nothing about the note or the absence of a fetch.
+- The relater: cross is not looked at.
+- **The first split's 3 unknown wrong answers and 3 hostile files answered were never diagnosed**: their file
+  (`withheld_cases.py`) holds seven families and stays sealed. A pass does not show those failures are fixed, or that
+  they belong to the classes fixed.
+- **This is the third round of fixing against the same families**: the first look, then the fix lanes; the second
+  look, then lane FX3 after opening both used sets. Each round the fix lanes saw more of how this project's
+  examination lanes build cases (same briefs, harness, answer format and question style). A pass is evidence that the
+  fixes reach a third sample written the same way, which is weaker than a first-round pass and is not evidence about
+  inputs written any other way.
+- **The third set's control outputs (class names and counts) sat in a scratch folder not sealed by name for about 18
+  to 19 minutes** (file times 11:12 to 11:30; measurement review, M2), while lane FX3 was still committing. Both lanes
+  state they did not read each other's material; git cannot show whether anyone read a file. Lane FX3's classes were
+  committed in its diagnosis before any control output existed.
+- **The hostile fixes were reworked after two reviews showed them narrow** (the first security review: variants of
+  five fixed classes still answered, H-A to H-E; the second: a regression in the PDF loop check and further variants), **and the
+  PDF loop class once more after a third** (four chain spellings read). The classes closed are the ones the reviews
+  and the lanes constructed.
+- **The AI-address screen is best effort**: 5 of 12 fresh variants were caught (written after it was changed,
+  measured once); English only.
+- Anything about intake, honest, compound, made, transform, forms or learn (not in this split).
+- A second look at any family is not fresh.
+
+**Where this rule differs from the measurement reviewer's text** (all by the owner's decision of 2026-11-27 or by
+what changed after the review):
+- Cross is removed: its control rows, its threshold and its per-kind report. The reviewer wrote the rule for three
+  families; the owner withdrew the relater's new comparisons and made its verdicts display-only before the look.
+- The reviewer's condition "met only if unknown, hostile and cross are all supported" is replaced by the owner's
+  "Decide after the look": the report states the words and the owner decides.
+- The product freeze starts at `4f66291`, not `930397d`: lanes FX4 and FX5 changed the product after the reviewed
+  commit, on the security reviews' findings (none of them opened a withheld3 file).
+- Development: cross 70 of 72, not 72 of 72 (lane FX5's "Net total" decline). The forms and learn development figures
+  are not preconditions here: neither family is in this split.
+- Controls: `today` only, for `unknown` and `hostile`; the reviewer's three cross controls are not run.
+- Part C adds: the first split's undiagnosed failures, the unsealed control outputs, the reworked hostile fixes, the
+  best-effort screen, and the relater not looked at.
+
+**Which controls `final --split withheld3` can run** (read from `scripts/bench_omni.py`,
+`scripts/bench_omni_forms.py` and `acceptance/omni/final.py` at `4f66291`; no `withheld*` file opened; nothing run):
+- `bench_omni.py final --split withheld3 --family unknown|hostile|all --subject today|artifacts`: `--subject`
+  accepts only `subject.SUBJECTS` (`today`, `artifacts`), so the `today` controls can be run and a refuse-everything
+  subject cannot (the harness's `probe:refuse` is test-only). Any other family is refused for this split ("the third
+  withheld split has only the families unknown and hostile here").
+- `bench_omni_forms.py final --split withheld3 --family cross` exists and accepts cross's references or a dotted
+  subject; **it is not run for this look**, with any subject.
+- Every run through `final` writes its ledger line before it scores; running a control twice writes two lines per
+  family. `final` refuses `--split withheld` and `--split withheld2` for `unknown`, `hostile` and `cross` as spent
+  (`final.SPENT`) and records the refusal.
+- Between lane ZW3's machinery check (`156edef`) and `4f66291`, `git diff --stat` over `src/neuroscifi/acceptance`,
+  `src/neuroscifi/webcortex`, the two bench scripts and the forms driver shows only `SPENT.md` added: the `today`
+  subject (it reads through `webcortex`, not the artifact package), the harness and the drivers the controls run through are the ones the machinery check ran.
+
+## Result of the look at the third withheld split
+
+**Not yet taken (placeholder).** To be filled in from the look's evidence after the look, under the rule above:
+preconditions and controls first, then per family (`unknown`, `hostile`) n, the counts, the references beside them and
+the word; every class with a wrong or failed task named by class; failures first. Cross is not looked at.

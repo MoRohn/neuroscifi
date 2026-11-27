@@ -1,6 +1,8 @@
 # Project OMNIMIND
 
-Status: 2026-11-27. Waves O-0 and O-1, three independent reviews with second passes, fix lanes F1 to F5 and these
+Status: 2026-11-27, brought up to date by documentation lane 3 from `omnimind` at `4f66291` (Wave O-3 below). Since
+the paragraph that follows was written, `omnimind` was pushed as far as `06a6b30`, where the draft pull request #9
+carries it; nothing of it is merged into `main`. As written then: Waves O-0 and O-1, three independent reviews with second passes, fix lanes F1 to F5 and these
 documents are merged into the integration branch `omnimind` (`ad28fcf`, schema 21; Wave O-2 below). The main session ran the final
 validation on `55f89be` (the commit that pins the drivers beside the look rule) and took the withheld looks there, once
 each. It is a **local branch: not merged into `main`, not pushed, never run on CI**.
@@ -12,7 +14,12 @@ an examination written before it.
 
 ## The result, on one screen
 
-**Latest: the fix wave (Wave O-2) was examined once on a second withheld split and none of the three fixed mechanisms
+**Latest: in Wave O-3 the spent cases were opened and fixed; the relater's three new comparisons were built three
+times, broken three times by fresh reviewers (24 of 27, 30 of 56, 31 of 63 new pairs wrong) and withdrawn; every
+relater verdict is shown, never stored, and the relater is not supported. The look at a third unseen set, for unknown
+and hostile only, is ruled and not yet taken; the owner decides on merging after it** (section "Wave O-3" below).
+
+**Before that: the fix wave (Wave O-2) was examined once on a second withheld split and none of the three fixed mechanisms
 earned "supported"; the owner's condition for merging is not met** (section "Wave O-2" below).
 
 NeuroSciFi can now **take in** a file the owner hands over (`nsf inspect`, `nsf artifact add`; the console's upload
@@ -54,8 +61,8 @@ Pocket, voice or agents; **nothing is on by default except viewing in the consol
 | 11 | Operational runbook | [RUNBOOK.md](RUNBOOK.md) |
 | 12 | Final implementation report | [FINAL_REPORT.md](FINAL_REPORT.md) (with the withheld looks) |
 
-Decisions: ADR-070 to ADR-079 in [../architecture/ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md)
-(ADR-073, 076, 077 and 078 carry dated additions of 2026-11-27).
+Decisions: ADR-070 to ADR-081 in [../architecture/ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md)
+(ADR-073, 076, 077, 078, 080 and 081 carry dated additions of 2026-11-27).
 
 ## The directive in three sentences
 
@@ -117,6 +124,36 @@ rule needs 60): it stopped guessing and declines too much to count as working. T
 lane named and did not generalise to new constructions. Both withheld splits are spent for these families; any
 further fix needs a third set of unseen cases written first. The owner's condition for merging was examined and is
 **not met**; the pull request stays unmerged pending the owner's decision. Details: [FINAL_REPORT.md](FINAL_REPORT.md).
+
+## Wave O-3: open the spent cases, fix, and a third unseen set
+
+On 2026-11-27 the owner decided (verbatim labels): "Open spent cases, fix (Recommended)", so the two used withheld
+sets were opened for `unknown`, `hostile` and `cross` only, as development cases, and a third unseen set was written
+first by lane ZW3 (unknown 207 tasks, hostile 72, cross 112); "Read with a note (Recommended)", so a file that points
+outside itself or carries a macro or script is read with a plain note, never refused for that alone and never fetched
+or run; later "Withdraw them" and "Decide after the look". `src/neuroscifi/acceptance/omni/SPENT.md` lists what was
+opened; `withheld_cases.py` stayed sealed, so the first split's 3 unknown and 3 hostile failures were never diagnosed.
+
+**What failed.** The relater's three new comparisons (an archive's members against a listing, a drawing's links against
+a text, a sound's cue times against a cue sheet) were built three times, by cue words, then by required words, then by
+a closed grammar over plain sources; each version was broken by a fresh security reviewer with new pairs: 24 of 27, 30
+of 56, 31 of 63 answered wrongly, where the code before the wave said "cannot" to almost all of them. By the owner's
+decision they are withdrawn: those questions get "cannot", every relater verdict is shown with a fixed "not recorded"
+line, **no path stores `consistent_with` or `contradicts`**, and `derived_from`, `describes`, `same_subject` are
+recorded as before. The hostile fixes were shown narrow by two reviews and reworked, the PDF loop class once more after
+a third. Two of the main session's rulings were wrong or costly: question-less links between a production's sources
+were first restored as if they were facts of construction (false links were recorded through it until corrected), and
+its scope ruling for question-less comparisons was broader than the reviewer's remedy (a stated total of 520 beside a
+column summing to 500 now shows "Cannot tell"). Lane FX4 states two discipline slips: one scoring of the relater on the
+held-out cross split, and one test selection that may load the third set's machinery.
+
+**What the diagnosis found.** The 11 hostile files the second look answered are all real failures (0 explained by the
+owner's references rule, 0 truths in doubt). One unknown "cannot" lies in the benchmark driver's single-level descent
+and was left. On the opened cases, development evidence only: unknown 170 right / 1 "cannot" / 0 wrong of 171, hostile
+62 of 62 refused, cross 70 / 28 / 0 of 98 on the second set and 44 / 34 / 0 of 78 on the first; development cross 70 of
+72. **Nothing about unseen files follows from these.** The rule for the third look, written before it, is in
+[../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md); its result goes into
+[FINAL_REPORT.md](FINAL_REPORT.md) (section "Wave O-3" and the placeholder after it).
 
 ## Where to read next
 

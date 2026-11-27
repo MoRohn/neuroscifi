@@ -1,6 +1,7 @@
 # OMNIMIND runbook, for the owner (deliverable 11)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged. It applies to the branch `omnimind`
+Status: 2026-11-27, brought up to date by documentation lane 3 from `omnimind` at `4f66291` (Wave O-3: new refusal
+rules, the relater's verdicts shown only, the third look). Earlier: written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged. It applies to the branch `omnimind`
 (schema 21), **which is not merged into `main`**: on an installed 0.7.0 none of these commands exists. The general
 runbook is `docs/operations/RUNBOOK.md`; upgrades and rollback of the file are `docs/operations/MIGRATIONS.md`
 section 2. Fix lane F5 (`bf3dac6`) is merged too.
@@ -107,6 +108,19 @@ a PDF action inside a compressed stream other than the catalog is not found (wit
 only); a text note that quotes the ZIP signature bytes is left unknown; ODF outside links are not counted. Lane FX's own
 refusal corpus now reads 165 refused, 3 answered of 168: the 3 are the SVG-with-an-outside-image class, answered with
 its note as ruled (its truth file still says "refused").
+
+**Since Wave O-3** (ADR-081; each refuses the whole file): HTML elements or Markdown quotes and lists nested more than
+256 deep (`max_depth`); a PDF whose cross-reference chain returns to a section (`self_reference`) or cannot be followed
+to its end within the budget (`xref_unreadable`, a new rule); two archive members, or two workbook sheets, under one
+name, including names that differ only in case, path form or Unicode form (`duplicate_names`); a ZIP whose local
+header names or describes a member otherwise than its directory (`name_mismatch`, `header_mismatch`); a member name
+flagged UTF-8 that is not (`unsafe_member_name`); a WAV block alignment or byte rate of zero (malformed); and a second,
+artifacts-only screen for passages addressed to an AI reader (`injection`). HTML and Markdown references to outside
+things now get the same plain note as SVG, DOCX and PDF. **Costs you may meet**: a ZIP with two member names that
+differ only in case is refused (honest on Linux); the screen is best effort and English only (it caught 5 of 12 fresh
+lines) and still refuses 3 honest lines addressed to a person named Claude or to "Assistant:"; checking the PDF chain
+of a 64 MiB file padded with comments may take about 14 s (extrapolated, not measured at that size). **Not covered**: a
+right-to-left override character in a member name gets no note.
 - *flagged*: the file's own words hold passages addressed to an AI agent. `add` keeps it marked flagged; nothing is
   made from it; its words are never offered to a model.
 - *"guard unavailable"*: the limited child process could not start; the file is kept and not read. Check memory and
@@ -197,3 +211,10 @@ their pins in `docs/quality/evidence/omnimind_driver_pins.json` (pinned in `55f8
 appends a line to `docs/quality/evidence/omnimind_final_uses.jsonl` before it loads anything, writes summaries only,
 and never into the checkout. The rule each look is judged by, written before them:
 [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md), "The rule for the withheld looks".
+
+**The third look (Wave O-3; not yet taken).** `scripts/bench_omni.py final --split withheld3 --family all --subject
+today --note TEXT --out FILE` twice first (the controls), then once with `--subject artifacts`: families `unknown` and
+`hostile` only. Cross is not looked at: do not run `bench_omni_forms.py final --split withheld3`. `final` refuses
+`--split withheld` and `--split withheld2` for `unknown`, `hostile` and `cross` (spent, opened by the owner on
+2026-11-27) and writes the refusal into the ledger. The rule: [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md),
+"The rule for the look at the third withheld split" (the product must be unchanged since `4f66291`).

@@ -1,6 +1,7 @@
 # Implementation matrix, with outcomes (deliverable 5)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged. The first version (2026-11-26, in git
+Status: 2026-11-27, brought up to date by documentation lane 3 from `omnimind` at `4f66291` (Wave O-3 rows and decisions
+added). Earlier: written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged. The first version (2026-11-26, in git
 at `abc6be4`) ranked 54 changes by a score of benefit, value, impact, confidence, complexity, risk and cost, with
 each row's acceptance criterion; that ranking and its details stay in git history. This version gives every row its
 actual outcome, the lane that did it and the evidence, adds the rows the later waves created, and restates the
@@ -14,6 +15,10 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 - 51 of the 54 first-version rows are built (L4 and L5 for the console only); 35 of them are built and measured. Not
   done: the answer path's use of the planner (L3), durable jobs (L6), optional engines on the system's own bytes (L9),
   and Pocket's view and upload (the Pocket half of L4 and L5). The withheld looks (L8) were taken once each: three are not supported (unknown, hostile, cross).
+- **Wave O-3**: the spent cases of unknown, hostile and cross opened and fixed by class (ADR-081); the relater's three
+  new comparisons built three times, broken three times (24 of 27, 30 of 56, 31 of 63 new pairs wrong) and withdrawn;
+  every relater verdict display-only; the relater not supported; the look at a third unseen set (unknown and hostile
+  only) ruled and not yet taken.
 - Measured rows are measured on synthetic files and simulated people. The planner (C1) was measured and does **not**
   beat the references on held-out by the rule written before the run.
 - Every owner decision of the first version is still open except one the main session ruled under the owner's
@@ -62,7 +67,7 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 | ZF3 | benchmark: learn (simulated people) | built and measured | ZF | as above |
 | S1-S7 | the audit's defects: gateway parts, npz, bounded reads, imagined forget, voice engines, carried settings and launch sites, web setting audit | built (each with a test that failed before) | S, `5445ea0` | ADR-070; `omnimind_s.json` |
 | L1 | the production pipeline | built and measured | P, `b87d90f`; F1, F3 | made 14/14, transform 8/8 development; ADR-076 |
-| L2 | cross-modal binding over artifact links | built and measured, narrowed to measurement against statement | R, `e0e056a`; F3 | cross 72/72 development, 66/6/0 held-out; ADR-077 |
+| L2 | cross-modal binding over artifact links | built and measured, narrowed to measurement against statement; **since Wave O-3 its verdicts are shown only, never stored as links; not supported** | R, `e0e056a`; F3; FX3, FX5 (withdrawal `4f66291`) | cross 72/72 development (70/72 after Wave O-3), 66/6/0 held-out; not supported on either withheld split; ADR-077, ADR-081 |
 | L3 | the answer path asks the planner (`output_forms`) | **open** | none | not built; an owner decision, and the planner's held-out verdict would need a new examination |
 | L4 | showing artifacts in the console and Pocket | built for the console; **open** for Pocket | U, `841c3a0` | ADR-079; e2e 11 of 11 in the lane's file |
 | L5 | an upload route in the console and Pocket | built for the console (off by default); **open** for Pocket | U | `test_console_artifacts.py` |
@@ -85,15 +90,25 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 | the forget hold; the product check's visibility rules; the reader's two blind spots (re-pinned `df21e658...` to `fb51f10c...`); the driver's last decisions (`outcome.member_path`, `FORMS_UNMAPPED`); `add` decoding once; a reader loaded only in the parent refused; console verdict reuse and one decode at a time; the console helpers' import cycle; the MIGRATIONS copy step | built | F4, `1aa7eb6` | lane F4's report; development unchanged (512 / 12 / 0 / 0; forms, cross, learn identical) |
 | the make summary after a partial read (N3), `--partial` on a large archive drawn as its folders (N4), `make` and `remake` exit codes through `outcome.of_production` (N2), plain words with no rule names or raw timings, `--why` naming the form made instead, `nsf form plan -r` (L3), the `artifact_max_bytes` help (N-new-2) | built | F5, `bf3dac6` | `tests/artifacts/test_f5_plain.py`; development unchanged (512 / 12 / 0 / 0; forms, cross, learn identical) |
 
+| Wave O-3: identification by class (a binary signature at the start of text yields to the structure test; Python by parse; Markdown by headings; a ZIP after unclaimed leading bytes) | built and measured (development evidence only) | FX3, `c993873` | opened unknown 158 / 8 / 5 to 170 / 1 / 0 of 171 (`omnimind_fx3.json`); the 1 is the driver's single-level descent, left |
+| Wave O-3: refusal by class (document nesting 256; the artifacts-only AI-address screen; PDF chain loops and unfollowable chains, `self_reference`, `xref_unreadable`; duplicate names; local and central names; UTF-8 flag; WAV zero divisors), reworked after two reviews and the PDF class after a third | built and measured (development evidence only) | FX3 `5e9667d`; FX4 `048ea3a`; FX5 `7f9824b`, `946793e` | opened hostile 51 / 62 to 62 / 62; 63 ordinary PDFs keep their outcomes; the screen best effort, 5 of 12 fresh lines; costs in ADR-081 |
+| Wave O-3: three new relater comparisons (archive members, drawn links, sound cue times) | **dropped** (withdrawn by the owner's decision: three constructions broken by fresh reviewers, 24 of 27, 30 of 56, 31 of 63 new pairs wrong) | FX3 `37d7e10`, FX4 `e7412ad`, FX5 `4eb7ba8`; withdrawn `8faa632` | `omnimind_fx5.json`; those questions now "cannot" |
+| Wave O-3: every relater verdict display-only; the owner's removal step for earlier verdict links (`scripts/omnimind_fx3/links_decided_by.py --by members\|links\|times\|any [--remove]`, a dry run by default, a removal writes no history entry) | built | FX4 `b191f5a`, `38cfe0d`; FX5 `8faa632` | `tests/artifacts/test_fx4_link_rollback.py`, `test_fx5_links.py`, `test_fx5_withdrawn.py` |
+| Wave O-3: a third withheld split (unknown 207 tasks, hostile 72, cross 112) and `final` refusing the spent splits | built; the look **not yet taken** | ZW3, `156edef` (machinery check) | ledger lines 61 to 70 (references only); the rule in `OMNIMIND_BENCHMARK.md` |
+
 ## The owner's decisions, as they now stand
 
 | decision | state | what it allows, and what it costs |
 |---|---|---|
-| **Merging OMNIMIND into `main`, a push, a pull request and a CI run** | open (the main session will ask after the withheld looks) | the commands become part of the product; schemas 20 and 21 are forward-only (an upgraded file cannot be opened by an older build; the way back is the owner's own copy taken before the upgrade). Wave 4 is already in `main` (`b5c8e2a`) and merged into `omnimind`. The code reviewer asks for one CI run of the check job before merging (the added test time fits only if CI is no more than about 2.2 times slower than this host) |
+| **Merging OMNIMIND into `main`, a push, a pull request and a CI run** | open: the owner decides after the third look ("Decide after the look"); `omnimind` is pushed as far as `06a6b30` and carried by the draft pull request #9, unmerged (written earlier: "the main session will ask after the withheld looks") | the commands become part of the product; schemas 20 and 21 are forward-only (an upgraded file cannot be opened by an older build; the way back is the owner's own copy taken before the upgrade). Wave 4 is already in `main` (`b5c8e2a`) and merged into `omnimind`. The code reviewer asks for one CI run of the check job before merging (the added test time fits only if CI is no more than about 2.2 times slower than this host) |
 | **Optional packages** (Pillow, soundfile, pyarrow, PyYAML) | open | JPEG, WebP, MP3, FLAC, Parquet, full YAML; supply-chain exposure, new attack surface |
 | **A model that sees or hears** | open | what a picture shows or a sound holds; binding by meaning; memory (the answer model takes about 44 GiB), a provenance and licence review, and the gateway's screen extended first |
 | **External decoders on untrusted media in a sandbox** (ffmpeg, ImageMagick, vips, Tesseract, LibreOffice are on the host) | open | compressed images, audio, video frames, OCR, legacy office files; each program parses hostile input |
 | **ffmpeg and Chromium on the system's own bytes** | open | video from frames it drew; PDFs of its own documents; the systemd units' `MemoryDenyWriteExecute=yes` would need a drop-in |
 | **Anything automatic** (the answer path's use of the planner, turning `form_learning` to `record` or `apply`) | open; all off | answers in a planned form; learning from real reactions; the extractive answer stays the evidence of record |
 | **The console view and upload** | the view is **on by default** (`console_artifacts`); upload **off** (`console_artifact_upload`); Pocket not covered | the owner may turn the view off with one command; turning upload on accepts files from the console |
+| **Open the spent cases and fix** (2026-11-27, "Open spent cases, fix (Recommended)") | decided; done (Wave O-3) | the first two withheld sets of unknown, hostile and cross became development cases (`SPENT.md`); a third unseen set written first |
+| **Read with a note** (2026-11-27, "Read with a note (Recommended)") | decided; in force | a file pointing outside itself or carrying a macro or script is read with a plain note, never refused for that alone; nothing fetched or run |
+| **Withdraw the relater's new comparisons** (2026-11-27, "Withdraw them") | decided; done (`4f66291`) | those questions are "cannot"; every relater verdict shown, never stored, until a relater passes an examination; the relater not supported |
+| **Merging after the third look** (2026-11-27, "Decide after the look") | decided: the owner decides after the look; pull request #9 stays unmerged until then | the look is for unknown and hostile only; no outcome merges anything by itself |
 | **The graph heat map's colours** | ruled by the main session under the owner's standing grayscale rule: now a gray ramp (lane U) | the owner may still overrule |

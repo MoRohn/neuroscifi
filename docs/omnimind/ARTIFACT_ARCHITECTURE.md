@@ -1,6 +1,7 @@
 # The artifact architecture, as built (deliverable 2)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged (schema 21), from the code and the
+Status: 2026-11-27, brought up to date by documentation lane 3 from `omnimind` at `4f66291` (Wave O-3, ADR-081: the
+relater's verdicts shown only; new identification and refusal rules). Earlier: written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged (schema 21), from the code and the
 decision records ADR-070 to ADR-079 in [../architecture/ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md).
 It replaces the first version of 2026-11-26, which described the design before anything was built. Nothing here is
 merged into `main`. Fix lane F5 (`bf3dac6`) is merged too.
@@ -34,7 +35,7 @@ Package `src/neuroscifi/artifacts/` (91 modules; the default import path needs o
 | checks | `check/` (SVG reading and safety, layout, documents, data files, PNG, WAV, meshes, explorable) | bytes to a verdict, never importing `make/`; `expr.py` is shared with the explorable maker |
 | planner | `forms.py`, `forms_cli.py` | `forms.plan`, `forms.alternatives`, `forms.foresee`; frozen at `4388f4d` |
 | pipeline | `produce.py`, `produce_builders.py` | from files and a request to a made, checked, stored result with its "why" |
-| relating | `relate.py`, `relate_read.py`, `relate_cli.py` | what one artifact measures against what another states or shows; units from a document to a table |
+| relating | `relate.py`, `relate_read.py`, `relate_cli.py` | what one artifact measures against what another states or shows; units from a document to a table; since Wave O-3 its verdicts are shown only, never stored, and three comparisons added in that wave are withdrawn (ADR-081) |
 | learning | `learn.py` | the per-key majority of outcomes (off by default) |
 | commands | `inspect_cli.py`, `cli.py`, `forms_cli.py` | `nsf inspect`, `nsf artifact ...`, `nsf form ...` |
 | page runtime | `web/explorable.mjs`, `web/explorable.css` | mounts an explorable model's spec in a page (a bounded expression language; no code) |
@@ -136,8 +137,13 @@ flowchart LR
 `provenance.MADE` (ADR-071, after ADR-049): a made artifact has origin `made`, a maker (`generator@version`), its
 spec as the editable source, `derived_from` links to every source, the check's verdict and a production record
 (`neuroscifi.production/1`, at most 14 KiB, labelled "made by the system, not evidence"). A plan is labelled "made by
-the system, not evidence". The relater's links (`consistent_with`, `contradicts`) are "the system's claim from
-measuring both artifacts; not evidence". A production's foresight goes to the imagined store as a SIMULATION record
+the system, not evidence". The relater's links (`consistent_with`, `contradicts`) were "the system's claim from
+measuring both artifacts; not evidence". **Since Wave O-3 (the owner's decision of 2026-11-27, ADR-081) no path
+stores them**: every relater verdict is shown with the line "not recorded: the relater's answers are shown only, never
+stored as links, until a relater passes an examination (ADR-081)", in `nsf artifact relate` and in a made document's
+"How the sources relate". `describes` and `same_subject` are recorded as before; `derived_from` is unchanged. Verdict
+links an earlier version stored stay until the owner removes them (`scripts/omnimind_fx3/links_decided_by.py --by
+any`, a dry run unless `--remove`; a removal writes no history entry). A production's foresight goes to the imagined store as a SIMULATION record
 only when `imagine_scenarios` is on (off by default).
 
 ## Making: specifications, generators, checks
