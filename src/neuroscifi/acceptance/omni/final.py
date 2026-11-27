@@ -7,7 +7,13 @@ OMNIMIND_BENCHMARK_FORMS.md, "The withheld split"; the discipline follows the co
   - a missing or blank note (it is the ledger line's reason);
   - a tree that is dirty or not committed, as `git status --porcelain` says (the ledger itself excepted, so that a
     look's own line does not make the next look read as dirty), so that the line names the code it measured;
-  - a withheld file whose SHA-256 is not the one pinned in WITHHELD_SHA256 (a changed file is never scored).
+  - a withheld file whose SHA-256 is not the one pinned in WITHHELD_SHA256 (a changed file is never scored);
+  - a benchmark driver (DRIVERS: `acceptance/omni/subject.py`, `scripts/omni_forms_driver.py`) that is not pinned, or
+    whose SHA-256 differs from its pin, in the tracked file DRIVER_PINS (docs/quality/evidence/
+    omnimind_driver_pins.json). The main session writes that file deliberately (`scripts/bench_omni.py pin-driver`
+    prints it with the current hashes) and commits it before a look; until then every look is refused. Review
+    finding B4: the driver translates the product's answers into the benchmark's outcomes, so a look names the
+    driver it went through, and each ledger line records the drivers' hashes.
 
 `scripts/bench_omni.py final` and `scripts/bench_omni_forms.py final` also refuse an output path inside the checkout
 (a new file would make the tree dirty), an output they cannot write, and a source tree other than their own. Then
@@ -36,6 +42,9 @@ import time
 REPO = Path(__file__).resolve().parents[4]
 LEDGER_NAME = "docs/quality/evidence/omnimind_final_uses.jsonl"
 LEDGER = REPO / LEDGER_NAME
+DRIVERS = ("src/neuroscifi/acceptance/omni/subject.py", "scripts/omni_forms_driver.py")
+DRIVER_PINS_NAME = "docs/quality/evidence/omnimind_driver_pins.json"
+DRIVER_PINS = REPO / DRIVER_PINS_NAME
 HERE = Path(__file__).resolve().parent
 LABEL = ("OMNIMIND benchmark, the WITHHELD split: one look per mechanism, recorded in the ledger before it is "
          "scored; written by lane ZW without reading product code; summaries only")
@@ -61,6 +70,34 @@ class Refused(ValueError):
 def digest(filename: str) -> str:
     """SHA-256 of a withheld file's bytes (nothing is imported)."""
     return hashlib.sha256((HERE / filename).read_bytes()).hexdigest()
+
+
+def driver_hashes(repo: Path = REPO) -> dict[str, str | None]:
+    """The SHA-256 of each benchmark driver as it is on disk (None for a missing file)."""
+    out: dict[str, str | None] = {}
+    for rel in DRIVERS:
+        path = Path(repo) / rel
+        out[rel] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+    return out
+
+
+def pinned_drivers(path: Path | None = None) -> dict:
+    """The drivers' pins from the tracked file ({} when it is missing or not readable as the expected JSON)."""
+    try:
+        data = json.loads(Path(path or DRIVER_PINS).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    pins = data.get("pins") if isinstance(data, dict) else None
+    return pins if isinstance(pins, dict) else {}
+
+
+def pin_document(repo: Path = REPO, commit: str | None = None) -> dict:
+    """What `bench_omni.py pin-driver` prints: the pin file's content with the drivers' current hashes."""
+    return {"label": "OMNIMIND benchmark drivers pinned for the withheld looks (acceptance/omni/final.py refuses a "
+                     "look through a driver whose SHA-256 differs from its pin)",
+            "how": "written by the main session from `scripts/bench_omni.py pin-driver`, committed deliberately "
+                   "before a look; a later driver change needs a new pin and is visible in git",
+            "pinned_at_commit": commit, "pins": driver_hashes(repo)}
 
 
 def environment(repo: Path = REPO) -> dict:
@@ -93,8 +130,9 @@ def out_problem(out: str, repo: Path = REPO) -> str | None:
     return None
 
 
-def check(note: str, families, env: dict) -> None:
-    """Every refusal that comes before the ledger line."""
+def check(note: str, families, env: dict, *, pins: dict | None = None, drivers: dict | None = None) -> None:
+    """Every refusal that comes before the ledger line. `pins` default: the tracked DRIVER_PINS file; `drivers`
+    default: the drivers' hashes on disk."""
     if not (note or "").strip():
         raise Refused("a note is required (it is the ledger line's reason)")
     unknown = [f for f in families if f not in FILE_OF]
@@ -108,6 +146,16 @@ def check(note: str, families, env: dict) -> None:
         if got != WITHHELD_SHA256[name]:
             raise Refused(f"{name}'s SHA-256 is {got[:12]}..., not the pinned {WITHHELD_SHA256[name][:12]}...: it was "
                           "changed and is not scored")
+    pins = pinned_drivers() if pins is None else pins
+    drivers = driver_hashes() if drivers is None else drivers
+    for rel in DRIVERS:
+        want, got = pins.get(rel), drivers.get(rel)
+        if not want:
+            raise Refused(f"{rel} is not pinned in {DRIVER_PINS_NAME}: the main session pins the driver "
+                          "(scripts/bench_omni.py pin-driver) and commits the pin before a look")
+        if got != want:
+            raise Refused(f"{rel}'s SHA-256 is {(got or 'missing')[:12]}..., not the pinned {want[:12]}...: the "
+                          "driver changed after it was pinned")
 
 
 def record(entries: list[dict], ledger: Path = LEDGER) -> int:
@@ -122,16 +170,17 @@ def record(entries: list[dict], ledger: Path = LEDGER) -> int:
 
 
 def look(families, subject, subject_name: str, note: str, *, script: str, scratch: str | None = None,
-         ledger: Path = LEDGER, env: dict | None = None) -> dict:
+         ledger: Path = LEDGER, env: dict | None = None, pins: dict | None = None) -> dict:
     """THE look: refusals, the ledger lines, then the withheld tasks scored. `subject`: a lane Z Subject for lane Z's
     families; for forms / cross / learn a chooser / relater / learner factory, or a reference name."""
     families = list(dict.fromkeys(families))
     env = environment() if env is None else env
-    check(note, families, env)
+    drivers = driver_hashes()
+    check(note, families, env, pins=pins, drivers=drivers)
     at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     entries = [{"at": at, "commit": env["git_commit"], "dirty": env["git_dirty"], "family": f,
                 "subject": subject_name, "note": note, "script": script, "withheld_file": FILE_OF[f],
-                "withheld_sha256": WITHHELD_SHA256[FILE_OF[f]]} for f in families]
+                "withheld_sha256": WITHHELD_SHA256[FILE_OF[f]], "drivers": drivers} for f in families]
     lines = record(entries, ledger)
     out = {"label": LABEL, "generated_at": at, "environment": env, "ledger_lines": lines,
            "ledger_entries": entries, "families": {}}

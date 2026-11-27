@@ -1,0 +1,188 @@
+{
+ "benchmark": "omnimind-forms-cross-learn",
+ "family": "cross",
+ "subject": "neuroscifi.acceptance.omni.subject:relate",
+ "environment": {
+  "git_commit": "7d9038c1d02775cc9ca4224c3ad25c5537b2b7d9",
+  "python": "3.12.16",
+  "generated_at": "2026-11-27T02:25:29Z"
+ },
+ "result": {
+  "label": "OMNIMIND benchmark, family cross: file pairs built by the benchmark's own generators, truth known by construction; each pair has a matching and a non-matching twin that differ in one value; offline; no model",
+  "split": "held_out",
+  "n_cases": 72,
+  "n_pairs": 36,
+  "cases": 72,
+  "correct": {
+   "k": 66,
+   "n": 72,
+   "share": 0.9167
+  },
+  "answered": {
+   "k": 66,
+   "n": 72,
+   "share": 0.9167
+  },
+  "correct_of_answered": {
+   "k": 66,
+   "n": 66,
+   "share": 1.0
+  },
+  "matching": {
+   "cases": 36,
+   "correct": {
+    "k": 33,
+    "n": 36,
+    "share": 0.9167
+   },
+   "answered": {
+    "k": 33,
+    "n": 36,
+    "share": 0.9167
+   },
+   "correct_of_answered": {
+    "k": 33,
+    "n": 33,
+    "share": 1.0
+   }
+  },
+  "non_matching": {
+   "cases": 36,
+   "correct": {
+    "k": 33,
+    "n": 36,
+    "share": 0.9167
+   },
+   "answered": {
+    "k": 33,
+    "n": 36,
+    "share": 0.9167
+   },
+   "correct_of_answered": {
+    "k": 33,
+    "n": 33,
+    "share": 1.0
+   }
+  },
+  "both_twins_correct": {
+   "k": 33,
+   "n": 36,
+   "share": 0.9167
+  },
+  "with_reasons": {
+   "k": 72,
+   "n": 72,
+   "share": 1.0
+  },
+  "by_kind": {
+   "report_total": {
+    "cases": 12,
+    "correct": {
+     "k": 6,
+     "n": 12,
+     "share": 0.5
+    },
+    "answered": {
+     "k": 6,
+     "n": 12,
+     "share": 0.5
+    },
+    "correct_of_answered": {
+     "k": 6,
+     "n": 6,
+     "share": 1.0
+    }
+   },
+   "chart_series": {
+    "cases": 12,
+    "correct": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "correct_of_answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    }
+   },
+   "tones_rows": {
+    "cases": 12,
+    "correct": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "correct_of_answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    }
+   },
+   "mesh_bbox": {
+    "cases": 12,
+    "correct": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "correct_of_answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    }
+   },
+   "code_trace": {
+    "cases": 12,
+    "correct": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "correct_of_answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    }
+   },
+   "timeline_log": {
+    "cases": 12,
+    "correct": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    },
+    "correct_of_answered": {
+     "k": 12,
+     "n": 12,
+     "share": 1.0
+    }
+   }
+  }
+ }
+}

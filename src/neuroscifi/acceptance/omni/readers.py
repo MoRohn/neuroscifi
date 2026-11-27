@@ -3,7 +3,9 @@ them (DESIGN.md §6, "the reading contract"), so that "carried information" is m
 
 - SVG charts: the axes' scales are fitted from tick positions and tick labels (linear or log10 numbers, ISO 8601
   dates, or category labels by position), and every mark's geometry is mapped back through them. `<metadata>` is
-  never read.
+  never read. Only what a person would SEE is read (fix lane F2, review finding M1): a mark, vertex, tick label,
+  node or edge that is hidden, transparent, of zero size, off the canvas, clipped away, covered or painted in the
+  colour beneath it is left out ("SVG visibility" below states the rules).
 - WAV: RIFF parsed by hand; a sonified series is cut into its equal-length tones and each tone's pitch is the
   interpolated FFT peak, mapped back to a value between the two frequencies the request states.
 - Meshes (binary and ASCII STL, OBJ, PLY): signed volume (divergence theorem), area, bounds, edge-manifold
@@ -19,6 +21,7 @@ reference artifacts (tests/acceptance/test_omni_readers.py).
 """
 from __future__ import annotations
 
+import colorsys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import math
@@ -127,6 +130,420 @@ def _text(el: ET.Element) -> str:
     return " ".join("".join(el.itertext()).split())
 
 
+# ---- SVG visibility: only what a person would see is read --------------------------------------------------------------
+#
+# A mark, a series vertex, a tick label, a diagram node's label or an edge is read only when it is SEEN, in every colour
+# scheme the picture defines (light, and dark when a `prefers-color-scheme: dark` rule exists). It is not seen when:
+# it or an ancestor has display:none or sits in defs/clipPath/mask/pattern/symbol/marker; its visibility is hidden or
+# collapse; a mask, a CSS filter or a blend mode applies (the reader cannot establish what they leave); it has zero
+# size (r <= 0, a bar of zero width across its value axis, a degenerate transform, a polyline whose points coincide,
+# font-size <= 0; a bar of zero LENGTH is read as the baseline value where it is placed, as a person reads it); its probe point lies outside the canvas (the root's viewBox, else its width and height) or outside a clip
+# path (rect, circle, ellipse, polygon or path children, user-space units; any other clip is "not established");
+# a later opaque area shape (rect, circle, ellipse, polygon, path) that is neither a data mark nor part of the
+# element's own drawing (in its parent group, in its colour: an edge's arrowhead) covers it; or its
+# paint, after every opacity, differs from what is beneath it (the topmost earlier opaque shape that is not a data
+# mark, else the root's background, else white) by less than 4 of 255 levels in every channel. A colour the reader cannot resolve to RGB
+# (an unknown name, an unresolved variable) is not seen. Style sheets are evaluated for simple selectors (type,
+# #id, .class, :root, *, with descendant and child combinators); a rule this reader cannot evaluate that sets a
+# property affecting paint, visibility or geometry, and geometry set by CSS below the root, are a ReadError.
+# A pattern (url(#...)) paint is seen when not transparent; a pattern beneath a mark is not resolved.
+
+_NOT_RENDERED = frozenset({"defs", "clipPath", "mask", "pattern", "symbol", "marker", "linearGradient",
+                           "radialGradient", "metadata", "title", "desc", "style"})
+_AREA = frozenset({"rect", "circle", "ellipse", "polygon", "path"})
+_DATA_CLASSES = frozenset({"mark", "marker", "series"})
+_INHERITED = frozenset({"fill", "stroke", "fill-opacity", "stroke-opacity", "stroke-width", "visibility", "color",
+                        "font-size"})
+_OWN = frozenset({"display", "opacity", "clip-path", "mask", "filter", "mix-blend-mode", "background",
+                  "background-color"})
+_GEOMETRY = frozenset({"transform", "translate", "rotate", "scale", "x", "y", "cx", "cy", "r", "rx", "ry", "width",
+                       "height", "d", "points", "x1", "y1", "x2", "y2", "offset-path", "font-size"})
+_SEEN_LEVEL = 4 / 255
+_COLOR_NAMES = {
+    "black": "000000", "white": "ffffff", "gray": "808080", "grey": "808080", "silver": "c0c0c0",
+    "dimgray": "696969", "dimgrey": "696969", "darkgray": "a9a9a9", "darkgrey": "a9a9a9", "lightgray": "d3d3d3",
+    "lightgrey": "d3d3d3", "gainsboro": "dcdcdc", "whitesmoke": "f5f5f5", "red": "ff0000", "green": "008000",
+    "blue": "0000ff", "yellow": "ffff00", "orange": "ffa500", "purple": "800080", "navy": "000080",
+    "teal": "008080", "maroon": "800000", "olive": "808000", "lime": "00ff00", "aqua": "00ffff",
+    "cyan": "00ffff", "fuchsia": "ff00ff", "magenta": "ff00ff"}
+_COMPOUND = re.compile(r"(\*|[A-Za-z][\w-]*)?((?:[#.][\w-]+|:root)*)")
+
+
+def _decls(body: str) -> dict[str, str]:
+    out = {}
+    for decl in (body or "").split(";"):
+        if ":" in decl:
+            prop, value = decl.split(":", 1)
+            prop = prop.strip()
+            out[prop if prop.startswith("--") else prop.lower()] = value.replace("!important", "").strip()
+    return out
+
+
+def _parse_selector(text: str):
+    """[(combinator, (tag, ids, classes, root))] right to left, or None when this reader cannot evaluate it."""
+    parts = re.findall(r"\s*(>)?\s*([^\s>]+)", text.strip())
+    if not text.strip() or "".join(c + s for c, s in parts).replace(" ", "") != text.replace(" ", ""):
+        return None
+    out = []
+    for comb, comp in parts:
+        m = _COMPOUND.fullmatch(comp)
+        if not m or not comp:
+            return None
+        tag = m.group(1) if m.group(1) not in (None, "*") else None
+        rest = m.group(2)
+        out.append((comb or " ", (tag, tuple(re.findall(r"#([\w-]+)", rest)), tuple(re.findall(r"\.([\w-]+)", rest)),
+                                  ":root" in rest)))
+    return out[::-1]
+
+
+def _compound_matches(node: "_El", comp) -> bool:
+    tag, ids, classes, root = comp
+    return ((tag is None or node.tag == tag) and all(node.el.get("id") == i for i in ids)
+            and all(c in node.classes for c in classes) and (not root or not node.ancestors))
+
+
+def _selector_matches(node: "_El", sel) -> bool:
+    if not _compound_matches(node, sel[0][1]):
+        return False
+    chain = list(node.ancestors)
+
+    def rest(k: int, upto: int) -> bool:          # sel[k] must match an ancestor among chain[:upto]
+        if k == len(sel):
+            return True
+        comb = sel[k - 1][0]
+        candidates = [upto - 1] if comb == ">" else range(upto - 1, -1, -1)
+        return any(i >= 0 and _compound_matches(chain[i], sel[k][1]) and rest(k + 1, i) for i in candidates)
+
+    return rest(1, len(chain))
+
+
+def _css_rules(css: str) -> list[tuple[str, list, dict, tuple]]:
+    """(scheme "all"|"dark", selector, declarations, (specificity, order)) for every rule this reader evaluates."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    out: list = []
+
+    def scan(text: str, scheme: str) -> None:
+        i = 0
+        while True:
+            start = text.find("{", i)
+            if start < 0:
+                return
+            depth, j = 0, start
+            while j < len(text):
+                depth += {"{": 1, "}": -1}.get(text[j], 0)
+                if depth == 0:
+                    break
+                j += 1
+            if depth:
+                raise ReadError("unbalanced braces in a style sheet")
+            head, body = text[i:start].rsplit(";", 1)[-1].strip(), text[start + 1:j]
+            i = j + 1
+            if head.startswith("@"):
+                dark = re.fullmatch(r"@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)", head)
+                scan(body, "dark" if dark and scheme == "all" else "other")
+                continue
+            decls = _decls(body)
+            touches = [k for k in decls if k in _INHERITED | _OWN | _GEOMETRY or k.startswith("--")]
+            for part in head.split(","):
+                sel = _parse_selector(part)
+                if scheme == "other" or sel is None:
+                    if touches:
+                        raise ReadError(f"a style rule this reader cannot evaluate ({part.strip()[:40]!r}) sets "
+                                        f"{touches[0]}")
+                    continue
+                spec = (sum(len(c[1]) for _, c in sel), sum(len(c[2]) + c[3] for _, c in sel),
+                        sum(c[0] is not None for _, c in sel))
+                out.append((scheme, sel, decls, (spec, len(out))))
+
+    scan(css, "all")
+    return out
+
+
+def _hex_rgba(h: str) -> tuple[float, float, float, float]:
+    if len(h) in (3, 4):
+        h = "".join(c * 2 for c in h)
+    vals = [int(h[k:k + 2], 16) / 255 for k in range(0, len(h), 2)]
+    return (vals[0], vals[1], vals[2], vals[3] if len(vals) == 4 else 1.0)
+
+
+def _channel(part: str, scale: float) -> float:
+    return float(part[:-1]) / 100 if part.endswith("%") else float(part) / scale
+
+
+def _plain_rgba(v: str):
+    """RGBA in [0, 1] for a literal colour, or None when this is not one this reader resolves."""
+    if v == "transparent":
+        return (0.0, 0.0, 0.0, 0.0)
+    if v in _COLOR_NAMES:
+        return _hex_rgba(_COLOR_NAMES[v])
+    m = re.fullmatch(r"#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})", v)
+    if m:
+        return _hex_rgba(m.group(1))
+    m = re.fullmatch(r"(rgba?|hsla?)\(([^)]*)\)", v)
+    if not m:
+        return None
+    parts = [p for p in re.split(r"[,\s/]+", m.group(2).strip()) if p]
+    try:
+        alpha = _channel(parts[3], 1.0) if len(parts) > 3 else 1.0
+        if m.group(1).startswith("rgb"):
+            return (*(_channel(p, 255.0) for p in parts[:3]), alpha)
+        h = float(parts[0].rstrip("deg")) / 360.0
+        r, g, b = colorsys.hls_to_rgb(h % 1.0, _channel(parts[2], 100.0), _channel(parts[1], 100.0))
+        return (r, g, b, alpha)
+    except (ValueError, IndexError):
+        return None
+
+
+def _number(value, default: float) -> float:
+    if value is None:
+        return default
+    m = re.match(_NUM, str(value).strip())
+    if not m:
+        return default
+    v = float(m.group(0))
+    return v / 100 if str(value).strip().endswith("%") else v
+
+
+class _Scene:
+    """Computed styles, canvas and paint order of one SVG, so that each probe point can be judged seen or not."""
+
+    def __init__(self, root: ET.Element, nodes: list[_El]):
+        self.nodes = nodes
+        self.index = {id(n): i for i, n in enumerate(nodes)}
+        self.by_id = {n.el.get("id"): n for n in nodes if n.el.get("id")}
+        self.rules = _css_rules("".join(n.el.text or "" for n in nodes if n.tag == "style"))
+        self.schemes = ("light", "dark") if any(r[0] == "dark" for r in self.rules) else ("light",)
+        self.styles = {s: {} for s in self.schemes}
+        for scheme in self.schemes:
+            for n in nodes:
+                self.styles[scheme][id(n)] = self._compute(n, scheme)
+        box = [float(v) for v in re.findall(_NUM, root.get("viewBox") or "")]
+        if len(box) == 4:
+            self.canvas = (box[0], box[1], box[0] + box[2], box[1] + box[3])
+        else:
+            w, h = root.get("width", ""), root.get("height", "")
+            self.canvas = ((0.0, 0.0, _number(w, 0.0), _number(h, 0.0))
+                           if re.fullmatch(_NUM + r"(px)?", w.strip()) and re.fullmatch(_NUM + r"(px)?", h.strip())
+                           else None)
+
+    def _compute(self, n: _El, scheme: str) -> dict[str, str]:
+        parent = self.styles[scheme][id(n.ancestors[-1])] if n.ancestors else {}
+        out = {k: v for k, v in parent.items() if k in _INHERITED or k.startswith("--")}
+        spec = {k: n.el.get(k).strip() for k in _INHERITED | _OWN if n.el.get(k) is not None}
+        css: dict[str, str] = {}
+        for _, sel, decls, _ in sorted((r for r in self.rules if r[0] in ("all", scheme)
+                                        and _selector_matches(n, r[1])), key=lambda r: r[3]):
+            css.update(decls)
+        css.update(_decls(n.el.get("style", "")))
+        if n.ancestors and (moved := sorted(set(css) & (_GEOMETRY - {"font-size"}))):
+            raise ReadError(f"geometry set by CSS ({moved[0]} on <{n.tag}>) is not read")
+        spec.update({k: v for k, v in css.items() if k in _INHERITED | _OWN or k.startswith("--")})
+        for k, v in spec.items():
+            if v == "inherit":
+                if k in parent:
+                    out[k] = parent[k]
+            else:
+                out[k] = v
+        return out
+
+    # -- colours ------------------------------------------------------------------------------------------------------
+
+    def color(self, value: str | None, style: dict, depth: int = 0):
+        """None (no paint), "pattern", an RGBA tuple, or "unknown"."""
+        if value is None or depth > 10:
+            return "unknown" if depth > 10 else None
+        v = value.strip()
+        low = v.lower()
+        if low == "none":
+            return None
+        if low.startswith("url("):
+            return "pattern"
+        m = re.fullmatch(r"var\(\s*(--[\w-]+)\s*(?:,\s*(.*))?\)", v, flags=re.S)
+        if m:
+            got = style.get(m.group(1), m.group(2))
+            return self.color(got, style, depth + 1) if got is not None else "unknown"
+        if low == "currentcolor":
+            c = style.get("color", "black")
+            return self.color("black" if c.lower() == "currentcolor" else c, style, depth + 1)
+        rgba = _plain_rgba(low)
+        return rgba if rgba is not None else "unknown"
+
+    def _canvas_color(self, scheme: str):
+        root = self.styles[scheme][id(self.nodes[0])]
+        for prop in ("background-color", "background"):
+            for token in [root.get(prop, "")] + root.get(prop, "").split():
+                c = self.color(token, root) if token else None
+                if isinstance(c, tuple) and c[3] >= 0.999:
+                    return c[:3]
+        return (1.0, 1.0, 1.0)
+
+    # -- geometry ------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def _local(ctm: np.ndarray, point) -> tuple[float, float] | None:
+        if abs(np.linalg.det(ctm)) < 1e-12:
+            return None
+        p = np.linalg.inv(ctm) @ np.array([point[0], point[1], 1.0])
+        return float(p[0]), float(p[1])
+
+    def contains(self, shape: _El, ctm: np.ndarray, point) -> bool:
+        """Whether `point` lies inside an area shape (a path by its absolute M/L/H/V/C/Q end points); a shape whose
+        geometry this reader does not read contains nothing."""
+        try:
+            return self._contains(shape, ctm, point)
+        except ReadError:
+            return False
+
+    def _contains(self, shape: _El, ctm: np.ndarray, point) -> bool:
+        local = self._local(ctm, point)
+        if local is None:
+            return False
+        x, y = local
+        if shape.tag == "rect":
+            x0, y0, w, h = shape.attr("x"), shape.attr("y"), shape.attr("width"), shape.attr("height")
+            return w > 0 and h > 0 and x0 <= x <= x0 + w and y0 <= y <= y0 + h
+        if shape.tag in ("circle", "ellipse"):
+            rx = shape.attr("r") if shape.tag == "circle" else shape.attr("rx")
+            ry = shape.attr("r") if shape.tag == "circle" else shape.attr("ry")
+            return rx > 0 and ry > 0 and ((x - shape.attr("cx")) / rx) ** 2 + ((y - shape.attr("cy")) / ry) ** 2 <= 1
+        poly = (_points_attr(shape.el.get("points", "")) if shape.tag == "polygon"
+                else _path_ends(shape.el.get("d", "")) if shape.tag == "path" else [])
+        inside = False
+        for (ax, ay), (bx, by) in zip(poly, poly[1:] + poly[:1]):
+            if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+                inside = not inside
+        return inside
+
+    # -- what is rendered, where, and over what ------------------------------------------------------------------
+
+    def _chain(self, n: _El) -> tuple[_El, ...]:
+        return (*n.ancestors, n)
+
+    def rendered(self, n: _El, scheme: str) -> bool:
+        st = self.styles[scheme]
+        for a in self._chain(n):
+            s = st[id(a)]
+            if (a.ancestors and a.tag in _NOT_RENDERED) or s.get("display", "").lower() == "none":
+                return False
+            if s.get("mask", "none").lower() != "none" or s.get("filter", "none").lower() != "none":
+                return False
+            if s.get("mix-blend-mode", "normal").lower() != "normal":
+                return False
+        return st[id(n)].get("visibility", "visible").lower() not in ("hidden", "collapse")
+
+    def opacity(self, n: _El, scheme: str) -> float:
+        out = 1.0
+        for a in self._chain(n):
+            out *= min(1.0, max(0.0, _number(self.styles[scheme][id(a)].get("opacity"), 1.0)))
+        return out
+
+    def unclipped(self, n: _El, scheme: str, point) -> bool:
+        for a in self._chain(n):
+            value = self.styles[scheme][id(a)].get("clip-path", "none").strip()
+            if value.lower() == "none":
+                continue
+            m = re.fullmatch(r"url\(\s*['\"]?#([^)'\"]+)['\"]?\s*\)", value)
+            clip = self.by_id.get(m.group(1)) if m else None
+            if clip is None or clip.tag != "clipPath" or clip.el.get("clipPathUnits") == "objectBoundingBox":
+                return False
+            kids = [k for k in self.nodes if k.ancestors and k.ancestors[-1] is clip and k.tag in _AREA]
+            if not any(self.contains(k, a.ctm @ _matrix(k.el.get("transform")), point) for k in kids):
+                return False
+        return True
+
+    def in_canvas(self, point) -> bool:
+        if self.canvas is None:
+            return True
+        x0, y0, x1, y1 = self.canvas
+        return x0 - 1e-6 <= point[0] <= x1 + 1e-6 and y0 - 1e-6 <= point[1] <= y1 + 1e-6
+
+    def _opaque_fill(self, n: _El, scheme: str):
+        """The fill of an opaque area shape (an RGB tuple, or "pattern"), or None when it is not one."""
+        if n.tag not in _AREA or not self.rendered(n, scheme) or self.opacity(n, scheme) < 0.999:
+            return None
+        s = self.styles[scheme][id(n)]
+        if _number(s.get("fill-opacity"), 1.0) < 0.999:
+            return None
+        c = self.color(s.get("fill", "black"), s)
+        if c == "pattern":
+            return c
+        return c[:3] if isinstance(c, tuple) and c[3] >= 0.999 else None
+
+    def _own_drawing(self, n: _El, other: _El, scheme: str) -> bool:
+        """`other` is part of `n`'s own drawing (an edge's arrowhead): same parent group, painted in n's colour."""
+        if not (n.ancestors and other.ancestors and other.ancestors[-1] is n.ancestors[-1]):
+            return False
+        mine, theirs = self.styles[scheme][id(n)], self.styles[scheme][id(other)]
+        paint = {self.color(mine.get("stroke", "none"), mine), self.color(mine.get("fill", "black"), mine)}
+        return self.color(theirs.get("fill", "black"), theirs) in paint - {None, "unknown"}
+
+    def covered(self, n: _El, scheme: str, point) -> bool:
+        for other in self.nodes[self.index[id(n)] + 1:]:
+            if n in other.ancestors or _DATA_CLASSES & set(other.classes) or self._own_drawing(n, other, scheme):
+                continue
+            if (self._opaque_fill(other, scheme) is not None and self.contains(other, other.ctm, point)
+                    and self.unclipped(other, scheme, point)):
+                return True
+        return False
+
+    def beneath(self, n: _El, scheme: str, point):
+        for other in reversed(self.nodes[:self.index[id(n)]]):
+            if other in n.ancestors or _DATA_CLASSES & set(other.classes):
+                continue                             # marks drawn over marks are each seen (as in a scatter)
+            fill = self._opaque_fill(other, scheme)
+            if fill is not None and self.contains(other, other.ctm, point) and self.unclipped(other, scheme, point):
+                return None if fill == "pattern" else fill
+        return self._canvas_color(scheme)
+
+    def paint_seen(self, n: _El, scheme: str, point, stroke_only: bool = False) -> bool:
+        s = self.styles[scheme][id(n)]
+        under = self.beneath(n, scheme, point)
+        opacity = self.opacity(n, scheme)
+        for prop, default in (("fill", "black"), ("stroke", "none")):
+            if prop == "fill" and (stroke_only or n.tag == "line"):
+                continue
+            if prop == "stroke" and _number(s.get("stroke-width"), 1.0) <= 0:
+                continue
+            c = self.color(s.get(prop, default), s)
+            if c is None or c == "unknown":
+                continue
+            alpha = opacity * min(1.0, max(0.0, _number(s.get(prop + "-opacity"), 1.0)))
+            if c == "pattern" or under is None:
+                if alpha > 0.01:
+                    return True
+                continue
+            a = alpha * c[3]
+            if max(abs(a * ci + (1 - a) * bi - bi) for ci, bi in zip(c[:3], under)) >= _SEEN_LEVEL:
+                return True
+        return False
+
+    def seen(self, n: _El, point, *, stroke_only: bool = False) -> bool:
+        """Whether a person sees element `n` at `point` (root coordinates), in every colour scheme. A line (a series,
+        an edge) is judged by its stroke only."""
+        if abs(np.linalg.det(n.ctm)) < 1e-12 or not self.in_canvas(point):
+            return False
+        return all(self.rendered(n, s) and self.unclipped(n, s, point) and not self.covered(n, s, point)
+                   and self.paint_seen(n, s, point, stroke_only) for s in self.schemes)
+
+    def placed(self, n: _El, point) -> bool:
+        """Rendered, unclipped and on the canvas at `point` (no paint asked: for a bar of zero length)."""
+        if abs(np.linalg.det(n.ctm)) < 1e-12 or not self.in_canvas(point):
+            return False
+        return all(self.rendered(n, s) and self.opacity(n, s) > 0 and self.unclipped(n, s, point)
+                   for s in self.schemes)
+
+    def text_seen(self, n: _El) -> bool:
+        if not _text(n.el) or any(_number(self.styles[s][id(n)].get("font-size"), 16.0) <= 0 for s in self.schemes):
+            return False
+        return self.seen(n, n.point(n.attr("x"), n.attr("y")))
+
+    def visible_text(self, group: _El) -> str:
+        """The text a person reads in `group`: its seen <text> elements, in order."""
+        texts = [t for t in self.nodes if t.tag == "text" and (t is group or group in t.ancestors)
+                 and not any(a.tag == "text" for a in t.ancestors)]
+        return " ".join(_text(t.el) for t in texts if self.text_seen(t))
+
+
 # ---- SVG charts: scales and marks -------------------------------------------------------------------------------------
 
 def _parse_tick_value(label: str):
@@ -219,7 +636,7 @@ class ChartReading:
         return out
 
 
-def _axis_ticks(nodes: list[_El], axis: str) -> list[tuple[float, str]]:
+def _axis_ticks(nodes: list[_El], axis: str, scene: "_Scene") -> list[tuple[float, str]]:
     groups = [n for n in nodes if n.tag == "g" and "axis" in n.classes and axis in n.classes]
     if len(groups) != 1:
         raise ReadError(f"expected one <g class=\"axis {axis}\">, found {len(groups)}")
@@ -228,7 +645,7 @@ def _axis_ticks(nodes: list[_El], axis: str) -> list[tuple[float, str]]:
     for n in nodes:
         if n.tag == "g" and "tick" in n.classes and group in n.ancestors:
             x, y = n.point(0.0, 0.0)
-            label = _text(n.el)
+            label = scene.visible_text(n)            # a label nobody can see is not a tick a person reads
             if label:
                 ticks.append((x if axis == "x" else y, label))
     return ticks
@@ -249,28 +666,52 @@ def _points_attr(value: str) -> list[tuple[float, float]]:
 
 
 def read_chart(data: bytes) -> ChartReading:
-    """Recover the marks of an SVG chart through its axes (the reading contract of DESIGN.md §6)."""
-    nodes = _walk(parse_svg(data))
+    """Recover the marks of an SVG chart through its axes (the reading contract of DESIGN.md §6). Only what a person
+    would see is read (see "SVG visibility" above): a hidden, transparent, empty, off-canvas, clipped, covered or
+    background-coloured mark, vertex or tick label is left out."""
+    root = parse_svg(data)
+    nodes = _walk(root)
+    scene = _Scene(root, nodes)
     plots = [n for n in nodes if n.tag == "g" and "plot" in n.classes]
     if len(plots) != 1:
         raise ReadError(f"expected one <g class=\"plot\">, found {len(plots)}")
     plot = plots[0]
-    xs, ys = fit_scale(_axis_ticks(nodes, "x")), fit_scale(_axis_ticks(nodes, "y"))
+    xs, ys = fit_scale(_axis_ticks(nodes, "x", scene)), fit_scale(_axis_ticks(nodes, "y", scene))
     reading = ChartReading(xs, ys)
     for n in nodes:
         if plot not in n.ancestors:
             continue
         if n.tag == "circle" and "mark" in n.classes:
             px, py = n.point(n.attr("cx"), n.attr("cy"))
-            reading.marks.append(Mark(_series_name(n), "point", xs.value(px), ys.value(py)))
+            if n.attr("r") > 0 and scene.seen(n, (px, py)):
+                reading.marks.append(Mark(_series_name(n), "point", xs.value(px), ys.value(py)))
         elif n.tag == "rect" and "mark" in n.classes:
-            x0, y0 = n.attr("x"), n.attr("y")
-            p0 = n.point(x0, y0)
-            p1 = n.point(x0 + n.attr("width"), y0 + n.attr("height"))
-            reading.marks.append(_bar(_series_name(n), p0, p1, xs, ys))
+            x0, y0, w, h = n.attr("x"), n.attr("y"), n.attr("width"), n.attr("height")
+            along_y = ys.kind != "category"          # the value runs along y unless the y axis holds categories
+            if w < 0 or h < 0 or (h if along_y else w) <= 0 and (w if along_y else h) <= 0:
+                continue
+            if (h if along_y else w) == 0:
+                # A bar of zero length draws nothing, and a person reads its category at the baseline: it is read
+                # as the baseline value where it is placed (on the canvas, unclipped, not hidden). Zero across the
+                # value axis (a bar of zero width) draws nothing and says nothing: not read.
+                if (w if along_y else h) > 0 and scene.placed(n, n.point(x0 + w / 2, y0 + h / 2)):
+                    reading.marks.append(_bar(_series_name(n), n.point(x0, y0), n.point(x0 + w, y0 + h), xs, ys))
+                continue
+            if (w if along_y else h) <= 0:
+                continue
+            dx, dy = min(0.5, w / 4), min(0.5, h / 4)
+            probes = [(x0 + w / 2, y0 + h / 2), (x0 + w / 2, y0 + dy), (x0 + w / 2, y0 + h - dy),
+                      (x0 + dx, y0 + h / 2), (x0 + w - dx, y0 + h / 2)]
+            if all(scene.seen(n, n.point(*p)) for p in probes):
+                p0 = n.point(x0, y0)
+                p1 = n.point(x0 + w, y0 + h)
+                reading.marks.append(_bar(_series_name(n), p0, p1, xs, ys))
         elif n.tag == "polyline" and "series" in n.classes:
-            pts = tuple((xs.value(px), ys.value(py)) for px, py in (n.point(x, y) for x, y in
-                                                                    _points_attr(n.el.get("points", ""))))
+            vertices = [n.point(x, y) for x, y in _points_attr(n.el.get("points", ""))]
+            if len(set(vertices)) < 2:
+                continue                             # a polyline whose points coincide draws nothing
+            pts = tuple((xs.value(px), ys.value(py)) for px, py in vertices
+                        if scene.seen(n, (px, py), stroke_only=True))
             reading.marks.append(Mark(_series_name(n), "line", points=pts))
     return reading
 
@@ -325,6 +766,23 @@ def carried_points(source: list[tuple[float, float]], recovered: list[tuple[floa
 
 
 # ---- SVG diagrams (node-link) ---------------------------------------------------------------------------------------
+
+def _first_shape(node: _El, nodes: list[_El]) -> _El | None:
+    return next((n for n in nodes if (node in n.ancestors or n is node) and n.tag in ("circle", "ellipse", "rect")),
+                None)
+
+
+def _along(points: list[tuple[float, float]], share: float) -> tuple[float, float]:
+    """The point a `share` of the way along a polyline (by length)."""
+    lengths = [math.dist(a, b) for a, b in zip(points, points[1:])]
+    left = sum(lengths) * share
+    for (a, b), d in zip(zip(points, points[1:]), lengths):
+        if left <= d and d > 0:
+            t = left / d
+            return a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])
+        left -= d
+    return points[-1]
+
 
 def _shape_center(node: _El, nodes: list[_El]) -> tuple[float, float]:
     for n in nodes:
@@ -381,11 +839,19 @@ def read_diagram(data: bytes) -> DiagramReading:
     rect inside (else the group's origin); edges are elements of class "edge" (line, polyline or path), each end
     attached to the nearest node. (DESIGN.md §6 fixes the contract for charts only; this is the benchmark's reading
     of a diagram, stated in docs/quality/OMNIMIND_BENCHMARK.md.)"""
-    nodes = _walk(parse_svg(data))
+    root = parse_svg(data)
+    nodes = _walk(root)
+    scene = _Scene(root, nodes)
     graph_nodes = [n for n in nodes if n.tag == "g" and "node" in n.classes]
     if not graph_nodes:
         raise ReadError("no <g class=\"node\">")
-    centers = [(_text(n.el), _shape_center(n, nodes)) for n in graph_nodes]
+    centers = []
+    for n in graph_nodes:
+        label, shape = scene.visible_text(n), _first_shape(n, nodes)
+        if label or (shape is not None and scene.seen(shape, _shape_center(n, nodes))):
+            centers.append((label, _shape_center(n, nodes)))     # a node nobody can see is not read
+    if not centers:
+        raise ReadError("no node a person can see")
     edges = []
     for n in nodes:
         if "edge" not in n.classes or n.tag not in ("line", "polyline", "path"):
@@ -396,8 +862,8 @@ def read_diagram(data: bytes) -> DiagramReading:
             ends = [n.point(x, y) for x, y in _points_attr(n.el.get("points", ""))]
         else:
             ends = [n.point(x, y) for x, y in _path_ends(n.el.get("d", ""))]
-        if len(ends) < 2:
-            continue
+        if len(ends) < 2 or not any(scene.seen(n, _along(ends, k / 20), stroke_only=True) for k in range(1, 20)):
+            continue                                 # an edge is read when some stretch of it can be seen
         a, b = ends[0], ends[-1]
         near = [min(centers, key=lambda c: (c[1][0] - p[0]) ** 2 + (c[1][1] - p[1]) ** 2)[0] for p in (a, b)]
         edges.append((near[0], near[1]))

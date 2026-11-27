@@ -1,0 +1,102 @@
+{
+ "cases_sha256": "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c",
+ "commit": "c1f5f2f",
+ "label": "OMNIMIND benchmark: synthetic files assembled by the benchmark's own encoders from known values; offline; no model; exact comparison within stated tolerances",
+ "machine": "aarch64",
+ "python": "3.12.16",
+ "recorded": "2026-11-27",
+ "splits": {
+  "held_out": {
+   "families": {
+    "compound": {
+     "abstained": 2,
+     "abstention_floor": 0,
+     "by_kind": {
+      "measure": {
+       "abstained": 2,
+       "failed": 0,
+       "right": 38,
+       "wrong": 0
+      }
+     },
+     "fabrication": 0,
+     "fabrication_rate": 0.0,
+     "failed": 0,
+     "failures": {},
+     "family": "compound",
+     "n": 40,
+     "right": 38,
+     "score": 0.95,
+     "split": "held_out",
+     "subject": "artifacts",
+     "tasks": {
+      "compound/held_out/docx-with-image-and-long-table/doc.figures": "right",
+      "compound/held_out/docx-with-image-and-long-table/doc.headings": "right",
+      "compound/held_out/docx-with-image-and-long-table/doc.table_cell:0,0,0": "right",
+      "compound/held_out/docx-with-image-and-long-table/doc.table_cell:0,0,1": "right",
+      "compound/held_out/docx-with-image-and-long-table/word/media/image1.png::image.pixel:0,0": "abstained",
+      "compound/held_out/docx-with-image-and-long-table/word/media/image1.png::image.size": "abstained",
+      "compound/held_out/notebook-and-data-in-zip-held/work/analysis.ipynb::doc.headings": "right",
+      "compound/held_out/notebook-and-data-in-zip-held/work/analysis.ipynb::notebook.code:0": "right",
+      "compound/held_out/notebook-and-data-in-zip-held/work/analysis.ipynb::notebook.code_cells": "right",
+      "compound/held_out/notebook-and-data-in-zip-held/work/input.csv::table.n_rows": "right",
+      "compound/held_out/wav-and-meta-in-zip/audio/meta.json::tree.value:recorded_by": "right",
+      "compound/held_out/wav-and-meta-in-zip/audio/take.wav::audio.dominant_hz": "right",
+      "compound/held_out/wav-and-meta-in-zip/audio/take.wav::audio.duration_s": "right",
+      "compound/held_out/wav-and-meta-in-zip/audio/take.wav::audio.n_onsets": "right",
+      "compound/held_out/xlsx-four-sheets/Q1::table.cell:0,1": "right",
+      "compound/held_out/xlsx-four-sheets/Q1::table.cell:0,2": "right",
+      "compound/held_out/xlsx-four-sheets/Q1::table.n_rows": "right",
+      "compound/held_out/xlsx-four-sheets/Q2::table.cell:1,1": "right",
+      "compound/held_out/xlsx-four-sheets/Q2::table.cell:1,2": "right",
+      "compound/held_out/xlsx-four-sheets/Q2::table.n_rows": "right",
+      "compound/held_out/xlsx-four-sheets/Q3::table.cell:4,1": "right",
+      "compound/held_out/xlsx-four-sheets/Q3::table.cell:4,2": "right",
+      "compound/held_out/xlsx-four-sheets/Q3::table.n_rows": "right",
+      "compound/held_out/xlsx-four-sheets/Q4::table.cell:0,1": "right",
+      "compound/held_out/xlsx-four-sheets/Q4::table.cell:0,2": "right",
+      "compound/held_out/xlsx-four-sheets/Q4::table.n_rows": "right",
+      "compound/held_out/xlsx-four-sheets/table.sheets": "right",
+      "compound/held_out/zip-csv-png-report-held/bundle.members": "right",
+      "compound/held_out/zip-csv-png-report-held/data/light.csv::table.column_mean:hours": "right",
+      "compound/held_out/zip-csv-png-report-held/data/light.csv::table.n_rows": "right",
+      "compound/held_out/zip-csv-png-report-held/figures/light.png::image.mean_gray": "right",
+      "compound/held_out/zip-csv-png-report-held/figures/light.png::image.pixel:8,12": "right",
+      "compound/held_out/zip-csv-png-report-held/figures/light.png::image.size": "right",
+      "compound/held_out/zip-csv-png-report-held/report.md::doc.figure_members": "right",
+      "compound/held_out/zip-csv-png-report-held/report.md::doc.figures": "right",
+      "compound/held_out/zip-csv-png-report-held/report.md::doc.headings": "right",
+      "compound/held_out/zip-inside-tgz/inner.zip::bundle.members": "right",
+      "compound/held_out/zip-inside-tgz/inner.zip::data/values.csv::table.column_mean:trips": "right",
+      "compound/held_out/zip-inside-tgz/inner.zip::data/values.csv::table.n_rows": "right",
+      "compound/held_out/zip-inside-tgz/inner.zip::meta.json::tree.value:owner": "right"
+     },
+     "wall_s": 0.05,
+     "wrong": 0
+    }
+   },
+   "frozen": {
+    "compound": {
+     "n": 40,
+     "sha256": "fc48a744a7febd4fa40d4e699b79281074dde4903d574980f404019462bf3d3e"
+    }
+   },
+   "totals": {
+    "abstained": 2,
+    "abstention_floor": 0,
+    "fabrication": 0,
+    "failed": 0,
+    "n": 40,
+    "right": 38,
+    "score": 0.95,
+    "wrong": 0
+   },
+   "wall_s": 0.1
+  }
+ },
+ "subject": "artifacts",
+ "subject_available": [
+  true,
+  ""
+ ]
+}

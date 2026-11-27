@@ -32,6 +32,16 @@ PINNED = {
 }
 CLEAN = {"git_commit": "0" * 40, "git_dirty": False}
 FIELDS = {"at", "commit", "dirty", "family", "subject", "note", "script", "withheld_file", "withheld_sha256"}
+# Lines written since fix lane F2 also carry the drivers' SHA-256 (review finding B4).
+FIELDS_WITH_DRIVERS = FIELDS | {"drivers"}
+
+
+@pytest.fixture(autouse=True)
+def drivers_pinned_as_they_are(monkeypatch, request):
+    """The machinery tests below look through today's drivers: pin them as they are (the tracked pin file is the
+    main session's to write). The driver-pin tests (test_driver_pin_*) see the real pins."""
+    if not request.node.name.startswith("test_driver_pin_"):
+        monkeypatch.setattr(final, "pinned_drivers", lambda path=None: final.driver_hashes())
 
 
 def test_each_withheld_file_is_pinned_here_and_in_final():
@@ -183,7 +193,8 @@ def test_the_ledger_line_is_written_before_anything_is_loaded(tmp_path, monkeypa
     with pytest.raises(RuntimeError, match="scoring started"):
         final.look(["forms"], "today", "today", "a crash still counts", script="test", ledger=ledger, env=CLEAN)
     lines = [json.loads(x) for x in ledger.read_text().splitlines()]
-    assert len(lines) == 1 and set(lines[0]) == FIELDS
+    assert len(lines) == 1 and set(lines[0]) == FIELDS_WITH_DRIVERS
+    assert lines[0]["drivers"] == final.driver_hashes() and len(lines[0]["drivers"]) == 2
     assert lines[0]["family"] == "forms" and lines[0]["note"] == "a crash still counts"
     assert lines[0]["withheld_sha256"] == PINNED["withheld_forms.py"] and lines[0]["commit"] == CLEAN["git_commit"]
     with pytest.raises(final.Refused):                                                     # a refusal writes nothing
@@ -220,5 +231,39 @@ def test_the_tracked_ledger_is_well_formed():
         pytest.skip("no look recorded yet")
     for line in final.LEDGER.read_text(encoding="utf-8").splitlines():
         entry = json.loads(line)
-        assert set(entry) == FIELDS and entry["note"].strip() and entry["dirty"] is False
+        assert set(entry) in (FIELDS, FIELDS_WITH_DRIVERS) and entry["note"].strip() and entry["dirty"] is False
         assert entry["withheld_file"] in PINNED
+
+
+def test_driver_pin_a_look_refuses_a_driver_not_pinned_or_changed_after_its_pin(tmp_path):
+    """Review finding B4: a look names the driver it went through; an unpinned or changed driver is refused before
+    the ledger line."""
+    now = final.driver_hashes()
+    assert set(now) == set(final.DRIVERS) and all(v and len(v) == 64 for v in now.values())
+    with pytest.raises(final.Refused, match="not pinned"):
+        final.check("a note", ["forms"], CLEAN, pins={})
+    with pytest.raises(final.Refused, match="not pinned"):
+        final.check("a note", ["forms"], CLEAN, pins=dict.fromkeys(final.DRIVERS))
+    changed = dict(now, **{final.DRIVERS[0]: "0" * 64})
+    with pytest.raises(final.Refused, match="changed after it was pinned"):
+        final.check("a note", ["forms"], CLEAN, pins=changed)
+    final.check("a note", ["forms"], CLEAN, pins=now)                                      # pinned as it is: passes
+    ledger = tmp_path / "ledger.jsonl"
+    with pytest.raises(final.Refused):
+        final.look(["forms"], "today", "today", "x", script="test", ledger=ledger, env=CLEAN, pins=changed)
+    assert not ledger.exists()                                                             # nothing recorded
+
+
+def test_driver_pin_the_tracked_file_and_the_pin_driver_command():
+    data = json.loads(final.DRIVER_PINS.read_text(encoding="utf-8"))
+    assert set(data["pins"]) == set(final.DRIVERS)
+    assert all(v is None or (len(v) == 64 and int(v, 16) >= 0) for v in data["pins"].values())
+    assert final.pinned_drivers() == data["pins"]
+    assert final.pinned_drivers(ROOT / "no-such-file.json") == {}
+    if not all(data["pins"].values()):                                  # until the main session pins: no look at all
+        with pytest.raises(final.Refused, match="not pinned"):
+            final.check("a note", ["forms"], CLEAN)
+    done = _script("bench_omni.py", "pin-driver")
+    assert done.returncode == 0, done.stderr
+    printed = json.loads(done.stdout)
+    assert printed["pins"] == final.driver_hashes() and set(printed) == set(data) - {"status"}

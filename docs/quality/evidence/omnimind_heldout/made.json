@@ -1,0 +1,80 @@
+{
+ "cases_sha256": "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c",
+ "commit": "505b55b",
+ "label": "OMNIMIND benchmark: synthetic files assembled by the benchmark's own encoders from known values; offline; no model; exact comparison within stated tolerances",
+ "machine": "aarch64",
+ "python": "3.12.16",
+ "recorded": "2026-11-27",
+ "splits": {
+  "held_out": {
+   "families": {
+    "made": {
+     "abstained": 1,
+     "abstention_floor": 0,
+     "by_kind": {
+      "make": {
+       "abstained": 1,
+       "failed": 0,
+       "right": 13,
+       "wrong": 0
+      }
+     },
+     "carried_mean": 1.0,
+     "deterministic": 13,
+     "fabrication": 0,
+     "fabrication_rate": 0.0,
+     "failed": 0,
+     "failures": {},
+     "family": "made",
+     "n": 14,
+     "produced": 13,
+     "right": 13,
+     "score": 0.9286,
+     "split": "held_out",
+     "subject": "artifacts",
+     "tasks": {
+      "made/held_out/animation-five-frames": "right",
+      "made/held_out/bar-eleven-negative": "right",
+      "made/held_out/bar-with-two-warnings": "right",
+      "made/held_out/cube-stl-offset": "right",
+      "made/held_out/data-file-csv-wide": "right",
+      "made/held_out/diagram-tree-twelve": "right",
+      "made/held_out/histogram-twelve-bins": "abstained",
+      "made/held_out/line-short": "right",
+      "made/held_out/line-three-series-long": "right",
+      "made/held_out/scatter-fifty": "right",
+      "made/held_out/sonified-twelve": "right",
+      "made/held_out/surface-obj-wide": "right",
+      "made/held_out/timeline-nine-events": "right",
+      "made/held_out/tone-1000": "right"
+     },
+     "wall_s": 0.06,
+     "with_problems": 0,
+     "wrong": 0
+    }
+   },
+   "frozen": {
+    "made": {
+     "n": 14,
+     "sha256": "f3fdfccfcf9ec7b07bd7c719a1156bd57130adfca2548e362b6039ac9d9b8b61"
+    }
+   },
+   "totals": {
+    "abstained": 1,
+    "abstention_floor": 0,
+    "fabrication": 0,
+    "failed": 0,
+    "n": 14,
+    "right": 13,
+    "score": 0.9286,
+    "wrong": 0
+   },
+   "wall_s": 0.1
+  }
+ },
+ "subject": "artifacts",
+ "subject_available": [
+  true,
+  ""
+ ]
+}

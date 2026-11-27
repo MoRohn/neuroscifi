@@ -1,0 +1,129 @@
+{
+ "cases_sha256": "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c",
+ "commit": "c1f5f2f",
+ "label": "OMNIMIND benchmark: synthetic files assembled by the benchmark's own encoders from known values; offline; no model; exact comparison within stated tolerances",
+ "machine": "aarch64",
+ "python": "3.12.16",
+ "recorded": "2026-11-27",
+ "splits": {
+  "held_out": {
+   "families": {
+    "unknown": {
+     "abstained": 0,
+     "abstention_floor": 9,
+     "by_kind": {
+      "cannot": {
+       "abstained": 0,
+       "failed": 0,
+       "right": 9,
+       "wrong": 0
+      },
+      "measure": {
+       "abstained": 0,
+       "failed": 0,
+       "right": 40,
+       "wrong": 0
+      }
+     },
+     "disguised": {
+      "missed_decodable": 0,
+      "missed_decodable_rate": 0.0,
+      "n": 31,
+      "right": 31
+     },
+     "fabrication": 0,
+     "fabrication_rate": 0.0,
+     "failed": 0,
+     "failures": {},
+     "family": "unknown",
+     "n": 49,
+     "right": 49,
+     "score": 1.0,
+     "split": "held_out",
+     "subject": "artifacts",
+     "tasks": {
+      "unknown/held_out/bmp-top-down-named-dat/detect.format": "right",
+      "unknown/held_out/bmp-top-down-named-dat/image.pixel:0,0": "right",
+      "unknown/held_out/csv-gzip-declared-text/detect.format": "right",
+      "unknown/held_out/csv-gzip-declared-text/table.column_mean:count": "right",
+      "unknown/held_out/csv-gzip-declared-text/table.n_rows": "right",
+      "unknown/held_out/csv-utf16-bom/detect.format": "right",
+      "unknown/held_out/csv-utf16-bom/table.column_mean:count": "right",
+      "unknown/held_out/csv-utf16-bom/table.n_rows": "right",
+      "unknown/held_out/csv-zstd-named-dat/detect.format": "right",
+      "unknown/held_out/csv-zstd-named-dat/table.column_mean:count": "right",
+      "unknown/held_out/csv-zstd-named-dat/table.n_rows": "right",
+      "unknown/held_out/geojson-declared-json/detect.format": "right",
+      "unknown/held_out/geojson-declared-json/geo.bbox": "right",
+      "unknown/held_out/head-of-a-zip/bundle.members": "right",
+      "unknown/held_out/head-of-a-zip/detect.format": "right",
+      "unknown/held_out/invented-records-other/detect.family": "right",
+      "unknown/held_out/invented-records-other/detect.format": "right",
+      "unknown/held_out/invented-records-other/image.size": "right",
+      "unknown/held_out/invented-records-other/table.n_rows": "right",
+      "unknown/held_out/json-bom-named-txt/detect.format": "right",
+      "unknown/held_out/json-bom-named-txt/tree.keys:instrument": "right",
+      "unknown/held_out/json-bom-named-txt/tree.value:instrument/calibrated": "right",
+      "unknown/held_out/json-bom-named-txt/tree.value:instrument/channels/1/gain": "right",
+      "unknown/held_out/json-bom-named-txt/tree.value:instrument/channels/1/id": "right",
+      "unknown/held_out/json-bom-named-txt/tree.value:instrument/name": "right",
+      "unknown/held_out/json-bom-named-txt/tree.value:readings/2": "right",
+      "unknown/held_out/pgm-with-comments/detect.format": "right",
+      "unknown/held_out/pgm-with-comments/image.pixel:4,3": "right",
+      "unknown/held_out/pgm-with-comments/image.size": "right",
+      "unknown/held_out/png-declared-as-jpeg/detect.family": "right",
+      "unknown/held_out/png-declared-as-jpeg/detect.format": "right",
+      "unknown/held_out/png-declared-as-jpeg/image.size": "right",
+      "unknown/held_out/png-signature-buried/detect.family": "right",
+      "unknown/held_out/png-signature-buried/detect.format": "right",
+      "unknown/held_out/png-signature-buried/image.size": "right",
+      "unknown/held_out/png-signature-buried/table.n_rows": "right",
+      "unknown/held_out/random-9k/detect.family": "right",
+      "unknown/held_out/random-9k/detect.format": "right",
+      "unknown/held_out/random-9k/image.size": "right",
+      "unknown/held_out/random-9k/table.n_rows": "right",
+      "unknown/held_out/sealed-container-big/detect.family": "right",
+      "unknown/held_out/sealed-container-big/detect.format": "right",
+      "unknown/held_out/sealed-container-big/image.size": "right",
+      "unknown/held_out/sealed-container-big/table.n_rows": "right",
+      "unknown/held_out/wav-list-chunk/audio.duration_s": "right",
+      "unknown/held_out/wav-list-chunk/audio.n_onsets": "right",
+      "unknown/held_out/wav-list-chunk/detect.format": "right",
+      "unknown/held_out/zip-in-gzip-no-extension/data.csv::table.n_rows": "right",
+      "unknown/held_out/zip-in-gzip-no-extension/detect.format": "right"
+     },
+     "truly_unknown": {
+      "false_identification": 0,
+      "false_identification_rate": 0.0,
+      "n": 18,
+      "right": 18
+     },
+     "wall_s": 0.03,
+     "wrong": 0
+    }
+   },
+   "frozen": {
+    "unknown": {
+     "n": 49,
+     "sha256": "472ea985b5eca67a430f009d66c05504f5c959ad9ab865e1cf5792e3537c9bb9"
+    }
+   },
+   "totals": {
+    "abstained": 0,
+    "abstention_floor": 9,
+    "fabrication": 0,
+    "failed": 0,
+    "n": 49,
+    "right": 49,
+    "score": 1.0,
+    "wrong": 0
+   },
+   "wall_s": 0.0
+  }
+ },
+ "subject": "artifacts",
+ "subject_available": [
+  true,
+  ""
+ ]
+}

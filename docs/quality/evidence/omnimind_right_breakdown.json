@@ -1,0 +1,59 @@
+{
+ "label": "OMNIMIND benchmark: what the artifacts subject's RIGHT answers are, by kind of answer (scripts/omnimind_heldout_record.py breakdown)",
+ "splits": {
+  "development": {
+   "n": 524,
+   "right": 512,
+   "right_by_kind": {
+    "a value or an honest cannot (either right)": {
+     "of": 2,
+     "right": 2
+    },
+    "correct refusal or abstention": {
+     "of": 50,
+     "right": 50
+    },
+    "format identification": {
+     "of": 128,
+     "right": 128
+    },
+    "made artifact read back": {
+     "of": 22,
+     "right": 22
+    },
+    "measurement read off decoded content": {
+     "of": 322,
+     "right": 310
+    }
+   },
+   "source": "omnimind_int2_development.json at f5cc17b"
+  },
+  "held_out": {
+   "n": 528,
+   "right": 510,
+   "right_by_kind": {
+    "a value or an honest cannot (either right)": {
+     "of": 2,
+     "right": 2
+    },
+    "correct refusal or abstention": {
+     "of": 50,
+     "right": 49
+    },
+    "format identification": {
+     "of": 128,
+     "right": 128
+    },
+    "made artifact read back": {
+     "of": 22,
+     "right": 21
+    },
+    "measurement read off decoded content": {
+     "of": 326,
+     "right": 310
+    }
+   },
+   "source": "omnimind_heldout/{intake,honest,unknown,compound,hostile,made,transform}.json at 505b55b, c1f5f2f"
+  }
+ }
+}

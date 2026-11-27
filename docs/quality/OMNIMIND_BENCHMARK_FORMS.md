@@ -3,8 +3,10 @@
 The examination for three things that **do not exist yet** in NeuroSciFi: a planner that decides the form of a result
 (DESIGN section 5, "Creative Output Intelligence"), a function that answers a question needing two artifacts of
 different kinds, and a learner that adjusts form choices from the owner's reactions. It was written before any of
-them (lane ZF), so that their authors cannot tune the examination to the product. Only the benchmark's own reference
-subjects have been run; the "today" rows are the unchanged system.
+them (lane ZF), so that their authors cannot tune the examination to the product. The reference subjects' tables
+below are the baseline (the "today" rows are the unchanged system); the product's planner, relater and learner were
+run since, on development and once each on held-out ("The product on the benchmark", near the end). No product look
+at the withheld split has been taken.
 
 - Code: `src/neuroscifi/acceptance/omni/` — `forms.py` + `forms_cases.py`, `cross.py` + `cross_cases.py`,
   `learn.py` + `learn_people.py`. Standard library only. Nothing there imports product code, and product code never
@@ -262,10 +264,48 @@ a learner that generalises across keys (that a person who wants tables on one ki
 honest-but-noisy feedback; real preferences drift, depend on the task and are not one form per key, and real people
 seldom give feedback at all. The people, their habits and their reaction rates are the examiner's inventions.
 
+## The product on the benchmark (development and held-out, once each)
+
+The files, each rule and result quoted verbatim from the main session's log, and the commits are in
+`docs/quality/evidence/omnimind_heldout/` (README). The rules were written in that log before each run; the log is
+not in the repository, so **the order of rule and run cannot be verified from git**. The withheld looks are
+different: their rule is to be committed before them.
+
+| family | subject | development | held-out (once) | verdict by the rule written before the run |
+|---|---|---|---|---|
+| forms | the planner (`artifacts/forms.py`) | blind, before its author saw a case (`8d84f29`): good 65 / 133 (0.489); tuned (`c5d3230`): good 113 / 133 (0.850) | `c5d3230`: good 91 / 138 (0.659), good or fine 0.920, bad 0.080 (too poor 4, too much 5, unfit 1, **violation 1**); explicit honoured 10 / 11, infeasible handled 4 / 5; words slice 16 / 34; pairs both good 3 / 18, twins 2 / 10 | "beats the references": **NO** (one hard-constraint violation; the rule asks 0); "overfit to development": **YES** (0.850 to 0.659); "learned from the words": **NO** (words slice +0.059 over shape_only, pairs 3 / 18 against its 8 / 18) |
+| cross | the relater (`artifacts/relate.py`) | 72 / 72, twins 36 / 36 (lane R; again at `505b55b`) | `7d9038c`: 66 right, 6 cannot, 0 wrong of 72; correct of answered 66 / 66; twins 33 / 36; report_total 6 of 12 "cannot", every other kind 12 / 12 | **SUPPORTED** |
+| learn | shipped per-key majority through the planner (SIMULATED people) | late / all kept 0.816 / 0.762 against the planner alone 0.587 / 0.584 (lane L; again at `505b55b`) | `7d9038c`: 0.710 (sd 0.032) / 0.656 (0.019) against the planner alone 0.450 (0.024) / 0.454 (0.025): +0.260 / +0.203 | **SUPPORTED** (margins 0.058 / 0.067); 0.092 below the reference key_majority (0.802 late); `form_learning` stays off |
+
+Beside the planner on held-out: shape_only good 0.500, always-prose 0.442, the second reader's first choice 0.877.
+On two held-out slices always-prose beat the planner (words 17 / 34 against 16 / 34, conflict 7 / 7 against 4 / 7).
+After its held-out run the planner had one limited round (violations made impossible by construction, unknown
+purposes accepted, fitted rules deleted; frozen at `4388f4d`): that version has no held-out result, only the withheld
+look can measure it.
+
+**What the forms family does and does not test.**
+- The planner sees a content SHAPE (kinds, sizes, flags written in the case), never the content itself: the driver
+  builds `ContentShape` from the case's own fields. A good score says the planner maps shapes, contexts and words to
+  forms the way the examiner did; it says nothing about reading real content.
+- Several product forms map onto one benchmark form (`subject.FORMS_TO_BENCH`): document to prose, small_multiples to
+  line_chart, tree_diagram to node_link, tone to sonification, surface_view to solid_viewer, image_sequence to
+  animation, sound_view to waveform_spectrum. A product choice the examiner did not list can so become a listed one.
+- The labels are one model-written examiner's (lane ZF). A second reader (another model, shuffled views, ids
+  stripped) puts its first choice in the examiner's good set on **0.889** of the 271 cases (development 0.902,
+  held-out 0.877; `evidence/omnimind_forms_second_reader.json`): **both readers are models of one family, not
+  people**; their agreement shows the labels are consistent between two model readings, not that they match the
+  owner's taste.
+- The learn family's people are **SIMULATED** (hidden, stable preferences and simulated feedback invented by the
+  examiner); its driver passes the case's candidate forms as what can be made. Nothing here measures benefit to a
+  real person.
+
+**The withheld split: status.** No product look has been taken; the ledger holds lane ZW's machinery check through
+the references only. A look needs its rule committed first and the drivers pinned
+(`docs/quality/evidence/omnimind_driver_pins.json`).
+
 ## Honest boundaries
 
-- Nothing here was run against a product planner, relater or learner: none exists yet. Every number above is a
-  reference subject's.
+- The product's numbers are in the section above; the tables before it are reference subjects' (the baseline).
 - The benchmark judges choices and relations against tables a person wrote and files a generator built. It is not a
   measure of intelligence, creativity or understanding.
 - `today` in `forms` and `learn` is a stand-in for the unchanged system (it has no form choice: it always answers in
@@ -297,8 +337,9 @@ checks all three). Cue-word purity over the withheld requests (words in at least
   maps no earlier person has, 10 seeds from the withheld range, the same cycles and reaction model.
 - **The look.** `scripts/bench_omni_forms.py final --family forms|cross|learn --subject S --note TEXT --out FILE`, with
   the same refusals, ledger (`docs/quality/evidence/omnimind_final_uses.jsonl`, one line per family before anything
-  is loaded) and summaries-only output as `bench_omni.py final` (OMNIMIND_BENCHMARK.md, "The withheld split as
-  written"); a reference subject must exist in every family named, and a product subject is looked at one family at a
+  is loaded, now with the drivers' SHA-256) and summaries-only output as `bench_omni.py final` (OMNIMIND_BENCHMARK.md,
+  "The withheld split as written"), including the refusal of a driver (`subject.py`, `scripts/omni_forms_driver.py`)
+  that differs from its pin in `docs/quality/evidence/omnimind_driver_pins.json`; a reference subject must exist in every family named, and a product subject is looked at one family at a
   time. `run --split withheld` is refused. The measures are the families' own (`forms.label` and the slices and pair
   counts, the cross blocks by kind, the learn kept shares), plus the withheld-only slices "purpose given" and "kinds
   only in this split".

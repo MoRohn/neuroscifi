@@ -6125,7 +6125,9 @@ one that guesses would score half, and a wrong "consistent" is this mechanism's 
   6 unrelated pairs: 6 cannot. Fresh pairs of 12 more kinds, written after the mechanism was frozen (677cf22) and
   looked at once: 20 right, 4 cannot, 0 wrong of 24; unrelated 4 / 4 cannot; after one fix (a log's own format
   words) 22 / 24, the remaining cannot is "sampled at 16 kHz" against a sample rate (no morphology beyond plurals).
-- Own variants from the cross generators with knobs drawn here (seeds 9000+): 630 / 630 right.
+- Own variants from the cross generators with knobs drawn here: 630 / 630 right (seeds 9100-10729 at first, partly
+  inside the range reserved for the withheld lane; moved by fix lane F2 to 20100-25329, `LANE_R_SWEEP_SEEDS`, review
+  B3; still 630 / 630).
 - Transfer, own 12 cases, 29 columns: 14 right units, 14 rightly without a unit, 1 absent, 0 wrong.
 
 ## Not done, and why

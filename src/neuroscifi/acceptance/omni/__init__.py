@@ -25,7 +25,8 @@ that scoring is exact comparison within a tolerance, never a judgment. A questio
 `data/values.csv::table.n_rows` (members nest: `inner.zip::a.csv::table.n_rows`).
 
 `abstention_floor` in every summary is the number of tasks where an abstention is the right answer: a subject that
-says "cannot" to everything scores exactly that many. Read `right` against it.
+refuses everything scores exactly that many; one that says "cannot" to everything scores less (29 per split), because
+the hostile tasks need a refusal. Read `right` against it.
 
 Three outcomes per task, all reported with their denominators (score_task):
   right      the expected answer within tolerance, or the expected abstention ("cannot" / "refused")
@@ -59,6 +60,11 @@ OUTCOMES = ("right", "abstained", "wrong", "failed")
 DEV_SEEDS = range(3100, 3600)
 HELD_OUT_SEEDS = range(3600, 4100)
 WITHHELD_SEEDS = range(9100, 9600)          # reserved for the withheld lane; no case here uses them
+# Lane R's own-variant sweep (scripts/omnimind_r_evidence.py): six kinds x three seeds x up to 30 pairs, at
+# 20000 + 1000 kind + 100 seed + i. Moved here by fix lane F2 out of the withheld range (review finding B3);
+# tests/acceptance/test_omni_bench.py checks that no script or test outside the withheld machinery draws a
+# seed from HELD_OUT_SEEDS or WITHHELD_SEEDS.
+LANE_R_SWEEP_SEEDS = range(20000, 26000)
 LABEL = ("OMNIMIND benchmark: synthetic files assembled by the benchmark's own encoders from known values; offline; "
          "no model; exact comparison within stated tolerances")
 

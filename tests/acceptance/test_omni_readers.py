@@ -88,7 +88,7 @@ def test_log_scale_scatter_and_negative_bars():
                  for k in range(3))
     xt = "".join(f'<g class="tick" transform="translate({100 * k},0)"><text>{k * 5}</text></g>' for k in range(3))
     pts = [(2.5, 3.0), (7.0, 50.0)]
-    circles = "".join(f'<circle class="mark" cx="{x * 20}" cy="{300 - 100 * math.log10(y)}"/>' for x, y in pts)
+    circles = "".join(f'<circle class="mark" cx="{x * 20}" cy="{300 - 100 * math.log10(y)}" r="3"/>' for x, y in pts)
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg"><g class="axis x">{xt}</g><g class="axis y">{yt}</g>'
            f'<g class="plot">{circles}</g></svg>').encode()
     r = readers.read_chart(svg)
@@ -114,7 +114,7 @@ def test_histogram_bins_and_dates():
     days = ("2024-01-01", "2024-01-11", "2024-01-21")
     xt = "".join(f'<g class="tick" transform="translate({100 * k},0)"><text>{d}</text></g>' for k, d in enumerate(days))
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg"><g class="axis x">{xt}</g><g class="axis y">{yt}</g>'
-           '<g class="plot"><circle class="mark" cx="50" cy="200"/></g></svg>').encode()
+           '<g class="plot"><circle class="mark" cx="50" cy="200" r="3"/></g></svg>').encode()
     r = readers.read_chart(svg)
     assert r.x.kind == "time"
     assert r.marks[0].x == pytest.approx(1704067200 + 5 * 86400)          # 2024-01-06 UTC
@@ -131,14 +131,136 @@ def test_unreadable_charts_raise():
 
 def test_diagram_nodes_and_edges():
     def diagram(edge_to):
-        nodes = "".join(f'<g class="node" transform="translate({x},{y})"><circle r="10"/><text>{t}</text></g>'
-                        for t, x, y in (("root", 100, 20), ("left", 50, 100), ("right", 150, 100)))
-        return (f'<svg xmlns="http://www.w3.org/2000/svg">{nodes}<line class="edge" x1="100" y1="30" x2="50" y2="90"/>'
-                f'<path class="edge" d="M 100 30 L {edge_to} 90"/></svg>').encode()
+        nodes = "".join(f'<g class="node" transform="translate({x},{y})"><circle r="10" fill="#eee"/><text>{t}</text>'
+                        '</g>' for t, x, y in (("root", 100, 20), ("left", 50, 100), ("right", 150, 100)))
+        return (f'<svg xmlns="http://www.w3.org/2000/svg">{nodes}<line class="edge" x1="100" y1="30" x2="50" y2="90" '
+                f'stroke="#333"/><path class="edge" d="M 100 30 L {edge_to} 90" fill="none" stroke="#333"/></svg>'
+                ).encode()
     r = readers.read_diagram(diagram(150))
     assert r.labels == ["root", "left", "right"]
     assert sorted(r.edges) == [("root", "left"), ("root", "right")]
     assert ("root", "right") not in readers.read_diagram(diagram(50)).edges
+
+
+# ---- SVG visibility: only what a person would see is read (review M1) ---------------------------------------------
+
+def _hide_plot(svg: bytes, how: str) -> bytes:
+    """One way of making the plot of `line_chart` invisible to a person while its marks stay in the bytes. The axes
+    are untouched (x ticks at y 260, y tick labels at x 40); the marks lie in x 50-450, y 50-250."""
+    s = svg.decode()
+    plot = '<g class="plot"'
+    edits = {
+        "display none": lambda: s.replace(plot, plot + ' display="none"', 1),
+        "display none by CSS": lambda: s.replace(plot, '<style>.plot { display: none }</style>' + plot, 1),
+        "visibility hidden": lambda: s.replace(plot, plot + ' visibility="hidden"', 1),
+        "visibility hidden by CSS": lambda: s.replace(plot, '<style>g.plot * { visibility: hidden }</style>' + plot, 1),
+        "opacity 0": lambda: s.replace(plot, plot + ' opacity="0"', 1),
+        "opacity 0.004": lambda: s.replace(plot, plot + ' style="opacity:0.004"', 1),
+        "zero size": lambda: s.replace(plot, plot + ' transform="scale(0)"', 1),
+        "off the canvas": lambda: s.replace(plot, plot + ' transform="translate(5000,0)"', 1),
+        "clipped away": lambda: s.replace(plot, '<defs><clipPath id="c"><rect width="1" height="1"/></clipPath></defs>'
+                                          + plot + ' clip-path="url(#c)"', 1),
+        "background colour": lambda: s.replace(plot, '<style>.plot * { fill: #fff; stroke: #ffffff }</style>' + plot, 1),
+        "covered": lambda: s.replace("<metadata>", '<rect x="45" y="0" width="455" height="255" fill="white"/><metadata>',
+                                     1),
+        "masked": lambda: s.replace(plot, '<defs><mask id="m"><rect width="9" height="9" fill="white"/></mask></defs>'
+                                    + plot + ' mask="url(#m)"', 1),
+        "in defs": lambda: s.replace(plot, "<defs>" + plot, 1).replace("</g></g><metadata>", "</g></g></defs><metadata>",
+                                                                       1),
+    }
+    out = edits[how]()
+    assert out != s
+    return out.encode()
+
+
+HIDE = ("display none", "display none by CSS", "visibility hidden", "visibility hidden by CSS", "opacity 0",
+        "opacity 0.004", "zero size", "off the canvas", "clipped away", "background colour", "covered", "masked",
+        "in defs")
+
+
+def test_a_visible_chart_is_read_whole():
+    r = readers.read_chart(line_chart([3.0, 12.5, 7.0]))
+    assert [m.kind for m in r.marks] == ["line", "point", "point", "point"]
+    assert len(r.marks[0].points) == 3
+
+
+@pytest.mark.parametrize("how", HIDE)
+def test_marks_a_person_cannot_see_are_not_read(how):
+    r = readers.read_chart(_hide_plot(line_chart([3.0, 12.5, 7.0]), how))
+    assert r.x is not None and r.y is not None                   # the axes are still read
+    assert [m for m in r.marks if m.kind == "point"] == []
+    assert all(m.points == () for m in r.marks if m.kind == "line"), how
+
+
+def test_only_the_visible_part_of_a_series_is_read():
+    # a white rect over the middle vertex hides it; the vertices either side stay
+    svg = line_chart([3.0, 12.5, 7.0]).replace(b"<metadata>", b'<rect x="140" y="0" width="20" height="255" '
+                                                b'fill="#fff"/><metadata>')
+    line = readers.read_chart(svg).marks[0]
+    assert [round(x) for x, _ in line.points] == [0, 2]
+    # the dark scheme counts too: a mark painted in the dark background's colour is not seen there
+    dark = line_chart([1.0, 2.0]).replace(b'<g class="plot"', b'<style>svg { background: #fff } @media '
+                                          b'(prefers-color-scheme: dark) { svg { background: #111 } .plot * '
+                                          b'{ fill: #111; stroke: #111 } }</style><g class="plot"')
+    assert [m for m in readers.read_chart(dark).marks if m.kind == "point"] == []
+
+
+def test_hidden_tick_labels_are_not_read():
+    svg = line_chart([1.0, 2.0]).replace(b'<g class="axis y"', b'<g class="axis y" fill="#ffffff"')
+    with pytest.raises(readers.ReadError, match="without ticks|two ticks"):
+        readers.read_chart(svg)
+
+
+def test_a_mark_drawn_over_a_mark_and_a_zero_bar_are_still_read():
+    two = line_chart([5.0, 5.0]).replace(b'cx="150"', b'cx="50"')     # two points at one place: both seen
+    assert len([m for m in readers.read_chart(two).marks if m.kind == "point"]) == 2
+    xt = "".join(f'<g class="tick" transform="translate({x},310)"><text>{c}</text></g>' for x, c in ((25, "a"), (75, "b")))
+    yt = "".join(f'<g class="tick" transform="translate(0,{300 - 10 * v})"><text>{v}</text></g>' for v in (0, 10))
+    bars = ('<rect class="mark" x="10" y="200" width="30" height="100"/>'
+            '<rect class="mark" x="60" y="300" width="30" height="0"/>'          # value 0: placed, nothing drawn
+            '<rect class="mark" x="60" y="200" width="0" height="100"/>')        # zero width: says nothing
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="330"><g class="axis x">{xt}</g>'
+           f'<g class="axis y">{yt}</g><g class="plot">{bars}</g></svg>').encode()
+    assert [(m.x, round(m.y, 6)) for m in readers.read_chart(svg).marks] == [("a", 10.0), ("b", 0.0)]
+
+
+def test_style_the_reader_cannot_evaluate_is_named():
+    for rule in ('.plot:hover { opacity: 0 }', '[class=plot] { display: none }', '@media print { .plot { fill: #fff } }',
+                 'g + g { --ink: #fff }'):
+        with pytest.raises(readers.ReadError, match="cannot evaluate"):
+            readers.read_chart(line_chart([1.0, 2.0], extra=f"<style>{rule}</style>"))
+    with pytest.raises(readers.ReadError, match="geometry set by CSS"):
+        readers.read_chart(line_chart([1.0, 2.0], extra='<style>.mark { transform: translate(9px, 0) }</style>'))
+    # a rule it cannot evaluate that touches nothing it judges is ignored
+    assert readers.read_chart(line_chart([1.0, 2.0], extra='<style>a:hover { font-weight: bold }</style>')).marks
+
+
+def _diagram_svg(wrap: str = "", after: str = "") -> bytes:
+    """Three nodes and two edges; `wrap` gives one group around all of them its attributes; `after` is drawn last."""
+    nodes = "".join(f'<g class="node" transform="translate({x},{y})"><circle r="10" fill="#eee"/><text>{t}</text></g>'
+                    for t, x, y in (("root", 100, 20), ("left", 50, 100), ("right", 150, 100)))
+    edges = ('<line class="edge" x1="100" y1="20" x2="50" y2="100" stroke="#333"/>'
+             '<line class="edge" x1="100" y1="20" x2="150" y2="100" stroke="#333"/>')
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><g{wrap}>{edges}{nodes}</g>{after}'
+            '</svg>').encode()
+
+
+@pytest.mark.parametrize("wrap,after", [
+    (' display="none"', ""), (' visibility="hidden"', ""), (' opacity="0"', ""), (' transform="scale(0)"', ""),
+    (' transform="translate(900,0)"', ""), (' class="d"', "<style>.d * { fill: #fff; stroke: #fff }</style>"),
+    ("", '<rect width="200" height="200" fill="#fff"/>'),
+])
+def test_diagram_nodes_and_edges_a_person_cannot_see_are_not_read(wrap, after):
+    seen = readers.read_diagram(_diagram_svg())
+    assert seen.labels == ["root", "left", "right"] and len(seen.edges) == 2
+    with pytest.raises(readers.ReadError, match="no node a person can see"):
+        readers.read_diagram(_diagram_svg(wrap, after))
+
+
+def test_a_label_in_its_node_s_colour_is_not_read_and_an_edge_under_nodes_is_seen_where_it_shows():
+    r = readers.read_diagram(_diagram_svg().replace(b"<text>left</text>", b'<text fill="#eee">left</text>'))
+    assert r.labels == ["root", "", "right"]                     # the node is seen; its label is not
+    assert len(r.edges) == 2
 
 
 # ---- SVG safety and palette ----------------------------------------------------------------------------------------
