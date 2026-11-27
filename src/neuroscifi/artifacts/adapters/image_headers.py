@@ -380,8 +380,14 @@ def read_heif(data: bytes, limits: Limits, fmt: str) -> dict:
 def read_psd(data: bytes) -> dict:
     r = Reader(data, ">", 4, "the PSD header")
     version = r.u16()
-    r.skip(6)
+    reserved = r.take(6)
     channels, height, width, depth, mode = r.unpack("HIIHH")
+    # every field is checked against the ranges the format states before any is reported (lane FX, item 1): a
+    # signature followed by other bytes yields no "facts"
+    top = 30000 if version == 1 else 300000
+    if (version not in (1, 2) or any(reserved) or not 1 <= channels <= 56 or not 1 <= width <= top
+            or not 1 <= height <= top or depth not in (1, 8, 16, 32) or mode not in PSD_MODES):
+        raise Malformed("the PSD header's fields are outside the ranges the format allows")
     facts = {"variant": "PSB" if version == 2 else "PSD", "width": width, "height": height, "components": channels,
              "bits": depth, "mode": PSD_MODES.get(mode, mode)}
     try:

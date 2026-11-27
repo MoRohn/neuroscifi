@@ -5,7 +5,9 @@ its truncated prefixes, conflicting hints, and seeded random bytes; what the dec
 
 Deterministic (no timings, seeded randomness): --check regenerates and compares with the committed file. A "false
 identification" is any answer naming a format that is neither the true one, nor a more general name for it (its
-container, or the format it extends), nor "text" for a prefix that really is text, nor "unknown"."""
+container, or the format it extends), nor "text" for a prefix that really is text, nor "unknown", nor (lane FX) the
+name's refinement of a generic answer on a prefix of a longer file ("hint_on_prefix": a ZIP named .docx whose
+members beyond the prefix are not seen; the full decode then confirms or withdraws it)."""
 import argparse
 import json
 import sys
@@ -19,7 +21,7 @@ sys.path.insert(0, str(BASE / "tests" / "artifacts"))
 from detect_corpus import conflicts, corpus  # noqa: E402
 
 from neuroscifi.artifacts import adapters  # noqa: E402
-from neuroscifi.artifacts.detect import detect  # noqa: E402
+from neuroscifi.artifacts.detect import _REFINES, detect  # noqa: E402
 from neuroscifi.artifacts.types import ArtifactError  # noqa: E402
 
 GENERAL = {"docx": {"zip"}, "xlsx": {"zip"}, "pptx": {"zip"}, "odt": {"zip"}, "ods": {"zip"}, "odp": {"zip"},
@@ -49,7 +51,8 @@ def build() -> dict:
                 tried += 1
                 got = detect(data[:n], name=kw.get("name"), declared=kw.get("declared"), size=size).format
                 kind = ("exact" if got == fmt else "general" if got in GENERAL.get(fmt, ()) else got
-                        if got in ("text", "unknown") else "false")
+                        if got in ("text", "unknown") else "hint_on_prefix"
+                        if size is not None and n < len(data) and got in _REFINES.get(fmt, ()) else "false")
                 outcomes["size_unknown" if size is None else "size_given"][kind] += 1
                 if kind == "false":
                     false_ids.append([label, n, got])

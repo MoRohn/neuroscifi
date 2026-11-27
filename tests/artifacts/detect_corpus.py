@@ -252,7 +252,8 @@ def corpus():
         ("apk", _zip([("AndroidManifest.xml", b"\x03\x00"), ("classes.dex", b"dex\n035\x00")]), {}, "apk", s),
         ("npz", _zip([("a.npy", _npy()), ("b.npy", _npy())]), {}, "npz", s),
         ("zip", zipped, {}, "zip", s),
-        ("zip-named-docx", zipped, {"name": "report.docx"}, "docx", d),
+        # the whole archive is seen and no member is specific to docx: the name does not refine it (lane FX)
+        ("zip-named-docx", zipped, {"name": "report.docx"}, "zip", s),
         ("gzip", gzip.compress(b"hello", mtime=0), {}, "gzip", s),
         ("bzip2", bz2.compress(b"hello"), {}, "bzip2", s),
         ("xz", lzma.compress(b"hello"), {}, "xz", s),

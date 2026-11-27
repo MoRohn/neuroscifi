@@ -372,7 +372,11 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         raise Refused(f"the file is named as {claimed}, its first {DETECTION_PREFIX >> 10} KiB do not show that "
                       "structure, and it is longer than what was examined: it is not read as plain text",
                       rule="unconfirmed_structure")
+    if detected.format == "unknown" and (name or declared):
+        _probe_hinted(data, name, declared, limits)
     adapter = resolve(detected)
+    if (adapter is None or not _available(adapter)[0]) and _hint_only(detected):
+        return _unconfirmed(data, detected, "no reader for it is available here")
     if adapter is None:
         _gap(detected, "opaque")
         return Decoded(detected, inspect_unknown(data, detected), ("no adapter here decodes this format",), False)
@@ -388,6 +392,8 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
                       f"{limits.max_decoded_bytes >> 20} MiB", rule="max_decoded_bytes", reason="too_large")
     try:
         try:
+            if detected.basis == "declared":
+                return _screened(_confirming(data, detected, adapter, limits, name, declared), limits)
             result = adapter.decode(data, detected, limits)
         except Unsupported:
             _gap(detected, "unsupported")
@@ -406,6 +412,93 @@ def decode(data: bytes, *, name: str | None = None, declared: str | None = None,
         raise _resources() from None
     if not isinstance(result, Decoded):
         raise Malformed(f"the {adapter.name} adapter returned {type(result).__name__}, not Decoded")
+    return _screened(result, limits)
+
+
+def _probe_hinted(data: bytes, name, declared, limits: Limits) -> None:
+    """Bytes that show no signature or structure, named or declared as a binary format: the format is not named
+    (detect), and the named format's reader is still run so that a refusal it finds (a count or a size that lies,
+    bytes broken where that format would need them) is not lost: the content stays refused, as before. What it
+    reads or states is never used (a reader that accepts other bytes, header "facts" from a coincidence): the
+    answer is then "unknown", an Opaque."""
+    from ..detect import _hints
+    for fmt, _ in _hints(name, declared):
+        adapter = resolve(Detected("unknown", fmt, "application/octet-stream", "declared", None, ()))
+        if adapter is None or not _available(adapter)[0]:
+            continue
+        try:
+            adapter.decode(data, Detected(*_hinted(fmt)), limits)
+        except (MemoryError, RecursionError):
+            raise _resources() from None
+        except Unsupported:    # incl. HeaderOnly: its facts would rest on a coincidence; the answer is "unknown"
+            pass
+        except ArtifactError:
+            raise
+        except Exception:
+            failure = Malformed(f"the bytes are not a readable {fmt} file")
+            raise failure from None
+        return
+
+
+def _hinted(fmt: str) -> tuple:
+    from ..detect import FORMATS
+    family, media = FORMATS.get(fmt, ("unknown", "application/octet-stream"))
+    return family, fmt, media, "declared", None, ("probed by its name only",)
+
+
+def _hint_only(detected: Detected) -> bool:
+    """Whether the identification rests on a name or a declared type alone (detect named a text format the bytes
+    did not show: `detect.HINT_ONLY`)."""
+    from ..detect import HINT_ONLY
+    return detected.basis == "declared" and any(r.endswith(HINT_ONLY) for r in detected.reasons)
+
+
+def _unconfirmed(data: bytes, detected: Detected, why: str) -> Decoded:
+    """The answer when a hint named the format and its reader could not confirm it (lane FX, item 1): the format
+    is NOT named (a name or a declared type alone never identifies a file); what the bytes show is reported."""
+    reasons = detected.reasons + (f"the {detected.format} reader could not read the bytes as {detected.format} "
+                                  f"({why}), so the hint is not confirmed",)
+    unknown = Detected("unknown", "unknown", "application/octet-stream", "none", None, reasons)
+    _gap(unknown, "opaque")
+    return Decoded(unknown, inspect_unknown(data, unknown),
+                   (f"named or declared as {detected.format}, but not readable as {detected.format}",), False)
+
+
+def _confirming(data: bytes, detected: Detected, adapter: Adapter, limits: Limits, name, declared) -> Decoded:
+    """Decode with `adapter` where the identification rests partly or wholly on a hint (basis "declared"): the
+    hinted format's reader must confirm it by reading the bytes. A hint alone that its reader cannot confirm gives
+    "unknown"; a hint that refined a generic identification (a ZIP named .docx, text named .csv) and whose reader
+    cannot confirm it gives the generic identification, read by its own reader. A refusal stays a refusal."""
+    from ..detect import detect
+    try:
+        result = adapter.decode(data, detected, limits)
+        failure = None if isinstance(result, Decoded) and not isinstance(result.representation, Opaque) \
+            else "nothing of it was decoded"
+    except (Refused, MemoryError, RecursionError):
+        raise
+    except ArtifactError as error:
+        if not _hint_only(detected) and detected.container not in ("zip", "ole"):
+            raise          # text the hint fits that its reader finds broken or cannot read stays so: never a
+            #                quieter reading by the generic reader (a refusal is not swallowed by a fallback); an
+            #                archive named as an office file is read by the archive reader, which refuses by itself
+        failure = str(getattr(error, "reason", "") or "malformed")
+    except Exception:
+        if not _hint_only(detected) and detected.container not in ("zip", "ole"):
+            raise
+        failure = "malformed"
+    if failure is None:
+        return result
+    if _hint_only(detected):
+        return _unconfirmed(data, detected, failure)
+    generic = detect(data[:DETECTION_PREFIX], size=len(data))
+    if generic.format == detected.format or generic.basis == "declared":
+        return _unconfirmed(data, detected, failure)
+    note = f"named or declared as {detected.format}, but not readable as {detected.format}: read as {generic.format}"
+    result = decode(data, limits=limits)
+    return replace(result, notes=(note,) + tuple(result.notes))
+
+
+def _screened(result: Decoded, limits: Limits) -> Decoded:
     flagged = _flags(result)
     if flagged:
         if limits.refuse_flagged:

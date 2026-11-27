@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(__file__))
 from detect_corpus import conflicts, corpus  # noqa: E402
 
-from neuroscifi.artifacts.detect import FORMATS, HEAD_MAX, detect  # noqa: E402
+from neuroscifi.artifacts.detect import _REFINES, FORMATS, HEAD_MAX, detect  # noqa: E402
 from neuroscifi.artifacts.types import FAMILIES  # noqa: E402
 
 # A truncated prefix may legitimately be called by a more general name: its container, or the format it extends.
@@ -51,9 +51,14 @@ def test_a_contradicting_hint_loses_and_says_so():
 
 def test_a_consistent_hint_refines_but_is_marked_declared():
     zipped = next(c[1] for c in corpus() if c[0] == "zip")
-    d = detect(zipped, name="report.docx")
+    # only a prefix of a longer archive is seen: a member specific to docx may lie beyond it, so the name refines
+    d = detect(zipped, name="report.docx", size=len(zipped) + (1 << 20))
     assert (d.format, d.basis, d.container) == ("docx", "declared", "zip")
     assert any("not confirmed" in r for r in d.reasons)
+    # the whole archive is seen and nothing in it is specific to docx: the name does not refine it (lane FX)
+    d = detect(zipped, name="report.docx")
+    assert (d.format, d.basis) == ("zip", "signature")
+    assert any("nothing in it is specific to docx" in r for r in d.reasons)
 
 
 def test_hint_only_when_nothing_is_recognised():
@@ -68,7 +73,10 @@ def test_truncated_prefixes_never_raise_and_never_misname(n):
     for label, data, kw, fmt, _ in corpus():
         for size in (None, len(data)):
             d = detect(data[:n], name=kw.get("name"), declared=kw.get("declared"), size=size)
-            assert d.format in {fmt, "unknown", "text"} | GENERAL.get(fmt, set()), (label, n, d)
+            # a name may refine a generic answer on a prefix of a longer file (lane FX: the full decode then
+            # confirms or withdraws it; a ZIP named .docx is "zip" once its whole directory is seen)
+            hinted = _REFINES.get(fmt, set()) if size is not None and n < len(data) else set()
+            assert d.format in {fmt, "unknown", "text"} | GENERAL.get(fmt, set()) | hinted, (label, n, d)
 
 
 def test_random_bytes_are_unknown():

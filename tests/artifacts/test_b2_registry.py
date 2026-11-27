@@ -40,8 +40,9 @@ def test_a_contradicting_name_and_declared_type_lose():
     fmt, data = SAMPLES["gif"]
     det = detect.detect(data, name="photo.png", declared="image/png", size=len(data))
     assert det.format == "gif" and any("wins" in r for r in det.reasons)
+    # bytes that show no STL structure are not an STL because of their name (lane FX, ADR-080)
     det = detect.detect(b"\x00\x01\x02\x03" * 20, name="model.stl", size=80)
-    assert det.format == "stl" and det.basis == "declared"
+    assert det.format == "unknown" and any("never identifies" in r for r in det.reasons)
 
 
 @pytest.mark.parametrize("name", sorted(SAMPLES))
