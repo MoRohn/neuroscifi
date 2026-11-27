@@ -77,7 +77,7 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 |---|---|---|---|
 | wiring every lane into one registry; real-file reality check | built and measured | int, `c1f5f2f` | development 509/15/0/0 then (later 512/12/0/0) |
 | `main` with Cognitive Genesis Wave 4 merged into `omnimind` | built | main, `1a00f50` | 7,726 passed, 0 failed |
-| the pipeline learns, relates its sources, carries units; SVGs scale to 360 px | built and measured | int2, `505b55b` | 11 productions byte-identical with learning off; [REGRESSION_REPORT.md](REGRESSION_REPORT.md) |
+| the pipeline records outcomes and plans through the learner (when on), relates its sources, carries units; SVGs scale to 360 px | built and measured | int2, `505b55b` | 11 productions byte-identical with learning off; [REGRESSION_REPORT.md](REGRESSION_REPORT.md) |
 | decoding in a limited child process (the guard) | built and measured | F1, `5faab9a` | security review second pass: held against every probe; cost **to be confirmed after fix lane F4** |
 | the product decides outcomes; one outcome table; exit codes | built | F1 `d8bbfd0`, F3 `bdfebab` | `test_the_drivers_only_translate`; review M B4 fixed |
 | the benchmark reads only what a person would see; drivers pinned for looks | built | F2, `4a6986e` | `READERS_SHA256`; pins file (null until the main session pins) |

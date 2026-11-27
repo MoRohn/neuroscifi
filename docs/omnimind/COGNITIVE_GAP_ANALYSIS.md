@@ -44,7 +44,7 @@ F4".
 | III.1 Everything held as text, bits or arrays | **narrowed** | 12 typed representations keep structure (cells, headings, trees, pixels, samples, vertices, graphs, members); lost: an array's dtype and 3-D shape, a DOCX's embedded pixels, video frames | breakdown: 310 of 326 held-out measurements right |
 | III.2 No cross-modal binding | **narrowed** | `nsf artifact relate` and the links it records (`consistent_with`, `contradicts`, `describes`, `same_subject`), labelled as the system's claims; only comparisons the question names (58 / 14 / 0 without it); half of held-out report totals "cannot"; no meaning of an image or sound | cross 72 of 72 development, 66 / 6 / 0 held-out |
 | III.3 Memory does not hold artifacts | **narrowed, by design not closed** | the artifact store sits beside the individual with forget, restore and owner scope; nothing decoded enters memory, knowledge or beliefs (on purpose: no knowledge from untrusted files without a reviewed path) | ADR-071 |
-| III.4 Long-horizon understanding of large artifacts | **open** | large files are refused, read in part (said so) or reduced (said so); nothing summarises or indexes a large artifact across sessions | code review M5; fix lane F3 |
+| III.4 Large artifacts over a long horizon (the directive's §6.4) | **open** | large files are refused, read in part (said so) or reduced (said so); nothing summarises or indexes a large artifact across sessions | code review M5; fix lane F3 |
 
 ## Phase IV: choosing the form of a result (§7)
 
