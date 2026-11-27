@@ -34,6 +34,13 @@ def test_modules_import_and_read_their_defaults_without_a_home_folder(monkeypatc
         assert str(vconfig.DEFAULT_KEY_FILE).startswith("/nonexistent/")
         assert str(tls.DEFAULT_CA_DIR).startswith("/nonexistent/")
         assert idle.memory_settings()["embed_port"] == 18441
+        # OMNIMIND: the artifacts package imports and reads its owner settings here as well
+        from neuroscifi.artifacts import adapters, learn, make, produce, relate  # noqa: F401
+        from neuroscifi.artifacts import store as astore
+        from neuroscifi.instance import store as istore
+        cfg = istore.InstanceConfig()
+        assert astore.limits(cfg).max_bytes == 64 << 20 and cfg.form_learning == "off"
+        assert make.catalog() and adapters.catalog()
     finally:
         monkeypatch.undo()
         for module in (iconfig, vconfig, tls):

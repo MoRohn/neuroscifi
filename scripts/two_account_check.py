@@ -22,7 +22,8 @@ account in turn (`setpriv --init-groups`, as systemd's User= does) with this che
     cannot remove the other account's entry, a third account cannot enter, and the idle account serves the request;
   - a real listening socket on a service's port is refused when a third account owns it and accepted when the
     service account, root or the key file's owner does;
-  - the code imports and reads its settings as a uid without an account and without HOME.
+  - the code imports and reads its settings as a uid without an account and without HOME (the artifacts package
+    and its settings included).
 
 Exit 0: every check passed. Exit 1: one failed (printed). Exit 77: this host does not allow such a namespace
 (the reason is printed); nothing was checked. What it cannot show: systemd itself (the units, PrivateUsers=yes,
@@ -116,6 +117,14 @@ def act(args):
         cfg = iconfig.InferenceConfig()
         out = {"uid": os.getuid(), "home": os.environ.get("HOME"), "key_path": str(iconfig.key_path(cfg)),
                "ports": idle.memory_settings()["embed_port"], "services": sorted(idle.SERVICES)}
+        # OMNIMIND: the artifacts package (pipeline, relater, learner) and its owner settings, read at defaults
+        from neuroscifi.artifacts import adapters, learn, make, produce, relate  # noqa: F401
+        from neuroscifi.artifacts import store as astore
+        from neuroscifi.instance import store as istore
+        icfg = istore.InstanceConfig()
+        out["artifacts"] = {"max_bytes": astore.limits(icfg).max_bytes, "form_learning": icfg.form_learning,
+                            "approved": list(icfg.artifact_adapters), "generators": len(make.catalog()),
+                            "readers": len(adapters.catalog())}
     elif what == "init":
         from neuroscifi.instance import store
         from neuroscifi.webcortex import orchestrator, state
@@ -662,6 +671,10 @@ def inside(repo, prefix, site, rel_python):
     bare = run("4242", "import")
     check("the code imports and reads its settings as a uid without an account and without HOME",
           bare.get("uid") == 4242 and bare.get("home") is None and "vllm" in bare.get("services", []), bare)
+    art = bare.get("artifacts") or {}
+    check("the artifacts package imports and reads its settings there too (form learning off, no adapter approved)",
+          art.get("max_bytes") == 64 << 20 and art.get("form_learning") == "off" and art.get("approved") == []
+          and art.get("generators", 0) > 0 and art.get("readers", 0) > 0, art)
     return stage.checks
 
 
