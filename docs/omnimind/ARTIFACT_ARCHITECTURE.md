@@ -3,8 +3,7 @@
 Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged (schema 21), from the code and the
 decision records ADR-070 to ADR-079 in [../architecture/ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md).
 It replaces the first version of 2026-11-26, which described the design before anything was built. Nothing here is
-merged into `main`. Places that the small fix lane F5 (still working) will change are marked "to be confirmed after fix lane
-F5".
+merged into `main`. Fix lane F5 (`bf3dac6`) is merged too.
 
 ## The first screen
 
@@ -151,10 +150,10 @@ only when `imagine_scenarios` is on (off by default).
   stop or failed check leaves nothing stored. Large sources are made from a stated reduction (an image over 4 MP
   downsampled; a mesh over 20,000 vertices decimated; a line series over 4,000 points kept as each window's extremes;
   a scatter over 5,000 points thinned; at most 24 children per tree node); `--partial` uses a file a limit stopped
-  part-way and the made thing's description says which part. Open (code review N3, N4): the terminal summary after a
-  partial read does not yet say it was partial (it can print "100% of the source values"), a row count is off by one,
-  the solid viewer does not call its points a reduction, and `--partial` on a 5,000-file zip still fails; **to be
-  confirmed after fix lane F5**. When the planned form has no builder here, up to two further admitted forms that have
+  part-way; since fix lane F5 the make summary and the "why" say a partial read or a reduction first, in the made
+  thing's own words (never "100% of the source values" for a part), the row counts agree, the solid viewer names its
+  reduction, and an archive too large to draw member by member is drawn as its folders with file counts. `make` and
+  `remake` exit through `outcome.of_production` (2 refused, 1 cannot, 0 answered). When the planned form has no builder here, up to two further admitted forms that have
   one are tried and the record says so.
 
 ## The console view

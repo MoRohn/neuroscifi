@@ -1,10 +1,9 @@
 # Project OMNIMIND
 
 Status: 2026-11-27. Waves O-0 and O-1, three independent reviews with second passes, and fix lanes F1 to F3 are
-merged into the integration branch `omnimind` (`09bfff6`, schema 21); fix lane F4 (`1aa7eb6`) is merged into these
-documents' branch and goes into `omnimind` with them. It is a **local branch: not merged into `main`, not pushed,
-never run on CI**. A small fix lane F5 is still working; places it will change are marked "to be confirmed after fix
-lane F5" in these documents. The main session's final validation and the withheld looks have not been taken.
+merged into the integration branch `omnimind`, and so are fix lanes F4 and F5 (`20a86ec`, schema 21). It is a
+**local branch: not merged into `main`, not pushed, never run on CI**. The main session's final validation and the
+withheld looks have not been taken (two placeholders: REGRESSION_REPORT and FINAL_REPORT).
 
 Project OMNIMIND is the owner's programme to let NeuroSciFi take in information in many forms and make results that
 are not only text, on top of the system that exists and without replacing any of it. Every capability is a function
@@ -89,8 +88,8 @@ These documents make no claim of consciousness, understanding, general or superh
 | O-1 | P production pipeline (`b87d90f`); R relating (`e0e056a`); L learning, schema 21 (`2d19a76`, `d8aaf04`); int2 integration (`505b55b`); U console view (`841c3a0`) | yes |
 | reviews | security, measurement, code on `505b55b`; second passes on `09bfff6`: all three "offer to the owner: yes", with residues | (reports, not code) |
 | fixes | F2 benchmark (`4a6986e`); F1 product (`b4798aa`, `bb113ab`); F3 the rest (`a0c7491`) | yes (`09bfff6`) |
-| last | F4 the second passes' residues (`1aa7eb6`); docs-2 these documents | F4: merged into docs-2 |
-| after | F5: the make summary after a partial read, `--partial` on a large archive, `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help | **in progress** |
+| last | F4 the second passes' residues (`1aa7eb6`); docs-2 these documents | F4: merged (`5c29da4`); docs-2: to be merged |
+| after | F5: the make summary after a partial read, `--partial` on a large archive, `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help (`bf3dac6`) | merged (`20a86ec`) |
 | then | pins, full validation, the withheld looks, the owner's questions | not started |
 
 ## Where to read next

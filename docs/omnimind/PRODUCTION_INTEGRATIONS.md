@@ -1,10 +1,10 @@
 # What exists, with its limits and its rollback (deliverable 6: "Production-Ready Integrations")
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged, from the catalogs the system prints
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged, from the catalogs the system prints
 (`nsf artifact adapters`, `nsf artifact forms`, `nsf artifact --help`, as recorded by the integration lane 2) and the
 code. "Production-ready" in the directive's sense is not claimed: this is a local branch, not merged into `main`,
 never run on CI, measured on synthetic files and simulated people, with the withheld examination not yet taken.
-Places the small fix lane F5 will change are marked "to be confirmed after fix lane F5".
+Fix lane F5 (`bf3dac6`) is merged too.
 
 ## The first screen
 
@@ -34,22 +34,22 @@ Places the small fix lane F5 will change are marked "to be confirmed after fix l
 | `nsf artifact make FILE\|ID... -r "..." [--form F] [--alternatives N] [--keep] [--partial] [--device D] [--seconds S] [--bytes B]` | decides the form, makes, checks independently, repairs, keeps with its "why"; several files are related | 60 s and 16 MiB by default; at most 4 alternatives; large sources reduced by stated rules |
 | `nsf artifact remake ID [--form F] [--option K=V]` | makes again from the kept specification or sources | as `make` |
 | `nsf artifact forms [--json]` | what can be made here and which check reads it back | reads no individual |
-| `nsf form plan --request "..." [--content FILE... \| --shape JSON] [--device D] [--accessibility NEED]` | prints the form a result would take, and why; nothing is made |  |
+| `nsf form plan -r "..." [--content FILE... \| --shape JSON] [--device D] [--accessibility NEED]` (`-r` since fix lane F5; `--request` as before) | prints the form a result would take, and why; nothing is made |  |
 | `nsf form learned` | what was learned per key, and what it changes |  |
 | `nsf artifact release ID` | ends a forget's hold on an artifact (the owner's statement that it does not name what was forgotten) | added by fix lane F4; writes a log row; a restore replays it |
 
 Exit codes follow one table (`artifacts/outcome.py`, fix lane F1): 0 done; 1 could not be done (an id not held,
 a make that failed or could not, a feedback not recorded); 2 refused (a rule or a limit, or only part of a file read
-without `--partial`) or misuse. `make` still exits 1 for three refusals the table calls 2 (a partial file without
-`--partial`, a recording over its decode limit, an archive over its member limit; code review N2); its terminal summary
-after a partial read does not say it was partial (N3), and `--partial` on a 5,000-file zip still fails (N4): **to be
-confirmed after fix lane F5**.
+without `--partial`) or misuse. `make` and `remake` exit through the product's
+outcome table too (fix lane F5): a part used without `--partial`, a limit or a held file gives 2; a format nothing here
+reads gives 1. After a partial read or a reduction the summary and the "why" say
+so in the made thing's own words; a very large archive is drawn as its folders with file counts (fix lane F5).
 
 ## Settings
 
 | setting | default | command | what it does | rollback |
 |---|---|---|---|---|
-| `artifact_max_bytes` | 64 MiB (1 KiB to 1 GiB) | `nsf config --artifact-max-mib N` | the largest file kept or read; memory in the guard's child can reach 256 MiB + 2 x the input + 2 x 256 MiB (896 MiB at the default, about 2.8 GiB at 1 GiB), and the second decode of `make`, `facts` and `relate` in the command can use as much; the help does not yet say so (**to be confirmed after fix lane F5**) | set it back |
+| `artifact_max_bytes` | 64 MiB (1 KiB to 1 GiB) | `nsf config --artifact-max-mib N` | the largest file kept or read; memory in the guard's child can reach 256 MiB + 2 x the input + 2 x 256 MiB (896 MiB at the default, about 2.8 GiB at 1 GiB), and the second decode of `make`, `facts` and `relate` in the command can use as much; the help says so, with 344 MiB measured to make a chart from a 60 MiB CSV (fix lane F5) | set it back |
 | `artifact_store_max_bytes` | 2 GiB (0 to 1 TiB) | `nsf config --artifact-store-max-mib N` | the sidecar's total | set it back |
 | `artifact_adapters` | none | `nsf config --artifact-adapters NAME,...` | approves external readers by entry point, distribution and version (`NAME=DIST==VERSION`); another distribution or version is listed "approve it again" and not loaded | `nsf config --artifact-adapters ""` |
 | `form_learning` | `off` | `nsf config --form-learning off\|record\|apply` | record: check verdicts and reactions are kept; apply: plans go through `learn.plan` and the "why" says when a habit decided | `off`; `nsf artifact feedback --reset` removes what was learned |

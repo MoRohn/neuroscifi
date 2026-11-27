@@ -1,10 +1,10 @@
 # Preservation of existing behaviour (deliverable 9: "Complete Regression Report")
 
-Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `09bfff6`, with fix lane F4 (`1aa7eb6`) merged. This page collects what each lane and each
+Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `09bfff6`, with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged. This page collects what each lane and each
 reviewer measured about the system that existed before OMNIMIND: the offline research digest, the sentence guard's
 differential, the test suites, the acceptance scenarios, the two-account check and the browser suite, each with its
 commit and counts. **The final validation at the final commit has not been run yet**: it is the main session's, after
-fix lane F4 and these documents are merged (placeholder at the end). Until it is run, "existing functionality is
+fix lanes F4 and F5 and these documents are merged (placeholder at the end). Until it is run, "existing functionality is
 preserved" is **unverified** at the final commit; the figures below hold at the commits named.
 
 Sources: the lane reports (`lane-*.md`) and review reports in the main session's scratch folder, and the main
@@ -44,6 +44,7 @@ session's log (`.omc/handoffs/omnimind.md`); none of these is tracked by git. Th
 | code review, second pass | `09bfff6` | `tests/artifacts` 1,526 (80 s); `tests/console` (63 s against 49 s on `main`); `tests/test_no_home.py` 3 passed | not run | 0 differing leaves, both | 1,937 compared, 0 different (232 stricter, 17 loosened, as before) | not run | 56 of 56 |
 | measurement review, second pass | `09bfff6` | benchmark tests 160 passed | not run | not run | not run | not run | not run |
 | fix lane F4 | `1aa7eb6` | chunks: acceptance 580 (4 skipped; withheld-cases and final run as tests), instance 1,073, artifacts 1,588, console 134 (with the guard tests), presence + inference + voice + data 1,620 (9 skipped), uat 246 + 1 failure (`test_artifact_adapters`, adapted in `1aa7eb6`; `test_uat_rollback.py` then 42 passed; the whole uat chunk not re-run), top-level 740, webcortex 2,485 | all of `tests/e2e` in 4 chunks: 73 + 60 + 49 passed, last chunk 52 passed, 1 skipped, 1 failure that did not recur on a re-run (its name not captured: **unverified as a flake**) | 4,116 leaves, 0 differing, both | 1,937 compared, 0 different | 7 of 7 | 56 of 56 |
+| fix lane F5 | `bf3dac6` | the suites its brief names: artifacts 1,602, console + uat 363, acceptance 233 (omni) + 347 (4 skipped; the rest); the whole suite not re-run as one run (instance, webcortex, presence and others not re-run; nothing they import changed but one help string) | `test_console_artifacts_e2e.py` 11 passed (the rest not run) | 4,116 leaves, 0 differing, both | 1,937 compared, 0 different | not run | not run |
 
 `scripts/reproduce.py`: 8 of 8 verified at every lane that ran it (integration lanes, U, F1, F3). `node` on
 `tests/js/*.mjs`: 8 of 8 at the integration lanes, U, F1 (merged) and F3.
@@ -84,7 +85,7 @@ form ...`) or settings that are off by default.
 
 ## Final validation at the final commit (placeholder)
 
-To be filled by the main session after fix lane F4 and this documentation are merged and the drivers are pinned.
+To be filled by the main session after fix lanes F4 and F5 and this documentation are merged and the drivers are pinned.
 **Not yet run.**
 
 | check | command | result |

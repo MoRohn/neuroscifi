@@ -1,6 +1,6 @@
 # Implementation matrix, with outcomes (deliverable 5)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged. The first version (2026-11-26, in git
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4 (`1aa7eb6`) and F5 (`bf3dac6`) merged. The first version (2026-11-26, in git
 at `abc6be4`) ranked 54 changes by a score of benefit, value, impact, confidence, complexity, risk and cost, with
 each row's acceptance criterion; that ranking and its details stay in git history. This version gives every row its
 actual outcome, the lane that did it and the evidence, adds the rows the later waves created, and restates the
@@ -83,7 +83,7 @@ or evidence file gives a figure), **dropped** (not done, with the reason), **ope
 | the benchmark reads only what a person would see; drivers pinned for looks | built | F2, `4a6986e` | `READERS_SHA256`; pins file (null until the main session pins) |
 | `--partial`, stated reductions, the SIMULATION record gated, CSV memory, unpack bound, approval by distribution and version | built and measured | F3, `a0c7491` | lane F3's table (30 MP PNG make 1,338 to 338 MiB) |
 | the forget hold; the product check's visibility rules; the reader's two blind spots (re-pinned `df21e658...` to `fb51f10c...`); the driver's last decisions (`outcome.member_path`, `FORMS_UNMAPPED`); `add` decoding once; a reader loaded only in the parent refused; console verdict reuse and one decode at a time; the console helpers' import cycle; the MIGRATIONS copy step | built | F4, `1aa7eb6` | lane F4's report; development unchanged (512 / 12 / 0 / 0; forms, cross, learn identical) |
-| the make summary after a partial read (N3), `--partial` on a large archive (N4), `make` exit codes (N2), the remaining non-plain words (L3), the `artifact_max_bytes` help (N-new-2) | **in progress** | F5 | **to be confirmed after fix lane F5** |
+| the make summary after a partial read (N3), `--partial` on a large archive drawn as its folders (N4), `make` and `remake` exit codes through `outcome.of_production` (N2), plain words with no rule names or raw timings, `--why` naming the form made instead, `nsf form plan -r` (L3), the `artifact_max_bytes` help (N-new-2) | built | F5, `bf3dac6` | `tests/artifacts/test_f5_plain.py`; development unchanged (512 / 12 / 0 / 0; forms, cross, learn identical) |
 
 ## The owner's decisions, as they now stand
 

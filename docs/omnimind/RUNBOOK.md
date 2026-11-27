@@ -3,7 +3,7 @@
 Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged. It applies to the branch `omnimind`
 (schema 21), **which is not merged into `main`**: on an installed 0.7.0 none of these commands exists. The general
 runbook is `docs/operations/RUNBOOK.md`; upgrades and rollback of the file are `docs/operations/MIGRATIONS.md`
-section 2. Places the small fix lane F5 will change are marked "to be confirmed after fix lane F5".
+section 2. Fix lane F5 (`bf3dac6`) is merged too.
 
 `nsf` below is the command for your individual (`nsfs` on an installed service, as in the general runbook).
 
@@ -69,19 +69,21 @@ clean child, the file is refused ("external_unguarded") and kept unread, never d
 
 **Exit codes** (one table, `artifacts/outcome.py`): **0** done; **1** could not be done (an id you do not hold, a make
 that could not make anything well, a reaction not recorded); **2** refused (a rule or a limit, or only part of a file
-was read and you did not pass `--partial`) or a mistake in the command. `make` still exits 1 for three refusals the
-table calls 2 (a partial file without `--partial`, a recording over its decode limit, an archive over its member
-limit; code review N2), and some output still shows code words such as `too_large:` or `over_budget` (L3): **to be
-confirmed after fix lane F5**.
+was read and you did not pass `--partial`) or a mistake in the command. `make` and `remake` exit through the product's
+outcome table too (fix lane F5): a part used without `--partial`, a limit or a held file gives 2; a format nothing here
+reads gives 1. Plain output carries no rule
+names or raw timings (time limits print as "1 s", not "0.99998 s"; fix lane F5).
 
 **What a refusal means.** Every refusal is one plain sentence and never a traceback.
 - *"... is not read here"*, *"names the format: nothing in it is read"*, *"reads only the header"*: the format was
   identified and no reader for its content exists on this host. Nothing is guessed. `nsf artifact gaps` counts it.
 - *a size or time limit* ("would need about 819 MiB", "took longer than the limit"): the file is too large to read
   within the limits. With `add`, a file stopped by a size limit is still kept, unread. With `make`, `--partial` uses a
-  file read only in part and the made thing's description says which part; the terminal summary does not yet say so
-  (it can print "100% of the source values"), and `--partial` on a 5,000-file zip still fails (code review N3, N4:
-  **to be confirmed after fix lane F5**).
+  file read only in part, and the summary, the "why" and the made thing's description all say which part, in the
+  same words ("Only part of weather.csv was used (--partial): ..."); a check line then says the values were read back
+  from "the part that was read", never "100% of the source values". A very large archive is drawn as its folders with
+  their file counts (`--partial` on a 5,000-file zip makes a 16 KiB tree saying 4,096 of 5,000 members were read).
+  A reduced solid says its points are a reduction of its vertices (fix lane F5).
 - *a safety refusal* (a pickle, a file that is two formats at once, an XML document type definition, too deep a
   nesting, an archive with a member name that climbs out or is absolute, overlapping archive members, structure
   hidden past the first 64 KiB): nothing is kept.
@@ -104,7 +106,8 @@ once, in the child; `make`, `facts`, `relate` and the console's detail view deco
 command) plus about 0.1 s. Adding a 5,000-file zip took 2.97 s (5.81 s before that change; most of it is the screen
 for instructions aimed at an AI, run on each member), a crafted 135 KiB PNG 6.86 s (13.19 s), a 30-megapixel PNG
 1.02 s. The second, in-command decode of `make`, `facts` and `relate` can use as much memory as the child was allowed;
-the help of `--artifact-max-mib` does not yet say so (**to be confirmed after fix lane F5**). On macOS and Windows
+the help of `--artifact-max-mib` says so: 896 MiB at 64 MiB, about 2.8 GiB at 1024 MiB, and 344 MiB measured to make
+a chart from a 60 MiB CSV (fix lane F5). On macOS and Windows
 only the time limit applies (unverified: no such host was available).
 
 ## Forget, the hold, and restore

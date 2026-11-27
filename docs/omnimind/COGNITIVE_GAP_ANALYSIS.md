@@ -4,8 +4,7 @@ Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` w
 before anything was built; in git at `abc6be4`) named each gap the directive's phases II to X open in NeuroSciFi. This
 version keeps that list and says, for each gap, what closed it, what only narrowed it, and what is still open and
 why. "Closed" means a named command or function exists, has tests and a measured figure; it never means the
-directive's ambition for that phase is met. Places the small fix lane F5 will change are marked "to be confirmed after fix
-lane F5".
+directive's ambition for that phase is met. Fix lane F5 (`bf3dac6`) is merged too.
 
 ## The first screen: what is still open
 
@@ -35,7 +34,7 @@ lane F5".
 | II.2 No format detection, no unknown-format answer | **closed** | `artifacts/detect.py` (signatures first) and the capability-discovery answer | unknown family 51 of 51 development, 49 of 49 held-out |
 | II.3 Formats decodable with what exists | **closed** for the formats listed | 66 readers within `Limits` and the guard | intake 330 of 337 development, 328 of 339 held-out |
 | II.4 Formats that cannot be decoded on this host | **open** | compressed images, compressed audio, video frames, Parquet, HDF5, `.doc`, `.xls`, 7z, RAR: header, structure or identification only; each needs a package or an external decoder (owner decisions) | honest family 52 of 55 (the 3 "cannot" are content questions) |
-| II.5 Streaming, resumable and partial processing | **narrowed** | `--partial` uses a file a limit stopped part-way and the made thing says which part (the terminal summary does not yet, and `--partial` on a 5,000-file zip fails: **to be confirmed after fix lane F5**); large sources are made from stated reductions; nothing streams or resumes; a 6-minute WAV is still refused (its samples would need more than 256 MiB) | fix lane F3; `tests/artifacts/test_f3_pipeline.py` |
+| II.5 Streaming, resumable and partial processing | **narrowed** | `--partial` uses a file a limit stopped part-way and the summary, the "why" and the made thing say which part; a very large archive is drawn as its folders (fix lane F5); large sources are made from stated reductions; nothing streams or resumes; a 6-minute WAV is still refused (its samples would need more than 256 MiB) | fix lane F3; `tests/artifacts/test_f3_pipeline.py` |
 
 ## Phase III: native representation (§6)
 

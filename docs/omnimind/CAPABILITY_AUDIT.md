@@ -1,10 +1,9 @@
 # Multimodal capability audit (deliverable 1)
 
-Status: 2026-11-27. Two parts. **After** (written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4, `1aa7eb6`, merged; schema 21): what
+Status: 2026-11-27. Two parts. **After** (written by documentation lane 2 on `omnimind` at `09bfff6` with fix lanes F4, `1aa7eb6`, and F5, `bf3dac6`, merged; schema 21): what
 each pathway does now, beside its status before, and what now exists that did not. **Before** (below, unchanged
 apart from this header): the baseline of 2026-11-26, `main` at `8f68beb` (schema 19, package 0.7.0), which merged the
-four Phase I audits. OMNIMIND is on the local branch `omnimind`; nothing of it is merged into `main`. Places that the small fix
-lane F5 (still working) will change are marked "to be confirmed after fix lane F5".
+four Phase I audits. OMNIMIND is on the local branch `omnimind`; nothing of it is merged into `main`.
 
 Each pathway has exactly one status word, as directive §4 asks:
 

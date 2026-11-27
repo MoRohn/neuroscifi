@@ -1,9 +1,8 @@
 # OMNIMIND final implementation report (deliverable 12)
 
-Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` with fix lane F4 (`1aa7eb6`) merged,
-before the small fix lane F5 lands, before the main session's final validation and before any withheld look. Those
-three places are marked ("to be confirmed after fix lane F5"; two placeholders); nothing in them is filled in by
-anticipation. OMNIMIND lives on the local branch `omnimind` (schema 21); **nothing is merged into
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` with fix lanes F4 and F5 merged (`20a86ec`),
+before the main session's final validation and before any withheld look. Those two places are placeholders; nothing
+in them is filled in by anticipation. OMNIMIND lives on the local branch `omnimind` (schema 21); **nothing is merged into
 `main`, nothing is pushed, CI has not run.**
 
 ## The first screen
@@ -41,7 +40,7 @@ Only the console's view of all this is on by default.
 | O-0 | S, K, A, B1, B2, C, G1 (+ G1b), G2, Z, ZF, ZW, docs-0; integration lane; the merge of `main` with Wave 4 | the audit's defects; detection, readers, the store, the planner, makers and checks, the examinations written first, the withheld split |
 | O-1 | P, R, L, U; integration lane 2 | the production pipeline; relating artifacts; learning from outcomes; the console view |
 | reviews | security, measurement, code (each with a second pass) | first pass: 4 blockers (measurement), H1-H2 (security), H1 and M1-M4 (code); second pass: all three "offer to the owner: yes", with residues |
-| fixes | F1, F2, F3, F4 (`1aa7eb6`); **F5 in progress** | the guard; the product decides outcomes; forget's matcher; the benchmark reads only what a person sees; driver pins machinery; `--partial` and reductions; plain words; F4: a forget holds what its scan cannot finish (and the scan's own budget), the product check's `visible_to_a_person`, the reader's two blind spots (re-pinned), the driver's last decisions in the product, `add` decoding once, console verdict reuse; **F5: the make summary after a partial read, `--partial` on a large archive, `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help** |
+| fixes | F1, F2, F3, F4 (`1aa7eb6`), F5 (`bf3dac6`) | the guard; the product decides outcomes; forget's matcher; the benchmark reads only what a person sees; driver pins machinery; `--partial` and reductions; plain words; F4: a forget holds what its scan cannot finish (and the scan's own budget), the product check's `visible_to_a_person`, the reader's two blind spots (re-pinned), the driver's last decisions in the product, `add` decoding once, console verdict reuse; F5: the make summary after a partial read, `--partial` on a large archive (drawn as its folders), `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help |
 
 Details per row: [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md); what exists with its limits and rollback:
 [PRODUCTION_INTEGRATIONS.md](PRODUCTION_INTEGRATIONS.md); architecture: [ARTIFACT_ARCHITECTURE.md](ARTIFACT_ARCHITECTURE.md).
@@ -105,8 +104,8 @@ Reported as open, not to be fixed in this programme's remaining lanes:
 - a six-minute recording is not read (its samples would need more than 256 MiB);
 - CI's 40-minute cap is not shown to fit: one CI run is needed, which needs the owner's go-ahead to push.
 
-Still with fix lane F5 (**to be confirmed after fix lane F5**): the make summary's wording after a partial read (N3),
-`--partial` on a large archive (N4), `make` exit codes (N2), the remaining non-plain words (L3), the
+Fixed by fix lane F5 (`bf3dac6`), no longer open: the make summary's wording after a partial read (N3), `--partial`
+on a large archive (N4), `make` and `remake` exit codes (N2), the remaining non-plain words (L3), the
 `artifact_max_bytes` help (N-new-2).
 
 ## Limitations of the evidence
@@ -120,7 +119,7 @@ Still with fix lane F5 (**to be confirmed after fix lane F5**): the make summary
 ## Recommended next priorities
 
 These are recommendations for the owner and the main session, not decisions.
-1. Merge fix lanes F4 and F5, pin the drivers in a commit that has the look rule as an ancestor, run the full validation there,
+1. Merge these documents, pin the drivers in a commit that has the look rule as an ancestor, run the full validation there,
    take each withheld look once under the committed rule, and record the results below as they come, failures first.
 2. Run the CI check job once (it needs a push: the owner's decision) before any merge into `main`.
 3. Only then ask the owner whether to merge into `main` (schema 21 is one-way for an individual's file).
