@@ -162,3 +162,105 @@ def test_a_unicode_path_naming_another_file_stays_refused(raw, field):
     with pytest.raises(Refused) as err:
         adapters.decode(_zip_raw(raw, b"a,b\n1,2\n", field), name="w.zip")
     assert err.value.rule in ("name_mismatch", "header_mismatch")
+
+
+# ---- W3 (lane FX5, last part): the cross-reference chain followed as a tolerant reader follows it -------------------
+
+from neuroscifi.artifacts.adapters import pdf as PDF  # noqa: E402
+
+
+def _chain(*, prev=b"", sxref=None, ws=b"\n", pad=0, tail=b"", trailer_end=b" >>", extra=b"", stm_back=False) -> bytes:
+    """A one-page PDF built here whose trailer holds `extra` and `prev` (b"{x}" is the section's own offset); `sxref`
+    replaces the startxref number; `pad` blank xref rows push the trailer that far after the section's start;
+    `stm_back` adds a cross-reference stream (named by /XRefStm) whose /Prev points back at the classic section."""
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 90 90] >>"]
+    out = bytearray(b"%PDF-1.5\n")
+    offsets = []
+    for i, body in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % i + body + b"\nendobj\n"
+    stm_at = len(out)
+    x = stm_at
+    if stm_back:
+        x = stm_at + 200                                   # the classic section's offset, known in advance
+        body = b"4 0 obj\n<< /Type /XRef /Size 5 /W [1 2 1] /Length 0 /Prev %d >>\nstream\n\nendstream\nendobj\n" % x
+        out += body + b" " * (200 - len(body))
+        extra += b" /XRefStm %d" % stm_at
+    assert len(out) == x
+    out += b"xref" + ws + b"0 4" + ws + b"0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    out += b"0000000000 65535 f \n" * pad
+    keys = extra + prev.replace(b"{x}", b"%d" % x)
+    number = (sxref if sxref is not None else b"%d" % x)
+    out += b"trailer" + ws + b"<< /Size 4 /Root 1 0 R" + keys + trailer_end + ws + b"startxref" + ws + number + ws + \
+        b"%%EOF\n" + tail
+    return bytes(out)
+
+
+def _padded_startxref(data: bytes) -> bytes:
+    at = data.rindex(b"startxref\n") + len(b"startxref\n")
+    end = data.index(b"\n", at)
+    return data[:at] + b"0" * 12 + data[at:end] + data[end:]
+
+
+@pytest.mark.parametrize("data", [
+    _chain(prev=b" /Prev 0000000000000{x}"),                              # review s3: /Prev zero-padded
+    _padded_startxref(_chain(prev=b" /Prev {x}")),                         # review s3: startxref zero-padded
+    _chain(prev=b" /Prev\x00{x}"),                                         # review s3: NUL as white space
+    _chain(prev=b" /Prev {x}", pad=70000),                                 # review s3: trailer > 1 MiB after the section
+    _chain(prev=b" /Prev +{x}"),                                           # own: a sign before the number
+    _chain(prev=b" /Prev {x}", ws=b"\x0c"),                                # own: form feed as white space
+    _chain(prev=b" /Prev {x}", ws=b"\r"),                                  # own: carriage returns only
+    _chain(stm_back=True),                                                 # own: classic -> /XRefStm -> /Prev back
+    _chain(prev=b" /XRef#53tm {x}"),                                       # own: an escaped /XRefStm to itself
+    _chain(prev=b" /Prev %note\r{x}"),                                     # own: a CR-ended comment before the number
+    _chain(prev=b" /Prev {x}", extra=b" /Info (a >> b)"),                  # own: ">>" inside a string first
+    _chain(prev=b" /Prev 000000000000000000000000000{x}"),                 # own: thirty digits
+    _chain(prev=b" /Prev {x}", tail=b"% startxref 9\n"),                   # own: a commented startxref after %%EOF
+])
+def test_a_chain_that_loops_is_refused_however_it_is_spelled(data):
+    assert PDF.xref_chain_state(data) == PDF.LOOP
+    _refused(data)
+
+
+@pytest.mark.parametrize("data", [
+    _chain(sxref=b"999999999"),                                            # a section past the end of the file
+    _chain(sxref=b"9"),                                                    # no section where it is said to be
+    _chain(trailer_end=b""),                                               # a trailer that never closes
+])
+def test_a_chain_that_cannot_be_followed_is_refused_by_name(data):
+    assert PDF.xref_chain_state(data) == PDF.UNREADABLE
+    with pytest.raises(Refused) as err:
+        adapters.decode(data, name="f.pdf")
+    assert err.value.rule == "xref_unreadable"
+
+
+def test_a_chain_longer_than_the_bound_is_refused(monkeypatch):
+    monkeypatch.setattr(PDF, "MAX_XREF_SECTIONS", 1)
+    honest = _pdf(prev=None, update=True)                                  # two sections, one more than allowed
+    assert PDF.xref_chain_state(honest) == PDF.UNREADABLE
+
+
+def test_honest_chains_in_these_spellings_stay_readable():
+    for data in (_chain(), _chain(ws=b"\x0c"), _chain(ws=b"\r"), _chain(extra=b" /Info (a >> b)"),
+                 _padded_startxref(_chain()), _chain(pad=70000), _pdf(prev=None, update=True),
+                 _pdf(prev=None, xrefstm="plain")):
+        assert PDF.xref_chain_state(data) is None
+
+
+def test_qpdf_agrees_where_it_is_installed(tmp_path):
+    """An optional cross-check (qpdf is never a dependency): qpdf reports a loop for the reviewer's spellings and
+    none for the honest chains."""
+    import shutil
+    import subprocess
+    qpdf = shutil.which("qpdf")
+    if qpdf is None:
+        pytest.skip("qpdf is not installed here")
+    cases = [(_chain(prev=b" /Prev 0000000000000{x}"), True), (_padded_startxref(_chain(prev=b" /Prev {x}")), True),
+             (_chain(prev=b" /Prev\x00{x}"), True), (_chain(), False), (_pdf(prev=None, update=True), False)]
+    for k, (data, loops) in enumerate(cases):
+        path = tmp_path / f"c{k}.pdf"
+        path.write_bytes(data)
+        out = subprocess.run([qpdf, "--check", str(path)], capture_output=True, text=True, timeout=60)
+        assert ("loop detected" in (out.stdout + out.stderr)) is loops, k
+        assert (PDF.xref_chain_state(data) == PDF.LOOP) is loops, k

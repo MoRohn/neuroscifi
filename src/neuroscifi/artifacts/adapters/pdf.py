@@ -52,101 +52,183 @@ ACTIVE_NAMES = {"JavaScript": ("active", "a script"), "JS": ("active", "a script
                 "URI": ("outside", "link address"), "GoToR": ("outside", "other document"),
                 "GoToE": ("outside", "other document")}
 _OPEN_ACTION = re.compile(rb"/OpenAction\s*<<")
-_STARTXREF = re.compile(rb"startxref\s+(\d{1,12})")
+# Lane FX5 (W3): the cross-reference chain read as a tolerant PDF reader reads it. PDF white space is NUL, tab, line
+# feed, form feed, carriage return and space; integers are read whole (leading zeros, any length, an optional "+").
+_WS = rb"[\x00\t\n\x0c\r ]"
+_STARTXREF = re.compile(rb"startxref" + _WS + rb"+\+?(\d+)")
+_CHAIN_KEYS = re.compile(rb"/(Prev|XRefStm)" + _WS + rb"+\+?(\d+)")
+_OBJ_HEAD = re.compile(rb"\d+" + _WS + rb"+\d+" + _WS + rb"+obj\b")
+_XREF_TYPE = re.compile(rb"/Type" + _WS + rb"*/XRef\b")
 MAX_XREF_SECTIONS = 4096
+MAX_STARTXREF = 64
+LOOP, UNREADABLE = "loop", "unreadable"
+
+
+_DICT_TOKEN = re.compile(rb"<<|>>|\(|%")
+_STRING_TOKEN = re.compile(rb"[()\\]")
+_LINE_END = re.compile(rb"[\r\n]")
+_BLANK_START = re.compile(rb"\(|(?<!<)<(?!<)|%")
 
 
 def _dictionary_tokens(raw: bytes) -> bytes:
-    """A trailer's bytes with its literal strings, hex strings and comments blanked out (lane FX4, R6): a "/Prev 9"
-    inside a string is a decoy, and a comment may stand between /Prev and its number."""
-    out, i, n = bytearray(), 0, len(raw)
-    while i < n:
-        c = raw[i:i + 1]
-        if c == b"(":
-            depth, i = 1, i + 1
-            while i < n and depth:
-                if raw[i:i + 1] == b"\\":
-                    i += 2
-                    continue
-                depth += {b"(": 1, b")": -1}.get(raw[i:i + 1], 0)
-                i += 1
-            out += b" "
-        elif c == b"<" and raw[i + 1:i + 2] != b"<" and (i == 0 or raw[i - 1:i] != b"<"):
-            j = raw.find(b">", i)
+    """A dictionary's bytes with its literal strings, hex strings and comments blanked out (lane FX4, R6): a "/Prev 9"
+    inside a string is a decoy, and a comment may stand between /Prev and its number. Same length as `raw`; one pass
+    (lane FX5: linear on any input)."""
+    out = bytearray(raw)
+    i, n = 0, len(raw)
+    while True:
+        m = _BLANK_START.search(raw, i)
+        if m is None:
+            break
+        start = m.start()
+        if m.group() == b"(":
+            level, i = 1, m.end()
+            while level:
+                k = _STRING_TOKEN.search(raw, i)
+                if k is None:
+                    i = n
+                    break
+                i = k.end()
+                if k.group() == b"\\":
+                    i += 1
+                else:
+                    level += 1 if k.group() == b"(" else -1
+        elif m.group() == b"<":
+            j = raw.find(b">", start)
             i = n if j < 0 else j + 1
-            out += b" "
-        elif c == b"%":
-            j = raw.find(b"\n", i)
-            i = n if j < 0 else j + 1
-            out += b" "
         else:
-            out += c
-            i += 1
+            k = _LINE_END.search(raw, start)
+            i = n if k is None else k.start()
+        i = min(i, n)
+        out[start:i] = b" " * (i - start)
     return bytes(out)
-
-
-_CHAIN_KEYS = re.compile(rb"/(Prev|XRefStm)\s+(\d{1,12})")
-MAX_STARTXREF = 64
 
 
 def _names_decoded(tokens: bytes) -> bytes:
     """PDF names with their #xx escapes decoded ("/P#72ev" is "/Prev" to every conforming reader; lane FX5, C5)."""
     def decode(m):
         return b"/" + re.sub(rb"#([0-9A-Fa-f]{2})", lambda h: bytes([int(h.group(1), 16)]), m.group(1))
-    return re.sub(rb"/([^\s/<>\[\]()%{}]+)", decode, tokens)
+    return re.sub(rb"/([^\x00\t\n\x0c\r /<>\[\]()%{}]+)", decode, tokens)
 
 
-def _chain_edges(data: bytes, offset: int) -> list[int]:
-    """The offsets a cross-reference section at `offset` points on to: every /Prev and /XRefStm of its trailer (or
-    of its stream's dictionary), read as tokens (strings and comments blanked, name escapes decoded)."""
-    section = data[offset:offset + (1 << 20)]
-    if section.startswith(b"xref"):
-        at = section.find(b"trailer")
-        if at < 0:
-            return []
-        stop = section.find(b"startxref", at)
-        trailer = section[at:stop if stop > 0 else at + 4096]
-    else:                                   # a cross-reference stream: its dictionary, up to its stream
-        stop = section.find(b"stream")
-        trailer = section[:stop if stop > 0 else 4096]
-    return [int(m.group(2)) for m in _CHAIN_KEYS.finditer(_names_decoded(_dictionary_tokens(trailer)))]
+def _dictionary_at(data: bytes, start: int, budget: list) -> bytes | None:
+    """The first `<< ... >>` dictionary at or after `start`, balanced (strings and comments not counted), or None
+    when it does not close within the scan budget. One pass: every byte is looked at once."""
+    at = data.find(b"<<", start, start + 4096)
+    if at < 0:
+        return None
+    depth, i, n = 0, at, len(data)
+    while True:
+        m = _DICT_TOKEN.search(data, i)
+        if m is None:
+            return None
+        budget[0] -= m.end() - i
+        if budget[0] <= 0:
+            return None
+        tok, i = m.group(), m.end()
+        if tok == b"<<":
+            depth += 1
+        elif tok == b">>":
+            depth -= 1
+            if depth == 0:
+                return data[at:i]
+        elif tok == b"(":                                 # a literal string: to its balancing parenthesis
+            level = 1
+            while level:
+                k = _STRING_TOKEN.search(data, i)
+                if k is None:
+                    return None
+                budget[0] -= k.end() - i
+                if budget[0] <= 0:
+                    return None
+                i = k.end()
+                if k.group() == b"\\":
+                    i += 1
+                else:
+                    level += 1 if k.group() == b"(" else -1
+        else:                                            # a comment: to the end of its line
+            k = _LINE_END.search(data, i)
+            i = n if k is None else k.end()
 
 
-def xref_chain_loops(data: bytes) -> bool:
-    """Lane FX3 (class H-C): whether the cross-reference sections come back to a section on their own path (a /Prev
-    or /XRefStm that points at itself or at a section that leads to it). A reader that follows it never ends, or
-    stops quietly at a place of its own choosing; either way what the file holds is not established.
+def _chain_edges(data: bytes, offset: int, budget: list) -> list[int] | None:
+    """The offsets a cross-reference section at `offset` points on to (every /Prev and /XRefStm of its trailer, or of
+    its cross-reference stream's dictionary), or None when no section can be read there within the budget."""
+    m = re.compile(_WS + rb"*").match(data, offset)
+    p = m.end() if m else offset
+    if data.startswith(b"xref", p):
+        at = data.find(b"trailer", p)
+        budget[0] -= (at - p) if at >= 0 else len(data) - p
+        if at < 0 or budget[0] <= 0:
+            return None
+        dictionary = _dictionary_at(data, at + 7, budget)
+    elif _OBJ_HEAD.match(data, p):
+        dictionary = _dictionary_at(data, p, budget)
+        if dictionary is not None and not _XREF_TYPE.search(_names_decoded(_dictionary_tokens(dictionary))):
+            return None                                   # an object, but not a cross-reference stream
+    else:
+        return None
+    if dictionary is None:
+        return None
+    return [int(m.group(2)) for m in _CHAIN_KEYS.finditer(_names_decoded(_dictionary_tokens(dictionary)))]
 
-    Lane FX5 (C5), by class: the chain is PARSED, not found by a pattern near the end. Every `startxref <offset>` of
-    the file starts a walk (at most MAX_STARTXREF, the last first): a comment that mentions the word, padding after
-    %%EOF or an earlier revision's startxref cannot hide the real one; each section's every /Prev and /XRefStm is
-    an edge (a decoy or a duplicate key cannot either); names are decoded before they are read. A cycle on any walk
-    is a loop. Within MAX_XREF_SECTIONS sections per walk."""
-    starts = [int(m.group(1)) for m in _STARTXREF.finditer(data)][-MAX_STARTXREF:]
-    for start in reversed(starts):
-        if not 0 <= start < len(data):
+
+def _startxrefs(data: bytes) -> list[int]:
+    """Every `startxref <offset>` outside a comment, in file order (at most MAX_STARTXREF, the last ones)."""
+    out = []
+    for m in _STARTXREF.finditer(data):
+        line = max(data.rfind(b"\n", 0, m.start()), data.rfind(b"\r", 0, m.start())) + 1
+        if b"%" in data[line:m.start()]:
+            continue                                      # inside a comment
+        out.append(int(m.group(1)))
+    return out[-MAX_STARTXREF:]
+
+
+def xref_chain_state(data: bytes) -> str | None:
+    """Lane FX5 (W3): LOOP when a walk of the cross-reference chain from any `startxref` comes back to a section
+    already on it (a visited set over every /Prev and /XRefStm); UNREADABLE when the chain from the LAST `startxref`
+    (the one a reader starts from) cannot be followed to its end within the budget (a section that is not there, a
+    trailer or a dictionary that does not close, more than MAX_XREF_SECTIONS sections, more bytes scanned than four
+    times the file); None otherwise, including a file with no `startxref` at all (nothing chains)."""
+    starts = _startxrefs(data)
+    budget = [4 * len(data) + (1 << 20)]
+    unreadable = False
+    for n, start in enumerate(reversed(starts)):
+        last = n == 0
+        state: dict[int, int] = {}                        # 1 on the current path, 2 done
+        edges = _chain_edges(data, start, budget) if 0 <= start < len(data) else None
+        if edges is None:
+            unreadable = unreadable or last
             continue
-        state: dict[int, int] = {}          # 1 on the current path, 2 done
         state[start] = 1
-        stack = [(start, iter(_chain_edges(data, start)))]
-        visited = 1
+        stack = [(start, iter(edges))]
         while stack:
-            node, edges = stack[-1]
-            nxt = next(edges, None)
+            node, it = stack[-1]
+            nxt = next(it, None)
             if nxt is None:
                 state[node] = 2
                 stack.pop()
                 continue
             if state.get(nxt) == 1:
-                return True
-            if nxt in state or not 0 <= nxt < len(data):
+                return LOOP                               # a loop is named first, wherever it was found
+            if nxt in state:
                 continue
-            visited += 1
-            if visited > MAX_XREF_SECTIONS:
-                return True                 # a chain longer than any honest file's: not followed to its end
+            if len(state) >= MAX_XREF_SECTIONS:
+                unreadable = unreadable or last
+                break
+            more = _chain_edges(data, nxt, budget) if 0 <= nxt < len(data) else None
+            if more is None:
+                unreadable = unreadable or last
+                state[nxt] = 2
+                continue
             state[nxt] = 1
-            stack.append((nxt, iter(_chain_edges(data, nxt))))
-    return False
+            stack.append((nxt, iter(more)))
+    return UNREADABLE if unreadable else None
+
+
+def xref_chain_loops(data: bytes) -> bool:
+    """Lane FX3 (class H-C), parsed since lane FX5: whether the cross-reference chain loops (`xref_chain_state`)."""
+    return xref_chain_state(data) == LOOP
 
 
 class _Timeout(BaseException):
@@ -256,9 +338,14 @@ def _outline(reader, deadline) -> dict[int, list[tuple[int, str]]]:
 def read_pdf(data: bytes, detected, limits):
     if not data.startswith(b"%PDF-"):
         raise Malformed("the bytes do not start with '%PDF-'")
-    if xref_chain_loops(data):
+    chain = xref_chain_state(data)
+    if chain == LOOP:
         raise Refused("the PDF's cross-reference sections point back at one already read (a loop): what the file "
                       "holds is not established", rule="self_reference")
+    if chain == UNREADABLE:
+        raise Refused("the PDF's cross-reference chain cannot be followed to its end (a section is not where it is "
+                      "said to be, or it does not end within the limit): what the file holds is not established",
+                      rule="xref_unreadable")
     facts = header_facts(data)
     if importlib.util.find_spec("pypdf") is None:
         error = Unsupported("PDF identified (" + _facts_sentence(facts) + "); its text needs pypdf, which is not "
