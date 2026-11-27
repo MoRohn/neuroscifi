@@ -128,7 +128,7 @@ def _plain(what, value) -> str:
             lines.extend("  " + line for line in why_text(value["why"]).splitlines())
         return "\n".join(lines)
     if what in ("make", "remake"):
-        from .produce import why_text
+        from .produce import carried_words, made_instead, used_part_lines, why_text
         record = value["record"]
         if value["status"] == "made":
             made = record.get("made") or {}
@@ -136,9 +136,11 @@ def _plain(what, value) -> str:
             carried = check.get("carried")
             lines = [f"Made {value['artifact']}: {made.get('title')} ({made.get('form')}, {_size(made.get('bytes'))}; "
                      "made by the system, not evidence).",
-                     f"Why this form: {(record.get('plan') or {}).get('reason') or 'you named it.'}",
-                     "Independent check: passed" + (f"; {carried:.0%} of the source values were read back from the "
-                                                    "file" if carried is not None else "") + "."]
+                     *used_part_lines(record.get("sources")),
+                     f"Why this form: {(record.get('plan') or {}).get('reason') or 'you named it.'}"
+                     + (f" {made_instead(record)}" if made_instead(record) else ""),
+                     "Independent check: passed" + (carried_words(carried, record, "file") if carried is not None
+                                                    else "") + "."]
             if value["sources_kept"]:
                 lines.append(f"The {len(value['sources_kept'])} file(s) it was made from are kept too: "
                              + ", ".join(value["sources_kept"]) + ".")
@@ -157,8 +159,12 @@ def _plain(what, value) -> str:
                          f"({', '.join(value['error'].get('needs') or []) or 'no decoder'} would be needed).")
         elif not value["decoded"]:
             lines.append("Nothing here can read this format, so only its size is known.")
-        for fact in value["facts"]:
-            lines.append(f"  {fact['name']}: {_value_words(fact['value'])}  [{fact['how']}]")
+        how = None
+        for fact in value["facts"]:     # how it was measured is said once for the facts that share it (code L3)
+            if fact["how"] != how:
+                how = fact["how"]
+                lines.append(f"  {how}:")
+            lines.append(f"    {fact['name']}: {_value_words(fact['value'])}")
         return "\n".join(lines)
     if what == "relate":
         from .relate_cli import plain
@@ -406,8 +412,8 @@ def _command(what, handler):
             return outcome.exit_code(outcome.REFUSED)
         if what == "feedback" and value.get("recorded") is False:
             return outcome.exit_code(outcome.CANNOT)
-        if what in ("make", "remake") and value["status"] not in ("made", "words", "remade"):
-            return outcome.exit_code(outcome.CANNOT)
+        if what in ("make", "remake"):
+            return outcome.exit_code(outcome.of_production(value["status"], value["record"]))
         if what == "forget" and value.get("status") == "absent":
             return outcome.exit_code(outcome.CANNOT)
         return outcome.exit_code(outcome.ANSWERED)

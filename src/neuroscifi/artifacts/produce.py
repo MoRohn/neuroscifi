@@ -48,7 +48,7 @@ import re
 import time
 from dataclasses import dataclass, field, replace
 
-from . import forms, guarded
+from . import forms, guarded, outcome
 from . import produce_builders as B
 from .spec import Spec, canonical_json
 from .types import ArtifactError, ContentShape, HeaderOnly, Limits, Malformed, Refused
@@ -158,21 +158,25 @@ def part_read(decoded) -> str:
 
 
 def _decode(data: bytes, name: str, limits: Limits, partial_ok: bool = False):
-    """(representation, detected format, None, part) or (None, format, why not, ""). A partly decoded file is used
-    only when the owner agreed (`partial_ok`, `nsf artifact make --partial`); `part` then says what was read."""
+    """(representation, detected format, None, part, "answered") or (None, format, why not, "", outcome): the
+    outcome (artifacts/outcome.py) of a source that is not used is "refused" (a rule or limit, or a part the owner
+    did not agree to use) or "cannot". A partly decoded file is used only when the owner agreed (`partial_ok`,
+    `nsf artifact make --partial`); `part` then says what was read."""
     try:
         decoded = guarded.decode(data, name=name, limits=replace(limits, refuse_flagged=True))
     except HeaderOnly as error:
-        return None, "unknown", f"only its header is read here ({error})"[:300], ""
+        return None, "unknown", f"only its header is read here ({error})"[:300], "", outcome.of_error(error)
     except ArtifactError as error:
-        return None, "unknown", f"{error.reason}: {error}"[:300], ""
+        # the message alone: it is the plain reason ("too_large: ..." was a rule's name in front of it, code L3)
+        return None, "unknown", str(error)[:300], "", outcome.of_error(error)
     rep = decoded.representation
     if getattr(rep, "kind", None) == "opaque":
-        return None, decoded.detected.format, "nothing here reads its format", ""
+        return None, decoded.detected.format, "nothing here reads its format", "", outcome.CANNOT
     if decoded.partial and not partial_ok:
         return None, decoded.detected.format, ("only part of it could be read, and a part is used only when you "
-                                               "agree (--partial): " + part_read(decoded))[:400], ""
-    return rep, decoded.detected.format, None, part_read(decoded) if decoded.partial else ""
+                                               "agree (--partial): " + part_read(decoded))[:400], "", \
+            outcome.of_decoded(decoded, partial_ok=False)
+    return rep, decoded.detected.format, None, part_read(decoded) if decoded.partial else "", outcome.ANSWERED
 
 
 MAX_RASTER_PIXELS = 4_000_000   # a larger image is measured and drawn from a downsample (fix lane F3, item 3)
@@ -202,7 +206,8 @@ def reduce_for_making(rep) -> tuple[object, str]:
             faces = inverse.reshape(-1, 3).astype(np.int64)
             return replace(rep, vertices=np.ascontiguousarray(rep.vertices[used]), faces=faces), (
                 f"decimated to be shown: one triangle in every {step} of its {m} is kept ({len(faces)} triangles, "
-                f"{len(used)} vertices) and the others are not shown")
+                f"{len(used)} vertices) and the others are not shown; the {len(used)} points the view shows are a "
+                f"reduction of its {n} vertices")
     return rep, ""
 
 
@@ -246,19 +251,22 @@ def interpret(db, sources, limits: Limits, deadline: float | None = None,
             record = store.get(db, source)
             sid, label, kind = record.id, record.label, record.origin
             if record.held:
-                notes.append({"id": sid, "label": label, "used": False, "why": store.HELD_WORDS})
+                notes.append({"id": sid, "label": label, "used": False, "why": store.HELD_WORDS,
+                              "outcome": outcome.REFUSED})
                 continue
             if record.flagged:
                 notes.append({"id": sid, "label": label, "used": False,
-                              "why": "its text looked like instructions to an AI, so it is not used as content"})
+                              "why": "its text looked like instructions to an AI, so it is not used as content",
+                              "outcome": outcome.REFUSED})
                 continue
             if record.state != "stored":
-                notes.append({"id": sid, "label": label, "used": False, "why": f"its bytes are {record.state}"})
+                notes.append({"id": sid, "label": label, "used": False, "why": f"its bytes are {record.state}",
+                              "outcome": outcome.CANNOT})
                 continue
             data = store.read_bytes(db, sid)
-        rep, fmt, why, part = _decode(data, label, _within(limits, deadline), partial_ok)
+        rep, fmt, why, part, answer = _decode(data, label, _within(limits, deadline), partial_ok)
         if rep is None:
-            notes.append({"id": sid, "label": label, "format": fmt, "used": False, "why": why})
+            notes.append({"id": sid, "label": label, "format": fmt, "used": False, "why": why, "outcome": answer})
             continue
         if fmt == "python":
             python.append((label, data, sid))
@@ -1270,16 +1278,19 @@ def converge(candidates) -> tuple[int | None, str]:
 
 
 def _failure_words(candidates) -> str:
+    """One sentence (code review L3): each form that was tried, and why it was not good enough to keep."""
     parts = []
     for c in candidates:
         label = forms.label_of(tuple(c["forms"])) if c["forms"][0] in forms.FORMS else c["forms"][0]
         if c.get("cannot") and not c.get("verdict"):
-            parts.append(f"{label}: {c['cannot']}")
+            parts.append(f"{label} was tried and could not be made ({str(c['cannot']).rstrip('.')})")
         elif c.get("verdict"):
             failed = [f for f in c["verdict"]["findings"] if not f["passed"]]
-            parts.append(f"{label}: the independent check found " + "; ".join(
-                f["detail"] for f in failed[:3]) if failed else f"{label}: the independent check failed")
-    return ("Could not make this well. " + " ".join(p.rstrip(".") + "." for p in parts))[:1200]
+            parts.append(f"{label} was made, but the independent check found that it is not good enough ("
+                         + "; ".join(str(f["detail"]).rstrip(".") for f in failed[:3]) + ")" if failed else
+                         f"{label} was made, but the independent check failed")
+    return ("Could not make this well: " + ("; ".join(parts) or "nothing could be tried")
+            + ", so nothing was kept.")[:1200]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -1331,9 +1342,12 @@ def remake(db, artifact_id: str, *, form: str | None = None, options: dict | Non
            "candidates": [{"forms": [old.get("spec")], "form": old.get("spec"), "rounds": result["rounds"]}]}
     if result["made"] is None or not result["verdict"].ok:
         rec["outcome"] = "could not make this well"
-        rec["why"] = ("Could not make this well: " + "; ".join(
-            f["detail"] for f in (_verdict_summary(result["verdict"])["findings"] if result["verdict"] else [])
-            if not f["passed"])[:800] or (result["refusal"] or {}).get("message", "nothing could be made"))
+        found = "; ".join(str(f["detail"]).rstrip(".") for f in (_verdict_summary(result["verdict"])["findings"]
+                                                                  if result["verdict"] else []) if not f["passed"])
+        rec["why"] = ("Could not make this well: it was made again with the changed options, but "
+                      + (f"the independent check found that it is not good enough ({found[:800]})" if found else
+                         f"it could not be made ({(result['refusal'] or {}).get('message', 'nothing was made')})")
+                      + ", so nothing was kept.")
         rec["steps"] = run.steps
         return Production("failed", bound_record(rec))
     made, new_spec = result["made"], Spec.from_dict(result["made"].spec.to_dict())
@@ -1356,6 +1370,59 @@ def remake(db, artifact_id: str, *, form: str | None = None, options: dict | Non
 # The "why", in plain words
 
 
+def used_part_lines(sources) -> list[str]:
+    """What the owner must read before anything else about a made thing (code review N3): for each used source read
+    only in part (`--partial`) or reduced to be made from, the same sentence its description carries."""
+    lines = []
+    for s in sources or ():
+        if not s.get("used"):
+            continue
+        if s.get("part"):
+            lines.append(f"Only part of {s.get('label')} was used (--partial): {s['part']}.")
+        if s.get("reduced"):
+            lines.append(f"{s.get('label')} was {s['reduced']}.")
+    return lines
+
+
+def carried_words(carried: float, record: dict, where: str) -> str:
+    """The carried share in words: of the source values, or, when a source was read in part or reduced, of the values
+    the thing was made from (never "100% of the source values" for a part)."""
+    used = [s for s in record.get("sources") or () if s.get("used")]
+    part, reduced = any(s.get("part") for s in used), any(s.get("reduced") for s in used)
+    if not (part or reduced):
+        return f"; {carried:.0%} of the source values were read back from the {where}"
+    what = " and ".join(w for w, on in (("the part that was read", part), ("the reduction", reduced)) if on)
+    return (f"; {carried:.0%} of the values it was made from were read back from the {where} (they are {what}, "
+            "as said above, not the whole source)")
+
+
+FORESIGHT_WORDS = {"bytes": "its size", "seconds": "the time it took", "over_budget": "going over the budget",
+                   "label_overlap": "labels overlapping", "too_long": "being too long"}
+
+
+def _foreseen_word(what: str) -> str:
+    return FORESIGHT_WORDS.get(what, str(what).replace("_", " "))
+
+
+def made_instead(record: dict) -> str:
+    """When the form made is not the one planned (a fallback: the planned form has no maker here, or could not be
+    made from this content), the sentence that says so (code review L3); else ""."""
+    made, cands = record.get("made") or {}, record.get("candidates") or []
+    chosen = list((record.get("plan") or {}).get("chosen") or [])
+    winner = next((c for c in cands if c.get("fallback") and c.get("forms", [None])[0] == made.get("planner_form")),
+                  None)
+    if not chosen or winner is None:
+        return ""
+
+    def label(fs):
+        return forms.label_of(tuple(fs)) if all(f in forms.FORMS for f in fs) else str(fs[0])
+    tried = next((c for c in cands if c.get("forms") == chosen), None)
+    why = ("nothing here can make one" if chosen[0] not in B.BUILDERS else
+           f"it could not be made from this content ({str(tried['cannot']).rstrip('.')})" if tried and
+           tried.get("cannot") else "it could not be made from this content")
+    return f"Planned {label(chosen)}; {why}, so {label(winner['forms'])} was made instead."
+
+
 def why_text(record: dict, *, short: bool = False) -> str:
     """The production record in plain words: what was asked, what the sources were measured to be, which forms were
     considered with their scores, what was foreseen, what was made, what the independent check found, what was
@@ -1374,11 +1441,14 @@ def why_text(record: dict, *, short: bool = False) -> str:
             lines.append(f"Source {s.get('label')}: {s.get('format')}, read {s.get('reading')}; measured as "
                          f"{', '.join(shape.get('kinds', []))} with {shape.get('items')} items"
                          + (f" in {shape.get('series')} series" if shape.get("series") else "") + ".")
+            lines.extend("  " + line for line in used_part_lines([s]))
         else:
             lines.append(f"Source {s.get('label')} was not used: {s.get('why')}.")
     plan = record.get("plan") or {}
     if plan:
         lines.append(f"Planned: {plan.get('reason')}")
+        if made_instead(record):
+            lines.append(f"Made instead: {made_instead(record)}")
         if plan.get("learned"):
             lines.append(f"Learned: {plan['learned']}")
         if not short:
@@ -1425,13 +1495,14 @@ def why_text(record: dict, *, short: bool = False) -> str:
     if check:
         carried = check.get("carried")
         lines.append("Independent check: " + ("passed" if check.get("ok") else "FAILED") +
-                     (f"; {carried:.0%} of the source values were read back from the bytes" if carried is not None
-                      else "") + (f"; failed: {', '.join(check['failed'])}" if check.get("failed") else "") +
+                     (carried_words(carried, record, "bytes") if carried is not None else "") + (f"; failed: {', '.join(check['failed'])}" if check.get("failed") else "") +
                      (f"; style notes: {', '.join(check['style_failed'])}" if check.get("style_failed") else ""))
     if record.get("foresight") and not short:
         lines.append("Foreseen against found: " + "; ".join(
-            f"{p['what']} {p['outcome']}" for p in record["foresight"]))
-    if record.get("outcome") in ("words", "could not make this well", "nothing to make"):
+            f"{_foreseen_word(p['what'])}: {p['outcome']}" for p in record["foresight"]))
+    if record.get("outcome") == "nothing to make":     # each source's reason is said once, above (code L3)
+        lines.append("Nothing was made: none of the sources could be read as content, for the reason given above.")
+    elif record.get("outcome") in ("words", "could not make this well"):
         lines.append(record.get("why", ""))
         if record.get("next"):
             lines.append(f"The next form to try: {record['next']['label']} (`--form {record['next']['forms'][0]}`).")
@@ -1441,5 +1512,6 @@ def why_text(record: dict, *, short: bool = False) -> str:
     return "\n".join(line for line in lines if line)
 
 
-__all__ = ["Given", "LABEL", "Production", "ProductionStopped", "RECORD", "bound_record", "converge", "foresight_pairs",
-           "interpret", "parse_options", "produce", "remake", "why_text"]
+__all__ = ["Given", "LABEL", "Production", "ProductionStopped", "RECORD", "bound_record", "carried_words", "converge",
+           "foresight_pairs", "interpret", "made_instead", "parse_options", "produce", "remake", "used_part_lines",
+           "why_text"]

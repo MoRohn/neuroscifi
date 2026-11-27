@@ -371,7 +371,10 @@ def register(sub):
                    help="the salience (0 to 1) a finding needs to be broadcast while --broadcast is on (default 0.5)")
     p.add_argument("--artifact-max-mib", type=bounded_int(1, 1024),
                    help="the largest file `nsf artifact add` keeps, in MiB (default 64); reading a file can take "
-                        "several times its size in memory, so a larger value can make adding slower and heavier")
+                        "several times its size in memory, so a larger value can make adding slower and heavier: "
+                        "`nsf artifact make`, `facts` and `relate` read it in their own process, bounded at 256 MiB "
+                        "+ 2 x the file + 512 MiB (896 MiB at 64, about 2.8 GiB at 1024; measured: 344 MiB at the "
+                        "peak to make a chart from a 60 MiB CSV)")
     p.add_argument("--artifact-store-max-mib", type=bounded_int(0, 1024 * 1024),
                    help="the most the artifact store beside the individual may hold in all, in MiB (default 2048)")
     p.add_argument("--artifact-adapters", metavar="NAME,...",
