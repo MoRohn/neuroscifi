@@ -71,6 +71,15 @@ WITHHELD2_SHA256 = {
     "withheld2_unknown_hostile.py": "bf296a3d4fd65ca4a833aa41de4a9eec055b516e5bbde8dd346ec9530f2e1ad3",
     "withheld2_cross.py": "a8b60d0df21fbed228a917a16ce69cb3d8e82977323bdd599ec28ecced4b2fe9",
 }
+# The THIRD withheld split (lane ZW3, `final --split withheld3`): new cases of unknown, hostile and cross, written after
+# the owner opened the first two splits of these families (WAVE3.md). Pinned here and in
+# tests/acceptance/test_omni_withheld3.py; a ledger line of this split carries "split": "withheld3".
+FILE_OF3 = {"unknown": "withheld3_unknown_hostile.py", "hostile": "withheld3_unknown_hostile.py",
+            "cross": "withheld3_cross.py"}
+WITHHELD3_SHA256 = {
+    "withheld3_unknown_hostile.py": "cdf4c891a652ccc3ce103975a6ce303f0497237d3dc132de27572361503f7c38",
+    "withheld3_cross.py": "058ddc14897093ca8723d8bdaa38c3dea76aff1ae7c879f2cef6c3bd6f2f3821",
+}
 
 
 def files_of(split: str) -> tuple[dict, dict]:
