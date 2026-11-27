@@ -1,7 +1,7 @@
 # Project OMNIMIND
 
 Status: 2026-11-27. Waves O-0 and O-1, three independent reviews with second passes, fix lanes F1 to F5 and these
-documents are merged into the integration branch `omnimind` (`21193c4`, schema 21). The main session ran the final
+documents are merged into the integration branch `omnimind` (`ad28fcf`, schema 21; Wave O-2 below). The main session ran the final
 validation on `55f89be` (the commit that pins the drivers beside the look rule) and took the withheld looks there, once
 each. It is a **local branch: not merged into `main`, not pushed, never run on CI**.
 
@@ -11,6 +11,9 @@ or command with a name that says what it does, sits behind a setting or an expli
 an examination written before it.
 
 ## The result, on one screen
+
+**Latest: the fix wave (Wave O-2) was examined once on a second withheld split and none of the three fixed mechanisms
+earned "supported"; the owner's condition for merging is not met** (section "Wave O-2" below).
 
 NeuroSciFi can now **take in** a file the owner hands over (`nsf inspect`, `nsf artifact add`; the console's upload
 when turned on): it identifies it by content, decodes it within limits in a guarded child process (66 readers: tables,
@@ -106,8 +109,14 @@ second withheld split without reading product code (unknown 171 tasks, hostile 6
 refusal rule one rule (parser-level attacks refuse the whole file; references outside the file and embedded active
 content are named in a note, never followed or run, and never refuse by themselves). The third review passes found the
 first withheld split spent for these mechanisms, the forms and learn looks VOID by the rule, and FX's corpora to be
-regression evidence only. **The one look at the second withheld split is not yet taken**; its rule is committed in
-[../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md).
+regression evidence only. **The one look at the second withheld split was taken on `ae6120f`, under its rule committed before it
+([../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md)), and none of the three earned "supported"**:
+unknown 158 right, **5 wrong** of 171; hostile 51 refused, **11 answered instead of refused** of 62; cross 65 of 98
+with 1 wrong of 48 answered and "cannot" on all 18 undecidable cases, but right on only 47 of 80 decidable cases (the
+rule needs 60): it stopped guessing and declines too much to count as working. The fixes closed the classes the fix
+lane named and did not generalise to new constructions. Both withheld splits are spent for these families; any
+further fix needs a third set of unseen cases written first. The owner's condition for merging was examined and is
+**not met**; the pull request stays unmerged pending the owner's decision. Details: [FINAL_REPORT.md](FINAL_REPORT.md).
 
 ## Where to read next
 

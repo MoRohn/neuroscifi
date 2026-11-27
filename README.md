@@ -673,7 +673,9 @@ states. Measured on synthetic files: 510 of 528 held-out tasks right with 0 wron
 lane tuned against, it gave 6 wrong answers in 652 (3 disguised or unknown files answered falsely, 3 hostile files
 answered instead of refused) and the relater 6 wrong in 78: those three looks are not supported. The form planner's
 and the learner's withheld looks are void by the rule (two controls were not run). Nothing decodes JPEG, MP3 or video frames;
-no model sees or hears; answers in conversation are still sentences. Details: [docs/omnimind/README.md](docs/omnimind/README.md).
+no model sees or hears; answers in conversation are still sentences. A fix wave was then examined once on a second withheld split and none of the three fixed
+mechanisms earned "supported" (5 wrong of 171 unknown files; 11 of 62 hostile files answered instead of refused; the
+relater right on 47 of 80 decidable cases): the condition for merging is not met. Details: [docs/omnimind/README.md](docs/omnimind/README.md).
 
 ## Known limitations
 
