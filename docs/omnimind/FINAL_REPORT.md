@@ -56,14 +56,14 @@ Details per row: [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md); what exis
 
 Every figure is from a committed evidence file ([BENCHMARKS.md](BENCHMARKS.md) names each one).
 
-| measure | reference(s) | the product, development | the product, held-out | verdict by the rule written before the run |
-|---|---|---|---|---|
-| taking things in and making things (7 families) | today 55 right of 524 / 528; floor 52 (refuse everything); 29 (say "cannot" to everything) | 512 / 12 / 0 / 0 of 524 | 510 / 18 / 0 / 0 of 528 | no fabrication, no crash: holds; generalizes in five families; hostile refused: not fully (22 of 23); made: does not generalize (13 of 14); transform: holds, with lane P's disclosure |
-| of which: format identification / measurements / refusals / either / made read back | | 128 / 310 of 322 / 50 / 2 / 22 | 128 / 310 of 326 / 49 of 50 / 2 / 21 of 22 | |
-| choosing a form (good share) | always prose 0.399 / 0.442; shape-only 0.459 / 0.500; second reader 0.902 / 0.877 | blind 0.489; tuned 0.850; frozen 0.805 | 0.659 (tuned planner) | does not beat the references; overfit; not shown to read the words |
-| relating two artifacts (correct of 72) | always consistent 36; today 0 answered | 72 (58 / 14 / 0 without the question) | 66, 6 "cannot", 0 wrong; report totals 6 of 12 | supported |
-| learning (late kept, SIMULATED) | planner alone 0.587 / 0.450; key_majority 0.859 / 0.802 | 0.816 | 0.710 | supported over the planner alone; below key_majority |
-| foresight: predicted / observed seconds | | median 102, range 4.9 to 560, never under | | recorded, not corrected (the planner is frozen) |
+| measure | reference(s) | the product, development | the product, held-out | verdict by the rule written before the held-out run | withheld look (`55f89be`) |
+|---|---|---|---|---|---|
+| taking things in and making things (7 families) | today 55 right of 524 / 528; floor 52 (refuse everything); 29 (say "cannot" to everything) | 512 / 12 / 0 / 0 of 524 | 510 / 18 / 0 / 0 of 528 | no fabrication, no crash: holds; generalizes in five families; hostile refused: not fully (22 of 23); made: does not generalize (13 of 14); transform: holds, with lane P's disclosure | 629 / 17 / **6 wrong** / 0 of 652; supported: intake, honest, compound, made, transform; **not supported: unknown (3 wrong), hostile (3 answered instead of refused)** |
+| of which: format identification / measurements / refusals / either / made read back | | 128 / 310 of 322 / 50 / 2 / 22 | 128 / 310 of 326 / 49 of 50 / 2 / 21 of 22 | | |
+| choosing a form (good share) | always prose 0.399 / 0.442; shape-only 0.459 / 0.500; second reader 0.902 / 0.877 | blind 0.489; tuned 0.850; frozen 0.805 | 0.659 (tuned planner) | does not beat the references; overfit; not shown to read the words | 0.687 (shape-only 0.480, always prose 0.440); supported; reads the words there |
+| relating two artifacts (correct of 72) | always consistent 36; today 0 answered | 72 (58 / 14 / 0 without the question) | 66, 6 "cannot", 0 wrong; report totals 6 of 12 | supported | 48 right, 24 cannot, **6 wrong** of 78; **not supported** |
+| learning (late kept, SIMULATED) | planner alone 0.587 / 0.450; key_majority 0.859 / 0.802 | 0.816 | 0.710 | supported over the planner alone; below key_majority | 0.713 (planner alone 0.440; key_majority 0.831); supported over the planner alone |
+| foresight: predicted / observed seconds | | median 102, range 4.9 to 560, never under | | recorded, not corrected (the planner is frozen) | |
 
 The held-out rules lived in the main session's untracked log, so their order before the runs **cannot be verified
 from git**; the held-out runs of lane Z's families went through the earlier driver, which decided some outcomes
@@ -131,8 +131,8 @@ These are recommendations for the owner and the main session, not decisions.
    caption), and examine each fix on NEW withheld cases written by a lane that saw no product code: never on these.
 2. Run the CI check job once (it needs a push: the owner's decision) before any merge into `main`.
 3. Only then ask the owner whether to merge into `main` (schema 21 is one-way for an individual's file).
-4. A planner revision with its own new examination: the time estimates (5 to 560 times high), reading the request's
-   words (no evidence today), and the P1 sentence after the forms look.
+4. A planner revision with its own new examination: the time estimates (5 to 560 times high); the P1 sentence may be
+   reworded now that the forms look is taken (a commit that changes no choice).
 5. A failed check counted as an outcome (needs a migration), so the learner and the gap report see failures.
 6. Owner decisions that would open the largest closed doors: decoders for compressed images and audio (packages, or
    external programs in a sandbox), a model that sees or hears, a Pocket view, durable jobs.

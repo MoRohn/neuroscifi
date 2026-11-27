@@ -423,7 +423,8 @@ Written by lane ZW without reading any product code; counts and rules only here.
   `final.check` also refuses a look when either driver's SHA-256 differs from its pin in the tracked file
   `docs/quality/evidence/omnimind_driver_pins.json`, or is not pinned there (as committed by lane F2: both null, so
   every look is refused until the main session runs `scripts/bench_omni.py pin-driver`, which prints the file with
-  the current hashes and writes nothing, after lane F1's driver rewrite, and commits it). Each ledger line now also
+  the current hashes and writes nothing, after lane F1's driver rewrite, and commits it; the main session pinned both
+  in `55f89be`, the commit the looks were taken on). Each ledger line now also
   records the drivers' SHA-256 (`drivers`). `test_omni_bench.py::test_the_drivers_only_translate` checks that a driver
   imports no `make` internal or private product name, never calls `scan_injection`, decodes with no limits of its
   own, chooses no outcome by an error's words or from a partial decode, and names no task or case. It failed on the

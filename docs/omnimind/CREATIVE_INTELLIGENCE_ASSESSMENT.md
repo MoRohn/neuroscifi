@@ -1,6 +1,6 @@
 # The form planner as measured (deliverable 4: "Creative Intelligence Assessment")
 
-Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `09bfff6`. The directive names this deliverable an
+Status: 2026-11-27, written on `omni-docs2` from `omnimind` at `21193c4` (the withheld look taken on `55f89be`). The directive names this deliverable an
 evaluation of "imagination, synthesis, conceptual transfer, and output selection". This page reports what was built
 and measured for each, with the figures from committed evidence files. **"Creativity" is not measured by anything
 in OMNIMIND, and no claim about it is made here.** What exists is a deterministic function that chooses the form of a
@@ -9,6 +9,14 @@ Output Intelligence". It is measured as a chooser of forms against an examiner's
 
 ## The first screen
 
+- **On the withheld forms cases (150, written by a lane that saw no product code), the frozen planner is supported
+  on unseen cases** by the rule committed before the look: good 0.687 against the shape-only table's 0.480 and
+  always-prose's 0.440; bad 0.073 against 0.227 and 0.180; 0 violations; explicit forms honoured 6 of 7. And on those
+  cases **it reads the request's words**: word-decided cases good on 35 of 52 (shape table 18, always-prose 27),
+  request pairs both good 20 of 40 (shape table 14), twins 11 of 25 (0). Caveats: one model-written examiner's labels,
+  no second reader on these cases (no ceiling), about 30 close calls by the examiner's own count; the oracle control
+  could not be run through `final`. Learning was off. The earlier results below stand beside it: they were of the
+  tuned planner `c5d3230`, before its fitted rules were deleted.
 - **By the rule written before its one held-out run, the planner does not beat the references.** It made one
   hard-constraint violation (a form the device or budget could not carry); the rule required none.
 - **It was overfit to development**: good on 0.850 of development cases after tuning, 0.659 on held-out (a drop of
@@ -86,11 +94,14 @@ random search with the benchmark's own rule found 1,140 violating views in 5,000
 Rules suspected of fitting the development cases were deleted (topic purpose cues, the "show me" richness wish, the
 caption rule, the "full picture" idiom, the process exclusion, the document outline): development fell from 112 to 107
 good with 0 bad, pairs 13 of 18 and twins 9 of 9. The measurement review (first pass, N2) found no word added by the round that occurs only in
-held-out requests. That development figure is again optimistic. The frozen planner `4388f4d` has not been measured on unseen
-cases: it is judged once, on the withheld forms cases, by the rule committed in
+held-out requests. That development figure is again optimistic. The frozen planner `4388f4d` was judged once, on the withheld forms
+cases, by the rule committed in
 [OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md) ("supported on unseen cases" needs 0 violations, good at
 least the shape table's + 0.10, bad and too-much no higher than the shape table's; "reads the request's words" needs
-the words slice at least the shape table's + 0.15 and at least always-prose's, and pairs above the shape table's).
+the words slice at least the shape table's + 0.15 and at least always-prose's, and pairs above the shape table's). Result
+(`docs/quality/evidence/omnimind_looks/summary.json`): **supported on unseen cases**, and **reads the request's words**
+on those cases (words slice 0.673 against 0.346 + 0.15 and 0.519; pairs 20 against 14 of 40); details on the first
+screen.
 
 **The second reader, and what it is.** A second model reader labelled all 271 views (shuffled, ids stripped) without
 seeing the examiner's labels. Its first choice falls in the examiner's good set on 0.889 of cases (development 0.902,
@@ -148,6 +159,7 @@ pipeline pairs each prediction with what the made bytes and their check showed.
 ## What this does not establish
 
 That any choice suits the owner; that a made picture is legible or beautiful (no person looked; the benchmark reads
-values back); that the planner reads requests (the evidence says it does not, beyond grammar and explicit names);
-anything about creativity, imagination or invention. A withheld look can at best establish that the frozen planner
-stays within the rule's bounds on cases nobody tuned against.
+values back); that the planner reads requests in general (on held-out the tuned planner showed no evidence of it; on
+the withheld cases the frozen planner did, by one examiner's labels); anything about creativity, imagination or
+invention. The withheld look establishes only that the frozen planner stayed within the rule's bounds on 150 cases
+nobody tuned against, labelled by one model-written examiner.

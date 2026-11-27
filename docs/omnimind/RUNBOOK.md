@@ -173,7 +173,7 @@ The last measure of OMNIMIND is one look per mechanism at a withheld examination
 `scripts/bench_omni.py final --family F --subject artifacts --note TEXT --out FILE` (seven families) and
 `scripts/bench_omni_forms.py final --family forms|cross|learn --subject ... --note TEXT --out FILE`. A look is refused
 unless the tree is clean and committed, the withheld files' SHA-256 equal their pins, and both drivers' SHA-256 equal
-their pins in `docs/quality/evidence/omnimind_driver_pins.json` (null today, so every look is refused). Each look
+their pins in `docs/quality/evidence/omnimind_driver_pins.json` (pinned in `55f89be`; the looks were taken there, once each). Each look
 appends a line to `docs/quality/evidence/omnimind_final_uses.jsonl` before it loads anything, writes summaries only,
 and never into the checkout. The rule each look is judged by, written before them:
 [../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md), "The rule for the withheld looks".
