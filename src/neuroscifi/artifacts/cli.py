@@ -59,8 +59,9 @@ def _size(n) -> str:
 def _line(item) -> str:
     flag = "; its text looked like instructions to an AI and is never shown to one" if item.get("flagged") else ""
     state = "" if item.get("state") == "stored" else f"; bytes {item.get('state')}"
+    held = f"; {item['held']}" if item.get("held") else ""
     return (f"{item['id']}  {item['label']}  ({item['format']}, {_size(item['size'])}; {item['provenance']}"
-            f"{state}{flag})")
+            f"{state}{flag}{held})")
 
 
 _NOT_RECOVERED = re.compile(r"\b(not|never|no|skipped|missing|stopped|cut|partial|without|unreadable|left out|"
@@ -96,6 +97,10 @@ def _plain(what, value) -> str:
         counts = value["counts"]
         head = f"{counts['given']} given by you, {counts['made']} made by the system (not evidence)."
         return "\n".join([head] + [_line(i) for i in value["items"]])
+    if what == "show" and value.get("held"):
+        return "\n".join([_line(value), f"  Nothing of it is read or shown until you decide: `nsf artifact forget "
+                                         f"{value['id']}` removes it; `nsf artifact release {value['id']}` ends the "
+                                         "hold if it does not name what you forgot."])
     if what == "show":
         lines = [_line(value), f"  kind: {(value['index'].get('representation') or {}).get('kind', 'not read')}",
                  f"  sha256: {value['sha256']}"]
@@ -158,6 +163,11 @@ def _plain(what, value) -> str:
     if what == "relate":
         from .relate_cli import plain
         return plain(value)
+    if what == "release":
+        if value["status"] == "not_held":
+            return f"{value['id']} is not held: nothing changed."
+        return (f"Released {value['id']}  {value['label']}: you stated that it does not name what you forgot, so it "
+                "is read and shown again. The release is recorded and a restore keeps it.")
     if what == "export":
         return f"Wrote {_size(value['bytes'])} to {value['path']} (only you can read it)."
     if what == "forget":
@@ -438,6 +448,10 @@ def register(sub):
     q.add_argument("path", type=Path)
     q = command("forget", _forget, "forget an artifact, its bytes and everything made from it; checkpoint "
                                    "archives are rewritten without it")
+    q.add_argument("id")
+    q = command("release", lambda db, a, now: store.release(db, a.id, now),
+                "end the hold on a kept file a forget could not check: you state that it does not name what you "
+                "forgot (recorded; a restore keeps it)")
     q.add_argument("id")
     q = command("gaps", _gaps, "which formats nothing here could read, and how often")
     q.add_argument("--report", action="store_true",

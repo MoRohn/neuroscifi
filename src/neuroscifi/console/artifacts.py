@@ -310,6 +310,7 @@ def _label_of(db, artifact_id) -> str | None:
 
 
 def _summary(db, record) -> dict:
+    from ..artifacts.store import HELD_WORDS
     made_from = [r[0] for r in db.execute(
         "SELECT dst_id FROM artifact_links WHERE src=? AND relation='derived_from' AND dst_kind='artifact' "
         "ORDER BY created_at, dst_id LIMIT ?", (record.id, MAX_FROM + 1))]
@@ -318,7 +319,7 @@ def _summary(db, record) -> dict:
             "media_type": record.media_type, "size": record.size, "created_at": record.created_at,
             "state": record.state, "flagged": record.flagged,
             "from": [{"id": s, "label": _label_of(db, s)} for s in made_from[:MAX_FROM]],
-            "from_more": len(made_from) > MAX_FROM}
+            "from_more": len(made_from) > MAX_FROM} | ({"held": HELD_WORDS} if record.held else {})
 
 
 # ---- route handlers --------------------------------------------------------------------------------------------
@@ -353,6 +354,13 @@ def detail(c, p, q, b):
     _on(c)
     _query(q, ())
     artifact_id = _id(p[0])
+    held = store.get(c.db, artifact_id)
+    if held.held:       # a forget could not check it (fix lane F4): nothing of it is read or shown
+        return _summary(c.db, held) | {
+            "view": "held", "notes": [], "made_notes": [], "check": None, "relations": [], "made_into": [],
+            "claim_label": CLAIM_LABEL, "feedback": None, "facts": [{"name": "size", "value": held.size,
+                                                                       "how": "bytes stored"}],
+            "export": f"nsf artifact forget {artifact_id}  (or: nsf artifact release {artifact_id})"}
     record, _, decoded, error = store.decoded_held(c.db, artifact_id)
     out = _summary(c.db, record)
     view = _view(record, decoded)

@@ -5107,6 +5107,16 @@ representations; this decision is where their output is kept, how it is forgotte
    five bytes), and the same inside every gzip, zip (deflate), zlib (PNG text chunks, PDF streams), bzip2, xz and
    Zstandard stream found in the bytes, nested up to `Limits.max_depth`, within `Limits.max_decoded_bytes` per
    artifact (an artifact whose streams were not all searched is counted in the deletion-log row as `budget_reached`).
+   *Superseded twice:* fix lane F1 removed such an artifact as if it named the root; fix lane F4 (security review,
+   second pass, M-new-1) HOLDS it instead. The scan has its own budget (`store.SCAN_BUDGET` 1 GiB decompressed per
+   artifact, `SCAN_STREAM` 128 MiB of one stream, `SCAN_DEPTH` 16, `SCAN_MEMBERS` 65,536 streams per layer, base64
+   runs charged at their encoded length), so honest large files are checked to the end; what still cannot be
+   finished keeps its bytes but is never decoded, shown, exported, made from or related, is listed as "held: it could
+   not be checked for what you asked to forget", and the forget's result names each one by id and label with the two
+   ways to end the hold: `nsf artifact forget ID` or `nsf artifact release ID` (the owner's statement that it does not
+   name the root). Holds and releases are deletion-log rows (kind `artifact_hold`, target `#<digest>`): the
+   `artifacts.state` column's CHECK admits only stored, missing and corrupt, and no migration was allowed. A restore
+   and a checkpoint rewrite replay them (`store.replay_holds`). Imagined records keep lane S's rule.
 7. **Restore.** The live tombstones are read with the other forgets; `_replay` removes those artifacts (and what was
    made from or contained in them) from the archive's copy; the restored copy gets its own sidecar
    (`<dest stem>.artifacts.sqlite`) holding the bytes, text layers and specifications its remaining rows name, copied
