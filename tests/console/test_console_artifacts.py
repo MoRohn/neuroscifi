@@ -241,7 +241,11 @@ def test_make_is_bounded_and_one_at_a_time(console, monkeypatch):
     status, out = client.post("/api/artifacts/make", {"sources": [cid], "request": "compare calls"})
     assert status == 409 and "already" in out["error"]
     from neuroscifi.presence import activity
-    running = [e for e in activity.snapshot() if e["subsystem"] == "artifacts"]
+    # the worker enters the in-flight record after it opened its connection: wait for it (bounded) rather than race it
+    deadline = time.monotonic() + 10
+    while not (running := [e for e in activity.snapshot() if e["subsystem"] == "artifacts"]) and \
+            time.monotonic() < deadline:
+        time.sleep(0.01)
     assert running and running[0]["activity"] == "generating" and running[0]["purpose"] == "console make"
     gate.set()
     assert wait_job(client, first["job"])["state"] == "done"
