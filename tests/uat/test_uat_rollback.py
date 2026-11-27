@@ -865,7 +865,8 @@ def test_artifact_adapters(individual, monkeypatch):
     kept = []
 
     def probe():
-        record = artifact_store.add(db, bytes(range(256)), name="u.bin")
+        record = artifact_store.add(db, bytes(range(256)), name=f"u{len(kept)}.bin")   # one name each: the same
+        # bytes under the same name are the artifact already held (fix lane F1, ruling F)
         kept.append(record.id)
         return record.index["representation"]["kind"]
     assert_rolls_back(*cycle(on, off, probe))
