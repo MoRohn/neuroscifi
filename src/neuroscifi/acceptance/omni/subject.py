@@ -121,12 +121,11 @@ def _member(rep, name: str, container: str | None = None):
                 path = name
             if path == name or path.endswith("/" + name) or path.rsplit("/", 1)[-1] == name and "/" not in name:
                 note = str(m.note or "")
-                if m.inner is None:
-                    if note.startswith("refused"):
-                        raise RefusedHere(f"member {name} refused: {note}")
+                status = importlib.import_module("neuroscifi.artifacts.outcome").of_member(m)   # the product's table
+                if status == "refused":
+                    raise RefusedHere(f"member {name} refused or only partly decoded: {note}")
+                if status == "cannot":
                     raise Cannot(f"member {name} not decoded: {note}")
-                if note.startswith("partial"):
-                    raise RefusedHere(f"member {name} only partly decoded (a limit stopped it): {note}")
                 return m.inner, m.detected
         raise Cannot(f"no member {name}")
     if _kind(rep) == "Table" and getattr(rep, "title", None) == name:
