@@ -472,7 +472,7 @@ def register(sub):
     q.add_argument("reaction", nargs="?", metavar="kept|dismissed|replaced:FORM")
     q.add_argument("--reset", action="store_true", help="remove every recorded reaction (what was learned is gone)")
     q = command("relate", _relate, "relate two artifacts by measuring both: what one states or shows against what "
-                                   "the other measures; records the result as the system's claim (not evidence)")
+                                   "the other measures; shows the verdict only, never stores it (not evidence)")
     q.add_argument("first")
     q.add_argument("second")
     q.add_argument("--question", help="what to compare, in your words (e.g. \"does the total match the CSV?\")")

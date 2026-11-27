@@ -254,14 +254,12 @@ def test_relate_imports_nothing_beyond_the_default_path():
     import pathlib
     import neuroscifi.artifacts as pkg
     root = pathlib.Path(pkg.__file__).parent
-    for name in ("relate.py", "relate_read.py", "relate_cli.py", "relate_grammar.py"):
+    for name in ("relate.py", "relate_read.py", "relate_cli.py"):
         tree = ast.parse((root / name).read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                # hashlib (standard library): lane FX3's member digests against a checksum listing; posixpath,
-                # unicodedata and bisect (standard library): lane FX5's member path forms, question words, cue times
-                assert all(a.name.split(".")[0] in ("re", "math", "itertools", "numpy", "datetime", "hashlib",
-                                                    "posixpath", "unicodedata", "bisect")
+                # hashlib (standard library): lane FX3's member digests against a checksum listing
+                assert all(a.name.split(".")[0] in ("re", "math", "itertools", "numpy", "datetime", "hashlib")
                            for a in node.names), name
             if isinstance(node, ast.ImportFrom) and node.level == 0:
                 assert node.module.split(".")[0] in ("__future__", "dataclasses", "datetime", "math", "re"), name

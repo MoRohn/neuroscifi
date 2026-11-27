@@ -1,10 +1,11 @@
-"""`nsf artifact relate ID ID [--question "…"]` (lane R; ADR-077): relate two held artifacts by measurement and keep
-what was found as links.
+"""`nsf artifact relate ID ID [--question "…"]` (lane R; ADR-077): relate two held artifacts by measurement and show
+what was found.
 
 Both artifacts are decoded again from their verified bytes (store.decoded_held), compared by `artifacts.relate`, and
-the result is printed in plain words. Links are recorded in lane A's `artifact_links` (store.link): `consistent_with`
-or `contradicts` when there is an overall answer, `describes` when one names the other's file, `same_subject` (weak)
-when a name occurs in both. `how` is the machine-readable basis (which quantity, which statement, the tolerance),
+the result is printed in plain words. The verdict (agree, disagree, cannot tell) is SHOWN ONLY, never stored (lane
+FX5, ADR-081: the owner's decision of 2026-11-27, until a relater passes an examination). Links are recorded in lane
+A's `artifact_links` (store.link): `describes` when one names the other's file, `same_subject` (weak) when a name
+occurs in both. `how` is the machine-readable basis (which quantity, which statement, the tolerance),
 never text from an artifact. Every such link is the SYSTEM'S CLAIM about its artifacts, made by measuring both: it
 is labelled so wherever it is shown, is never evidence and never enters a knowledge table. Forgetting either end
 removes it (store._remove deletes links from and to a forgotten artifact). A shared name that is one of the owner's
@@ -66,57 +67,17 @@ def relate(db, first: str, second: str, *, question: str | None = None, now=None
 VERDICTS = ("consistent_with", "contradicts")
 
 
-def _verdict_how(rel) -> str:
-    """A verdict link's `how`: the Relation's basis, then `;q=` and the question's digest (lane FX5, C4)."""
-    digest = getattr(rel, "question_digest", "")
-    basis = rel.basis()
-    return (basis[:200 - 19] + ";q=" + digest) if digest else basis
-
-
-def _replace_verdicts(db, first: str, second: str, rel, keep: tuple | None) -> int:
-    """Lane FX5 (C4): `INSERT OR IGNORE` never replaces a row, so a verdict link would outlive the answer it records.
-    Before a decided answer is recorded, every other consistent_with / contradicts link between the two artifacts
-    (either direction, any question) is removed: a pair holds at most one verdict link, the latest decided one. An
-    undecided answer to a question removes the verdict link that recorded an answer to that SAME question (its
-    `;q=` digest): the claim no longer stands. An undecided answer to another question removes nothing. Returns the
-    number of links removed (no event is written: artifact_events' actions are fixed by the schema)."""
-    from ..instance import store as istore
-    rows = db.execute("SELECT src, relation, dst_id, how FROM artifact_links WHERE relation IN ('consistent_with', "
-                      "'contradicts') AND dst_kind='artifact' AND ((src=? AND dst_id=?) OR (src=? AND dst_id=?))",
-                      (first, second, second, first)).fetchall()
-    digest = getattr(rel, "question_digest", "")
-    if keep is not None:
-        relation, src, dst, how = keep
-        gone = [r for r in rows if tuple(r) != (src, relation, dst, how)]
-    elif digest:
-        gone = [r for r in rows if str(r[3]).endswith(";q=" + digest)]
-    else:
-        gone = []
-    if gone:
-        with istore.write(db):
-            for src, relation, dst, how in gone:
-                db.execute("DELETE FROM artifact_links WHERE src=? AND relation=? AND dst_kind='artifact' AND dst_id=? "
-                           "AND how=?", (src, relation, dst, how))
-            istore.bump_state_version(db)
-    return len(gone)
-
-
 def record_links(db, first: str, second: str, rel, *, now=None) -> list[dict]:
     """The links a Relation of two held artifacts supports, recorded in `artifact_links` (the module doc's rules;
-    the production pipeline records the relations of its sources through this too)."""
+    the production pipeline records the relations of its sources through this too).
+
+    Lane FX5 (ADR-081, the owner's decision of 2026-11-27): the relater's verdicts are DISPLAY-ONLY. No path stores a
+    consistent_with or contradicts link: the answer is shown with the line `relate.NOT_RECORDED`. describes and
+    same_subject are recorded as before. Verdict links stored earlier are listed and removed by the owner's step
+    (`scripts/omnimind_fx3/links_decided_by.py --by any`); nothing removes them automatically."""
     from . import store
     shared = rel.shared
     links = []
-    # lane FX5 (C4): `Relation.specific` (computed in one place, relate._specific) is the ONLY gate for a durable
-    # consistent_with / contradicts link, on every path: `nsf artifact relate` and the production pipeline alike. An
-    # answer with no question, or to a question no closed grammar read completely, is shown and never recorded
-    specific = bool(getattr(rel, "specific", False))
-    how = _verdict_how(rel)
-    if rel.answer is True and specific:
-        links.append(("consistent_with", first, second, how))
-    elif rel.answer is False and specific:
-        links.append(("contradicts", first, second, how))
-    _replace_verdicts(db, first, second, rel, links[0] if links else None)
     for m in rel.describes:
         src, dst = (first, second) if m["describes"] == "first" else (second, first)
         links.append(("describes", src, dst, "mentions=file_name"))
@@ -135,7 +96,9 @@ def record_links(db, first: str, second: str, rel, *, now=None) -> list[dict]:
 # new column (no migration). A rollback of those comparisons removes these links with `remove_links_decided_by`.
 DECIDED_BY_REFS = {"members": frozenset({"bundle.members.listing", "document.listing"}),
                    "links": frozenset({"drawing.links", "document.links"}),
-                   "times": frozenset({"signal.tone_starts", "document.times"})}
+                   "times": frozenset({"signal.tone_starts", "document.times"}),
+                   # lane FX5 (ADR-081, display-only): every relater verdict link, whatever decided it
+                   "any": frozenset()}
 
 
 def _refs_of(how: str) -> set:
@@ -148,7 +111,7 @@ def _refs_of(how: str) -> set:
 
 def links_decided_by(db, comparison: str) -> list[dict]:
     """The consistent_with / contradicts links whose deciding comparisons include `comparison` (one of
-    DECIDED_BY_REFS)."""
+    DECIDED_BY_REFS; "any" is every such link: since lane FX5 none is recorded, so each is an earlier one)."""
     if comparison not in DECIDED_BY_REFS:
         raise ValueError(f"comparison must be one of {', '.join(sorted(DECIDED_BY_REFS))}")
     refs = DECIDED_BY_REFS[comparison]

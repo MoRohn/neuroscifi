@@ -1,6 +1,6 @@
 """Lane FX4 (R9): a link recorded from one of lane FX3's comparisons (members, links, times) can be listed and removed
-by naming the comparison; nothing else in the store changes. Seeded store: three specific answers, one from each
-comparison, plus a link from an older comparison and a structural link that must stay."""
+by naming the comparison; nothing else in the store changes. Lane FX5 (ADR-081): verdicts are display-only, so the
+store is seeded with the links an earlier version stored, and `--by any` lists and removes every verdict link."""
 from __future__ import annotations
 
 import hashlib
@@ -32,14 +32,16 @@ def _seed(tmp_path):
     }
     for name, data in files.items():
         ids[name] = A.add(db, data, name=name, now=T0).id
-    asked = [("pack.zip", "sizes.txt", "Do the byte sizes in the list match the files in the archive?"),
-             ("pack.zip", "sums.txt", "Do the checksums of the archive's files match the list?"),
-             ("flow.svg", "notes.txt", "Do the connections in the drawing match the notes?"),
-             ("bells.wav", "cues.txt", "Do the bells start at the times in the cue sheet?"),
-             ("costs.csv", "memo.txt", "Is the largest cost in the memo right?")]
-    for a, b, q in asked:
-        out = relate_cli.relate(db, ids[a], ids[b], question=q, now=T0)
-        assert out["answer"] is True, (a, b)
+    # lane FX5 (ADR-081): the relater no longer stores verdict links; the links an earlier version stored are seeded
+    # as it stored them (the deciding refs in `how`)
+    earlier = [("pack.zip", "sizes.txt", "bundle.members.listing/document.listing;tol=0"),
+               ("pack.zip", "sums.txt", "bundle.members.listing/document.listing;tol=0"),
+               ("flow.svg", "notes.txt", "drawing.links/document.links;tol=0"),
+               ("bells.wav", "cues.txt", "signal.tone_starts/document.times;tol=0.05"),
+               ("costs.csv", "memo.txt", "table.column:1.max/document.sentence:0;tol=0.005")]
+    for a, b, how in earlier:
+        A.link(db, ids[a], "consistent_with", "artifact", ids[b], how, 0.8, now=T0)
+    A.link(db, ids["memo.txt"], "describes", "artifact", ids["costs.csv"], "mentions=file_name", 0.6, now=T0)
     return db, path, ids
 
 
@@ -62,6 +64,16 @@ def test_links_decided_by_a_comparison_are_listed_and_removed_and_nothing_else(t
     kept = {(r[0], r[2]) for r in after if r[1] == "consistent_with"}
     assert (ids["costs.csv"], ids["memo.txt"]) in kept and (ids["flow.svg"], ids["notes.txt"]) in kept
     assert A.get(db, ids["pack.zip"]).id == ids["pack.zip"]             # the artifacts stay
+    db.close()
+
+
+def test_any_lists_every_verdict_link_and_removes_only_those(tmp_path):
+    db, _, ids = _seed(tmp_path)
+    found = relate_cli.links_decided_by(db, "any")
+    assert len(found) == 5 and {x["relation"] for x in found} == {"consistent_with"}
+    removed = relate_cli.remove_links_decided_by(db, "any")
+    assert len(removed) == 5 and relate_cli.links_decided_by(db, "any") == []
+    assert [r[1] for r in _all_links(db)] == ["describes"]               # every other link stays
     db.close()
 
 

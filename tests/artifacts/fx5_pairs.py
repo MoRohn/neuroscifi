@@ -625,4 +625,70 @@ def second_round() -> list:
     return out
 
 
-__all__ = ["adversarial_pairs", "review_pairs"]
+# ---- the third review's constructions (review3 s3, H1-H3), rebuilt from its description ---------------------------
+
+def review3_pairs() -> list:
+    """The pairs the third security review found answered wrongly by the rebuilt comparisons (members 9, links 14
+    of which the described ones, times 8), with this module's own names and values."""
+    out = []
+    add = out.append
+    trio = {"notes/a.txt": b"a" * 120, "notes/b.txt": b"b" * 360, "lib/c.py": b"#" * 360}
+    same = {"x/1.txt": b"1" * 150, "x/2.txt": b"2" * 150, "x/3.txt": b"3" * 150}
+    z, zs = zip_of(trio), zip_of(same)
+    good = sizes(trio)
+    add(("r3_m_same_size_within", {"a.zip": z, "list.txt": good}, "Are all the files in the archive the same size?",
+         False))
+    add(("r3_m_same_size_within_true", {"a.zip": zs, "list.txt": sizes(same, {"x/2.txt": 9})},
+         "Are all the files in the archive the same size?", True))
+    add(("r3_m_two_algorithms", {"a.zip": z, "SUMS": sums(trio)},
+         "Are the md5 checksums of the files in the archive the sha256 checksums the listing gives?", False))
+    add(("r3_m_two_questions", {"a.zip": z, "list.txt": good},
+         "Are the sizes in the listing right and are all the files in the archive the same size?", False))
+    add(("r3_m_files_have_checksums", {"a.zip": z, "SUMS": sums(trio, change={"lib/c.py"})},
+         "Do all the files in the listing have checksums?", True))
+    add(("r3_m_about", {"a.zip": z, "list.txt": sizes(trio, {"notes/a.txt": 121, "notes/b.txt": 358, "lib/c.py": 361})},
+         "Are the sizes in the listing about the sizes of the files in the archive?", True))
+    add(("r3_m_given_in_bytes", {"a.zip": z, "list.txt": sizes(trio, {"lib/c.py": 7}, fmt="{name}  {size} bytes\n")},
+         "Are the sizes of the files in the listing given in bytes?", True))
+    add(("r3_m_given_as_sha256", {"a.zip": z, "SUMS": sums(trio, change={"notes/b.txt"})},
+         "Are the checksums of the files in the listing given as sha256 checksums?", True))
+    add(("r3_m_there_are", {"a.zip": z, "list.txt": sizes(trio, {"lib/c.py": 7})},
+         "Are there files in the archive with the sizes the listing gives?", True))
+    names = ["Ann", "Bob", "Cy", "Dee"]
+    drawn = [("Ann", "Bob"), ("Bob", "Cy")]                       # Dee has no line
+    svg, txt = chart(names, drawn), b"Ann -> Bob\nBob -> Cy\n"
+    add(("r3_l_all_nodes_linked", {"d.svg": svg, "t.txt": txt}, "Are all the nodes in the diagram linked?", False))
+    add(("r3_l_boxes_connected", {"d.svg": svg, "t.txt": txt}, "Are all the boxes in the drawing connected?", False))
+    add(("r3_l_each_linked_to_all", {"d.svg": svg, "t.txt": txt},
+         "Is each node in the diagram linked to all the nodes?", False))
+    add(("r3_l_two_questions", {"d.svg": svg, "t.txt": txt},
+         "Are the links in the diagram the ones the text gives and are all the nodes linked?", False))
+    add(("r3_l_edges_join_nodes", {"d.svg": svg, "t.txt": b"Ann -> Cy\nBob -> Dee\n"},
+         "Do all the edges in the drawing join nodes?", True))
+    pct = chart(names, [], extra='<line x1="{Ann_x}" y1="{Ann_y}" x2="75%" y2="{Bob_y}" stroke="#333"/>')
+    add(("r3_l_percent_endpoint", {"d.svg": pct, "t.txt": b"Ann -> Dee\nBob -> Cy\n"}, Q_LINKS.replace(
+        "diagram", "drawing"), False))
+    over = chart(names, drawn, node='fill="#f4f4f4" stroke="#333" stroke-width="40"')
+    add(("r3_l_overpainted_edge", {"d.svg": over, "t.txt": txt}, "Are the links in the diagram the ones the text gives?",
+         None))
+    pi = b'<?xml-stylesheet type="text/css" href="data:text/css,line{visibility:hidden}"?>' + svg
+    add(("r3_l_stylesheet_pi", {"d.svg": pi, "t.txt": txt}, "Are the links in the diagram the ones the text gives?",
+         None))
+    beeps = [1.0, 2.5, 3.5]
+    tw = wav(beeps)
+    sheet = cues(beeps)
+    add(("r3_t_same_time_within", {"s.wav": tw, "c.txt": sheet}, "Do all the tones in the recording start at the same "
+                                                                  "time?", False))
+    add(("r3_t_start_when_recording_starts", {"s.wav": tw, "c.txt": sheet},
+         "Do the tones in the recording start when the recording starts?", False))
+    add(("r3_t_cue_times_same", {"s.wav": tw, "c.txt": sheet}, "Are all the cue times in the sheet the same?", False))
+    add(("r3_t_two_questions", {"s.wav": tw, "c.txt": sheet},
+         "Do the tones start at the cue times and do all the tones start at the same time?", False))
+    add(("r3_t_about", {"s.wav": tw, "c.txt": cues([1.1, 2.6, 3.6])}, "Do the tones start at about the cue times?",
+         True))
+    split = wav([1.0, 2.5, 3.5], extra=[(1.317, 0.283, 520.0, 0.5)], length=0.3)
+    add(("r3_t_gap_17ms", {"s.wav": split, "c.txt": sheet}, "Do the beeps start at the cue times?", False))
+    return out
+
+
+__all__ = ["adversarial_pairs", "review3_pairs", "review_pairs"]
