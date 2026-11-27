@@ -9,6 +9,7 @@ from neuroscifi.artifacts import guarded
 @pytest.fixture(autouse=True)
 def _guard_off(monkeypatch):
     monkeypatch.setattr(guarded, "ENABLED", False)
+    monkeypatch.setattr(guarded, "_VERDICTS", {})      # each test sees the child run (fix lane F4 reuses verdicts)
 
 
 @pytest.fixture

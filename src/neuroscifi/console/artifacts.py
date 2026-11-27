@@ -34,6 +34,7 @@ import time
 from dataclasses import dataclass, field
 
 from ..instance.errors import Conflict, NotFound, ValidationError
+from .request_helpers import fields as _fields, integer as _int, number as _number, query as _query
 
 PAGE = 20                         # artifacts per page of the list
 MAX_FROM = 8                      # sources named per item
@@ -304,12 +305,17 @@ def made_document(spec) -> dict | None:
     return {"title": spec.get("title"), "blocks": out, "n_blocks": len(blocks)}
 
 
+DECODE_SLOT = threading.BoundedSemaphore(1)
+DECODE_WAIT = 60.0
+
+
 def _label_of(db, artifact_id) -> str | None:
     row = db.execute("SELECT label FROM artifacts WHERE id=?", (artifact_id,)).fetchone()
     return row[0] if row else None
 
 
 def _summary(db, record) -> dict:
+    from ..artifacts.store import HELD_WORDS
     made_from = [r[0] for r in db.execute(
         "SELECT dst_id FROM artifact_links WHERE src=? AND relation='derived_from' AND dst_kind='artifact' "
         "ORDER BY created_at, dst_id LIMIT ?", (record.id, MAX_FROM + 1))]
@@ -318,7 +324,7 @@ def _summary(db, record) -> dict:
             "media_type": record.media_type, "size": record.size, "created_at": record.created_at,
             "state": record.state, "flagged": record.flagged,
             "from": [{"id": s, "label": _label_of(db, s)} for s in made_from[:MAX_FROM]],
-            "from_more": len(made_from) > MAX_FROM}
+            "from_more": len(made_from) > MAX_FROM} | ({"held": HELD_WORDS} if record.held else {})
 
 
 # ---- route handlers --------------------------------------------------------------------------------------------
@@ -326,7 +332,6 @@ def _summary(db, record) -> dict:
 @_artifact_errors
 def listing(c, p, q, b):
     from ..artifacts import store
-    from .server import _number, _query
     _on(c)
     q = _query(q, ("page",))
     page = _number(q.get("page", "0"), "page", int)
@@ -349,11 +354,24 @@ def listing(c, p, q, b):
 def detail(c, p, q, b):
     from ..artifacts import forms, store
     from ..artifacts.relate_cli import CLAIM_LABEL, CLAIM_RELATIONS
-    from .server import _query
     _on(c)
     _query(q, ())
     artifact_id = _id(p[0])
-    record, _, decoded, error = store.decoded_held(c.db, artifact_id)
+    held = store.get(c.db, artifact_id)
+    if held.held:       # a forget could not check it (fix lane F4): nothing of it is read or shown
+        return _summary(c.db, held) | {
+            "view": "held", "notes": [], "made_notes": [], "check": None, "relations": [], "made_into": [],
+            "claim_label": CLAIM_LABEL, "feedback": None, "facts": [{"name": "size", "value": held.size,
+                                                                       "how": "bytes stored"}],
+            "export": f"nsf artifact forget {artifact_id}  (or: nsf artifact release {artifact_id})"}
+    # one decode at a time in this server (a kept file opened in several tabs must not run several large decodes at
+    # once; security review, second pass, L-new-1); the guard's verdict per content hash is reused (guarded.decode)
+    if not DECODE_SLOT.acquire(timeout=DECODE_WAIT):
+        raise Conflict("another kept file is being read for this view; try again in a moment")
+    try:
+        record, _, decoded, error = store.decoded_held(c.db, artifact_id)
+    finally:
+        DECODE_SLOT.release()
     out = _summary(c.db, record)
     view = _view(record, decoded)
     out["view"] = view
@@ -415,7 +433,6 @@ def detail(c, p, q, b):
 @_artifact_errors
 def content(c, p, q, b):
     from ..artifacts import store
-    from .server import _query
     _on(c)
     _query(q, ())
     return Raw(store.read_bytes(c.db, _id(p[0]), now=c.now))
@@ -427,7 +444,6 @@ def image(c, p, q, b):
     Needed because an <img> cannot carry the bearer header, and the policy (img-src 'self') admits no blob: or data:
     picture; the address is never logged (the console logs no request)."""
     from ..artifacts import store
-    from .server import _fields
     _on(c)
     _fields(b)
     artifact_id = _id(p[0])
@@ -485,7 +501,6 @@ def serve_image(handler, path) -> bool:
 @_artifact_errors
 def feedback(c, p, q, b):
     from ..artifacts import learn
-    from .server import _fields
     _on(c)
     _fields(b, ("reaction",), ("form",))
     reaction, form = b["reaction"], b.get("form")
@@ -501,7 +516,6 @@ def feedback(c, p, q, b):
 def forget(c, p, q, b):
     from ..artifacts import store
     from ..instance import checkpoints, governance
-    from .server import _fields
     _on(c)
     _fields(b)
     result = store.forget_artifact(c.db, _id(p[0]), c.now)
@@ -522,7 +536,6 @@ def make(c, p, q, b):
     console; it is bounded by the pipeline's own budgets (60 s, 16 MiB) and the owner asked for it (not background
     work, so the quiet switch does not hold it, as it does not hold `nsf artifact make`)."""
     from ..artifacts import store
-    from .server import _fields
     _on(c)
     _fields(b, ("sources", "request"), ("form",))
     sources, request, form = b["sources"], b["request"], b.get("form")
@@ -580,7 +593,6 @@ def _run(server, job, request, sources, form):
 
 
 def job(c, p, q, b):
-    from .server import _query
     _on(c)
     _query(q, ())
     if not JOB.match(p[0]):
@@ -612,7 +624,6 @@ def _expire(state, now):
 
 
 def upload_start(c, p, q, b):
-    from .server import _fields, _int
     _upload_on(c)
     _fields(b, ("name", "size"))
     name, size = b["name"], _int(b["size"], "size")
@@ -644,7 +655,6 @@ def _upload(state, upload_id):
 
 def upload_chunk(c, p, q, b):
     """`b` is the raw chunk (bytes): console/server.py reads it for this route only, up to UPLOAD_CHUNK bytes."""
-    from .server import _number, _query
     _upload_on(c)
     q = _query(q, ("offset",))
     offset = _number(q.get("offset"), "offset", int)
@@ -667,7 +677,6 @@ def upload_finish(c, p, q, b):
     from ..artifacts import store
     from ..artifacts.types import ArtifactError
     from ..presence import activity
-    from .server import _fields
     _upload_on(c)
     _fields(b)
     state = shared(c.server)

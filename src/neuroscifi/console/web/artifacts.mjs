@@ -166,7 +166,8 @@ function item(x) {
       h('button', { type: 'button', class: 'linkish art-open', 'aria-current': view.shown === x.id ? 'true' : null, onclick: () => open(x.id), text: x.label }),
       h('p', { class: 'sub', text: `${cap(x.what)} · ${ctx.fmtBytes(x.size)} · ${ctx.ago(x.created_at)}${x.state === 'stored' ? '' : ` · ${x.state}`}` }),
       from,
-      x.flagged ? h('p', { class: 'sub warnline', text: 'Its text looked like instructions to an AI, so it is never shown to one.' }) : null),
+      x.flagged ? h('p', { class: 'sub warnline', text: 'Its text looked like instructions to an AI, so it is never shown to one.' }) : null,
+      x.held ? h('p', { class: 'sub warnline', text: `${cap(x.held)}.` }) : null),
     provenanceBadge(x));
 }
 
@@ -207,7 +208,8 @@ async function open(id, { focus = true } = {}) {
 async function render(x, body, ticket) {
   const { h } = ctx;
   try {
-    if (x.view === 'svg') await showSvg(x, body);
+    if (x.view === 'held') body.append(h('p', { class: 'empty' }, ctx.rich(`${cap(x.held)}. Nothing of it is read or shown until you decide: \`nsf artifact forget ${x.id}\` removes it; \`nsf artifact release ${x.id}\` ends the hold if it does not name what you forgot.`)));
+    else if (x.view === 'svg') await showSvg(x, body);
     else if (x.view === 'table') body.append(tableOf(x.table, x.label));
     else if (x.view === 'document') await showDocument(x, body, ticket);
     else if (x.view === 'sound') body.append(soundBlock(x));

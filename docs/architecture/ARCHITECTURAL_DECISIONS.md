@@ -5107,6 +5107,16 @@ representations; this decision is where their output is kept, how it is forgotte
    five bytes), and the same inside every gzip, zip (deflate), zlib (PNG text chunks, PDF streams), bzip2, xz and
    Zstandard stream found in the bytes, nested up to `Limits.max_depth`, within `Limits.max_decoded_bytes` per
    artifact (an artifact whose streams were not all searched is counted in the deletion-log row as `budget_reached`).
+   *Superseded twice:* fix lane F1 removed such an artifact as if it named the root; fix lane F4 (security review,
+   second pass, M-new-1) HOLDS it instead. The scan has its own budget (`store.SCAN_BUDGET` 1 GiB decompressed per
+   artifact, `SCAN_STREAM` 128 MiB of one stream, `SCAN_DEPTH` 16, `SCAN_MEMBERS` 65,536 streams per layer, base64
+   runs charged at their encoded length), so honest large files are checked to the end; what still cannot be
+   finished keeps its bytes but is never decoded, shown, exported, made from or related, is listed as "held: it could
+   not be checked for what you asked to forget", and the forget's result names each one by id and label with the two
+   ways to end the hold: `nsf artifact forget ID` or `nsf artifact release ID` (the owner's statement that it does not
+   name the root). Holds and releases are deletion-log rows (kind `artifact_hold`, target `#<digest>`): the
+   `artifacts.state` column's CHECK admits only stored, missing and corrupt, and no migration was allowed. A restore
+   and a checkpoint rewrite replay them (`store.replay_holds`). Imagined records keep lane S's rule.
 7. **Restore.** The live tombstones are read with the other forgets; `_replay` removes those artifacts (and what was
    made from or contained in them) from the archive's copy; the restored copy gets its own sidecar
    (`<dest stem>.artifacts.sqlite`) holding the bytes, text layers and specifications its remaining rows name, copied
@@ -5446,6 +5456,30 @@ Status: built by the integration lane. No setting, no schema change.
    store keeps the owner's file with that refusal and listing (`store.KEPT_REFUSALS`); `nsf inspect` prints the listing
    and exits 2. Encrypted members stay a per-member refusal (not an attack on the reader); sparse TAR members too.
    Tests: `tests/artifacts/test_b1_archives.py` (updated), `tests/artifacts/test_integration_fixes.py`.
+
+## ADR-072, fix lane F4: what the guard costs, measured, and the second decode removed where it was waste
+
+Fix lane F1 put every decode of the owner's bytes first in a limited child (`artifacts/guarded.py`) and stated the
+cost as "about twice the decode time". The code review's second pass (N1) measured more on its inputs (a 5,000-file
+zip 0.78 -> 6.0 s, a crafted 135 KiB PNG 13.4 s). Where the time went (`docs/quality/evidence/omnimind_f4.json`):
+the child's start-up is about 0.1 s (interpreter, numpy, the adapters); the rest is the decode itself, done twice
+(once in the child, once in the parent). The zip's decode had itself become slower (2.9 s in-process: 2.5 s of it is
+the injection screen `webcortex.safety.scan_injection` run on each of the 4,096 decoded members by ruling G's
+`refuse_flagged`; the screen is outside this lane's files and unchanged).
+
+Keeping a file needs only its index and its words, so `store.add` now asks the child for them
+(`guarded.summarize`): the child returns, in its JSON verdict (at most 4 MiB, never a pickle), what was detected,
+`describe()`, the notes, `partial`, the text layer (at most 256 KiB) and the formats that ended undecoded, or the
+error it raised; the parent validates every field's type and size, and a malformed verdict is a refusal
+(`guard_unavailable`, the file kept unread). The guard is not weakened: the same child, limits and kill decide; only
+the parent's copy of the same decode is gone. Measured, best of two (aarch64, this host), before -> after:
+`add` of the 5,000-file zip 5.81 -> 2.97 s; of the crafted 7600 x 5500 RGB PNG of 135 KiB 13.19 -> 6.86 s (parent
+peak 304 -> 47 MiB); of a 30 MP photo-like PNG of 47 MiB 1.31 -> 1.02 s (parent peak 328 -> 142 MiB). So: `add`
+costs one decode plus about 0.1 s; a command that needs the content itself (`make`, `facts`, `relate`, the
+console's view) costs two decodes plus about 0.1 s. The child also reports which approved external adapters it
+loaded; when they differ from the parent's, the file is kept unread (`external_unguarded`; security N-new-4).
+Tests: `tests/artifacts/test_f4_guard_once.py` (the same index and words with no decode in the parent; the external
+mismatch; a malformed summary refused).
 
 # ADR-073 The form planner: deciding the form of a result before anything is made, and saying why
 
@@ -5839,6 +5873,20 @@ rendering on the default path (the Chromium run is an explicit, optional check o
 **Consequences.** Made artifacts are labelled as made by the system in every file and are never evidence; checks
 never import generators (enforced by a test); the runtime and stylesheet hashes are constants the check knows, so
 any change to either requires updating the constants (a test fails otherwise).
+
+## ADR-074, fix lane F4: the check sees only what a person would see
+
+The measurement review's second pass (R2-1, R2-2) showed product-made charts that the check passed although a person
+could not read them: the plot hidden by `visibility`, a `<style>` rule (`display:none`, `opacity:0`), a zero-size clip,
+tick text at font size zero, scatter circles without a radius, an opaque rectangle painted over the plot, a root of
+zero width. `check/visible.py` (written from the SVG and CSS rules, not from the benchmark's reader) adds the technical
+finding `visible_to_a_person` to every SVG check: the plot, each mark and series, each axis and each tick's text must
+be displayed, visible, not fully transparent, not clipped to nothing, not painted only in the background's colour or
+not at all (light and dark schemes, CSS custom properties and `currentColor` resolved), inside the canvas, and not
+covered by a later opaque shape; the root must have an area; a hiding style rule this check cannot match is itself a
+finding. An animated picture's frame counts as seen when some keyframe shows it. Tests:
+`tests/artifacts/test_f4_visible.py` (16 hidings on line, bar and scatter fail; the untouched charts pass); the
+generators' golden outputs and lane G1's and G2's evidence scripts give the same results as before.
 
 # ADR-075 The OMNIMIND benchmark: an examination written before the mechanisms (lane Z's section)
 

@@ -31,6 +31,7 @@ def check_svg(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
     from .layout import check_layout
     from .svg_read import carried, flagged_values, hued_marks, parse
     from .svg_safety import check_svg as safety
+    from .visible import visible_finding
     try:
         parsed = parse(data)
     except ArtifactError as error:
@@ -39,6 +40,7 @@ def check_svg(data: bytes, media_type: str, spec=None, source=None) -> Verdict:
     technical += safety(parsed)
     t2, style = check_layout(parsed.root)
     technical += t2
+    technical.append(visible_finding(parsed.root))     # what a person would see (fix lane F4, R2-1 and R2-2)
     form, sdata, options = spec_parts(spec, source)
     if form in SVG_FORMS and isinstance(sdata, dict):
         try:

@@ -4,7 +4,7 @@ import argparse
 
 from neuroscifi.cli import main
 
-COMMANDS = ("add", "list", "show", "facts", "export", "forget", "gaps", "feedback", "relate", "adapters", "make",
+COMMANDS = ("add", "list", "show", "facts", "export", "forget", "release", "gaps", "feedback", "relate", "adapters", "make",
             "remake", "forms")
 
 

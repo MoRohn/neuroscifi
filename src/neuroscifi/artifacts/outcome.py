@@ -53,9 +53,21 @@ def of_member(member, *, partial_ok: bool = False) -> str:
     return ANSWERED
 
 
+def member_path(path) -> str | None:
+    """The name a question may give a Bundle member by: its path with a leading "./" dropped; None for a climbing
+    ("..") or absolute path, which names no member (fix lane F4, measurement R2-4: the product says it, not the
+    benchmark's driver; the archive readers already refuse such members, so no answer is ever given about one by
+    name)."""
+    path = str(path)
+    path = path[2:] if path.startswith("./") else path
+    if path.startswith("/") or ".." in path.split("/"):
+        return None
+    return path
+
+
 def exit_code(outcome: str) -> int:
     return EXIT_CODES[outcome]
 
 
 __all__ = ["ANSWERED", "CANNOT", "CANNOT_REASONS", "EXIT_CODES", "MISUSE", "OUTCOMES", "REFUSED", "exit_code",
-           "of_decoded", "of_error", "of_member"]
+           "member_path", "of_decoded", "of_error", "of_member"]

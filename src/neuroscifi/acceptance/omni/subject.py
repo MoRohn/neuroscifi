@@ -112,16 +112,16 @@ def _descend_single(rep):
 
 def _member(rep, name: str, container: str | None = None):
     if _kind(rep) == "Bundle":
+        table = importlib.import_module("neuroscifi.artifacts.outcome")       # the product's table
         for m in _members(rep):
-            path = str(m.path)
-            path = path[2:] if path.startswith("./") else path        # only "./": a "../" name is not the member
-            if path.startswith("/") or ".." in path.split("/"):
-                continue                                              # a climbing or absolute name names no member
+            path = table.member_path(m.path)
+            if path is None:
+                continue
             if container == "npz" and path == name + ".npy":          # np.savez stores the array `name` as name.npy
                 path = name
             if path == name or path.endswith("/" + name) or path.rsplit("/", 1)[-1] == name and "/" not in name:
                 note = str(m.note or "")
-                status = importlib.import_module("neuroscifi.artifacts.outcome").of_member(m)   # the product's table
+                status = table.of_member(m)
                 if status == "refused":
                     raise RefusedHere(f"member {name} refused or only partly decoded: {note}")
                 if status == "cannot":
@@ -562,11 +562,6 @@ def _array_measure(a, name: str, arg: str):
     raise Cannot(name)
 
 
-class _Refuse:
-    def __init__(self, reason):
-        self.reason = reason
-
-
 # ---- the subject of the future: the artifacts package -------------------------------------------------------------
 
 class ArtifactsSubject:
@@ -640,8 +635,6 @@ class ArtifactsSubject:
             return Answer(None, "refused", str(why)[:200])
         except Cannot as why:
             return Answer(None, "cannot", str(why))
-        if isinstance(value, _Refuse):
-            return Answer(None, "refused", value.reason)
         return Answer(_plain(value), "answered")
 
     def _undecoded(self, error, name, data, declared, members, measure_name) -> Answer:
@@ -947,31 +940,25 @@ def choose_form(view) -> str:
     for m in x["shows"]:
         shows.extend(FORMS_MEDIA[m])
     access = [a for a in x["access"] if a in P.ACCESSIBILITY]
+    # Names only: a name with no mapping is passed through as it is (the product takes it or says no) and recorded in
+    # FORMS_UNMAPPED, which every forms run prints (fix lane F4, measurement R2-3).
     prefs = {}
-    for name in x["prefer"]:
-        if name in FORMS_FROM_BENCH:
-            prefs[FORMS_FROM_BENCH[name]] = 1.0
-        else:
-            FORMS_UNMAPPED.append(("prefer", name))
-    for name in x["avoid"]:
-        if name in FORMS_FROM_BENCH:
-            prefs[FORMS_FROM_BENCH[name]] = -1.0
-        else:
-            FORMS_UNMAPPED.append(("avoid", name))
+    for kind, names, weight in (("prefer", x["prefer"], 1.0), ("avoid", x["avoid"], -1.0)):
+        for name in names:
+            if name not in FORMS_FROM_BENCH:
+                FORMS_UNMAPPED.append((kind, name))
+            prefs[FORMS_FROM_BENCH.get(name, name)] = weight
     explicit = view["explicit"]
     if explicit is not None:
-        parts = [FORMS_FROM_BENCH.get(p) for p in explicit.split("+")]
-        if None in parts:
+        if any(p not in FORMS_FROM_BENCH for p in explicit.split("+")):
             FORMS_UNMAPPED.append(("explicit", explicit))
-            explicit = None
-        else:
-            explicit = "+".join(parts)
+        explicit = "+".join(FORMS_FROM_BENCH.get(p, p) for p in explicit.split("+"))
     purpose = view["purpose"]                    # any word: the planner uses the ones it knows, ignores the rest
     try:
         req = P.Request(text=view["request"], explicit_form=explicit, purpose=purpose)
-    except Exception:                            # e.g. a combination the planner's Request does not take
+    except Exception:                            # the product refuses the request as given: that is its answer
         FORMS_UNMAPPED.append(("explicit-refused", str(view["explicit"])))
-        req = P.Request(text=view["request"], purpose=purpose)
+        return ""                                # no form; the examiner scores it (never a re-plan without it)
     content = tuple(ContentShape(kinds=tuple(c["kinds"]), n_items=c["n_items"], n_series=c["n_series"],
                                  has_time=c["has_time"], has_space=c["has_space"],
                                  has_parameters=c["has_parameters"], duration_s=c["duration_s"],

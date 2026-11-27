@@ -42,14 +42,22 @@ Rules
 - Forget of a root (governance.forget_partner / forget_camera): `scan_root` runs OUTSIDE the write transaction and
   finds every artifact whose label, index, text layer, specification or bytes name the root (raw bytes as UTF-8,
   UTF-16LE and UTF-16BE, base64 of it, and the same inside every gzip, zip (deflate), zlib (PNG text chunks, PDF
-  streams), bzip2, xz and Zstandard stream found in them, nested up to Limits.max_depth, within Limits'
-  decompressed-size budget). `forget_found` runs INSIDE the forget's transaction: it scans what was added since,
+  streams), bzip2, xz and Zstandard stream found in them, nested up to SCAN_DEPTH, within the scan's OWN budget,
+  larger than the decoders' Limits: SCAN_BUDGET decompressed bytes per artifact, each stream looked into up to
+  SCAN_STREAM bytes, at most SCAN_MEMBERS streams per layer, base64 runs charged to the budget at their encoded
+  length). `forget_found` runs INSIDE the forget's transaction: it scans what was added since,
   then removes. The root counts as named unless an ASCII letter or digit touches it (so `-`, `_`, `.`, `/` joins are
   found), after removing soft hyphens and zero-width characters, and after percent-decoding; hex of the UTF-8 bytes
-  and base64 runs (lines broken anywhere, either alphabet) are decoded and searched as further layers. A value still
-  compressed or base64 when the depth or the decompressed-size budget runs out COUNTS as naming the root: the
-  artifact is removed, and the result says how many were removed for that reason
-  (`artifacts_removed_uninspectable`). What the scan cannot find (fix lane F1, ruling B, stated as measured by
+  and base64 runs (lines broken anywhere, either alphabet) are decoded and searched as further layers.
+- HELD (fix lane F4, security M-new-1; replaces fix lane F1's "removed when it cannot be inspected" for artifacts):
+  an artifact whose scan could not finish (a value still compressed or base64 when the depth, the budget or the
+  stream count ran out) is neither removed nor trusted. Its bytes stay, but it is never decoded, shown, exported,
+  made from, related, or listed with its content (`read_bytes`, `export`, `text_for_model` refuse; `spec_of` gives
+  nothing; listings say HELD_WORDS). The forget's result lists every held artifact by id and label
+  (`artifacts_held`) and says how to end the hold: `nsf artifact forget ID`, or `nsf artifact release ID` (the
+  owner's statement that it does not name what was forgotten). A hold and a release are rows of deletion_log
+  (kind HOLD_KIND, target '#<digest>'): the `artifacts.state` column cannot say "held" without a migration (its CHECK
+  allows stored, missing, corrupt), and the log is what a restore replays (`replay_holds`). What the scan cannot find (fix lane F1, ruling B, stated as measured by
   tests/artifacts/test_f1_forget.py): case variants (the owner's forget treats a name as itself, exactly:
   governance._scrubber), other Unicode look-alikes (fullwidth letters, NFKC forms), text drawn as pixels (no OCR
   exists here), words split by a format's own structure (a PDF text operator per letter), encodings it does not undo
@@ -65,6 +73,7 @@ Rules
 from __future__ import annotations
 
 import base64
+import binascii
 import bz2
 import hashlib
 import json
@@ -116,7 +125,23 @@ _INVISIBLE_RE = re.compile(f"[{_INVISIBLE}]")
 _INVISIBLE_BYTES = tuple(ch.encode("utf-8") for ch in _INVISIBLE)
 # A run of base64 text (either alphabet, lines broken anywhere) long enough to hide a name: decoded and searched.
 _B64_RUN = re.compile(rb"[A-Za-z0-9+/_-][A-Za-z0-9+/_\r\n-]{15,}")
-EXPAND_BUFFER = 64 << 20         # the most of one decompressed stream kept to look inside it again
+# The forget scan's own budget (fix lane F4): larger than the decoders' Limits so that honest large files (a 47 MiB zip
+# of CSV logs, a notebook with nested compressed outputs) are checked to the end, and still bounded (it runs in the
+# owner's process): decompressed bytes searched per artifact, the most of one stream kept to look inside it again,
+# nesting, and streams per layer. Base64 runs are charged to the budget at their encoded length.
+SCAN_BUDGET = 1 << 30
+SCAN_STREAM = 128 << 20
+SCAN_DEPTH = 16
+SCAN_MEMBERS = 1 << 16
+HOLD_KIND = "artifact_hold"      # deletion_log.target_kind of a hold and of its release
+HELD_WORDS = "held: it could not be checked for what you asked to forget"
+HOLD_HINT = ("{n} kept file(s) could not be checked to the end for what you asked to forget, so they are held: never "
+             "read, shown, exported or used until you decide. `nsf artifact forget ID` removes one; `nsf artifact "
+             "release ID` ends the hold if it does not name what you forgot.")
+# Signatures _candidates looks for: a decoded base64 run that holds none of them and is too short to hold a further
+# base64 run has no further layer, so only the root's own forms are searched in it.
+_LAYER_MAGIC = re.compile(rb"\x1f\x8b\x08|\x28\xb5\x2f\xfd|\xfd7zXZ\x00|BZh|PK\x03\x04|\x89PNG|stream")
+_B64_TEXT = bytes.maketrans(b"-_", b"+/")       # the URL-safe alphabet read as the standard one
 
 SIDECAR_SCHEMA = """
 CREATE TABLE IF NOT EXISTS blobs(sha256 TEXT PRIMARY KEY, size INTEGER NOT NULL, chunks INTEGER NOT NULL,
@@ -157,6 +182,7 @@ class ArtifactRecord:
     created_at: float
     state: str
     index: dict = field(default_factory=dict)
+    held: bool = False              # a forget's scan could not finish it (HELD_WORDS): nothing of it is read or shown
 
     @property
     def provenance(self) -> str:
@@ -166,18 +192,31 @@ class ArtifactRecord:
         return {"id": self.id, "sha256": self.sha256, "size": self.size, "family": self.family,
                 "format": self.format, "media_type": self.media_type, "origin": self.origin, "maker": self.maker,
                 "label": self.label, "scope": self.scope, "flagged": self.flagged, "created_at": self.created_at,
-                "state": self.state, "provenance": self.provenance, "index": self.index}
+                "state": self.state, "provenance": self.provenance, "index": {} if self.held else self.index} | (
+                    {"held": HELD_WORDS} if self.held else {})
 
 
 _COLUMNS = ("id", "sha256", "size", "family", "format", "media_type", "origin", "maker", "label", "scope", "flagged",
             "created_at", "state", "index_json")
 
 
-def _record(row) -> ArtifactRecord:
+def _record(row, held=frozenset(), instance_id=None) -> ArtifactRecord:
     values = dict(zip(_COLUMNS, row))
     index = json.loads(values.pop("index_json"))
     values["flagged"] = bool(values["flagged"])
-    return ArtifactRecord(**values, index=index)
+    is_held = bool(held) and digest(values["id"], instance_id) in held
+    return ArtifactRecord(**values, index=index, held=is_held)
+
+
+def _holds(db) -> dict:
+    """{'#digest': (held, requested_at, effects JSON)}: the latest hold or release row of every artifact."""
+    return {target: (bool(json.loads(effects).get("held")), at, effects) for target, at, effects in db.execute(
+        "SELECT target_id, requested_at, effects FROM deletion_log WHERE target_kind=? ORDER BY id", (HOLD_KIND,))}
+
+
+def held_digests(db) -> frozenset:
+    """The digests (digest(id, instance)) of the artifacts held now."""
+    return frozenset(t[1:] for t, (held, _, _) in _holds(db).items() if held)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -465,14 +504,16 @@ def apply_adapter_setting(approved) -> list[str]:
 # The file whose decode went over the operating-system limits in the guarded child (`guarded`), or for which no such
 # child could be started, is kept too, unread: an opaque artifact with that refusal recorded.
 # A file named as a structured format whose prefix shows only text (`adapters.HIDDEN_STRUCTURE`) is kept unread too.
-KEPT_REFUSALS = frozenset({"unsafe_member_name", "resource_limit", "guard_unavailable", "unconfirmed_structure"})
+KEPT_REFUSALS = frozenset({"unsafe_member_name", "resource_limit", "guard_unavailable", "unconfirmed_structure",
+                           "external_unguarded"})
 
 
-def _decode(data: bytes, *, name, declared, lim: Limits):
+def _decode(data: bytes, *, name, declared, lim: Limits, summary: bool = False):
     """(decoded or None, error or None, [(format, outcome)] gaps) for these bytes. A safety refusal propagates.
     A header-only format (`HeaderOnly`) is an error that still established something: its `facts` go into the error
     record, and its `words` (untrusted metadata) into the record's "words", which the caller moves to the text
-    layer (never into the index)."""
+    layer (never into the index). `summary`: the decode runs once, in the guard's child, which returns the index and
+    words only (`guarded.summarize`, for keeping a file; the representation is a `guarded.Described`)."""
     gaps, me = [], threading.get_ident()
 
     def hook(detected, outcome):
@@ -481,8 +522,12 @@ def _decode(data: bytes, *, name, declared, lim: Limits):
     remove = adapters.on_gap(hook)
     try:
         try:
+            if summary:
+                decoded, child_gaps = guarded.summarize(data, name=name, declared=declared, limits=lim)
+                return decoded, None, gaps + child_gaps
             return guarded.decode(data, name=name, declared=declared, limits=lim), None, gaps
         except Refused as error:
+            gaps += getattr(error, "gaps", [])
             if error.reason != "too_large" and error.rule not in KEPT_REFUSALS:
                 raise
             record = {"reason": error.reason, "rule": error.rule, "message": str(error)[:300], "needs": []}
@@ -490,6 +535,7 @@ def _decode(data: bytes, *, name, declared, lim: Limits):
                 record["findings"] = [str(f)[:200] for f in error.findings][:64]
             return None, record, gaps
         except ArtifactError as error:
+            gaps += getattr(error, "gaps", [])
             record = {"reason": error.reason, "message": str(error)[:300],
                       "needs": list(getattr(error, "needs", ()))[:16]}
             if isinstance(error, HeaderOnly):
@@ -612,7 +658,7 @@ def _store(db, data: bytes, *, label, origin, maker, scope, name_hint, declared,
                            reason="missing_capability")
     _room(db, path, len(data))
     apply_adapter_setting(cfg.artifact_adapters)
-    decoded, error, gaps = _decode(data, name=name_hint, declared=declared, lim=limits(cfg))
+    decoded, error, gaps = _decode(data, name=name_hint, declared=declared, lim=limits(cfg), summary=True)
     detected = decoded.detected if decoded is not None else detect(data[:64 << 10], name=name_hint,
                                                                    declared=declared, size=len(data))
     text = ""
@@ -798,7 +844,8 @@ def get(db, artifact_id, *, viewer="owner") -> ArtifactRecord:
     row = db.execute(f"SELECT {','.join(_COLUMNS)} FROM artifacts WHERE id=?", (str(artifact_id),)).fetchone()
     if row is None:
         raise NotHeld("no artifact of that id is held")
-    return _record(row)
+    held = held_digests(db)
+    return _record(row, held, _instance_id(db) if held else None)
 
 
 def listing(db, *, viewer="owner", of_origin=None, limit=100) -> dict:
@@ -814,11 +861,14 @@ def listing(db, *, viewer="owner", of_origin=None, limit=100) -> dict:
     rows = db.execute(f"SELECT {','.join(_COLUMNS)} FROM artifacts {where} ORDER BY seq DESC LIMIT ?",
                       (*params, limit)).fetchall()
     counts = dict(db.execute("SELECT origin, count(*) FROM artifacts GROUP BY origin").fetchall())
+    held = held_digests(db)
+    instance_id = _instance_id(db) if held else None
     items = []
     for row in rows:
-        record = _record(row)
+        record = _record(row, held, instance_id)
         items.append({k: v for k, v in record.to_dict().items() if k != "index"}
-                     | {"kind": (record.index.get("representation") or {}).get("kind", "unread")})
+                     | {"kind": "held" if record.held else
+                        (record.index.get("representation") or {}).get("kind", "unread")})
     return {"made_label": MADE_LABEL, "counts": {o: counts.get(o, 0) for o in ORIGINS}, "items": items}
 
 
@@ -835,8 +885,9 @@ def show(db, artifact_id, *, viewer="owner") -> dict:
 
 
 def read_bytes(db, artifact_id, *, viewer="owner", now=None) -> bytes:
-    """The artifact's bytes, verified against their hash. A mismatch marks the row 'corrupt' and raises Malformed."""
-    record = get(db, artifact_id, viewer=viewer)
+    """The artifact's bytes, verified against their hash. A mismatch marks the row 'corrupt' and raises Malformed.
+    Refused for a held artifact (HELD_WORDS): nothing reads it until the owner forgets or releases it."""
+    record = _not_held(get(db, artifact_id, viewer=viewer))
     side = _sidecar(db, create=False)
     if side is None:
         _mark(db, record, "missing", _now(now))
@@ -850,6 +901,52 @@ def read_bytes(db, artifact_id, *, viewer="owner", now=None) -> bytes:
     except NotHeld:
         _mark(db, record, "missing", _now(now))
         raise
+
+
+def _not_held(record):
+    if record.held:
+        raise StoreRefused(f"{record.id} is {HELD_WORDS}; `nsf artifact forget {record.id}` removes it, `nsf "
+                           f"artifact release {record.id}` ends the hold", rule="held")
+    return record
+
+
+def release(db, artifact_id, now=None, *, viewer="owner") -> dict:
+    """`nsf artifact release ID`: the owner states that a held artifact does not name what was forgotten, and the
+    hold ends (a deletion_log row of HOLD_KIND, replayed by every restore). {"status": "not_held"} when it is not
+    held."""
+    from ..instance import store
+    record = get(db, artifact_id, viewer=viewer)
+    if not record.held:
+        return {"status": "not_held", "id": record.id}
+    now = _now(now)
+    with store.write(db):
+        effects = {"held": False, "how": "released by the owner", "state_version": store.bump_state_version(db)}
+        db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                   (HOLD_KIND, "#" + digest(record.id, _instance_id(db)), now, json.dumps(effects, sort_keys=True)))
+    return {"status": "released", "id": record.id, "label": record.label}
+
+
+def read_holds(db) -> list:
+    """The live file's latest hold or release row per artifact, for checkpoints._read_forgets."""
+    if not present(db):
+        return []
+    return [(target, at, effects) for target, (_, at, effects) in sorted(_holds(db).items())]
+
+
+def replay_holds(copy, holds) -> int:
+    """In a restore's or rewrite's copy: every artifact the live file holds is held there too, and every release the
+    live file recorded is recorded there (the live file's latest row wins). Caller owns the transaction. Returns how
+    many rows were carried."""
+    if not holds or not present(copy):
+        return 0
+    mine, carried = _holds(copy), 0
+    for target, at, effects in holds:
+        if mine.get(target, (None, None, None))[2] == effects:
+            continue
+        copy.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                     (HOLD_KIND, target, at, effects))
+        carried += 1
+    return carried
 
 
 def _mark(db, record, state, now):
@@ -866,7 +963,7 @@ def text_for_model(db, artifact_id, *, viewer="owner") -> str:
     """The artifact's text layer, for a later wave that shows artifact text to a model: refused for a flagged
     artifact (its text held instruction-like content). Untrusted in every case: the caller still wraps it in the
     untrusted-data envelope."""
-    record = get(db, artifact_id, viewer=viewer)
+    record = _not_held(get(db, artifact_id, viewer=viewer))
     if record.flagged:
         raise StoreRefused("this artifact's text was flagged as instructions aimed at an AI agent; it is never "
                            "offered to a model", rule="flagged")
@@ -881,7 +978,7 @@ def spec_of(db, artifact_id, *, viewer="owner") -> dict | None:
     """A made artifact's specification (its editable source), or None for a given one."""
     record = get(db, artifact_id, viewer=viewer)
     side = _sidecar(db, create=False)
-    if side is None or record.origin != "made":
+    if side is None or record.origin != "made" or record.held:
         return None
     with side:
         text = side.layer(record.id, "spec")
@@ -917,7 +1014,7 @@ def export(db, artifact_id, path, *, viewer="owner", now=None) -> dict:
     vendor type exports as .html."""
     from ..instance import store
     now = _now(now)
-    record = get(db, artifact_id, viewer=viewer)
+    record = _not_held(get(db, artifact_id, viewer=viewer))
     target = Path(path)
     if target.is_dir() and not target.is_symlink():
         target = target / (record.id + extension_for(record.media_type))
@@ -1242,12 +1339,13 @@ class RootScan:
     mark: int                       # the highest artifact seq the scan covered
     hits: list = field(default_factory=list)
     scanned: int = 0
-    budget_reached: int = 0         # artifacts with a value still encoded when the inspection limit ran out: REMOVED
-                                    # (counted as naming the root, as imagined.remove_naming does)
+    unfinished: list = field(default_factory=list)  # ids whose scan could not finish (a value still encoded when the
+                                                     # scan's budget ran out) and that showed no hit: HELD, not removed
     bytes_missing: int = 0          # artifacts searched without their bytes (label, index, layers only)
     removed: list = field(default_factory=list)
     shas: list = field(default_factory=list)
-    cache: dict = field(default_factory=dict, repr=False)     # sha -> whether its bytes name the root
+    held: list = field(default_factory=list)        # [{"id", "label"}] held by this forget, for its result
+    cache: dict = field(default_factory=dict, repr=False)     # sha -> (bytes name the root, scan unfinished)
 
 
 class _TextMatcher:
@@ -1316,6 +1414,7 @@ class _Needles:
         self.b64 = _b64_cores(raw)
         self.hex = [raw.hex().encode(), raw.hex().upper().encode()] if len(raw) >= 3 else []
         self.longest = max([len(f) for f, _, _ in self.forms] + [len(c) for c in self.b64])
+        self.shortest = min([len(f) for f, _, _ in self.forms] + [len(c) for c in self.b64 + self.hex])
 
     @staticmethod
     def _word(buf, at, unit, enc):
@@ -1455,35 +1554,22 @@ def _candidates(buf, max_members):
     return found
 
 
-def _b64_runs(buf, max_members):
-    """The base64 runs in `buf` (lines broken anywhere), decoded: each a further layer to search."""
-    out = []
-    for m in _B64_RUN.finditer(buf):
-        if len(out) >= max_members:
-            break
-        text = re.sub(rb"[\r\n]", b"", m.group(0)).replace(b"-", b"+").replace(b"_", b"/")
-        try:
-            out.append(base64.b64decode(text[:len(text) - len(text) % 4]))
-        except (ValueError, base64.binascii.Error):
-            continue
-    return out
-
-
-def _search(buf, needles, budget, depth, max_depth, max_members) -> tuple[bool, bool]:
-    """(found, still encoded): the needles in `buf` and in every compressed stream and base64 run inside it,
-    recursively. "Still encoded" means the depth or the decompressed-size budget ran out while something in it was
-    still compressed or base64: the caller counts that as naming the root (ruling B of fix lane F1, as
-    imagined.remove_naming does), since what could not be inspected cannot be shown not to name it."""
+def _search(buf, needles, budget, depth, max_depth=SCAN_DEPTH, max_members=SCAN_MEMBERS) -> tuple[bool, bool]:
+    """(found, unfinished): the needles in `buf` and in every compressed stream and base64 run (lines broken
+    anywhere, either alphabet) inside it, recursively. "Unfinished" means the depth, the budget (decompressed bytes,
+    and base64 runs at their encoded length) or the count of streams in one layer ran out while something in
+    it was still compressed or base64: what could not be inspected cannot be shown not to name the root, so the
+    caller HOLDS that artifact (fix lane F4)."""
     if needles.found(buf):
         return True, False
     candidates = _candidates(buf, max_members)
     if depth >= max_depth:
         return False, bool(candidates) or _B64_RUN.search(buf) is not None
-    view, reached = memoryview(buf), False
+    view, reached = memoryview(buf), len(candidates) >= max_members
     for offset, kind in candidates:
         if budget[0] <= 0:
             return False, True
-        out, cut = _expand(kind, view[offset:], min(budget[0], EXPAND_BUFFER))
+        out, cut = _expand(kind, view[offset:], min(budget[0], SCAN_STREAM))
         budget[0] -= len(out)
         reached = reached or cut
         if out:
@@ -1491,11 +1577,21 @@ def _search(buf, needles, budget, depth, max_depth, max_members) -> tuple[bool, 
             if hit:
                 return True, False
             reached = reached or more
-    runs = _b64_runs(buf, max_members)
-    for out in runs:
-        if budget[0] <= 0:
+    for m in _B64_RUN.finditer(buf):          # bounded by the budget: each run is charged at its encoded length
+        run = m.group(0)
+        budget[0] -= len(run)
+        if budget[0] < 0:
             return False, True
-        budget[0] -= len(out)
+        text = run.translate(_B64_TEXT, b"\r\n")
+        try:
+            out = binascii.a2b_base64(text[:len(text) - len(text) % 4])
+        except binascii.Error:
+            continue
+        if len(out) < 16 and _LAYER_MAGIC.search(out) is None:
+            # too short to hold a further base64 run and holding no stream signature: no layer below this one
+            if len(out) >= needles.shortest and needles.found(out):
+                return True, False
+            continue
         hit, more = _search(out, needles, budget, depth + 1, max_depth, max_members)
         if hit:
             return True, False
@@ -1503,8 +1599,9 @@ def _search(buf, needles, budget, depth, max_depth, max_members) -> tuple[bool, 
     return False, reached
 
 
-def _artifact_names(db, side, row, matcher, needles, lim, cache, scan) -> bool:
-    """Whether one artifact (row: seq, id, sha256, size) names the root anywhere."""
+def _artifact_names(db, side, row, matcher, needles, cache, scan) -> bool:
+    """Whether one artifact (row: seq, id, sha256, size) names the root anywhere; one whose bytes could not be
+    scanned to the end and showed no hit goes to `scan.unfinished`."""
     _, artifact_id, sha, size = row
     found = db.execute("SELECT label, index_json FROM artifacts WHERE id=?", (artifact_id,)).fetchone()
     if found is None:           # forgotten meanwhile
@@ -1529,26 +1626,23 @@ def _artifact_names(db, side, row, matcher, needles, lim, cache, scan) -> bool:
                 data = None
         if data is None:
             scan.bytes_missing += 1
-            cache[sha] = False
+            cache[sha] = (False, False)
         else:
-            hit, reached = _search(data, needles, [lim.max_decoded_bytes], 0, lim.max_depth, lim.max_members)
-            scan.budget_reached += int(reached and not hit)
-            cache[sha] = hit or reached
-    return cache[sha]
+            hit, reached = _search(data, needles, [SCAN_BUDGET], 0)
+            cache[sha] = (hit, reached and not hit)
+    hit, unfinished = cache[sha]
+    if unfinished:
+        scan.unfinished.append(artifact_id)
+    return hit
 
 
 def _scan(db, root, rows, scan, cache):
-    from ..instance import store
-    try:
-        lim = limits(store.config(db))
-    except Exception:
-        lim = Limits()
     matcher, needles = _text_matcher(root), _Needles(root)
     side = _sidecar(db, create=False)
     try:
         for row in rows:
             scan.scanned += 1
-            if _artifact_names(db, side, row, matcher, needles, lim, cache, scan):
+            if _artifact_names(db, side, row, matcher, needles, cache, scan):
                 scan.hits.append(row[1])
     finally:
         if side is not None:
@@ -1580,23 +1674,34 @@ def forget_found(db, scan, now, effects, label) -> dict | None:
         _scan(db, scan.root, later, scan, scan.cache)
     hits = [h for h in dict.fromkeys(scan.hits)
             if db.execute("SELECT 1 FROM artifacts WHERE id=?", (h,)).fetchone() is not None]
-    if not hits:
+    removed, shas, cascaded, stale = [], [], set(), []
+    instance_id = _instance_id(db)
+    if hits:
+        ids, cascaded = _closure(db, hits)
+        reasons = {i: "source_forgotten" for i in cascaded} | {h: "root_forgotten" for h in hits}
+        removed, shas, earliest = _remove(db, ids, reasons, now, instance_id)
+        stale = _stale_checkpoints(db, earliest)
+        scan.removed, scan.shas = removed, shas
+    # what the scan could not finish and did not find the root in: HELD (fix lane F4), one deletion_log row each
+    gone = set(removed)
+    held = [(i, r[0]) for i in dict.fromkeys(scan.unfinished) if i not in gone
+            and (r := db.execute("SELECT label FROM artifacts WHERE id=?", (i,)).fetchone()) is not None]
+    if not removed and not held:
         return effects
-    ids, cascaded = _closure(db, hits)
-    reasons = {i: "source_forgotten" for i in cascaded} | {h: "root_forgotten" for h in hits}
-    removed, shas, earliest = _remove(db, ids, reasons, now, _instance_id(db))
-    stale = _stale_checkpoints(db, earliest)
-    scan.removed, scan.shas = removed, shas
     if effects is None:
         effects = {"state_version": store.bump_state_version(db), "checkpoints_stale": stale}
     else:
         effects["checkpoints_stale"] = sorted(set(effects.get("checkpoints_stale") or []) | set(stale))
-    effects["artifacts_removed"] = len(removed)
-    if scan.budget_reached:
-        # removed because a value in them was still encoded when the inspection limit ran out (ruling B)
-        effects["artifacts_removed_uninspectable"] = scan.budget_reached
+    if removed:
+        effects["artifacts_removed"] = len(removed)
+    if held:
+        effects["artifacts_held"] = len(held)
+        hold = json.dumps({"held": True, "by": label, "state_version": effects["state_version"]}, sort_keys=True)
+        db.executemany("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                       [(HOLD_KIND, "#" + digest(i, instance_id), now, hold) for i, _ in held])
+        scan.held = [{"id": i, "label": lab} for i, lab in held]
     record = {"artifacts_removed": len(removed), "made_or_contained_removed": len(cascaded),
-              "scanned": scan.scanned, "budget_reached": scan.budget_reached, "bytes_missing": scan.bytes_missing,
+              "scanned": scan.scanned, "held": len(held), "bytes_missing": scan.bytes_missing,
               "checkpoints_stale": stale, "state_version": effects["state_version"]}
     db.execute("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
                (DELETION_KIND, label, now, json.dumps(record, sort_keys=True)))
@@ -1604,12 +1709,17 @@ def forget_found(db, scan, now, effects, label) -> dict | None:
 
 
 def finish(db, scan, result) -> dict:
-    """After the root forget committed: the removed artifacts' bytes and layers leave the sidecar."""
-    if scan is None or not scan.removed:
+    """After the root forget committed: the removed artifacts' bytes and layers leave the sidecar; the artifacts it
+    held are listed by id and label (`artifacts_held`), with how to end the hold in `next_steps`."""
+    if scan is None:
         return result
-    swept = _sweep_after(db, scan.removed, scan.shas)
-    if swept:
-        result = result | {"effects": result.get("effects", {}) | swept}
+    if scan.removed:
+        swept = _sweep_after(db, scan.removed, scan.shas)
+        if swept:
+            result = result | {"effects": result.get("effects", {}) | swept}
+    if scan.held:
+        result = result | {"artifacts_held": list(scan.held),
+                           "next_steps": list(result.get("next_steps") or []) + [HOLD_HINT.format(n=len(scan.held))]}
     return result
 
 
@@ -1730,6 +1840,6 @@ __all__ = ["ArtifactRecord", "CHUNK", "DELETION_KIND", "GIVEN_LABEL", "INDEX_MAX
            "RELATIONS", "RootScan", "Sidecar", "StoreRefused", "TEXT_MAX_BYTES", "add", "add_made",
            "EXPORT_EXTENSIONS", "adapter_catalog", "after_restore", "apply_adapter_setting", "digest", "export",
            "extension_for", "facts", "facts_of",
-           "finish", "forget_artifact", "forget_found", "gaps", "get", "limits", "link", "listing", "present",
-           "read_bytes", "read_forgotten", "reconcile", "replay", "scan_root", "show", "sidecar_path", "spec_of",
-           "text_for_model"]
+           "finish", "forget_artifact", "forget_found", "gaps", "get", "held_digests", "limits", "link", "listing",
+           "present", "read_bytes", "read_forgotten", "read_holds", "reconcile", "release", "replay", "replay_holds",
+           "scan_root", "show", "sidecar_path", "spec_of", "text_for_model", "HELD_WORDS", "HOLD_KIND"]

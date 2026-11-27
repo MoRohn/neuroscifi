@@ -286,6 +286,18 @@ contract, and never reads `<metadata>`:
   on 1,537 fresh product charts and diagrams (1,600 requests from the development templates, seeds 20000+; 63 bar
   requests the product refused by name) the reader and the product's own check agree on all but one, a histogram where the product puts a value lying exactly on an inner bin edge (17.5)
   in the lower bin against the request's half-open bins: a product finding, and the old reader read it the same way.
+  **Re-pin (fix lane F4, measurement review second pass R2-2).** Two hidings still passed the reader: an opaque
+  `<rect width="100%" height="100%">` painted after the plot (a rect's percentages were read as user units, so it
+  covered a 100 x 100 corner) and a root of zero width or height (the view box alone set the canvas). Now a rect's
+  percentages are of the canvas, and a root whose width or height is zero, or whose view box has no area, makes the
+  picture unread (ReadError, "the picture has no area"). Both make the examination stricter; neither can raise a
+  product figure. Reference tests in `test_omni_readers.py`
+  (`test_an_opaque_rectangle_of_the_whole_canvas_painted_after_the_plot_covers_it`,
+  `test_a_picture_of_no_area_is_not_read`: the right picture is read, the hidden one is not). `READERS_SHA256`:
+  before `df21e65899c3830514d2ac05322f3b2ace5738aedb02a17561baf0c985596327`, after
+  `fb51f10c76afeeaa1046e9adb5876d3501175f63eb880ff20eda209a8d3c619e`. No case table, task digest or truth changed.
+  The product on development after the change: `made` 14/14 right, `transform` 8/8 right. The product's own check
+  applies its own rules for the same hidings and more (`artifacts/check/visible.py`, ADR-074's fix lane F4 section).
 - **Warnings and the palette**: hue is allowed only on elements carrying (or inside) a class `warn` or `danger`, on
   at most as many marks as the request has warned values, and in style rules whose selector names warn or danger;
   `var(...)` colours are judged where defined. Grays: `#rgb`/`#rrggbb` with equal channels, `rgb()` with equal
