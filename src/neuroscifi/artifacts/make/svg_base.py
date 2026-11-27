@@ -135,11 +135,14 @@ def scope_id(form: str, spec_json: str) -> str:
 
 def style_block(sid: str, extra: str = "") -> str:
     """The picture's CSS, scoped to this picture's id: grays on the root; the two hues only in rules whose selectors
-    name the flag classes `warn` and `danger` (so a hue exists only on flagged elements), light and dark."""
+    name the flag classes `warn` and `danger` (so a hue exists only on flagged elements), light and dark. The root
+    scales down to its container (`max-width:100%;height:auto`, the viewBox keeping its proportions): a 640-unit
+    chart fits a 360 px phone; its width and height attributes, and every coordinate the reading contract reads, stay
+    in the same user units."""
     def flags(p):
         return f"#{sid} .warn{{--nsf-warn:{p['warn']}}}#{sid} .danger{{--nsf-danger:{p['danger']}}}"
     css = (f"#{sid}{{--nsf-ink:{LIGHT['ink']};--nsf-paper:{LIGHT['paper']};color:var(--nsf-ink);"
-           f"background:var(--nsf-paper);font-family:{FONT}}}" + flags(LIGHT)
+           f"background:var(--nsf-paper);font-family:{FONT};max-width:100%;height:auto}}" + flags(LIGHT)
            + f"@media (prefers-color-scheme:dark){{#{sid}{{--nsf-ink:{DARK['ink']};--nsf-paper:{DARK['paper']}}}"
            + flags(DARK) + "}" + extra)
     return el("style", (), css)
