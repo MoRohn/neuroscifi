@@ -6016,6 +6016,17 @@ candidates as what can be made here.
   quiet has nothing to hold. Owner scope only: every function refuses a family or agent viewer.
 - **Reversible in one command.** `nsf config --form-learning off` (or `record`) stops applying at the next call;
   `nsf artifact feedback --reset` removes what was learned.
+- **A habit that decided says so** (the main session's condition on the preferences path). Whenever the learned
+  preference changed which form was chosen (the plan with it differs from the plan without it), the `Learned` that
+  `learn.plan` returns carries `decided`: one plain sentence naming what was observed ("You kept a table 3 of 4 times
+  it was made and asked for a table 1 time instead of another form for categories on the console: that habit, not
+  the content, decided this form (from the content alone it would be a bar chart)."). It is None whenever the choice
+  is the planner's own. `nsf form plan --db FILE` prints it as "Learned: …" (and `"learned"` in `--json`); without
+  `--db` the command reads no individual, as before. Lane P's "why" shows it.
+- **The planner's examinations are taken with form_learning off.** The forms family (development, held-out and the
+  withheld examination) judges the planner alone: its subject (`acceptance/omni/subject:choose_form`) never calls
+  `artifacts/learn.py`, and nothing learned may be present or applied when the withheld look is taken. Only the
+  `learn` family measures the learner.
 - **Gap detection** (directive §10.5): `nsf artifact gaps --report`, read-only, each line with its count and evidence
   ids: formats nothing decodes (lane A's gap counts, with the given artifacts that ended so), made artifacts whose
   independent check failed (by generator, with the failed rules), repairs that recur (from the stored specifications'
