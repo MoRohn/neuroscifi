@@ -143,6 +143,12 @@ class InstanceConfig:
     # records nothing and changes nothing; "record" keeps the owner's reactions to made forms and the independent
     # check's verdicts, and changes nothing; "apply" also hands what was learned to the planner.
     form_learning: str = "off"
+    # The owner console's "Made and kept" view (OMNIMIND lane U, ADR-079; console/artifacts.py): on by default, it
+    # shows what the owner already kept or made through `nsf artifact` and makes from kept artifacts on the owner's
+    # request (it changes nothing that exists); upload of new files from the console is a new way for bytes to enter,
+    # so it is off until the owner turns it on.
+    console_artifacts: bool = True
+    console_artifact_upload: bool = False
 
     @classmethod
     def from_json(cls, text):
@@ -394,6 +400,8 @@ _SETTABLE = {
     "broadcast_threshold": lambda v: (isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                                       and 0 <= v <= 1),
     "form_learning": lambda v: isinstance(v, str) and v in FORM_LEARNING,
+    "console_artifacts": lambda v: isinstance(v, bool),
+    "console_artifact_upload": lambda v: isinstance(v, bool),
 }
 # The settings fixed at `nsf init` and their checks (Wave 4 lane D: checked on load as well; since the Wave 4 fix a
 # damaged one pauses writes, as on main, where it made the write check fail, until `nsf config --repair-fixed`).
@@ -413,7 +421,8 @@ MAX_IMAGINED_ROWS = 100_000
 MAX_IMAGINED_LIFETIME = 365 * 86400    # also how long an imagined tombstone is kept (imagined.expire)
 IMAGINE_SWITCHES = ("imagine_what_if", "imagine_forecast", "imagine_retrospect", "imagine_scenarios")
 ARTIFACT_SETTINGS = ("artifact_max_bytes", "artifact_store_max_bytes", "artifact_adapters",
-                     "form_learning")        # lane L (ADR-078): a damaged value reads as "off"
+                     "form_learning",        # lane L (ADR-078): a damaged value reads as "off"
+                     "console_artifacts", "console_artifact_upload")   # lane U (ADR-079): damaged reads as default
 FORM_LEARNING = ("off", "record", "apply")
 
 
@@ -469,6 +478,10 @@ def setting_problems(db):
                                   "`nsf config --artifact-adapters NAME,...`",
              "form_learning": "; form learning is treated as off (nothing recorded, nothing applied) until it is "
                               "set with `nsf config --form-learning off|record|apply`",
+             "console_artifacts": "; the console's \"Made and kept\" view is shown (the default) until it is set "
+                                  "with `nsf config --console-artifacts on|off`",
+             "console_artifact_upload": "; upload from the console stays off (the default) until it is set with "
+                                        "`nsf config --console-artifact-upload on|off`",
              "ask_budget_per_epoch": "; it reads as 0 (no question asks you; the executive defers) until it is set "
                                      "with `nsf config --ask-budget N`",
              **{name: "; " + _fixed_remedy(name) for name in _FIXED}}

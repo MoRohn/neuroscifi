@@ -991,6 +991,54 @@ def test_caution_detail(individual):
 
 # Every switch this file rolls back, and the test that does it (tests/uat/test_uat_setting_lists.py checks that every
 # Wave 1/2 switch of the config classes is here; Wave 2 lane X)
+
+def _console_call(srv, method, route, body=None, token="uat-token-" + "c" * 32):
+    import http.client
+    import json as _json
+    conn = http.client.HTTPConnection("127.0.0.1", srv.server_port, timeout=30)
+    try:
+        conn.request(method, route, body=None if body is None else _json.dumps(body).encode(),
+                     headers={"Authorization": f"Bearer {token}", "Host": f"127.0.0.1:{srv.server_port}",
+                              **({"Content-Type": "application/json"} if body is not None else {})})
+        response = conn.getresponse()
+        return response.status, _json.loads(response.read() or b"null")
+    finally:
+        conn.close()
+
+
+def test_console_artifacts_and_upload(individual):
+    """OMNIMIND lane U (ADR-079): "console_artifacts" on (the default) the console lists what is kept; off, every route
+    of the view answers 409 with the command that turns it on, and on again the same list. "console_artifact_upload"
+    off (the default) refuses to start an upload; on, one starts; off again, refused on the next call. Nothing kept
+    changes either way."""
+    import threading
+    from neuroscifi.artifacts import store as artifact_store
+    from neuroscifi.console import server as console_server
+    db, path = individual
+    kept = artifact_store.add(db, b"day,calls\nmon,1\ntue,2\n", name="week.csv", now=T0).id
+    srv = console_server.ConsoleServer(path, 0, token="uat-token-" + "c" * 32, clock=lambda: T0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        def listed():
+            status, out = _console_call(srv, "GET", "/api/artifacts")
+            return status, [i["id"] for i in out["items"]] if status == 200 else out["error"]
+        on, off = instance_switch(db, "console_artifacts", False, True)
+        reference, on_, again = cycle(on, off, listed)
+        assert reference == (200, [kept]) and on_[0] == 409 and "--console-artifacts on" in on_[1]
+        assert_rolls_back(reference, on_, again)
+
+        def upload():
+            return _console_call(srv, "POST", "/api/artifacts/uploads", {"name": "x.csv", "size": 3})[0]
+        on, off = instance_switch(db, "console_artifact_upload", True, False)
+        reference, on_, again = cycle(on, off, upload)
+        assert reference == 409 and on_ == 200
+        assert_rolls_back(reference, on_, again)
+        assert [r.id for r in map(lambda i: artifact_store.get(db, i["id"]),
+                                  artifact_store.listing(db)["items"])] == [kept]
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
 SWITCHES = {
     "internal_state_history": test_internal_state_history, "predictive_regulation": test_predictive_regulation,
     "executive_rule": test_executive_rule, "decision_information": test_decision_information,
@@ -1013,6 +1061,8 @@ SWITCHES = {
     "predictive_regulation_shadow": test_predictive_regulation_shadow, "front_door": test_front_door,
     "artifact_adapters": test_artifact_adapters,
     "form_learning": test_form_learning,
+    "console_artifacts": test_console_artifacts_and_upload,
+    "console_artifact_upload": test_console_artifacts_and_upload,
     "own_text_provenance": test_own_text_provenance,
     "source_derivation": test_source_derivation,
     "allowance_division": test_allowance_division,

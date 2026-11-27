@@ -28,7 +28,9 @@ OFF_INSTANCE = {"internal_state_history": False, "predictive_regulation": False,
                 "decision_information": False, "imagine_what_if": False, "imagine_forecast": False,
                 "imagine_retrospect": False, "imagine_scenarios": False, "broadcast": "off",
                 "artifact_adapters": [],            # OMNIMIND lane A (ADR-071): no external file reader approved
-                "form_learning": "off"}             # OMNIMIND lane L (ADR-078): nothing recorded, nothing applied
+                "form_learning": "off",             # OMNIMIND lane L (ADR-078): nothing recorded, nothing applied
+                "console_artifacts": False,         # OMNIMIND lane U (ADR-079): the console's view of artifacts
+                "console_artifact_upload": False}   # OMNIMIND lane U (ADR-079): no upload from the console
 OFF_WEB = {"curiosity_learning_progress": False, "salience_record": False, "hypothesis_fields": False,
            "hypothesis_abandon": False, "premise_recheck": False, "idle_recheck": False, "reflection": False,
            "reflection_model_summary": False, "strategy_selection": "off", "answer_monitoring": False,
