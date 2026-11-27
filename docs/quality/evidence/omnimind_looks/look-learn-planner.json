@@ -1,0 +1,104 @@
+{
+ "label": "OMNIMIND benchmark, the WITHHELD split: one look per mechanism, recorded in the ledger before it is scored; written by lane ZW without reading product code; summaries only",
+ "generated_at": "2026-11-27T11:26:48Z",
+ "environment": {
+  "git_commit": "55f89be0f658aedd9e7865d26e35e1e741b3592d",
+  "git_dirty": false
+ },
+ "ledger_lines": 42,
+ "ledger_entries": [
+  {
+   "at": "2026-11-27T11:26:48Z",
+   "commit": "55f89be0f658aedd9e7865d26e35e1e741b3592d",
+   "dirty": false,
+   "family": "learn",
+   "subject": "neuroscifi.acceptance.omni.subject:make_planner_only",
+   "note": "OMNIMIND withheld look, the product, once (rule and pins committed 55f89be; controls run first) (the planner alone, as the learner's own baseline)",
+   "script": "bench_omni_forms.py final",
+   "withheld_file": "withheld_learn.py",
+   "withheld_sha256": "511264dc08ecf02d6b796ee9b12df656f1ff48f8749fda54f53b154b3a1b4cfc",
+   "drivers": {
+    "src/neuroscifi/acceptance/omni/subject.py": "edd0820faa63983b9bbf29516240166a7a43accd727b9fd1cb1c97aff3611a53",
+    "scripts/omni_forms_driver.py": "7492a3970d2d804989073bf087cb1cbe10ee7695f7483fe736109dbae2e49829"
+   }
+  }
+ ],
+ "families": {
+  "learn": {
+   "label": "OMNIMIND benchmark, family learn: SIMULATED people with hidden, stable preferences; it measures adaptation to simulated preferences from simulated feedback, NOT benefit to a real person; offline; no model",
+   "split": "withheld",
+   "people": 6,
+   "seeds": 10,
+   "cycles": 8,
+   "requests_per_cycle": 10,
+   "denominator_per_cycle": 600,
+   "kept_by_cycle": [
+    0.42,
+    0.485,
+    0.445,
+    0.4783,
+    0.4267,
+    0.465,
+    0.4117,
+    0.455
+   ],
+   "kept_by_cycle_sd_over_seeds": [
+    0.0576,
+    0.0631,
+    0.0393,
+    0.0343,
+    0.0578,
+    0.0574,
+    0.0707,
+    0.085
+   ],
+   "late_cycles": [
+    5,
+    8
+   ],
+   "late_kept": {
+    "mean": 0.4396,
+    "sd_over_seeds": 0.031,
+    "per_seed": [
+     0.4875,
+     0.4292,
+     0.4667,
+     0.4083,
+     0.4417,
+     0.3958,
+     0.45,
+     0.475,
+     0.4375,
+     0.4042
+    ]
+   },
+   "all_kept": {
+    "mean": 0.4483,
+    "sd_over_seeds": 0.0133,
+    "per_seed": [
+     0.4604,
+     0.4521,
+     0.4521,
+     0.4292,
+     0.4625,
+     0.4229,
+     0.4521,
+     0.4604,
+     0.45,
+     0.4417
+    ]
+   },
+   "late_kept_by_person": {
+    "W1": 0.37,
+    "W2": 0.4025,
+    "W3": 0.52,
+    "W4": 0.195,
+    "W5": 0.4775,
+    "W6": 0.6725
+   },
+   "wall_s": 13.11
+  }
+ },
+ "benchmark": "omnimind-forms-cross-learn",
+ "python": "3.12.16"
+}

@@ -1,0 +1,28 @@
+{
+ "commit": "55f89be",
+ "taken": "2026-11-27, once each, by the main session; rule and driver pins committed in 55f89be; controls run first",
+ "preconditions": {"tree_clean": true, "development_reproduces": {"artifacts": "512 right / 12 cannot / 0 wrong / 0 failed of 524", "forms": "107 good of 133, 0 bad, 0 violations", "cross": "72 of 72", "learn": "0.8158 / 0.7617 against the planner alone 0.5871 / 0.5842"}},
+ "controls": {"seven_families_today": "0 failed outside hostile; makes nothing (made 0 of 16, transform 0 of 11); holds", "forms_first_good": "could not be run through final (not a reference of every family named): stated, not run", "forms_shape_only": "good 0.480, bad 0.227, too much 22", "forms_today_always_prose": "good 0.440, bad 0.180", "cross_always_consistent": "39 of 78 right, 0 of 39 twins: holds", "learn_order": "oracle 0.891 >= key_majority 0.831 >= never_learns 0.444: holds", "reference_reruns_identical": "not checked"},
+ "seven_families": {
+  "intake": {"n": 358, "right": 347, "cannot": 11, "wrong": 0, "failed": 0, "verdict": "supported on unseen cases"},
+  "honest": {"n": 55, "right": 52, "cannot": 3, "wrong": 0, "failed": 0, "verdict": "supported on unseen cases"},
+  "unknown": {"n": 111, "right": 107, "cannot": 1, "wrong": 3, "failed": 0, "verdict": "not supported: 3 wrong answers"},
+  "compound": {"n": 66, "right": 64, "cannot": 2, "wrong": 0, "failed": 0, "verdict": "supported on unseen cases"},
+  "hostile": {"n": 35, "right": 32, "cannot": 0, "wrong": 3, "failed": 0, "verdict": "not supported: 3 hostile files answered instead of refused; 'hostile inputs refused' does not hold (32 of 35)"},
+  "made": {"n": 16, "right": 16, "cannot": 0, "wrong": 0, "failed": 0, "verdict": "supported on unseen cases"},
+  "transform": {"n": 11, "right": 11, "cannot": 0, "wrong": 0, "failed": 0, "verdict": "supported on unseen cases"},
+  "total": {"n": 652, "right": 629, "cannot": 17, "wrong": 6, "failed": 0},
+  "today_total": {"n": 652, "right": 72, "wrong": 2, "failed": 3}
+ },
+ "forms": {"n": 150, "planner": {"good": 0.6867, "good_or_fine": 0.9267, "bad": 0.0733, "too_poor": 3, "too_much": 4, "unfit": 4, "violations": 0, "explicit_honoured": "6 of 7", "words_slice_good": "35 of 52", "pairs_both_good": "20 of 40", "twins_both_good": "11 of 25"},
+           "shape_only": {"good": 0.48, "good_or_fine": 0.7733, "bad": 0.2267, "too_much": 22, "words_slice_good": "18 of 52", "pairs_both_good": "14 of 40", "twins_both_good": "0 of 25"},
+           "always_prose": {"good": 0.44, "good_or_fine": 0.82, "bad": 0.18, "too_poor": 21, "words_slice_good": "27 of 52"},
+           "verdict": "supported on unseen cases (good 0.687 >= 0.480 + 0.10; 0 violations; bad and too-much below the shape-only table's)",
+           "reads_the_words": "holds on the withheld cases (words slice 0.673 against 0.346 and 0.519; pairs 20 against 14 of 40), where it did not on held-out before the fitted rules were deleted",
+           "unmapped": "none", "caveat": "labels by one model-written examiner; no second reader on the withheld cases; about 30 of the 150 are close calls by the examiner's own count"},
+ "cross": {"n": 78, "right": 48, "cannot": 24, "wrong": 6, "correct_of_answered": 0.8889, "both_twins": "21 of 39",
+           "by_kind": {"report_total": "5 right, 1 wrong, 2 cannot of 8", "chart_series": "8 of 8", "tones_rows": "6 right, 2 cannot of 8", "mesh_bbox": "8 of 8", "code_trace": "8 of 8", "timeline_log": "8 of 8", "image_caption (new kind)": "answered all 10, right on 5: no better than a coin", "route_stops (new kind)": "0 answered of 10: not exercised", "archive_manifest (new kind)": "0 answered of 10: not exercised"},
+           "verdict": "not supported (6 wrong > 2; 0.889 < 0.95; 48 < 58.5; twins 21 < 26; one kind with 5 wrong)"},
+ "learn": {"simulated_people": true, "shipped_rule": {"late": 0.7129, "all": 0.656}, "planner_alone": {"late": 0.4396, "all": 0.4483}, "gain": {"late": 0.2733, "all": 0.2077}, "threshold_2_sqrt2_sd": {"late": 0.0877, "all": 0.039}, "references": {"never_learns": [0.4442, 0.4535], "key_majority": [0.8308, 0.756], "oracle": [0.8908, 0.8944]},
+           "verdict": "supported on unseen simulated people; 0.118 below the reference majority rule late; form_learning stays off"}
+}
