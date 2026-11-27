@@ -1,354 +1,165 @@
-# Universal artifact architecture (deliverable 2, first version)
+# The artifact architecture, as built (deliverable 2)
 
-**As designed on 2026-11-26; being built.** This is the design the main session ruled after the Phase I audits,
-rewritten for a reader who was not there. None of it is on `main` yet: Wave O-0's lanes are building it on their own
-branches, and nothing below has been measured. When the lanes' ADRs (071 to 075) are written, they are the record of
-what was actually built; where they differ from this document, they are right and this document will be updated.
-Paths are relative to `src/neuroscifi/`.
+Status: 2026-11-27, written by documentation lane 2 on `omnimind` at `09bfff6` (schema 21), from the code and the
+decision records ADR-070 to ADR-079 in [../architecture/ARCHITECTURAL_DECISIONS.md](../architecture/ARCHITECTURAL_DECISIONS.md).
+It replaces the first version of 2026-11-26, which described the design before anything was built. Nothing here is
+merged into `main`. Places that fix lane F4 (still working) will change are marked "to be confirmed after fix lane F4".
 
-## 1. The one pattern
+## The first screen
 
-Today NeuroSciFi takes in web pages and speech and answers in sentences ([CAPABILITY_AUDIT.md](CAPABILITY_AUDIT.md)).
-OMNIMIND adds a way to take in files of many kinds and to make results that are not sentences, without touching the
-research loop that exists.
+- **One pattern, generalised from the Presence entity**: nothing the system makes is model-written markup or code. A
+  made thing is a typed, bounded, versioned **specification** turned into bytes by a fixed **generator**, and read back
+  by an independent **check** that never imports the generator.
+- **Everything is reached by an owner's explicit command** (or the owner's console view). Nothing runs unasked, so the
+  quiet switch has nothing to hold. No artifact is reachable from a family or agent scope.
+- **Deliberately not connected**: the answer path (every answer in conversation is still sentences), Pocket, voice,
+  the MCP tools for agents, and any model (no model is called anywhere in the artifact package).
+- **Nothing made is evidence**: made artifacts carry provenance `MADE`, are labelled "made by the system, not evidence"
+  wherever they are listed, and schema 20's triggers refuse an artifact id in 15 evidence-side tables.
 
-There is one place where the system already makes a non-text result safely: the Presence entity. A model may propose
-a scene, but only as a small typed specification (`presence/scene_spec.py`: enums and bounded numbers, a version, no
-markup, no code, no paths); the server validates it, the browser validates it again, a fixed renderer draws it, and
-any failure shows a canonical scene instead. OMNIMIND generalises exactly that, for everything it makes:
+## Modules
 
-> **Decide a form → write a typed specification → a fixed, audited generator turns the specification into bytes → an
-> independent validator re-reads the bytes and judges them.**
+Package `src/neuroscifi/artifacts/` (91 modules; the default import path needs only numpy):
 
-No markup or code written by a model is ever rendered or run. A specification holds data and choices; every string in
-it is text, escaped wherever it is written, and never used as markup, as script, as an address to load or as a path to
-open. The generator is ordinary code in this repository. The validator is separate code that reads the produced bytes
-with its own parser, never by calling the generator.
+| part | modules | what it does |
+|---|---|---|
+| kernel | `types.py`, `spec.py`, `unknown.py` | the representations (`Table`, `Signal`, `Raster`, `Frames`, `Drawing`, `Mesh`, `Features`, `Tree`, `Graph`, `Document`, `Bundle`, `Opaque`), the named errors (`Unsupported`, `HeaderOnly`, `Malformed`, `Refused`), `Limits`, the spec envelope (`spec`, `version`, `title`, `description`, `data`, `options`, `sources`, `made_by`), the capability-discovery answer |
+| detection | `detect.py`, `detect_b2.py` | signatures first, then structure, then hints; disguises and nested compression; never trusts a name or a declared type alone |
+| readers | `adapters/` (a registry: `adapters.decode`, `adapters.catalog`; 66 readers in `adapters/*.py`, `_b1.py`, `_b2.py`), `shapes_b1.py`, `repr_b2.py`, `measure_*.py` | decode within `Limits`; or say what was established (`HeaderOnly`, `Opaque`, `Unsupported`); measurements (image, audio, mesh, geo) |
+| safety helpers | `safe.py`, `safe_b1.py`, `safe_b2.py` | bounded zip/tar/stream readers, XML without DTD or entities, bounded counts; allocation charged before it is made |
+| the guard | `guarded.py` | every owner-started decode runs first in a child process (`RLIMIT_AS` = 256 MiB + 2 x the input + 2 x `max_decoded_bytes`, CPU = `max_seconds` + 5 s, no file writes, no core, a clean environment); its verdict is JSON, never pickled; then the parent decodes the same bytes |
+| outcomes | `outcome.py` | one table (`of_error`, `of_decoded`, `of_member`) that maps a decode's result to answered / cannot / refused and to the exit code (0 / 1 / 2) |
+| store | `store.py` | the index in the individual's file, the bytes in a sidecar; forget, restore, owner scope (below) |
+| makers | `make/` (generators: charts, timeline, graphs, flow, tables, documents, data files, animation, raster PNG/APNG, sound, solids, explorable; `repair.py`; `svg_base.py` holds the palette) | spec to bytes, deterministic |
+| checks | `check/` (SVG reading and safety, layout, documents, data files, PNG, WAV, meshes, explorable) | bytes to a verdict, never importing `make/`; `expr.py` is shared with the explorable maker |
+| planner | `forms.py`, `forms_cli.py` | `forms.plan`, `forms.alternatives`, `forms.foresee`; frozen at `4388f4d` |
+| pipeline | `produce.py`, `produce_builders.py` | from files and a request to a made, checked, stored result with its "why" |
+| relating | `relate.py`, `relate_read.py`, `relate_cli.py` | what one artifact measures against what another states or shows; units from a document to a table |
+| learning | `learn.py` | the per-key majority of outcomes (off by default) |
+| commands | `inspect_cli.py`, `cli.py`, `forms_cli.py` | `nsf inspect`, `nsf artifact ...`, `nsf form ...` |
+| page runtime | `web/explorable.mjs`, `web/explorable.css` | mounts an explorable model's spec in a page (a bounded expression language; no code) |
 
-The same idea runs the other way for things taken in: **detect what the bytes are → choose an adapter → decode within
-fixed limits → a typed representation that keeps the structure → stored with its provenance.** Bytes nothing can
-decode get an honest answer that says what could be established and what would be needed, never a guess.
+Outside the package: `console/artifacts.py` and `console/web/artifacts.mjs` (the "Made and kept" view, ADR-079),
+`presence/aggregator.py` (an in-flight entry for the artifact subsystem), `instance/schema.py` (migrations 20 and 21),
+`instance/governance.py` and `instance/checkpoints.py` (forget and restore reach the store), `instance/store.py` and
+`instance/cli.py` (six settings).
 
-## 2. Data flow
+## Data flow
 
 ```mermaid
 flowchart LR
-    subgraph Intake["Taking things in"]
-        F["file the owner gives<br/>(nsf artifact add, nsf inspect)"] --> D["detect.detect<br/>signature, structure, hints"]
-        D --> R{"adapters.resolve"}
-        R -- "an adapter" --> AD["adapter.decode<br/>within Limits"]
-        R -- "none" --> U["inspect_unknown<br/>Opaque: findings, candidates, needs"]
-        AD --> REP["representation<br/>Table, Document, Raster, Signal, Mesh ..."]
-        U --> GAP["gap log<br/>(count per format)"]
-    end
-    subgraph Keeping["Keeping"]
-        REP --> ST["store.add<br/>bytes in the sidecar file,<br/>index in the individual's file"]
-        U --> ST
-        ST --> LK["artifact_links<br/>derived_from, contains, describes ..."]
-    end
-    subgraph Making["Making things"]
-        REQ["a request"] --> PL["forms.plan<br/>content shape + context + words"]
-        REP -- "shape()" --> PL
-        PL --> SP["Spec<br/>typed, bounded, validated"]
-        SP --> MK["make.make<br/>fixed generator → bytes"]
-        MK --> CK["check.check<br/>independent re-read → verdict"]
-        CK -- "technical finding" --> RP["make.repair<br/>≤ 3 rule-based rounds"]
-        RP --> SP
-        CK -- "ok" --> ST2["store.add_made<br/>origin = made, never evidence"]
-    end
-    ST2 --> LK
+  subgraph owner["The owner (explicit commands or the console view)"]
+    F["a file, or a kept artifact"]
+    R["a request in words"]
+  end
+  F --> D["detect: signature first"]
+  D --> G["guard: decode in a limited child process"]
+  G --> A["adapters.decode under Limits"]
+  A --> O{"outcome table"}
+  O -- "answered / partial" --> S[("store: index in the individual's file, bytes in the sidecar")]
+  O -- "refused / cannot" --> X["named refusal or capability-discovery answer"]
+  S --> P["produce: interpret"]
+  R --> P
+  P --> PL["planner: forms.plan (+ learn.plan when form_learning is on)"]
+  PL --> B["spec builders"]
+  B --> M["make: fixed generator"]
+  M --> C["check: independent reader of the bytes"]
+  C -- "fails" --> RP["bounded repair (3 rounds)"]
+  RP --> C
+  C -- "passes" --> K[("stored as MADE, not evidence, with derived_from links and its production record")]
+  P -. "two or more sources" .-> RL["relate.compare: How the sources relate"]
+  RL --> B
+  K --> V["console: Made and kept"]
+  K --> CLI["nsf artifact show / export / remake"]
+  AP["the answer path, Pocket, voice, agents, any model"] -. "not connected" .- K
 ```
 
-In words: a file is identified by its bytes, decoded by the adapter for its family into a typed representation (or
-inspected as unknown), and stored with an index entry. To make something, the planner looks at the request, the
-shape of the content and the context, and chooses a form; a specification of that form is validated; a generator
-makes bytes; a validator re-reads them; a failed technical check leads to at most three rule-based repairs; a result
-that passes is stored as `made`, linked to its sources, and never treated as evidence.
+## Taking things in
 
-## 3. The pipeline and where each part lives
+- **Detection** decides by content: magic numbers and structure first, names and declared types only as hints. A
+  polyglot (a PDF that is also a ZIP) is refused. An unknown format gets the capability-discovery answer (what was
+  identified, which reader is missing), never a guess.
+- **Readers** are a registry. Built-in readers are listed by `nsf artifact adapters`, the only statement of what can be
+  read; external readers load only by an owner's approval naming entry point, distribution and version (`nsf config
+  --artifact-adapters NAME`, recorded as `NAME=DIST==VERSION`; a bare name stored earlier loads nothing). The catalog of
+  readers, which formats are decoded and which only identified: [CAPABILITY_AUDIT.md](CAPABILITY_AUDIT.md).
+- **Limits** (`types.Limits`): input 64 MiB (`artifact_max_bytes`), 256 MiB decoded in all, 4,096 members, depth 4,
+  ratio 200 per stream, 5,000,000 elements, 20 s per decode (checked cooperatively; the guard kills at 25 s). Each
+  reader charges what it will materialise before it allocates it; text formats are charged their measured cost per
+  structural mark before parsing (an honest INI over about 131,000 lines is refused with a reason).
+- **The guard** (`guarded.py`, fix lane F1): always on for owner-started decodes. A child that cannot start means the
+  file is kept and not read (fail closed). Cost: the decode runs twice (child, then parent). The code reviewer
+  measured more than "about twice": a 5,000-file zip add 0.78 to 6.0 s, a 30 MP PNG 3.3 to 9.4 s, a 135 KiB crafted PNG
+  13.4 s. **To be confirmed after fix lane F4** (F4 measures and reduces the cost and states the factor).
+- **Injection**: text decoded from a file passes `webcortex.safety.scan_injection`. `adapters.decode` refuses a flagged
+  file (`Limits.refuse_flagged`, default on); the store keeps it marked flagged and never offers its words to a model.
 
-Everything is in a new package, `artifacts/`; nothing existing moves.
+## The store and its two schema steps
 
-| Directive step | Module | Lane |
-|---|---|---|
-| Detect, inspect, identify | `artifacts/detect.py` | K (kernel), extended by B1 and B2 |
-| Resolve an adapter, decode, validate, represent | `artifacts/adapters/` (one module per family) and the registry in `artifacts/adapters/__init__.py` | K (registry), B1, B2 |
-| Native representations | `artifacts/types.py` | K |
-| Integrate: store, index, links, forget, restore, audit | `artifacts/store.py`, one migration, `nsf artifact …` | A |
-| Decide the form of a result | `artifacts/forms.py` | C |
-| Typed specifications of things to make | `artifacts/spec.py` | K (the envelope), G1 and G2 (each form's fields) |
-| Generators (specification and data → bytes) | `artifacts/make/` | G1 (pictures, documents, data), G2 (sound, solids, raster images, explorable models) |
-| Independent validators (bytes → verdict) | `artifacts/check/` | G1, G2 |
-| The benchmark, written before all of the above | `acceptance/omni/`, `scripts/bench_omni.py`, `scripts/bench_omni_forms.py`, `docs/quality/OMNIMIND_BENCHMARK.md` | Z, ZF |
+- **Bytes** live in a sidecar `<individual>.artifacts.sqlite` next to the individual's file: content-addressed by
+  SHA-256, chunked, mode 0600, WAL, `secure_delete`; it also holds each artifact's text layer and a made artifact's
+  specification. It is never part of a checkpoint. Caps: 64 MiB per file, 2 GiB in all (`artifact_store_max_bytes`).
+- **Schema 20** (lane A): `artifacts`, `artifact_links`, `artifact_events` (append-only), `artifact_forgotten`
+  (payload-free tombstones), `artifact_gaps`; triggers refuse an artifact id in 15 evidence-side tables.
+- **Schema 21** (lane L): `form_outcomes` (the owner's reactions and check verdicts per made artifact; a row only for a
+  held made artifact; never rewritten; at most 100,000 rows).
+- Both steps are forward-only: an upgraded file cannot be opened by an older build, and a restore made by this build
+  yields schema 21. The way back is the owner's own copy taken before the upgrade
+  ([RUNBOOK.md](RUNBOOK.md), `docs/operations/MIGRATIONS.md` §2).
+- **Forget** of an artifact removes it and everything made from or contained in it, its bytes when no row names them,
+  its outcomes, and makes later checkpoints stale (rewritten in place). **Forget of a root** (a partner or a camera)
+  scans every kept artifact's label, index, text, specification and bytes, inside compressed and base64 layers; what
+  the scan cannot read is stated in `store.py`. At `09bfff6` a file the scan cannot finish counts as naming the root
+  and is removed (the security review's M-new-1: an unrelated forget can remove honest large files, with only a
+  count). Fix lane F4 replaces this: such an artifact is **held** (kept, never decoded, shown, used or related; listed
+  by id and label; released by `nsf artifact release ID` or forgotten). **To be confirmed after fix lane F4.**
+- **Restore** replays every forget made since the archive was taken onto the restored copy, and gives the restored file
+  its own sidecar.
 
-## 4. Taking things in
+## Provenance of made things
 
-### Detection
+`provenance.MADE` (ADR-071, after ADR-049): a made artifact has origin `made`, a maker (`generator@version`), its
+spec as the editable source, `derived_from` links to every source, the check's verdict and a production record
+(`neuroscifi.production/1`, at most 14 KiB, labelled "made by the system, not evidence"). A plan is labelled "made by
+the system, not evidence". The relater's links (`consistent_with`, `contradicts`) are "the system's claim from
+measuring both artifacts; not evidence". A production's foresight goes to the imagined store as a SIMULATION record
+only when `imagine_scenarios` is on (off by default).
 
-`detect.detect(head, *, name=None, declared=None, size=None) -> Detected` looks at a prefix of at most 64 KiB.
-It tries, in order:
+## Making: specifications, generators, checks
 
-1. **Signatures**: a table of magic numbers at known offsets (PNG, JPEG, GIF, TIFF, WebP and WAV inside RIFF, FLAC,
-   Ogg, MP4 brands, Matroska, PDF, ZIP and what its member names reveal, gzip, xz, zstd, SQLite, Parquet, HDF5,
-   NumPy, pickle (identified so that it can be refused), ELF, glTF, STL by its size rule, and many more).
-2. **Structure**: is it valid UTF-8/16/32 text; does a bounded prefix parse as JSON, XML (and which root element: SVG,
-   HTML, KML, GPX, a feed), CSV with a consistent delimiter and field count; Markdown only with real markers.
-3. **Hints**: the declared type and the file name's extension. A hint that contradicts a signature loses, and the
-   reasons say so. Unknown stays unknown.
+- 30 makers (`nsf artifact forms`); every SVG follows the palette rule (grays; hue only on warned values) and scales to
+  its container (328 px inside a 360 px phone).
+- 12 checked media types. A check reads the bytes the way the benchmark's reading contract says a person reads them
+  (axes, ticks, marks; nodes and edges; pitch and onsets; vertices and volume; pixels). The product's check does not
+  yet see only what a person would see (six hidings pass it; two pass it and the benchmark's reader). **To be confirmed
+  after fix lane F4.**
+- `produce.py` (ADR-076): Interpret, Conceptualize, Explore, Choose, Plan, Generate, Render, Evaluate, Repair,
+  Converge, Finalize; the context's seconds (default 60) and bytes (default 16 MiB) are enforced between steps; any
+  stop or failed check leaves nothing stored. Large sources are made from a stated reduction (an image over 4 MP
+  downsampled; a mesh over 20,000 vertices decimated; a line series over 4,000 points kept as each window's extremes;
+  a scatter over 5,000 points thinned; at most 24 children per tree node); `--partial` uses a file a limit stopped
+  part-way and says which part. When the planned form has no builder here, up to two further admitted forms that have
+  one are tried and the record says so.
 
-`Detected` records the family, the short format name, the best media type, what the identification rests on
-(`signature`, `structure`, `declared` or `none`), the container if the format lives inside one, and plain reasons
-("first 8 bytes are the PNG signature"). Detection never looks inside a container; that is the adapter's job.
+## The console view
 
-### Adapters and the registry
+"Made and kept" (lane U, ADR-079; `console_artifacts`, **on** by default; upload `console_artifact_upload`, off): a
+list (20 a page), a detail with the made thing shown, its "why", its relations and the check, feedback buttons
+(recorded only when `form_learning` is on), forget with a confirmation, and Make as a single owner job polled by the
+page. The console's content security policy and every security header are unchanged to the character; made SVG is
+rebuilt through an 18-element allow-list importer, explorable models through the first-party runtime, PNG through a
+256-bit, 120-second, session-bound address; no `innerHTML`. The Presence entity stays on the view's stage. At
+`09bfff6` every detail view runs a guarded decode with no cache or bound (security L-new-1). **To be confirmed after
+fix lane F4** (a cache per content hash and a bound on concurrent decodes).
 
-An adapter declares a name, the formats and families it handles, the optional modules it needs, whether it is
-available here and why not, and `decode(data, detected, limits) -> Decoded`. `adapters.decode(data, *, name=None,
-declared=None, limits=Limits())` runs the whole chain. When nothing can decode the bytes, it does not raise: it
-returns an `Opaque` representation built by `adapters.inspect_unknown` (size, entropy, share of printable bytes,
-signatures found at offsets, record-length regularity, text runs), with candidates that the findings are "consistent
-with" (never named as fact) and the needs (a module that is not installed, an adapter nobody has written).
+## Deliberately not connected
 
-`adapters.catalog()` is the live list of what can be decoded here, with each adapter's availability and reason. **It
-is the only source anyone may quote for the word "supported".**
-
-External adapters are discovered through the entry-point group `neuroscifi.artifact_adapters` but loaded **only if
-the owner names them** in the instance setting `artifact_adapters` (empty by default). A discovered but unnamed
-adapter is listed as "found, not approved". Every adapter runs under the same limits.
-
-The gap log counts, by format, every decode that ended in `Opaque` or `Unsupported` (the hook `adapters.on_gap`;
-lane A stores the counts; `nsf artifact gaps` shows them). It is the evidence for which formats are missing most.
-
-### Limits
-
-Every decoder honours `Limits`, checked **before** allocating (a declared size is treated as a lie until the bytes
-agree):
-
-| Limit | Default |
+| what | why |
 |---|---|
-| input size | 64 MiB |
-| total bytes any decoder may produce | 256 MiB |
-| archive members, sheets, pages, frames, tracks | 4096 |
-| nesting of containers | 4 |
-| decompressed to compressed ratio, per stream | 200 |
-| cells, XML nodes, vertices (pixels are bounded by the byte limit) | 5 000 000 |
-| wall clock per decode, checked cooperatively | 20 s |
-
-Every failure is a named error derived from `ArtifactError(ValueError)` with a stable machine word: `too_large`,
-`malformed`, `unsupported`, `refused`, `missing_capability`, `timeout`. `Unsupported` carries what it needs;
-`Refused` carries the rule that said no.
-
-### What the adapters may do with untrusted bytes
-
-Never extract an archive to disk; never follow a path taken from the input (member names are data); never execute,
-import, `eval` or unpickle anything; refuse XML with a DTD or entity declaration; bound total decompressed size,
-nesting and member count. Text decoded from any artifact is untrusted and must pass `webcortex.safety.scan_injection`
-before it could ever reach a model (Wave O-0 has no model path; the flag is stored for later waves to honour).
-
-## 5. Representations
-
-Frozen dataclasses in `artifacts/types.py`, importable with the standard library and numpy only. Each has
-`describe()` (structure and measurements as JSON, at most 32 KiB, never an invented meaning), `shape()` (what a
-planner needs to know) and `text()` (the artifact's own words, if it has any; bounded; untrusted).
-
-| Class | Holds | Typical sources |
-|---|---|---|
-| `Table` of `Column`s | typed columns: number, integer, boolean, time (seconds since the epoch, UTC), text; units; missing counts | CSV, spreadsheets, JSON records, MIDI notes |
-| `Document` of `Block`s | ordered blocks: heading (with level), paragraph, list item, table, figure (caption, alt text, member name), code, equation, page break, note | Markdown, HTML, DOCX, ODT, EPUB, PDF text |
-| `Tree` of `Node`s | nested data with attributes | JSON, XML, TOML, plists |
-| `Graph` of nodes and edges | typed nodes and edges | Python modules, classes, functions and calls; dependencies; glTF scene graphs |
-| `Raster`, `Frames` | pixels (`uint8`/`uint16`, gray/rgb/rgba); frames with delays | PNG, APNG, GIF, BMP, NetPBM, baseline TIFF |
-| `Drawing` of `Shape`s | vector shapes with geometry resolved through transforms, text, attributes | SVG (no rendering) |
-| `Signal` | samples as float32 in [-1, 1], rate, channel names | WAV, AIFF, AU |
-| `Mesh` | vertices, triangles, unit | OBJ, STL, PLY, OFF, glTF |
-| `Features` | geographic features with coordinates and properties, CRS | GeoJSON, GPX, KML, WKT |
-| `Bundle` of `Member`s | members with path (as data), size, detection, decoded inner representation, note | ZIP, tar, office containers, SQLite tables |
-| `Opaque` | size, findings, candidates, needs | anything nothing here can decode |
-
-`ContentShape` is what the planner sees of content, with no reference to its bytes: the kinds it has (scalar, series,
-categories, distribution, relation, hierarchy, network, sequence, timeline, process, surface, solid, map, image,
-sound, prose, code, records), the dominant count, the number of parallel series, whether it has time, how many
-spatial dimensions, whether it is a model with inputs someone could vary, a duration, and the size of its own words.
-
-`Decoded` wraps a representation with its `Detected`, notes that say what was **not** recovered ("formulas are not
-evaluated: cached values used"), and whether a limit stopped the decode early (`partial`).
-
-## 6. Storage and provenance
-
-Bytes live **outside** the individual's file, in a sidecar `<stem>.artifacts.sqlite`, following the web cache's
-pattern: content-addressed by SHA-256, mode 0600, `secure_delete`, quarantined if corrupt, stored in 1 MiB chunks so
-that large files stream, the hash verified on every read, identical bytes stored once. Bytes inside the instance file
-would inflate every checkpoint and switch the imagination sandbox off above 512 MiB (`instance/store.py:128`).
-
-The individual's file gets **one appended migration** (schema 19 → 20): `artifacts` (id, sha256, size, family,
-format, media type, origin, maker, label, an index of at most 32 KiB, scope, time, state), `artifact_links` (stored on
-the artifact side only), `artifact_events` (append-only by trigger: what was done to which artifact, as ids and
-hashes), tombstones for forget and restore, and the gap counts. A bounded text layer (the artifact's own words, at
-most 256 KiB) lives in the sidecar so that forget-by-text can find it.
-
-**Origin** is one of `given` (the owner handed it over), `fetched` (reserved) or `made` (the system produced it).
-A made artifact is **never evidence**: ADR-071 places it in the provenance vocabulary as a quarantined class of its
-own, labelled "not evidence" wherever it is listed, and the reference-column tests are extended so that no
-evidence-side table may name an artifact id. This extends ADR-049 additively; it does not weaken it.
-
-**Forget** works by artifact (bytes when no other artifact holds the hash, index, text layer, links, and everything
-made from it, transitively) and by text (the existing forget of a name removes every artifact whose label, index or
-text layer contains it; the scan runs outside the write transaction, the removal inside). **Restore** from an older
-archive replays artifact forgets and reconciles the sidecar (index rows whose bytes are gone are marked; bytes whose
-index row is gone are swept). Text inside pixels cannot be found by any scan here; the lane states what is and is
-not covered.
-
-Owner settings (instance): `artifact_max_bytes` (64 MiB), `artifact_store_max_bytes` (2 GiB), `artifact_adapters`
-(empty). Owner commands: `nsf artifact add FILE… | list | show ID | facts ID | export ID PATH | forget ID | gaps |
-adapters`, and `nsf inspect FILE` (inspection only, nothing stored). `facts` prints measurements computed from the
-decoded representation, each with how it was computed; no interpretation.
-
-## 7. The form planner ("Creative Output Intelligence")
-
-The owner named this the most consequential addition: deciding what form a result should take **before** making it.
-
-`forms.plan(request, content, context) -> FormPlan` is a pure, deterministic function.
-
-- **Request**: the words; an explicit form if the person named one (it always wins when feasible; when it is not, the
-  plan says why and offers the nearest feasible form); a purpose if known.
-- **Context**: the device (console, Pocket, voice, command line, agent) and what it can show; accessibility needs
-  (voice only, screen reader, reduced motion); recorded preferences; the budget in seconds and bytes; which generators
-  exist here (`make.catalog()`).
-- **Forms** are a registry, so a new form is one registration. Each declares the content kinds it carries and how
-  much of the content it can carry without loss (computed from counts: a paragraph carries a handful of values, a
-  table hundreds, a chart thousands), the devices that can show it, its cost, how interactive it is, its accessible
-  fallback and the generator it needs. Wave O-0's forms: prose, a spoken summary, a table, line, bar, scatter,
-  histogram and heatmap charts, a timeline, a node-link diagram, a flow of steps, a step-through, an explorable model
-  with sliders, sound (sonification; waveform-and-spectrum view), a solid or surface viewer, a data file, and
-  combinations of two.
-- **Scoring**: every candidate gets a number in [0, 1] on each stated criterion (clarity, information carried,
-  precision, fit of interactivity, effort for the person, feasibility here, accessibility, cost) by rules a person can
-  read; the weights are a table. Hard constraints come first (device, accessibility, feasibility, budget, an explicit
-  request). Then the rules: a one-value or one-sentence answer stays prose; the simplest form within a small margin of
-  the best wins; a non-text form is chosen unasked only when its margin over prose is material; a combination only
-  when the second form adds information the first lacks.
-- **Output**: every candidate with every score, the choice, which evidence decided it (`explicit`, `content`, `words`
-  or `context`), and one sentence a non-technical person can read ("A line chart, because there are 365 daily values
-  and you asked how it changed; a sentence could carry only a few of them.").
-- **Alternatives** (`forms.alternatives`): up to n candidates that differ in kind, not decoration.
-- **Foresight** (`forms.foresee`): cheap arithmetic before anything is made (more series than line styles, labels that
-  will overlap, points per pixel, a sound longer than an attention bound), labelled as estimates.
-- **Words are weak evidence; the content's shape is strong evidence.** The planner is not a list of cue words, and
-  its examination (lane ZF) contains pairs of requests with the same words and different right answers.
-- **No model in Wave O-0.** Later, a model may suggest candidates or a purpose; code decides.
-- **Learning** (a later wave): bounded weight adjustments per content kind, purpose and device, learned only from
-  outcomes that come from outside the system (the owner kept, dismissed or replaced a form; a validator passed or
-  failed), stored as procedural memory, off by default. Wave O-0 leaves only the seam (`adjustments=None`).
-- Nothing calls the planner in Wave O-0 except `nsf form plan`. It decides form only, never truth.
-
-## 8. Specifications, generators and validators
-
-**The specification** (`spec.Spec`) is the editable source of an artifact and is stored with it:
-
-```json
-{"spec": "<form>", "version": 1, "title": "…", "description": "…", "data": {…}, "options": {…},
- "sources": ["<artifact id>" or "request"], "made_by": {"generator": "<name>", "version": 1}}
-```
-
-It is bounded (256 KiB without data arrays; arrays bounded by the form) and validated against the form's JSON schema
-with the existing `inference/jsonschema.py` validator before anything is made. Strings may contain anything as text
-("p < 0.05", a file name as a node label); the content rule refuses only control characters, bidirectional overrides
-and over-long strings. Safety rests on escaping in the generators and on validators proving that the output holds no
-active content and no external reference.
-
-**Generators** (`make.register`, `make.catalog`, `make.make(spec, limits) -> Made`) are deterministic: the same
-specification gives the same bytes on every host (no timestamps, no random ids, fixed number formatting), and a test
-asserts it. The palette is grayscale; series are told apart by dash pattern, marker shape and hatching, never by hue;
-`currentColor` and CSS variables make light and dark both work; hue appears only on values the spec marks as warning
-or danger.
-
-**Validators** (`check.check(data, media_type, spec, source) -> Verdict`) return technical findings and style
-findings; only technical findings decide `ok`. They re-parse the bytes with their own reader, never import from
-`make` (a test enforces it), and, given the spec and the source data, **recover the data from the artifact** and
-compare: a chart's marks back to values through its axes, a sound's tones back to pitch, a mesh back to its volume and
-bounds. The share recovered is "carried information", the benchmark's central measure. Every validator also enforces
-the safety of what would be shown: SVG may contain only allowed elements and attributes (no script, no event
-attribute, no external reference, no `foreignObject`); a generated HTML document may contain only the one fixed
-runtime script, identified by its hash, and data.
-
-**The reading contract for made pictures.** So that a validator, and the benchmark's own independent reader, recover
-data the way a person reads a chart (from geometry and tick labels, not from an echo of the input): an SVG chart has
-one `<g class="plot">` holding the marks; each axis is `<g class="axis x">` or `<g class="axis y">` holding ticks
-whose text is the value (a plain decimal, an ISO 8601 date or a category); marks are `circle`, `rect` or `polyline`
-elements with class `mark` or `series`, each series in a group with a `data-name`. A reader fits each axis's scale
-from at least two ticks (linear or log10; categories by position) and maps geometry back to values. The source data
-is never put on the marks; it may be embedded once inside `<metadata>` for editing and accessibility, and no
-validator may read it to judge the picture. Sound: 16-bit PCM WAV; a sonified series is equal-length tones with pitch
-linear in the value between two frequencies stated in the spec. Meshes: binary STL and Wavefront OBJ, outward
-normals, in the stated unit.
-
-**Repair** (`make.repair(spec, verdict)`) maps specific findings to specific spec changes (too many ticks → thin;
-overlapping labels → rotate, then abbreviate; more series than styles → small multiples; more points than pixels →
-aggregate, with the rule stated in the description), at most three rounds, each recorded in the spec's history. A
-repair never changes the data; a solid that must be watertight and is not is refused, never silently fixed.
-
-**What Wave O-0 makes**: charts (line, bar, scatter, histogram, heatmap, small multiples), timeline, node-link and tree
-diagrams, flow of steps, HTML tables, report documents (HTML, Markdown) with inline figures, data files (CSV, JSON),
-declaratively animated SVG (lane G1); tones, sequences and sonified series as WAV, solids and surfaces as STL and OBJ,
-raster PNG and animated PNG from numeric grids, and explorable models, step-throughs and a solid viewer (lane G2).
-The explorable document is one self-contained HTML file: a fixed runtime script shipped in the package (its SHA-256
-known to the checker), a JSON specification, and a Content-Security-Policy meta tag that lets it load nothing. Its
-expressions are a tiny arithmetic language that the runtime parses into a tree and evaluates itself (no `eval`, no
-`Function`, no dynamic import, no network, no storage); the same language is implemented in Python for the checker,
-and a test runs both on thousands of generated expressions. The same runtime file can also be mounted into a host page
-as a first-party module, which is how a later wave will show it without a frame.
-
-## 9. The benchmark, written first
-
-Lanes Z and ZF write the examination before the mechanisms exist, in `acceptance/omni/`, which product code never
-imports; the benchmark's generators and readers never import `neuroscifi.artifacts` (only its thin driver does).
-Every file is built by the benchmark's own encoders from values it chose, so the truth is known by construction.
-Splits `development` and `held_out` come from disjoint seeds and separately written case tables, frozen by a hash.
-Every task has three outcomes, reported with denominators: right; honestly "cannot" or "refused" (right only where the
-task expects it); **WRONG** (a false answer: a fabrication, the worst outcome, reported separately and never averaged
-away). Today's system is the baseline; for almost every task its true score is zero, and that is recorded as the
-"before". A withheld split is a later lane's, looked at once per mechanism by the main session under a rule committed
-before the look.
-
-## 10. What Wave O-0 does not touch
-
-The belief core, claims, knowledge, the answer path, the sentence guard, the console and Pocket pages, the voice hub,
-the inference gateway (except lane S's refusal of message parts it cannot count and screen), and background
-activities. With every OMNIMIND setting at its default, every existing output is byte-identical and the offline
-research digest is unchanged.
-
-## 11. Honest boundaries
-
-- Pixels of JPEG, WebP, compressed TIFF (other than uncompressed and PackBits strips) and HEIC, samples of MP3, AAC, Opus and FLAC, and
-  frames of any video are **not decoded on this host**: no decoder is installed. They are identified, their containers
-  are read (dimensions, duration, tracks, metadata), and the answer says what is missing.
-- **No model here sees images or hears sound.** "Understanding" an image or a sound means measurements computed from
-  its decoded samples (sizes, colours, edges, spectra, onsets), not a description of what it depicts.
-- **No video is produced in Wave O-0.** Animation is produced as animated PNG and animated SVG.
-- The host has system programs that are not Python packages and are not in CI: ffmpeg 9, ImageMagick 7,
-  rsvg-convert, Graphviz, LibreOffice, vips, Tesseract, node and Playwright's Chromium. Wave O-0 uses none of them on
-  the default path (Chromium and node only in optional checks). A later wave may use ffmpeg and Chromium as optional
-  engines on bytes the system itself made (trusted input, fixed argument lists, no shell, no network, a named reason
-  when absent). Decoding **untrusted** media through an external program is a security decision for the owner, needs a
-  sandbox, and is not done until the owner says so.
-- Showing artifacts (a later wave) must not weaken the console's or Pocket's Content-Security-Policy. What works under
-  today's policies, by the outputs audit's probe in Chromium: SVG built with DOM calls from validated data,
-  same-origin images, Web Audio fed from fetched bytes, first-party module scripts. So the explorable runtime is a
-  first-party module that mounts into an element; pictures are rebuilt in the page from validated SVG through an
-  allow-list importer; raster images come from a short-lived same-origin capability address; sound plays through Web
-  Audio.
-- Nothing here is a claim of general or superhuman intelligence. Every capability is a named function with a test.
-
-## 12. Numbers reserved
-
-| ADR | Lane | Subject |
-|---|---|---|
-| ADR-070 | S | gaps closed before artifacts |
-| ADR-071 | A | the artifact store and the provenance of made artifacts |
-| ADR-072 | K (with B1, B2 paragraphs) | detection, adapters, representations |
-| ADR-073 | C | the form planner |
-| ADR-074 | G1 (with G2's section) | specifications, generators, validators |
-| ADR-075 | Z (with ZF's paragraph) | the OMNIMIND benchmark |
-
-Evidence files are `docs/quality/evidence/omnimind_<lane>.json`. ADR numbers 064 to 069 belong to the other programme
-(Cognitive Genesis Wave 4).
+| the answer path (`webcortex` reports, the model's guarded sentences) | not built: the design's `output_forms` setting (off / offer / auto) was left for a later wave and no lane took it up; connecting it is the owner's decision, and the planner's held-out verdict (it does not beat the references) would need a new examination first |
+| Pocket | its policy differs (`media-src 'self' blob:`); it would need family-scoped routes, a family's own artifacts, signed replies and the phone's byte limits |
+| voice | no spoken description of a made thing exists |
+| agents (MCP), family scopes | every store reader refuses a viewer other than the owner |
+| any model | no model here sees or hears; nothing decoded from an artifact is offered to a model (no product code calls `store.text_for_model`, the gate that refuses a flagged artifact's text) |
+| memory and knowledge | nothing decoded enters the individual's knowledge, claims or beliefs |
+| durable jobs | a production runs inside the command and either finishes or leaves nothing |
