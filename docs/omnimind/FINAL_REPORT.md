@@ -48,6 +48,7 @@ console's view of all this is on by default.
 | O-1 | P, R, L, U; integration lane 2 | the production pipeline; relating artifacts; learning from outcomes; the console view |
 | reviews | security, measurement, code (each with a second pass) | first pass: 4 blockers (measurement), H1-H2 (security), H1 and M1-M4 (code); second pass: all three "offer to the owner: yes", with residues |
 | fixes | F1, F2, F3, F4 (`1aa7eb6`), F5 (`bf3dac6`) | the guard; the product decides outcomes; forget's matcher; the benchmark reads only what a person sees; driver pins machinery; `--partial` and reductions; plain words; F4: a forget holds what its scan cannot finish (and the scan's own budget), the product check's `visible_to_a_person`, the reader's two blind spots (re-pinned), the driver's last decisions in the product, `add` decoding once, console verdict reuse; F5: the make summary after a partial read, `--partial` on a large archive (drawn as its folders), `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help |
+| Wave O-2 (fix what the withheld look found; the owner's decision of 2026-11-27) | FX, ZW2, FX2; third review passes | FX: a name or declared type never identifies a file alone; a hostile part refuses the whole file; the relater answers only quantities it can measure (ADR-080); its own corpora 344 to 0 wrong of 3,669 disguises, 132 to 0 of 168 hostile parts, 24 to 0 of 144 relater twins (regression evidence by the same lane, not generality). ZW2: a second withheld split (unknown 171 tasks, hostile 62, cross 98). FX2: one refusal rule (parser-level attacks refuse; outside references and active content are named, never followed or run); FX's refusal corpus 165 refused, 3 answered of 168 (the SVG-with-an-outside-image class, as ruled). **The look at the second withheld split is not yet taken** |
 
 Details per row: [IMPLEMENTATION_MATRIX.md](IMPLEMENTATION_MATRIX.md); what exists with its limits and rollback:
 [PRODUCTION_INTEGRATIONS.md](PRODUCTION_INTEGRATIONS.md); architecture: [ARTIFACT_ARCHITECTURE.md](ARTIFACT_ARCHITECTURE.md).
@@ -99,6 +100,12 @@ validation and the withheld looks cited; the failures of the looks are named in 
 [COGNITIVE_GAP_ANALYSIS.md](COGNITIVE_GAP_ANALYSIS.md), first screen: no model that sees or hears; no decoder for
 compressed images, audio or video; nothing on the answer path; no durable jobs; Pocket, voice, agents; real files
 beyond this host's tools; creativity and accumulation unmeasured.
+
+Unchecked by any reviewer: whether text planted inside an artifact can steer the relater; and
+`scripts/bench_omni_forms.py` refuses the forms oracle `first_good` as a look subject (so a forms look cannot run that
+control as it stands). Stated limits of the refusal rule (ADR-080 decision 4): a cell with no cached value is "cannot"
+only in the note; a PDF action inside a compressed stream other than the catalog is not found; a text note quoting the
+ZIP signature bytes is left unknown.
 
 Reported as open, not to be fixed in this programme's remaining lanes:
 - a failed check cannot count as a learning outcome without a migration (`form_outcomes` needs a held made artifact;
@@ -237,3 +244,10 @@ only the second withheld split can measure them (measurement review, third pass,
 figures (wrong answers 344 to 0 of 3,669 disguises, 132 to 0 of 168 hostile parts inside honest files, 24 to 0 of
 144 relater twins) are regression evidence for the classes it named, written by the same lane that wrote the fixes,
 not evidence of generality (finding 6).
+
+## The look at the second withheld split (placeholder)
+
+**Not yet taken.** To be filled by the main session after the one look at `final --split withheld2` (unknown,
+hostile, cross), beside its rule ([../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md), "The rule for
+the look at the second withheld split"), its controls and its ledger lines; a VOID look reported as void; failures
+first.

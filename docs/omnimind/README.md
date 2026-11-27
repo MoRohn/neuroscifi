@@ -97,6 +97,18 @@ These documents make no claim of consciousness, understanding, general or superh
 | after | F5: the make summary after a partial read, `--partial` on a large archive, `make` exit codes, the remaining non-plain words, the `artifact_max_bytes` help (`bf3dac6`) | merged (`20a86ec`) |
 | then | driver pins with the look rule (`55f89be`); the main session's full validation there; the withheld looks, once each (`21193c4`) | done; the owner's questions next |
 
+## Wave O-2: fix what the withheld look found
+
+On 2026-11-27 the owner decided that the three weaknesses the first withheld look found (false answers on disguised
+or unknown files; hostile files answered instead of refused; the relater answering a pair it cannot measure) be fixed,
+and nothing else added: no new format, form, command or setting. Lane FX fixed them by class (ADR-080); lane ZW2 wrote a
+second withheld split without reading product code (unknown 171 tasks, hostile 62, cross 98); lane FX2 made the
+refusal rule one rule (parser-level attacks refuse the whole file; references outside the file and embedded active
+content are named in a note, never followed or run, and never refuse by themselves). The third review passes found the
+first withheld split spent for these mechanisms, the forms and learn looks VOID by the rule, and FX's corpora to be
+regression evidence only. **The one look at the second withheld split is not yet taken**; its rule is committed in
+[../quality/OMNIMIND_BENCHMARK.md](../quality/OMNIMIND_BENCHMARK.md).
+
 ## Where to read next
 
 - What changed for each pathway, and what exists now: [CAPABILITY_AUDIT.md](CAPABILITY_AUDIT.md).
