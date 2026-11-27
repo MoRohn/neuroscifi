@@ -74,7 +74,7 @@ def test_nothing_but_final_imports_a_withheld_module():
             scanned += 1
             for node, module, names in _imports(path):
                 parts = module.split(".") + [n.split(".")[-1] for n in names]
-                if not any(p.startswith("withheld_") for p in parts):
+                if not any(p.startswith(("withheld_", "withheld2_")) for p in parts):
                     continue
                 assert path == OMNI / "final.py", (str(path.relative_to(ROOT)), module, names)
     assert scanned > 100
@@ -82,7 +82,7 @@ def test_nothing_but_final_imports_a_withheld_module():
     for node in top:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             names = [a.name for a in node.names] + (getattr(node, "module", "") or "").split(".")
-            assert not any(n.startswith("withheld_") for n in names)
+            assert not any(n.startswith(("withheld_", "withheld2_")) for n in names)
 
 
 def test_the_withheld_modules_import_no_product_code():
@@ -231,6 +231,10 @@ def test_the_tracked_ledger_is_well_formed():
         pytest.skip("no look recorded yet")
     for line in final.LEDGER.read_text(encoding="utf-8").splitlines():
         entry = json.loads(line)
+        if entry.get("split") == "withheld2":                      # lane ZW2's split (test_omni_withheld2.py)
+            assert set(entry) == FIELDS_WITH_DRIVERS | {"split"} and entry["note"].strip() and entry["dirty"] is False
+            assert entry["withheld_sha256"] == final.WITHHELD2_SHA256.get(entry["withheld_file"], "absent")
+            continue
         assert set(entry) in (FIELDS, FIELDS_WITH_DRIVERS) and entry["note"].strip() and entry["dirty"] is False
         assert entry["withheld_file"] in PINNED
 
