@@ -63,9 +63,6 @@ def relate(db, first: str, second: str, *, question: str | None = None, now=None
     return out
 
 
-MADE_BASIS = "made:"     # prefix of a production's relation basis that rests on one of FX3's comparisons
-
-
 def record_links(db, first: str, second: str, rel, *, now=None, require_specific: bool = True) -> list[dict]:
     """The links a Relation of two held artifacts supports, recorded in `artifact_links` (the module doc's rules;
     the production pipeline records the relations of its sources through this too)."""
@@ -78,11 +75,6 @@ def record_links(db, first: str, second: str, rel, *, now=None, require_specific
     # as before this wave, as part of how the made artifact was made)
     specific = getattr(rel, "specific", False) or not require_specific
     basis = rel.basis()
-    if not require_specific and _refs_of(basis) & set().union(*DECIDED_BY_REFS.values()):
-        # a production's relation that rests on one of FX3's comparisons (none existed before this wave, so every
-        # earlier row is unchanged): marked, so that the rollback of a comparison never removes a production's
-        # record of its own sources (lane FX4, team lead's ruling)
-        basis = (MADE_BASIS + basis)[:200]
     if rel.answer is True and specific:
         links.append(("consistent_with", first, second, basis))
     elif rel.answer is False and specific:
@@ -125,7 +117,7 @@ def links_decided_by(db, comparison: str) -> list[dict]:
     rows = db.execute("SELECT src, relation, dst_kind, dst_id, how FROM artifact_links WHERE relation IN "
                       "('consistent_with', 'contradicts') ORDER BY created_at, src").fetchall()
     return [dict(zip(("src", "relation", "dst_kind", "dst_id", "how"), r)) for r in rows
-            if refs <= _refs_of(r[4]) and not str(r[4]).startswith(MADE_BASIS)]
+            if refs <= _refs_of(r[4])]
 
 
 def remove_links_decided_by(db, comparison: str) -> list[dict]:

@@ -6783,8 +6783,11 @@ not their variants. Replaced, on principle (rulings R1-R8 of the team lead):
   a comment or hidden group answers "cannot"; invisible drawing marks disable the link reading.
 - **R3**: `record_links` stores consistent_with/contradicts only for an answer decided under R1 (`Relation.specific`);
   `nsf artifact relate` without such a question shows its answer and records no consistent_with/contradicts link.
-  The production pipeline records its sources' relations exactly as before this wave (team lead's ruling, lane FX4
-  follow-up: `record_links(..., require_specific=False)`); its derived_from links were never affected. A production relation resting on one of FX3's comparisons (none existed before) has its basis marked `made:`, and the rollback step never matches it.
+  Question-less links between a production's sources (`consistent_with`, `contradicts`) are relater inferences, not
+  facts of construction; they are recorded as before the wave (`record_links(..., require_specific=False)`), by the
+  comparisons that existed at 06a6b30 only: with no question, members, links and times never decide (so nothing is
+  recorded from them), and R2 (a source holding hidden text gives no answer), R4 and R5 apply to that path too. The
+  production's derived_from links were never affected.
 - **R4/R5**: link lines need a relation word; listing lines that are not a member and its value make the listing
   unread; whole-second cue times get half a second and truncation-only agreement is "cannot"; per-item counts are
   never a total; pixels only against pixels; depiction questions stay "cannot" unless every content word is an

@@ -89,16 +89,25 @@ def test_the_documented_step_lists_then_removes(tmp_path):
         db.close()
 
 
-def test_a_productions_record_of_its_sources_is_never_matched_by_the_rollback(tmp_path):
-    """The production records its sources' relations as before this wave, not through the specificity gate; one that
-    rests on an FX3 comparison is marked, and removing a comparison's links never removes it."""
+
+def test_a_production_records_no_link_from_the_new_comparisons_or_from_hidden_text(tmp_path):
+    """With no question (a production relating its sources), members, links and times never decide, so nothing is
+    recorded from them; and a source holding hidden text gives no answer and no link (R2 on the question-less
+    path). The older comparisons still record as before (test_int2_relate_units.py)."""
+    import test_fx3_relate as F
     from neuroscifi.artifacts import produce as PR
-    db = store.create(tmp_path / "made.sqlite", T0)               # no earlier link between these two sources
-    result = PR.produce(db, "a document of the package and its list",
-                        [PR.Given("pack.zip", P.zipped(P.PACK)), PR.Given("sizes.txt", P.size_lines(P.PACK).encode())],
-                        form="document", now=T0 + 10)
-    made_links = [r for r in _all_links(db) if r[3].startswith(relate_cli.MADE_BASIS)]
-    assert result.status == "made" and len(made_links) == 1 and made_links[0][1] == "consistent_with"
-    relate_cli.remove_links_decided_by(db, "members")
-    assert [r for r in _all_links(db) if r[3].startswith(relate_cli.MADE_BASIS)] == made_links
+    db = store.create(tmp_path / "made.sqlite", T0)
+    pairs = [
+        [PR.Given("pack.zip", P.zipped(P.PACK)), PR.Given("sizes.txt", P.size_lines(P.PACK).encode())],
+        [PR.Given("flow.svg", F._graph_svg(F.EDGES)), PR.Given("notes.txt", F._edge_text(F.EDGES))],
+        [PR.Given("bells.wav", F._beeps(F.ONSETS)), PR.Given("cues.txt", F._cues(F.ONSETS))],
+        [PR.Given("costs.csv", b"Part,Cost\nBolts,90\nNuts,15\n"),
+         PR.Given("memo.md", b"# Costs\n\nThe total was 105.\n\n<!-- The total was 999. -->\n")],
+    ]
+    for given in pairs:
+        result = PR.produce(db, "a document of these files", given, form="document", now=T0 + 10)
+        assert result.status == "made"
+        assert all(p["answer"] is None for p in result.record["relations"]["pairs"]), given[0].name
+    assert db.execute("SELECT count(*) FROM artifact_links WHERE relation IN ('consistent_with', 'contradicts')"
+                      ).fetchone()[0] == 0
     db.close()
