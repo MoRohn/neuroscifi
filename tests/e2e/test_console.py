@@ -281,12 +281,17 @@ def test_owner_journey(console, new_page):
     expect(page.locator("#gPromote")).to_be_disabled()
     cells = page.locator("#heatmap rect.cell")
     expect(cells).to_have_count(24 * 24)
-    colored = page.evaluate("[...document.querySelectorAll('#heatmap rect.cell')].filter(r => r.getAttribute('fill') !== '#ffffff').length")
+    colored = page.evaluate("[...document.querySelectorAll('#heatmap rect.cell')].filter(r => !r.classList.contains('zero')).length")
     assert colored == 72
+    # OMNIMIND lane U (ADR-079): the sign is a slash on negative cells, never a hue; every paint is a gray
     signs = page.evaluate("""[...document.querySelectorAll('#heatmap rect.cell')].filter(r => +r.dataset.w !== 0)
-        .every(r => { const [red, , blue] = r.getAttribute('fill').match(/\\d+/g).map(Number);
-                      return (+r.dataset.w > 0) === (blue > red); })""")
-    assert signs, "positive weights must be blue, negative rust"
+        .every(r => (+r.dataset.w < 0) === !!r.parentElement.querySelector('line.slash'))""")
+    assert signs, "every negative weight is slashed and no positive one is"
+    paints = page.evaluate("""[...document.querySelectorAll('#heatmap rect, #heatmap line')].flatMap(e => {
+        const c = getComputedStyle(e); return [c.fill, c.stroke]; }).filter(v => v.startsWith('rgb'))""")
+    for paint in set(paints):
+        red, green, blue = (int(x) for x in re.findall(r"\d+", paint)[:3])
+        assert max(red, green, blue) - min(red, green, blue) <= 16, paint
     expect(page.locator("#heatSummary")).to_contain_text("72 non-zero edges")
     expect(page.locator("#revisionGroups")).to_contain_text("active")
     page.locator("#recallBtn").click()

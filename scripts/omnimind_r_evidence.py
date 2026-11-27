@@ -9,8 +9,10 @@ Writes summaries only (no per-case rows, no artifact text):
   them, so they are development), its fresh pairs (r_pairs_fresh.py: written after commit 677cf22 froze the
   mechanism; the first look is recorded as it was, the current numbers are recomputed), and unrelated pairs whose
   right answer is "cannot";
-- own variants built with the cross family's public generators and knobs chosen here (seeds 9000+; not the
-  benchmark's cases): format robustness within the six kinds;
+- own variants built with the cross family's public generators and knobs chosen here (seeds from 20100, inside
+  `acceptance.omni.LANE_R_SWEEP_SEEDS`, lane R's own range; not the benchmark's cases): format robustness within the
+  six kinds. Until fix lane F2 they used 9100-10729, partly inside the range reserved for the withheld lane
+  (review finding B3; the main session found by hashes no generated file or case equal to a withheld one);
 - how many quantities and statements each representation yields, by kind of fact;
 - the transfer table (units from a document applied to a bare CSV): right, wrong, absent.
 """
@@ -79,6 +81,9 @@ def own(module) -> dict:
     return _tally(rows) | {"unrelated": unrel}
 
 
+SWEEP = 20000                     # LANE_R_SWEEP_SEEDS.start: kind k uses SWEEP + 1000 k + 100 seed + i
+
+
 def sweep(seeds=(1, 2, 3)) -> dict:
     rows = []
     for seed in seeds:
@@ -86,7 +91,7 @@ def sweep(seeds=(1, 2, 3)) -> dict:
         pairs = []
         for k in range(30):
             fmt = rng.choice(["md", "txt", "docx"])
-            pairs.append(P(f"s{k}", "report_total", 9000 + 100 * seed + k, "Does the report's total match the CSV?",
+            pairs.append(P(f"s{k}", "report_total", SWEEP + 100 * seed + k, "Does the report's total match the CSV?",
                            rng.choice(["csv", "stated"]), report="r." + fmt, fmt=fmt, csv="d.csv",
                            item=rng.choice(["Day", "Date", "Line", "Supplier"]),
                            amount=rng.choice(["Amount", "Cost (EUR)", "Total (USD)", "Value", "Price (GBP)"]),
@@ -95,7 +100,7 @@ def sweep(seeds=(1, 2, 3)) -> dict:
                            sentence=rng.choice(["The total came to {total}.", "Altogether we spent {total}.",
                                                 "Sum of all entries: {total}", "In all, {total} was paid."])))
         for k in range(20):
-            pairs.append(P(f"c{k}", "chart_series", 9500 + 100 * seed + k, "Does the chart show the CSV's values?",
+            pairs.append(P(f"c{k}", "chart_series", SWEEP + 1000 + 100 * seed + k, "Does the chart show the CSV's values?",
                            rng.choice(["svg", "csv"]), svg="c.svg", csv="c.csv",
                            series=rng.choice(["Sales", "Rainfall (mm)", "Users", "Score"]),
                            x=rng.choice(["year", "month", "day"]), n=rng.choice([5, 8, 12]),
@@ -103,12 +108,12 @@ def sweep(seeds=(1, 2, 3)) -> dict:
                            metadata=rng.choice([True, False])))
         for k in range(15):
             f_lo = rng.choice([200, 300, 440])
-            pairs.append(P(f"t{k}", "tones_rows", 9800 + 100 * seed + k, "Is there one tone per row?",
+            pairs.append(P(f"t{k}", "tones_rows", SWEEP + 2000 + 100 * seed + k, "Is there one tone per row?",
                            rng.choice(["table", "wav"]), wav="s.wav", csv="s.csv", column="Value",
                            n=rng.randint(3, 20), tone_s=rng.choice([0.1, 0.15, 0.3]),
                            gap_s=rng.choice([0.03, 0.05, 0.1]), f_lo=f_lo, f_hi=f_lo * rng.choice([2, 3])))
         for k in range(15):
-            pairs.append(P(f"m{k}", "mesh_bbox", 10100 + 100 * seed + k, "Does the mesh have the README's size?",
+            pairs.append(P(f"m{k}", "mesh_bbox", SWEEP + 3000 + 100 * seed + k, "Does the mesh have the README's size?",
                            rng.choice(["vertex", "readme"]), readme="README.md", obj="p.obj",
                            shape=rng.choice(["box", "wedge", "l_bracket", "cylinder"]),
                            size=(rng.choice([10, 25.5, 80, 120]), rng.choice([5, 30, 44.25]), rng.choice([3, 12, 60])),
@@ -116,7 +121,7 @@ def sweep(seeds=(1, 2, 3)) -> dict:
                            obj_unit=rng.choice(["mm", "cm", "m"]), style=rng.choice(["x", "minmax", "prose"]),
                            axis=rng.randrange(3), delta=rng.choice([1.0, 2.0, 5.0])))
         for k in range(10):
-            pairs.append(P(f"k{k}", "code_trace", 10400 + 100 * seed + k, "Is the trace consistent with the code?",
+            pairs.append(P(f"k{k}", "code_trace", SWEEP + 4000 + 100 * seed + k, "Is the trace consistent with the code?",
                            rng.choice(["other_fn", "undefined"]), py="m.py", trace="t.json",
                            fmt=rng.choice(["flat", "tree"]), entry="main",
                            graph=rng.choice(["main>a,b; a>c*2,d; b>e", "main>load,run*2; run>step,log; step>log"]),
@@ -127,7 +132,7 @@ def sweep(seeds=(1, 2, 3)) -> dict:
                              ("sensor 1 offline", "sensor 2 offline", "sensor 1 online", "sensor 2 online")])
             fmt = rng.choice(["md", "txt"])
             logfmt = rng.choice(["iso", "syslog", "json"])
-            pairs.append(P(f"l{k}", "timeline_log", 10700 + 100 * seed + k, "Do they agree on the order?", "swap",
+            pairs.append(P(f"l{k}", "timeline_log", SWEEP + 5000 + 100 * seed + k, "Do they agree on the order?", "swap",
                            doc="t." + fmt, log="a.jsonl" if logfmt == "json" else "a.log", fmt=fmt, logfmt=logfmt,
                            noise=rng.randint(0, 10), swap=rng.randrange(len(ev) - 1), events=ev))
         for pair in pairs:

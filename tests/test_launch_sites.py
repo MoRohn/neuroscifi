@@ -114,6 +114,9 @@ SITES = {
     # ---- registered: runs without being asked; background.py names it ---------------------------------------------
     ("neuroscifi.console.server:ConsoleServer.__init__", "thread"):
         (1, "registered", "the embedded research worker of `nsf console --web-worker` (RUNNER ConsoleServer._work)"),
+    ("neuroscifi.console.artifacts:make", "thread"):
+        (1, "owner", "the console's Make (ADR-079): lane P's pipeline for the owner's click, one at a time, bounded by "
+                     "its own budgets; ends with the production"),
     ("neuroscifi.console.server:ConsoleServer._work", "loop"):
         (1, "registered", "that worker's restart loop around scheduler.work (RUNNER; each claim asks allowed())"),
     ("neuroscifi.webcortex.scheduler:work", "thread"):

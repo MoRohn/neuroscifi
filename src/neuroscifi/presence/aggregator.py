@@ -213,6 +213,9 @@ def _graph_jobs(db, now):
 
 
 _INFLIGHT_DETAIL = {"interpreting": "Interpreting your request", "executing": "Running an allow-listed tool ({purpose})"}
+# The owner console's "Make" and upload (OMNIMIND lane U, ADR-079; console/artifacts.py): no model is called, so
+# these entries are never counted or described as a model call.
+_ARTIFACT_DETAIL = {"generating": "Making and checking what you asked for", "reading": "Reading the file you gave"}
 
 
 def arbitrate(cands):
@@ -493,7 +496,9 @@ def derive(db, db_path, now, *, family=None, worker_alive=None, voice=True) -> d
             published = []         # (review1b R1)
         for entry in inflight.snapshot() + published:
             act = entry["activity"] if entry["activity"] in ACTIVITIES else "generating"
-            if act in _INFLIGHT_DETAIL:
+            if entry["subsystem"] == "artifacts" and act in _ARTIFACT_DETAIL:
+                detail = _ARTIFACT_DETAIL[act]
+            elif act in _INFLIGHT_DETAIL:
                 detail = _INFLIGHT_DETAIL[act].format(purpose=_short(entry["purpose"], 40))
             else:
                 signals["inflight_inference"] += 1

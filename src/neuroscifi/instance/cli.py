@@ -220,6 +220,10 @@ def _config(db, args, now):
         changes["artifact_adapters"] = [n for n in (p.strip() for p in args.artifact_adapters.split(",")) if n]
     if args.form_learning is not None:
         changes["form_learning"] = args.form_learning
+    if args.console_artifacts is not None:
+        changes["console_artifacts"] = args.console_artifacts == "on"
+    if args.console_artifact_upload is not None:
+        changes["console_artifact_upload"] = args.console_artifact_upload == "on"
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     repair_notes = []
@@ -361,6 +365,11 @@ def register(sub):
                    help="learning the form of a result from what you keep (ADR-078): off = nothing recorded "
                         "(default); record = your reactions to made forms are kept and change nothing; apply = what "
                         "was learned is also used when a form is chosen (`nsf form learned` shows it)")
+    p.add_argument("--console-artifacts", choices=("on", "off"),
+                   help="the owner console's \"Made and kept\" view of kept and made artifacts (ADR-079; default on)")
+    p.add_argument("--console-artifact-upload", choices=("on", "off"),
+                   help="let the owner console take new files (upload, ADR-079): a new way for bytes to enter, "
+                        "so off by default")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("self", help="what this individual is doing, knows, is unsure of and can do next, each with "

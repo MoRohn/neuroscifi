@@ -1,0 +1,106 @@
+{
+ "development": {
+  "n": 133,
+  "reader_first_choice_under_examiner": {
+   "fine": 12,
+   "good": 120,
+   "too_poor": 1
+  },
+  "share_first_good": 0.902,
+  "share_first_good_or_fine": 0.992,
+  "share_first_bad": 0.008,
+  "cases_where_some_reader_best_is_examiner_good": 129,
+  "cases_where_some_reader_best_is_examiner_bad": 4,
+  "cases_sharing_a_top_form": 129,
+  "examiner_good_forms_under_reader": {
+   "in reader best": 165,
+   "in reader acceptable": 28,
+   "not listed by reader": 11
+  },
+  "by_reader_confidence": {
+   "medium": {
+    "fine": 6,
+    "good": 41
+   },
+   "high": {
+    "good": 74,
+    "fine": 1
+   },
+   "low": {
+    "fine": 5,
+    "too_poor": 1,
+    "good": 5
+   }
+  }
+ },
+ "held_out": {
+  "n": 138,
+  "reader_first_choice_under_examiner": {
+   "good": 121,
+   "fine": 16,
+   "too_much": 1
+  },
+  "share_first_good": 0.877,
+  "share_first_good_or_fine": 0.993,
+  "share_first_bad": 0.007,
+  "cases_where_some_reader_best_is_examiner_good": 132,
+  "cases_where_some_reader_best_is_examiner_bad": 6,
+  "cases_sharing_a_top_form": 132,
+  "examiner_good_forms_under_reader": {
+   "in reader best": 170,
+   "in reader acceptable": 24,
+   "not listed by reader": 14
+  },
+  "by_reader_confidence": {
+   "high": {
+    "good": 81,
+    "fine": 2
+   },
+   "medium": {
+    "good": 36,
+    "fine": 9,
+    "too_much": 1
+   },
+   "low": {
+    "fine": 5,
+    "good": 4
+   }
+  }
+ },
+ "all": {
+  "n": 271,
+  "reader_first_choice_under_examiner": {
+   "fine": 28,
+   "good": 241,
+   "too_much": 1,
+   "too_poor": 1
+  },
+  "share_first_good": 0.889,
+  "share_first_good_or_fine": 0.993,
+  "share_first_bad": 0.007,
+  "cases_where_some_reader_best_is_examiner_good": 261,
+  "cases_where_some_reader_best_is_examiner_bad": 10,
+  "cases_sharing_a_top_form": 261,
+  "examiner_good_forms_under_reader": {
+   "in reader best": 335,
+   "in reader acceptable": 52,
+   "not listed by reader": 25
+  },
+  "by_reader_confidence": {
+   "medium": {
+    "fine": 15,
+    "good": 77,
+    "too_much": 1
+   },
+   "high": {
+    "good": 155,
+    "fine": 3
+   },
+   "low": {
+    "fine": 10,
+    "too_poor": 1,
+    "good": 9
+   }
+  }
+ }
+}

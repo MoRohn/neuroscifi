@@ -6125,7 +6125,9 @@ one that guesses would score half, and a wrong "consistent" is this mechanism's 
   6 unrelated pairs: 6 cannot. Fresh pairs of 12 more kinds, written after the mechanism was frozen (677cf22) and
   looked at once: 20 right, 4 cannot, 0 wrong of 24; unrelated 4 / 4 cannot; after one fix (a log's own format
   words) 22 / 24, the remaining cannot is "sampled at 16 kHz" against a sample rate (no morphology beyond plurals).
-- Own variants from the cross generators with knobs drawn here (seeds 9000+): 630 / 630 right.
+- Own variants from the cross generators with knobs drawn here: 630 / 630 right (seeds 9100-10729 at first, partly
+  inside the range reserved for the withheld lane; moved by fix lane F2 to 20100-25329, `LANE_R_SWEEP_SEEDS`, review
+  B3; still 630 / 630).
 - Transfer, own 12 cases, 29 columns: 14 right units, 14 rightly without a unit, 1 absent, 0 wrong.
 
 ## Not done, and why
@@ -6283,3 +6285,72 @@ owner's own copy of the file taken before the upgrade, or `nsf archive unpack` o
 the old software, and either brings back whatever was forgotten since (MIGRATIONS.md section 2,
 `tests/instance/test_migrations.py::test_rollback_facts`).
 
+## ADR-079: the owner console shows, makes and keeps artifacts (OMNIMIND Wave O-1, lane U)
+
+**Status.** Accepted for the integration branch (lane U, 2026-11-26). No migration (schema stays 21).
+
+**Context.** What the owner kept (`nsf artifact add`) and what NeuroSciFi made (`nsf artifact make`) could be seen only
+from the command line. DESIGN §8 and the outputs audit (§4) state what the console's policy allows: SVG built with DOM
+calls, same-origin images, Web Audio fed from fetched bytes, first-party module scripts; and what it blocks: frames,
+blob and data images, an audio element, inline script and style. The policy is not to be loosened.
+
+**Decision.** A view "Made and kept" in the console's navigation (`console/artifacts.py`, `console/web/artifacts.mjs`),
+with the Presence entity on its stage like the research and voice views.
+- *Not one character of any security header changes.* The console's `HEADERS` (and so its Content-Security-Policy)
+  are as before; every new route replies with them (`tests/console/test_console_artifacts.py` pins every header string
+  byte for byte, written out in the test, on every new route and asset).
+- *Routes* (owner scope: the console's bearer token, Host and Origin checks, exactly as every other route): a paged list
+  in plain words ("a table of 365 rows and 2 columns", "a recording of 3.5 seconds", "a bar chart"), the detail (how
+  to show it, facts, the production record's "why" in plain words, lane R's relations each labelled as the system's
+  claim, made-from and made-into), the bytes (`application/octet-stream`, streamed in 64 KiB pieces with an exact
+  Content-Length), forget, feedback, make and upload. Ids are matched by pattern and used as lookup keys; no route takes
+  a path or a file name (an uploaded file's name is only its label).
+- *Pictures*: the SVG text is fetched through the authenticated API, parsed as XML (inert) and rebuilt element by
+  element through an allow-list that is exactly lane G1's safety check (`check/svg_safety.py`): event attributes,
+  links, other namespaces, `foreignObject`, `script`, `style` attributes and any `url()` that names something outside
+  the picture are dropped and the owner is told what was left out; ids are renamed per picture. Never `innerHTML`.
+  The picture's own `<style>` is replaced by console tokens (`.art-svg` sets `--nsf-ink`, `--nsf-paper`,
+  `--nsf-warn`, `--nsf-danger` from the theme), so a made chart follows light and dark.
+- *Tables and documents*: built with DOM calls from JSON. A document NeuroSciFi made is shown from its stored
+  specification's blocks (so "How the sources relate" and its figures appear); its figures are read from the stored
+  file and rebuilt through the same allow-list.
+- *Sound*: fetched bytes decoded by `decodeAudioData` and played by a buffer source; Play and Stop; a description in
+  words; no `<audio>` element (the console's policy has no `media-src`, and keeps none).
+- *Explorable models and step-throughs*: lane G2's runtime served as a first-party module (`/artifacts/explorable.mjs`,
+  with `/artifacts/explorable.css`; the same bytes the check pins by hash), mounted into the pane with the stored spec
+  and unmounted when the owner leaves the view.
+- *Raster pictures*: an `<img>` cannot send the bearer header and the policy admits no `blob:` or `data:` image, so the
+  server mints an address `/artifact-image/<token>` per view: 256 random bits, one artifact, 120 seconds, valid only in
+  the console process that minted it and only under the session token it was minted under (a restart, or another
+  console, cannot use it), PNG only and checked to be PNG, never logged (the console logs no request).
+- *Make*: lane P's pipeline as the owner's request, run in one thread per production (one at a time per console,
+  bounded by the pipeline's own 60 s and 16 MiB budgets); the page polls `/api/artifacts/jobs/<id>`; the Presence
+  entity shows it through the in-flight record (`activity.track("generating", subsystem="artifacts")`: types only;
+  the aggregator gives these entries their own words and never counts them as a model call). When words suffice the
+  page says "No picture was made because …" with the words. Not background work: the quiet switch does not hold it,
+  as it does not hold `nsf artifact make`.
+- *Feedback* (Keep, Not useful, I wanted a …) records lane L's outcomes and is shown only while `form_learning` is
+  `record` or `apply`. *Forget* is behind the console's confirmation dialog and does what `nsf artifact forget` does.
+- *Upload*: a new way for bytes to enter, so off by default. When on: start (name and size, at most
+  `artifact_max_bytes`), raw chunks of at most 1 MiB in order (the one route whose body is bytes; every other route
+  keeps its JSON body limit), finish through `store.add` (which decodes under limits and screens text); a refusal says
+  why in words. Chunks live in memory (at most two unfinished uploads, ten minutes each); nothing is written to disk
+  outside the store.
+- *Heat map*: the Graphs view's weight matrix no longer hard-codes white, blue and rust: darkness is magnitude (ink at
+  an opacity over the paper), a slash marks a negative weight, every paint is a theme token. `tests/console/
+  test_palette_rule.py` fails on any green, or any hue outside warning, danger, the entity's flairs and the wordmark's
+  tints, in the stylesheets the console loads, its scripts and page, the explorable stylesheet and the made pictures'
+  palette.
+
+**Settings.** `console_artifacts` (instance, default on: it shows what already exists and makes only on the owner's
+click); `console_artifact_upload` (instance, default off). `nsf config --console-artifacts on|off`,
+`--console-artifact-upload on|off`; a damaged value reads as the default; both are carried by a restore and switched
+off by the Wave 0 equivalence test; `tests/uat/test_uat_rollback.py::test_console_artifacts_and_upload` rolls both back.
+
+**Consequences.** The console can show every made form but meshes outside a viewer (an STL/OBJ file is described and
+its export command given), animated PNG frames beyond the first (the browser shows the animation itself), and pictures
+in formats other than PNG (JPEG, WebP and others: their pixels are not decoded on this host, and the browser's
+decoder is not offered untrusted bytes here). Pocket does not show artifacts (its policy differs: `media-src 'self'
+blob:`; it would need family-scoped routes, a family's own artifacts, signed replies and the phone's byte limits).
+Rollback: `nsf config --console-artifacts off` (the view answers 409 on the next call), or revert lane U's commits;
+nothing stored changes shape.

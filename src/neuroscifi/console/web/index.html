@@ -20,6 +20,7 @@
   <li><a href="#research" data-view="research">Research <span id="activeCount" class="count"></span></a></li>
   <li><a href="#autonomy" data-view="autonomy">Autonomy</a></li>
   <li><a href="#knowledge" data-view="knowledge">Knowledge</a></li>
+  <li><a href="#artifacts" data-view="artifacts">Made and kept</a></li>
   <li><a href="#graphs" data-view="graphs">Graphs</a></li>
   <li><a href="#checkpoints" data-view="checkpoints">Checkpoints</a></li>
   <li><a href="#memory" data-view="memory">Memory log</a></li>
@@ -270,6 +271,40 @@
   </article>
   <div id="knowledgeList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
   <p id="knowledgeStatus" class="msg" role="status"></p>
+</section>
+
+<section id="artifacts" class="view" aria-labelledby="h-artifacts" hidden>
+  <div class="viewhead"><h1 id="h-artifacts" tabindex="-1">Made and kept</h1><button type="button" id="refreshArtifacts" data-keep>Refresh</button></div>
+  <p class="lede">Files you handed over, and what NeuroSciFi made from them. Everything it made is marked “made by NeuroSciFi, not evidence”: it is never used as a source of facts.</p>
+  <div class="interact">
+    <div class="presence-stage" data-presence-dock></div>
+    <div class="dialogue">
+      <article class="card ask" aria-labelledby="h-make"><h2 id="h-make">Make something</h2>
+        <form id="makeForm" novalidate>
+          <p id="makeChosen" class="sub"></p>
+          <label for="makeRequest">What do you want to know or see?</label>
+          <textarea id="makeRequest" rows="2" maxlength="2000" aria-describedby="makeHelp"></textarea>
+          <p id="makeHelp" class="sub">For example “how did it change over the year?”. The form is chosen for you; when a few words answer it, you get words and nothing is made.</p>
+          <button class="primary" id="makeBtn" disabled>Make</button>
+        </form>
+        <p id="makeStatus" class="msg" role="status"></p>
+        <div id="uploadBox" class="dropzone" hidden>
+          <p>Drop files here, or <button type="button" id="uploadPick">choose files</button><input type="file" id="uploadFile" multiple hidden tabindex="-1" aria-hidden="true"></p>
+          <p id="uploadStatus" class="msg" role="status"></p>
+        </div>
+        <p id="uploadOff" class="sub">To keep a new file, use <code>nsf artifact add FILE</code>. Upload from this page is off until you turn it on with <code>nsf config --console-artifact-upload on</code>.</p>
+      </article>
+      <article class="card report" id="artifactCard" aria-labelledby="h-artifact"><h2 id="h-artifact" tabindex="-1">Shown here</h2>
+        <div id="artifactPane" class="slot"><p class="empty">Choose something in the list to show it here.</p></div>
+        <p id="artifactStatus" class="msg" role="status"></p>
+      </article>
+    </div>
+  </div>
+  <article class="card wide" aria-labelledby="h-kept"><h2 id="h-kept">Kept</h2>
+    <p id="artifactCounts" class="sub"></p>
+    <div id="artifactList" class="slot" aria-busy="true"><p class="empty">Loading…</p></div>
+    <div id="artPager" class="buttons" hidden><button type="button" id="artPrev">Newer</button><button type="button" id="artNext">Older</button></div>
+  </article>
 </section>
 
 <section id="graphs" class="view" aria-labelledby="h-graphs" hidden>

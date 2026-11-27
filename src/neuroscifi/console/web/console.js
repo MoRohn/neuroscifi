@@ -1,8 +1,8 @@
 // NeuroSciFi owner console. Vanilla ES module, no framework, CSP-compatible (no inline code or styles in markup).
 // The session token arrives in the URL fragment, is kept in this module only and removed from the address bar.
 
-const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'research', 'autonomy', 'knowledge', 'graphs', 'checkpoints',
-               'memory', 'voice', 'phones'];
+const VIEWS = ['overview', 'teach', 'evidence', 'questions', 'research', 'autonomy', 'knowledge', 'artifacts', 'graphs',
+               'checkpoints', 'memory', 'voice', 'phones'];
 const CHANNEL_ROOT = { camera: 'Camera root', word: 'Partner (word root)', reference: 'Reference root' };
 const MAP_TEXT = { 0: 'as declared', 1: 'inverted', null: 'tied' };
 const CHECK_LABELS = {
@@ -1188,16 +1188,22 @@ function renderEvaluation(e) {
     h('p', { class: 'sub', text: `Mean ${fmtNum(e.heldout_mse)} · evaluated ${fmtTime(e.evaluated_at)}` }));
 }
 
-function mix(t, rgb) {
-  const c = rgb.map((v) => Math.round(255 + (v - 255) * t));
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
+// The weight matrix in the console's grays (OMNIMIND lane U, ADR-079): magnitude is the cell's darkness (ink at an
+// opacity from 0.2 to 1 over the paper), the sign a diagonal slash on every negative cell, an edge-free cell the
+// paper itself. Every paint is a theme token in console.css, so the matrix follows light and dark and has no hue.
+function weightLevel(w, max) {
+  return w === 0 ? 0 : 0.2 + 0.8 * Math.min(1, Math.abs(w) / max);
 }
-const BLUE = [29, 95, 163];
-const RUST = [178, 70, 38];
-function weightColor(w, max) {
-  if (w === 0) return '#ffffff';
-  const t = 0.2 + 0.8 * Math.min(1, Math.abs(w) / max);
-  return mix(t, w > 0 ? BLUE : RUST);
+function weightCell(x, y, size, w, max, extra = {}) {
+  const level = weightLevel(w, max);
+  const sign = w > 0 ? 'pos' : w < 0 ? 'neg' : 'zero';
+  const g = s('g', { class: `wcell ${sign}` });
+  g.append(s('rect', { class: 'cell-bg', x, y, width: size, height: size }));
+  const rect = s('rect', { class: `cell ${sign}`, x, y, width: size, height: size, 'fill-opacity': level.toFixed(3), ...extra });
+  g.append(rect);
+  // the slash is paper on a dark cell and ink on a light one, so it reads on every level in both themes
+  if (w < 0) g.append(s('line', { class: `slash ${level > 0.55 ? 'on-dark' : 'on-light'}`, x1: x + 2, y1: y + size - 2, x2: x + size - 2, y2: y + 2 }));
+  return [g, rect];
 }
 
 function renderHeatmap(g) {
@@ -1213,14 +1219,13 @@ function renderHeatmap(g) {
   const cell = 16, pad = 34;   // labels are 13 units: about 11 px when the matrix is scaled down to a phone
   const svg = s('svg', { class: 'heatmap', id: 'heatmap', viewBox: `0 0 ${pad + cols * cell + 2} ${pad + rows * cell + 2}`, role: 'img', 'aria-labelledby': 'heatTitle heatSummary' });
   svg.append(s('title', { id: 'heatTitle' }, `Weight matrix of revision ${g.id}`));
-  svg.append(s('rect', { x: pad, y: pad, width: cols * cell, height: rows * cell, fill: '#ffffff', stroke: '#CFC8C8' }));
+  svg.append(s('rect', { class: 'heat-bg', x: pad, y: pad, width: cols * cell, height: rows * cell }));
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
       const w = matrix[i][j];
-      const rect = s('rect', { class: 'cell', x: pad + j * cell, y: pad + i * cell, width: cell, height: cell,
-        fill: weightColor(w, max), stroke: '#E7E2E1', 'stroke-width': 0.5, 'data-w': w });
+      const [group, rect] = weightCell(pad + j * cell, pad + i * cell, cell, w, max, { 'data-w': w });
       rect.append(s('title', {}, `target ${i} ← source ${j}: ${w}`));
-      svg.append(rect);
+      svg.append(group);
     }
   }
   for (let k = 0; k < Math.max(rows, cols); k += 4) {
@@ -1228,10 +1233,10 @@ function renderHeatmap(g) {
     if (k < rows) svg.append(s('text', { x: pad - 6, y: pad + k * cell + cell / 2 + 4, 'text-anchor': 'end' }, k));
   }
   const steps = 9;
-  const legend = s('svg', { class: 'legend', viewBox: '0 0 300 46', role: 'img', 'aria-label': `Colour legend from ${(-max).toFixed(3)} (rust) through 0 (white) to +${max.toFixed(3)} (blue)` });
+  const legend = s('svg', { class: 'legend', viewBox: '0 0 300 46', role: 'img', 'aria-label': `Legend from ${(-max).toFixed(3)} (dark, slashed) through 0 (blank) to +${max.toFixed(3)} (dark)` });
   for (let k = 0; k < steps; k++) {
     const w = -max + (2 * max * k) / (steps - 1);
-    legend.append(s('rect', { x: 10 + k * 31, y: 4, width: 31, height: 16, fill: weightColor(Math.abs(w) < 1e-12 ? 0 : w, max), stroke: '#CFC8C8' }));
+    legend.append(weightCell(10 + k * 31, 4, 16, Math.abs(w) < 1e-12 ? 0 : w, max)[0]);
   }
   legend.append(s('text', { x: 10, y: 36 }, (-max).toFixed(3)), s('text', { x: 150, y: 36, 'text-anchor': 'middle' }, '0'), s('text', { x: 289, y: 36, 'text-anchor': 'end' }, `+${max.toFixed(3)}`));
   const edges = [];
@@ -1241,13 +1246,13 @@ function renderHeatmap(g) {
   const strongest = (list) => list.length ? list.reduce((a, b) => (Math.abs(b.w) > Math.abs(a.w) ? b : a)) : null;
   const sp = strongest(pos), sn = strongest(neg);
   const summary = `${rows}×${cols} weight matrix (rows are target populations, columns are source populations). ` +
-    `${edges.length} non-zero edges: ${pos.length} positive (blue) and ${neg.length} negative (rust); ${rows * cols - edges.length} cells are zero (white). ` +
+    `${edges.length} non-zero edges: ${pos.length} positive (plain) and ${neg.length} negative (slashed); ${rows * cols - edges.length} cells are zero (blank). ` +
     `Each target reads at most ${inDegree} sources.` +
     (sp ? ` Strongest positive: ${sp.w.toFixed(3)} from source ${sp.j} to target ${sp.i}.` : '') +
     (sn ? ` Strongest negative: ${sn.w.toFixed(3)} from source ${sn.j} to target ${sn.i}.` : '');
   fill(slot, h('h3', { text: 'Weight matrix' }),
     h('figure', { class: 'heatwrap' }, svg,
-      h('div', {}, legend, h('p', { class: 'sub', text: 'Blue: positive weight. Rust: negative weight. White: no edge. Darker means larger magnitude.' }),
+      h('div', {}, legend, h('p', { class: 'sub', text: 'Darker means a larger weight. A slash marks a negative weight; a plain cell is positive. Blank: no edge.' }),
         h('figcaption', { id: 'heatSummary', text: summary }),
         h('details', {}, h('summary', { text: `Edge list (${edges.length})` }),
           h('ul', { class: 'edges' }, edges.map((e) => h('li', { text: `${e.j} → ${e.i}: ${e.w.toFixed(4)}` })))))));
@@ -3188,7 +3193,17 @@ window.nsfConsoleToken = () => state.token;
 
 const LOADERS = { overview: loadOverview, teach: loadTeach, evidence: loadEvidence, questions: loadQuestions,
                   research: loadResearch, autonomy: loadAutonomy, knowledge: loadKnowledge, graphs: loadGraphs, checkpoints: loadCheckpoints,
-                  memory: loadMemory, voice: loadVoice, phones: () => loadPhones() };
+                  memory: loadMemory, voice: loadVoice, phones: () => loadPhones(), artifacts: loadArtifacts };
+
+// "Made and kept" (OMNIMIND lane U, ADR-079; console/web/artifacts.mjs): loaded on first visit, with this page's
+// helpers, so it requests, reports and confirms the way every other view does.
+let artifactView = null;
+function loadArtifacts() {
+  const ctx = { api, load, act, fill, empty, table, technical, kv, badge, rich, say, errorText, confirmAction, fmtBytes, ago,
+                h: (...a) => h(...a), token: () => state.token, offline: () => state.offline };
+  import('/artifacts.mjs').then((m) => { artifactView = m; return m.show(ctx); })
+    .catch((error) => { fill($('artifactList'), h('p', { class: 'msg error', text: `This view could not load: ${errorText(error)}` })); });
+}
 
 // ---- Add a phone (ADR-043) -------------------------------------------------------------------------------------
 // Two QR codes from the running Pocket bridge (console/phones.py): 1 opens the phone setup page (the CA certificate
@@ -3294,6 +3309,7 @@ function route(moveFocus) {
   if (!state.token) return;
   const name = location.hash.slice(1);
   const view = VIEWS.includes(name) ? name : 'overview';
+  if (view !== 'artifacts') artifactView?.leave();   // an explorable model is unmounted, a sound stops
   state.view = view;
   document.documentElement.dataset.view = view;
   $('locked').hidden = true;

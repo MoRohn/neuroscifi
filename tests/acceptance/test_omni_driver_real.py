@@ -10,7 +10,7 @@ import zipfile
 import numpy as np
 import pytest
 
-from neuroscifi.acceptance.omni import Task, forms, made, readers, subject, transform
+from neuroscifi.acceptance.omni import Task, cases, forms, made, readers, subject, transform
 
 
 @pytest.fixture(scope="module")
@@ -139,3 +139,17 @@ def test_the_planner_is_a_subject_of_the_forms_family():
     out = forms.score(subject.choose_form, "development")
     assert out["n_cases"] == 133 and out["hard_constraints_violated"]["k"] == 0
     assert subject.FORMS_UNMAPPED == [] or all(kind != "explicit" for kind, _ in subject.FORMS_UNMAPPED)
+
+
+@pytest.mark.parametrize("form", ("line", "bar", "scatter"))
+def test_a_product_chart_hidden_from_a_person_is_not_judged_right(artifacts, form):
+    """Review M1, the reviewer's probe (review1/m/probe_invisible.py): a product-made chart with its plot under
+    display:none, opacity 0 or moved off the canvas carried 12/12, 6/6, 20/20 through the old reader; now nothing."""
+    case = next(c for c in cases.MADE["development"] if c["form"] == form)
+    request, truth = made.request_for(case)
+    svg = artifacts._make(request).value["bytes"].decode()
+    hits, total, _ = made.carried(form, svg.encode(), request, truth)
+    assert hits == total > 0
+    for attr in ('style="display:none"', 'opacity="0"', 'transform="translate(5000,0)"'):
+        hidden = svg.replace('class="plot"', f'class="plot" {attr}', 1).encode()
+        assert made.carried(form, hidden, request, truth)[0] == 0, attr

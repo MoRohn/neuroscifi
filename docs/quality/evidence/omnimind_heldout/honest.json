@@ -1,0 +1,141 @@
+{
+ "cases_sha256": "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c",
+ "commit": "c1f5f2f",
+ "label": "OMNIMIND benchmark: synthetic files assembled by the benchmark's own encoders from known values; offline; no model; exact comparison within stated tolerances",
+ "machine": "aarch64",
+ "python": "3.12.16",
+ "recorded": "2026-11-27",
+ "splits": {
+  "held_out": {
+   "families": {
+    "honest": {
+     "abstained": 3,
+     "abstention_floor": 20,
+     "by_kind": {
+      "cannot": {
+       "abstained": 0,
+       "failed": 0,
+       "right": 18,
+       "wrong": 0
+      },
+      "cannot_or_value": {
+       "abstained": 0,
+       "failed": 0,
+       "right": 2,
+       "wrong": 0
+      },
+      "measure": {
+       "abstained": 3,
+       "failed": 0,
+       "right": 32,
+       "wrong": 0
+      }
+     },
+     "content": {
+      "abstained": 0,
+      "failed": 0,
+      "right": 20,
+      "wrong": 0
+     },
+     "fabrication": 0,
+     "fabrication_rate": 0.0,
+     "failed": 0,
+     "failures": {},
+     "family": "honest",
+     "header_facts": {
+      "abstained": 3,
+      "failed": 0,
+      "right": 32,
+      "wrong": 0
+     },
+     "n": 55,
+     "right": 52,
+     "score": 0.9455,
+     "split": "held_out",
+     "subject": "artifacts",
+     "tasks": {
+      "honest/held_out/doc-compound-file-other/detect.format": "right",
+      "honest/held_out/doc-compound-file-other/doc.contains:the": "right",
+      "honest/held_out/doc-compound-file-other/doc.headings": "right",
+      "honest/held_out/flac-streaminfo-mono/audio.channels": "right",
+      "honest/held_out/flac-streaminfo-mono/audio.dominant_hz": "right",
+      "honest/held_out/flac-streaminfo-mono/audio.duration_s": "right",
+      "honest/held_out/flac-streaminfo-mono/audio.n_onsets": "right",
+      "honest/held_out/flac-streaminfo-mono/audio.rate_hz": "right",
+      "honest/held_out/flac-streaminfo-mono/detect.format": "right",
+      "honest/held_out/hdf5-superblock-other/array.shape": "right",
+      "honest/held_out/hdf5-superblock-other/array.sum": "right",
+      "honest/held_out/hdf5-superblock-other/detect.format": "right",
+      "honest/held_out/jpeg-baseline-dc-tall/detect.family": "right",
+      "honest/held_out/jpeg-baseline-dc-tall/detect.format": "right",
+      "honest/held_out/jpeg-baseline-dc-tall/image.mean_gray": "right",
+      "honest/held_out/jpeg-baseline-dc-tall/image.pixel:3,0": "right",
+      "honest/held_out/jpeg-baseline-dc-tall/image.size": "right",
+      "honest/held_out/jpeg-progressive-square/detect.format": "right",
+      "honest/held_out/jpeg-progressive-square/image.mean_gray": "right",
+      "honest/held_out/jpeg-progressive-square/image.pixel:0,0": "right",
+      "honest/held_out/jpeg-progressive-square/image.size": "right",
+      "honest/held_out/mp3-silent-frames-long/audio.channels": "right",
+      "honest/held_out/mp3-silent-frames-long/audio.dominant_hz": "right",
+      "honest/held_out/mp3-silent-frames-long/audio.duration_s": "abstained",
+      "honest/held_out/mp3-silent-frames-long/audio.rate_hz": "right",
+      "honest/held_out/mp3-silent-frames-long/detect.family": "right",
+      "honest/held_out/mp3-silent-frames-long/detect.format": "right",
+      "honest/held_out/mp4-moov-small/detect.family": "right",
+      "honest/held_out/mp4-moov-small/detect.format": "right",
+      "honest/held_out/mp4-moov-small/video.duration_s": "right",
+      "honest/held_out/mp4-moov-small/video.frame_mean_gray:0": "right",
+      "honest/held_out/mp4-moov-small/video.size": "right",
+      "honest/held_out/ogg-vorbis-stereo/audio.channels": "right",
+      "honest/held_out/ogg-vorbis-stereo/audio.dominant_hz": "right",
+      "honest/held_out/ogg-vorbis-stereo/audio.duration_s": "right",
+      "honest/held_out/ogg-vorbis-stereo/audio.rate_hz": "right",
+      "honest/held_out/ogg-vorbis-stereo/detect.format": "right",
+      "honest/held_out/parquet-footer-wide/detect.format": "right",
+      "honest/held_out/parquet-footer-wide/table.cell:0,0": "right",
+      "honest/held_out/parquet-footer-wide/table.column_mean:nickel_0": "right",
+      "honest/held_out/parquet-footer-wide/table.columns": "abstained",
+      "honest/held_out/parquet-footer-wide/table.n_rows": "abstained",
+      "honest/held_out/tiff-jpeg-strip-tall/detect.format": "right",
+      "honest/held_out/tiff-jpeg-strip-tall/image.pixel:1,1": "right",
+      "honest/held_out/tiff-jpeg-strip-tall/image.size": "right",
+      "honest/held_out/webm-info-tall/detect.format": "right",
+      "honest/held_out/webm-info-tall/video.duration_s": "right",
+      "honest/held_out/webm-info-tall/video.frame_mean_gray:0": "right",
+      "honest/held_out/webm-info-tall/video.size": "right",
+      "honest/held_out/webp-header-wide/detect.format": "right",
+      "honest/held_out/webp-header-wide/image.mean_gray": "right",
+      "honest/held_out/webp-header-wide/image.size": "right",
+      "honest/held_out/xls-compound-file-other/detect.format": "right",
+      "honest/held_out/xls-compound-file-other/table.cell:0,0": "right",
+      "honest/held_out/xls-compound-file-other/table.n_rows": "right"
+     },
+     "wall_s": 0.01,
+     "wrong": 0
+    }
+   },
+   "frozen": {
+    "honest": {
+     "n": 55,
+     "sha256": "dea2244011afef86c6eb0b4e30baa9a0b380abd02b273a9700d29679486ec0a8"
+    }
+   },
+   "totals": {
+    "abstained": 3,
+    "abstention_floor": 20,
+    "fabrication": 0,
+    "failed": 0,
+    "n": 55,
+    "right": 52,
+    "score": 0.9455,
+    "wrong": 0
+   },
+   "wall_s": 0.0
+  }
+ },
+ "subject": "artifacts",
+ "subject_available": [
+  true,
+  ""
+ ]
+}
