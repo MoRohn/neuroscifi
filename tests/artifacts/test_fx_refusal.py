@@ -2,7 +2,7 @@
 decides which refusals met inside a file refuse the WHOLE file; each class the lane found has a test here that fails
 without its rule: a bomb-like, lying or damaged member beside an honest one; a hostile member deeper inside; words
 addressed to an AI agent in a sibling; an entity, a DTD or an XInclude in a part an office reader never reads; an
-unsafe name or a link inside an office file; an SVG that refers to outside files; an XML refusal that another
+unsafe name or a link inside an office file; an XInclude; an XML refusal that another
 reader would answer as text or HTML."""
 from __future__ import annotations
 
@@ -124,10 +124,12 @@ def test_an_encrypted_member_still_concerns_only_itself():
     assert members["secret.csv"].inner is None and members["open.csv"].inner is not None
 
 
-def test_an_svg_that_would_load_outside_files_is_refused():
+def test_an_svg_outside_reference_is_noted_an_xinclude_is_refused():
+    # lane FX2 (ADR-080 rule 2): an outside reference never refuses by itself; the parser-level XInclude still does
     svg = (b'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="9" height="9">'
            b'<image xlink:href="file:///etc/passwd" width="5" height="5"/><rect width="2" height="2"/></svg>')
-    assert _refused(svg, name="p.svg").rule == "external_reference"
+    out = adapters.decode(svg, name="p.svg")
+    assert outcome.of_decoded(out) == outcome.ANSWERED and outcome.outside("1 x image") in out.notes
     assert _refused(XINC, name="i.xml").rule == "external_reference"
 
 

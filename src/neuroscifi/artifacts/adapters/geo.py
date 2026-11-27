@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+from .. import outcome
 from ..safe import Deadline, SafeZip, injection_notes, local
 from ..safe_b2 import count, need, parse_xml
 from ..types import Decoded, Feature, Features, Malformed, Refused
@@ -313,7 +314,8 @@ def decode_kml(data: bytes, limits):
     if local(root.tag) != "kml":
         raise Malformed("the root element is not kml")
     budget, out, notes = _Budget(limits), [], ["KML coordinates are longitude, latitude on WGS 84 (OGC:CRS84)"]
-    links = sum(1 for el in root.iter() if local(el.tag) in ("NetworkLink", "href"))
+    # one per address: a NetworkLink's address is its Link's href (counted once), never fetched (ADR-080 rule 2)
+    links = sum(1 for el in root.iter() if local(el.tag) == "href")
     for pm in (el for el in root.iter() if local(el.tag) == "Placemark"):
         props = {}
         for key in ("name", "description", "address"):
@@ -339,7 +341,7 @@ def decode_kml(data: bytes, limits):
                 out.append(Feature(geometry, _array(pts), p))
     count(len(out), limits, "features")
     if links:
-        notes.append(f"{links} link(s) to other documents or images recorded; never fetched")
+        notes.append(outcome.outside(f"{links} link(s) to other documents or images"))
     return out, CRS84, notes
 
 

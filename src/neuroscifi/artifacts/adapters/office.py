@@ -2,8 +2,11 @@
 
 All are ZIP packages read with lane K's `safe.SafeZip` (member count checked first, sizes bounded, CRC checked) and
 XML parts read with `safe.parse_xml` (DTDs and entities refused, nodes and depth bounded; the element bound also
-follows from the bytes left, see `safe_b1.element_limits`). Nothing is executed:
-macros (`vbaProject.bin`, ODF `Basic/`) are never read, only reported. Embedded media are listed as figure blocks
+follows from the bytes left, see `safe_b1.element_limits`). Nothing is executed or fetched, and neither refuses
+the file by itself (ADR-080): macros (`vbaProject.bin`, ODF `Basic/`) are never read, only reported
+(`outcome.active`); an OOXML relationship to a target outside the package (`TargetMode="External"`: a remote
+template, a linked workbook or sheet, a link address, an outside image) is never followed, only counted by kind
+(`outcome.outside`), and what lives only there is not read. Embedded media are listed as figure blocks
 naming their member (`ref = {"alt", "caption", "member", "address"}`); their bytes are not decoded here.
 
 - DOCX: `word/document.xml` in body order. Headings from the paragraph style (a style named "heading N" or an
@@ -27,6 +30,7 @@ from __future__ import annotations
 import posixpath
 import re
 
+from .. import outcome
 from ..safe import Deadline, SafeZip, local, parse_xml
 from ..safe_b1 import DecodeBudget, charge_xml, decode_text, element_limits
 from ..types import Block, Malformed, Refused
@@ -49,6 +53,10 @@ XLINK = "{http://www.w3.org/1999/xlink}"
 SVG = "{urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0}"
 PRES = "{urn:oasis:names:tc:opendocument:xmlns:presentation:1.0}"
 MAX_REPEAT = 1024          # ODF repeated rows/columns materialised at most this many times each
+# The kinds of an OOXML relationship to a target outside the package, in plain words (the Type's last segment).
+OUTSIDE_KINDS = {"attachedTemplate": "template", "externalLinkPath": "linked workbook", "hyperlink": "link address",
+                 "image": "image", "oleObject": "embedded object's source", "worksheet": "sheet",
+                 "subDocument": "document", "frame": "frame", "audio": "sound", "video": "video"}
 
 
 class Package:
@@ -65,7 +73,26 @@ class Package:
         self.sizes = {e.name: e.size for e in self.zip.entries}
         names = set(self.sizes)
         if any(n.lower().endswith("vbaproject.bin") for n in names) or any(n.startswith("Basic/") for n in names):
-            self.notes.append("the package holds macros: they are never read or run")
+            self.notes.append(outcome.active("a macro project"))
+        outside = self._outside_relationships()
+        if outside:
+            self.notes.append(outcome.outside(", ".join(f"{n} x {k}" for k, n in sorted(outside.items()))))
+
+    def _outside_relationships(self) -> dict[str, int]:
+        """OOXML relationships whose target is outside the package, counted by kind (never their addresses). A
+        relationship part that does not parse is skipped here (the reader that needs it says so); a refused one
+        (an entity, a DTD) still refuses."""
+        out: dict[str, int] = {}
+        for name in sorted(n for n in self.sizes if n.endswith(".rels")):
+            try:
+                root = self.xml(name)
+            except Malformed:
+                continue
+            for rel in root.iter(PKG_REL + "Relationship"):
+                if rel.get("TargetMode") == "External":
+                    kind = OUTSIDE_KINDS.get((rel.get("Type") or "").rsplit("/", 1)[-1], "other part")
+                    out[kind] = out.get(kind, 0) + 1
+        return out
 
     def has(self, name: str | None) -> bool:
         return name is not None and name in self.sizes

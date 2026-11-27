@@ -1,7 +1,10 @@
 """glTF 2.0 (JSON) and GLB (binary glTF): triangle geometry resolved through accessors and buffer views.
 
 Only embedded buffers are read: the GLB binary chunk and `data:` URIs (base64). Any other URI (a file or a web
-address) is recorded and never opened or fetched; geometry that needs it is skipped and the notes say so. Every
+address, of a buffer or an image) is never opened or fetched and never refuses the file (ADR-080): a note names
+which parts refer outside. When the placed geometry needs such a buffer, its vertices and triangles cannot be known
+here: the file is read as its header only (`HeaderOnly`: counts of meshes, nodes and accessors, the buffers that
+lie outside, the names as words), so a question about its geometry is "cannot", never 0. Every
 mesh instance reached from the default scene (or every mesh once, with no transform, when there is no scene) is
 placed in world space through its node's matrix or translation/rotation/scale, and all instances are merged into
 one `Mesh`. Triangle lists, strips and fans are read; points and lines are counted and skipped; sparse accessors
@@ -19,7 +22,8 @@ import numpy as np
 from .. import repr_b2 as R
 from ..safe import Deadline, injection_notes
 from ..safe_b2 import Reader, count, need
-from ..types import Decoded, Detected, Edge, GNode, Graph, Limits, Malformed
+from .. import outcome
+from ..types import Decoded, Detected, Edge, GNode, Graph, HeaderOnly, Limits, Malformed
 from . import Adapter
 
 COMPONENT = {5120: "i1", 5121: "u1", 5122: "<i2", 5123: "<u2", 5125: "<u4", 5126: "<f4"}
@@ -71,6 +75,7 @@ class _Resolver:
         self.doc, self.binary, self.limits, self.notes = doc, binary, limits, notes
         self.buffers: dict[int, bytes | None] = {}
         self.external: list[str] = []
+        self.needed_outside: set[int] = set()      # outside buffers the placed geometry needs
 
     def buffer(self, i: int) -> bytes | None:
         if i in self.buffers:
@@ -82,8 +87,12 @@ class _Resolver:
         length = b.get("byteLength")
         if not isinstance(length, int) or length < 0:
             raise Malformed(f"buffer {i} has no valid byteLength")
-        need(length, self.limits, f"glTF buffer {i}")
         uri = b.get("uri")
+        if uri is not None and not (isinstance(uri, str) and uri.startswith("data:")):
+            self.external.append(f"buffer {i}")    # never opened: its declared length allocates nothing here
+            self.buffers[i] = None
+            return None
+        need(length, self.limits, f"glTF buffer {i}")
         out = None
         if uri is None:
             if i == 0 and self.binary is not None:
@@ -100,8 +109,6 @@ class _Resolver:
                 out = base64.b64decode(payload, validate=True)
             except (binascii.Error, ValueError):
                 raise Malformed(f"buffer {i}'s data URI is not valid base64") from None
-        else:
-            self.external.append(f"buffer {i}")
         if out is not None and len(out) < length:
             raise Malformed(f"buffer {i} holds fewer bytes than its byteLength")
         self.buffers[i] = out
@@ -128,6 +135,7 @@ class _Resolver:
         view = views[v]
         buf = self.buffer(view.get("buffer", -1))
         if buf is None:
+            self.needed_outside.add(view.get("buffer", -1))
             return None
         vo, vl = view.get("byteOffset", 0), view.get("byteLength")
         ao = a.get("byteOffset", 0)
@@ -212,7 +220,7 @@ def _triangles(mode: int, idx: np.ndarray) -> np.ndarray:
     return np.stack([np.full(len(k), idx[0]), idx[k], idx[k + 1]], axis=1)
 
 
-def decode_gltf_doc(doc: dict, binary: bytes | None, detected: Detected, limits: Limits) -> Decoded:
+def decode_gltf_doc(doc: dict, binary: bytes | None, detected: Detected, limits: Limits, size: int = 0) -> Decoded:
     deadline = Deadline(limits.max_seconds)
     notes: list[str] = []
     version = doc["asset"].get("version")
@@ -258,8 +266,21 @@ def decode_gltf_doc(doc: dict, binary: bytes | None, detected: Detected, limits:
             faces.append(_triangles(mode, idx) + base if len(idx) >= 3 else np.zeros((0, 3), np.int64))
             base += len(pos)
             count(base, limits, "glTF vertices")
-    if res.external:
-        notes.append(f"{len(res.external)} buffer(s) refer to external files; never opened, their geometry skipped")
+    images = [i for i, x in enumerate(_list(doc, "images")) if isinstance(x, dict) and isinstance(x.get("uri"), str)
+              and not x["uri"].startswith("data:")]
+    if res.external or images:
+        notes.append(outcome.outside(", ".join(([f"{len(res.external)} buffer(s)"] if res.external else [])
+                                               + ([f"{len(images)} image(s)"] if images else []))))
+    if res.needed_outside:
+        words = [str(x.get("name")) for key in ("nodes", "meshes", "materials", "scenes") for x in _list(doc, key)
+                 if isinstance(x, dict) and isinstance(x.get("name"), str)]
+        outside = ", ".join(f"buffer {i}" for i in sorted(res.needed_outside, key=str))
+        facts = {"format": detected.format, "meshes": len(meshes), "nodes": len(_list(doc, "nodes")),
+                 "accessors": len(_list(doc, "accessors")), "buffers": len(_list(doc, "buffers")),
+                 "geometry in outside buffers": outside}
+        raise HeaderOnly(outcome.outside(f"{outside}, which holds its geometry") + ", so its vertices and "
+                         "triangles cannot be known here", facts=facts, size=size, words="\n".join(dict.fromkeys(words)),
+                         needs=("the outside file(s) its geometry is in; they are never fetched",))
     if skipped_modes:
         notes.append(f"{skipped_modes} primitive(s) of points or lines skipped")
     if doc.get("extensionsRequired"):
@@ -317,7 +338,7 @@ class GLTFAdapter(Adapter):
             doc, binary = split_glb(data, limits)
         else:
             doc, binary = _json(data, limits), None
-        return decode_gltf_doc(doc, binary, detected, limits)
+        return decode_gltf_doc(doc, binary, detected, limits, len(data))
 
 
 ADAPTERS = (GLTFAdapter(),)
