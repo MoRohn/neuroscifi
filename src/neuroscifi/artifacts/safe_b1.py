@@ -136,6 +136,7 @@ class ZipReader:
                               rule="max_members", reason="too_large")
             self.truncated = True
         pos, stop = cd_offset, min(len(data), cd_offset + cd_size)
+        raws: list[bytes] = []
         while pos + 46 <= stop and len(self.entries) < min(n_total, max_members):
             if data[pos:pos + 4] != _CEN:
                 raise Malformed("a ZIP central directory entry is damaged")
@@ -145,7 +146,16 @@ class ZipReader:
             extra = data[pos + 46 + nlen:pos + 46 + nlen + xlen]
             if 0xFFFFFFFF in (csize, usize, off):
                 usize, csize, off = self._zip64_extra(extra, usize, csize, off)
-            name = raw.decode("utf-8", "replace") if flags & 0x800 else raw.decode("cp437")
+            if flags & 0x800:
+                try:
+                    name = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    # lane FX3 (class H-G): a name its own flag calls UTF-8 that is not: what it names is not known
+                    raise Refused("the archive is refused as a whole: a member's name is not valid UTF-8 although "
+                                  "its flag says it is; nothing inside was decoded", rule="unsafe_member_name") from None
+            else:
+                name = raw.decode("cp437")
+            raws.append(bytes(raw))
             mode = (ea >> 16) & 0xFFFF if (made_by >> 8) == 3 else 0
             is_link = (mode & 0o170000) == 0o120000
             self.entries.append(ZipEntry(name, method, flags, crc, csize, usize, off + shift, mode,
@@ -156,6 +166,15 @@ class ZipReader:
             raise Malformed("the ZIP central directory ends early")
         from .safe import refuse_overlapping
         refuse_overlapping((e.offset, e.compressed_size) for e in self.entries if not e.is_dir)
+        for entry, raw in zip(self.entries, raws):
+            # lane FX3 (class H-E): the local header must name the member as the directory does; a reader that
+            # trusts the local header would write or answer under another name (one that may climb out)
+            off = entry.offset
+            if data[off:off + 4] == _LOC and off + 30 <= len(data):
+                nlen = struct.unpack("<H", data[off + 26:off + 28])[0]
+                if data[off + 30:off + 30 + nlen] != raw:
+                    raise Refused("the archive is refused as a whole: a member's local header names it differently "
+                                  "from the directory; nothing inside was decoded", rule="name_mismatch")
 
     def _find_eocd(self) -> int:
         data = self.data

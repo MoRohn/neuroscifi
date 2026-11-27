@@ -202,6 +202,10 @@ def _decode_wav(data: bytes, detected: Detected, limits: Limits) -> Decoded:
                          facts=facts, needs=(f"a {name} decoder",), size=len(data))
     if sample_data is None:
         raise Malformed("the WAV file has no data chunk")
+    if block == 0 or _byte_rate == 0:
+        # lane FX3 (class H-F): a block alignment or byte rate of zero is not a disagreement to note but a header
+        # that divides by zero for whoever uses it, as a zero sample rate is
+        raise Malformed("the WAV fmt chunk declares a block alignment or a byte rate of zero")
     width = 1 if encoding in ("pcm_u8", "alaw", "mulaw") else bits // 8
     if block and block != width * channels:
         notes.append(f"the block alignment {block} disagrees with {channels} x {width} bytes; the latter was used")

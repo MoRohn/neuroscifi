@@ -52,6 +52,41 @@ ACTIVE_NAMES = {"JavaScript": ("active", "a script"), "JS": ("active", "a script
                 "URI": ("outside", "link address"), "GoToR": ("outside", "other document"),
                 "GoToE": ("outside", "other document")}
 _OPEN_ACTION = re.compile(rb"/OpenAction\s*<<")
+_STARTXREF = re.compile(rb"startxref\s+(\d{1,12})")
+_PREV = re.compile(rb"/Prev\s+(\d{1,12})")
+MAX_XREF_SECTIONS = 4096
+
+
+def xref_chain_loops(data: bytes) -> bool:
+    """Lane FX3 (class H-C): whether the chain of cross-reference sections (the last `startxref`, then each section's
+    /Prev) comes back to a section it has already visited (a /Prev that points at itself or at a later section).
+    A reader that follows it never ends, or stops quietly at a place of its own choosing; either way what the file
+    holds is not established. Read from the bytes only, within MAX_XREF_SECTIONS steps."""
+    found = list(_STARTXREF.finditer(data, max(0, len(data) - 4096)))
+    if not found:
+        return False
+    offset, seen = int(found[-1].group(1)), set()
+    for _ in range(MAX_XREF_SECTIONS):
+        if offset in seen:
+            return True
+        if not 0 <= offset < len(data):
+            return False
+        seen.add(offset)
+        section = data[offset:offset + (1 << 20)]
+        if section.startswith(b"xref"):
+            at = section.find(b"trailer")
+            if at < 0:
+                return False
+            stop = section.find(b"startxref", at)
+            trailer = section[at:stop if stop > 0 else at + 4096]
+        else:                                   # a cross-reference stream: its dictionary, up to its stream
+            stop = section.find(b"stream")
+            trailer = section[:stop if stop > 0 else 4096]
+        prev = _PREV.search(trailer)
+        if prev is None:
+            return False
+        offset = int(prev.group(1))
+    return True
 
 
 class _Timeout(BaseException):
@@ -161,6 +196,9 @@ def _outline(reader, deadline) -> dict[int, list[tuple[int, str]]]:
 def read_pdf(data: bytes, detected, limits):
     if not data.startswith(b"%PDF-"):
         raise Malformed("the bytes do not start with '%PDF-'")
+    if xref_chain_loops(data):
+        raise Refused("the PDF's cross-reference sections point back at one already read (a loop): what the file "
+                      "holds is not established", rule="self_reference")
     facts = header_facts(data)
     if importlib.util.find_spec("pypdf") is None:
         error = Unsupported("PDF identified (" + _facts_sentence(facts) + "); its text needs pypdf, which is not "
