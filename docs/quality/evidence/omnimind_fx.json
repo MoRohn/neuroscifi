@@ -1531,5 +1531,55 @@
   "cross": "72 of 72 before and after",
   "lane_r_evidence": "omnimind_r.json sets byte-identical (own pairs 28/28, fresh 22/24, 630/630)"
  },
- "size_note": "summaries only; per-class counts"
+ "size_note": "summaries only; per-class counts; lane FX2 adds the section lane_fx2",
+ "lane_fx2": {
+  "what": "lane FX2 (ADR-080 restated: an outside reference or embedded active content never refuses by itself; a parser-level attack refuses the whole file), measured on the product at omni-fx2 7d125b1",
+  "recompute": "PYTHONPATH=src python scripts/omnimind_fx/run_corpus.py corpus_unknown|corpus_hostile|corpus_honest OUT.json; PYTHONPATH=src python scripts/omnimind_fx/corpus_cross.py OUT.json (generators and seeds committed, files never stored; tests/artifacts/test_fx_corpora.py pins their sizes)",
+  "corpora_at_fx2": {
+   "item1_identification": {
+    "n": 3669,
+    "right": 3663,
+    "abstained": 6,
+    "wrong": 0,
+    "failed": 0
+   },
+   "item2_refusal": {
+    "n": 168,
+    "right": 165,
+    "abstained": 0,
+    "wrong": 3,
+    "failed": 0,
+    "the_3": "class H6_svg_external_image: an SVG linking an outside image, answered with the note by ADR-080 rule 2 as the main session ruled; lane FX's truth says refused"
+   },
+   "honest_edges": {
+    "n": 19,
+    "right": 16,
+    "abstained": 1,
+    "wrong": 2,
+    "failed": 0,
+    "changed_from_fx": "svg_external_image agrees with its earlier answer again; still turned away: empty_named_png, mp3_two_frames_no_id3 (wrong by the earlier answer, now unknown), zip_xml_with_doctype_sibling (refused)"
+   },
+   "item3_relater": {
+    "n": 144,
+    "right": 84,
+    "cannot": 60,
+    "wrong": 0
+   }
+  },
+  "reviewer_files": {
+   "what": "the security reviewer's own inputs (review1/s/in5, s/in7, s/r3/in, s/r3/h: 150 files, scratch, not committed), each read as `nsf inspect` reads it (guarded) in its own child, 3 GiB, 120 s, before (3849b9f) and after",
+   "same_outcome_kind_rule": 146,
+   "changed": {
+    "gltf_extfile, gltf_extrel, gltf_exthttp": "answered as a mesh of 0 vertices -> answered as its header only (its geometry cannot be known: the buffer is outside, not fetched)",
+    "svg_ext": "refused (external_reference) -> answered, outside references and the script noted"
+   },
+   "noted_now": {
+    "xlsx_extlink": "1 sheet outside the workbook",
+    "docx_macro": "a macro project; 1 template",
+    "kml_netlink": "1 link",
+    "pdf_js": "a launch action, a script and an auto-run action"
+   }
+  },
+  "development": "512 right / 12 cannot / 0 wrong / 0 failed of 524 (7 families), unchanged; cross 72 of 72"
+ }
 }
