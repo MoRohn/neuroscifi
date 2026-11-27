@@ -53,14 +53,34 @@ def of_member(member, *, partial_ok: bool = False) -> str:
     return ANSWERED
 
 
-# Refusal rules that concern only the PART of a file they were met in (lane FX, item 2, ADR-080): an encrypted
-# member is not decrypted, a sparse TAR member's holes are not materialised, a member that would pass what is left
-# of the decoded-bytes budget is not read (a large archive, not a hostile one). Every OTHER refusal met anywhere
-# inside a container or a compound file (a bomb-like or lying member, an unsafe name or a link, overlapping
-# entries, a damaged stored member, an entity, a DTD or an external reference in any part, words addressed to an AI
-# agent, a member nested too deep) refuses the WHOLE file: its honest siblings are not answered, and the listing is
-# kept as findings. Extends the main session's ruling for unsafe member names (ADR-072 integration, item 9).
+# What a file holds, and what it does to the answer about the WHOLE file (ADR-080, as lanes FX and FX2 state it):
+# 1. A parser-level attack refuses the whole file: an entity, a DTD, an XInclude or an external entity (rule
+#    "external_reference": something the XML parser itself would load), a bomb-like or lying member, overlapping
+#    entries, an unsafe name or a link, a damaged member, nesting too deep, words addressed to an AI agent. Its
+#    honest siblings are not answered; the listing is kept as findings (the main session's ruling for unsafe member
+#    names, ADR-072 integration, item 9). Only the rules in PART_ONLY_RULES concern just the part they were met in:
+#    an encrypted member is not decrypted, a sparse TAR member's holes are not materialised, a member that would
+#    pass what is left of the decoded-bytes budget is not read (a large archive, not a hostile one).
+# 2. A reference to something outside the file (an outside buffer, image, template, linked workbook or sheet,
+#    network link, link address) is never followed and never refuses by itself: the file is read as before, a note
+#    says OUTSIDE (with what refers), and what cannot be known without the outside thing is "cannot" (a glTF whose
+#    geometry is in an outside buffer is read as its header only; a sheet that lives outside the workbook is not a
+#    member; a formula cell with no cached value is left empty and counted as not known).
+# 3. Embedded active content (a macro project, a PDF script, auto-run or launch action, an embedded file, an SVG
+#    script or event attribute) is never run and never refuses by itself: a note says active(what); the file's own
+#    content is read as before.
 PART_ONLY_RULES = frozenset({"encrypted", "sparse_member", "max_decoded_bytes"})
+OUTSIDE = "refers to a file or address outside itself: not fetched"
+
+
+def outside(what: str) -> str:
+    """The note for references to outside files or addresses (rule 2): `what` says which parts refer, never where."""
+    return f"the file {OUTSIDE} ({what})"
+
+
+def active(what: str) -> str:
+    """The note for embedded active content (rule 3): `what` is "a macro", "a script", "an auto-run action"..."""
+    return f"the file holds {what}: not run"
 
 
 def refuses_whole(rule) -> bool:
@@ -97,5 +117,6 @@ def exit_code(outcome: str) -> int:
     return EXIT_CODES[outcome]
 
 
-__all__ = ["ANSWERED", "CANNOT", "CANNOT_REASONS", "EXIT_CODES", "MISUSE", "OUTCOMES", "PART_ONLY_RULES", "REFUSED",
-           "exit_code", "member_path", "of_decoded", "of_error", "of_member", "of_production", "refuses_whole"]
+__all__ = ["ANSWERED", "CANNOT", "CANNOT_REASONS", "EXIT_CODES", "MISUSE", "OUTCOMES", "OUTSIDE", "PART_ONLY_RULES",
+           "REFUSED", "active", "exit_code", "member_path", "of_decoded", "of_error", "of_member", "of_production",
+           "outside", "refuses_whole"]

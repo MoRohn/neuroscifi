@@ -10,7 +10,7 @@ import pytest
 
 from b2_fixtures import b2_registered  # noqa: F401
 
-from neuroscifi.artifacts import adapters, measure_geo
+from neuroscifi.artifacts import adapters, measure_geo, outcome
 from neuroscifi.artifacts import types as T
 from neuroscifi.artifacts.adapters import _b2, svg
 
@@ -65,22 +65,25 @@ def test_viewbox_units_text_and_use():
     assert svg.length("1in") == 96.0 and svg.length("10%") is None
 
 
-def test_active_and_external_content_is_refused_and_not_kept():
+def test_active_content_is_refused_and_not_kept_outside_references_are_noted():
     body = ('<script>alert(1)</script><foreignObject><div>x</div></foreignObject>'
             '<rect width="1" height="1" onclick="steal()"/><image href="data:image/png;base64,AAAA" width="2" '
             'height="2"/><a href="https://example.invalid"><circle r="1"/></a>')
     out = adapters.decode(_svg(body, 'width="5" height="5" onload="go()"'))
     note = next(n for n in out.notes if n.startswith("refused"))
-    for what in ("script", "foreignObject", "2 x event attribute", "link address"):
+    for what in ("script", "foreignObject", "2 x event attribute"):
         assert what in note
     d = out.representation
     assert not any("alert" in (s.text or "") for s in d.shapes)
     assert "example" not in json.dumps([dict(s.attrs) for s in d.shapes])
-    # lane FX, item 2: what a renderer would FETCH (an outside image or use target) refuses the whole drawing
-    for fetched in ('<image href="https://example.invalid/a.png" width="2" height="2"/>', '<use href="other.svg#x"/>'):
-        with pytest.raises(T.Refused) as err:
-            adapters.decode(_svg('<rect width="1" height="1"/>' + fetched, 'width="5" height="5"'))
-        assert err.value.rule == "external_reference"
+    # ADR-080 (lane FX2): a reference to an outside file or address is never followed and never refuses the drawing;
+    # the drawing is read, a note names what refers (never where), and the outside image's shape keeps no address
+    out = adapters.decode(_svg('<rect width="1" height="1"/><image href="https://example.invalid/a.png" width="2" '
+                               'height="2"/><use href="other.svg#x"/><a href="https://example.invalid"><circle r="1"/>'
+                               '</a>', 'width="5" height="5"'))
+    assert [s.kind for s in out.representation.shapes] == ["rect", "image", "circle"]
+    assert outcome.outside("1 x image, 1 x link address, 1 x use target") in out.notes
+    assert "example" not in json.dumps([dict(s.attrs) for s in out.representation.shapes] + list(out.notes))
 
 
 def test_svg_hostile_xml():

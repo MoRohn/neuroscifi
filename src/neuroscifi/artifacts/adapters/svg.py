@@ -11,8 +11,8 @@ USE_COPIES copies in all). Each shape keeps a few presentation attributes (id, c
 stroke-width, opacity, font-size, text-anchor), cut to 120 characters.
 
 Refused content, recorded in the notes and never kept: script, foreignObject, iframe, embedded HTML, event
-attributes (on...), references to anything outside the file (an image, a `use` or a link's address); a style
-sheet is noted and not applied. Text, titles and descriptions are the artifact's own words (untrusted).
+attributes (on...); a style sheet is noted and not applied. References to anything outside the file (an image, a
+`use` target or a link's address) are never followed and never refuse the drawing (ADR-080): a note counts them. Text, titles and descriptions are the artifact's own words (untrusted).
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ import numpy as np
 from ..safe import Deadline, injection_notes, local
 from ..safe_b2 import count, parse_xml
 from ..types import Decoded, Drawing, Malformed, Refused, Shape
+from .. import outcome
 from . import Adapter
 
 KEEP = ("id", "class", "fill", "stroke", "stroke-width", "opacity", "font-size", "text-anchor")
@@ -240,6 +241,7 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
     by_id = {el.get("id"): el for el in root.iter() if el.get("id")}
     shapes: list[Shape] = []
     refused: dict[str, int] = {}
+    outside_refs: dict[str, int] = {}
     notes: list[str] = []
     n_points = [0]
     visits = [0]
@@ -247,6 +249,9 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
 
     def refuse(what):
         refused[what] = refused.get(what, 0) + 1
+
+    def refer(what):        # a reference to an outside file or address: never followed, never a refusal (ADR-080)
+        outside_refs[what] = outside_refs.get(what, 0) + 1
 
     def keep(el) -> dict[str, str]:
         return {k: str(el.get(k))[:120] for k in KEEP if el.get(k) is not None}
@@ -322,13 +327,13 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
             if href and href.startswith("data:"):
                 extra["source"] = "embedded image (not decoded)"
             elif href:
-                refuse("external image reference")
-                extra["source"] = "external reference (refused, not loaded)"
+                refer("image")
+                extra["source"] = "outside reference (not fetched)"
             add("image", [(x, y), (x + w, y), (x + w, y + h), (x, y + h)], el, m, extra=extra)
             return
         elif tag == "use":
             if _external(href):
-                refuse("external use reference")
+                refer("use target")
                 return
             target = by_id.get((href or "")[1:])
             if target is None or use_depth >= USE_DEPTH:
@@ -350,7 +355,7 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
             return
         elif tag == "a":
             if _external(href):
-                refuse("link address (not followed)")
+                refer("link address")
         if depth > 256:
             return
         for child in el:
@@ -371,11 +376,8 @@ def decode_svg(data: bytes, detected, limits) -> Decoded:
     for name in root.attrib:
         if local(name).lower().startswith("on"):
             refuse("event attribute")
-    fetched = sorted(k for k in refused if k.startswith("external"))
-    if fetched:
-        # a renderer would fetch what these name (lane FX, item 2): the drawing is refused as a whole
-        raise Refused("the drawing refers to outside files a renderer would load (" + ", ".join(fetched) + "): it is "
-                      "not read", rule="external_reference")
+    if outside_refs:
+        notes.append(outcome.outside(", ".join(f"{n} x {k}" for k, n in sorted(outside_refs.items()))))
     if refused:
         notes.append("refused and not kept: " + ", ".join(f"{n} x {k}" for k, n in sorted(refused.items())))
     drawing = Drawing(float(width or 0.0), float(height or 0.0), tuple(shapes))
