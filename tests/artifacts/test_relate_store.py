@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 import r_pairs as RP
-from neuroscifi.artifacts import relate_cli, store as A
+from neuroscifi.artifacts import relate as R, relate_cli, store as A
 from neuroscifi.instance import governance, store
 
 T0 = 1_800_000_000.0
@@ -38,40 +38,20 @@ def links(db):
     return db.execute("SELECT src, relation, dst_id, how, confidence FROM artifact_links ORDER BY relation").fetchall()
 
 
-def _as_plain_text(files: dict) -> dict:
-    """The pair with its Markdown note renamed to plain text: lane FX5 (C6a) records a verdict only when each text
-    side is a plain source (a Markdown note may hold text a reader does not see)."""
-    return {(n[:-3] + ".txt" if n.endswith(".md") else n): d for n, d in files.items()}
-
-
-def test_a_styled_document_is_shown_and_not_recorded(individual):
+def test_relate_shows_the_verdict_and_stores_no_link(individual):
+    # lane FX5 (ADR-081, the owner's decision of 2026-11-27): verdicts are display-only; no consistent_with or
+    # contradicts link is stored, whatever the question or the sources
     db, _ = individual
     q, matching, other = PAIRS["doc_mean_csv"]
-    a, b = held(db, other)
-    out = relate_cli.relate(db, a, b, question=q, now=T0)
-    assert out["answer"] is False and links(db) == []
-    assert "not recorded: this document may hold text a reader does not see" in out["because"]
-
-
-def test_relate_records_the_verdict_as_a_labelled_claim(individual):
-    db, _ = individual
-    q, matching, other = PAIRS["doc_mean_csv"]
-    matching, other = _as_plain_text(matching), _as_plain_text(other)
     a, b = held(db, other)
     before = counts(db)
     out = relate_cli.relate(db, a, b, question=q, now=T0)
-    assert out["answer"] is False
-    rows = links(db)
-    assert [(r[0], r[1], r[2]) for r in rows] == [(a, "contradicts", b)]
-    assert rows[0][3].startswith("document.sentence:1/table.column:1.mean;tol=") and rows[0][4] == 0.8
+    assert out["answer"] is False and links(db) == []
+    assert R.NOT_RECORDED in out["because"]
     assert counts(db) == before                    # nothing outside the artifact tables changed: no knowledge row
-    shown = A.show(db, b)
-    assert any(link["relation"] == "contradicts" for link in shown["links"])
-    from neuroscifi.artifacts.cli import _plain
-    assert "the system's claim from measuring both artifacts; not evidence" in _plain("show", shown)
-    c, d = held(db, {"note2.txt": matching["note.txt"] + b"\n", "temps2.csv": matching["temps.csv"]})
-    assert relate_cli.relate(db, c, d, question=q, now=T0)["answer"] is True
-    assert ("consistent_with",) in {(r[1],) for r in links(db) if r[0] == c}
+    assert not [x for x in A.show(db, b)["links"] if x["relation"] in ("consistent_with", "contradicts")]
+    c, d = held(db, {"note2.md": matching["note.md"] + b"\n", "temps2.csv": matching["temps.csv"]})
+    assert relate_cli.relate(db, c, d, question=q, now=T0)["answer"] is True and links(db) == []
 
 
 def test_describes_and_same_subject_are_weak_links(individual):
@@ -102,7 +82,8 @@ def test_forgetting_either_end_removes_the_link_and_a_restore_replays_it(individ
     db, _ = individual
     q, _, other = PAIRS["doc_count_zip"]
     a, b = held(db, other)
-    relate_cli.relate(db, a, b, question=q, now=T0)
+    # a verdict link as an earlier version stored it (lane FX5: none is stored now)
+    A.link(db, a, "consistent_with", "artifact", b, "document.sentence:1/bundle.members;tol=0", 0.8, now=T0)
     assert len(links(db)) == 1
     copy = sqlite3.connect(tmp_path / "copy.sqlite")
     db.backup(copy)
@@ -124,15 +105,15 @@ def test_an_unreadable_end_is_cannot_and_records_nothing(individual):
 def test_the_command_speaks_plain_words_and_json(individual, capsys):
     db, path = individual
     q, _, other = PAIRS["doc_size_png"]
-    a, b = held(db, _as_plain_text(other))
+    a, b = held(db, other)
     db.close()
     from neuroscifi.cli import main
     assert main(["artifact", "relate", "--db", str(path), a, b, "--question", q]) == 0
     text = capsys.readouterr().out
-    assert "they DISAGREE" in text and "recorded:" in text and "not evidence" in text
+    assert "they DISAGREE" in text and "not recorded:" in text and "nothing recorded" in text
     assert main(["artifact", "relate", "--db", str(path), a, b, "--json"]) == 0
     value = json.loads(capsys.readouterr().out)
-    # lane FX4 (R3): without a question the answer is shown, and no consistent_with/contradicts link is recorded
+    # without a question the answer is shown, and no consistent_with/contradicts link is recorded
     assert value["answer"] is False
     assert not [x for x in value["links"] if x["relation"] in ("consistent_with", "contradicts")]
     assert main(["artifact", "relate", "--db", str(path), a, a]) == 2

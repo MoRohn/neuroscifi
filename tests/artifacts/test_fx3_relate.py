@@ -1,4 +1,5 @@
-"""Lane FX3 (ADR-081), relater classes X-A to X-I found on the spent withheld cross cases. Every pair is built here
+"""Lane FX3 (ADR-081), relater classes X-A to X-I found on the spent withheld cross cases (X-C, X-D, X-E: the three
+comparisons lane FX5 withdrew by the owner's decision; their twins now assert "cannot"). Every pair is built here
 (hand-assembled bytes, or the cross family's public generators with seeds of this file's own range 30000-30099, none
 of them a benchmark case), as twins whose truth is known by construction. Each class test fails before the lane's
 rules; the traps beside them (what must stay "cannot") hold before and after: no answer returns by guessing."""
@@ -6,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
 import math
 import random
 import struct
@@ -58,53 +58,23 @@ def _sums(files: dict, algo: str = "sha256", spoil: str | None = None) -> bytes:
     return "".join(lines).encode()
 
 
+# Lane FX5 (ADR-081): the members comparison was WITHDRAWN (the owner's decision, 2026-11-27). Its twins are kept:
+# every one is "cannot" now, with the plain reason.
 @pytest.mark.parametrize("algo", ["sha256", "md5", "sha1"])
-@pytest.mark.parametrize("question", ["Do the files in the bundle match the checksum list?",
-                                      "Are the hashes in this list the hashes of the archive's files?"])
-def test_a_checksum_listing_is_compared_member_by_member(algo, question):
-    zipped = _zip(MEMBERS)
-    assert _ask({"bundle.zip": zipped, "SUMS": _sums(MEMBERS, algo)}, question) is True
-    assert _ask({"bundle.zip": zipped, "SUMS": _sums(MEMBERS, algo, spoil="doc/guide.txt")}, question) is False
-    changed = dict(MEMBERS, **{"data/a.dat": b"\x07" * 332 + b"\x08"})
-    assert _ask({"bundle.zip": _zip(changed), "SUMS": _sums(MEMBERS, algo)}, question) is False
-    # lane FX5 (C1): a question with a word the comparison's grammar does not read ("made") is "cannot"
-    assert _ask({"bundle.zip": zipped, "SUMS": _sums(MEMBERS, algo)},
-                "Was this list of hashes made from this archive?") is None
-
-
-def test_a_size_listing_in_plain_text_is_compared_member_by_member():
+def test_a_checksum_or_size_listing_is_cannot_since_the_withdrawal(algo):
+    from neuroscifi.artifacts.relate import WITHDRAWN
     zipped = _zip(MEMBERS)
     text = "".join(f"{len(b):>7}  {n}\n" for n, b in MEMBERS.items()).encode()
-    as_json = json.dumps({"entries": [{"name": n, "size": len(b)} for n, b in MEMBERS.items()]}).encode()
-    q = "Are the sizes in the manifest the sizes of the files in the archive?"
-    assert _ask({"pack.zip": zipped, "manifest.txt": text}, q) is True
-    # lane FX5 (C2): a listing is read from plain text only; a JSON listing is "cannot"
-    assert _ask({"pack.zip": zipped, "manifest.json": as_json}, q) is None
-    wrong = text.replace(b"    333", b"    334")
-    assert _ask({"pack.zip": zipped, "manifest.txt": wrong}, q) is False
-    # sizes are measured for a TAR archive too
-    assert _ask({"pack.tar": _tar(MEMBERS), "manifest.txt": text}, q) is True
-
-
-def test_listing_traps_stay_cannot():
-    zipped = _zip(MEMBERS)
-    q = "Do the files in the bundle match the checksum list?"
-    # a listing of another archive's files names none of these members: not a listing of this archive
-    other = _sums({"x/one.bin": b"1", "x/two.bin": b"2", "x/three.bin": b"3"})
-    assert _ask({"bundle.zip": zipped, "SUMS": other}, q) is None
-    # a TAR's members are not read again to hash them: a digest listing of a TAR cannot be checked
-    assert _ask({"bundle.tar": _tar(MEMBERS), "SUMS": _sums(MEMBERS)}, q) is None
-
-
-def test_a_listing_that_names_a_member_the_archive_lacks_disagrees():
-    zipped = _zip(MEMBERS)
-    q = "Do the files in the bundle match the checksum list?"
-    # lane FX5 (C3): an extra listed member alone is a difference on one side only ("does the list give the digests
-    # of all the files" holds): "cannot"; a member renamed (listed and missing on both sides) disagrees
-    listing = _sums(MEMBERS) + _sums({"doc/missing.txt": b"gone"})
-    assert _ask({"bundle.zip": zipped, "SUMS": listing}, q) is None
-    renamed = _sums(MEMBERS).replace(b"doc/guide.txt", b"doc/other.txt")
-    assert _ask({"bundle.zip": zipped, "SUMS": renamed}, q) is False
+    for files, q in (({"bundle.zip": zipped, "SUMS": _sums(MEMBERS, algo)}, "Do the files in the bundle match the "
+                                                                              "checksum list?"),
+                     ({"bundle.zip": zipped, "SUMS": _sums(MEMBERS, algo, spoil="doc/guide.txt")},
+                      "Are the hashes in this list the hashes of the archive's files?"),
+                     ({"pack.zip": zipped, "manifest.txt": text},
+                      "Are the sizes in the manifest the sizes of the files in the archive?"),
+                     ({"pack.tar": _tar(MEMBERS), "manifest.txt": text},
+                      "Are the sizes in the manifest the sizes of the files in the archive?")):
+        out = relate(files, q)
+        assert out["answer"] is None and out["because"][0] == WITHDRAWN
 
 
 # ---- X-D: drawn links against written links ------------------------------------------------------------------------
@@ -134,12 +104,11 @@ def _edge_text(edges, verb="hands over to") -> bytes:
 
 @pytest.mark.parametrize("question", ["Do the connections in the drawing match the notes?",
                                       "Are the connections in the picture the ones written in the notes?"])
-def test_drawn_links_are_compared_with_the_links_a_text_names(question):
+def test_drawn_links_are_cannot_since_the_withdrawal(question):
     svg = _graph_svg(EDGES)
-    assert _ask({"flow.svg": svg, "notes.txt": _edge_text(EDGES)}, question) is True
     moved = EDGES[:2] + [("Cedar", "Elm")] + EDGES[3:]
-    assert _ask({"flow.svg": svg, "notes.txt": _edge_text(moved)}, question) is False
-    assert _ask({"flow.svg": _graph_svg(moved), "notes.txt": _edge_text(EDGES)}, question) is False
+    for files in ({"flow.svg": svg, "notes.txt": _edge_text(EDGES)}, {"flow.svg": svg, "notes.txt": _edge_text(moved)}):
+        assert _ask(files, question) is None                       # lane FX5 (ADR-081): withdrawn
 
 
 def test_link_traps_stay_cannot():
@@ -188,12 +157,11 @@ ONSETS = [1.1, 2.75, 4.3, 6.05]
 
 @pytest.mark.parametrize("question", ["Do the bells ring at the times in the cue sheet?",
                                       "Do the bells in the recording start at the cue times?"])
-def test_onsets_are_compared_with_a_cue_sheet(question):
+def test_onsets_against_a_cue_sheet_are_cannot_since_the_withdrawal(question):
     wav = _beeps(ONSETS)
-    assert _ask({"bells.wav": wav, "cues.txt": _cues(ONSETS)}, question) is True
     late = ONSETS[:2] + [ONSETS[2] + 0.4] + ONSETS[3:]
-    assert _ask({"bells.wav": wav, "cues.txt": _cues(late)}, question) is False
-    assert _ask({"bells.wav": _beeps(late), "cues.txt": _cues(ONSETS)}, question) is False
+    for files in ({"bells.wav": wav, "cues.txt": _cues(ONSETS)}, {"bells.wav": wav, "cues.txt": _cues(late)}):
+        assert _ask(files, question) is None                       # lane FX5 (ADR-081): withdrawn
 
 
 def test_cue_traps_stay_cannot():

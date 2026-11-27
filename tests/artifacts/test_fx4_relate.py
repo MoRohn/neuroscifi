@@ -1,7 +1,8 @@
 """Lane FX4 (ADR-081, second part): the security reviewer's relater constructions (rebuilt in fx4_review_pairs.py)
 must never be answered wrongly, and every pair whose truth is "cannot" must get "cannot". Plus the rules R1 (a
-comparison decides only when the question names what it measures and where), R3 (only such an answer becomes a
-durable link) and R5 (a digest comparison is linear: 4,000 members in a few seconds)."""
+comparison decides only when the question names what it measures and where) and R5 (bounded work: 4,000 members in a
+few seconds). Lane FX5 withdrew the members, links and times comparisons and made every verdict display-only
+(ADR-081): R3's recording test moved to test_fx5_links.py."""
 from __future__ import annotations
 
 import hashlib
@@ -15,7 +16,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fx4_review_pairs as P  # noqa: E402
 
 from neuroscifi.acceptance.omni.subject import relate  # noqa: E402
-from neuroscifi.artifacts import adapters, relate as R  # noqa: E402
 
 PAIRS = P.pairs()
 
@@ -31,25 +31,9 @@ def test_no_reviewer_pair_is_answered_wrongly(name, files, question, truth):
 
 def test_a_single_cue_word_never_selects_a_comparison():
     files = {"p.zip": P.zipped(P.PACK), "list.txt": P.size_lines(P.PACK).encode()}
-    for question in ("Is the list right for this archive?", "Do the files agree?", "Check the list."):
+    for question in ("Is the list right for this archive?", "Do the files agree?", "Check the list.",
+                     "Do the byte sizes in the list match the files in the archive?"):   # lane FX5: withdrawn
         assert relate(dict(files), question)["answer"] is None, question
-    assert relate(dict(files), "Do the byte sizes in the list match the files in the archive?")["answer"] is True
-
-
-def _sides(files):
-    out = []
-    for name, data in files.items():
-        out.append(R.side(adapters.decode(data, name=name), name=name, data=data))
-    return out
-
-
-def test_only_a_specific_answer_may_become_a_link():
-    files = {"p.zip": P.zipped(P.PACK), "list.txt": P.size_lines(P.PACK).encode()}
-    a, b = _sides(files)
-    named = R.compare(a, b, "Do the byte sizes in the list match the files in the archive?")
-    assert named.answer is True and named.specific
-    unnamed = R.compare(a, b, None)
-    assert not unnamed.specific
 
 
 def test_a_digest_listing_of_four_thousand_members_is_linear():

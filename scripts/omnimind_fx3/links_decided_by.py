@@ -1,6 +1,8 @@
-"""List, or remove, the relation links a named comparison of lane FX3 decided (ADR-081, rollback; ruling R9).
+"""List, or remove, the relation links a named comparison of lane FX3 decided, or every relater verdict link
+(ADR-081, rollback; ruling R9; lane FX5: verdicts are display-only, so `--by any` lists every consistent_with /
+contradicts link an earlier version stored).
 
-    PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by members|links|times [--remove]
+    PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by members|links|times|any [--remove]
 
 Without --remove it is a dry run: it prints what it would remove (source id, relation, other id, basis) and removes
 nothing. Only with the owner's explicit --remove does it delete exactly those

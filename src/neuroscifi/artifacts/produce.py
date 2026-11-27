@@ -524,9 +524,8 @@ def _record_links(db, pieces, related, now) -> list:
         first, second = pieces[i].source, pieces[j].source
         if first == second or not (first.startswith("artifact-") and second.startswith("artifact-")):
             continue
-        # lane FX5 (C4): through the one gate, `Relation.specific`: a relation found with no question records no
-        # consistent_with / contradicts link (it is shown in the production's record); describes and same_subject
-        # are recorded as before
+        # lane FX5 (ADR-081): the relater's verdicts are display-only: shown in the production's record, never stored
+        # as consistent_with / contradicts links; describes and same_subject are recorded as before
         out += relate_cli.record_links(db, first, second, rel, now=now)
     return out
 

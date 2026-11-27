@@ -60,7 +60,7 @@ clean child, the file is refused ("external_unguarded") and kept unread, never d
 | `nsf artifact add FILE...` | the file kept beside your individual, with what could be read |
 | `nsf artifact list`, `show ID [--why]`, `facts ID` | what is kept; one artifact in detail; measurements with how each was computed |
 | `nsf artifact make FILE\|ID... -r "what you want to know"` | a made result (or an answer in words when words serve), checked and kept with why |
-| `nsf artifact relate A B --question "does the total match?"` | what one measures against what the other states; recorded as the system's claim, not evidence |
+| `nsf artifact relate A B --question "does the total match?"` | what one measures against what the other states; the verdict is shown only, never stored (not evidence). Verdicts an earlier version stored: `PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by any` lists them, `--remove` removes them |
 | `nsf artifact export ID PATH` | the bytes in a new file only you can read (never overwrites) |
 | `nsf artifact forget ID` | gone, with everything made from it |
 | `nsf artifact release ID` | a file a forget held is usable again (your statement that it does not name what was forgotten) |

@@ -1,9 +1,9 @@
-"""Lane FX5, ruling C6 (ADR-081): (a) a durable verdict link only when each text side is a plain source; a side that
-may hold text a reader does not see gives an answer marked "not recorded", and nothing is stored, on every path
-(the production's sources reach the relater with their decoder's format and notes); (b) with no question, a word in
-a sentence never selects an aggregate, and a stated number is compared only with a measured number its own sentence
-names; (c) a rollback naming a structure comparison finds every link it took part in. The second review's delta
-constructions (p05-p16) are rebuilt here with fx5_pairs' builders, beside this lane's own."""
+"""Lane FX5, ruling C6 (ADR-081), as kept after the owner's decision that verdicts are display-only: (a) a source
+holding text a reader does not see never leads to a stored link on any path, and the production's sources reach the
+relater with their decoder's format and notes (so its hidden-text checks apply there); (b) with no question, a word
+in a sentence never selects an aggregate, and a stated number is compared only with a measured number its own
+sentence names. The second review's delta constructions (p05-p16) are rebuilt here with fx5_pairs' builders, beside
+this lane's own."""
 from __future__ import annotations
 
 import sys
@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fx5_pairs as P  # noqa: E402
 
 from neuroscifi.artifacts import produce as PR, relate as R, relate_cli, store as A  # noqa: E402
-from neuroscifi.artifacts.relate_read import unit_of  # noqa: E402
 from neuroscifi.instance import store  # noqa: E402
 
 T0 = 1_800_000_000.0
@@ -58,30 +57,21 @@ def test_unseen_text_never_records_a_link_on_any_path(tmp_path, form):
     db = store.create(tmp_path / "i.sqlite", T0)
     a, b = _held(db, {"costs.csv": CSV, name: memo})
     out = relate_cli.relate(db, a, b, question=Q, now=T0)                       # the command, with a question
-    assert out["answer"] is None or "not recorded: this document may hold text a reader does not see" in \
-        out["because"]
+    assert out["answer"] is None or R.NOT_RECORDED in out["because"]
     made = PR.produce(db, "a document of both", [a, b], form="document", now=T0 + 1)   # the production, none
     assert made.status == "made"
     assert _verdicts(db) == []
     db.close()
 
 
-def test_a_plain_memo_records_and_the_production_passes_its_format(tmp_path):
+def test_the_production_passes_its_sources_format(tmp_path):
     db = store.create(tmp_path / "i.sqlite", T0)
     a, b = _held(db, {"costs.csv": CSV, "memo.txt": (SAID + "\n").encode()})
-    out = relate_cli.relate(db, a, b, question=Q, now=T0)
-    assert out["answer"] is True and [x["relation"] for x in out["links"]] == ["consistent_with"]
     pieces, _ = PR.interpret(db, [a, b], PR.Limits())
     assert [p.decoded_as[0] for p in pieces] == ["csv", "text"]
     sides = [R.side(PR._as_decoded(p), name=p.label) for p in pieces]
     assert [s.fmt for s in sides] == ["csv", "text"]
     db.close()
-
-
-def test_a_side_without_a_format_is_never_specific():
-    from neuroscifi.artifacts import adapters
-    bare = R.side(adapters.decode(CSV, name="costs.csv").representation)      # a bare representation: no format
-    assert bare.fmt == "" and R._visibility_unknown(bare)
 
 
 def test_the_html_readers_hidden_element_note_reaches_the_production_side():
@@ -108,7 +98,7 @@ def test_no_question_no_aggregate_from_a_word(memo):
     a = R.side(adapters.decode(CSV, name="costs.csv"), name="costs.csv", data=CSV)
     b = R.side(adapters.decode(memo, name="memo.txt"), name="memo.txt", data=memo)
     rel = R.compare(a, b, None)
-    assert rel.answer is None and not rel.specific
+    assert rel.answer is None
 
 
 def test_no_question_a_number_its_sentence_names_is_still_compared():
@@ -118,21 +108,4 @@ def test_no_question_a_number_its_sentence_names_is_still_compared():
         a = R.side(adapters.decode(sound, name="s.wav"), name="s.wav", data=sound)
         b = R.side(adapters.decode(note, name="n.txt"), name="n.txt", data=note)
         rel = R.compare(a, b, None)
-        assert rel.answer is answer and not rel.specific                         # shown; never recorded (C4 (A))
-
-
-# ---- (c) the rollback finds every link a structure comparison took part in -------------------------------------
-
-def test_a_structure_comparison_is_kept_in_the_basis_after_four_others(tmp_path):
-    q = R.Quantity("number", "table.column:1.sum", 1.0, unit=unit_of("eur"), aggregate="sum")
-    s = R.Statement("number", "document.sentence:0", 1.0, unit=unit_of("eur"))
-    legacy = [R.Pair("consistent", q, s, 1.0, 1.0, 0.5, True, "x") for _ in range(5)]
-    mq = R.Quantity("members", "bundle.members.listing", ())
-    ms = R.Statement("members", "document.listing", ())
-    rel = R.Relation(True, legacy + [R.Pair("consistent", mq, ms, 1, 1, 0.0, True, "y")], list(range(6)), "")
-    assert "bundle.members.listing/document.listing" in rel.basis()
-    db = store.create(tmp_path / "i.sqlite", T0)
-    a, b = _held(db, {"k.zip": P.zip_of(P.KIT), "list.txt": P.sizes(P.KIT)})
-    A.link(db, a, "consistent_with", "artifact", b, rel.basis(), 0.8, now=T0)
-    assert [x["src"] for x in relate_cli.links_decided_by(db, "members")] == [a]
-    db.close()
+        assert rel.answer is answer and R.NOT_RECORDED in rel.because()           # shown; never recorded

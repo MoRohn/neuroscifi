@@ -6946,3 +6946,53 @@ Measured after C6 (development; `omnimind_fx5.json`): unchanged on every relater
 23/33/0, own 49/50/0), opened cross 72/26/0 and 44/34/0, development cross 70 of 72, FX3 corpus 180/96/0, FX corpus
 84/60/0 (all ask questions). Tests: `tests/artifacts/test_fx5_c6.py` (the review's p05-p16 forms rebuilt and the
 lane's own; 17 of its 20 tests fail on 6328828).
+
+## ADR-081, addition (2026-11-27, lane FX5 last part): the three comparisons withdrawn; every relater verdict shown only
+
+**Three constructions, three breaks.** The comparisons of an archive's members against a listing, of a drawing's
+links against a text and of a sound's tone times against a cue sheet were built by lane FX3 (word cues), tightened
+by lane FX4 (a quantity and a "where" word must be named; hidden text detected format by format) and rebuilt by lane
+FX5 by construction (a closed question grammar, plain sources only, every line and element read). Each was broken by
+a fresh security reviewer with new pairs: **24 of 27** wrong or answered where "cannot" was right; **30 of 56**
+wrong; **31 of 63** wrong (members 9, links 14, times 8), every wrong answer recorded as a durable link. The third
+review's classes are what a word-level construction cannot see: a question whose every word is in a vocabulary but
+asks something else ("Are all the files in the archive the same size?", "Are all the nodes linked?", "about",
+"there are", two questions joined by "and"); a drawing whose element NAMES are all known while what a viewer sees
+differs (a "75%" endpoint read as 0, an edge painted over by a wide node stroke, a style sheet in a processing
+instruction, a bar that is a labelled line); a sound with two beeps 17 ms apart read as one, or a quieter tone
+inside a louder one. Three different constructions failed the same way: that is the finding.
+
+**The owner's decision (2026-11-27, verbatim label "Withdraw them").** The three comparisons are removed: their
+deciding code, their grammar (`artifacts/relate_grammar.py`) and their readers (the listing, SVG node-link and cue
+readers, the question digest, the `specific` gate); git history keeps them; there is no dormant switch. A question of
+those kinds between those kinds of artifacts gets "cannot" with the plain reason "this comparison was withdrawn: it
+could not be made reliable", and no older comparison answers it in their place. **Every relater verdict is
+display-only** until a relater passes an examination: no path stores a `consistent_with` or `contradicts` link (not
+`nsf artifact relate` with any question, not the production pipeline, not the older comparisons, of which the third
+review found 7 of 12 adversarial pairs wrong and marked specific); each answer is shown with the line "not recorded:
+the relater's answers are shown only, never stored as links, until a relater passes an examination (ADR-081)".
+`derived_from`, `describes` and `same_subject` are recorded exactly as before. The relater is reported **not
+supported**. The identification and refusal fixes of ADR-081 stay.
+
+**What remains.** The older comparisons (totals, means, extremes, durations, image and mesh sizes, counts, chart
+series, call traces, timelines) answer for display only, with the narrowing of lanes FX4 and FX5 kept for what is
+shown: hidden text in a source blocks an answer; a stated number whose sentence narrows, denies or conditions it,
+whose document excludes something, or that is stated twice with two values is not compared; with no question no
+word selects an aggregate. The artifacts-only AI-address screen is a **best-effort screen, English only**: 5 of 12
+lines written after it was changed were caught (the third review: 5 of 12 of its own). The PDF cross-reference chain
+is followed as a tolerant reader follows it (PDF white space including NUL, whole integers, every startxref, /Prev
+and /XRefStm, a visited set); a loop is refused (`self_reference`) and a chain from the last startxref that cannot be
+followed to its end within the budget is refused (`xref_unreadable`); 63 ordinary PDFs keep their outcomes.
+
+**Measured** (development; `docs/quality/evidence/omnimind_fx5.json`): no pair of the three reviews or of the lane's
+own set is answered wrongly; of 206 pairs only 6 are answered (all by older comparisons, all right). Opened cross:
+second split 70 right / 28 cannot / 0 wrong of 98 (decidable 52 of 80; archive_checksums, audio_cues and diagram_text
+now all "cannot"); first split 44 / 34 / 0 of 78 (archive_manifest and route_stops "cannot"). Development cross 70 of
+72. Opened unknown 170/1/0 and hostile 62/62 unchanged.
+
+**Rollback.** Revert lane FX5's last commits to bring the comparisons and recording back (not advised: see above).
+Existing stores: nothing is deleted automatically. Verdict links an earlier version stored are listed by the owner's
+step `PYTHONPATH=src python scripts/omnimind_fx3/links_decided_by.py --db PATH --by any` (a dry run that removes
+nothing) and removed with `--remove`; the removal writes no event, so the history keeps their "linked" entries.
+Links that the first version's changed older rules stored cannot be told apart from others by any field; `--by any`
+removes every verdict link, which covers them.
