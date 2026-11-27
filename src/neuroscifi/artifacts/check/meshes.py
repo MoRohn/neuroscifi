@@ -14,6 +14,11 @@ them; this module re-derives them on its own): `unit`, `triangle_count`, `bounds
 `volume` (the analytic value where the form has one: box, extrusion, the faceted solid of revolution, the closed
 surface, the markers; within 1e-5 relative), and `values_recovered` for a surface (each grid value read back from
 the vertex at its grid point) and for points (each point read back as the centre of one marker).
+`solid.mesh` (lane P, a given mesh written as it is): closed when every edge of the spec's faces is shared by exactly
+two of them (counted here from the spec), the spec's triangle count, the bounds of the vertices its faces use, the
+absolute signed volume of a closed one, and `values_recovered`: every vertex a face uses is read back from the file
+(at the precision of the format: binary STL stores 32-bit floats). An open given mesh has no inside, so `outward`
+is not judged for it (a passing finding says so).
 """
 from __future__ import annotations
 
@@ -187,6 +192,21 @@ def expectations(spec) -> dict | None:
             upper = (h[:-1, :-1] + h[1:, 1:] + h[1:, :-1]) / 3.0      # (x low, y low), (x high, y high), (x low, y high)
             out["volume"] = float(cell * (lower.sum() + upper.sum()))
         return out
+    if form == "solid.mesh":
+        verts = np.asarray(d["vertices"], dtype=np.float64)
+        faces = np.asarray(d["faces"], dtype=np.int64)
+        if faces.size == 0 or faces.min() < 0 or faces.max() >= len(verts):
+            return None
+        used = verts[np.unique(faces)]
+        und = np.sort(np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]), axis=1)
+        _, use = np.unique(und, axis=0, return_counts=True)
+        closed = bool((use == 2).all())
+        out = {"unit": unit, "closed": closed, "triangles": int(len(faces)), "lo": used.min(axis=0),
+               "hi": used.max(axis=0), "given_vertices": used, "given": True}
+        if closed:
+            tri = verts[faces]
+            out["volume"] = abs(float(np.einsum("ij,ij->i", tri[:, 0], np.cross(tri[:, 1], tri[:, 2])).sum()) / 6.0)
+        return out
     if form == "solid.points":
         p = np.asarray(d["points"], dtype=np.float64)
         s = spec.options.get("marker")
@@ -254,6 +274,9 @@ def check_mesh(data: bytes, media_type: str = "model/stl", spec=None, source=Non
     if closed:
         technical.append(Finding("outward", volume > 0, f"signed volume {volume:.6g}: normals point "
                                  + ("out" if volume > 0 else "in"), measure=volume))
+    elif e is not None and e.get("given"):
+        technical.append(Finding("outward", True, "an open given mesh has no inside: its winding is kept as given "
+                                                  "and not judged"))
     else:
         up = int((cross[:, 2] > 0).sum())
         technical.append(Finding("outward", up == len(f), f"{up} of {len(f)} triangles of the surface face up"))
@@ -294,6 +317,16 @@ def check_mesh(data: bytes, media_type: str = "model/stl", spec=None, source=Non
         share = hits / z.size
         technical.append(Finding("values_recovered", hits == z.size, f"{hits} of {z.size} grid values read back "
                                                                      "from the surface", measure=share))
+    if "given_vertices" in e:
+        want = e["given_vertices"].astype(np.float32).astype(np.float64) if kind == "stl" else e["given_vertices"]
+        want = np.unique(want, axis=0)
+        tol = REL * span
+        hits = 0
+        if len(want) == len(v):
+            hits = int((np.abs(np.unique(v, axis=0) - want).max(axis=1) <= tol).sum())
+        technical.append(Finding("values_recovered", hits == len(want), f"{hits} of {len(want)} given vertices read "
+                                                                        "back from the file",
+                                 measure=hits / max(1, len(want))))
     if "points" in e:
         share = _centres_recovered(v, f, e["points"], span)
         technical.append(Finding("values_recovered", share == 1.0, f"{share:.1%} of the points read back as marker "

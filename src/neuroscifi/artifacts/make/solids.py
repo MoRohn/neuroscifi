@@ -10,6 +10,11 @@ Forms (each a reading contract the checker re-derives from the spec alone):
   (walls down to the base and a flat bottom).
 - `solid.points`: a small octahedron of half-size `marker` at each point (default: 1/100 of the points' largest
   extent, or 1 when they all coincide).
+- `solid.mesh` (lane P): given vertices and triangles, written as they are: only the vertices a face uses, in their
+  given order; a closed mesh (every edge shared by exactly two faces) is turned outward (every face flipped together
+  when its signed volume is negative); an open mesh is written with its given winding. A face that repeats a vertex or
+  has no area, an index out of range, an edge used by more than two faces, or neighbouring faces wound against each
+  other is refused by name: a given mesh is never repaired.
 
 Every solid is watertight with outward normals (the faces are flipped together if the signed volume came out
 negative); nothing is "fixed" silently: an outline that crosses itself, a hole outside its outline, a base above the
@@ -32,6 +37,8 @@ UNITS = ["mm", "cm", "m", "km", "um", "in", "ft", "unitless"]
 MAX_RING_POINTS = 1000
 MAX_HOLES = 32
 MAX_TRIANGLES = 2_000_000
+MAX_MESH_VERTICES = 500_000
+MAX_MESH_FACES = 1_000_000
 _NUM = {"type": "number", "minimum": -1e9, "maximum": 1e9}
 _POINT2 = {"type": "array", "minItems": 2, "maxItems": 2, "items": _NUM}
 _POINT3 = {"type": "array", "minItems": 3, "maxItems": 3, "items": _NUM}
@@ -68,6 +75,11 @@ SCHEMAS = {
     "solid.points": {"data": _data(["points"], {
         "points": {"type": "array", "minItems": 1, "maxItems": 20000, "items": _POINT3}}),
         "options": _options({"marker": {"type": "number", "minimum": 1e-9, "maximum": 1e9}})},
+    "solid.mesh": {"data": _data(["vertices", "faces"], {
+        "vertices": {"type": "array", "minItems": 3, "maxItems": MAX_MESH_VERTICES, "items": _POINT3},
+        "faces": {"type": "array", "minItems": 1, "maxItems": MAX_MESH_FACES, "items": {
+            "type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "integer", "minimum": 0}}}}),
+        "options": _options()},
 }
 
 
@@ -411,6 +423,36 @@ def markers(points, marker: float | None = None):
     return vertices, faces.astype(np.int64)
 
 
+def given_mesh(vertices, faces) -> tuple[np.ndarray, np.ndarray]:
+    """A given triangle mesh as it is (see the module doc): refused by name when it is not a consistent mesh."""
+    v = np.asarray(vertices, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int64)
+    if f.ndim != 2 or f.shape[1] != 3 or v.ndim != 2 or v.shape[1] != 3:
+        raise Malformed("vertices are [x, y, z] and faces [a, b, c]")
+    if f.min() < 0 or f.max() >= len(v):
+        raise Malformed("a face names a vertex that does not exist")
+    used = np.unique(f)
+    new = np.full(len(v), -1, dtype=np.int64)
+    new[used] = np.arange(len(used))
+    v, f = v[used], new[f]
+    tri = v[f]
+    area2 = np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+    size = float(np.ptp(v, axis=0).max()) if len(v) > 1 else 0.0
+    repeated = (f[:, 0] == f[:, 1]) | (f[:, 1] == f[:, 2]) | (f[:, 0] == f[:, 2])
+    if np.any(repeated) or np.any(area2 <= 1e-12 * max(size, 1e-300) ** 2):
+        raise Malformed("a face repeats a vertex or has no area")
+    directed = np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    _, use = np.unique(np.sort(directed, axis=1), axis=0, return_counts=True)
+    if np.any(use > 2):
+        raise Malformed("an edge is shared by more than two faces")
+    _, dir_use = np.unique(directed, axis=0, return_counts=True)
+    if np.any(dir_use > 1):
+        raise Malformed("neighbouring faces are wound against each other (an edge is used twice in one direction)")
+    if bool((use == 2).all()):
+        f = _oriented(v, f)
+    return v, f
+
+
 def mesh_of(spec: Spec) -> tuple[np.ndarray, np.ndarray]:
     d = spec.data
     form = spec.spec
@@ -424,6 +466,8 @@ def mesh_of(spec: Spec) -> tuple[np.ndarray, np.ndarray]:
         return surface(d["values"], d["x"], d["y"], d.get("base_z"))
     if form == "solid.points":
         return markers(d["points"], spec.options.get("marker"))
+    if form == "solid.mesh":
+        return given_mesh(d["vertices"], d["faces"])
     raise Malformed(f"{form} is not a solid form")
 
 
@@ -472,5 +516,6 @@ def media_type(spec: Spec) -> str:
     return "model/obj" if spec.options.get("format", "stl") == "obj" else "model/stl"
 
 
-__all__ = ["SCHEMAS", "UNITS", "box", "default_marker", "extrude", "markers", "media_type", "mesh_of", "obj_bytes",
+__all__ = ["SCHEMAS", "UNITS", "box", "default_marker", "extrude", "given_mesh", "markers", "media_type", "mesh_of",
+           "obj_bytes",
            "render", "revolve", "stl_bytes", "surface", "triangulate"]
