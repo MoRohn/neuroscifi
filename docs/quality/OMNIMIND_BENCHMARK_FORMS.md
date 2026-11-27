@@ -299,9 +299,28 @@ look can measure it.
   examiner); its driver passes the case's candidate forms as what can be made. Nothing here measures benefit to a
   real person.
 
-**The withheld split: status.** No product look has been taken; the ledger holds lane ZW's machinery check through
-the references only. A look needs its rule committed first and the drivers pinned
-(`docs/quality/evidence/omnimind_driver_pins.json`).
+**The withheld split: status. The looks were taken, once each, on `55f89be`** (2026-11-27, by the main session, under
+the rule committed in `docs/quality/OMNIMIND_BENCHMARK.md` with the driver pins; ledger
+`docs/quality/evidence/omnimind_final_uses.jsonl`; evidence and the main session's reading in
+`docs/quality/evidence/omnimind_looks/summary.json`).
+- **forms** (frozen planner `4388f4d`, learning off, 150 cases): **supported on unseen cases**: good 0.687 against the
+  shape-only table's 0.480 and always-prose's 0.440; good or fine 0.927; bad 0.073 (too poor 3, too much 4, unfit 4)
+  against 0.227 and 0.180; 0 violations; explicit honoured 6 of 7; no unmapped name. "Reads the request's words"
+  holds here: words slice 35 of 52 against 18 and 27; pairs both good 20 of 40 against 14; twins 11 of 25 against 0.
+  The oracle control `first_good` could not be run through `final` (stated before the product looks; not run).
+  Caveats: one model-written examiner; no second reader on these cases, so no ceiling; about 30 close calls by the
+  examiner's own count.
+- **cross** (the relater, 78 cases): **not supported**: 48 right, 24 cannot, **6 wrong**; correct of answered 0.889;
+  both twins 21 of 39. By kind: chart, mesh, code and timeline 8 of 8 each; tones 6 right, 2 cannot; report totals 5
+  right, 1 wrong, 2 cannot; of the three kinds only this split has, route stops and archive manifests were answered
+  "cannot" throughout (not exercised), and an image against its caption was answered all 10 times and right on 5: no
+  better than a coin, the fabrication this family was written to catch. Always-consistent: 39 of 78, 0 twins.
+- **learn** (SIMULATED people): **supported on unseen simulated people**: late / all kept 0.713 / 0.656 against the
+  planner alone 0.440 / 0.448 (gains 0.273 and 0.208 against thresholds 0.088 and 0.039); 0.118 below the reference
+  majority rule late (key_majority 0.831 / 0.756); `form_learning` stays off.
+- A "not supported" is never retried on these cases: the relater's weakness is to be fixed and examined on NEW
+  withheld cases. What a look cannot establish: real files, real people, the owner's taste, visual quality or
+  usability, later versions, absent kinds, generality from small n.
 
 ## Honest boundaries
 
