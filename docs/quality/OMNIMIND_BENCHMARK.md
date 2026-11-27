@@ -180,22 +180,69 @@ different: their rule is to be committed before them. The breakdown of the 510 b
 above ("What right is made of").
 
 What the numbers do not say:
-- **The driver decides some outcomes** (review finding B4). Until lane F1's driver lands, `subject.py` itself refuses
-  a document whose text `webcortex.safety.scan_injection` flags (the 4 hostile "instructions aimed at an AI agent"
-  tasks per split credit the driver's refusal, while the product only adds a note), turns a partial decode into
-  "refused", and maps a product error to "cannot" or "refused" by its reason string (which is how the one held-out
-  hostile task became "cannot"). Lane F1 moves these decisions into the product; the withheld looks refuse a driver
-  that is not pinned (see the withheld split below).
+- **Every held-out figure above was taken through the earlier driver** (review finding B4). At `c1f5f2f` and
+  `505b55b`, `subject.py` itself refused a document whose text `webcortex.safety.scan_injection` flagged (the 4
+  hostile "instructions aimed at an AI agent" tasks per split credited the driver's refusal, while the product only
+  added a note), turned a partial decode into "refused", and mapped a product error to "cannot" or "refused" by its
+  reason string (which is how the one held-out hostile task became "cannot"). Since then the product decides: fix
+  lane F1 (`d8bbfd0`) added `Limits.refuse_flagged` (on by default; the store turns it off and marks the file
+  instead), `Decoded.status` and one outcome table, `artifacts/outcome.py` (`of_error`, `of_decoded`), which both the
+  command line's exit codes and the driver read; fix lane F3 (`bdfebab`) moved the last two member decisions into it
+  (`of_member`). Development is unchanged by the move (512 / 12 / 0 / 0). The held-out figures were not re-taken (no
+  held-out run is repeated); the withheld looks are taken through the new driver, pinned.
+- **The driver still decides two things** (second measurement pass, R2-3 and R2-4): `choose_form` re-plans without
+  the explicit form when the planner's `Request` refuses it, and drops explicit, preferred and avoided form names it
+  cannot map (on development neither happens: `FORMS_UNMAPPED == []`); and it decides itself that a climbing or
+  absolute member name "names no member" (in practice the product's whole-archive refusal decides first). Fix lane F4
+  is moving both into the product. **To be confirmed after fix lane F4.**
+- **The driver measures some quantities with its own definitions**, not the product's: a sound's pitch and its
+  number of onsets (with the benchmark's own readers), an image's mean gray (Rec. 709 luminance over the returned
+  pixels), a map's bounding box. A product that computed them differently would be scored by the driver's
+  definition.
+- **The forms subject sees the case's content shape, not the content** (review finding L4). The forms driver builds
+  the planner's `ContentShape` from the case's own fields: the planner never sees content there. The learn driver
+  passes each case's candidate forms to the learner as its set of generators. The name mapping is many-to-one: several
+  product forms count as one benchmark form (document as prose, small multiples as a line chart, a tree diagram as a
+  node-link diagram, a tone as a sonification, a surface view as a solid viewer, an image sequence as an animation),
+  which can turn a choice the examiner did not list into a listed one. A forms figure measures choosing a form from a
+  described shape, not from real files.
+- **One module is shared by a maker and its check** (review finding N1): `artifacts/expr.py` evaluates expressions for
+  both the explorable generator and the explorable check, so that check is not independent of the maker on expression
+  meaning (mitigated by the tests against the page's own script runtime).
 - **The made family's readers and the product's checks follow one written contract** (DESIGN §6's reading contract,
-  ruled by the main session to be lane Z's reading). That they agree on 1,537 fresh product charts (one product
-  finding aside) shows the product meets the contract, not that two independent judges agree on what a person
-  sees; the visibility rule (below) makes the benchmark's reader stricter than the contract was.
+  ruled by the main session to be lane Z's reading). That they agree on 1,537 fresh product charts shows the product
+  meets the contract, not that two independent judges agree on what a person sees. The one product finding of that
+  comparison (a histogram value lying exactly on an inner bin edge drawn in the lower bin) was fixed by fix lane F1
+  (`bb0fedf`, the generator) and fix lane F3 (the check: with a stated bin width every bin is half-open,
+  `test_f3_histogram.py`). The visibility rule (below) made the benchmark's reader stricter than the contract was;
+  the product's own check is not yet as strict (next section).
 - No held-out run is repeated: a later version of a mechanism is judged only on the withheld split.
 
+**What "made right" and "checked" establish, and what they do not** (second measurement pass, R2-1 and R2-2).
+- "Made right" means: the benchmark's reader recovered the source values from the bytes within tolerance, read only
+  what its visibility rule counts as seen, found the palette and safety rules kept, and the bytes were deterministic.
+  It does not mean a person looked at the picture, found it legible or found it useful: no person judged any made
+  artifact.
+- "Checked" (what the store records for a made artifact) is the product's own check's verdict
+  (`artifacts/check/`, code that never imports the generators). At `09bfff6` it is weaker than the benchmark's reader:
+  on product-made line, bar and scatter charts it says ok for six hidings the reader rejects (`visibility="hidden"`
+  on the plot; a style rule `display:none` on the marks or series; a style rule `opacity:0` on the plot; the plot
+  clipped to a 0 x 0 `clipPath`; tick labels at `font-size:0`; on a scatter, circles with no radius).
+- Two hidings pass both the reader and the check at `09bfff6`: an opaque rectangle the size of the picture painted
+  after the plot, and a root `<svg width="0">`. A wrong but consistent picture of either kind would be "made right"
+  and "checked".
+- None of these can raise a product figure: the product's generators never emit them (the reviewer's fuzz of 350
+  fresh seeds: 0 disagreements between the reader and the check). They are limits of what the words establish.
+- Fix lane F4 is making the product's check apply its own visibility rules (written independently of the reader)
+  and the reader refuse the two shared blind spots in one separate commit, with a re-pin of `readers.py` recorded
+  here. **To be confirmed after fix lane F4** (the new hash of `readers.py` and the development `made` 14/14 and
+  `transform` 8/8 after it).
+
 **The withheld split: status.** Written by lane ZW and pinned; **no product look has been taken yet**. The ledger
-(`evidence/omnimind_final_uses.jsonl`) holds only lane ZW's machinery check through the reference subjects. Each look
-needs its pass rule committed first and the drivers pinned (`evidence/omnimind_driver_pins.json`, null until the main
-session pins them after lane F1).
+(`evidence/omnimind_final_uses.jsonl`, 17 lines) holds only lane ZW's machinery check through the reference subjects.
+Each look needs its pass rule committed first (the rule is in "The rule for the withheld looks (written before
+them)" below) and the drivers pinned (`evidence/omnimind_driver_pins.json`: both pins are still null at this commit,
+so every look is refused; the main session pins them after fix lane F4, in the same commit as the rule or later).
 
 ## The readers of made artifacts (and what DESIGN.md does not fix)
 
@@ -293,8 +340,9 @@ Only a refusal is right; "cannot" is safe but abstained; any answer is wrong.
    package imports it, and `bench_omni.py` has no subcommand that runs it.
 3. One look per mechanism, at the end, by the main session, after a rule is committed BEFORE the look that says
    what passes (for example: right on withheld within 5 points of held-out, fabrication not above held-out's,
-   no new failed task). Each look is appended to a ledger (`docs/quality/evidence/omnimind_withheld_uses.jsonl`)
-   with the commit, the mechanism and the result; a second look at the same mechanism is reported as such.
+   no new failed task). Each look is appended to a ledger (`docs/quality/evidence/omnimind_final_uses.jsonl`; this
+   line named it `omnimind_withheld_uses.jsonl` until the second measurement pass, R2-5, found the stale name) with the
+   commit, the mechanism and the result; a second look at the same mechanism is reported as such.
 
 ## What this benchmark cannot show
 
@@ -346,9 +394,146 @@ Written by lane ZW without reading any product code; counts and rules only here.
   the current hashes and writes nothing, after lane F1's driver rewrite, and commits it). Each ledger line now also
   records the drivers' SHA-256 (`drivers`). `test_omni_bench.py::test_the_drivers_only_translate` checks that a driver
   imports no `make` internal or private product name, never calls `scan_injection`, decodes with no limits of its
-  own, chooses no outcome by an error's words or from a partial decode, and names no task or case; today's
-  `subject.py` fails it (it calls `scan_injection`, maps reasons and partial decodes), so it is marked
-  expected-to-fail ("waits for lane F1's driver") for the main session to unmark at merge.
+  own, chooses no outcome by an error's words or from a partial decode, and names no task or case. It failed on the
+  driver of `505b55b` and was marked expected-to-fail; since fix lane F1's driver (`d8bbfd0`, `10dd174`) it passes
+  without the mark, and fix lane F3 (`bdfebab`) made it stricter (a choice made from a note's words is caught too,
+  `test_driver_rules_catch_each_way_of_deciding`). It is a tripwire over the driver's syntax, not a proof (R2-6: the
+  re-planning of R2-3 passes it); the controls are the pins, the clean tree and the commit each ledger line names.
 - The ledger's first lines are lane ZW's machinery check, every one noted "machinery check: references only": the
   unchanged system (`today`) on the seven families and the references of the forms, cross and learn families. No
   product subject has looked.
+
+## The rule for the withheld looks (written before them)
+
+This section was committed by documentation lane 2 (2026-11-27) **before any product look at the withheld split**;
+every look must be taken at a commit that has this section as an ancestor, with the driver pins of
+`evidence/omnimind_driver_pins.json` non-null and committed in the same commit or later. Nothing below was chosen
+after seeing a withheld figure: none exists (the ledger holds only lane ZW's machinery check).
+
+**Where it comes from.** The second measurement pass (the reviewer's section "The
+rule I would hold the withheld looks to") (its report is in the main session's scratch folder and in `.omc/handoffs/omnimind/heldout-results/review-measure-2.md`, neither tracked by git) proposed it; the main session adopted it and wrote it in its log
+(`.omc/handoffs/omnimind.md`, which git does not track). The log's text, exactly as it stands there:
+
+```text
+  LOOK RULE (ADOPTED from the reviewer; to be written into the docs and committed with the pins BEFORE the
+  looks): A. VOID unless: rule committed in an ancestor of the look commit; pins non-null committed with the
+  rule or later; tree clean; development reproduces exactly at the look commit (512/12/0/0; forms 107 good / 0
+  bad / 0 violations; cross 72/72; learn 0.8158/0.7617 vs 0.5871/0.5842); controls run first as reference-only
+  ledger lines: refuse-everything = the withheld floor with 0 wrong; first_good oracle = 1.000;
+  always_consistent correct on exactly n/2 with 0 twins; oracle ≥ key_majority ≥ never_learns; reference reruns
+  identical. B. Words: "supported on unseen cases" / "not supported" / "not exercised" / VOID. Seven families:
+  supported iff 0 wrong AND 0 failed AND right/n ≥ held-out share − 0.05 (intake 0.968, honest 0.945, unknown
+  1.000, compound 0.950, hostile 0.957, made 0.929, transform 1.000); any wrong is the headline; "hostile
+  refused" only if right == n; breakdown and right − floor beside it. forms: supported iff 0 violations AND good
+  ≥ shape_only + 0.10 AND bad ≤ shape_only's AND too_much ≤ shape_only's; "reads the words" only if words slice
+  ≥ shape_only + 0.15 AND ≥ always-prose's AND pairs > shape_only's; print FORMS_UNMAPPED; no second-reader
+  ceiling on withheld. cross: supported iff wrong ≤ 2 AND correct_of_answered ≥ 0.95 AND correct ≥ 0.75n AND
+  twins ≥ 2/3 of pairs AND no kind with > 1 wrong; a new kind answered only "cannot" = "not exercised". learn
+  (simulated): supported iff gains late and all each exceed 2√2 × the larger sd over seeds; majority references
+  beside; form_learning stays off. C. A look cannot establish real files, real people, visual quality or
+  usability, later versions, absent formats, or generality from n of 14 or 8; a second look is not fresh; a
+  "not supported" is never retried.
+```
+
+**The rule in full.** The log's text is a summary of the reviewer's; the log says the rule was adopted from the
+reviewer. The reviewer's text, exactly as written (A, B, C):
+
+**A. Preconditions (a look taken without them is VOID, reported as void, not as "not supported").**
+1. The rule is committed in an ancestor of the look commit. The driver pins in `omnimind_driver_pins.json` are non-null
+   and committed in the same commit as the rule or later. The tree is clean. `final`'s refusals all pass: withheld SHA
+   pins, driver pins, note.
+2. Development reproduction at the look commit (development is allowed and costs nothing). It must reproduce exactly:
+   artifacts 512/12/0/0; forms 107 good / 0 bad / 0 violations; cross 72/72 (twins 36); learn late 0.8158, all 0.7617
+   (planner-only 0.5871, 0.5842). Any difference means the product under the look is not the one measured: void (or
+   re-baseline in a commit first).
+3. Controls on the withheld split, run with the same `final` machinery as reference-only ledger lines, BEFORE the product
+   looks. Each holds by construction, so no withheld figure is needed in advance:
+   - Lane Z families: a refuse-everything subject scores right == abstention_floor and wrong == 0. The today subject
+     scores 0 failed outside hostile and makes nothing.
+   - forms: the `first_good` oracle scores good share 1.000. `shape_only` run twice gives identical figures.
+   - cross: always_consistent is correct on exactly n/2, with 0 both-twins.
+   - learn: oracle ≥ key_majority ≥ never_learns on late_kept, and planner-only run twice gives identical per-seed
+     figures.
+   
+   A failed control voids that family's look. If `final` cannot run a control subject, the rule says which ones it can
+   run before the looks are taken.
+4. One product look per family, at one commit. A second look at the same mechanism is reported as a second look and is
+   never "supported on unseen cases".
+
+**B. Fields and outcome words, per family.** Allowed words: **"supported on unseen cases"**, **"not supported"**, **"not
+exercised"** (the family or kind has no task the subject could attempt, e.g. its subject is unavailable), and VOID from A.
+Every look reports n, the counts and the references beside them, whatever the word.
+
+- **intake, honest, unknown, compound, hostile, made, transform** (`bench_omni.py final --subject artifacts`).
+  - Fields: n, right, abstained, wrong, failed, abstention_floor, fabrication, right by kind (the breakdown's five
+    kinds), and carried_mean for made and transform.
+  - "Supported on unseen cases" iff wrong == 0 AND failed == 0 AND right/n ≥ the held-out share − 0.05 (OMNIMIND_BENCHMARK.md
+    §withheld, item 3). The held-out shares: intake 0.968, honest 0.945, unknown 1.000, compound 0.950, hostile 0.957,
+    made 0.929, transform 1.000.
+  - Otherwise "not supported". Any wrong is the headline, as a fabrication count, whatever else holds.
+  - The words "hostile inputs refused" only if hostile right == n.
+  - Report right − abstention_floor beside right.
+- **forms** (frozen planner 4388f4d through `choose_form`).
+  - Fields: good, good_or_fine, bad (too_poor, too_much, unfit, violation), hard_constraints_violated, explicit
+    (feasible_honoured, infeasible_handled), the slices cue words / content / conflict, pairs and twins both_good,
+    `FORMS_UNMAPPED`, and the unknown purpose words.
+  - References from the same run: shape_only, always-prose (today), richest, random.
+  - "Supported on unseen cases" iff violations == 0 AND good ≥ shape_only good + 0.10 AND bad ≤ shape_only bad AND
+    too_much.k ≤ shape_only's.
+  - "Reads the request's words" only if the words slice ≥ shape_only + 0.15 AND ≥ always-prose's words slice AND pairs
+    both_good > shape_only's.
+  - State that no second reader labelled the withheld cases, so there is no ceiling to quote. Any unmapped explicit form
+    is listed, and counts as not honoured.
+- **cross** (the relater).
+  - Fields: correct, answered, correct_of_answered, both_twins_correct, by_kind (the three new kinds listed apart).
+  - "Supported on unseen cases" iff wrong (answered − correct) ≤ 2 AND correct_of_answered ≥ 0.95 AND correct ≥ 0.75 n
+    AND both twins ≥ 2/3 of pairs AND no kind with more than 1 wrong.
+  - A new kind answered only "cannot": "not exercised" for that kind (honest), never counted toward "supported".
+  - always_consistent and always_inconsistent go beside the result.
+- **learn** (the shipped rule against planner-only, the same driver, SIMULATED people).
+  - Fields: late_kept and all_kept, mean and sd over the 10 withheld seeds, per seed.
+  - "Supported on unseen cases (simulated people)" iff the mean gain late > 2√2 × the larger sd AND the mean gain all >
+    2√2 × the larger sd (the family's visibility rule).
+  - key_majority, person_majority, never_learns and the oracle go beside it. "Better than a majority rule" only if the
+    gain over key_majority clears the same margin.
+  - `form_learning` stays off whatever the result.
+
+**C. What a look can establish, and what it cannot.**
+- It can establish: on cases written without reading the product, by a lane that saw no product code, the frozen product
+  at the look commit stays within these bounds, and fabricates nothing on those cases.
+- It cannot establish:
+  - anything about real files, real people, the owner's taste, visual quality or usability (R2-1, R2-2);
+  - any version after the look commit;
+  - formats or kinds absent from the tables;
+  - generality from small n (made 14, transform 8);
+  - a second look, which is not a fresh measure.
+- A "not supported" is reported as a result, never retried on the same split.
+
+**Where the two texts differ** (stated so that nobody chooses between them after a look; the main session states which
+it applies before the first look, in the commit that writes the pins). **To be confirmed by the main session before
+the looks.**
+- The reviewer's A.3 adds a control for the seven families that the log's summary leaves out: "The today subject
+  scores 0 failed outside hostile and makes nothing."
+- The reviewer's A.3 says what happens when a control cannot be run: "If `final` cannot run a control subject, the rule
+  says which ones it can run before the looks are taken." The log's summary does not.
+- The reviewer's A.4 ("One product look per family, at one commit") is in the log only as "a second look is not
+  fresh".
+- The reviewer's B adds, for the seven families, "The words 'hostile inputs refused' only if hostile right == n", which
+  the log writes as "'hostile refused' only if right == n"; and, for forms, "Any unmapped explicit form is listed, and
+  counts as not honoured".
+Nothing in the log's summary is looser than the reviewer's text; where the reviewer's text is stricter, the stricter
+reading is the one this document records.
+
+**Which controls `final` can run at this commit** (read from the code at `09bfff6`; nothing was run).
+- forms, cross, learn (`scripts/bench_omni_forms.py final`): the subject may be any of the family's references
+  (`acceptance/omni/forms.py`: `today`, `richest`, `random`, `shape_only`, and `first_good` for forms;
+  `cross.py`: `today`, `always_consistent`, `always_inconsistent`; `learn.py`: `today`, `never_learns`,
+  `key_majority`, `person_majority`, `oracle`) or a dotted `module:attribute` such as the product's
+  `make_planner_only`. Every control the rule names for these three families can be run.
+- the seven families of lane Z (`scripts/bench_omni.py final`): `--subject` accepts only `today` and `artifacts`
+  (`subject.SUBJECTS`). The `today` control can be run. **A refuse-everything subject cannot be run through `final`
+  as it stands**: the harness's `probe:refuse` subject exists for the tests and is not a `final` choice. By the
+  reviewer's A.3 the main session must say, before the looks, whether that control is dropped for the withheld split
+  (its result holds by construction: a subject that refuses everything scores the floor) or added as a `final`
+  subject in a commit before the looks. **To be confirmed by the main session before the looks.**
+
