@@ -241,7 +241,8 @@ def test_make_is_bounded_and_one_at_a_time(console, monkeypatch):
     status, out = client.post("/api/artifacts/make", {"sources": [cid], "request": "compare calls"})
     assert status == 409 and "already" in out["error"]
     from neuroscifi.presence import activity
-    deadline = time.monotonic() + 5          # the job's thread registers its activity as it starts: wait for it
+    # the worker enters the in-flight record after it opened its connection: wait for it (bounded) rather than race it
+    deadline = time.monotonic() + 10
     while not (running := [e for e in activity.snapshot() if e["subsystem"] == "artifacts"]) and \
             time.monotonic() < deadline:
         time.sleep(0.01)

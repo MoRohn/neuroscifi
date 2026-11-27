@@ -1,6 +1,6 @@
 """Fix lane F3, item 6: one bin-edge convention for the histogram (found by fix lane F2's fuzz): a value on an inner
 edge belongs to the upper bin, and the last bin is closed on the right; stated in the description, made so by the
-generator and, independently, demanded by the product's check."""
+generator (fix lane F1) and, independently, demanded by the product's check (fix lane F3)."""
 from __future__ import annotations
 
 import math
@@ -30,7 +30,7 @@ def test_the_largest_value_on_an_inner_edge_is_in_the_upper_bin():
     heights = [h for _x, _w, h in bars(svg)]
     unit = min(heights)
     assert [round(h / unit) for h in heights] == [1, 1, 3, 1]          # 10-12.5, 12.5-15, 15-17.5, 17.5-20
-    assert "a value on an inner edge belongs to the upper bin, and the last bin is closed on the right" in svg
+    assert "up to (not including) its right edge, the last bin also its right edge" in svg     # F1's words
     assert check.check(made.bytes, made.media_type, made.spec).ok
 
 

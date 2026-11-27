@@ -160,7 +160,7 @@ def test_histogram_bins_are_stated_and_edge_values_counted_once():
     s = case("histogram")
     m = S.made(s)
     desc = S.tree(m.bytes).find(S.q("desc")).text
-    assert "a value on an inner edge belongs to the upper bin, and the last bin is closed on the right" in desc
+    assert "up to (not including) its right edge" in desc
     v = S.verdict(m.bytes, s)
     assert S.finding(v, "all_values_binned").passed
     s2 = case("histogram", bin_width=25)
@@ -268,3 +268,17 @@ def test_catalog_lists_every_g1_chart():
     for form in ("chart.line", "chart.bar", "chart.scatter", "chart.histogram", "chart.heatmap",
                  "chart.small_multiples"):
         assert rows[form]["available"] and rows[form]["generator"] == "g1." + form
+
+
+def test_a_value_on_a_bin_edge_belongs_to_the_bin_it_starts_even_the_largest():
+    """Fix lane F1 (lane F2's fuzz: 17.5 drawn in the lower bin against the request's half-open bins): bins are
+    [k*w, (k+1)*w), and the last edge lies above the largest value, so a largest value on k*w opens bin k."""
+    from neuroscifi.artifacts.make.charts import histogram_edges
+    values = [1.0, 2.5, 5.0, 12.4, 17.5]
+    edges = histogram_edges(values, {"bin_width": 2.5})
+    assert edges[0] == 0.0 and edges[-1] == 20.0 and edges[-2] == 17.5
+    assert histogram_edges([0.3, 0.7], {"bin_width": 0.1}) == [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+    s = case("histogram", bin_width=2.5)
+    s["data"]["values"] = values
+    v = S.verdict(S.made(s).bytes, s)
+    assert v.ok, S.failed(v)
