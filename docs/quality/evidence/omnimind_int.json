@@ -1,0 +1,164 @@
+{
+ "add_cost_per_family": {
+  "how": "python scripts/omnimind_int_add_cost.py",
+  "rows": [
+   {
+    "bytes": 62914536,
+    "case": "text",
+    "outcome": {
+     "error": null,
+     "kind": "document",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 181.0,
+    "wall_s": 0.328
+   },
+   {
+    "bytes": 24800024,
+    "case": "table",
+    "outcome": {
+     "error": null,
+     "kind": "table",
+     "partial": true
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 344.7,
+    "wall_s": 3.165
+   },
+   {
+    "bytes": 154521,
+    "case": "document",
+    "outcome": {
+     "error": null,
+     "kind": "document",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 59.1,
+    "wall_s": 0.798
+   },
+   {
+    "bytes": 48018658,
+    "case": "image",
+    "outcome": {
+     "error": null,
+     "kind": "raster",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 198.1,
+    "wall_s": 0.397
+   },
+   {
+    "bytes": 62914604,
+    "case": "audio",
+    "outcome": {
+     "error": "too_large",
+     "kind": null,
+     "partial": null
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 62.6,
+    "wall_s": 0.111
+   },
+   {
+    "bytes": 60000084,
+    "case": "mesh",
+    "outcome": {
+     "error": null,
+     "kind": "mesh",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 284.6,
+    "wall_s": 1.188
+   },
+   {
+    "bytes": 13066504,
+    "case": "geo",
+    "outcome": {
+     "error": null,
+     "kind": "features",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 115.3,
+    "wall_s": 0.192
+   },
+   {
+    "bytes": 9377808,
+    "case": "tree",
+    "outcome": {
+     "error": null,
+     "kind": "tree",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 340.1,
+    "wall_s": 2.119
+   },
+   {
+    "bytes": 332667,
+    "case": "code",
+    "outcome": {
+     "error": null,
+     "kind": "graph",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 73.4,
+    "wall_s": 0.238
+   },
+   {
+    "bytes": 60405802,
+    "case": "archive",
+    "outcome": {
+     "error": null,
+     "kind": "bundle",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 10.5,
+    "wall_s": 2.439
+   },
+   {
+    "bytes": 64000128,
+    "case": "array",
+    "outcome": {
+     "error": null,
+     "kind": "table",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 79.6,
+    "wall_s": 0.142
+   },
+   {
+    "bytes": 62914585,
+    "case": "header_only",
+    "outcome": {
+     "error": "unsupported",
+     "kind": null,
+     "partial": null
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 5.1,
+    "wall_s": 0.103
+   },
+   {
+    "bytes": 66060288,
+    "case": "unknown",
+    "outcome": {
+     "error": null,
+     "kind": "opaque",
+     "partial": false
+    },
+    "peak_reset": true,
+    "peak_rss_above_baseline_mib": 12.8,
+    "wall_s": 0.161
+   }
+  ],
+  "what": "artifacts.store.add per family at the size limits: one run each, a fresh process per case, on a shared loaded host (wall clock; peak RSS above the RSS just before the add, VmHWM reset after the input was built)"
+ }
+}

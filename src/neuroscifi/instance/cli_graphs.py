@@ -3,8 +3,11 @@ import json
 import os
 from pathlib import Path
 
+from .. import inputfiles
 from . import datasets, graph_migration, graphs, recall, rules, store
 from .errors import ValidationError
+
+RULE_FILE_MAX_BYTES = 1 << 20   # a rule is a dozen named fields (rules.REQUIRED); a real one is under 1 kB
 
 
 def _rules_add(db, args, now):
@@ -32,7 +35,7 @@ def _rules_add(db, args, now):
         if args.version is not None:
             raise ValidationError("--as renames a built-in rule; a rule file carries its own version")
         try:
-            definition = json.loads(args.file.read_text())
+            definition = json.loads(inputfiles.read_bounded(args.file, RULE_FILE_MAX_BYTES, "rule file").decode())
         except (OSError, ValueError) as error:
             raise ValidationError(f"Cannot read rule file {args.file}: {error}") from None
     with store.write(db):

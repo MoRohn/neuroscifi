@@ -658,7 +658,24 @@ neuroscifi/
 | **Operations** | [Runbook](docs/operations/RUNBOOK.md) · [Pocket guide](mobile/README.md) · [TLS for Pocket](docs/operations/TLS.md) · [Environment](docs/operations/ENVIRONMENT.md) · [Migrations](docs/operations/MIGRATIONS.md) · [Hardening verification](docs/operations/HARDENING_VERIFICATION.md) · [Testing](docs/operations/TESTING.md) |
 | **Engineering review** | [Overview](docs/acceleration/README.md) · [Engineering plan](docs/acceleration/ENGINEERING_PLAN.md) · [Performance](docs/acceleration/PERFORMANCE.md) · [Regression report](docs/acceleration/REGRESSION_REPORT.md) · [Verification report](docs/acceleration/VERIFICATION_REPORT.md) · [NVIDIA assessment](docs/acceleration/NVIDIA_ASSESSMENT.md) |
 | **Cognitive Genesis** | [Overview](docs/genesis/README.md) · [Architecture audit](docs/genesis/COGNITIVE_ARCHITECTURE_AUDIT.md) · [Research assessment](docs/genesis/RESEARCH_ASSESSMENT.md) · [Gap matrix](docs/genesis/COGNITIVE_GAP_MATRIX.md) · [Roadmap](docs/genesis/IMPLEMENTATION_ROADMAP.md) · [Wave 0](docs/genesis/WAVE0.md) · [Cognitive benchmark](docs/quality/COGNITIVE_BENCHMARK.md) |
+| **Project OMNIMIND** (branch `omnimind`, not merged) | [Overview](docs/omnimind/README.md) · [Capability audit](docs/omnimind/CAPABILITY_AUDIT.md) · [Architecture](docs/omnimind/ARTIFACT_ARCHITECTURE.md) · [Benchmarks](docs/omnimind/BENCHMARKS.md) · [Runbook](docs/omnimind/RUNBOOK.md) · [Final report](docs/omnimind/FINAL_REPORT.md) |
 | **QA and research** | [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md) · [Release decisions](docs/qa/RELEASE_DECISIONS.md) · [Acceptance criteria](docs/quality/ACCEPTANCE_CRITERIA.md) · [Research workflow](research/README.md) |
+
+## Project OMNIMIND (on a branch, not merged)
+
+**Status: local branch `omnimind` (schema 21 there), not merged into `main`, not pushed, not run on CI; nothing below
+is part of 0.7.0.** On that branch the owner can hand NeuroSciFi a file (`nsf inspect`, `nsf artifact add`): it is
+identified by its content, decoded within limits in a guarded child process, and kept beside the individual where
+forget and restore reach it. `nsf artifact make` decides the form of a result (a chart, a diagram, a document, a table,
+a sound, a solid, an explorable model or words), makes it, checks it with an independent reader of its bytes and keeps
+it marked "made by the system, not evidence"; `nsf artifact relate` compares what one file measures with what another
+states. Measured on synthetic files: 510 of 528 held-out tasks right with 0 wrong, but on the withheld split, which no
+lane tuned against, it gave 6 wrong answers in 652 (3 disguised or unknown files answered falsely, 3 hostile files
+answered instead of refused) and the relater 6 wrong in 78: those three looks are not supported. The form planner's
+and the learner's withheld looks are void by the rule (two controls were not run). Nothing decodes JPEG, MP3 or video frames;
+no model sees or hears; answers in conversation are still sentences. A fix wave was then examined once on a second withheld split and none of the three fixed
+mechanisms earned "supported" (5 wrong of 171 unknown files; 11 of 62 hostile files answered instead of refused; the
+relater right on 47 of 80 decidable cases): the condition for merging is not met. Details: [docs/omnimind/README.md](docs/omnimind/README.md).
 
 ## Known limitations
 

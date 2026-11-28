@@ -163,7 +163,13 @@ def _init(args):
                                max_consolidated_rows=args.max_consolidated_rows,
                                max_evidence_rows=args.max_evidence_rows,
                                min_free_bytes=int(args.min_free_mib * 1024 * 1024))
-    founding = args.founding_graph.read_bytes() if args.founding_graph else None
+    founding = None
+    if args.founding_graph:
+        from .. import graph_store, inputfiles
+        try:
+            founding = inputfiles.read_bounded(args.founding_graph, graph_store.MAX_BYTES, "graph snapshot")
+        except inputfiles.InputRefused as error:
+            raise ValidationError(str(error)) from None
     db = store.create(store.resolve_db(args), time.time(), action_semantics=semantics,
                       config=cfg, founding_graph=founding, note=args.note)
     try:
@@ -206,6 +212,33 @@ def _config(db, args, now):
         changes["broadcast"] = args.broadcast
     if args.broadcast_threshold is not None:
         changes["broadcast_threshold"] = args.broadcast_threshold
+    if args.artifact_max_mib is not None:
+        changes["artifact_max_bytes"] = args.artifact_max_mib * 1024 * 1024
+    if args.artifact_store_max_mib is not None:
+        changes["artifact_store_max_bytes"] = args.artifact_store_max_mib * 1024 * 1024
+    approval_notes = []
+    if args.artifact_adapters is not None:
+        # each reader is approved as installed now (entry-point name, distribution, version: security review N4);
+        # a changed distribution needs approval again
+        from ..artifacts import adapters
+        entries = []
+        for n in (p.strip() for p in args.artifact_adapters.split(",")):
+            if not n:
+                continue
+            try:
+                entries.append(n if "=" in n else adapters.approval_for(n))
+            except LookupError as error:
+                raise ValidationError(f"--artifact-adapters: {error}") from None
+            name, _, rest = entries[-1].partition("=")
+            dist, _, version = rest.partition("==")
+            approval_notes.append(f"approved the file reader {name} from {dist} version {version}")
+        changes["artifact_adapters"] = entries
+    if args.form_learning is not None:
+        changes["form_learning"] = args.form_learning
+    if args.console_artifacts is not None:
+        changes["console_artifacts"] = args.console_artifacts == "on"
+    if args.console_artifact_upload is not None:
+        changes["console_artifact_upload"] = args.console_artifact_upload == "on"
     from dataclasses import asdict
     out = store.set_config(db, changes, now) if changes else {"config": asdict(store.config(db)), "changed": []}
     repair_notes = []
@@ -221,7 +254,7 @@ def _config(db, args, now):
     problems = store.setting_problems(db) + store.consolidation_warnings(db)
     from . import graph_migration
     record = graph_migration._record(db) if store.config(db).graph_rule_migration else None
-    notes = list(repair_notes)
+    notes = list(repair_notes) + approval_notes
     if record is not None and record.get("status") == "reversed":
         # The setting only decides whether a migration not yet run may run; an undone one never runs again.
         notes.append("the graph-rule migration was undone (`nsf graph migration undo`); turning "
@@ -336,6 +369,27 @@ def register(sub):
                         "above --broadcast-threshold become questions, the others stay in their task's record")
     p.add_argument("--broadcast-threshold", type=unit_interval,
                    help="the salience (0 to 1) a finding needs to be broadcast while --broadcast is on (default 0.5)")
+    p.add_argument("--artifact-max-mib", type=bounded_int(1, 1024),
+                   help="the largest file `nsf artifact add` keeps, in MiB (default 64); reading a file can take "
+                        "several times its size in memory, so a larger value can make adding slower and heavier: "
+                        "`nsf artifact make`, `facts` and `relate` read it in their own process, bounded at 256 MiB "
+                        "+ 2 x the file + 512 MiB (896 MiB at 64, about 2.8 GiB at 1024; measured: 344 MiB at the "
+                        "peak to make a chart from a 60 MiB CSV)")
+    p.add_argument("--artifact-store-max-mib", type=bounded_int(0, 1024 * 1024),
+                   help="the most the artifact store beside the individual may hold in all, in MiB (default 2048)")
+    p.add_argument("--artifact-adapters", metavar="NAME,...",
+                   help="external file readers you approve, by name, comma-separated (`nsf artifact adapters` lists "
+                        "those found); each is approved as installed now (its package and version are recorded, and "
+                        "a changed package needs approval again); an empty value approves none (the default)")
+    p.add_argument("--form-learning", choices=store.FORM_LEARNING,
+                   help="learning the form of a result from what you keep (ADR-078): off = nothing recorded "
+                        "(default); record = your reactions to made forms are kept and change nothing; apply = what "
+                        "was learned is also used when a form is chosen (`nsf form learned` shows it)")
+    p.add_argument("--console-artifacts", choices=("on", "off"),
+                   help="the owner console's \"Made and kept\" view of kept and made artifacts (ADR-079; default on)")
+    p.add_argument("--console-artifact-upload", choices=("on", "off"),
+                   help="let the owner console take new files (upload, ADR-079): a new way for bytes to enter, "
+                        "so off by default")
     p.set_defaults(handler=with_db(_config))
 
     p = sub.add_parser("self", help="what this individual is doing, knows, is unsure of and can do next, each with "

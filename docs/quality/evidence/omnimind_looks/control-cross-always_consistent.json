@@ -1,0 +1,281 @@
+{
+ "label": "OMNIMIND benchmark, the WITHHELD split: one look per mechanism, recorded in the ledger before it is scored; written by lane ZW without reading product code; summaries only",
+ "generated_at": "2026-11-27T11:25:52Z",
+ "environment": {
+  "git_commit": "55f89be0f658aedd9e7865d26e35e1e741b3592d",
+  "git_dirty": false
+ },
+ "ledger_lines": 27,
+ "ledger_entries": [
+  {
+   "at": "2026-11-27T11:25:52Z",
+   "commit": "55f89be0f658aedd9e7865d26e35e1e741b3592d",
+   "dirty": false,
+   "family": "cross",
+   "subject": "always_consistent",
+   "note": "OMNIMIND control before the product looks (reference only; rule committed 55f89be)",
+   "script": "bench_omni_forms.py final",
+   "withheld_file": "withheld_cross.py",
+   "withheld_sha256": "ef8601bc5090deb2ad6c80c480a27038a25b9c181cc4865a2652b1a8a4104846",
+   "drivers": {
+    "src/neuroscifi/acceptance/omni/subject.py": "edd0820faa63983b9bbf29516240166a7a43accd727b9fd1cb1c97aff3611a53",
+    "scripts/omni_forms_driver.py": "7492a3970d2d804989073bf087cb1cbe10ee7695f7483fe736109dbae2e49829"
+   }
+  }
+ ],
+ "families": {
+  "cross": {
+   "label": "OMNIMIND benchmark, family cross: file pairs built by the benchmark's own generators, truth known by construction; each pair has a matching and a non-matching twin that differ in one value; offline; no model",
+   "split": "withheld",
+   "n_cases": 78,
+   "n_pairs": 39,
+   "cases": 78,
+   "correct": {
+    "k": 39,
+    "n": 78,
+    "share": 0.5
+   },
+   "answered": {
+    "k": 78,
+    "n": 78,
+    "share": 1.0
+   },
+   "correct_of_answered": {
+    "k": 39,
+    "n": 78,
+    "share": 0.5
+   },
+   "matching": {
+    "cases": 39,
+    "correct": {
+     "k": 39,
+     "n": 39,
+     "share": 1.0
+    },
+    "answered": {
+     "k": 39,
+     "n": 39,
+     "share": 1.0
+    },
+    "correct_of_answered": {
+     "k": 39,
+     "n": 39,
+     "share": 1.0
+    }
+   },
+   "non_matching": {
+    "cases": 39,
+    "correct": {
+     "k": 0,
+     "n": 39,
+     "share": 0.0
+    },
+    "answered": {
+     "k": 39,
+     "n": 39,
+     "share": 1.0
+    },
+    "correct_of_answered": {
+     "k": 0,
+     "n": 39,
+     "share": 0.0
+    }
+   },
+   "both_twins_correct": {
+    "k": 0,
+    "n": 39,
+    "share": 0.0
+   },
+   "with_reasons": {
+    "k": 0,
+    "n": 78,
+    "share": 0.0
+   },
+   "kinds_only_in_this_split": {
+    "cases": 30,
+    "correct": {
+     "k": 15,
+     "n": 30,
+     "share": 0.5
+    },
+    "answered": {
+     "k": 30,
+     "n": 30,
+     "share": 1.0
+    },
+    "correct_of_answered": {
+     "k": 15,
+     "n": 30,
+     "share": 0.5
+    }
+   },
+   "by_kind": {
+    "report_total": {
+     "cases": 8,
+     "correct": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 8,
+      "n": 8,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     }
+    },
+    "chart_series": {
+     "cases": 8,
+     "correct": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 8,
+      "n": 8,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     }
+    },
+    "tones_rows": {
+     "cases": 8,
+     "correct": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 8,
+      "n": 8,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     }
+    },
+    "mesh_bbox": {
+     "cases": 8,
+     "correct": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 8,
+      "n": 8,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     }
+    },
+    "code_trace": {
+     "cases": 8,
+     "correct": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 8,
+      "n": 8,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     }
+    },
+    "timeline_log": {
+     "cases": 8,
+     "correct": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 8,
+      "n": 8,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 4,
+      "n": 8,
+      "share": 0.5
+     }
+    },
+    "image_caption": {
+     "cases": 10,
+     "correct": {
+      "k": 5,
+      "n": 10,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 10,
+      "n": 10,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 5,
+      "n": 10,
+      "share": 0.5
+     }
+    },
+    "route_stops": {
+     "cases": 10,
+     "correct": {
+      "k": 5,
+      "n": 10,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 10,
+      "n": 10,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 5,
+      "n": 10,
+      "share": 0.5
+     }
+    },
+    "archive_manifest": {
+     "cases": 10,
+     "correct": {
+      "k": 5,
+      "n": 10,
+      "share": 0.5
+     },
+     "answered": {
+      "k": 10,
+      "n": 10,
+      "share": 1.0
+     },
+     "correct_of_answered": {
+      "k": 5,
+      "n": 10,
+      "share": 0.5
+     }
+    }
+   },
+   "wall_s": 0.04
+  }
+ },
+ "benchmark": "omnimind-forms-cross-learn",
+ "python": "3.12.16"
+}

@@ -1,0 +1,64 @@
+{
+  "add_seconds": {
+    "max": 0.20696,
+    "mean": 0.03066,
+    "p50": 0.03087,
+    "p95": 0.04251,
+    "total": 314.92
+  },
+  "code": "branch omni-a at 7070137; the times under repeat are a first run at 9aa1e08, before the one-row-at-a-time scan of 42ce664",
+  "command": "PYTHONPATH=src python scripts/bench_artifact_store.py --dir DIR (defaults: --n 10000 --total-mib 2048 --named-every 1000)",
+  "forget_partner_end_to_end": {
+    "named_artifacts": 5,
+    "removed": 5,
+    "seconds": 10.79
+  },
+  "forget_root": {
+    "found": 5,
+    "named_artifacts": 5,
+    "removal_inside_transaction_seconds": 0.016,
+    "removed": 5,
+    "scan_outside_transaction_seconds": 10.79,
+    "scanned": 10000,
+    "sidecar_sweep_after_commit_seconds": 0.024
+  },
+  "host": {
+    "machine": "aarch64",
+    "note": "a shared, loaded host (other lanes ran test suites meanwhile): wall-clock times are upper bounds, single runs",
+    "python": "3.12.16"
+  },
+  "list_seconds": 0.148,
+  "listed": 10000,
+  "reading": "The scan of a root reads every stored byte once (2 GiB in about 11 s here) OUTSIDE the write transaction; the instance's write lock is held about 15 ms for the removal. Adding costs about 31 ms per 210 KiB artifact (detection, the entropy of the first MiB, sha256, two SQLite commits). A restore copies the bytes its index still names into the copy's own sidecar (2 GiB in about 8 s). Times scale with stored bytes; no adapter beyond the kernel's ran (synthetic random bytes).",
+  "reconcile": {
+    "bytes_swept": 0,
+    "found_again": 0,
+    "layers_swept": 0,
+    "marked_missing": 0
+  },
+  "reconcile_seconds": 0.017,
+  "repeat": {
+    "add_p50": 0.03113,
+    "add_total_seconds": 314.17,
+    "forget_partner_seconds": 10.85,
+    "list_seconds": 0.135,
+    "removal_inside_transaction_seconds": 0.014,
+    "restore_seconds": 8.33,
+    "scan_outside_transaction_seconds": 10.79
+  },
+  "restore": {
+    "artifact_bytes_copied": 9990,
+    "artifacts_missing": 0,
+    "artifacts_removed_by_replay": 10,
+    "restored_sidecar_bytes": 2171318272,
+    "seconds": 8.24
+  },
+  "store": {
+    "artifacts": 10000,
+    "bytes_each": 214748,
+    "bytes_total": 2147480000,
+    "instance_file_bytes": 14184448,
+    "sidecar_file_bytes": 2173489152
+  },
+  "what": "artifact store cost on a large synthetic store (scripts/bench_artifact_store.py)"
+}

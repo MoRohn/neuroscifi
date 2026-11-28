@@ -1,9 +1,15 @@
 """Erasure reaches derived memory: forgotten roots and event ids leave no trace in any table, the WAL or the file."""
+import base64 as _b64
+import gzip as _gzip
 import hashlib
 import json
 import sqlite3
+import struct as _struct
+import zlib as _zlib
 
-from neuroscifi.instance import beliefs, executive, evidence, governance, schema, store
+import pytest
+
+from neuroscifi.instance import beliefs, checkpoints, executive, evidence, governance, imagined, schema, store
 from conftest import T0
 
 PARTNER = "Alice-zq9"
@@ -292,3 +298,190 @@ def test_forgotten_root_deletes_its_changepoints_in_every_epoch(instance):
     assert hits(db, CAMERA) == []
     assert CAMERA.encode() not in raw_bytes(path)
     assert db.execute("SELECT kind FROM forgotten_roots").fetchall() == [("camera",)]
+
+
+# ---- imagined payloads, including encoded values (OMNIMIND lane S, audit-cognition hazard 1) ---------------------
+# The canary below decodes on its own (no product code): base64 (and data: URLs), zlib and gzip streams, and the
+# compressed text chunks of a PNG, nested a few levels, so a forgotten name cannot hide in an encoded value.
+
+
+def _png(*chunks):
+    """A PNG built by hand: signature, a 1x1 grey IHDR, the given (type, body) chunks, IDAT, IEND."""
+    def chunk(kind, body):
+        return _struct.pack(">I", len(body)) + kind + body + _struct.pack(">I", _zlib.crc32(kind + body))
+    ihdr = _struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + b"".join(chunk(k, b) for k, b in chunks)
+            + chunk(b"IDAT", _zlib.compress(b"\x00\x80")) + chunk(b"IEND", b""))
+
+
+def _canary_decodings(data, depth=0):
+    """Every byte string reachable from `data` by base64, zlib, gzip and PNG text chunks (independent of product)."""
+    yield data
+    if depth >= 4:
+        return
+    found = []
+    text = data.strip()
+    if text[:5].lower() == b"data:" and b"," in text:
+        text = text.split(b",", 1)[1]
+    for decode in (_b64.b64decode, _b64.urlsafe_b64decode):
+        try:
+            found.append(decode(text + b"=" * (-len(text) % 4)))
+        except Exception:
+            pass
+    for wbits in (15, 31):
+        try:
+            found.append(_zlib.decompress(data, wbits))
+        except Exception:
+            pass
+    if data.startswith(b"\x89PNG"):
+        at = 8
+        while at + 8 <= len(data):
+            length, kind = _struct.unpack(">I4s", data[at:at + 8])
+            body = data[at + 8:at + 8 + length]
+            if kind == b"zTXt":
+                found.append(_zlib.decompress(body.split(b"\0", 1)[1][1:]))
+            elif kind == b"iTXt" and body.split(b"\0", 1)[1][:1] == b"\x01":
+                found.append(_zlib.decompress(body.split(b"\0", 1)[1][2:].split(b"\0", 2)[2]))
+            at += 12 + length
+    for inner in found:
+        yield from _canary_decodings(inner, depth + 1)
+
+
+def encoded_hits(db, needle):
+    """(table, column) of every text value, JSON strings walked, that holds `needle` once decoded."""
+    forms = [needle.encode(), needle.encode("utf-16-le"), needle.encode("utf-16-be")]
+
+    def strings(value):
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                yield k
+                yield from strings(v)
+        elif isinstance(value, list):
+            for v in value:
+                yield from strings(v)
+    out = set()
+    for table, column, value in text_values(db):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            parsed = value
+        for text in strings(parsed if isinstance(parsed, (str, dict, list)) else value):
+            if any(f in d for d in _canary_decodings(text.encode()) for f in forms):
+                out.add((table, column))
+    return sorted(out)
+
+
+def _imagine(db, payload, now=T0, **kw):
+    return imagined.record(db, "speculation", payload=payload, assumptions=kw.pop("assumptions", []),
+                           uncertainty=kw.pop("uncertainty", "untested"), mechanism="test", mechanism_version="1",
+                           question=kw.pop("question", "what if?"), now=now, **kw)
+
+
+def seed_imagined(db, name):
+    """Records naming `name` in every form the forget must reach, and records that must survive it."""
+    b64 = lambda b: _b64.b64encode(b).decode()      # noqa: E731
+    exif_like = b"Exif\x00\x00II*\x00" + name.encode("utf-16-le") + b"\x00\x00"
+    naming = [
+        {"note": f"talked with {name}"},                                                     # plain text
+        {"image": "data:image/png;base64," + b64(_png((b"tEXt", b"Author\x00" + name.encode())) + b"\0" * 40000)},
+        {"image": b64(_png((b"zTXt", b"Comment\x00\x00" + _zlib.compress(f"with {name}".encode()))))},
+        {"image": b64(_png((b"iTXt", b"Comment\x00\x01\x00en\x00\x00" + _zlib.compress(name.encode()))))},
+        {"blob": b64(_gzip.compress(json.dumps({"who": name}).encode()))},
+        {"blob": _b64.urlsafe_b64encode(_zlib.compress(("x" * 500 + name).encode())).decode().rstrip("=")},
+        {"nested": b64(b64(f"{name} again".encode()).encode())},
+        {"exif": b64(exif_like)},
+        {f"key-{b64(name.encode())}": 1},
+    ]
+    gone = [_imagine(db, p, now=T0 + i) for i, p in enumerate(naming)]
+    gone.append(_imagine(db, {"x": 1}, now=T0 + 20, assumptions=[f"{name} is home"]))
+    gone.append(_imagine(db, {"x": 2}, now=T0 + 21, question=f"will {name} call?"))
+    random = _b64.b64encode(bytes((i * 37 + 11) % 256 for i in range(30000))).decode()
+    kept = [_imagine(db, {"note": "a different partner, Dora-k2"}, now=T0 + 30),
+            _imagine(db, {"image": random}, now=T0 + 31),
+            _imagine(db, {"blob": b64(_gzip.compress(b"nothing to see"))}, now=T0 + 32)]
+    return gone, kept
+
+
+def test_forget_partner_removes_imagined_records_that_name_it_even_inside_encoded_values(instance, tmp_path):
+    db, path = instance
+    teach_ambiguous_partner(db)
+    gone, kept = seed_imagined(db, PARTNER)
+    assert {("imagined", "payload"), ("imagined", "assumptions"), ("imagined", "question")} <= set(
+        encoded_hits(db, PARTNER)), "precondition: the canary sees every encoded form"
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 50)
+    out = governance.forget_partner(db, PARTNER, T0 + 100)
+    assert hits(db, PARTNER) == [] and encoded_hits(db, PARTNER) == []
+    assert PARTNER.encode() not in raw_bytes(path)
+    held = {i for (i,) in db.execute("SELECT id FROM imagined")}
+    assert held == set(kept)
+    assert db.execute("SELECT count(*) FROM imagined_forgotten WHERE reason='forgotten'").fetchone()[0] == len(gone)
+    assert out["effects"]["imagined_removed"] == len(gone) and cp["id"] in out["effects"]["checkpoints_stale"]
+    logged = json.loads(db.execute("SELECT effects FROM deletion_log ORDER BY id DESC LIMIT 1").fetchone()[0])
+    assert logged["imagined_removed"] == len(gone)
+
+
+def test_a_partner_forgotten_as_one_kind_removes_only_records_naming_that_kind(instance):
+    """Scoped forget (a camera of the same name is still held): `partner:<name>` goes, the bare name may be the
+    camera's and stays, as in scrub_roots."""
+    db, _ = instance
+    evidence.start_epoch(db, "e", T0)
+    observe(db, "e", "w1", "word", PARTNER, now=T0)
+    observe(db, "e", "c1", "camera", PARTNER, now=T0 + 1)
+    scoped = _imagine(db, {"blob": _b64.b64encode(f"partner:{PARTNER}".encode()).decode()})
+    bare = _imagine(db, {"note": f"{PARTNER} on the shelf"}, now=T0 + 1)
+    governance.forget_evidence(db, "w1", T0 + 2)
+    assert {i for (i,) in db.execute("SELECT id FROM imagined")} == {bare} and scoped != bare
+
+
+def test_nothing_is_removed_when_no_record_names_the_forgotten_root(instance):
+    db, _ = instance
+    teach_ambiguous_partner(db)
+    _, kept = seed_imagined(db, "Someone-else-77")
+    before = db.execute("SELECT * FROM imagined ORDER BY id").fetchall()
+    governance.forget_partner(db, PARTNER, T0 + 100)
+    assert db.execute("SELECT * FROM imagined ORDER BY id").fetchall() == before
+    assert db.execute("SELECT count(*) FROM imagined_forgotten").fetchone()[0] == 0
+
+
+def test_a_value_too_large_to_inspect_within_the_bounds_counts_as_naming_it(instance):
+    db, _ = instance
+    teach_ambiguous_partner(db)
+    bomb = _b64.b64encode(_zlib.compress(b"\0" * (imagined.DECODE_MAX_BYTES + 1), 9)).decode()
+    assert len(bomb) < 65000
+    _imagine(db, {"blob": bomb})
+    governance.forget_partner(db, PARTNER, T0 + 100)
+    assert db.execute("SELECT count(*) FROM imagined").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("tombstones", ["kept", "dropped"])
+def test_a_restore_of_an_archive_taken_before_the_forget_removes_the_same_records(instance, tmp_path, tombstones):
+    """The replay removes them twice over: by the live tombstones (imagined.replay) and, with those dropped, by the
+    same text scan (scrub_roots in _scrub_copy)."""
+    db, path = instance
+    teach_ambiguous_partner(db)
+    gone, kept = seed_imagined(db, PARTNER)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 + 50)
+    governance.forget_partner(db, PARTNER, T0 + 100)
+    if tombstones == "dropped":
+        with store.write(db):
+            db.execute("DELETE FROM imagined_forgotten")
+    checkpoints.restore(db, cp["id"], tmp_path / "restored.sqlite", T0 + 200)
+    copy = store.open_existing(tmp_path / "restored.sqlite")
+    try:
+        assert {i for (i,) in copy.execute("SELECT id FROM imagined")} == set(kept)
+        assert hits(copy, PARTNER) == [] and encoded_hits(copy, PARTNER) == []
+    finally:
+        copy.close()
+    assert PARTNER.encode() not in raw_bytes(tmp_path / "restored.sqlite")
+
+
+def test_an_archive_holding_only_the_record_and_not_the_partners_evidence_becomes_stale(instance, tmp_path):
+    db, path = instance
+    _imagine(db, {"note": f"{PARTNER} may visit"}, now=T0 - 10)
+    cp = checkpoints.create(db, path, tmp_path / "cps", T0 - 5)          # before any evidence of the partner
+    teach_ambiguous_partner(db)
+    out = governance.forget_partner(db, PARTNER, T0 + 100)
+    assert out["effects"]["imagined_removed"] == 1 and cp["id"] in out["effects"]["checkpoints_stale"]
+    assert db.execute("SELECT status FROM checkpoints WHERE id=?", (cp["id"],)).fetchone()[0] == "stale"

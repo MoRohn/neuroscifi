@@ -18,6 +18,9 @@ COMMAND_MODULES = [
     "neuroscifi.resources.cli",
     "neuroscifi.setup_cli",
     "neuroscifi.start_cli",
+    "neuroscifi.artifacts.inspect_cli",
+    "neuroscifi.artifacts.cli",
+    "neuroscifi.artifacts.forms_cli",
 ]
 
 

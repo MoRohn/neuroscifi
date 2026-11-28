@@ -1,0 +1,73 @@
+{
+ "commit": "c1f5f2f",
+ "split": "held_out",
+ "families": {
+  "intake": {
+   "n": 339,
+   "right": 328,
+   "abstained": 11,
+   "wrong": 0,
+   "failed": 0,
+   "abstention_floor": 0,
+   "safe": null,
+   "share": 0.968,
+   "dev_share": 0.979,
+   "drop": 0.012
+  },
+  "honest": {
+   "n": 55,
+   "right": 52,
+   "abstained": 3,
+   "wrong": 0,
+   "failed": 0,
+   "abstention_floor": 20,
+   "safe": null,
+   "share": 0.945,
+   "dev_share": 0.945,
+   "drop": 0.0
+  },
+  "unknown": {
+   "n": 49,
+   "right": 49,
+   "abstained": 0,
+   "wrong": 0,
+   "failed": 0,
+   "abstention_floor": 9,
+   "safe": null,
+   "share": 1.0,
+   "dev_share": 1.0,
+   "drop": 0.0
+  },
+  "compound": {
+   "n": 40,
+   "right": 38,
+   "abstained": 2,
+   "wrong": 0,
+   "failed": 0,
+   "abstention_floor": 0,
+   "safe": null,
+   "share": 0.95,
+   "dev_share": 0.944,
+   "drop": -0.006
+  },
+  "hostile": {
+   "n": 23,
+   "right": 22,
+   "abstained": 1,
+   "wrong": 0,
+   "failed": 0,
+   "abstention_floor": 23,
+   "safe": 23,
+   "share": 0.957,
+   "dev_share": 1.0,
+   "drop": 0.043
+  }
+ },
+ "total": {
+  "n": 506,
+  "right": 489,
+  "abstained": 17,
+  "wrong": 0,
+  "failed": 0
+ }
+}

@@ -22,6 +22,7 @@ import time
 from uuid import uuid4
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from .request_helpers import fields as _fields, integer as _int, number as _number, query as _query
 from ..instance import (beliefs, checkpoints, datasets, evidence, executive, governance, graphs, memory,
                         recall, store)
 from ..instance.errors import InstanceError, ValidationError
@@ -33,7 +34,7 @@ BIND = "127.0.0.1"
 DEFAULT_PORT = 8766
 MAX_BODY = 4096
 MAX_TEXT_BODY = 8192          # POST /api/web/tasks and /api/web/monitors: objective or topic of 2000 characters
-TEXT_ROUTES = ("/api/web/tasks", "/api/web/monitors")
+TEXT_ROUTES = ("/api/web/tasks", "/api/web/monitors", "/api/artifacts/make")   # the last: lane U, ADR-079
 MAX_ID = 2**63 - 1             # SQLite INTEGER range: a larger id cannot exist
 SWEEP_EVERY = 60.0             # seconds between expiry sweeps triggered by GET requests
 GET_SWEEP_BUSY_MS = 200        # a GET never waits longer than this for the write lock
@@ -49,6 +50,14 @@ ASSETS["/presence/gallery"] = ASSETS.pop("/presence/gallery.html")
 # Voice Cortex browser modules (absolute paths; docs/voice/COGNITIVE_VOICE_BRIDGE.md).
 from ..voice import assets as voice_assets  # noqa: E402
 ASSETS.update(voice_assets())
+# The "Made and kept" view (OMNIMIND lane U, ADR-079): its module, and lane G2's explorable runtime and stylesheet as
+# first-party files (the same bytes the explorable documents inline, pinned by hash in check/explorable.py).
+from . import artifacts as artifact_view  # noqa: E402
+ASSETS["/artifacts.mjs"] = ("artifacts.mjs", "text/javascript; charset=utf-8")
+ASSETS["/artifacts/explorable.mjs"] = (str(WEB.parent.parent / "artifacts" / "web" / "explorable.mjs"),
+                                       "text/javascript; charset=utf-8")
+ASSETS["/artifacts/explorable.css"] = (str(WEB.parent.parent / "artifacts" / "web" / "explorable.css"),
+                                       "text/css; charset=utf-8")
 HEADERS = {
     "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
     # microphone=(self): the voice panel captures audio only after the owner's consent and an explicit mic-on.
@@ -62,40 +71,7 @@ FORGET = {"evidence": governance.forget_evidence, "epoch": governance.forget_epo
 FORGET_BY_NUMBER = ("dataset", "consolidated")      # the target is an id or a seq, the others take a name
 
 
-# ---- request helpers -------------------------------------------------------------------------------
-
-def _fields(body, required=(), optional=()):
-    """Reject unknown or missing keys so a typo never silently falls back to a default."""
-    unknown = sorted(set(body) - set(required) - set(optional))
-    if unknown:
-        raise ValidationError("unknown field(s): " + ", ".join(unknown))
-    missing = [key for key in required if key not in body]
-    if missing:
-        raise ValidationError("missing field(s): " + ", ".join(missing))
-    return body
-
-
-def _int(value, name):
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValidationError(f"{name} must be an integer")
-    return value
-
-
-def _query(query, allowed):
-    unknown = sorted(set(query) - set(allowed))
-    if unknown:
-        raise ValidationError("unknown query parameter(s): " + ", ".join(unknown))
-    return {key: values[-1] for key, values in query.items()}
-
-
-def _number(text, name, kind=float):
-    if text is None:
-        return None
-    try:
-        return kind(text)
-    except ValueError:
-        raise ValidationError(f"{name} must be a number") from None
-
+# ---- request helpers: console/request_helpers.py (shared with console/artifacts.py, no import cycle) ----
 
 # ---- route handlers: (ctx, params, query, body) -> JSON value -----------------------------------------
 
@@ -436,7 +412,7 @@ def _worker_view(c, worker) -> dict:
 def _web_config_set(c, p, q, b):
     _fields(b, (), WEB_SWITCHES)
     before = wstate.get_config(c.db).autonomous
-    cfg = wstate.set_config(c.db, b, c.now)
+    cfg = wstate.set_config(c.db, b, c.now, by="owner:console")
     if "autonomous" in b and (b["autonomous"] or before):   # the owner's switch is recorded (D4)
         from ..webcortex import autonomy
         autonomy.record_switch(c.db, bool(b["autonomous"]), c.now, by="owner:console")
@@ -768,7 +744,20 @@ ROUTES = [(method, re.compile(f"^/api/{pattern}$"), handler) for method, pattern
     ("GET", "web/monitors", _web_monitors),
     ("POST", "web/monitors", _web_monitor_add),
     *(("POST", rf"web/monitors/(\d+)/{name}", _web_monitor_action(name)) for name in ("pause", "resume", "stop")),
+    # OMNIMIND lane U (ADR-079): what is kept and made (console/artifacts.py)
+    ("GET", "artifacts", artifact_view.listing),
+    ("POST", "artifacts/make", artifact_view.make),
+    ("GET", r"artifacts/jobs/([0-9a-f]{32})", artifact_view.job_or_404),
+    ("POST", "artifacts/uploads", artifact_view.upload_start),
+    ("POST", r"artifacts/uploads/([0-9a-f]{32})/chunk", artifact_view.upload_chunk),
+    ("POST", r"artifacts/uploads/([0-9a-f]{32})/finish", artifact_view.upload_finish),
+    ("GET", r"artifacts/(artifact-[0-9a-f]{32})", artifact_view.detail),
+    ("GET", r"artifacts/(artifact-[0-9a-f]{32})/content", artifact_view.content),
+    ("POST", r"artifacts/(artifact-[0-9a-f]{32})/image", artifact_view.image),
+    ("POST", r"artifacts/(artifact-[0-9a-f]{32})/feedback", artifact_view.feedback),
+    ("POST", r"artifacts/(artifact-[0-9a-f]{32})/forget", artifact_view.forget),
 )]
+RAW_BODY = re.compile(r"^/api/artifacts/uploads/[0-9a-f]{32}/chunk$")   # the one route whose body is bytes
 
 
 class _Context:
@@ -795,6 +784,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def reply_raw(self, code, body, mime):
+        """Bytes (an artifact's), with the same headers as every reply, written in bounded pieces (ADR-079)."""
+        self.send_response(code)
+        for name, value in {"Content-Type": mime, "Content-Length": str(len(body)), **HEADERS}.items():
+            self.send_header(name, value)
+        self.end_headers()
+        if self.command != "HEAD":
+            view = memoryview(body)
+            for start in range(0, len(body), artifact_view.CONTENT_CHUNK):
+                self.wfile.write(view[start:start + artifact_view.CONTENT_CHUNK])
 
     def fail(self, code, message):
         self.reply(code, {"error": message})
@@ -833,6 +833,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.fail(403, "forbidden host or origin")
         url = urlsplit(self.path)
         if not url.path.startswith("/api/"):
+            if artifact_view.serve_image(self, url.path):   # a minted, short-lived picture address (ADR-079)
+                return
             asset = ASSETS.get(url.path)
             if self.command not in ("GET", "HEAD"):
                 return self.fail(405 if asset or url.path == "/icon.svg" else 404, "method not allowed")
@@ -883,6 +885,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Transfer-Encoding"):
             self.fail(400, "chunked bodies are not accepted")
             return None
+        if RAW_BODY.match(urlsplit(self.path).path):     # an upload chunk (ADR-079): bytes, at most one chunk
+            if size > artifact_view.UPLOAD_CHUNK:
+                self.close_connection = True
+                self.fail(413, f"a chunk exceeds {artifact_view.UPLOAD_CHUNK} bytes")
+                return None
+            if self.headers.get_content_type() != "application/octet-stream":
+                self.fail(400, "Content-Type must be application/octet-stream")
+                return None
+            return self.rfile.read(size) if size else b""
         limit = MAX_TEXT_BODY if urlsplit(self.path).path in TEXT_ROUTES else MAX_BODY
         if size > limit:
             self.close_connection = True
@@ -911,7 +922,10 @@ class Handler(BaseHTTPRequestHandler):
                 db.execute(f"PRAGMA busy_timeout={self.server.post_busy_ms}")
                 governance.sweep(db, now)
             result = handler(_Context(db, self.server.db_path, now, self.server), params, query, body)
-            self.reply(200, result)
+            if isinstance(result, artifact_view.Raw):
+                self.reply_raw(200, result.body, result.mime)
+            else:
+                self.reply(200, result)
         except InstanceError as error:
             self.fail(error.http_status, str(error))
         except sqlite3.OperationalError as error:

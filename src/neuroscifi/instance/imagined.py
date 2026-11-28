@@ -20,8 +20,11 @@ slot for what was later observed (imagine -> observe -> compare). It is never ev
   - Forgetting covers it: a record whose source is forgotten (a task, a knowledge item, a claim, a source, an event, an
     epoch, a camera or partner root, a dataset, a graph, another imagined record) is removed in the same transaction
     (purge_orphans, called by every forget and by every sweep), and every removal leaves a payload-free tombstone that
-    a restore replays. The evidence an outcome names is one of the record's references too, and an outcome holds no
-    text of its own (observe), so nothing a forget removes survives in a record.
+    a restore replays. A record whose text names a forgotten camera or partner root, as stored or inside an encoded
+    value (base64, zlib, gzip, a PNG text chunk; remove_naming states its bounds and what it does not cover), is
+    removed by that forget too, and by a restore's replay. The evidence an outcome names is one of the record's
+    references too, and an outcome holds no text of its own (observe), so nothing a forget removes survives in a
+    record.
   - A checkpoint is a copy of the whole file, so archives and restores carry the store with its kinds; a restore then
     removes what the live file removed since (replay).
 
@@ -183,6 +186,170 @@ def purge_orphans(db, now):
         if not ids:
             return removed
         removed += len(ids)
+
+
+# ---- forget by text (governance._imagined_cascade, checkpoints._replay) ------------------------------------------
+# A record is never rewritten, so one that holds a forgotten name is removed (tombstoned like purge_orphans). The name
+# is looked for in every text column as stored (one SQL pass), then inside encoded values: every string of the
+# payload, the assumptions and the other text columns that looks like base64 (a data: URL included) is decoded, and
+# the bytes, and what a zlib or gzip stream among them or a PNG zTXt/iTXt chunk decompresses to, are searched for the
+# name as UTF-8 (plain and JSON-escaped) and as UTF-16. Bounds per record: DECODE_MAX_DEPTH nested decodings and
+# DECODE_MAX_BYTES produced in all; a record whose values need more than that to be read is treated as holding the
+# name (removed: what cannot be inspected is not kept). NOT covered: raw deflate without a header, bzip2/xz/zstd,
+# hex, base32/base85 or percent-encoding, a name split across values or written in another case, and anything
+# rendered rather than encoded (text drawn in an image's pixels, spoken in audio), or encrypted.
+TEXT_COLUMNS = ("payload", "assumptions", "uncertainty", "mechanism", "mechanism_version", "model", "question",
+                "outcome")
+DECODE_MIN_CHARS = 16            # shorter strings are not decoded: their plain text was already searched
+DECODE_MAX_DEPTH = 4
+DECODE_MAX_BYTES = 8 << 20
+_B64 = frozenset(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=-_")
+_PNG = b"\x89PNG\r\n\x1a\n"
+
+
+class _Unreadable(Exception):
+    """A value needs more than the decoding bounds allow."""
+
+
+def _base64(data: bytes):
+    """The bytes a base64 (or URL-safe base64) text decodes to, else None. A data: URL's prefix is dropped."""
+    import base64
+    import binascii
+    if data[:5].lower() == b"data:" and b"," in data[:200]:
+        data = data.split(b",", 1)[1]
+    data = b"".join(data.split())
+    if len(data) < DECODE_MIN_CHARS or not _B64.issuperset(data) or len(data.rstrip(b"=")) % 4 == 1:
+        return None
+    try:
+        return base64.urlsafe_b64decode(data.translate(bytes.maketrans(b"+/", b"-_")).rstrip(b"=") +
+                                        b"=" * (-len(data.rstrip(b"=")) % 4))
+    except (binascii.Error, ValueError):
+        return None
+
+
+def _inflate(data: bytes, wbits: int, budget: list) -> bytes | None:
+    import zlib
+    decoder = zlib.decompressobj(wbits)
+    try:
+        out = decoder.decompress(data, budget[0] + 1)
+    except zlib.error:
+        return None
+    budget[0] -= len(out)
+    if budget[0] < 0:
+        raise _Unreadable
+    return out
+
+
+def _png_texts(data: bytes, budget: list):
+    """The decompressed text of a PNG's zTXt chunks and compressed iTXt chunks (tEXt is plain and searched as is)."""
+    at = len(_PNG)
+    while at + 12 <= len(data):
+        length, kind = int.from_bytes(data[at:at + 4], "big"), data[at + 4:at + 8]
+        body = data[at + 8:at + 8 + length]
+        at += 12 + length
+        if kind == b"zTXt" and b"\0" in body:
+            text = body.split(b"\0", 1)[1][1:]
+        elif kind == b"iTXt" and body.count(b"\0") >= 3:
+            keyword, rest = body.split(b"\0", 1)
+            if rest[:1] != b"\x01":
+                continue
+            text = rest[2:].split(b"\0", 2)[-1]
+        else:
+            continue
+        found = _inflate(text, 15, budget)
+        if found is not None:
+            yield found
+
+
+def _bytes_hold(data: bytes, needles, depth: int, budget: list) -> bool:
+    if any(n in data for n in needles):
+        return True
+    if depth >= DECODE_MAX_DEPTH:
+        if data[:2] == b"\x1f\x8b" or data.startswith(_PNG) or _base64(data) is not None:
+            raise _Unreadable
+        return False
+    inner = []
+    if data[:2] == b"\x1f\x8b":
+        inner.append(_inflate(data, 16 + 15, budget))
+    elif len(data) >= 2 and data[0] & 0x0F == 8 and int.from_bytes(data[:2], "big") % 31 == 0:
+        inner.append(_inflate(data, 15, budget))
+    if data.startswith(_PNG):
+        inner.extend(_png_texts(data, budget))
+    decoded = _base64(data)
+    if decoded is not None:
+        budget[0] -= len(decoded)
+        if budget[0] < 0:
+            raise _Unreadable
+        inner.append(decoded)
+    return any(found is not None and _bytes_hold(found, needles, depth + 1, budget) for found in inner)
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            yield key
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+
+
+def holds_text(texts, forms) -> bool:
+    """Whether any of the strings `texts` (a record's text columns; JSON ones are parsed and walked) holds one of
+    `forms` once decoded within the bounds above; True also when a value needs more than the bounds allow."""
+    needles = sorted({encoded for form in forms for encoded in (
+        form.encode(), json.dumps(form)[1:-1].encode(), form.encode("utf-16-le"), form.encode("utf-16-be"))})
+    budget = [DECODE_MAX_BYTES]
+    try:
+        for text in texts:
+            if text is None:
+                continue
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                parsed = text
+            if not isinstance(parsed, (str, dict, list)):      # a bare number or literal: its text is the value
+                parsed = text
+            for value in _strings(parsed):
+                if any(form in value for form in forms):
+                    return True
+                if len(value) >= DECODE_MIN_CHARS and _bytes_hold(value.encode("utf-8", "replace"), needles, 0,
+                                                                  budget):
+                    return True
+    except _Unreadable:
+        return True
+    return False
+
+
+def remove_naming(db, forms, now):
+    """Remove (tombstone 'forgotten', with what derives from them) the records whose text holds any of `forms`, as
+    stored or inside an encoded value (holds_text); checkpoints written since the oldest of them become stale.
+    Caller owns the transaction: every forget of a camera or partner root (governance._imagined_cascade) and a
+    restore's replay (checkpoints._replay), so both remove the same records. Returns (number removed, [checkpoint
+    ids made stale])."""
+    forms = sorted({f for f in forms if f})
+    if not forms or not present(db) or db.execute("SELECT 1 FROM imagined LIMIT 1").fetchone() is None:
+        return 0, []
+    plain = sorted({form for f in forms for form in (f, json.dumps(f)[1:-1])})
+    match = " OR ".join(f"instr({c},?)>0" for c in TEXT_COLUMNS for _ in plain)
+    doomed = {i for (i,) in db.execute(f"SELECT id FROM imagined WHERE {match}",
+                                       [n for _ in TEXT_COLUMNS for n in plain])}
+    for row in db.execute(f"SELECT id,{','.join(TEXT_COLUMNS)} FROM imagined"):
+        if row[0] not in doomed and holds_text(row[1:], forms):
+            doomed.add(row[0])
+    if not doomed:
+        return 0, []
+    doomed = sorted(doomed)
+    removed, earliest = [], None
+    for start in range(0, len(doomed), 300):
+        chunk = doomed[start:start + 300]
+        ids, first = _remove(db, f"id IN ({','.join('?' * len(chunk))})", chunk, "forgotten", now)
+        removed += ids
+        earliest = first if earliest is None else min(earliest, first)
+    count = len(removed) + purge_orphans(db, now)
+    return count, _stale_checkpoints(db, earliest)
 
 
 def expire(db, now):

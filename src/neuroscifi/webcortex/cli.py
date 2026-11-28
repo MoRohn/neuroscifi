@@ -280,7 +280,7 @@ def _config(db, a, now):
             raise ValidationError(f"--set expects KEY=JSON, got {item!r}")
         changes[key.strip()] = _json_arg(raw, f"--set {key.strip()}")
     before = state.get_config(db).autonomous
-    cfg = state.set_config(db, changes, now) if changes else state.get_config(db)
+    cfg = state.set_config(db, changes, now, by="owner:cli") if changes else state.get_config(db)
     if "autonomous" in changes and (changes["autonomous"] or before):   # the owner's switch is recorded (D4)
         from . import autonomy
         autonomy.record_switch(db, bool(changes["autonomous"]), now, by="owner:cli")
@@ -588,7 +588,7 @@ def _searxng_cmd(db, a, now):
         cfg = state.require_enabled(db)
         out = container.start()
         if not cfg.searxng_url:
-            state.set_config(db, {"searxng_url": container.base_url}, now)
+            state.set_config(db, {"searxng_url": container.base_url}, now, by="nsf web searxng start")
             out["configured"] = container.base_url
         return out
     if a.action == "stop":

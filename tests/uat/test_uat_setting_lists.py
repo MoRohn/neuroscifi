@@ -31,6 +31,7 @@ WAVE0_VOICE = {"mode", "voice", "speed", "retain_audio", "audio_ttl_hours", "tra
 # Numbers Wave 1 added: bounds of a switch, not switches (test_uat_rollback.py's docstring says so)
 BOUNDS = {"imagine_max_seconds", "imagine_max_bytes", "broadcast_threshold", "recheck_per_tick", "recheck_daily",
           "reflection_interval_days", "supersession_min_sources",
+          "artifact_max_bytes", "artifact_store_max_bytes",       # OMNIMIND lane A (ADR-071): the store's caps
           "reach_share"}        # Wave 4 lane A (ADR-064): the bound of allowance_division
 
 

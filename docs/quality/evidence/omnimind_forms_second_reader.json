@@ -1,0 +1,4697 @@
+{
+ "what": "a second, independent reading of the 271 forms cases (lane ZF's development and held-out splits): a reader that saw each case's view (request, content, context) shuffled and without ids, never the examiner's sets, labelled best / acceptable / too poor / too much forms; ids restored from the key afterwards",
+ "caveat": "BOTH READERS ARE MODELS OF THE SAME FAMILY, not people: agreement between them shows the labels are consistent between two independent model readings, not that they agree with the owner's taste",
+ "quote": "the reference level a careful reader reaches on 'good' is the reader's first choice under the examiner's sets: 0.902 on development, 0.877 on held-out (241 of 271 in all)",
+ "agreement": {
+  "development": {
+   "n": 133,
+   "reader_first_choice_under_examiner": {
+    "fine": 12,
+    "good": 120,
+    "too_poor": 1
+   },
+   "share_first_good": 0.902,
+   "share_first_good_or_fine": 0.992,
+   "share_first_bad": 0.008,
+   "cases_where_some_reader_best_is_examiner_good": 129,
+   "cases_where_some_reader_best_is_examiner_bad": 4,
+   "cases_sharing_a_top_form": 129,
+   "examiner_good_forms_under_reader": {
+    "in reader best": 165,
+    "in reader acceptable": 28,
+    "not listed by reader": 11
+   },
+   "by_reader_confidence": {
+    "medium": {
+     "fine": 6,
+     "good": 41
+    },
+    "high": {
+     "good": 74,
+     "fine": 1
+    },
+    "low": {
+     "fine": 5,
+     "too_poor": 1,
+     "good": 5
+    }
+   }
+  },
+  "held_out": {
+   "n": 138,
+   "reader_first_choice_under_examiner": {
+    "good": 121,
+    "fine": 16,
+    "too_much": 1
+   },
+   "share_first_good": 0.877,
+   "share_first_good_or_fine": 0.993,
+   "share_first_bad": 0.007,
+   "cases_where_some_reader_best_is_examiner_good": 132,
+   "cases_where_some_reader_best_is_examiner_bad": 6,
+   "cases_sharing_a_top_form": 132,
+   "examiner_good_forms_under_reader": {
+    "in reader best": 170,
+    "in reader acceptable": 24,
+    "not listed by reader": 14
+   },
+   "by_reader_confidence": {
+    "high": {
+     "good": 81,
+     "fine": 2
+    },
+    "medium": {
+     "good": 36,
+     "fine": 9,
+     "too_much": 1
+    },
+    "low": {
+     "fine": 5,
+     "good": 4
+    }
+   }
+  },
+  "all": {
+   "n": 271,
+   "reader_first_choice_under_examiner": {
+    "fine": 28,
+    "good": 241,
+    "too_much": 1,
+    "too_poor": 1
+   },
+   "share_first_good": 0.889,
+   "share_first_good_or_fine": 0.993,
+   "share_first_bad": 0.007,
+   "cases_where_some_reader_best_is_examiner_good": 261,
+   "cases_where_some_reader_best_is_examiner_bad": 10,
+   "cases_sharing_a_top_form": 261,
+   "examiner_good_forms_under_reader": {
+    "in reader best": 335,
+    "in reader acceptable": 52,
+    "not listed by reader": 25
+   },
+   "by_reader_confidence": {
+    "medium": {
+     "fine": 15,
+     "good": 77,
+     "too_much": 1
+    },
+    "high": {
+     "good": 155,
+     "fine": 3
+    },
+    "low": {
+     "fine": 10,
+     "too_poor": 1,
+     "good": 9
+    }
+   }
+  }
+ },
+ "reasons": "the reader's 'why' sentence is kept for development cases only: held-out cases carry no text here beyond what acceptance/omni/forms_cases.py already holds",
+ "labels": [
+  {
+   "id": "d001",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "One number."
+  },
+  {
+   "id": "d002",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "table"
+   ],
+   "confidence": "high",
+   "why": "One temperature."
+  },
+  {
+   "id": "d003",
+   "best": [
+    "line_chart+prose",
+    "line_chart"
+   ],
+   "acceptable": [
+    "prose+line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "365 daily highs are a line over the year."
+  },
+  {
+   "id": "d004",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "line_chart"
+   ],
+   "confidence": "high",
+   "why": "Yes/no with the low."
+  },
+  {
+   "id": "d005",
+   "best": [
+    "spoken",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "high",
+   "why": "Three dates and temperatures read aloud answer it on a voice device."
+  },
+  {
+   "id": "d006",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "high",
+   "why": "A general 'what was it like' on a voice device is a short spoken summary of the summer."
+  },
+  {
+   "id": "d007",
+   "best": [
+    "table",
+    "table+prose",
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Two quotes on three points are a side-by-side table or a sentence."
+  },
+  {
+   "id": "d008",
+   "best": [
+    "table",
+    "table+prose",
+    "prose+table"
+   ],
+   "acceptable": [
+    "scatter_chart+table",
+    "heatmap"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "Twelve suppliers by three measures is a comparison table."
+  },
+  {
+   "id": "d009",
+   "best": [
+    "prose",
+    "table"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "step_through",
+    "flow",
+    "timeline"
+   ],
+   "confidence": "medium",
+   "why": "Four config changes are listed old-to-new in a few lines."
+  },
+  {
+   "id": "d010",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "line_chart",
+    "histogram+prose"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "A before/after change across 2000 readings is shown on the time axis with the update marked."
+  },
+  {
+   "id": "d011",
+   "best": [
+    "prose+flow",
+    "flow+prose",
+    "prose"
+   ],
+   "acceptable": [
+    "step_through+prose",
+    "animation+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "solid_viewer"
+   ],
+   "confidence": "medium",
+   "why": "A four-stage cycle is explained in words alongside a cycle diagram."
+  },
+  {
+   "id": "d012",
+   "best": [
+    "prose",
+    "prose+bar_chart"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [
+    "bar_chart"
+   ],
+   "too_much": [
+    "explorable",
+    "animation",
+    "line_chart"
+   ],
+   "confidence": "medium",
+   "why": "A 'why' over three small categories is an explanation in words, perhaps with a tiny bar chart of the two months."
+  },
+  {
+   "id": "d013",
+   "best": [
+    "prose",
+    "step_through"
+   ],
+   "acceptable": [
+    "step_through+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable",
+    "flow"
+   ],
+   "confidence": "medium",
+   "why": "Six reset steps are a numbered list, or steps to tap through while doing it."
+  },
+  {
+   "id": "d014",
+   "best": [
+    "step_through+prose",
+    "step_through"
+   ],
+   "acceptable": [
+    "animation+prose",
+    "table"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "Walking through partitioning is stepping frame by frame at one's own pace."
+  },
+  {
+   "id": "d015",
+   "best": [
+    "image_view"
+   ],
+   "acceptable": [
+    "image_view+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "solid_viewer"
+   ],
+   "confidence": "high",
+   "why": "A floor plan is seen."
+  },
+  {
+   "id": "d016",
+   "best": [
+    "histogram+prose",
+    "histogram"
+   ],
+   "acceptable": [
+    "prose+histogram"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "The look of a spread is a histogram."
+  },
+  {
+   "id": "d017",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "The link path in a sentence."
+  },
+  {
+   "id": "d018",
+   "best": [
+    "node_link+prose",
+    "node_link"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "solid_viewer",
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "How 140 services connect is a dependency graph, with a sentence on the hubs."
+  },
+  {
+   "id": "d019",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "flow",
+    "spoken"
+   ],
+   "confidence": "high",
+   "why": "Summarising notes is prose."
+  },
+  {
+   "id": "d020",
+   "best": [
+    "prose+line_chart",
+    "prose",
+    "line_chart+prose"
+   ],
+   "acceptable": [
+    "prose+histogram"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "A summary is the typical, peak and worst periods in words, with the week's trace beside it."
+  },
+  {
+   "id": "d021",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "explorable+prose",
+    "explorable"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "medium",
+   "why": "Comparing drug levels under two dosing intervals is two curves with the consequence stated."
+  },
+  {
+   "id": "d022",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+timeline"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "flow",
+    "timeline",
+    "step_through"
+   ],
+   "confidence": "high",
+   "why": "The next option and its arrival in a sentence."
+  },
+  {
+   "id": "d023",
+   "best": [
+    "bar_chart+prose",
+    "table+prose"
+   ],
+   "acceptable": [
+    "bar_chart",
+    "table",
+    "prose+bar_chart"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "heatmap",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "Nine category totals are a ranked bar chart or table with the biggest items named."
+  },
+  {
+   "id": "d024",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "flow"
+   ],
+   "confidence": "high",
+   "why": "Word parts and their meanings in a line or two."
+  },
+  {
+   "id": "d025",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table",
+    "prose+line_chart"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "Three population figures fit in a sentence."
+  },
+  {
+   "id": "d026",
+   "best": [
+    "line_chart+prose",
+    "line_chart"
+   ],
+   "acceptable": [
+    "prose+line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "A long-run change over 120 points is a line chart."
+  },
+  {
+   "id": "d027",
+   "best": [
+    "map",
+    "map+prose"
+   ],
+   "acceptable": [
+    "prose+map"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "solid_viewer",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "Where things are is a map."
+  },
+  {
+   "id": "d028",
+   "best": [
+    "prose",
+    "prose+map",
+    "map+prose"
+   ],
+   "acceptable": [
+    "map"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "solid_viewer"
+   ],
+   "confidence": "medium",
+   "why": "Name the station and its distance, with a pin on a map if helpful."
+  },
+  {
+   "id": "d029",
+   "best": [
+    "prose+waveform_spectrum",
+    "prose",
+    "waveform_spectrum+prose"
+   ],
+   "acceptable": [
+    "waveform_spectrum"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "sonification",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Three minutes of recording is best described in words (what is heard, when), with the waveform for orientation."
+  },
+  {
+   "id": "d030",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table"
+   ],
+   "confidence": "high",
+   "why": "One timestamp."
+  },
+  {
+   "id": "d031",
+   "best": [
+    "solid_viewer+prose",
+    "solid_viewer",
+    "image_view+prose"
+   ],
+   "acceptable": [
+    "image_view",
+    "prose+solid_viewer"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "A 3D part's shape is best seen by turning it, with a line describing it."
+  },
+  {
+   "id": "d032",
+   "best": [
+    "line_chart+prose",
+    "scatter_chart+prose"
+   ],
+   "acceptable": [
+    "scatter_chart",
+    "line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "The shape of a curve is seen, with its elasticity stated."
+  },
+  {
+   "id": "d033",
+   "best": [
+    "prose+node_link",
+    "prose+table",
+    "prose"
+   ],
+   "acceptable": [
+    "node_link",
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "solid_viewer",
+    "animation"
+   ],
+   "confidence": "low",
+   "why": "A 2400-item archive's structure needs a summary of the top levels, with the tree for detail."
+  },
+  {
+   "id": "d034",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link"
+   ],
+   "confidence": "high",
+   "why": "Four entries are described in a line."
+  },
+  {
+   "id": "d035",
+   "best": [
+    "map+prose",
+    "map"
+   ],
+   "acceptable": [
+    "bar_chart+prose",
+    "table"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "Rent by neighbourhood is a shaded map."
+  },
+  {
+   "id": "d036",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+bar_chart"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "Two rents compared in a sentence."
+  },
+  {
+   "id": "d037",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "table"
+   ],
+   "confidence": "high",
+   "why": "Yes/no with the days."
+  },
+  {
+   "id": "d038",
+   "best": [
+    "line_chart+prose",
+    "line_chart"
+   ],
+   "acceptable": [
+    "prose+line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "spoken",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation",
+    "step_through"
+   ],
+   "confidence": "high",
+   "why": "365 daily values over a year are a shape only a line chart shows; a sentence on the highs and lows helps."
+  },
+  {
+   "id": "d039",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+node_link",
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "One name with a count answers it."
+  },
+  {
+   "id": "d040",
+   "best": [
+    "node_link",
+    "node_link+prose"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "high",
+   "why": "Seeing how 60 people link is a network diagram."
+  },
+  {
+   "id": "d041",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "bar_chart"
+   ],
+   "confidence": "high",
+   "why": "One count."
+  },
+  {
+   "id": "d042",
+   "best": [
+    "table",
+    "data_file"
+   ],
+   "acceptable": [
+    "step_through"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "medium",
+   "why": "Going through 200 orders one by one wants the full list as a table or file."
+  },
+  {
+   "id": "d043",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+waveform_spectrum"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "waveform_spectrum",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "One level in dB."
+  },
+  {
+   "id": "d044",
+   "best": [
+    "waveform_spectrum+prose",
+    "prose+waveform_spectrum"
+   ],
+   "acceptable": [
+    "waveform_spectrum",
+    "prose"
+   ],
+   "too_poor": [
+    "spoken"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "Dominant frequencies are read straight off a spectrum, with the peak values named."
+  },
+  {
+   "id": "d045",
+   "best": [
+    "table",
+    "data_file+prose",
+    "prose+data_file"
+   ],
+   "acceptable": [
+    "prose+table",
+    "data_file"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "low",
+   "why": "A text terminal cannot draw a chart; the nearest is the numbers (daily rollup) as a table or a file to plot elsewhere."
+  },
+  {
+   "id": "d046",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "prose+line_chart"
+   ],
+   "confidence": "high",
+   "why": "Explicitly one sentence."
+  },
+  {
+   "id": "d047",
+   "best": [
+    "table"
+   ],
+   "acceptable": [
+    "table+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "bar_chart"
+   ],
+   "confidence": "high",
+   "why": "Explicit table, not a chart."
+  },
+  {
+   "id": "d048",
+   "best": [
+    "sonification",
+    "sonification+line_chart"
+   ],
+   "acceptable": [
+    "sonification+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "The person explicitly asked to hear the tide shape and the pocket device can play sound."
+  },
+  {
+   "id": "d049",
+   "best": [
+    "spoken",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "high",
+   "why": "A voice device cannot show a chart, so read out the five vote counts."
+  },
+  {
+   "id": "d050",
+   "best": [
+    "data_file"
+   ],
+   "acceptable": [
+    "data_file+prose"
+   ],
+   "too_poor": [
+    "table",
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high",
+   "why": "Explicit CSV export on a device that takes files."
+  },
+  {
+   "id": "d051",
+   "best": [
+    "table",
+    "prose+table",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "animation"
+   ],
+   "confidence": "low",
+   "why": "An interactive model will not fit 1 s and 4 KB, so the nearest is payments at a few rates in a small table."
+  },
+  {
+   "id": "d052",
+   "best": [
+    "step_through",
+    "step_through+prose"
+   ],
+   "acceptable": [
+    "prose+step_through"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "Explicit step-through, which also respects reduced motion."
+  },
+  {
+   "id": "d053",
+   "best": [
+    "step_through",
+    "step_through+prose",
+    "explorable"
+   ],
+   "acceptable": [
+    "explorable+prose",
+    "image_view+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "medium",
+   "why": "Animation breaks reduced motion, so the nearest is orbit positions the person steps through or scrubs."
+  },
+  {
+   "id": "d054",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "scatter_chart",
+    "prose+line_chart"
+   ],
+   "confidence": "high",
+   "why": "No chart, just the gist."
+  },
+  {
+   "id": "d055",
+   "best": [
+    "heatmap"
+   ],
+   "acceptable": [
+    "heatmap+prose"
+   ],
+   "too_poor": [
+    "table",
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high",
+   "why": "Explicit heatmap."
+  },
+  {
+   "id": "d056",
+   "best": [
+    "solid_viewer"
+   ],
+   "acceptable": [
+    "solid_viewer+prose"
+   ],
+   "too_poor": [
+    "image_view",
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high",
+   "why": "Explicit request to spin a 3D model on a device that can show 3D interactively."
+  },
+  {
+   "id": "d057",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "prose",
+    "line_chart"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "low",
+   "why": "A follow-up on 720 readings for another room most likely wants the same chart-plus-summary as before."
+  },
+  {
+   "id": "d058",
+   "best": [
+    "prose+bar_chart",
+    "bar_chart+prose"
+   ],
+   "acceptable": [
+    "prose",
+    "table+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation",
+    "heatmap"
+   ],
+   "confidence": "medium",
+   "why": "Six survey answers are a headline finding plus a small bar chart."
+  },
+  {
+   "id": "d059",
+   "best": [
+    "prose",
+    "prose+map",
+    "prose+table"
+   ],
+   "acceptable": [
+    "map+prose",
+    "table+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "low",
+   "why": "An open 'anything interesting' wants the notable findings in words, with where the samples were if relevant."
+  },
+  {
+   "id": "d060",
+   "best": [
+    "prose+table",
+    "table+prose"
+   ],
+   "acceptable": [
+    "prose",
+    "table"
+   ],
+   "too_poor": [
+    "spoken"
+   ],
+   "too_much": [
+    "explorable",
+    "animation",
+    "heatmap"
+   ],
+   "confidence": "medium",
+   "why": "An overview of an unfamiliar 1200x8 sheet is a short description plus a table of its columns or sample rows."
+  },
+  {
+   "id": "d061",
+   "best": [
+    "prose",
+    "prose+image_view"
+   ],
+   "acceptable": [
+    "image_view+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "heatmap",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Describe the image and its properties, showing it alongside."
+  },
+  {
+   "id": "d062",
+   "best": [
+    "prose",
+    "prose+table"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "flow",
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Tell me about this code is a prose summary of what it does and its main parts."
+  },
+  {
+   "id": "d063",
+   "best": [
+    "prose+line_chart",
+    "line_chart+prose"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "A diagnosis in words backed by a chart of the two battery series over time."
+  },
+  {
+   "id": "d064",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+bar_chart"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "table"
+   ],
+   "confidence": "high",
+   "why": "'Thoughts' on four numbers is a short commentary."
+  },
+  {
+   "id": "d065",
+   "best": [
+    "node_link",
+    "node_link+prose",
+    "prose"
+   ],
+   "acceptable": [
+    "table",
+    "prose+node_link"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "low",
+   "why": "A go-ahead for a 30-node hierarchy most likely wants the tree laid out."
+  },
+  {
+   "id": "d066",
+   "best": [
+    "prose",
+    "table"
+   ],
+   "acceptable": [
+    "timeline",
+    "prose+timeline"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Nine items on one day are a short list."
+  },
+  {
+   "id": "d067",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Only two readings, so a sentence is all the data supports."
+  },
+  {
+   "id": "d068",
+   "best": [
+    "prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "prose+heatmap"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "table",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "A quick question about oddities wants the anomalies named, perhaps with one chart marking them."
+  },
+  {
+   "id": "d069",
+   "best": [
+    "prose+line_chart",
+    "prose+bar_chart",
+    "line_chart+prose"
+   ],
+   "acceptable": [
+    "prose+table",
+    "step_through"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "A walkthrough of twelve months is narration alongside a simple chart."
+  },
+  {
+   "id": "d070",
+   "best": [
+    "prose",
+    "prose+timeline",
+    "timeline+prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Four events are a short narrative of what happened when."
+  },
+  {
+   "id": "d071",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart",
+    "line_chart"
+   ],
+   "acceptable": [
+    "heatmap"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation",
+    "step_through"
+   ],
+   "confidence": "medium",
+   "why": "A quick look at a year of three hourly counts is one chart of daily totals with a line of commentary."
+  },
+  {
+   "id": "d072",
+   "best": [
+    "prose",
+    "prose+table"
+   ],
+   "acceptable": [
+    "prose+sonification",
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "For a screen reader, the course of the heart rate in words with key points."
+  },
+  {
+   "id": "d073",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table",
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart",
+    "sonification"
+   ],
+   "confidence": "high",
+   "why": "One month named answers it, and words suit a screen reader."
+  },
+  {
+   "id": "d074",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "map"
+   ],
+   "confidence": "high",
+   "why": "Voice-only: one spoken line on the delay."
+  },
+  {
+   "id": "d075",
+   "best": [
+    "prose+waveform_spectrum",
+    "waveform_spectrum+prose"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "With no sound allowed, name the species and calls in words and show the spectrum silently; nothing that plays audio."
+  },
+  {
+   "id": "d076",
+   "best": [
+    "step_through+prose",
+    "step_through"
+   ],
+   "acceptable": [
+    "prose+flow",
+    "solid_viewer+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Four strokes are four frames to step through, without autoplay for reduced motion."
+  },
+  {
+   "id": "d077",
+   "best": [
+    "prose",
+    "prose+table",
+    "table"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "For a screen reader, describe the routes and which villages each connects in words or a list rather than a diagram."
+  },
+  {
+   "id": "d078",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "high",
+   "why": "A week's forecast on a voice device is a short spoken summary."
+  },
+  {
+   "id": "d079",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "A 2 KB, 0.3 s budget leaves room only for a short description of the day's rise and fall."
+  },
+  {
+   "id": "d080",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "line_chart"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "explorable",
+    "animation"
+   ],
+   "confidence": "low",
+   "why": "A tiny budget (0.5 s, 6 KB) argues for a few sentences, perhaps a minimal sparkline if it fits."
+  },
+  {
+   "id": "d081",
+   "best": [
+    "image_view",
+    "image_view+prose"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "solid_viewer",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "A view from above is one rendered image, and a 3D viewer will not fit 10 KB anyway."
+  },
+  {
+   "id": "d082",
+   "best": [
+    "step_through+prose",
+    "node_link+prose",
+    "explorable+prose"
+   ],
+   "acceptable": [
+    "animation+prose",
+    "explorable"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "solid_viewer"
+   ],
+   "confidence": "low",
+   "why": "To learn how a small network computes, follow an input layer by layer through the diagram."
+  },
+  {
+   "id": "d083",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "Explicitly one sentence."
+  },
+  {
+   "id": "d084",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "explorable+prose",
+    "line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "medium",
+   "why": "Six money series over 36 months are understood from lines over time with the story told in words."
+  },
+  {
+   "id": "d085",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart",
+    "table",
+    "line_chart"
+   ],
+   "confidence": "high",
+   "why": "One number answers it."
+  },
+  {
+   "id": "d086",
+   "best": [
+    "step_through+prose",
+    "step_through"
+   ],
+   "acceptable": [
+    "prose",
+    "table",
+    "animation"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Five probe steps of a search are stepped through to see the halving."
+  },
+  {
+   "id": "d087",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "step_through",
+    "line_chart"
+   ],
+   "confidence": "high",
+   "why": "O(log n)."
+  },
+  {
+   "id": "d088",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+timeline",
+    "timeline+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "table"
+   ],
+   "confidence": "high",
+   "why": "A summary of eighteen events is a short narrative."
+  },
+  {
+   "id": "d089",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+timeline"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "timeline",
+    "table"
+   ],
+   "confidence": "high",
+   "why": "One time."
+  },
+  {
+   "id": "d090",
+   "best": [
+    "waveform_spectrum+prose",
+    "prose+waveform_spectrum"
+   ],
+   "acceptable": [
+    "waveform_spectrum"
+   ],
+   "too_poor": [
+    "prose",
+    "spoken"
+   ],
+   "too_much": [
+    "animation",
+    "explorable",
+    "solid_viewer"
+   ],
+   "confidence": "high",
+   "why": "Understanding an engine sound needs the spectrum view with playback, plus a few words naming what the peaks mean."
+  },
+  {
+   "id": "d091",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "waveform_spectrum"
+   ],
+   "confidence": "high",
+   "why": "One duration."
+  },
+  {
+   "id": "d092",
+   "best": [
+    "node_link+prose",
+    "node_link"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "high",
+   "why": "Who influences whom is a directed graph to see."
+  },
+  {
+   "id": "d093",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "A yes/no about two authors is a sentence, naming the paper if any."
+  },
+  {
+   "id": "d094",
+   "best": [
+    "solid_viewer+prose",
+    "image_view+prose",
+    "heatmap+prose"
+   ],
+   "acceptable": [
+    "solid_viewer",
+    "map",
+    "image_view"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "low",
+   "why": "Terrain looks are seen, as a turnable relief surface or a shaded relief image."
+  },
+  {
+   "id": "d095",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "solid_viewer",
+    "heatmap",
+    "map",
+    "image_view"
+   ],
+   "confidence": "high",
+   "why": "One height is one number."
+  },
+  {
+   "id": "d096",
+   "best": [
+    "scatter_chart+prose",
+    "scatter_chart"
+   ],
+   "acceptable": [
+    "prose+scatter_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "Engine size against economy over 150 cars is a scatter with the trend stated."
+  },
+  {
+   "id": "d097",
+   "best": [
+    "prose+scatter_chart",
+    "scatter_chart+prose",
+    "prose"
+   ],
+   "acceptable": [
+    "table+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "heatmap",
+    "line_chart+scatter_chart"
+   ],
+   "confidence": "medium",
+   "why": "Seven nights is too few for a firm link; a sentence saying so with a small scatter is right."
+  },
+  {
+   "id": "d098",
+   "best": [
+    "scatter_chart+prose",
+    "scatter_chart"
+   ],
+   "acceptable": [
+    "prose+scatter_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation",
+    "heatmap"
+   ],
+   "confidence": "high",
+   "why": "A relation across 300 campaigns is the classic scatter plot with the correlation stated."
+  },
+  {
+   "id": "d099",
+   "best": [
+    "table",
+    "prose+table"
+   ],
+   "acceptable": [
+    "table+prose",
+    "data_file"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high",
+   "why": "On a terminal, the largest folders ranked by size."
+  },
+  {
+   "id": "d100",
+   "best": [
+    "table",
+    "data_file"
+   ],
+   "acceptable": [
+    "table+prose",
+    "prose+table"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "medium",
+   "why": "An agent on a text/file device wants 30 functions and their callees as a structured list, which a table or a JSON file carries cleanly."
+  },
+  {
+   "id": "d101",
+   "best": [
+    "data_file",
+    "table"
+   ],
+   "acceptable": [],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "medium",
+   "why": "An agent wants the 40 matching records as structured data."
+  },
+  {
+   "id": "d102",
+   "best": [
+    "spoken",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "high",
+   "why": "A summary of the article spoken."
+  },
+  {
+   "id": "d103",
+   "best": [
+    "map+prose",
+    "prose+map"
+   ],
+   "acceptable": [
+    "prose",
+    "step_through"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "high",
+   "why": "Directions are a route on a map with the turns listed."
+  },
+  {
+   "id": "d104",
+   "best": [
+    "timeline+prose",
+    "timeline",
+    "table+prose"
+   ],
+   "acceptable": [
+    "table",
+    "prose+timeline"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Planned versus actual dates for 22 milestones is a two-track timeline."
+  },
+  {
+   "id": "d105",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "explorable+prose",
+    "explorable",
+    "line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "spoken"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "medium",
+   "why": "Two cooling curves on one chart answer both questions; a slider model is a nice extra but not needed."
+  },
+  {
+   "id": "d106",
+   "best": [
+    "explorable",
+    "explorable+prose"
+   ],
+   "acceptable": [
+    "line_chart+prose",
+    "table"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "'Let me see how changing the rate changes it' is exactly a slider model."
+  },
+  {
+   "id": "d107",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+bar_chart",
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "line_chart"
+   ],
+   "confidence": "high",
+   "why": "Old versus new bill in a sentence."
+  },
+  {
+   "id": "d108",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+image_view"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "image_view",
+    "heatmap"
+   ],
+   "confidence": "high",
+   "why": "Yes/no with where it is soft."
+  },
+  {
+   "id": "d109",
+   "best": [
+    "image_view"
+   ],
+   "acceptable": [
+    "image_view+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "Showing the edges means showing an edge-map image."
+  },
+  {
+   "id": "d110",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+bar_chart"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart",
+    "table"
+   ],
+   "confidence": "high",
+   "why": "One winner named."
+  },
+  {
+   "id": "d111",
+   "best": [
+    "bar_chart+prose",
+    "bar_chart"
+   ],
+   "acceptable": [
+    "table",
+    "prose+bar_chart"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "Thirty regions on one rate is a ranked bar chart."
+  },
+  {
+   "id": "d112",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+histogram"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "histogram",
+    "table"
+   ],
+   "confidence": "high",
+   "why": "A typical value from nine people is the median in a sentence."
+  },
+  {
+   "id": "d113",
+   "best": [
+    "prose",
+    "prose+table"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "sonification",
+    "histogram"
+   ],
+   "confidence": "medium",
+   "why": "For a screen reader, give median, quartiles and range in words or a small percentile table rather than a picture."
+  },
+  {
+   "id": "d114",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "high",
+   "why": "One number spoken."
+  },
+  {
+   "id": "d115",
+   "best": [
+    "bar_chart"
+   ],
+   "acceptable": [
+    "bar_chart+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "medium",
+   "why": "An explicit chart for slides, which the device can make even for one value."
+  },
+  {
+   "id": "d116",
+   "best": [
+    "table",
+    "table+prose"
+   ],
+   "acceptable": [
+    "prose+table",
+    "line_chart+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium",
+   "why": "Thirty-one days, and the person prefers tables."
+  },
+  {
+   "id": "d117",
+   "best": [
+    "prose+line_chart",
+    "line_chart+prose",
+    "prose"
+   ],
+   "acceptable": [
+    "line_chart"
+   ],
+   "too_poor": [
+    "spoken"
+   ],
+   "too_much": [
+    "animation",
+    "explorable",
+    "step_through",
+    "table"
+   ],
+   "confidence": "medium",
+   "why": "A day of 390 prices is a shape, but the person prefers words, so a sentence or two leading with a small line chart is ideal."
+  },
+  {
+   "id": "d118",
+   "best": [
+    "spoken",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "high",
+   "why": "A relationship stated aloud."
+  },
+  {
+   "id": "d119",
+   "best": [
+    "map",
+    "map+prose"
+   ],
+   "acceptable": [
+    "map+timeline",
+    "prose+map"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "Where 35 outages were is a map."
+  },
+  {
+   "id": "d120",
+   "best": [
+    "line_chart+prose",
+    "waveform_spectrum+line_chart",
+    "line_chart+waveform_spectrum"
+   ],
+   "acceptable": [
+    "prose+line_chart",
+    "waveform_spectrum+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium",
+   "why": "Checking whether a hum tracks fan speed means putting the hum's frequency and the speed log on one time axis, ideally beside the spectrum."
+  },
+  {
+   "id": "d121",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+flow"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "flow",
+    "step_through",
+    "animation"
+   ],
+   "confidence": "high",
+   "why": "Why a short function returns None is an explanation pointing at the code path."
+  },
+  {
+   "id": "d122",
+   "best": [
+    "flow+prose",
+    "step_through+prose",
+    "prose"
+   ],
+   "acceptable": [
+    "flow",
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "low",
+   "why": "Tracing twelve calls a request makes is a sequence of steps, drawn or listed."
+  },
+  {
+   "id": "d123",
+   "best": [
+    "table"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "data_file"
+   ],
+   "confidence": "high",
+   "why": "Seven days and names on a terminal are a small table."
+  },
+  {
+   "id": "d124",
+   "best": [
+    "map+image_view",
+    "image_view+map",
+    "prose+map"
+   ],
+   "acceptable": [
+    "map",
+    "table+image_view",
+    "prose+image_view"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer",
+    "explorable"
+   ],
+   "confidence": "low",
+   "why": "Forty located photos are best shown as a map of where they were taken with the pictures viewable."
+  },
+  {
+   "id": "d125",
+   "best": [
+    "spoken",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "medium",
+   "why": "A voice-only device cannot deliver a file, so the nearest working result is a spoken summary of the readings (and saying the file must go elsewhere)."
+  },
+  {
+   "id": "d126",
+   "best": [
+    "prose+line_chart",
+    "prose"
+   ],
+   "acceptable": [
+    "line_chart+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "table"
+   ],
+   "confidence": "medium",
+   "why": "A yes/no on the trend, with a small chart of the 40 cycles to show it."
+  },
+  {
+   "id": "d127",
+   "best": [
+    "prose",
+    "data_file"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "medium",
+   "why": "One value for an agent, as text or a tiny record."
+  },
+  {
+   "id": "d128",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "data_file"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table"
+   ],
+   "confidence": "medium",
+   "why": "A bot reading a summary wants concise text."
+  },
+  {
+   "id": "d129",
+   "best": [
+    "table"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "data_file"
+   ],
+   "confidence": "high",
+   "why": "Ten log errors on a terminal are a short table or list of lines."
+  },
+  {
+   "id": "d130",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "timeline",
+    "sonification"
+   ],
+   "confidence": "high",
+   "why": "Read out, as asked, for a voice-only person."
+  },
+  {
+   "id": "d131",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "high",
+   "why": "A week's sleep summarised aloud."
+  },
+  {
+   "id": "d132",
+   "best": [
+    "line_chart+prose",
+    "line_chart"
+   ],
+   "acceptable": [
+    "prose+line_chart"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "The daily tide curve is a line chart; no animation for reduced motion."
+  },
+  {
+   "id": "d133",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+line_chart",
+    "prose+table",
+    "prose+timeline"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "explorable"
+   ],
+   "confidence": "high",
+   "why": "'When did it start' is a time and the first errors, in words."
+  },
+  {
+   "id": "h001",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "image_view",
+    "solid_viewer"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h002",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "line_chart"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h003",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h004",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "data_file"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h005",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart",
+    "line_chart"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h006",
+   "best": [
+    "heatmap",
+    "heatmap+prose"
+   ],
+   "acceptable": [
+    "line_chart",
+    "bar_chart",
+    "prose+heatmap"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h007",
+   "best": [
+    "prose",
+    "prose+table"
+   ],
+   "acceptable": [
+    "table",
+    "table+prose"
+   ],
+   "too_poor": [
+    "spoken"
+   ],
+   "too_much": [
+    "step_through",
+    "node_link",
+    "flow",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h008",
+   "best": [
+    "line_chart+prose",
+    "scatter_chart+prose"
+   ],
+   "acceptable": [
+    "line_chart",
+    "prose+line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h009",
+   "best": [
+    "node_link",
+    "node_link+prose"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h010",
+   "best": [
+    "prose",
+    "table",
+    "timeline"
+   ],
+   "acceptable": [
+    "timeline+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "flow",
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h011",
+   "best": [
+    "table",
+    "table+prose",
+    "prose+table"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h012",
+   "best": [
+    "map+prose",
+    "bar_chart",
+    "map"
+   ],
+   "acceptable": [
+    "bar_chart+prose",
+    "table"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h013",
+   "best": [
+    "prose+line_chart",
+    "line_chart+prose"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h014",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+timeline",
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "timeline",
+    "map"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h015",
+   "best": [
+    "step_through+prose",
+    "animation+prose",
+    "solid_viewer+prose"
+   ],
+   "acceptable": [
+    "explorable",
+    "solid_viewer",
+    "step_through"
+   ],
+   "too_poor": [
+    "prose",
+    "image_view"
+   ],
+   "too_much": [],
+   "confidence": "low"
+  },
+  {
+   "id": "h016",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+flow"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "flow",
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h017",
+   "best": [
+    "heatmap",
+    "line_chart"
+   ],
+   "acceptable": [
+    "heatmap+prose",
+    "line_chart+prose",
+    "table"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h018",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h019",
+   "best": [
+    "map",
+    "map+prose"
+   ],
+   "acceptable": [
+    "map+timeline"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h020",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h021",
+   "best": [
+    "line_chart+prose",
+    "line_chart"
+   ],
+   "acceptable": [
+    "bar_chart",
+    "prose+line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h022",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart",
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h023",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "flow",
+    "step_through",
+    "prose+flow"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h024",
+   "best": [
+    "step_through+prose",
+    "step_through"
+   ],
+   "acceptable": [
+    "table",
+    "animation+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h025",
+   "best": [
+    "heatmap+prose",
+    "histogram+prose",
+    "prose+heatmap"
+   ],
+   "acceptable": [
+    "timeline+prose",
+    "heatmap",
+    "histogram"
+   ],
+   "too_poor": [
+    "prose",
+    "table",
+    "spoken"
+   ],
+   "too_much": [
+    "animation",
+    "explorable",
+    "step_through"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h026",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h027",
+   "best": [
+    "waveform_spectrum+prose",
+    "prose+waveform_spectrum"
+   ],
+   "acceptable": [
+    "waveform_spectrum"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h028",
+   "best": [
+    "spoken+prose",
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "waveform_spectrum",
+    "sonification"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h029",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart",
+    "prose"
+   ],
+   "acceptable": [
+    "explorable",
+    "scatter_chart+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h030",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h031",
+   "best": [
+    "prose+table",
+    "table+prose"
+   ],
+   "acceptable": [
+    "prose",
+    "prose+histogram"
+   ],
+   "too_poor": [
+    "spoken"
+   ],
+   "too_much": [
+    "explorable",
+    "animation",
+    "heatmap"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h032",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "spoken"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h033",
+   "best": [
+    "node_link",
+    "node_link+prose"
+   ],
+   "acceptable": [
+    "flow"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h034",
+   "best": [
+    "timeline",
+    "timeline+prose",
+    "table"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h035",
+   "best": [
+    "bar_chart+prose",
+    "explorable+prose",
+    "prose+bar_chart"
+   ],
+   "acceptable": [
+    "line_chart+prose",
+    "prose",
+    "explorable"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h036",
+   "best": [
+    "table",
+    "prose+table"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "bar_chart"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h037",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h038",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h039",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h040",
+   "best": [
+    "step_through+prose",
+    "step_through"
+   ],
+   "acceptable": [
+    "solid_viewer+prose",
+    "image_view+prose",
+    "animation"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h041",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+heatmap"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "heatmap",
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h042",
+   "best": [
+    "heatmap+prose",
+    "heatmap"
+   ],
+   "acceptable": [
+    "line_chart+prose",
+    "prose+heatmap"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h043",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+bar_chart"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "map",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h044",
+   "best": [
+    "data_file"
+   ],
+   "acceptable": [
+    "data_file+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h045",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h046",
+   "best": [
+    "explorable",
+    "explorable+prose"
+   ],
+   "acceptable": [
+    "explorable+animation"
+   ],
+   "too_poor": [
+    "prose",
+    "line_chart"
+   ],
+   "too_much": [
+    "solid_viewer"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h047",
+   "best": [
+    "prose",
+    "prose+flow"
+   ],
+   "acceptable": [
+    "flow+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation",
+    "node_link"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h048",
+   "best": [
+    "flow",
+    "flow+prose",
+    "node_link"
+   ],
+   "acceptable": [
+    "node_link+prose"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h049",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table",
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h050",
+   "best": [
+    "prose+node_link",
+    "node_link+prose"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "explorable",
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h051",
+   "best": [
+    "prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "prose+waveform_spectrum",
+    "line_chart+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "sonification",
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h052",
+   "best": [
+    "line_chart+prose",
+    "waveform_spectrum",
+    "line_chart"
+   ],
+   "acceptable": [
+    "waveform_spectrum+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "sonification"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h053",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+image_view"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "solid_viewer",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h054",
+   "best": [
+    "solid_viewer"
+   ],
+   "acceptable": [
+    "solid_viewer+prose",
+    "animation"
+   ],
+   "too_poor": [
+    "image_view",
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h055",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+histogram"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "histogram",
+    "table",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h056",
+   "best": [
+    "histogram",
+    "histogram+prose"
+   ],
+   "acceptable": [
+    "prose+histogram"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h057",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+bar_chart"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h058",
+   "best": [
+    "bar_chart+prose",
+    "bar_chart"
+   ],
+   "acceptable": [
+    "table+prose",
+    "prose+bar_chart",
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "heatmap"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h059",
+   "best": [
+    "prose",
+    "spoken"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h060",
+   "best": [
+    "data_file",
+    "table"
+   ],
+   "acceptable": [],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "medium"
+  },
+  {
+   "id": "h061",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "spoken+prose"
+   ],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h062",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "scatter_chart",
+    "line_chart",
+    "bar_chart",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h063",
+   "best": [
+    "histogram",
+    "histogram+prose"
+   ],
+   "acceptable": [],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h064",
+   "best": [
+    "table"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "map"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h065",
+   "best": [
+    "explorable",
+    "explorable+prose"
+   ],
+   "acceptable": [],
+   "too_poor": [
+    "line_chart",
+    "table",
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h066",
+   "best": [
+    "image_view",
+    "image_view+prose"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "low"
+  },
+  {
+   "id": "h067",
+   "best": [
+    "animation",
+    "animation+prose"
+   ],
+   "acceptable": [
+    "step_through"
+   ],
+   "too_poor": [
+    "map",
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h068",
+   "best": [
+    "table",
+    "prose"
+   ],
+   "acceptable": [
+    "data_file"
+   ],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "medium"
+  },
+  {
+   "id": "h069",
+   "best": [
+    "prose",
+    "table"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [],
+   "confidence": "medium"
+  },
+  {
+   "id": "h070",
+   "best": [
+    "data_file"
+   ],
+   "acceptable": [
+    "data_file+prose"
+   ],
+   "too_poor": [
+    "table",
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h071",
+   "best": [
+    "bar_chart"
+   ],
+   "acceptable": [
+    "bar_chart+prose"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h072",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h073",
+   "best": [
+    "sonification+spoken",
+    "sonification"
+   ],
+   "acceptable": [
+    "spoken+sonification"
+   ],
+   "too_poor": [
+    "spoken",
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h074",
+   "best": [
+    "scatter_chart"
+   ],
+   "acceptable": [
+    "scatter_chart+prose"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h075",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h076",
+   "best": [
+    "line_chart+prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "heatmap+prose",
+    "prose"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "low"
+  },
+  {
+   "id": "h077",
+   "best": [
+    "prose+histogram",
+    "prose"
+   ],
+   "acceptable": [
+    "histogram+prose"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "low"
+  },
+  {
+   "id": "h078",
+   "best": [
+    "prose+table",
+    "prose"
+   ],
+   "acceptable": [
+    "table",
+    "node_link"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h079",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "flow",
+    "node_link"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h080",
+   "best": [
+    "node_link+prose",
+    "prose+node_link"
+   ],
+   "acceptable": [
+    "node_link"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h081",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "heatmap"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h082",
+   "best": [
+    "prose",
+    "prose+waveform_spectrum"
+   ],
+   "acceptable": [
+    "waveform_spectrum+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h083",
+   "best": [
+    "timeline+prose",
+    "timeline"
+   ],
+   "acceptable": [
+    "table",
+    "prose+timeline"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h084",
+   "best": [
+    "map+prose",
+    "prose",
+    "map"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "solid_viewer"
+   ],
+   "confidence": "low"
+  },
+  {
+   "id": "h085",
+   "best": [
+    "solid_viewer",
+    "image_view"
+   ],
+   "acceptable": [
+    "solid_viewer+prose",
+    "image_view+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "low"
+  },
+  {
+   "id": "h086",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "line_chart",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h087",
+   "best": [
+    "prose",
+    "prose+bar_chart"
+   ],
+   "acceptable": [
+    "bar_chart+prose",
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "heatmap",
+    "animation",
+    "table"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h088",
+   "best": [
+    "prose+map",
+    "step_through+prose",
+    "map+prose"
+   ],
+   "acceptable": [
+    "timeline+prose",
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "solid_viewer"
+   ],
+   "confidence": "low"
+  },
+  {
+   "id": "h089",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "step_through",
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h090",
+   "best": [
+    "prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "line_chart+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "table",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h091",
+   "best": [
+    "table",
+    "prose+table",
+    "prose"
+   ],
+   "acceptable": [
+    "table+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "timeline"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h092",
+   "best": [
+    "prose",
+    "prose+table"
+   ],
+   "acceptable": [
+    "table",
+    "prose+sonification"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h093",
+   "best": [
+    "spoken",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "sonification"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h094",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+waveform_spectrum"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "waveform_spectrum"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h095",
+   "best": [
+    "step_through+prose",
+    "step_through",
+    "prose+flow"
+   ],
+   "acceptable": [
+    "prose",
+    "flow+prose",
+    "explorable"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h096",
+   "best": [
+    "prose",
+    "table",
+    "prose+table"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "map"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h097",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h098",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h099",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h100",
+   "best": [
+    "image_view+prose",
+    "image_view"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h101",
+   "best": [
+    "line_chart+prose",
+    "bar_chart+prose"
+   ],
+   "acceptable": [
+    "line_chart",
+    "bar_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h102",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h103",
+   "best": [
+    "line_chart+prose",
+    "explorable+prose",
+    "prose+line_chart"
+   ],
+   "acceptable": [
+    "explorable",
+    "line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table",
+    "spoken"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h104",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table",
+    "prose+bar_chart"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "line_chart",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h105",
+   "best": [
+    "explorable+prose",
+    "step_through+prose",
+    "explorable"
+   ],
+   "acceptable": [
+    "animation+prose",
+    "line_chart+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h106",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation",
+    "waveform_spectrum"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h107",
+   "best": [
+    "explorable",
+    "explorable+prose",
+    "explorable+solid_viewer"
+   ],
+   "acceptable": [
+    "solid_viewer+prose"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h108",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "solid_viewer",
+    "image_view"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h109",
+   "best": [
+    "node_link+prose",
+    "node_link"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "solid_viewer"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h110",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+node_link"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "node_link",
+    "explorable",
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h111",
+   "best": [
+    "table+prose",
+    "prose",
+    "step_through"
+   ],
+   "acceptable": [
+    "table",
+    "timeline",
+    "flow"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "low"
+  },
+  {
+   "id": "h112",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h113",
+   "best": [
+    "line_chart",
+    "line_chart+prose"
+   ],
+   "acceptable": [
+    "prose+line_chart",
+    "map+line_chart"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "solid_viewer",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h114",
+   "best": [
+    "spoken",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h115",
+   "best": [
+    "node_link",
+    "node_link+prose"
+   ],
+   "acceptable": [
+    "prose+node_link",
+    "step_through"
+   ],
+   "too_poor": [
+    "prose",
+    "table"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h116",
+   "best": [
+    "heatmap+prose",
+    "prose+heatmap"
+   ],
+   "acceptable": [
+    "image_view+prose",
+    "heatmap"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "solid_viewer",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h117",
+   "best": [
+    "data_file",
+    "table"
+   ],
+   "acceptable": [],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "medium"
+  },
+  {
+   "id": "h118",
+   "best": [
+    "table"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "data_file"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h119",
+   "best": [
+    "spoken",
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h120",
+   "best": [
+    "histogram+prose",
+    "histogram"
+   ],
+   "acceptable": [
+    "prose+histogram"
+   ],
+   "too_poor": [
+    "prose",
+    "table",
+    "spoken"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h121",
+   "best": [
+    "scatter_chart+prose",
+    "line_chart+prose",
+    "prose+scatter_chart"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [
+    "table"
+   ],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h122",
+   "best": [
+    "map+prose",
+    "map"
+   ],
+   "acceptable": [
+    "table",
+    "bar_chart+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h123",
+   "best": [
+    "prose",
+    "prose+histogram"
+   ],
+   "acceptable": [
+    "prose+waveform_spectrum",
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "animation",
+    "sonification"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h124",
+   "best": [
+    "line_chart+prose",
+    "line_chart"
+   ],
+   "acceptable": [
+    "prose+line_chart"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "animation",
+    "explorable"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h125",
+   "best": [
+    "prose",
+    "prose+histogram"
+   ],
+   "acceptable": [
+    "histogram+prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "table"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h126",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "bar_chart"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h127",
+   "best": [
+    "table",
+    "table+prose"
+   ],
+   "acceptable": [
+    "bar_chart+table",
+    "bar_chart"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "explorable",
+    "map"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h128",
+   "best": [
+    "prose",
+    "prose+table",
+    "table+prose"
+   ],
+   "acceptable": [
+    "table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable",
+    "animation"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h129",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [],
+   "too_poor": [],
+   "too_much": [
+    "image_view",
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h130",
+   "best": [
+    "image_view"
+   ],
+   "acceptable": [
+    "image_view+prose"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "high"
+  },
+  {
+   "id": "h131",
+   "best": [
+    "data_file",
+    "table"
+   ],
+   "acceptable": [],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [],
+   "confidence": "medium"
+  },
+  {
+   "id": "h132",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "data_file"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h133",
+   "best": [
+    "table"
+   ],
+   "acceptable": [
+    "table+prose",
+    "prose+table"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "data_file"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h134",
+   "best": [
+    "spoken"
+   ],
+   "acceptable": [
+    "prose"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "sonification"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h135",
+   "best": [
+    "line_chart+prose",
+    "line_chart"
+   ],
+   "acceptable": [
+    "explorable+prose",
+    "step_through"
+   ],
+   "too_poor": [
+    "prose"
+   ],
+   "too_much": [
+    "solid_viewer"
+   ],
+   "confidence": "medium"
+  },
+  {
+   "id": "h136",
+   "best": [
+    "step_through+prose",
+    "prose+image_view",
+    "prose"
+   ],
+   "acceptable": [
+    "solid_viewer+prose",
+    "step_through"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "explorable"
+   ],
+   "confidence": "low"
+  },
+  {
+   "id": "h137",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "image_view"
+   ],
+   "confidence": "high"
+  },
+  {
+   "id": "h138",
+   "best": [
+    "prose"
+   ],
+   "acceptable": [
+    "prose+bar_chart",
+    "prose+table"
+   ],
+   "too_poor": [],
+   "too_much": [
+    "table",
+    "explorable"
+   ],
+   "confidence": "high"
+  }
+ ]
+}

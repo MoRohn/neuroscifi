@@ -1,0 +1,72 @@
+{
+ "cases_sha256": "da1f0fb3cbd6d6b464485db7f2898bbc3b80a3ac821e1c22c6d9077b279ae26c",
+ "commit": "505b55b",
+ "label": "OMNIMIND benchmark: synthetic files assembled by the benchmark's own encoders from known values; offline; no model; exact comparison within stated tolerances",
+ "machine": "aarch64",
+ "python": "3.12.16",
+ "recorded": "2026-11-27",
+ "splits": {
+  "held_out": {
+   "families": {
+    "transform": {
+     "abstained": 0,
+     "abstention_floor": 0,
+     "by_kind": {
+      "transform": {
+       "abstained": 0,
+       "failed": 0,
+       "right": 8,
+       "wrong": 0
+      }
+     },
+     "carried_mean": 1.0,
+     "fabrication": 0,
+     "fabrication_rate": 0.0,
+     "failed": 0,
+     "failures": {},
+     "family": "transform",
+     "n": 8,
+     "produced": 8,
+     "right": 8,
+     "score": 1.0,
+     "split": "held_out",
+     "subject": "artifacts",
+     "tasks": {
+      "transform/held_out/html-to-outline": "right",
+      "transform/held_out/json-records-to-line-chart": "right",
+      "transform/held_out/markdown-to-outline-long": "right",
+      "transform/held_out/obj-tetra-to-stl": "right",
+      "transform/held_out/ply-cube-to-stl": "right",
+      "transform/held_out/tar-to-index": "right",
+      "transform/held_out/tsv-to-scatter": "right",
+      "transform/held_out/tsv-to-sound": "right"
+     },
+     "wall_s": 0.16,
+     "wrong": 0
+    }
+   },
+   "frozen": {
+    "transform": {
+     "n": 8,
+     "sha256": "6d415d1e2ae4bbcde21d4c35ccad2015782962f739a4d881e07fd611c9642686"
+    }
+   },
+   "totals": {
+    "abstained": 0,
+    "abstention_floor": 0,
+    "fabrication": 0,
+    "failed": 0,
+    "n": 8,
+    "right": 8,
+    "score": 1.0,
+    "wrong": 0
+   },
+   "wall_s": 0.2
+  }
+ },
+ "subject": "artifacts",
+ "subject_available": [
+  true,
+  ""
+ ]
+}

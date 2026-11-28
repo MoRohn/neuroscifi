@@ -1,0 +1,413 @@
+{
+ "corpus_samples": {
+  "aac": "header only; needs AAC decoder",
+  "aiff": "decoded: Signal",
+  "au": "decoded: Signal",
+  "avi": "decoded: Tree",
+  "bmp": "decoded: Raster",
+  "dicom": "decoded: Raster",
+  "farbfeld": "decoded: Raster",
+  "fits": "decoded: Raster",
+  "flac": "header only; needs FLAC decoder",
+  "geojson": "decoded: Features",
+  "gif": "decoded: Frames",
+  "glb": "decoded: Mesh",
+  "gltf": "decoded: Mesh",
+  "gpx": "decoded: Features",
+  "heic": "header only; needs an HEVC image decoder",
+  "ico": "decoded: Raster",
+  "jpeg": "header only; needs a JPEG decoder",
+  "kml": "decoded: Features",
+  "kmz": "decoded: Features",
+  "m4a": "header only; needs AAC decoder",
+  "midi": "decoded: Table",
+  "mp3": "header only; needs MP3 decoder",
+  "mp4": "decoded: Tree",
+  "npy": "decoded: Table",
+  "npz": "decoded: Bundle",
+  "obj": "decoded: Mesh",
+  "off": "decoded: Mesh",
+  "ogg": "header only; needs Opus decoder",
+  "pam": "decoded: Raster",
+  "pbm": "decoded: Raster",
+  "pgm": "decoded: Raster",
+  "ply": "decoded: Mesh",
+  "png": "decoded: Raster",
+  "ppm": "decoded: Raster",
+  "psd": "header only; needs a Photoshop document decoder",
+  "qoi": "decoded: Raster",
+  "stl": "decoded: Mesh",
+  "svg": "decoded: Drawing",
+  "tiff": "decoded: Raster",
+  "wav": "decoded: Signal",
+  "webm": "decoded: Tree",
+  "webp": "header only; needs a WebP (VP8) decoder",
+  "wkt": "decoded: Features"
+ },
+ "corruption": {
+  "by_adapter": {
+   "b2-aac": {
+    "header_only": 1483,
+    "malformed": 117
+   },
+   "b2-aiff": {
+    "decoded": 292,
+    "malformed": 1308
+   },
+   "b2-au": {
+    "decoded": 222,
+    "header_only": 45,
+    "malformed": 1333
+   },
+   "b2-avi": {
+    "decoded": 1043,
+    "malformed": 557
+   },
+   "b2-bmp": {
+    "decoded": 379,
+    "malformed": 1220,
+    "refused": 1
+   },
+   "b2-dicom": {
+    "decoded": 249,
+    "header_only": 462,
+    "malformed": 889
+   },
+   "b2-farbfeld": {
+    "decoded": 213,
+    "malformed": 1234,
+    "refused": 153
+   },
+   "b2-fits": {
+    "decoded": 1186,
+    "malformed": 414
+   },
+   "b2-flac": {
+    "header_only": 828,
+    "malformed": 772
+   },
+   "b2-geo": {
+    "decoded": 203,
+    "malformed": 7774,
+    "refused": 12,
+    "unsupported": 11
+   },
+   "b2-gif": {
+    "decoded": 164,
+    "malformed": 1379,
+    "refused": 57
+   },
+   "b2-gltf": {
+    "decoded": 39,
+    "malformed": 3161
+   },
+   "b2-heif": {
+    "header_only": 944,
+    "malformed": 656
+   },
+   "b2-ico": {
+    "decoded": 17,
+    "malformed": 1536,
+    "refused": 47
+   },
+   "b2-isobmff": {
+    "decoded": 1463,
+    "malformed": 137
+   },
+   "b2-jpeg": {
+    "header_only": 700,
+    "malformed": 900
+   },
+   "b2-m4a": {
+    "header_only": 1425,
+    "malformed": 175
+   },
+   "b2-matroska": {
+    "decoded": 396,
+    "malformed": 1204
+   },
+   "b2-midi": {
+    "decoded": 448,
+    "malformed": 1094,
+    "refused": 58
+   },
+   "b2-mp3": {
+    "header_only": 1600
+   },
+   "b2-netpbm": {
+    "decoded": 1141,
+    "malformed": 5259
+   },
+   "b2-npy": {
+    "decoded": 516,
+    "malformed": 1047,
+    "unsupported": 37
+   },
+   "b2-npz": {
+    "decoded": 47,
+    "malformed": 1503,
+    "refused": 24,
+    "unsupported": 26
+   },
+   "b2-obj": {
+    "decoded": 226,
+    "malformed": 1374
+   },
+   "b2-off": {
+    "decoded": 34,
+    "malformed": 1566
+   },
+   "b2-ogg": {
+    "header_only": 1331,
+    "malformed": 269
+   },
+   "b2-ply": {
+    "decoded": 157,
+    "malformed": 1443
+   },
+   "b2-png": {
+    "malformed": 1600
+   },
+   "b2-psd": {
+    "header_only": 1262,
+    "malformed": 338
+   },
+   "b2-qoi": {
+    "decoded": 209,
+    "malformed": 1368,
+    "refused": 23
+   },
+   "b2-stl": {
+    "decoded": 1033,
+    "malformed": 567
+   },
+   "b2-svg": {
+    "decoded": 22,
+    "malformed": 1578
+   },
+   "b2-tiff": {
+    "decoded": 87,
+    "header_only": 222,
+    "malformed": 1285,
+    "refused": 6
+   },
+   "b2-wav": {
+    "decoded": 288,
+    "header_only": 117,
+    "malformed": 1195
+   },
+   "b2-webp": {
+    "header_only": 611,
+    "malformed": 989
+   }
+  },
+  "samples": 43,
+  "seconds": 0.5,
+  "trials_per_sample": 1600
+ },
+ "date": "2026-11-26",
+ "host": "aarch64",
+ "lane": "B2",
+ "large_inputs": {
+  "arrays": {
+   "largest_honest": {
+    "input_mib": 7.5,
+    "outcome": "decoded: Table",
+    "rss_growth_mib": 8.9,
+    "seconds": 0.002
+   },
+   "worst_hostile": {
+    "input_mib": 0.15,
+    "outcome": "Refused (max_ratio)",
+    "rss_growth_mib": 0.0,
+    "seconds": 0.0
+   }
+  },
+  "audio_headers": {
+   "largest_honest": {
+    "input_mib": 59.65,
+    "outcome": "HeaderOnly (unsupported)",
+    "rss_growth_mib": 0.0,
+    "seconds": 0.0
+   },
+   "worst_hostile": {
+    "input_mib": 8.01,
+    "outcome": "HeaderOnly (unsupported)",
+    "rss_growth_mib": 0.0,
+    "seconds": 0.18
+   }
+  },
+  "bmp": {
+   "largest_honest": {
+    "input_mib": 25.75,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 51.2,
+    "seconds": 0.023
+   },
+   "worst_hostile": {
+    "input_mib": 0.14,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 127.7,
+    "seconds": 0.167
+   }
+  },
+  "geo": {
+   "largest_honest": {
+    "input_mib": 20.77,
+    "outcome": "decoded: Features",
+    "rss_growth_mib": 195.2,
+    "seconds": 0.281
+   },
+   "worst_hostile": {
+    "input_mib": 0.38,
+    "outcome": "Refused (resources)",
+    "rss_growth_mib": 1.8,
+    "seconds": 0.001
+   }
+  },
+  "gif": {
+   "largest_honest": {
+    "input_mib": 1.31,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 15.1,
+    "seconds": 0.23
+   },
+   "worst_hostile": {
+    "input_mib": 0.01,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 189.1,
+    "seconds": 0.201
+   }
+  },
+  "gltf": {
+   "largest_honest": {
+    "input_mib": 11.44,
+    "outcome": "decoded: Mesh",
+    "rss_growth_mib": 160.3,
+    "seconds": 0.018
+   },
+   "worst_hostile": {
+    "input_mib": 0.05,
+    "outcome": "Refused (max_elements)",
+    "rss_growth_mib": 0.8,
+    "seconds": 0.001
+   }
+  },
+  "image_headers": {
+   "largest_honest": {
+    "input_mib": 25.95,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 103.4,
+    "seconds": 0.043
+   },
+   "worst_hostile": {
+    "input_mib": 0.05,
+    "outcome": "Malformed (malformed)",
+    "rss_growth_mib": 0.0,
+    "seconds": 0.001
+   }
+  },
+  "meshes": {
+   "largest_honest": {
+    "input_mib": 47.68,
+    "outcome": "decoded: Mesh",
+    "rss_growth_mib": 236.9,
+    "seconds": 0.77
+   },
+   "worst_hostile": {
+    "input_mib": 61.04,
+    "outcome": "Refused (max_elements)",
+    "rss_growth_mib": 116.5,
+    "seconds": 2.109
+   }
+  },
+  "midi": {
+   "largest_honest": {
+    "input_mib": 0.76,
+    "outcome": "decoded: Table",
+    "rss_growth_mib": 61.7,
+    "seconds": 0.401
+   },
+   "worst_hostile": {
+    "input_mib": 22.89,
+    "outcome": "Refused (max_elements)",
+    "rss_growth_mib": 22.7,
+    "seconds": 4.883
+   }
+  },
+  "netpbm": {
+   "largest_honest": {
+    "input_mib": 25.75,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 51.0,
+    "seconds": 0.005
+   },
+   "worst_hostile": {
+    "input_mib": 0.26,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 193.8,
+    "seconds": 0.074
+   }
+  },
+  "png": {
+   "largest_honest": {
+    "input_mib": 11.45,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 149.0,
+    "seconds": 0.316
+   },
+   "worst_hostile": {
+    "input_mib": 0.06,
+    "outcome": "decoded: Raster",
+    "rss_growth_mib": 183.0,
+    "seconds": 0.141
+   }
+  },
+  "svg": {
+   "largest_honest": {
+    "input_mib": 1.21,
+    "outcome": "decoded: Drawing",
+    "rss_growth_mib": 63.5,
+    "seconds": 0.546
+   },
+   "worst_hostile": {
+    "input_mib": 0.0,
+    "outcome": "Refused (svg_use)",
+    "rss_growth_mib": 76.0,
+    "seconds": 2.446
+   }
+  },
+  "video_containers": {
+   "largest_honest": {
+    "input_mib": 47.68,
+    "outcome": "decoded: Tree",
+    "rss_growth_mib": 0.0,
+    "seconds": 0.0
+   },
+   "worst_hostile": {
+    "input_mib": 1.53,
+    "outcome": "decoded: Opaque",
+    "rss_growth_mib": 9.1,
+    "seconds": 0.025
+   }
+  },
+  "wav": {
+   "largest_honest": {
+    "input_mib": 50.47,
+    "outcome": "decoded: Signal",
+    "rss_growth_mib": 252.0,
+    "seconds": 0.03
+   },
+   "worst_hostile": {
+    "input_mib": 0.76,
+    "outcome": "Refused (max_members)",
+    "rss_growth_mib": 0.0,
+    "seconds": 0.003
+   }
+  }
+ },
+ "limits": "types.Limits() defaults (64 MiB input, 256 MiB decoded, 5M elements, 4096 members, 20 s); corruption trials use max_seconds 5",
+ "method": "large inputs are decoded in a fresh python -I process; rss_growth_mib is the process's peak RSS (VmHWM) after the decode minus before it (the input bytes are already resident); seconds is wall clock",
+ "numpy": "2.3.5",
+ "python": "3.12.16"
+}

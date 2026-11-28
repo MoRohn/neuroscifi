@@ -1,0 +1,101 @@
+{
+ "benchmark": "omnimind-forms-cross-learn",
+ "family": "learn",
+ "subject": "neuroscifi.acceptance.omni.subject:make_planner_only",
+ "environment": {
+  "git_commit": "7d9038c1d02775cc9ca4224c3ad25c5537b2b7d9",
+  "python": "3.12.16",
+  "generated_at": "2026-11-27T02:25:49Z"
+ },
+ "result": {
+  "label": "OMNIMIND benchmark, family learn: SIMULATED people with hidden, stable preferences; it measures adaptation to simulated preferences from simulated feedback, NOT benefit to a real person; offline; no model",
+  "split": "held_out",
+  "people": [
+   "H1",
+   "H2",
+   "H3",
+   "H4",
+   "H5",
+   "H6"
+  ],
+  "seeds": [
+   101,
+   102,
+   103,
+   104,
+   105,
+   106,
+   107,
+   108,
+   109,
+   110
+  ],
+  "cycles": 8,
+  "requests_per_cycle": 10,
+  "denominator_per_cycle": 600,
+  "kept_by_cycle": [
+   0.4483,
+   0.4733,
+   0.4767,
+   0.43,
+   0.4783,
+   0.435,
+   0.4433,
+   0.445
+  ],
+  "kept_by_cycle_sd_over_seeds": [
+   0.0731,
+   0.0589,
+   0.0998,
+   0.035,
+   0.0556,
+   0.0299,
+   0.063,
+   0.0805
+  ],
+  "late_cycles": [
+   5,
+   8
+  ],
+  "late_kept": {
+   "mean": 0.4504,
+   "sd_over_seeds": 0.024,
+   "per_seed": [
+    0.4833,
+    0.4458,
+    0.4458,
+    0.4667,
+    0.4583,
+    0.4125,
+    0.4458,
+    0.4875,
+    0.4292,
+    0.4292
+   ]
+  },
+  "all_kept": {
+   "mean": 0.4537,
+   "sd_over_seeds": 0.0254,
+   "per_seed": [
+    0.4813,
+    0.4333,
+    0.4646,
+    0.4583,
+    0.4542,
+    0.4396,
+    0.4667,
+    0.4979,
+    0.4188,
+    0.4229
+   ]
+  },
+  "late_kept_by_person": {
+   "H1": 0.4275,
+   "H2": 0.4175,
+   "H3": 0.5525,
+   "H4": 0.525,
+   "H5": 0.505,
+   "H6": 0.275
+  }
+ }
+}

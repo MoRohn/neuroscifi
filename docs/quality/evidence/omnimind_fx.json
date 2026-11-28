@@ -1,0 +1,1585 @@
+{
+ "lane": "FX",
+ "wave": "O-2",
+ "commit_before": "6f230de",
+ "measured_on": "omni-fx at ceebd9e (product), corpora run through the benchmark's own driver (acceptance/omni/subject.py ArtifactsSubject and relate), one child process with a 3 GiB address-space cap, items one at a time",
+ "outcome_words": {
+  "right": "the truth by construction (or an abstention where only an abstention is right)",
+  "abstained": "cannot/refused where an answer was expected (no harm)",
+  "wrong": "a false answer: a false identification, a content answer for unknown bytes, a hostile file answered, a wrong relation",
+  "cannot": "the relater said it cannot tell"
+ },
+ "corpora_are_lane_fx_own": "written by the lane that wrote the fixes (development evidence, not an independent examination); seeds 40000-43999; no withheld or held-out file was opened or run",
+ "item1_identification": {
+  "what": "disguises and near-misses: random, zero and invented-record bytes under misleading names and declared types (A), buried signatures (B), one-byte-off signatures (C), a signature then random bytes (D), text that looks like a header (E), a valid prefix then another format (F), disguised decodable files (G)",
+  "n": 3669,
+  "before": {
+   "right": 3313,
+   "abstained": 12,
+   "wrong": 344,
+   "failed": 0
+  },
+  "after": {
+   "right": 3663,
+   "abstained": 6,
+   "wrong": 0,
+   "failed": 0
+  },
+  "per_class": {
+   "A_random_declared": {
+    "before": {
+     "right": 264,
+     "abstained": 1,
+     "wrong": 75,
+     "failed": 0
+    },
+    "after": {
+     "right": 339,
+     "abstained": 1,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "A_random_named": {
+    "before": {
+     "right": 272,
+     "abstained": 1,
+     "wrong": 77,
+     "failed": 0
+    },
+    "after": {
+     "right": 349,
+     "abstained": 1,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "A_records_named": {
+    "before": {
+     "right": 272,
+     "abstained": 0,
+     "wrong": 78,
+     "failed": 0
+    },
+    "after": {
+     "right": 350,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "A_zeros_named": {
+    "before": {
+     "right": 268,
+     "abstained": 0,
+     "wrong": 82,
+     "failed": 0
+    },
+    "after": {
+     "right": 350,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "B_buried": {
+    "before": {
+     "right": 846,
+     "abstained": 0,
+     "wrong": 4,
+     "failed": 0
+    },
+    "after": {
+     "right": 850,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "C_one_off": {
+    "before": {
+     "right": 735,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 735,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "D_magic_then_random": {
+    "before": {
+     "right": 331,
+     "abstained": 3,
+     "wrong": 6,
+     "failed": 0
+    },
+    "after": {
+     "right": 337,
+     "abstained": 3,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "E_text_like_header": {
+    "before": {
+     "right": 45,
+     "abstained": 1,
+     "wrong": 4,
+     "failed": 0
+    },
+    "after": {
+     "right": 49,
+     "abstained": 1,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "F_prefix_then_other": {
+    "before": {
+     "right": 10,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 10,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_bmp_as_jpg": {
+    "before": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_as_json": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_as_png": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_bom_as_md": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_bz2": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_gz_as_zip": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_gz_gz": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_utf16be": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_utf16le_bom_as_xml": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_xz_as_txt": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_xz_bz2": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_csv_zstd_gz": {
+    "before": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 18,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_json_as_xml": {
+    "before": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_png_as_csv": {
+    "before": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_png_gz_as_png": {
+    "before": {
+     "right": 6,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 6,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_png_in_zip_as_docx": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 6,
+     "failed": 0
+    },
+    "after": {
+     "right": 6,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_stl_as_obj": {
+    "before": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_wav_as_mp3": {
+    "before": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_xml_as_json": {
+    "before": {
+     "right": 6,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 6,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_zip_as_docx": {
+    "before": {
+     "right": 0,
+     "abstained": 6,
+     "wrong": 6,
+     "failed": 0
+    },
+    "after": {
+     "right": 12,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "G_disguised_zip_as_xlsx": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 6,
+     "failed": 0
+    },
+    "after": {
+     "right": 6,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   }
+  }
+ },
+ "item2_refusal": {
+  "what": "a hostile part inside an otherwise honest file, the honest part asked (expected: refused): bomb, lying size, overlap, entity/DTD/XInclude in any part, unsafe names and links in office files, external references, XML refusals another reader would answer, injection in a sibling, polyglots, lying sizes",
+  "n": 168,
+  "before": {
+   "right": 36,
+   "abstained": 0,
+   "wrong": 132,
+   "failed": 0
+  },
+  "after": {
+   "right": 168,
+   "abstained": 0,
+   "wrong": 0,
+   "failed": 0
+  },
+  "per_class": {
+   "H10_png_zip_polyglot": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H10_wav_zip_polyglot": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H11_tar_lying_size": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H11_wav_lying_data": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H1_bomb_in_inner_zip": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H1_bomb_sibling_tar": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H1_bomb_sibling_tgz": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H1_bomb_sibling_zip": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H1_gz_bomb_member_zip": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H2_lying_size_sibling": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H3_overlap_sibling": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_dtd_system_docx_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 9,
+     "failed": 0
+    },
+    "after": {
+     "right": 9,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_dtd_system_epub_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_dtd_system_kmz_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_dtd_system_member_zip": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_dtd_system_odt_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_dtd_system_xlsx_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_laughs_docx_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 9,
+     "failed": 0
+    },
+    "after": {
+     "right": 9,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_laughs_epub_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_laughs_kmz_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_laughs_member_zip": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_laughs_odt_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_laughs_xlsx_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_xxe_docx_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 9,
+     "failed": 0
+    },
+    "after": {
+     "right": 9,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_xxe_epub_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_xxe_kmz_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_xxe_member_zip": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_xxe_odt_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H4_xxe_xlsx_part": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H5_pickle_member_npz": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H5_symlink_docx": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H5_unsafe_name_docx": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 9,
+     "failed": 0
+    },
+    "after": {
+     "right": 9,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H5_unsafe_name_epub": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 9,
+     "failed": 0
+    },
+    "after": {
+     "right": 9,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H5_unsafe_name_npz": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H5_unsafe_name_xlsx": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 6,
+     "failed": 0
+    },
+    "after": {
+     "right": 9,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H6_dtd_system_xml": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H6_svg_external_image": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H6_xinclude": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H8_entity_html": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H8_entity_svg": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H8_entity_xml_bom_junk": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H8_entity_xml_named_txt": {
+    "before": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H8_entity_xml_odd_prolog": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "H9_injection_sibling": {
+    "before": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 3,
+     "failed": 0
+    },
+    "after": {
+     "right": 3,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   }
+  }
+ },
+ "item3_relater": {
+  "what": "twin pairs (one value differs): image against caption (count, colour, unrelated numbers), sound against transcript or description, measured size and duration the question names, report totals (subtotal, date, another unit, two totals), archive manifest",
+  "n": 144,
+  "before": {
+   "right": 96,
+   "cannot": 24,
+   "wrong": 24
+  },
+  "after": {
+   "right": 84,
+   "cannot": 60,
+   "wrong": 0
+  },
+  "per_class": {
+   "archive_manifest_count": {
+    "before": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "after": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    }
+   },
+   "image_caption_colour": {
+    "before": {
+     "right": 6,
+     "cannot": 0,
+     "wrong": 6
+    },
+    "after": {
+     "right": 0,
+     "cannot": 12,
+     "wrong": 0
+    }
+   },
+   "image_caption_count": {
+    "before": {
+     "right": 6,
+     "cannot": 0,
+     "wrong": 6
+    },
+    "after": {
+     "right": 0,
+     "cannot": 12,
+     "wrong": 0
+    }
+   },
+   "image_size_caption": {
+    "before": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "after": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    }
+   },
+   "image_title_unrelated_numbers": {
+    "before": {
+     "right": 0,
+     "cannot": 12,
+     "wrong": 0
+    },
+    "after": {
+     "right": 0,
+     "cannot": 12,
+     "wrong": 0
+    }
+   },
+   "report_subtotal_and_total": {
+    "before": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "after": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    }
+   },
+   "report_total_other_unit": {
+    "before": {
+     "right": 6,
+     "cannot": 0,
+     "wrong": 6
+    },
+    "after": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    }
+   },
+   "report_total_with_date": {
+    "before": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "after": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    }
+   },
+   "report_two_totals": {
+    "before": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "after": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    }
+   },
+   "sound_description": {
+    "before": {
+     "right": 6,
+     "cannot": 0,
+     "wrong": 6
+    },
+    "after": {
+     "right": 0,
+     "cannot": 12,
+     "wrong": 0
+    }
+   },
+   "sound_duration_label": {
+    "before": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    },
+    "after": {
+     "right": 12,
+     "cannot": 0,
+     "wrong": 0
+    }
+   },
+   "sound_transcript": {
+    "before": {
+     "right": 0,
+     "cannot": 12,
+     "wrong": 0
+    },
+    "after": {
+     "right": 0,
+     "cannot": 12,
+     "wrong": 0
+    }
+   }
+  }
+ },
+ "honest_edges": {
+  "what": "honest files at the edges of the new rules, truth = the answer before (so a change shows as abstained or wrong): what each rule turns away",
+  "n": 19,
+  "before": {
+   "right": 19,
+   "abstained": 0,
+   "wrong": 0,
+   "failed": 0
+  },
+  "after": {
+   "right": 15,
+   "abstained": 2,
+   "wrong": 2,
+   "failed": 0
+  },
+  "per_class": {
+   "docx_with_hyperlink": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "empty_named_png": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 1,
+     "failed": 0
+    }
+   },
+   "empty_named_txt": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "epub_plain": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "hint_text_cp1252_html": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "hint_text_latin1_csv": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "hint_text_latin1_xml": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "markdown_mentions_entity": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "mp3_two_frames_no_id3": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 0,
+     "abstained": 0,
+     "wrong": 1,
+     "failed": 0
+    }
+   },
+   "netpbm_trailing_comment": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "netpbm_trailing_newline": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "pdf_from_encoder": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "pdf_header_only_head": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "psd_real_header": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "svg_external_image": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 0,
+     "abstained": 1,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "xhtml_public_doctype": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "zip_damaged_inner_png_sibling": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "zip_encrypted_sibling": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    }
+   },
+   "zip_xml_with_doctype_sibling": {
+    "before": {
+     "right": 1,
+     "abstained": 0,
+     "wrong": 0,
+     "failed": 0
+    },
+    "after": {
+     "right": 0,
+     "abstained": 1,
+     "wrong": 0,
+     "failed": 0
+    }
+   }
+  }
+ },
+ "development": {
+  "artifacts_7_families": "512 right / 12 cannot / 0 wrong / 0 failed of 524, before and after (per family identical)",
+  "cross": "72 of 72 before and after",
+  "lane_r_evidence": "omnimind_r.json sets byte-identical (own pairs 28/28, fresh 22/24, 630/630)"
+ },
+ "size_note": "summaries only; per-class counts; lane FX2 adds the section lane_fx2",
+ "lane_fx2": {
+  "what": "lane FX2 (ADR-080 restated: an outside reference or embedded active content never refuses by itself; a parser-level attack refuses the whole file), measured on the product at omni-fx2 7d125b1",
+  "recompute": "PYTHONPATH=src python scripts/omnimind_fx/run_corpus.py corpus_unknown|corpus_hostile|corpus_honest OUT.json; PYTHONPATH=src python scripts/omnimind_fx/corpus_cross.py OUT.json (generators and seeds committed, files never stored; tests/artifacts/test_fx_corpora.py pins their sizes)",
+  "corpora_at_fx2": {
+   "item1_identification": {
+    "n": 3669,
+    "right": 3663,
+    "abstained": 6,
+    "wrong": 0,
+    "failed": 0
+   },
+   "item2_refusal": {
+    "n": 168,
+    "right": 165,
+    "abstained": 0,
+    "wrong": 3,
+    "failed": 0,
+    "the_3": "class H6_svg_external_image: an SVG linking an outside image, answered with the note by ADR-080 rule 2 as the main session ruled; lane FX's truth says refused"
+   },
+   "honest_edges": {
+    "n": 19,
+    "right": 16,
+    "abstained": 1,
+    "wrong": 2,
+    "failed": 0,
+    "changed_from_fx": "svg_external_image agrees with its earlier answer again; still turned away: empty_named_png, mp3_two_frames_no_id3 (wrong by the earlier answer, now unknown), zip_xml_with_doctype_sibling (refused)"
+   },
+   "item3_relater": {
+    "n": 144,
+    "right": 84,
+    "cannot": 60,
+    "wrong": 0
+   }
+  },
+  "reviewer_files": {
+   "what": "the security reviewer's own inputs (review1/s/in5, s/in7, s/r3/in, s/r3/h: 150 files, scratch, not committed), each read as `nsf inspect` reads it (guarded) in its own child, 3 GiB, 120 s, before (3849b9f) and after",
+   "same_outcome_kind_rule": 146,
+   "changed": {
+    "gltf_extfile, gltf_extrel, gltf_exthttp": "answered as a mesh of 0 vertices -> answered as its header only (its geometry cannot be known: the buffer is outside, not fetched)",
+    "svg_ext": "refused (external_reference) -> answered, outside references and the script noted"
+   },
+   "noted_now": {
+    "xlsx_extlink": "1 sheet outside the workbook",
+    "docx_macro": "a macro project; 1 template",
+    "kml_netlink": "1 link",
+    "pdf_js": "a launch action, a script and an auto-run action"
+   }
+  },
+  "development": "512 right / 12 cannot / 0 wrong / 0 failed of 524 (7 families), unchanged; cross 72 of 72"
+ }
+}

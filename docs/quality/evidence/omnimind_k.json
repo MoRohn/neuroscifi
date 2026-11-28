@@ -1,0 +1,709 @@
+{
+ "catalog": [
+  {
+   "available": true,
+   "formats": [
+    "text"
+   ],
+   "name": "plain-text"
+  },
+  {
+   "available": true,
+   "formats": [
+    "json",
+    "geojson",
+    "ipynb"
+   ],
+   "name": "json"
+  },
+  {
+   "available": true,
+   "formats": [
+    "gzip",
+    "zstd",
+    "bzip2",
+    "xz"
+   ],
+   "name": "compressed-stream"
+  },
+  {
+   "available": true,
+   "formats": [
+    "csv",
+    "tsv"
+   ],
+   "name": "b1-delimited"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ndjson",
+    "jsonl"
+   ],
+   "name": "b1-ndjson"
+  },
+  {
+   "available": true,
+   "formats": [
+    "xlsx",
+    "xlsm"
+   ],
+   "name": "b1-xlsx"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ods"
+   ],
+   "name": "b1-ods"
+  },
+  {
+   "available": true,
+   "formats": [
+    "markdown",
+    "md"
+   ],
+   "name": "b1-markdown"
+  },
+  {
+   "available": true,
+   "formats": [
+    "html",
+    "xhtml"
+   ],
+   "name": "b1-html"
+  },
+  {
+   "available": true,
+   "formats": [
+    "rtf"
+   ],
+   "name": "b1-rtf"
+  },
+  {
+   "available": true,
+   "formats": [
+    "docx"
+   ],
+   "name": "b1-docx"
+  },
+  {
+   "available": true,
+   "formats": [
+    "odt"
+   ],
+   "name": "b1-odt"
+  },
+  {
+   "available": true,
+   "formats": [
+    "pptx"
+   ],
+   "name": "b1-pptx"
+  },
+  {
+   "available": true,
+   "formats": [
+    "odp"
+   ],
+   "name": "b1-odp"
+  },
+  {
+   "available": true,
+   "formats": [
+    "epub"
+   ],
+   "name": "b1-epub"
+  },
+  {
+   "available": true,
+   "formats": [
+    "pdf"
+   ],
+   "name": "b1-pdf"
+  },
+  {
+   "available": true,
+   "formats": [
+    "xml",
+    "rss",
+    "atom"
+   ],
+   "name": "b1-xml"
+  },
+  {
+   "available": true,
+   "formats": [
+    "plist"
+   ],
+   "name": "b1-plist"
+  },
+  {
+   "available": true,
+   "formats": [
+    "toml"
+   ],
+   "name": "b1-toml"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ini",
+    "cfg"
+   ],
+   "name": "b1-ini"
+  },
+  {
+   "available": true,
+   "formats": [
+    "yaml",
+    "yml"
+   ],
+   "name": "b1-yaml"
+  },
+  {
+   "available": true,
+   "formats": [
+    "python",
+    "py"
+   ],
+   "name": "b1-python"
+  },
+  {
+   "available": true,
+   "formats": [
+    "javascript",
+    "js",
+    "typescript",
+    "ts",
+    "c",
+    "cpp",
+    "c++",
+    "h",
+    "shell",
+    "sh",
+    "bash"
+   ],
+   "name": "b1-code-surface"
+  },
+  {
+   "available": true,
+   "formats": [
+    "pyproject",
+    "requirements",
+    "package-json"
+   ],
+   "name": "b1-manifests"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ipynb",
+    "jupyter",
+    "notebook"
+   ],
+   "name": "b1-notebook"
+  },
+  {
+   "available": true,
+   "formats": [
+    "zip",
+    "jar",
+    "apk"
+   ],
+   "name": "b1-zip"
+  },
+  {
+   "available": true,
+   "formats": [
+    "tar"
+   ],
+   "name": "b1-tar"
+  },
+  {
+   "available": true,
+   "formats": [
+    "7z",
+    "rar"
+   ],
+   "name": "b1-7z-rar"
+  },
+  {
+   "available": true,
+   "formats": [
+    "sqlite",
+    "sqlite3"
+   ],
+   "name": "b1-sqlite"
+  },
+  {
+   "available": true,
+   "formats": [
+    "png"
+   ],
+   "name": "b2-png"
+  },
+  {
+   "available": true,
+   "formats": [
+    "pbm",
+    "pgm",
+    "ppm",
+    "pam"
+   ],
+   "name": "b2-netpbm"
+  },
+  {
+   "available": true,
+   "formats": [
+    "farbfeld"
+   ],
+   "name": "b2-farbfeld"
+  },
+  {
+   "available": true,
+   "formats": [
+    "qoi"
+   ],
+   "name": "b2-qoi"
+  },
+  {
+   "available": true,
+   "formats": [
+    "bmp"
+   ],
+   "name": "b2-bmp"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ico"
+   ],
+   "name": "b2-ico"
+  },
+  {
+   "available": true,
+   "formats": [
+    "gif"
+   ],
+   "name": "b2-gif"
+  },
+  {
+   "available": true,
+   "formats": [
+    "jpeg"
+   ],
+   "name": "b2-jpeg"
+  },
+  {
+   "available": true,
+   "formats": [
+    "webp"
+   ],
+   "name": "b2-webp"
+  },
+  {
+   "available": true,
+   "formats": [
+    "heic",
+    "avif"
+   ],
+   "name": "b2-heif"
+  },
+  {
+   "available": true,
+   "formats": [
+    "psd"
+   ],
+   "name": "b2-psd"
+  },
+  {
+   "available": true,
+   "formats": [
+    "tiff"
+   ],
+   "name": "b2-tiff"
+  },
+  {
+   "available": true,
+   "formats": [
+    "dicom"
+   ],
+   "name": "b2-dicom"
+  },
+  {
+   "available": true,
+   "formats": [
+    "fits"
+   ],
+   "name": "b2-fits"
+  },
+  {
+   "available": true,
+   "formats": [
+    "svg"
+   ],
+   "name": "b2-svg"
+  },
+  {
+   "available": true,
+   "formats": [
+    "wav"
+   ],
+   "name": "b2-wav"
+  },
+  {
+   "available": true,
+   "formats": [
+    "aiff"
+   ],
+   "name": "b2-aiff"
+  },
+  {
+   "available": true,
+   "formats": [
+    "au"
+   ],
+   "name": "b2-au"
+  },
+  {
+   "available": true,
+   "formats": [
+    "mp3"
+   ],
+   "name": "b2-mp3"
+  },
+  {
+   "available": true,
+   "formats": [
+    "aac"
+   ],
+   "name": "b2-aac"
+  },
+  {
+   "available": true,
+   "formats": [
+    "flac"
+   ],
+   "name": "b2-flac"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ogg",
+    "opus",
+    "vorbis",
+    "ogv"
+   ],
+   "name": "b2-ogg"
+  },
+  {
+   "available": true,
+   "formats": [
+    "m4a"
+   ],
+   "name": "b2-m4a"
+  },
+  {
+   "available": true,
+   "formats": [
+    "midi"
+   ],
+   "name": "b2-midi"
+  },
+  {
+   "available": true,
+   "formats": [
+    "mp4",
+    "mov",
+    "3gp"
+   ],
+   "name": "b2-isobmff"
+  },
+  {
+   "available": true,
+   "formats": [
+    "mkv",
+    "webm"
+   ],
+   "name": "b2-matroska"
+  },
+  {
+   "available": true,
+   "formats": [
+    "avi"
+   ],
+   "name": "b2-avi"
+  },
+  {
+   "available": true,
+   "formats": [
+    "obj"
+   ],
+   "name": "b2-obj"
+  },
+  {
+   "available": true,
+   "formats": [
+    "stl"
+   ],
+   "name": "b2-stl"
+  },
+  {
+   "available": true,
+   "formats": [
+    "ply"
+   ],
+   "name": "b2-ply"
+  },
+  {
+   "available": true,
+   "formats": [
+    "off"
+   ],
+   "name": "b2-off"
+  },
+  {
+   "available": true,
+   "formats": [
+    "gltf",
+    "glb"
+   ],
+   "name": "b2-gltf"
+  },
+  {
+   "available": true,
+   "formats": [
+    "geojson",
+    "gpx",
+    "kml",
+    "kmz",
+    "wkt"
+   ],
+   "name": "b2-geo"
+  },
+  {
+   "available": true,
+   "formats": [
+    "npy"
+   ],
+   "name": "b2-npy"
+  },
+  {
+   "available": true,
+   "formats": [
+    "npz"
+   ],
+   "name": "b2-npz"
+  },
+  {
+   "available": true,
+   "formats": [
+    "nsf_model"
+   ],
+   "name": "model_file"
+  },
+  {
+   "available": false,
+   "formats": [
+    "pickle"
+   ],
+   "name": "refuse-pickle"
+  }
+ ],
+ "conflicting_hints_and_adversarial": {
+  "items": 31,
+  "wrong": []
+ },
+ "corpus": {
+  "by_basis": {
+   "declared": 6,
+   "signature": 84,
+   "structure": 35
+  },
+  "by_family": {
+   "archive": 11,
+   "array": 5,
+   "audio": 11,
+   "code": 17,
+   "database": 1,
+   "document": 13,
+   "drawing": 1,
+   "geo": 4,
+   "image": 19,
+   "mesh": 5,
+   "notebook": 1,
+   "table": 9,
+   "text": 8,
+   "tree": 11,
+   "unknown": 3,
+   "video": 6
+  },
+  "distinct_formats": 99,
+  "identified_as_constructed": 125,
+  "items": 125,
+  "wrong": []
+ },
+ "decode_chain_on_corpus": {
+  "decoded": {
+   "apk": 1,
+   "atom": 1,
+   "bmp": 1,
+   "bzip2": 1,
+   "c": 1,
+   "csv": 2,
+   "geojson": 1,
+   "gif": 1,
+   "gpx": 1,
+   "gzip": 1,
+   "html": 2,
+   "ini": 1,
+   "ipynb": 1,
+   "jar": 1,
+   "javascript": 1,
+   "json": 2,
+   "kml": 1,
+   "markdown": 1,
+   "midi": 1,
+   "mov": 1,
+   "mp4": 1,
+   "ndjson": 1,
+   "npy": 1,
+   "npz": 1,
+   "obj": 1,
+   "package-json": 1,
+   "pbm": 2,
+   "pgm": 2,
+   "plist": 1,
+   "ppm": 2,
+   "pptx": 1,
+   "pyproject": 1,
+   "python": 2,
+   "requirements": 2,
+   "rss": 1,
+   "rtf": 1,
+   "shell": 1,
+   "stl": 1,
+   "svg": 1,
+   "tar": 1,
+   "text": 8,
+   "toml": 1,
+   "tsv": 1,
+   "wav": 1,
+   "xlsx": 1,
+   "xml": 1,
+   "xz": 1,
+   "zip": 2,
+   "zstd": 1
+  },
+  "opaque": 17,
+  "opaque_formats": [
+   "arrow",
+   "class",
+   "doc",
+   "elf",
+   "feather",
+   "hdf5",
+   "macho",
+   "nifti",
+   "ole",
+   "parquet",
+   "pe",
+   "ppt",
+   "ps",
+   "shapefile",
+   "wasm",
+   "xls"
+  ],
+  "refused": {
+   "7z:unsupported": 1,
+   "aac:unsupported": 1,
+   "aiff:malformed": 2,
+   "avi:malformed": 1,
+   "avif:malformed": 1,
+   "dicom:unsupported": 1,
+   "docx:malformed": 1,
+   "epub:malformed": 1,
+   "fits:unsupported": 1,
+   "flac:unsupported": 1,
+   "glb:malformed": 1,
+   "heic:malformed": 2,
+   "ico:malformed": 1,
+   "jpeg:malformed": 1,
+   "m4a:unsupported": 1,
+   "mkv:malformed": 1,
+   "mp3:unsupported": 2,
+   "odp:malformed": 1,
+   "ods:malformed": 1,
+   "odt:malformed": 1,
+   "ogv:unsupported": 1,
+   "opus:unsupported": 1,
+   "pdf:malformed": 1,
+   "pickle:refused": 3,
+   "ply:malformed": 1,
+   "png:malformed": 1,
+   "psd:malformed": 1,
+   "rar:unsupported": 2,
+   "sqlite:malformed": 1,
+   "stl:malformed": 1,
+   "tiff:malformed": 2,
+   "vorbis:unsupported": 1,
+   "webm:malformed": 1,
+   "webp:unsupported": 1,
+   "yaml:unsupported": 2
+  }
+ },
+ "lane": "K",
+ "random_bytes": {
+  "lengths": [
+   1,
+   4095
+  ],
+  "outcomes": {
+   "text": 3,
+   "unknown": 19997
+  },
+  "seed": 20261126,
+  "text_lengths": [
+   1,
+   1,
+   2
+  ],
+  "text_note": "inputs called text are 1-2 bytes of printable ASCII, which are valid text",
+  "tried": 20000
+ },
+ "truncated_prefixes": {
+  "cuts_bytes": [
+   1,
+   2,
+   3,
+   4,
+   8,
+   16,
+   32,
+   64,
+   128,
+   512,
+   "half"
+  ],
+  "false_identifications": [],
+  "note": "with the size unknown, a short prefix of a binary format that happens to be printable (b'GIF8', b'PK') is called text, which those bytes are; with the size given, prefixes under 32 bytes of a longer input get no structure verdict",
+  "outcomes": {
+   "size_given": {
+    "exact": 662,
+    "general": 86,
+    "hint_on_prefix": 6,
+    "text": 18,
+    "unknown": 603
+   },
+   "size_unknown": {
+    "exact": 698,
+    "general": 78,
+    "text": 348,
+    "unknown": 251
+   }
+  },
+  "tried": 2750
+ },
+ "what": "artifact detection over lane K's hand-assembled corpus (tests/artifacts/detect_corpus.py)"
+}

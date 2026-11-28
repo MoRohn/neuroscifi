@@ -1,0 +1,553 @@
+{
+ "benchmark_development": {
+  "after": {
+   "made": {
+    "abstained": 0,
+    "failed": 0,
+    "n": 14,
+    "right": 14,
+    "wrong": 0
+   },
+   "transform": {
+    "abstained": 0,
+    "failed": 0,
+    "n": 8,
+    "right": 8,
+    "wrong": 0
+   }
+  },
+  "before": {
+   "commit": "c1f5f2f (git archive)",
+   "made": {
+    "abstained": 1,
+    "failed": 0,
+    "n": 14,
+    "right": 13,
+    "wrong": 0
+   },
+   "transform": {
+    "abstained": 2,
+    "failed": 0,
+    "n": 8,
+    "right": 6,
+    "wrong": 0
+   }
+  }
+ },
+ "builders_coverage": {
+  "bundle": {
+   "bar_chart": "cannot: mixed.zip is not a table",
+   "data_file": "builds; check passed",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "cannot: mixed.zip is not a table",
+   "histogram": "cannot: mixed.zip is not a table",
+   "image": "cannot: mixed.zip is not a picture",
+   "line_chart": "cannot: mixed.zip is not a table",
+   "node_link": "builds; check passed",
+   "scatter_chart": "cannot: mixed.zip is not a table",
+   "small_multiples": "cannot: mixed.zip is not a table",
+   "solid.mesh": "cannot: mixed.zip is not a mesh",
+   "solid_view": "cannot: mixed.zip is not a mesh",
+   "sonification": "cannot: mixed.zip is not a table",
+   "sound_view": "cannot: mixed.zip is not a recording",
+   "table": "builds; check passed",
+   "timeline": "cannot: mixed.zip is not a table",
+   "tree_diagram": "builds; check passed"
+  },
+  "document": {
+   "bar_chart": "cannot: plan.md is not a table",
+   "data_file": "cannot: plan.md is not a table",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "cannot: plan.md is not a table",
+   "histogram": "cannot: plan.md is not a table",
+   "image": "cannot: plan.md is not a picture",
+   "line_chart": "cannot: plan.md is not a table",
+   "node_link": "builds; check passed",
+   "scatter_chart": "cannot: plan.md is not a table",
+   "small_multiples": "cannot: plan.md is not a table",
+   "solid.mesh": "cannot: plan.md is not a mesh",
+   "solid_view": "cannot: plan.md is not a mesh",
+   "sonification": "cannot: plan.md is not a table",
+   "sound_view": "cannot: plan.md is not a recording",
+   "table": "cannot: plan.md is not a table",
+   "timeline": "cannot: plan.md is not a table",
+   "tree_diagram": "builds; check passed"
+  },
+  "features": {
+   "bar_chart": "cannot: places.geojson is not a table",
+   "data_file": "cannot: places.geojson is not a table",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "cannot: places.geojson is not a table",
+   "histogram": "cannot: places.geojson is not a table",
+   "image": "cannot: places.geojson is not a picture",
+   "line_chart": "cannot: places.geojson is not a table",
+   "node_link": "cannot: places.geojson is not a network of things",
+   "scatter_chart": "builds; check passed",
+   "small_multiples": "cannot: places.geojson is not a table",
+   "solid.mesh": "cannot: places.geojson is not a mesh",
+   "solid_view": "cannot: places.geojson is not a mesh",
+   "sonification": "cannot: places.geojson is not a table",
+   "sound_view": "cannot: places.geojson is not a recording",
+   "table": "cannot: places.geojson is not a table",
+   "timeline": "cannot: places.geojson has fewer than two dated features",
+   "tree_diagram": "cannot: places.geojson has no hierarchy"
+  },
+  "graph (code)": {
+   "bar_chart": "cannot: pkg.zip is not a table",
+   "data_file": "builds; check passed",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "cannot: pkg.zip is not a table",
+   "histogram": "cannot: pkg.zip is not a table",
+   "image": "cannot: pkg.zip is not a picture",
+   "line_chart": "cannot: pkg.zip is not a table",
+   "node_link": "builds; check passed",
+   "scatter_chart": "cannot: pkg.zip is not a table",
+   "small_multiples": "cannot: pkg.zip is not a table",
+   "solid.mesh": "cannot: pkg.zip is not a mesh",
+   "solid_view": "cannot: pkg.zip is not a mesh",
+   "sonification": "cannot: pkg.zip is not a table",
+   "sound_view": "cannot: pkg.zip is not a recording",
+   "table": "builds; check passed",
+   "timeline": "cannot: pkg.zip is not a table",
+   "tree_diagram": "builds; check passed"
+  },
+  "mesh": {
+   "bar_chart": "cannot: cube.obj is not a table",
+   "data_file": "builds; check passed",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "cannot: cube.obj is not a table",
+   "histogram": "cannot: cube.obj is not a table",
+   "image": "cannot: cube.obj is not a picture",
+   "line_chart": "cannot: cube.obj is not a table",
+   "node_link": "cannot: cube.obj is not a network of things",
+   "scatter_chart": "cannot: cube.obj is not a table",
+   "small_multiples": "cannot: cube.obj is not a table",
+   "solid.mesh": "builds; check passed",
+   "solid_view": "builds; check passed",
+   "sonification": "cannot: cube.obj is not a table",
+   "sound_view": "cannot: cube.obj is not a recording",
+   "table": "cannot: cube.obj is not a table",
+   "timeline": "cannot: cube.obj is not a table",
+   "tree_diagram": "cannot: cube.obj has no hierarchy"
+  },
+  "model file": {
+   "bar_chart": "cannot: ball.json is not a table",
+   "data_file": "cannot: ball.json is not a table",
+   "document": "builds; check passed",
+   "explorable": "builds; check passed",
+   "heatmap": "cannot: ball.json is not a table",
+   "histogram": "cannot: ball.json is not a table",
+   "image": "cannot: ball.json is not a picture",
+   "line_chart": "cannot: ball.json is not a table",
+   "node_link": "builds; check passed",
+   "scatter_chart": "cannot: ball.json is not a table",
+   "small_multiples": "cannot: ball.json is not a table",
+   "solid.mesh": "cannot: ball.json is not a mesh",
+   "solid_view": "cannot: ball.json is not a mesh",
+   "sonification": "cannot: ball.json is not a table",
+   "sound_view": "cannot: ball.json is not a recording",
+   "table": "cannot: ball.json is not a table",
+   "timeline": "cannot: ball.json is not a table",
+   "tree_diagram": "builds; not made: cannot make a readable graph.tree: the diagram needs 4219 x 448 px, more than 4000: show fewer nodes"
+  },
+  "raster": {
+   "bar_chart": "cannot: ramp.png is not a table",
+   "data_file": "cannot: ramp.png is not a table",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "cannot: ramp.png is not a table",
+   "histogram": "cannot: ramp.png is not a table",
+   "image": "builds; check passed",
+   "line_chart": "cannot: ramp.png is not a table",
+   "node_link": "cannot: ramp.png is not a network of things",
+   "scatter_chart": "cannot: ramp.png is not a table",
+   "small_multiples": "cannot: ramp.png is not a table",
+   "solid.mesh": "cannot: ramp.png is not a mesh",
+   "solid_view": "cannot: ramp.png is not a mesh",
+   "sonification": "cannot: ramp.png is not a table",
+   "sound_view": "cannot: ramp.png is not a recording",
+   "table": "cannot: ramp.png is not a table",
+   "timeline": "cannot: ramp.png is not a table",
+   "tree_diagram": "cannot: ramp.png has no hierarchy"
+  },
+  "signal": {
+   "bar_chart": "cannot: tones.wav is not a table",
+   "data_file": "cannot: tones.wav is not a table",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "cannot: tones.wav is not a table",
+   "histogram": "cannot: tones.wav is not a table",
+   "image": "cannot: tones.wav is not a picture",
+   "line_chart": "builds; check passed",
+   "node_link": "cannot: tones.wav is not a network of things",
+   "scatter_chart": "cannot: tones.wav is not a table",
+   "small_multiples": "builds; check passed",
+   "solid.mesh": "cannot: tones.wav is not a mesh",
+   "solid_view": "cannot: tones.wav is not a mesh",
+   "sonification": "cannot: a recording is already a sound; playing given samples back is not a form here",
+   "sound_view": "builds; check passed",
+   "table": "cannot: tones.wav is not a table",
+   "timeline": "cannot: tones.wav is not a table",
+   "tree_diagram": "cannot: tones.wav has no hierarchy"
+  },
+  "table (categories)": {
+   "bar_chart": "builds; check passed",
+   "data_file": "builds; check passed",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "builds; check passed",
+   "histogram": "builds; check passed",
+   "image": "cannot: cities.csv is not a picture",
+   "line_chart": "builds; check passed",
+   "node_link": "cannot: cities.csv is not a network of things",
+   "scatter_chart": "builds; check passed",
+   "small_multiples": "builds; check passed",
+   "solid.mesh": "cannot: cities.csv is not a mesh",
+   "solid_view": "cannot: cities.csv is not a mesh",
+   "sonification": "builds; check passed",
+   "sound_view": "cannot: cities.csv is not a recording",
+   "table": "builds; check passed",
+   "timeline": "cannot: a timeline needs a column of dates or times",
+   "tree_diagram": "cannot: cities.csv has no hierarchy"
+  },
+  "table (time series)": {
+   "bar_chart": "cannot: a bar chart needs a column of names (categories); this table has none",
+   "data_file": "builds; check passed",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "builds; check FAILED (tick_labels_overlap_y, series_distinguishable) after 3 repair(s)",
+   "histogram": "builds; check passed",
+   "image": "cannot: temps.csv is not a picture",
+   "line_chart": "builds; check passed",
+   "node_link": "cannot: temps.csv is not a network of things",
+   "scatter_chart": "builds; check passed",
+   "small_multiples": "builds; check passed",
+   "solid.mesh": "cannot: temps.csv is not a mesh",
+   "solid_view": "cannot: temps.csv is not a mesh",
+   "sonification": "builds; check passed after 1 repair(s)",
+   "sound_view": "cannot: temps.csv is not a recording",
+   "table": "builds; check passed",
+   "timeline": "builds; check passed",
+   "tree_diagram": "cannot: temps.csv has no hierarchy"
+  },
+  "tree": {
+   "bar_chart": "cannot: config.json is not a table",
+   "data_file": "cannot: config.json is not a table",
+   "document": "builds; check passed",
+   "explorable": "cannot: an explorable model is made only from a model file the owner gives (neuroscifi.model/1); it is never guessed from data",
+   "heatmap": "cannot: config.json is not a table",
+   "histogram": "cannot: config.json is not a table",
+   "image": "cannot: config.json is not a picture",
+   "line_chart": "cannot: config.json is not a table",
+   "node_link": "builds; check passed",
+   "scatter_chart": "cannot: config.json is not a table",
+   "small_multiples": "cannot: config.json is not a table",
+   "solid.mesh": "cannot: config.json is not a mesh",
+   "solid_view": "cannot: config.json is not a mesh",
+   "sonification": "cannot: config.json is not a table",
+   "sound_view": "cannot: config.json is not a recording",
+   "table": "cannot: config.json is not a table",
+   "timeline": "cannot: config.json is not a table",
+   "tree_diagram": "builds; check passed"
+  }
+ },
+ "cost": {
+  "bytes_max": 62226,
+  "seconds_max": 0.0137,
+  "seconds_median": 0.0054
+ },
+ "foresight": {
+  "corpus": {
+   "bytes": {
+    "over-predicted": 1,
+    "right": 8,
+    "under-predicted": 1
+   },
+   "over_budget": {
+    "right": 10
+   },
+   "points_per_pixel": {
+    "false alarm": 1
+   },
+   "seconds": {
+    "over-predicted": 10
+   }
+  },
+  "development_transform": {
+   "bytes": {
+    "right": 5,
+    "under-predicted": 1
+   },
+   "over_budget": {
+    "right": 6
+   },
+   "seconds": {
+    "over-predicted": 6
+   }
+  },
+  "rule": "numbers right within a factor of two (under-predicted: observed more than twice the prediction); problems right, false alarm (predicted, not found) or missed (found, not predicted); a problem no check here observes is 'not observable here'"
+ },
+ "label": "OMNIMIND lane P evidence: made by measurement on this host; development split only; nothing stored",
+ "productions": [
+  {
+   "bytes": 16649,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "under-predicted",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "chart.line",
+   "request": "how did temperature_c change over the year?",
+   "seconds": 0.0127,
+   "source": "table (time series)",
+   "status": "made"
+  },
+  {
+   "bytes": 7898,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "right",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "chart.bar",
+   "request": "compare the cities",
+   "seconds": 0.0063,
+   "source": "table (categories)",
+   "status": "made"
+  },
+  {
+   "bytes": 24940,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "right",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    },
+    {
+     "outcome": "false alarm",
+     "what": "points_per_pixel"
+    }
+   ],
+   "form": "chart.line",
+   "request": "what is in this sound?",
+   "seconds": 0.0137,
+   "source": "signal",
+   "status": "made"
+  },
+  {
+   "bytes": 1501,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "over-predicted",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "image.raster",
+   "request": "show me this picture",
+   "seconds": 0.01,
+   "source": "raster",
+   "status": "made"
+  },
+  {
+   "bytes": 62039,
+   "carried": null,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "right",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "solid.view",
+   "request": "show me this shape",
+   "seconds": 0.0046,
+   "source": "mesh",
+   "status": "made"
+  },
+  {
+   "bytes": 6619,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "right",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "chart.scatter",
+   "request": "where are these places?",
+   "seconds": 0.0057,
+   "source": "features",
+   "status": "made"
+  },
+  {
+   "bytes": 6849,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "right",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "graph.tree",
+   "request": "how is this organised?",
+   "seconds": 0.0053,
+   "source": "tree",
+   "status": "made"
+  },
+  {
+   "bytes": 6108,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "right",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "graph.nodelink",
+   "request": "how do these modules depend on each other?",
+   "seconds": 0.0054,
+   "source": "graph (code)",
+   "status": "made"
+  },
+  {
+   "bytes": 6876,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "right",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "document.html",
+   "request": "what is in this plan?",
+   "seconds": 0.0053,
+   "source": "document",
+   "status": "made"
+  },
+  {
+   "bytes": 0,
+   "carried": null,
+   "check_ok": null,
+   "foresight": [],
+   "form": null,
+   "request": "what is in this archive?",
+   "seconds": 0.0034,
+   "source": "bundle",
+   "status": "words"
+  },
+  {
+   "bytes": 62226,
+   "carried": 1.0,
+   "check_ok": true,
+   "foresight": [
+    {
+     "outcome": "right",
+     "what": "bytes"
+    },
+    {
+     "outcome": "over-predicted",
+     "what": "seconds"
+    },
+    {
+     "outcome": "right",
+     "what": "over_budget"
+    }
+   ],
+   "form": "explorable.model",
+   "request": "what happens when I change gravity?",
+   "seconds": 0.0046,
+   "source": "model file",
+   "status": "made"
+  }
+ ]
+}

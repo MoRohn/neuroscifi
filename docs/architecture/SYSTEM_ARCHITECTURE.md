@@ -45,6 +45,7 @@ NeuroSciFi runs as a modular monolith: one Python package (`neuroscifi`), one SQ
 | `neuroscifi.pocket` | Bridge server and PWA. | Refactored and extended |
 | `neuroscifi.console` | Loopback owner console: HTTP API and web UI in Pocket's visual language. | New |
 | `neuroscifi.acceptance` | Executable first-release milestone scenarios (simulated). | New |
+| `neuroscifi.artifacts` | Project OMNIMIND: files the owner hands over (detection, readers under limits and a guarded child process, a store beside the individual), things the system makes from a specification and checks independently, the form planner, relating two artifacts, learning which form is kept (off). Owner commands and the console view only. See section 9. | New (branch `omnimind`, not merged into `main`) |
 
 ## 3. Data architecture
 
@@ -92,6 +93,27 @@ rule, the internal-state, salience, monitoring and arbitration records, the self
 commands, the knowledge re-check and reflection) are described as the code runs them, with what is real,
 display-only or absent at the shipped defaults, in
 [ARCHITECTURE_AFTER_GENESIS.md](../genesis/ARCHITECTURE_AFTER_GENESIS.md). Decisions: ADR-049 to ADR-056.
+
+## 9. Project OMNIMIND (branch `omnimind`, not merged into `main`)
+
+Added on the branch `omnimind` (schema 21): the package `neuroscifi.artifacts`, the console's "Made and kept" view
+(`console/artifacts.py`, `console/web/artifacts.mjs`), two schema steps and six settings. The data flow, the modules,
+the store and what is deliberately not connected are in
+[ARTIFACT_ARCHITECTURE.md](../omnimind/ARTIFACT_ARCHITECTURE.md); decisions ADR-070 to ADR-079.
+
+- **Data.** The individual's file gains an artifact index (schema 20: `artifacts`, `artifact_links`, `artifact_events`,
+  `artifact_forgotten`, `artifact_gaps`; triggers refuse an artifact id in 15 evidence-side tables) and `form_outcomes`
+  (schema 21). The bytes, text layers and specifications live in a sidecar `<individual>.artifacts.sqlite` (mode 0600,
+  never in a checkpoint). Both steps are forward-only; the way back is the owner's own copy of both files taken before
+  the upgrade (`docs/operations/MIGRATIONS.md` §2).
+- **Flows.** `nsf inspect` / `nsf artifact add`: detect, decode in a limited child process, decode, keep. `nsf artifact
+  make`: decode the sources, plan the form, build a specification, make, check independently, repair at most three
+  times, keep as made (never evidence) with its "why". `nsf artifact relate`: measure one against what the other
+  states. Forget and restore reach the store, its sidecar and its outcomes.
+- **Trust boundaries.** Every file is untrusted: allocation charged before it is made, no extraction to disk, no
+  execution, no DTD, a polyglot refused, text screened for instructions aimed at an AI. Owner scope only; no Pocket,
+  voice, agent or family route; the console's policy and headers unchanged. No model is called.
+- **Not connected.** The answer path (answers are still sentences), Pocket, voice, agents, memory and knowledge.
 
 ## 8. Technology choices
 

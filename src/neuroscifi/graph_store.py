@@ -8,6 +8,7 @@ import numpy as np
 HEADER = struct.Struct(">4sBHHH")
 MAGIC = b"NSG1"
 MAX_ELEMENTS = 16_777_216
+MAX_BYTES = HEADER.size + 4 * MAX_ELEMENTS + 32     # the largest snapshot: dense float32, header and sha256
 
 
 def encode(matrix, degree, bits):

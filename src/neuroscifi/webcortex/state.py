@@ -286,8 +286,15 @@ def get_default(name):
     return getattr(wconfig.WebConfig(), name)
 
 
-def set_config(db, changes: dict, now) -> wconfig.WebConfig:
-    """Validate and apply `changes` (field -> value). Unknown keys -> ValidationError. One state_version bump."""
+SETTING_KIND = "web_setting"   # deletion_log.target_kind of a changed web setting (target_id: the setting's name)
+
+
+def set_config(db, changes: dict, now, *, by="owner") -> wconfig.WebConfig:
+    """Validate and apply `changes` (field -> value). Unknown keys -> ValidationError. One state_version bump.
+
+    Each setting whose value changed leaves one deletion_log row in the same transaction, as an instance setting
+    does (store.set_config): target_kind SETTING_KIND, target_id its name, requested_at `now`, effects {"by": who
+    changed it (`by`, at most 64 characters), "state_version"}. Never the value: some are private (private_terms)."""
     if not isinstance(changes, dict) or not changes:
         raise ValidationError("configuration changes must be a non-empty object")
     known = {f.name for f in fields(wconfig.WebConfig)}
@@ -304,10 +311,14 @@ def set_config(db, changes: dict, now) -> wconfig.WebConfig:
         stored = loads(row[0], {}) if row and row[0] else {}
         if isinstance(stored, dict):
             current.update({name: stored[name] for name in wconfig.CHECKED_ON_LOAD if name in stored})
+        changed = sorted(name for name, value in validated.items() if current.get(name) != value)
         current.update(validated)
         db.execute("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                    (wconfig.META_KEY, dumps(current)))
-        store.bump_state_version(db)
+        version = store.bump_state_version(db)
+        db.executemany("INSERT INTO deletion_log(target_kind,target_id,requested_at,effects) VALUES(?,?,?,?)",
+                       [(SETTING_KIND, name, now, json.dumps({"by": str(by)[:64], "state_version": version},
+                                                             sort_keys=True)) for name in changed])
     return get_config(db)
 
 

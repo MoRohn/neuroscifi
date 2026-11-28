@@ -36,6 +36,18 @@ what each table already is:
     labelled generated_by model:<name>; INFERENCE) and a hypothesis's template alternatives after a prediction error
     (web_hypotheses.alternatives, labelled "template"; SPECULATION). Both are already labelled and never consolidated
     (consolidate reads only claim clusters); they stay where they are.
+
+The artifact store (ADR-071, schema 20, artifacts/store.py) adds two record types and amends nothing above:
+  - a GIVEN artifact (origin 'given') is a file the owner handed over, kept as its bytes: a record of what was given,
+    EVIDENCE only in the sense that the owner reported it. What it says is untrusted and unverified; no evidence,
+    claim, knowledge or belief path reads it, and no evidence-side reference column may name it (schema 20).
+  - a MADE artifact (origin 'made') is content the system produced from a specification by a fixed generator (a
+    chart, a sound, a model output). It is its own quarantined class, MADE: never evidence and never knowledge
+    whatever it renders, even when every number in it came from evidence (the evidence stays where it is; a picture
+    of it is not a second copy of it). It lives only in the artifact store's 'made' rows, every listing labels it
+    MADE_NOT_EVIDENCE, no evidence-side reference column may name it, and forgetting any artifact it was made from
+    removes it. QUARANTINED stays the imagined store's kinds: MADE is held apart in a store of its own, under the same
+    rules (never_evidence()).
 """
 from typing import Literal
 
@@ -51,6 +63,9 @@ QUARANTINED: frozenset[str] = frozenset({INFERENCE, SIMULATION, SPECULATION})
 
 # What every listing of quarantined content says beside each record.
 NOT_EVIDENCE = "imagined, not evidence"
+# The class of what the system made in the artifact store (ADR-071), and what every listing of one says beside it.
+MADE = "made"
+MADE_NOT_EVIDENCE = "made by the system, not evidence"
 
 # (record, table or field, kind, basis). Read-only: nothing here changes a row.
 _MAPPING = (
@@ -73,6 +88,10 @@ _MAPPING = (
     ("template alternatives", "web_hypotheses.alternatives", SPECULATION, "labelled template text after a "
      "prediction error; never consolidated"),
     ("imagined record", "imagined", "simulation | speculation | inference", "the quarantined store (schema 17)"),
+    ("given artifact", "artifacts (origin 'given')", EVIDENCE, "a file the owner handed over, kept as given "
+     "(ADR-071): reported, not verified; no evidence path reads it and no evidence-side column may name it"),
+    ("made artifact", "artifacts (origin 'made')", MADE, "what the system produced from a specification (ADR-071): "
+     "quarantined in the artifact store, labelled made by the system, never evidence"),
 )
 
 
@@ -84,3 +103,8 @@ def mapping() -> list[dict]:
 def quarantined(kind) -> bool:
     """Whether content of this kind may only live in the imagined store."""
     return kind in QUARANTINED
+
+
+def never_evidence(kind) -> bool:
+    """Whether content of this kind is never evidence: the imagined kinds and what the system made (ADR-071)."""
+    return kind in QUARANTINED or kind == MADE

@@ -18,6 +18,11 @@ a connect timeout and a whole-call deadline (cfg.read_timeout, streaming include
 server dripping bytes cannot stretch it), shape-checked answers ('bad_response', never an exception), bounded retries with
 exponential backoff for connection errors, 429 and 502-504 (Retry-After honoured up to 10 s; a stream is never
 retried after its first byte), and one ledger row (tokens, latency, first-token latency, attempts; no text).
+Content: a message's `content` is a string, or a list of text parts ({"type": "text", "text": str}, nothing else);
+any other part (an image, audio, a file, a text part with extra fields) is refused ('unsupported_content') before
+anything is sent or logged, because the budget estimate and the off-host privacy screen read text only. A future
+multimodal provider must first extend estimate_messages and screen() to count and screen its parts, then relax
+check_content.
 A streaming call is also registered in presence.activity while it runs (purpose, task id, streamed token count;
 no text), so the Presence aggregator sees it before its ledger row exists.
 <think>...</think> blocks (reasoning models) are removed from returned text.
@@ -42,7 +47,7 @@ from .jsonschema import check_schema, validate
 
 STATES = ("ready", "degraded", "unavailable", "unauthorised", "not_configured")
 ERROR_CODES = ("not_configured", "remote_not_authorised", "private_blocked", "unauthorised", "unavailable",
-               "timeout", "http_error", "bad_response", "context_overflow", "schema_invalid")
+               "timeout", "http_error", "bad_response", "context_overflow", "schema_invalid", "unsupported_content")
 RETRY_STATUS = (429, 502, 503, 504)
 MAX_RESPONSE = 8 * 1024 * 1024
 MAX_RETRY_AFTER = 10.0
@@ -101,6 +106,29 @@ def estimate_messages(messages) -> int:
         for call in m.get("tool_calls") or []:
             total += estimate_tokens(json.dumps(call))
     return total
+
+
+def check_content(messages) -> None:
+    """Refuse (InferenceError 'unsupported_content') any message carrying a content part this gateway cannot both
+    count (estimate_messages) and screen (Gateway.screen): only a string or a list of {"type": "text", "text": str}
+    parts passes. A list part of any other shape would be estimated as nothing, skipped by the privacy screen and
+    still sent as given. A multimodal provider must extend the estimate and the screen before this is relaxed."""
+    for m in messages:
+        content = m.get("content") if isinstance(m, dict) else None
+        if content is None or isinstance(content, str):
+            continue
+        if not isinstance(content, list):
+            # a dict (or any other value) would be screened as its repr and sent as given (security review L3)
+            raise InferenceError("unsupported_content", f"a message carries content of type "
+                                 f"{type(content).__name__[:40]!r}; only text can be counted and privacy-screened, "
+                                 "so nothing was sent")
+        for part in content:
+            if not (isinstance(part, dict) and set(part) == {"type", "text"} and part["type"] == "text"
+                    and isinstance(part["text"], str)):
+                kind = part.get("type") if isinstance(part, dict) else type(part).__name__
+                raise InferenceError("unsupported_content", f"a message carries a content part of type "
+                                     f"{str(kind)[:40]!r}; only text parts can be counted and privacy-screened, so "
+                                     "nothing was sent")
 
 
 def _content_text(content) -> str:
@@ -242,7 +270,9 @@ class Gateway:
 
     def screen(self, messages, authorization=None) -> None:
         """Every endpoint off this host: refuse private memory (messages marked private) unless separately
-        authorised, and any message the web privacy screen flags unless the owner approved this disclosure."""
+        authorised, and any message the web privacy screen flags unless the owner approved this disclosure. A content
+        part the screen cannot read is refused first, wherever the endpoint is (check_content)."""
+        check_content(messages)
         if self.guard() == "loopback":
             return
         from ..webcortex import safety
@@ -252,7 +282,9 @@ class Gateway:
                                      "(nsf llm config --remote-private-memory to authorise)")
             if authorization == AUTHORIZED_DISCLOSURE:
                 continue
-            found = safety.privacy_screen(_content_text(m.get("content")))
+            # tool-call arguments leave this host as text too: screened as the content is (security review L3)
+            calls = " ".join(json.dumps(c, sort_keys=True, default=str) for c in m.get("tool_calls") or [])
+            found = safety.privacy_screen(_content_text(m.get("content")) + ("\n" + calls if calls else ""))
             if found:
                 kinds = ", ".join(sorted({f["kind"] for f in found}))
                 raise InferenceError("private_blocked", f"message contains private data ({kinds}); not sent to a "
@@ -485,6 +517,7 @@ class Gateway:
         server with priority scheduling (vLLM --scheduling-policy priority) serves a higher value after the
         others; background calls carry cfg.background_priority so the owner's first token does not queue behind
         them. Nothing is sent for None or 0, so an endpoint that does not know the field never sees it."""
+        check_content(messages)
         where = self.guard()
         self.screen(messages, authorization)
         max_tokens = min(int(max_tokens or self.cfg.max_output_tokens), self.cfg.max_output_tokens)
@@ -857,5 +890,5 @@ def _decode(text, schema):
     return value, validate(value, schema)
 
 
-__all__ = ["AUTHORIZED_DISCLOSURE", "ChatResult", "ERROR_CODES", "Gateway", "InferenceError", "STATES",
+__all__ = ["AUTHORIZED_DISCLOSURE", "ChatResult", "ERROR_CODES", "Gateway", "InferenceError", "STATES", "check_content",
            "estimate_messages", "estimate_tokens", "parse_json", "strip_thinking"]

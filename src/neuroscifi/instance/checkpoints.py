@@ -70,8 +70,9 @@ def default_dir(db_path):
     return path.parent / f"{path.stem}.checkpoints"
 
 
-# Deletions of payload (not the checkpoint bookkeeping that rebuild and prune log).
-_LAST_DELETION = "SELECT COALESCE(MAX(id),0) FROM deletion_log WHERE target_kind!='checkpoint'"
+# Deletions of payload (not the checkpoint bookkeeping that rebuild and prune log, nor a web setting's change:
+# webcortex.state.SETTING_KIND, which deletes nothing).
+_LAST_DELETION = "SELECT COALESCE(MAX(id),0) FROM deletion_log WHERE target_kind NOT IN ('checkpoint','web_setting')"
 
 
 def create(db, db_path, out_dir, now, *, policy="cold"):
@@ -188,6 +189,7 @@ def restore(db, checkpoint_id, dest, now, *, apply_tombstones=True):
                         counts = _replay(copy, forgets, now)
                 else:
                     counts = _replay(copy, None, now)
+                counts |= _artifact_store().after_restore(db, copy, dest, now)   # {} without artifacts
             staged.chmod(0o600)
             try:
                 os.link(staged, dest)
@@ -208,7 +210,7 @@ CARRIED_SETTINGS = ("consolidation", "max_consolidated_rows", "ask_budget_per_ep
                     "graph_rule_migration", "max_imagined_rows", "imagined_lifetime_seconds", "quiet",
                     "internal_state_history", "predictive_regulation", "executive_rule", "decision_information",
                     *store.IMAGINE_SWITCHES, "imagine_max_seconds", "imagine_max_bytes",
-                    "broadcast", "broadcast_threshold")
+                    "broadcast", "broadcast_threshold", *store.ARTIFACT_SETTINGS)
 
 
 READING_BATCH = 500     # seqs per statement when the live file's readings are read for an archive's events
@@ -370,6 +372,16 @@ def _live_reverts(db):
                       "l.decided_by='owner' ORDER BY l.id").fetchall()
 
 
+def _artifact_store():
+    from ..artifacts import store as artifact_store      # lazy, as governance imports it (ADR-071)
+    return artifact_store
+
+
+def _learn():
+    from ..artifacts import learn                        # lazy, as the artifact store (ADR-078)
+    return learn
+
+
 def _read_forgets(db, now, wanted=None):
     from ..webcortex.signing import FRESH_SECONDS
     settings, warnings = _live_settings(db)
@@ -413,6 +425,14 @@ def _read_forgets(db, now, wanted=None):
         # Imagined records the live file removed (purged, forgotten with a source, expired, evicted; ADR-049).
         "imagined": db.execute("SELECT digest,reason,forgotten_at FROM imagined_forgotten").fetchall()
         if imagined.present(db) else [],
+        # Artifacts the live file forgot (ADR-071): their index rows go from the copy too (artifacts/store.py).
+        "artifacts": _artifact_store().read_forgotten(db),
+        # Artifacts a root forget HELD because its scan could not finish, and the owner's releases (fix lane F4): no
+        # tombstone, so the deletion log is the record (artifacts/store.replay_holds).
+        "artifact_holds": _artifact_store().read_holds(db),
+        # The owner's resets of the form outcomes (`nsf artifact feedback --reset`, ADR-078): no tombstone, so the
+        # deletion log is the record, as for own text above (artifacts/learn.replay).
+        "form_outcomes": _learn().read_resets(db),
         # Epoch streams leave no tombstone: a stream the live instance no longer holds was forgotten or expired.
         "streams": set(db.execute("SELECT id,sha256 FROM epoch_streams").fetchall()),
         # Retained raw audio likewise: a row the live instance no longer holds was forgotten, swept or expired.
@@ -447,6 +467,7 @@ def _replay(copy, forgets, now):
     retired = forgets["retired"] if forgets else []
     nonces = forgets["nonces"] if forgets else []
     removed = blobs = scrubbed = streams = voice = audio = nodes_revoked = epoch_rows = effects = 0
+    named = []          # forgotten roots as an imagined record would name them (governance.naming_forms)
     web_removed = {"tasks": 0, "knowledge": 0, "sources": 0}
     invalidated = []
     copy.execute("PRAGMA secure_delete=ON")
@@ -551,7 +572,7 @@ def _replay(copy, forgets, now):
         effects += graphs.erase_learned_from(copy, dataset_id, now)["effects_deleted"]
     if roots:
         copy.executemany("INSERT OR IGNORE INTO forgotten_roots(digest,kind,forgotten_at) VALUES(?,?,?)", roots)
-        scrubbed += _scrub_copy(copy, candidates, {digest for digest, _, _ in roots})
+        scrubbed += _scrub_copy(copy, candidates, {digest for digest, _, _ in roots}, named)
     if live_streams is not None:
         for stream in copy.execute("SELECT id,sha256 FROM epoch_streams").fetchall():
             if stream not in live_streams:
@@ -563,7 +584,8 @@ def _replay(copy, forgets, now):
     if kind_scopes:     # after the changepoints of a camera or partner forgotten by name (counted there)
         copy.executemany("INSERT OR IGNORE INTO forgotten_scopes(digest,kind,forgotten_at) VALUES(?,?,?)",
                          kind_scopes)
-        scrubbed += _scrub_copy_scopes(copy, candidates, {(digest, kind) for digest, kind, _ in kind_scopes})
+        scrubbed += _scrub_copy_scopes(copy, candidates, {(digest, kind) for digest, kind, _ in kind_scopes},
+                                        named)
     for epoch, forgotten_at_version, requested_at, effects_json in epochs:
         if version < forgotten_at_version:
             epoch_rows += sum(governance.drop_epoch_rows(copy, epoch).values())
@@ -619,6 +641,13 @@ def _replay(copy, forgets, now):
     # Last, after every other replay: imagined records the live file removed since, those past their lifetime, and
     # those derived from anything the replay above removed (ADR-049).
     imagined_removed = imagined.replay(copy, forgets.get("imagined", []) if forgets else [], now)
+    # Then, as the live forget did, those whose text holds a root forgotten above (governance._imagined_cascade):
+    # what the live tombstones already removed is gone, so this finds only what they do not name.
+    imagined_removed += imagined.remove_naming(copy, named, now)[0]
+    artifacts_removed = _artifact_store().replay(copy, forgets.get("artifacts", []) if forgets else [], now)
+    holds_carried = _artifact_store().replay_holds(copy, forgets.get("artifact_holds") if forgets else None)
+    # (an artifact removed above took its form outcomes with it, by schema 21's trigger)
+    outcomes_removed = _learn().replay(copy, forgets.get("form_outcomes") if forgets else None, version)
     copy.execute("COMMIT")
     copy.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # no frame of a removed row stays behind
     copy.execute("PRAGMA journal_mode=DELETE")
@@ -631,7 +660,11 @@ def _replay(copy, forgets, now):
             "graphs_invalidated": invalidated, "derived_rows_scrubbed": scrubbed, "streams_removed": streams,
             "web_forgotten_applied": len(web), "web_removed": web_removed, "voice_sessions_removed": voice,
             "voice_audio_removed": audio, "node_revocations_applied": nodes_revoked,
-            "imagined_removed": imagined_removed} | ({"own_text_removed": own_text_removed} if own_text else {})
+            "imagined_removed": imagined_removed,
+            **({"artifacts_removed": artifacts_removed} if artifacts_removed else {}),
+            **({"artifact_holds_carried": holds_carried} if holds_carried else {}),
+            **({"form_outcomes_removed": outcomes_removed} if outcomes_removed else {})} | (
+                {"own_text_removed": own_text_removed} if own_text else {})
 
 
 # ---- rewrite in place after a forget ------------------------------------------------------------------------------
@@ -641,7 +674,9 @@ def _replay(copy, forgets, now):
 # rows the replay does not reach, and an archive made stale while it was written has no recorded cause: those stay
 # stale until `rebuild` replaces them.
 REWRITABLE_KINDS = frozenset({"voice_session", "research", "knowledge", "source", imagined.DELETION_KIND,
-                              "own_text"})      # webcortex.emitted.DELETION_KIND: its replay is the whole removal
+                              "artifact",        # artifacts/store.py DELETION_KIND: replay() is its whole cascade
+                              "own_text",        # webcortex.emitted.DELETION_KIND: its replay is the whole removal
+                              "form_outcomes"})  # artifacts/learn.DELETION_KIND: its replay is the whole removal
 JOURNAL_SUFFIX = ".rewrite"
 
 
@@ -877,18 +912,20 @@ def _root_candidates(copy):
     return found
 
 
-def _scrub_copy(copy, candidates, digests):
-    """Scrub, in a restore's staged copy, every candidate root that the live instance has forgotten."""
+def _scrub_copy(copy, candidates, digests, named):
+    """Scrub, in a restore's staged copy, every candidate root that the live instance has forgotten; their
+    governance.naming_forms are added to `named` (the imagined records holding them go after imagined.replay)."""
     instance_id = store.birth(copy)["instance_id"]
     roots = {}
     for kind, root in sorted(candidates):
         digest = governance.root_digest(instance_id, root)
         if digest in digests and root not in roots and not governance.root_held(copy, root):
             roots[root] = (kind, digest)
+    named.extend(governance.naming_forms(roots))
     return governance.scrub_roots(copy, roots)
 
 
-def _scrub_copy_scopes(copy, candidates, forgotten):
+def _scrub_copy_scopes(copy, candidates, forgotten, named):
     """In a restore's staged copy: scrub the kind of every candidate name that the live instance forgot as that kind
     while the other channel kept the name (forgotten: {(digest, kind)}), unless the copy still holds evidence of that
     kind (a newer camera or partner of the same name). A name with no evidence left at all in the copy is scrubbed
@@ -900,6 +937,7 @@ def _scrub_copy_scopes(copy, candidates, forgotten):
         channel = "camera" if kind == "camera" else "word"
         if (digest, kind) in forgotten and not governance.root_held(copy, root, channel):
             parts[kind][root] = (kind, digest)
+    named.extend(f for part in parts.values() for f in governance.naming_forms(part, scoped=True))
     return sum(governance.scrub_roots(copy, part, scoped=True) for part in parts.values() if part)
 
 

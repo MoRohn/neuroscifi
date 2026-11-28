@@ -1,0 +1,38 @@
+{
+ "add_parent_peak_MiB_before_after": {
+  "png_30MP": [
+   328,
+   142
+  ],
+  "png_crafted": [
+   304,
+   47
+  ]
+ },
+ "add_seconds_before_after": {
+  "png_30MP_photo_like_47_MiB_filter0": [
+   1.31,
+   1.02
+  ],
+  "png_crafted_7600x5500_rgb8_135_KiB": [
+   13.19,
+   6.86
+  ],
+  "zip_5000_files_919_KiB": [
+   5.81,
+   2.97
+  ]
+ },
+ "before": "09bfff6",
+ "child_start_up_s": {
+  "input": "a 12-byte CSV, summary mode, five runs",
+  "median": 0.093,
+  "min": 0.084
+ },
+ "host": "aarch64, shared, loaded; best of two runs; store.add in-process with the guard on",
+ "lane": "omnimind F4",
+ "note": "the reviewer's own 30 MP photo is not reproduced exactly (its filters differ); the crafted PNG is review1/c/r2/bomb2.py's RGB8 7600x5500",
+ "what": "the guard's cost on the code reviewer's inputs and the second decode removed from add",
+ "zip_decode_in_injection_screen_s": 2.53,
+ "zip_in_process_decode_s": 2.87
+}

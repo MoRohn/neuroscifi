@@ -1,0 +1,2953 @@
+{
+ "commit": "c5d3230",
+ "taken": "2026-11-26, once, by the main session",
+ "development": {
+  "planner": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "development",
+   "n_cases": 133,
+   "good": {
+    "k": 113.0,
+    "n": 133,
+    "share": 0.8496
+   },
+   "good_or_fine": {
+    "k": 133.0,
+    "n": 133,
+    "share": 1.0
+   },
+   "bad": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0,
+    "too_poor": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "too_much": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "unfit": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "violation": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 10.0,
+     "n": 10,
+     "share": 1.0
+    },
+    "infeasible_handled": {
+     "k": 5.0,
+     "n": 5,
+     "share": 1.0
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 77,
+      "good": 65.0,
+      "good_or_fine": 77.0,
+      "good_share": 0.8442
+     },
+     "words": {
+      "n": 36,
+      "good": 28.0,
+      "good_or_fine": 36.0,
+      "good_share": 0.7778
+     },
+     "conflict": {
+      "n": 5,
+      "good": 5.0,
+      "good_or_fine": 5.0,
+      "good_share": 1.0
+     },
+     "explicit": {
+      "n": 15,
+      "good": 15.0,
+      "good_or_fine": 15.0,
+      "good_share": 1.0
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 1.0
+     },
+     "access": {
+      "n": 11,
+      "good": 8.0,
+      "good_or_fine": 11.0,
+      "good_share": 0.7273
+     },
+     "budget": {
+      "n": 4,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 1.0
+     },
+     "prefs": {
+      "n": 2,
+      "good": 2.0,
+      "good_or_fine": 2.0,
+      "good_share": 1.0
+     },
+     "ex72": {
+      "n": 7,
+      "good": 6.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.8571
+     },
+     "counter72": {
+      "n": 7,
+      "good": 7.0,
+      "good_or_fine": 7.0,
+      "good_share": 1.0
+     }
+    },
+    "device": {
+     "console": {
+      "n": 85,
+      "good": 71.0,
+      "good_or_fine": 85.0,
+      "good_share": 0.8353
+     },
+     "pocket": {
+      "n": 31,
+      "good": 27.0,
+      "good_or_fine": 31.0,
+      "good_share": 0.871
+     },
+     "voice": {
+      "n": 9,
+      "good": 9.0,
+      "good_or_fine": 9.0,
+      "good_share": 1.0
+     },
+     "cli": {
+      "n": 4,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.75
+     },
+     "agent": {
+      "n": 4,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.75
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 9,
+      "good": 8.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.8889
+     },
+     "code": {
+      "n": 5,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.6
+     },
+     "distribution": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.6667
+     },
+     "hierarchy": {
+      "n": 4,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.75
+     },
+     "image": {
+      "n": 5,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.8
+     },
+     "map": {
+      "n": 5,
+      "good": 5.0,
+      "good_or_fine": 5.0,
+      "good_share": 1.0
+     },
+     "network": {
+      "n": 7,
+      "good": 6.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.8571
+     },
+     "process": {
+      "n": 6,
+      "good": 3.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.5
+     },
+     "prose": {
+      "n": 6,
+      "good": 6.0,
+      "good_or_fine": 6.0,
+      "good_share": 1.0
+     },
+     "records": {
+      "n": 13,
+      "good": 11.0,
+      "good_or_fine": 13.0,
+      "good_share": 0.8462
+     },
+     "relation": {
+      "n": 5,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.8
+     },
+     "scalar": {
+      "n": 7,
+      "good": 7.0,
+      "good_or_fine": 7.0,
+      "good_share": 1.0
+     },
+     "sequence": {
+      "n": 7,
+      "good": 4.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.5714
+     },
+     "series": {
+      "n": 32,
+      "good": 31.0,
+      "good_or_fine": 32.0,
+      "good_share": 0.9688
+     },
+     "solid": {
+      "n": 3,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 1.0
+     },
+     "sound": {
+      "n": 7,
+      "good": 6.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.8571
+     },
+     "surface": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.6667
+     },
+     "timeline": {
+      "n": 6,
+      "good": 5.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.8333
+     }
+    },
+    "prose_is_right": {
+     "n": 64,
+     "good": 59.0,
+     "good_or_fine": 64.0,
+     "good_share": 0.9219
+    },
+    "prose_is_not_right": {
+     "n": 69,
+     "good": 54.0,
+     "good_or_fine": 69.0,
+     "good_share": 0.7826
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 14.0,
+     "share": 0.7778
+    },
+    "twin": {
+     "n": 9,
+     "both_good": 8.0,
+     "share": 0.8889
+    }
+   }
+  },
+  "today": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "development",
+   "n_cases": 133,
+   "good": {
+    "k": 53.0,
+    "n": 133,
+    "share": 0.3985
+   },
+   "good_or_fine": {
+    "k": 97.0,
+    "n": 133,
+    "share": 0.7293
+   },
+   "bad": {
+    "k": 36.0,
+    "n": 133,
+    "share": 0.2707,
+    "too_poor": {
+     "k": 30.0,
+     "n": 133,
+     "share": 0.2256
+    },
+    "too_much": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    },
+    "unfit": {
+     "k": 6.0,
+     "n": 133,
+     "share": 0.0451
+    },
+    "violation": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 3.0,
+     "n": 10,
+     "share": 0.3
+    },
+    "infeasible_handled": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 77,
+      "good": 32.0,
+      "good_or_fine": 57.0,
+      "good_share": 0.4156
+     },
+     "words": {
+      "n": 36,
+      "good": 15.0,
+      "good_or_fine": 27.0,
+      "good_share": 0.4167
+     },
+     "conflict": {
+      "n": 5,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.6
+     },
+     "explicit": {
+      "n": 15,
+      "good": 3.0,
+      "good_or_fine": 8.0,
+      "good_share": 0.2
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 1.0
+     },
+     "access": {
+      "n": 11,
+      "good": 3.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.2727
+     },
+     "budget": {
+      "n": 4,
+      "good": 1.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.25
+     },
+     "prefs": {
+      "n": 2,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.5
+     },
+     "ex72": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 4.0,
+      "good_share": 0.0
+     },
+     "counter72": {
+      "n": 7,
+      "good": 7.0,
+      "good_or_fine": 7.0,
+      "good_share": 1.0
+     }
+    },
+    "device": {
+     "console": {
+      "n": 85,
+      "good": 28.0,
+      "good_or_fine": 54.0,
+      "good_share": 0.3294
+     },
+     "pocket": {
+      "n": 31,
+      "good": 22.0,
+      "good_or_fine": 27.0,
+      "good_share": 0.7097
+     },
+     "voice": {
+      "n": 9,
+      "good": 0,
+      "good_or_fine": 9.0,
+      "good_share": 0.0
+     },
+     "cli": {
+      "n": 4,
+      "good": 1.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.25
+     },
+     "agent": {
+      "n": 4,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.5
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 9,
+      "good": 5.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.5556
+     },
+     "code": {
+      "n": 5,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.6
+     },
+     "distribution": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.6667
+     },
+     "hierarchy": {
+      "n": 4,
+      "good": 1.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.25
+     },
+     "image": {
+      "n": 5,
+      "good": 1.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.2
+     },
+     "map": {
+      "n": 5,
+      "good": 1.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.2
+     },
+     "network": {
+      "n": 7,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.2857
+     },
+     "process": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 4.0,
+      "good_share": 0.0
+     },
+     "prose": {
+      "n": 6,
+      "good": 5.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.8333
+     },
+     "records": {
+      "n": 13,
+      "good": 6.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.4615
+     },
+     "relation": {
+      "n": 5,
+      "good": 2.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.4
+     },
+     "scalar": {
+      "n": 7,
+      "good": 5.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.7143
+     },
+     "sequence": {
+      "n": 7,
+      "good": 3.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.4286
+     },
+     "series": {
+      "n": 32,
+      "good": 11.0,
+      "good_or_fine": 20.0,
+      "good_share": 0.3438
+     },
+     "solid": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "sound": {
+      "n": 7,
+      "good": 2.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.2857
+     },
+     "surface": {
+      "n": 3,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.3333
+     },
+     "timeline": {
+      "n": 6,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.5
+     }
+    },
+    "prose_is_right": {
+     "n": 64,
+     "good": 53.0,
+     "good_or_fine": 64.0,
+     "good_share": 0.8281
+    },
+    "prose_is_not_right": {
+     "n": 69,
+     "good": 0,
+     "good_or_fine": 33.0,
+     "good_share": 0.0
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 0.0,
+     "share": 0.0
+    },
+    "twin": {
+     "n": 9,
+     "both_good": 0.0,
+     "share": 0.0
+    }
+   }
+  },
+  "richest": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "development",
+   "n_cases": 133,
+   "good": {
+    "k": 9.0,
+    "n": 133,
+    "share": 0.0677
+   },
+   "good_or_fine": {
+    "k": 12.0,
+    "n": 133,
+    "share": 0.0902
+   },
+   "bad": {
+    "k": 121.0,
+    "n": 133,
+    "share": 0.9098,
+    "too_poor": {
+     "k": 3.0,
+     "n": 133,
+     "share": 0.0226
+    },
+    "too_much": {
+     "k": 95.0,
+     "n": 133,
+     "share": 0.7143
+    },
+    "unfit": {
+     "k": 23.0,
+     "n": 133,
+     "share": 0.1729
+    },
+    "violation": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 1.0,
+     "n": 10,
+     "share": 0.1
+    },
+    "infeasible_handled": {
+     "k": 1.0,
+     "n": 5,
+     "share": 0.2
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 77,
+      "good": 6.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.0779
+     },
+     "words": {
+      "n": 36,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0278
+     },
+     "conflict": {
+      "n": 5,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "explicit": {
+      "n": 15,
+      "good": 2.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.1333
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "access": {
+      "n": 11,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "budget": {
+      "n": 4,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "prefs": {
+      "n": 2,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "ex72": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "counter72": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     }
+    },
+    "device": {
+     "console": {
+      "n": 85,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.0235
+     },
+     "pocket": {
+      "n": 31,
+      "good": 1.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.0323
+     },
+     "voice": {
+      "n": 9,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "cli": {
+      "n": 4,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 1.0
+     },
+     "agent": {
+      "n": 4,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.5
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 9,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "code": {
+      "n": 5,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.2
+     },
+     "distribution": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "hierarchy": {
+      "n": 4,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.25
+     },
+     "image": {
+      "n": 5,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "map": {
+      "n": 5,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "network": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "process": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "prose": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "records": {
+      "n": 13,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.2308
+     },
+     "relation": {
+      "n": 5,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "scalar": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "sequence": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "series": {
+      "n": 32,
+      "good": 1.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.0312
+     },
+     "solid": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.6667
+     },
+     "sound": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "surface": {
+      "n": 3,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.3333
+     },
+     "timeline": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     }
+    },
+    "prose_is_right": {
+     "n": 64,
+     "good": 1.0,
+     "good_or_fine": 3.0,
+     "good_share": 0.0156
+    },
+    "prose_is_not_right": {
+     "n": 69,
+     "good": 8.0,
+     "good_or_fine": 9.0,
+     "good_share": 0.1159
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 0.0,
+     "share": 0.0
+    },
+    "twin": {
+     "n": 9,
+     "both_good": 0.0,
+     "share": 0.0
+    }
+   }
+  },
+  "random": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "development",
+   "n_cases": 133,
+   "good": {
+    "k": 14.572,
+    "n": 133,
+    "share": 0.1096
+   },
+   "good_or_fine": {
+    "k": 31.74,
+    "n": 133,
+    "share": 0.2386
+   },
+   "bad": {
+    "k": 101.26,
+    "n": 133,
+    "share": 0.7614,
+    "too_poor": {
+     "k": 5.463,
+     "n": 133,
+     "share": 0.0411
+    },
+    "too_much": {
+     "k": 43.38,
+     "n": 133,
+     "share": 0.3262
+    },
+    "unfit": {
+     "k": 52.418,
+     "n": 133,
+     "share": 0.3941
+    },
+    "violation": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 0.503,
+     "n": 10,
+     "share": 0.0503
+    },
+    "infeasible_handled": {
+     "k": 1.516,
+     "n": 5,
+     "share": 0.3031
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 77,
+      "good": 9.616,
+      "good_or_fine": 20.96,
+      "good_share": 0.1249
+     },
+     "words": {
+      "n": 36,
+      "good": 2.738,
+      "good_or_fine": 6.476,
+      "good_share": 0.0761
+     },
+     "conflict": {
+      "n": 5,
+      "good": 0.2,
+      "good_or_fine": 0.75,
+      "good_share": 0.04
+     },
+     "explicit": {
+      "n": 15,
+      "good": 2.018,
+      "good_or_fine": 3.553,
+      "good_share": 0.1345
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 0.15,
+      "good_or_fine": 0.3,
+      "good_share": 0.05
+     },
+     "access": {
+      "n": 11,
+      "good": 1.785,
+      "good_or_fine": 3.929,
+      "good_share": 0.1623
+     },
+     "budget": {
+      "n": 4,
+      "good": 0.553,
+      "good_or_fine": 1.178,
+      "good_share": 0.1383
+     },
+     "prefs": {
+      "n": 2,
+      "good": 0.1,
+      "good_or_fine": 0.25,
+      "good_share": 0.05
+     },
+     "ex72": {
+      "n": 7,
+      "good": 0.353,
+      "good_or_fine": 1.111,
+      "good_share": 0.0504
+     },
+     "counter72": {
+      "n": 7,
+      "good": 0.35,
+      "good_or_fine": 0.7,
+      "good_share": 0.05
+     }
+    },
+    "device": {
+     "console": {
+      "n": 85,
+      "good": 4.636,
+      "good_or_fine": 12.348,
+      "good_share": 0.0545
+     },
+     "pocket": {
+      "n": 31,
+      "good": 2.603,
+      "good_or_fine": 6.058,
+      "good_share": 0.084
+     },
+     "voice": {
+      "n": 9,
+      "good": 3.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.3333
+     },
+     "cli": {
+      "n": 4,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.5
+     },
+     "agent": {
+      "n": 4,
+      "good": 2.333,
+      "good_or_fine": 3.333,
+      "good_share": 0.5833
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 9,
+      "good": 0.733,
+      "good_or_fine": 1.717,
+      "good_share": 0.0815
+     },
+     "code": {
+      "n": 5,
+      "good": 0.917,
+      "good_or_fine": 1.45,
+      "good_share": 0.1833
+     },
+     "distribution": {
+      "n": 3,
+      "good": 0.3,
+      "good_or_fine": 0.75,
+      "good_share": 0.1
+     },
+     "hierarchy": {
+      "n": 4,
+      "good": 0.433,
+      "good_or_fine": 1.45,
+      "good_share": 0.1083
+     },
+     "image": {
+      "n": 5,
+      "good": 0.2,
+      "good_or_fine": 0.6,
+      "good_share": 0.04
+     },
+     "map": {
+      "n": 5,
+      "good": 0.533,
+      "good_or_fine": 1.317,
+      "good_share": 0.1067
+     },
+     "network": {
+      "n": 7,
+      "good": 0.5,
+      "good_or_fine": 1.25,
+      "good_share": 0.0714
+     },
+     "process": {
+      "n": 6,
+      "good": 0.335,
+      "good_or_fine": 0.972,
+      "good_share": 0.0558
+     },
+     "prose": {
+      "n": 6,
+      "good": 0.867,
+      "good_or_fine": 1.733,
+      "good_share": 0.1444
+     },
+     "records": {
+      "n": 13,
+      "good": 2.45,
+      "good_or_fine": 4.433,
+      "good_share": 0.1885
+     },
+     "relation": {
+      "n": 5,
+      "good": 0.483,
+      "good_or_fine": 1.217,
+      "good_share": 0.0967
+     },
+     "scalar": {
+      "n": 7,
+      "good": 1.25,
+      "good_or_fine": 2.167,
+      "good_share": 0.1786
+     },
+     "sequence": {
+      "n": 7,
+      "good": 0.353,
+      "good_or_fine": 1.108,
+      "good_share": 0.0504
+     },
+     "series": {
+      "n": 32,
+      "good": 3.907,
+      "good_or_fine": 8.806,
+      "good_share": 0.1221
+     },
+     "solid": {
+      "n": 3,
+      "good": 0.171,
+      "good_or_fine": 0.343,
+      "good_share": 0.0571
+     },
+     "sound": {
+      "n": 7,
+      "good": 0.306,
+      "good_or_fine": 0.711,
+      "good_share": 0.0437
+     },
+     "surface": {
+      "n": 3,
+      "good": 0.2,
+      "good_or_fine": 0.3,
+      "good_share": 0.0667
+     },
+     "timeline": {
+      "n": 6,
+      "good": 0.633,
+      "good_or_fine": 1.417,
+      "good_share": 0.1056
+     }
+    },
+    "prose_is_right": {
+     "n": 64,
+     "good": 8.617,
+     "good_or_fine": 17.717,
+     "good_share": 0.1346
+    },
+    "prose_is_not_right": {
+     "n": 69,
+     "good": 5.955,
+     "good_or_fine": 14.023,
+     "good_share": 0.0863
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 0.043,
+     "share": 0.0024
+    },
+    "twin": {
+     "n": 9,
+     "both_good": 0.028,
+     "share": 0.0031
+    }
+   }
+  },
+  "shape_only": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "development",
+   "n_cases": 133,
+   "good": {
+    "k": 61.0,
+    "n": 133,
+    "share": 0.4586
+   },
+   "good_or_fine": {
+    "k": 107.0,
+    "n": 133,
+    "share": 0.8045
+   },
+   "bad": {
+    "k": 26.0,
+    "n": 133,
+    "share": 0.1955,
+    "too_poor": {
+     "k": 1.0,
+     "n": 133,
+     "share": 0.0075
+    },
+    "too_much": {
+     "k": 17.0,
+     "n": 133,
+     "share": 0.1278
+    },
+    "unfit": {
+     "k": 8.0,
+     "n": 133,
+     "share": 0.0602
+    },
+    "violation": {
+     "k": 0,
+     "n": 133,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 133,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 3.0,
+     "n": 10,
+     "share": 0.3
+    },
+    "infeasible_handled": {
+     "k": 3.0,
+     "n": 5,
+     "share": 0.6
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 77,
+      "good": 41.0,
+      "good_or_fine": 66.0,
+      "good_share": 0.5325
+     },
+     "words": {
+      "n": 36,
+      "good": 13.0,
+      "good_or_fine": 27.0,
+      "good_share": 0.3611
+     },
+     "conflict": {
+      "n": 5,
+      "good": 1.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.2
+     },
+     "explicit": {
+      "n": 15,
+      "good": 6.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.4
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.3333
+     },
+     "access": {
+      "n": 11,
+      "good": 4.0,
+      "good_or_fine": 8.0,
+      "good_share": 0.3636
+     },
+     "budget": {
+      "n": 4,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.5
+     },
+     "prefs": {
+      "n": 2,
+      "good": 0,
+      "good_or_fine": 2.0,
+      "good_share": 0.0
+     },
+     "ex72": {
+      "n": 7,
+      "good": 3.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.4286
+     },
+     "counter72": {
+      "n": 7,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.5714
+     }
+    },
+    "device": {
+     "console": {
+      "n": 85,
+      "good": 42.0,
+      "good_or_fine": 63.0,
+      "good_share": 0.4941
+     },
+     "pocket": {
+      "n": 31,
+      "good": 12.0,
+      "good_or_fine": 27.0,
+      "good_share": 0.3871
+     },
+     "voice": {
+      "n": 9,
+      "good": 0,
+      "good_or_fine": 9.0,
+      "good_share": 0.0
+     },
+     "cli": {
+      "n": 4,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 1.0
+     },
+     "agent": {
+      "n": 4,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.75
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 9,
+      "good": 3.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.3333
+     },
+     "code": {
+      "n": 5,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.6
+     },
+     "distribution": {
+      "n": 3,
+      "good": 1.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.3333
+     },
+     "hierarchy": {
+      "n": 4,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.5
+     },
+     "image": {
+      "n": 5,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.4
+     },
+     "map": {
+      "n": 5,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.6
+     },
+     "network": {
+      "n": 7,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.5714
+     },
+     "process": {
+      "n": 6,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.6667
+     },
+     "prose": {
+      "n": 6,
+      "good": 5.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.8333
+     },
+     "records": {
+      "n": 13,
+      "good": 5.0,
+      "good_or_fine": 12.0,
+      "good_share": 0.3846
+     },
+     "relation": {
+      "n": 5,
+      "good": 1.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.2
+     },
+     "scalar": {
+      "n": 7,
+      "good": 5.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.7143
+     },
+     "sequence": {
+      "n": 7,
+      "good": 1.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.1429
+     },
+     "series": {
+      "n": 32,
+      "good": 12.0,
+      "good_or_fine": 26.0,
+      "good_share": 0.375
+     },
+     "solid": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.6667
+     },
+     "sound": {
+      "n": 7,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.5714
+     },
+     "surface": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.6667
+     },
+     "timeline": {
+      "n": 6,
+      "good": 2.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.3333
+     }
+    },
+    "prose_is_right": {
+     "n": 64,
+     "good": 14.0,
+     "good_or_fine": 45.0,
+     "good_share": 0.2188
+    },
+    "prose_is_not_right": {
+     "n": 69,
+     "good": 47.0,
+     "good_or_fine": 62.0,
+     "good_share": 0.6812
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 6.0,
+     "share": 0.3333
+    },
+    "twin": {
+     "n": 9,
+     "both_good": 0.0,
+     "share": 0.0
+    }
+   }
+  }
+ },
+ "held_out": {
+  "planner": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "held_out",
+   "n_cases": 138,
+   "good": {
+    "k": 91.0,
+    "n": 138,
+    "share": 0.6594
+   },
+   "good_or_fine": {
+    "k": 127.0,
+    "n": 138,
+    "share": 0.9203
+   },
+   "bad": {
+    "k": 11.0,
+    "n": 138,
+    "share": 0.0797,
+    "too_poor": {
+     "k": 4.0,
+     "n": 138,
+     "share": 0.029
+    },
+    "too_much": {
+     "k": 5.0,
+     "n": 138,
+     "share": 0.0362
+    },
+    "unfit": {
+     "k": 1.0,
+     "n": 138,
+     "share": 0.0072
+    },
+    "violation": {
+     "k": 1.0,
+     "n": 138,
+     "share": 0.0072
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 1.0,
+    "n": 138,
+    "share": 0.0072
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 10.0,
+     "n": 11,
+     "share": 0.9091
+    },
+    "infeasible_handled": {
+     "k": 4.0,
+     "n": 5,
+     "share": 0.8
+    },
+    "infeasible_chosen_anyway": {
+     "k": 1.0,
+     "n": 5,
+     "share": 0.2
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 81,
+      "good": 57.0,
+      "good_or_fine": 75.0,
+      "good_share": 0.7037
+     },
+     "words": {
+      "n": 34,
+      "good": 16.0,
+      "good_or_fine": 30.0,
+      "good_share": 0.4706
+     },
+     "conflict": {
+      "n": 7,
+      "good": 4.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.5714
+     },
+     "explicit": {
+      "n": 16,
+      "good": 14.0,
+      "good_or_fine": 15.0,
+      "good_share": 0.875
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 1.0
+     },
+     "access": {
+      "n": 10,
+      "good": 6.0,
+      "good_or_fine": 10.0,
+      "good_share": 0.6
+     },
+     "budget": {
+      "n": 5,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.4
+     },
+     "prefs": {
+      "n": 2,
+      "good": 2.0,
+      "good_or_fine": 2.0,
+      "good_share": 1.0
+     },
+     "ex72": {
+      "n": 7,
+      "good": 1.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.1429
+     },
+     "counter72": {
+      "n": 6,
+      "good": 5.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.8333
+     }
+    },
+    "device": {
+     "console": {
+      "n": 80,
+      "good": 38.0,
+      "good_or_fine": 69.0,
+      "good_share": 0.475
+     },
+     "pocket": {
+      "n": 43,
+      "good": 38.0,
+      "good_or_fine": 43.0,
+      "good_share": 0.8837
+     },
+     "voice": {
+      "n": 6,
+      "good": 6.0,
+      "good_or_fine": 6.0,
+      "good_share": 1.0
+     },
+     "cli": {
+      "n": 5,
+      "good": 5.0,
+      "good_or_fine": 5.0,
+      "good_share": 1.0
+     },
+     "agent": {
+      "n": 4,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 1.0
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 10,
+      "good": 9.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.9
+     },
+     "code": {
+      "n": 3,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 1.0
+     },
+     "distribution": {
+      "n": 6,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.5
+     },
+     "hierarchy": {
+      "n": 5,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.8
+     },
+     "image": {
+      "n": 2,
+      "good": 1.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.5
+     },
+     "map": {
+      "n": 7,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.4286
+     },
+     "network": {
+      "n": 8,
+      "good": 6.0,
+      "good_or_fine": 8.0,
+      "good_share": 0.75
+     },
+     "process": {
+      "n": 10,
+      "good": 2.0,
+      "good_or_fine": 8.0,
+      "good_share": 0.2
+     },
+     "prose": {
+      "n": 9,
+      "good": 8.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.8889
+     },
+     "records": {
+      "n": 14,
+      "good": 10.0,
+      "good_or_fine": 14.0,
+      "good_share": 0.7143
+     },
+     "relation": {
+      "n": 4,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.75
+     },
+     "scalar": {
+      "n": 12,
+      "good": 12.0,
+      "good_or_fine": 12.0,
+      "good_share": 1.0
+     },
+     "sequence": {
+      "n": 5,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.4
+     },
+     "series": {
+      "n": 21,
+      "good": 16.0,
+      "good_or_fine": 20.0,
+      "good_share": 0.7619
+     },
+     "solid": {
+      "n": 7,
+      "good": 2.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.2857
+     },
+     "sound": {
+      "n": 6,
+      "good": 4.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.6667
+     },
+     "surface": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 2.0,
+      "good_share": 0.0
+     },
+     "timeline": {
+      "n": 6,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.5
+     }
+    },
+    "prose_is_right": {
+     "n": 70,
+     "good": 58.0,
+     "good_or_fine": 68.0,
+     "good_share": 0.8286
+    },
+    "prose_is_not_right": {
+     "n": 68,
+     "good": 33.0,
+     "good_or_fine": 59.0,
+     "good_share": 0.4853
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 3.0,
+     "share": 0.1667
+    },
+    "twin": {
+     "n": 10,
+     "both_good": 2.0,
+     "share": 0.2
+    }
+   }
+  },
+  "today": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "held_out",
+   "n_cases": 138,
+   "good": {
+    "k": 61.0,
+    "n": 138,
+    "share": 0.442
+   },
+   "good_or_fine": {
+    "k": 102.0,
+    "n": 138,
+    "share": 0.7391
+   },
+   "bad": {
+    "k": 36.0,
+    "n": 138,
+    "share": 0.2609,
+    "too_poor": {
+     "k": 28.0,
+     "n": 138,
+     "share": 0.2029
+    },
+    "too_much": {
+     "k": 0,
+     "n": 138,
+     "share": 0.0
+    },
+    "unfit": {
+     "k": 8.0,
+     "n": 138,
+     "share": 0.058
+    },
+    "violation": {
+     "k": 0,
+     "n": 138,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 138,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 2.0,
+     "n": 11,
+     "share": 0.1818
+    },
+    "infeasible_handled": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 81,
+      "good": 35.0,
+      "good_or_fine": 62.0,
+      "good_share": 0.4321
+     },
+     "words": {
+      "n": 34,
+      "good": 17.0,
+      "good_or_fine": 24.0,
+      "good_share": 0.5
+     },
+     "conflict": {
+      "n": 7,
+      "good": 7.0,
+      "good_or_fine": 7.0,
+      "good_share": 1.0
+     },
+     "explicit": {
+      "n": 16,
+      "good": 2.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.125
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.6667
+     },
+     "access": {
+      "n": 10,
+      "good": 4.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.4
+     },
+     "budget": {
+      "n": 5,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.4
+     },
+     "prefs": {
+      "n": 2,
+      "good": 1.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.5
+     },
+     "ex72": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 3.0,
+      "good_share": 0.0
+     },
+     "counter72": {
+      "n": 6,
+      "good": 6.0,
+      "good_or_fine": 6.0,
+      "good_share": 1.0
+     }
+    },
+    "device": {
+     "console": {
+      "n": 80,
+      "good": 25.0,
+      "good_or_fine": 49.0,
+      "good_share": 0.3125
+     },
+     "pocket": {
+      "n": 43,
+      "good": 33.0,
+      "good_or_fine": 42.0,
+      "good_share": 0.7674
+     },
+     "voice": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 5.0,
+      "good_share": 0.0
+     },
+     "cli": {
+      "n": 5,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.4
+     },
+     "agent": {
+      "n": 4,
+      "good": 1.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.25
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 10,
+      "good": 4.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.4
+     },
+     "code": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.6667
+     },
+     "distribution": {
+      "n": 6,
+      "good": 2.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.3333
+     },
+     "hierarchy": {
+      "n": 5,
+      "good": 1.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.2
+     },
+     "image": {
+      "n": 2,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.5
+     },
+     "map": {
+      "n": 7,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.2857
+     },
+     "network": {
+      "n": 8,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.375
+     },
+     "process": {
+      "n": 10,
+      "good": 1.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.1
+     },
+     "prose": {
+      "n": 9,
+      "good": 7.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.7778
+     },
+     "records": {
+      "n": 14,
+      "good": 5.0,
+      "good_or_fine": 11.0,
+      "good_share": 0.3571
+     },
+     "relation": {
+      "n": 4,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.75
+     },
+     "scalar": {
+      "n": 12,
+      "good": 11.0,
+      "good_or_fine": 12.0,
+      "good_share": 0.9167
+     },
+     "sequence": {
+      "n": 5,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.6
+     },
+     "series": {
+      "n": 21,
+      "good": 8.0,
+      "good_or_fine": 15.0,
+      "good_share": 0.381
+     },
+     "solid": {
+      "n": 7,
+      "good": 1.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.1429
+     },
+     "sound": {
+      "n": 6,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.6667
+     },
+     "surface": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "timeline": {
+      "n": 6,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.5
+     }
+    },
+    "prose_is_right": {
+     "n": 70,
+     "good": 61.0,
+     "good_or_fine": 70.0,
+     "good_share": 0.8714
+    },
+    "prose_is_not_right": {
+     "n": 68,
+     "good": 0,
+     "good_or_fine": 32.0,
+     "good_share": 0.0
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 0.0,
+     "share": 0.0
+    },
+    "twin": {
+     "n": 10,
+     "both_good": 0.0,
+     "share": 0.0
+    }
+   }
+  },
+  "richest": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "held_out",
+   "n_cases": 138,
+   "good": {
+    "k": 11.0,
+    "n": 138,
+    "share": 0.0797
+   },
+   "good_or_fine": {
+    "k": 16.0,
+    "n": 138,
+    "share": 0.1159
+   },
+   "bad": {
+    "k": 122.0,
+    "n": 138,
+    "share": 0.8841,
+    "too_poor": {
+     "k": 0,
+     "n": 138,
+     "share": 0.0
+    },
+    "too_much": {
+     "k": 100.0,
+     "n": 138,
+     "share": 0.7246
+    },
+    "unfit": {
+     "k": 22.0,
+     "n": 138,
+     "share": 0.1594
+    },
+    "violation": {
+     "k": 0,
+     "n": 138,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 138,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 1.0,
+     "n": 11,
+     "share": 0.0909
+    },
+    "infeasible_handled": {
+     "k": 2.0,
+     "n": 5,
+     "share": 0.4
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 81,
+      "good": 6.0,
+      "good_or_fine": 10.0,
+      "good_share": 0.0741
+     },
+     "words": {
+      "n": 34,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.0588
+     },
+     "conflict": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "explicit": {
+      "n": 16,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.1875
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "access": {
+      "n": 10,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "budget": {
+      "n": 5,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "prefs": {
+      "n": 2,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "ex72": {
+      "n": 7,
+      "good": 1.0,
+      "good_or_fine": 2.0,
+      "good_share": 0.1429
+     },
+     "counter72": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     }
+    },
+    "device": {
+     "console": {
+      "n": 80,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.05
+     },
+     "pocket": {
+      "n": 43,
+      "good": 0,
+      "good_or_fine": 2.0,
+      "good_share": 0.0
+     },
+     "voice": {
+      "n": 6,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.1667
+     },
+     "cli": {
+      "n": 5,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.6
+     },
+     "agent": {
+      "n": 4,
+      "good": 3.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.75
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 10,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.3
+     },
+     "code": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "distribution": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "hierarchy": {
+      "n": 5,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "image": {
+      "n": 2,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "map": {
+      "n": 7,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "network": {
+      "n": 8,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "process": {
+      "n": 10,
+      "good": 0,
+      "good_or_fine": 2.0,
+      "good_share": 0.0
+     },
+     "prose": {
+      "n": 9,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "records": {
+      "n": 14,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0714
+     },
+     "relation": {
+      "n": 4,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "scalar": {
+      "n": 12,
+      "good": 0,
+      "good_or_fine": 2.0,
+      "good_share": 0.0
+     },
+     "sequence": {
+      "n": 5,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "series": {
+      "n": 21,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.0952
+     },
+     "solid": {
+      "n": 7,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.5714
+     },
+     "sound": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "surface": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "timeline": {
+      "n": 6,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.1667
+     }
+    },
+    "prose_is_right": {
+     "n": 70,
+     "good": 1.0,
+     "good_or_fine": 4.0,
+     "good_share": 0.0143
+    },
+    "prose_is_not_right": {
+     "n": 68,
+     "good": 10.0,
+     "good_or_fine": 12.0,
+     "good_share": 0.1471
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 0.0,
+     "share": 0.0
+    },
+    "twin": {
+     "n": 10,
+     "both_good": 0.0,
+     "share": 0.0
+    }
+   }
+  },
+  "random": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "held_out",
+   "n_cases": 138,
+   "good": {
+    "k": 14.362,
+    "n": 138,
+    "share": 0.1041
+   },
+   "good_or_fine": {
+    "k": 30.68,
+    "n": 138,
+    "share": 0.2223
+   },
+   "bad": {
+    "k": 107.32,
+    "n": 138,
+    "share": 0.7777,
+    "too_poor": {
+     "k": 4.972,
+     "n": 138,
+     "share": 0.036
+    },
+    "too_much": {
+     "k": 49.33,
+     "n": 138,
+     "share": 0.3575
+    },
+    "unfit": {
+     "k": 53.018,
+     "n": 138,
+     "share": 0.3842
+    },
+    "violation": {
+     "k": 0,
+     "n": 138,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 138,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 1.117,
+     "n": 11,
+     "share": 0.1015
+    },
+    "infeasible_handled": {
+     "k": 1.405,
+     "n": 5,
+     "share": 0.281
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 81,
+      "good": 9.375,
+      "good_or_fine": 19.762,
+      "good_share": 0.1157
+     },
+     "words": {
+      "n": 34,
+      "good": 2.089,
+      "good_or_fine": 4.828,
+      "good_share": 0.0614
+     },
+     "conflict": {
+      "n": 7,
+      "good": 0.377,
+      "good_or_fine": 1.081,
+      "good_share": 0.0538
+     },
+     "explicit": {
+      "n": 16,
+      "good": 2.521,
+      "good_or_fine": 5.01,
+      "good_share": 0.1576
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 0.15,
+      "good_or_fine": 0.3,
+      "good_share": 0.05
+     },
+     "access": {
+      "n": 10,
+      "good": 1.68,
+      "good_or_fine": 3.823,
+      "good_share": 0.168
+     },
+     "budget": {
+      "n": 5,
+      "good": 0.598,
+      "good_or_fine": 1.374,
+      "good_share": 0.1197
+     },
+     "prefs": {
+      "n": 2,
+      "good": 0.15,
+      "good_or_fine": 0.3,
+      "good_share": 0.075
+     },
+     "ex72": {
+      "n": 7,
+      "good": 0.4,
+      "good_or_fine": 1.15,
+      "good_share": 0.0571
+     },
+     "counter72": {
+      "n": 6,
+      "good": 0.3,
+      "good_or_fine": 0.65,
+      "good_share": 0.05
+     }
+    },
+    "device": {
+     "console": {
+      "n": 80,
+      "good": 4.582,
+      "good_or_fine": 12.149,
+      "good_share": 0.0573
+     },
+     "pocket": {
+      "n": 43,
+      "good": 3.446,
+      "good_or_fine": 7.198,
+      "good_share": 0.0801
+     },
+     "voice": {
+      "n": 6,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.3333
+     },
+     "cli": {
+      "n": 5,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.4
+     },
+     "agent": {
+      "n": 4,
+      "good": 2.333,
+      "good_or_fine": 3.333,
+      "good_share": 0.5833
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 10,
+      "good": 2.3,
+      "good_or_fine": 4.033,
+      "good_share": 0.23
+     },
+     "code": {
+      "n": 3,
+      "good": 0.1,
+      "good_or_fine": 0.25,
+      "good_share": 0.0333
+     },
+     "distribution": {
+      "n": 6,
+      "good": 0.3,
+      "good_or_fine": 0.8,
+      "good_share": 0.05
+     },
+     "hierarchy": {
+      "n": 5,
+      "good": 0.2,
+      "good_or_fine": 0.9,
+      "good_share": 0.04
+     },
+     "image": {
+      "n": 2,
+      "good": 0.1,
+      "good_or_fine": 0.15,
+      "good_share": 0.05
+     },
+     "map": {
+      "n": 7,
+      "good": 0.75,
+      "good_or_fine": 1.5,
+      "good_share": 0.1071
+     },
+     "network": {
+      "n": 8,
+      "good": 0.683,
+      "good_or_fine": 1.567,
+      "good_share": 0.0854
+     },
+     "process": {
+      "n": 10,
+      "good": 0.508,
+      "good_or_fine": 1.629,
+      "good_share": 0.0508
+     },
+     "prose": {
+      "n": 9,
+      "good": 0.45,
+      "good_or_fine": 0.95,
+      "good_share": 0.05
+     },
+     "records": {
+      "n": 14,
+      "good": 2.4,
+      "good_or_fine": 4.15,
+      "good_share": 0.1714
+     },
+     "relation": {
+      "n": 4,
+      "good": 0.2,
+      "good_or_fine": 0.6,
+      "good_share": 0.05
+     },
+     "scalar": {
+      "n": 12,
+      "good": 1.6,
+      "good_or_fine": 3.533,
+      "good_share": 0.1333
+     },
+     "sequence": {
+      "n": 5,
+      "good": 0.327,
+      "good_or_fine": 1.031,
+      "good_share": 0.0654
+     },
+     "series": {
+      "n": 21,
+      "good": 2.717,
+      "good_or_fine": 5.6,
+      "good_share": 0.1294
+     },
+     "solid": {
+      "n": 7,
+      "good": 0.488,
+      "good_or_fine": 0.976,
+      "good_share": 0.0697
+     },
+     "sound": {
+      "n": 6,
+      "good": 0.356,
+      "good_or_fine": 0.611,
+      "good_share": 0.0593
+     },
+     "surface": {
+      "n": 3,
+      "good": 0.2,
+      "good_or_fine": 0.5,
+      "good_share": 0.0667
+     },
+     "timeline": {
+      "n": 6,
+      "good": 0.683,
+      "good_or_fine": 1.9,
+      "good_share": 0.1139
+     }
+    },
+    "prose_is_right": {
+     "n": 70,
+     "good": 7.832,
+     "good_or_fine": 16.392,
+     "good_share": 0.1119
+    },
+    "prose_is_not_right": {
+     "n": 68,
+     "good": 6.529,
+     "good_or_fine": 14.288,
+     "good_share": 0.096
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 0.063,
+     "share": 0.0035
+    },
+    "twin": {
+     "n": 10,
+     "both_good": 0.028,
+     "share": 0.0028
+    }
+   }
+  },
+  "shape_only": {
+   "label": "OMNIMIND benchmark, family forms: hand-written requests and contexts, judged by the examiner (lane ZF); offline; no model; a planner's choice is compared with the examiner's sets, written before any planner",
+   "split": "held_out",
+   "n_cases": 138,
+   "good": {
+    "k": 69.0,
+    "n": 138,
+    "share": 0.5
+   },
+   "good_or_fine": {
+    "k": 111.0,
+    "n": 138,
+    "share": 0.8043
+   },
+   "bad": {
+    "k": 27.0,
+    "n": 138,
+    "share": 0.1957,
+    "too_poor": {
+     "k": 1.0,
+     "n": 138,
+     "share": 0.0072
+    },
+    "too_much": {
+     "k": 20.0,
+     "n": 138,
+     "share": 0.1449
+    },
+    "unfit": {
+     "k": 6.0,
+     "n": 138,
+     "share": 0.0435
+    },
+    "violation": {
+     "k": 0,
+     "n": 138,
+     "share": 0.0
+    }
+   },
+   "hard_constraints_violated": {
+    "k": 0,
+    "n": 138,
+    "share": 0.0
+   },
+   "explicit": {
+    "feasible_honoured": {
+     "k": 3.0,
+     "n": 11,
+     "share": 0.2727
+    },
+    "infeasible_handled": {
+     "k": 2.0,
+     "n": 5,
+     "share": 0.4
+    },
+    "infeasible_chosen_anyway": {
+     "k": 0,
+     "n": 5,
+     "share": 0.0
+    }
+   },
+   "slices": {
+    "cue": {
+     "content": {
+      "n": 81,
+      "good": 49.0,
+      "good_or_fine": 72.0,
+      "good_share": 0.6049
+     },
+     "words": {
+      "n": 34,
+      "good": 14.0,
+      "good_or_fine": 24.0,
+      "good_share": 0.4118
+     },
+     "conflict": {
+      "n": 7,
+      "good": 1.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.1429
+     },
+     "explicit": {
+      "n": 16,
+      "good": 5.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.3125
+     }
+    },
+    "tag": {
+     "less": {
+      "n": 3,
+      "good": 0,
+      "good_or_fine": 0,
+      "good_share": 0.0
+     },
+     "access": {
+      "n": 10,
+      "good": 3.0,
+      "good_or_fine": 8.0,
+      "good_share": 0.3
+     },
+     "budget": {
+      "n": 5,
+      "good": 1.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.2
+     },
+     "prefs": {
+      "n": 2,
+      "good": 0,
+      "good_or_fine": 1.0,
+      "good_share": 0.0
+     },
+     "ex72": {
+      "n": 7,
+      "good": 6.0,
+      "good_or_fine": 7.0,
+      "good_share": 0.8571
+     },
+     "counter72": {
+      "n": 6,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.5
+     }
+    },
+    "device": {
+     "console": {
+      "n": 80,
+      "good": 37.0,
+      "good_or_fine": 64.0,
+      "good_share": 0.4625
+     },
+     "pocket": {
+      "n": 43,
+      "good": 24.0,
+      "good_or_fine": 34.0,
+      "good_share": 0.5581
+     },
+     "voice": {
+      "n": 6,
+      "good": 0,
+      "good_or_fine": 5.0,
+      "good_share": 0.0
+     },
+     "cli": {
+      "n": 5,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.8
+     },
+     "agent": {
+      "n": 4,
+      "good": 4.0,
+      "good_or_fine": 4.0,
+      "good_share": 1.0
+     }
+    },
+    "kind": {
+     "categories": {
+      "n": 10,
+      "good": 5.0,
+      "good_or_fine": 8.0,
+      "good_share": 0.5
+     },
+     "code": {
+      "n": 3,
+      "good": 2.0,
+      "good_or_fine": 3.0,
+      "good_share": 0.6667
+     },
+     "distribution": {
+      "n": 6,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.6667
+     },
+     "hierarchy": {
+      "n": 5,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.4
+     },
+     "image": {
+      "n": 2,
+      "good": 1.0,
+      "good_or_fine": 1.0,
+      "good_share": 0.5
+     },
+     "map": {
+      "n": 7,
+      "good": 4.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.5714
+     },
+     "network": {
+      "n": 8,
+      "good": 3.0,
+      "good_or_fine": 5.0,
+      "good_share": 0.375
+     },
+     "process": {
+      "n": 10,
+      "good": 7.0,
+      "good_or_fine": 8.0,
+      "good_share": 0.7
+     },
+     "prose": {
+      "n": 9,
+      "good": 7.0,
+      "good_or_fine": 9.0,
+      "good_share": 0.7778
+     },
+     "records": {
+      "n": 14,
+      "good": 3.0,
+      "good_or_fine": 13.0,
+      "good_share": 0.2143
+     },
+     "relation": {
+      "n": 4,
+      "good": 0,
+      "good_or_fine": 2.0,
+      "good_share": 0.0
+     },
+     "scalar": {
+      "n": 12,
+      "good": 11.0,
+      "good_or_fine": 12.0,
+      "good_share": 0.9167
+     },
+     "sequence": {
+      "n": 5,
+      "good": 0,
+      "good_or_fine": 3.0,
+      "good_share": 0.0
+     },
+     "series": {
+      "n": 21,
+      "good": 9.0,
+      "good_or_fine": 14.0,
+      "good_share": 0.4286
+     },
+     "solid": {
+      "n": 7,
+      "good": 4.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.5714
+     },
+     "sound": {
+      "n": 6,
+      "good": 2.0,
+      "good_or_fine": 4.0,
+      "good_share": 0.3333
+     },
+     "surface": {
+      "n": 3,
+      "good": 3.0,
+      "good_or_fine": 3.0,
+      "good_share": 1.0
+     },
+     "timeline": {
+      "n": 6,
+      "good": 2.0,
+      "good_or_fine": 6.0,
+      "good_share": 0.3333
+     }
+    },
+    "prose_is_right": {
+     "n": 70,
+     "good": 23.0,
+     "good_or_fine": 50.0,
+     "good_share": 0.3286
+    },
+    "prose_is_not_right": {
+     "n": 68,
+     "good": 46.0,
+     "good_or_fine": 61.0,
+     "good_share": 0.6765
+    }
+   },
+   "pairs": {
+    "pair": {
+     "n": 18,
+     "both_good": 8.0,
+     "share": 0.4444
+    },
+    "twin": {
+     "n": 10,
+     "both_good": 0.0,
+     "share": 0.0
+    }
+   }
+  }
+ },
+ "unmapped": [
+  "('purpose', 'design')",
+  "('purpose', 'explore')",
+  "('purpose', 'present')"
+ ]
+}

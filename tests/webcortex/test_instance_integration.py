@@ -120,7 +120,7 @@ def test_forget_research_erases_the_task_and_knowledge_resting_on_it(db):
         assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0, table
     assert db.execute("SELECT question, resolution FROM pending WHERE id=?", (pid,)).fetchone() == (
         "#forgotten", governance.WEB_FORGOTTEN)
-    log = db.execute("SELECT target_kind, target_id, effects FROM deletion_log").fetchall()
+    log = db.execute("SELECT target_kind, target_id, effects FROM deletion_log WHERE target_kind!='web_setting'").fetchall()
     assert [(k, t) for k, t, _ in log] == [("research", tid)] and "quokkazz" not in log[0][2]
     assert db.execute("SELECT status FROM checkpoints").fetchone() == ("stale",)
     assert b"quokkazz" not in raw_bytes(path) and b"NumPy 2.3.5" not in raw_bytes(path)
@@ -150,7 +150,7 @@ def test_forget_knowledge_removes_the_whole_version_chain(db):
     assert db.execute("SELECT count(*) FROM web_predictions").fetchone()[0] == 0
     assert db.execute("SELECT count(*) FROM pending WHERE resolved_at IS NULL").fetchone()[0] == 0
     assert db.execute("SELECT count(*) FROM web_claims").fetchone()[0] == 4   # evidence stays with its tasks
-    assert db.execute("SELECT target_kind, target_id FROM deletion_log").fetchall() == [("knowledge", str(old))]
+    assert db.execute("SELECT target_kind, target_id FROM deletion_log WHERE target_kind!='web_setting'").fetchall() == [("knowledge", str(old))]
 
 
 def test_forget_source_by_domain_and_url(db):
@@ -169,7 +169,7 @@ def test_forget_source_by_domain_and_url(db):
     last = governance.forget_source(db, "http://news.b.example/numpy", T0 + 2)
     assert last["effects"]["knowledge_deleted"] == [kid]
     assert governance.forget_source(db, "c.example", T0 + 3)["status"] == "absent"
-    assert [t for (t,) in db.execute("SELECT target_kind FROM deletion_log")] == ["source", "source"]
+    assert [t for (t,) in db.execute("SELECT target_kind FROM deletion_log WHERE target_kind!='web_setting'")] == ["source", "source"]
 
 
 # ---- memory and inventory ----------------------------------------------------------------------------------------
@@ -288,7 +288,7 @@ def test_deletion_log_keeps_only_a_digest_of_a_forgotten_source(db):
     assert gone["effects"]["cache"]["urls"] == ["http://embarrassing-clinic.example/numpy"]
     url = governance.forget_source(db, "http://b.example/numpy", T0 + 2)
     assert url["effects"]["cache"]["urls"]
-    rows = db.execute("SELECT target_kind, target_id, effects FROM deletion_log").fetchall()
+    rows = db.execute("SELECT target_kind, target_id, effects FROM deletion_log WHERE target_kind!='web_setting'").fetchall()
     assert [r[0] for r in rows] == ["source", "source"]
     assert rows[0][1].startswith("source_domain:#") and rows[1][1].startswith("source_url:#")
     for _, target, effects in rows:

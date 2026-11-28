@@ -359,3 +359,53 @@ def test_config_validation_and_key_file(tmp_path):
     loose.chmod(0o644)
     with pytest.raises(ValidationError):
         iconfig.read_key(iconfig.InferenceConfig(base_url="http://127.0.0.1:1/v1", key_file=str(loose)))
+
+
+# ---- content parts the gateway cannot count and screen (OMNIMIND lane S, audit H1) -----------------------------
+
+IMAGE_PART = {"type": "image_url", "image_url": {"url": "data:image/png;base64," + "QUJD" * 100_000}}
+
+
+@pytest.mark.parametrize("part", [IMAGE_PART, {"type": "input_audio", "input_audio": {"data": "AAAA", "format": "wav"}},
+                                  {"type": "text", "text": "hi", "image_url": "data:,smuggled"},
+                                  {"type": "text", "text": 5}, {"text": "no type"}, "a bare string part", None])
+def test_a_content_part_that_is_not_text_is_refused_before_anything_is_sent_or_logged(fake, key_file, tmp_path,
+                                                                                      part):
+    """Before: an image part estimated at a handful of tokens, skipped the privacy screen and went out verbatim."""
+    gw = make_gateway(fake, key_file, tmp_path)
+    with pytest.raises(InferenceError) as err:
+        gw.chat([{"role": "user", "content": [{"type": "text", "text": "describe "}, part]}], purpose="t")
+    assert err.value.code == "unsupported_content" and fake.requests == [] and fake.paths == []
+    assert not (tmp_path / "x.inference.sqlite").exists() or Ledger(tmp_path / "x.inference.sqlite").recent() == []
+    remote = Gateway(iconfig.InferenceConfig(base_url="https://api.example.org/v1", model="m", remote_allowed=True),
+                     resolver=remote_resolver)
+    with pytest.raises(InferenceError) as err:
+        remote.screen([{"role": "user", "content": [part]}])
+    assert err.value.code == "unsupported_content"
+
+
+def test_text_only_list_content_is_counted_screened_and_sent_as_given(gateway, fake):
+    content = [{"type": "text", "text": "2+2?"}, {"type": "text", "text": " and 3+3?"}]
+    fake.replies.append({"content": "four and six"})
+    assert gateway.chat([{"role": "user", "content": content}], purpose="t").text == "four and six"
+    assert fake.requests[-1]["messages"][0]["content"] == content
+    remote = Gateway(iconfig.InferenceConfig(base_url="https://api.example.org/v1", model="m", remote_allowed=True),
+                     resolver=remote_resolver)
+    with pytest.raises(InferenceError) as err:
+        remote.screen([{"role": "user", "content": [{"type": "text", "text": "mail me at owner@example.org"}]}])
+    assert err.value.code == "private_blocked"
+
+
+def test_dict_content_is_refused_and_tool_call_arguments_are_screened():
+    """Security review L3 (fix lane F1, ruling F): a dict content was screened as its repr and sent as the dict; a
+    tool call's arguments left the host unscreened."""
+    gw = remote_gateway(remote_allowed=True)
+    with pytest.raises(InferenceError) as err:
+        gw.screen([{"role": "user", "content": {"type": "text", "text": "hi"}}])
+    assert err.value.code == "unsupported_content"
+    call = {"id": "c1", "type": "function", "function": {"name": "send", "arguments": '{"to": "owner@example.org"}'}}
+    with pytest.raises(InferenceError) as err:
+        gw.screen([{"role": "assistant", "content": None, "tool_calls": [call]}])
+    assert err.value.code == "private_blocked"
+    gw.screen([{"role": "assistant", "content": None, "tool_calls": [dict(call, function={"name": "noop",
+                                                                                         "arguments": "{}"})]}])

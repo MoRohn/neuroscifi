@@ -1321,7 +1321,7 @@ million. Reading those in bounded pieces needs the live file's snapshot held ope
   consolidation now depends on those rows: if tombstones are ever pruned, the id-to-seq map and the forget record
   must move first).
 - An older binary refuses a schema-14 file ("Instance schema 14 is newer than this software (13)") and changes
-  nothing; rollback is a restore of the pre-upgrade checkpoint (MIGRATIONS.md).
+  nothing; rollback is the owner's own copy taken before the upgrade, or `nsf archive unpack` of a pre-upgrade checkpoint with the old software; either brings back what was forgotten since (MIGRATIONS.md section 2).
 - Tests: `tests/instance/test_consolidation.py` (92 cases, each run on both paths of the copy rule),
   `tests/instance/test_consolidation_limit.py` (the limit at, below and across; the warning; the setting; what a
   restore reads), `tests/console/test_console_api.py` (the readings and the two forgets over HTTP), and the expiry
@@ -4957,3 +4957,1735 @@ obeys the owner).
   rows are inert names in `web_strategies`.
 - Open: the echo of a sourced answer; the false rejection of a value first stated wrongly; backdated pages; ungrounded
   model replies outside research tasks; the real rate of unsourced answers in the product.
+
+# ADR-070 Gaps closed before artifacts
+
+Status: OMNIMIND lane S, branch `omni-s` from `8f68beb`. No schema change, no new setting. Each item below is a defect
+in code that existed before richer inputs or outputs flow (audits A1, A2 and A4 of Phase I), reproduced by a test that
+fails on `8f68beb`, fixed minimally, with honest inputs shown to behave exactly as before. Evidence
+`docs/quality/evidence/omnimind_s.json` (the cost of the forget scan).
+
+## Decisions
+
+**1. The inference gateway refuses content it cannot count and screen.** The context estimate and the off-host
+privacy screen read only the `text` of list content, while the wire kept every part: an image part was estimated at a
+few tokens, skipped the screen and was sent as given. `gateway.check_content` now refuses, as `unsupported_content`
+and before anything is sent or logged, any message whose content list holds a part other than exactly
+`{"type": "text", "text": str}`; strings and text-only lists pass unchanged. A multimodal provider must first teach
+`estimate_messages` and `screen()` to count and screen its parts, then relax the check.
+
+**2. A NumPy file is checked before NumPy reads it.** `nsf epoch stream` loaded an `.npz` and validated afterwards: a
+crafted header was an uncaught `MemoryError`, a compressed zero-fill was decompressed in full. `inputfiles.check_npz`
+reads the zip end record, the central directory and each member's `.npy` header from a bounded prefix first: a
+directory of at most 64 KiB and 64 members and no ZIP64 record (np.savez writes none below 4 GiB); members stored or
+deflated only (what np.savez and np.savez_compressed write), a stored size within the file, a declared size of at most
+16 bytes times `datasets.MAX_ELEMENTS` (62,499,744: both float64 arrays fit the 1e9-byte blob limit) plus framing, and
+at most 200 times its stored size once it declares over 1 MiB (population data compresses by a small factor; a
+constant fill is not a stream); headers of version 1.0 or 2.0, at most numpy's 10,000-byte header, a numeric
+non-object dtype of at most 16 bytes, and data really present. zipfile stops a member's decompression at its declared
+size, so nothing larger is ever decompressed. `datasets.decode` runs the same check, since a hash recorded beside a
+crafted blob was its only defence. `graph_store.py` decodes its own bounded format (no NumPy loader) and needed nothing;
+`nsf graphfile pack` reads `.npy` through `inputfiles.check_npy` (at most `graph_store.MAX_ELEMENTS` elements).
+
+**3. Files named on the command line are plain files, read within their format's size.** `nsf graphfile`,
+`nsf archive`, `nsf init --founding-graph`, `nsf graph rules add FILE` and `nsf epoch stream` blocked forever on a FIFO
+and read anything whole. `inputfiles.open_regular` opens without blocking and refuses a FIFO, device, socket or folder
+(a link to a plain file is followed, as before); an NSG1 snapshot is read up to `graph_store.MAX_BYTES` (a dense float32
+snapshot of 16,777,216 elements: 67,108,907 bytes) and a rule file up to 1 MiB (a dozen named fields). `nsf archive`
+and `nsf graphfile` report malformed input as `nsf: <reason>` with exit 2, like every other command, instead of a
+traceback; failures writing the output (an existing file, a link) are raised as before. NSFA archives stream in
+bounded blocks and have no natural size bound, so none was added.
+
+**4. Forget reaches imagined records that name a forgotten root.** A record is never rewritten, so one whose text
+names a forgotten camera or partner survived the forget until lineage or expiry removed it. In the forget's own
+transaction (`governance._imagined_cascade`, after `purge_orphans`), `imagined.remove_naming` removes, with the
+store's tombstones, every record whose text columns hold the root (scoped forget: `<kind>:<root>`, as `scrub_roots`
+treats a name the other channel still holds), as stored or inside an encoded value: every string that looks like
+base64 (data: URLs included) is decoded, and the bytes, a zlib or gzip stream among them and a PNG's zTXt/iTXt chunks
+are searched for the name in UTF-8 (plain and JSON-escaped) and UTF-16. Bounds per record: 4 nested decodings and
+8 MiB produced; a value that needs more counts as naming it (what cannot be inspected is not kept). Archives written
+since the oldest removed record become stale. A restore applies the same removal after its tombstone replay
+(`checkpoints._replay`), so it holds even where the live tombstones are gone. Not covered: raw deflate without a header,
+bzip2/xz/zstd, hex, base32, base85 or percent-encoding, a name split across values or in another case, and anything
+rendered rather than encoded (text in an image's pixels or in audio) or encrypted. A short root also matches longer
+words that contain it; for this store that errs towards removal. Measured inside the write transaction: 0.12 s for
+10,000 ordinary records, 0.52 s for 10,000 records each holding a 4 KiB base64 PNG.
+
+**5. The speech engines get the gateway's protections.** They read replies with no bound and sent the voice key and
+the audio to whoever held the loopback port. Before every request the owner of the socket that would accept the
+connection is read (`resources.monitor.stranger`): root, this account and the key file's owner are the service, any
+other account's process gets nothing (`NSF_LISTENER_CHECK=0` as the gateway's way out). Every port an engine is
+configured for is a speech service of this deployment, so the check is not narrowed to managed ports as the gateway's
+is. Replies are bounded on `Content-Length` and while reading: 1 MiB for JSON (Whisper decodes at most 448 tokens per
+30 s window and the hub sends at most 30 s), and 48,000,044 bytes for speech: 1,000 input characters, at most one second
+each at the slowest speed (ordinary speech is about 0.07 s a character), 24 kHz 16-bit mono, plus the WAV header.
+
+**6. Two guards that were weaker than they looked.** (a) `checkpoints.CARRIED_SETTINGS` equalled `store._SETTABLE`
+only by hand; a test now enforces the rule its comment states (exactly the settings the owner may change) and proves
+the carry with a non-default value of each. (b) The background scanner knew only the research entry points.
+`tests/test_launch_sites.py` finds every thread, timer, process, executor, `serve_forever` and waiting loop in product
+code and requires each in one list, as registered (naming its `background.py` activity or runner), request-scoped or
+owner-started, with a reason. A new unclassified site fails.
+
+**7. A web setting change leaves an audit row.** `webcortex.state.set_config` now writes, in its transaction, one
+`deletion_log` row per changed key (`web_setting`, the key, effects `{"by", "state_version"}`), never the value
+(`private_terms` is private). A checkpoint racing such a change is not marked stale (it deletes nothing), and the
+console's memory log shows the row without a value.
+
+## Consequences
+
+- With honest inputs every existing output is byte-identical; refusals are new only for inputs the code could not
+  handle safely. There is nothing to switch off: rolling back is reverting the lane's commits.
+- A multimodal model input path cannot be added by sending parts through the gateway: it must extend the estimate and
+  the screen first (decision 1).
+- An artifact store that keeps encoded media must join the forget the same way, or forget will not reach inside it.
+
+# ADR-071 (draft) The artifact store, and what a made artifact is: bytes beside the individual, an index inside it, never evidence. R (H for the schema)
+
+## Context
+
+OMNIMIND (the owner's directive §6.3, §6.4, §12.1, §16) asks NeuroSciFi to keep the files it is given and the things
+it makes: original references, native representations, cross-modal links, provenance, transformation history,
+generated derivatives, "references and structured indexes" rather than large files in conversational memory, and
+content-addressed storage. The Phase I audit of cognition found no unit of memory for an attachment (audit-cognition
+§(a)), fourteen contracts a new record type must keep (C1–C14), and three hazards that bite as soon as bytes arrive:
+bytes inside the instance file ride into every checkpoint and switch imagination's sandbox off (Hazard 4);
+forget-by-text is a hand list of text columns and the canaries miss encoded or compressed bytes (Hazards 1 and 2); and
+a durable table of things the system generated breaks ADR-049's rule that quarantined content lives only in the
+imagined store (Hazard 3). The lane K kernel (ADR-072) supplies detection, the adapter registry and the
+representations; this decision is where their output is kept, how it is forgotten, and what a made artifact is.
+
+## Decision
+
+1. **Bytes outside, index inside.** The bytes live in a sidecar `<stem>.artifacts.sqlite` beside the individual's
+   file (`artifacts/store.py`, after `webcortex/cache.py`): content-addressed by sha256, in rows of at most 1 MiB so a
+   read or an export streams with bounded memory, mode 0600 whatever the umask, WAL, `secure_delete`, a corrupt file
+   renamed aside and replaced by an empty one (the index then shows the bytes missing). The hash is verified on every
+   read; a mismatch marks the row `corrupt` and nothing is exported. Identical bytes are stored once; the index rows
+   naming a hash are its reference count. The sidecar is never part of a checkpoint. It also holds each artifact's
+   text layer (its own words as its decoder returned them, at most 256 KiB) and a made artifact's specification.
+2. **One migration (schema 20).** `artifacts` (seq, id `artifact-` + 32 hex digits, sha256, size, family, format,
+   media type, origin `given`|`fetched`|`made`, maker, label, a JSON index of at most 32 KiB holding the
+   representation's `describe()` and what was detected, scope, the injection flag, created_at, state
+   `stored`|`missing`|`corrupt`; identity never rewritten by trigger), `artifact_links` (between artifacts only in this
+   wave; relations `derived_from`, `contains`, `describes`, `same_subject`, `same_time`, `consistent_with`,
+   `contradicts`; `how` a machine-readable basis), `artifact_events` (ids, hashes, sizes, kinds and times; append-only:
+   no UPDATE ever, and a DELETE only once the artifact is gone), `artifact_forgotten` (payload-free salted digests) and
+   `artifact_gaps` (how often a format ended undecoded). IF NOT EXISTS throughout.
+3. **A given artifact** is a record of what the owner handed over: EVIDENCE only in the sense that the owner reported
+   it, unverified, and read by no evidence, claim, knowledge or belief path. **A made artifact is its own quarantined
+   class, `provenance.MADE`**: what the system produced from a specification by a fixed generator is never evidence and
+   never knowledge, whatever it renders, even when every number in it came from evidence (the evidence stays where it
+   is; a picture of it is not a second copy of it). It lives only in the artifact store's `made` rows; every listing
+   labels it `provenance.MADE_NOT_EVIDENCE` ("made by the system, not evidence"); its specification is kept as its
+   editable source and every source artifact gets a `derived_from` link. `provenance.QUARANTINED` stays the imagined
+   store's three kinds (ADR-049 is not weakened: nothing imagined moves out of the imagined store); `never_evidence()`
+   covers both. The provenance mapping gains two rows, additively.
+4. **Nothing on the evidence side may name an artifact.** Schema 20 adds, for every reference column ADR-049 protects
+   (`schema._NO_IMAGINED`), triggers that refuse an artifact id in the same forms (case, padding, JSON escapes in id
+   lists); free text is not tested. `tests/instance/test_artifact_references.py` runs test_imagined's reference-column
+   cases with artifact ids.
+5. **Intake.** `store.add(db, bytes | path, name=, origin="given", scope="owner")`: a regular file only (no FIFO,
+   device or directory; checked on the opened descriptor), a symbolic link followed only when the caller says the
+   owner named that path (`nsf artifact add` does: the owner typed it; the API default refuses), read once and bounded
+   by `artifact_max_bytes`; the store total by `artifact_store_max_bytes`; over a cap is a named refusal and nothing
+   is written. The write regulator applies and the free space must hold the file above the reserve. The kernel's
+   `adapters.decode` runs under limits from the settings; a decode failure or an unknown format still stores the
+   artifact with what was established; a safety refusal (`Refused`: pickle, nesting, resources) stores nothing. The
+   text layer passes `webcortex.safety.scan_injection`; a flagged artifact is stored and marked, and
+   `text_for_model` refuses its text: the gate a later wave must use before any artifact text reaches a model (there
+   is no model path in this wave).
+6. **Forget.** `forget_artifact` removes the artifact and, transitively, every artifact made from it (`derived_from`)
+   or contained in it (`contains`): rows, links, events, text layers, specifications, and the bytes no remaining row
+   names (secure_delete, the sidecar's WAL folded back); a tombstone each; one deletion-log row (kind `artifact`,
+   target `#<digest>`, no id); the state version; checkpoints written since the oldest of them stale, and the kind is
+   rewritable in place. **The forget of a root** (`governance.forget_partner`, `forget_camera`) removes every artifact
+   whose label, index, text layer, specification or bytes name it: `scan_root` runs before the forget's write
+   transaction (no lock held while 2 GiB are read), `forget_found` inside it scans what was added since (by seq) and
+   removes, `finish` sweeps the sidecar after the commit. The byte scan looks for the name with the scrubber's
+   boundary rule in UTF-8, UTF-16LE and UTF-16BE, for its base64 (each alignment, both alphabets, names of at least
+   five bytes), and the same inside every gzip, zip (deflate), zlib (PNG text chunks, PDF streams), bzip2, xz and
+   Zstandard stream found in the bytes, nested up to `Limits.max_depth`, within `Limits.max_decoded_bytes` per
+   artifact (an artifact whose streams were not all searched is counted in the deletion-log row as `budget_reached`).
+   *Superseded twice:* fix lane F1 removed such an artifact as if it named the root; fix lane F4 (security review,
+   second pass, M-new-1) HOLDS it instead. The scan has its own budget (`store.SCAN_BUDGET` 1 GiB decompressed per
+   artifact, `SCAN_STREAM` 128 MiB of one stream, `SCAN_DEPTH` 16, `SCAN_MEMBERS` 65,536 streams per layer, base64
+   runs charged at their encoded length), so honest large files are checked to the end; what still cannot be
+   finished keeps its bytes but is never decoded, shown, exported, made from or related, is listed as "held: it could
+   not be checked for what you asked to forget", and the forget's result names each one by id and label with the two
+   ways to end the hold: `nsf artifact forget ID` or `nsf artifact release ID` (the owner's statement that it does not
+   name the root). Holds and releases are deletion-log rows (kind `artifact_hold`, target `#<digest>`): the
+   `artifacts.state` column's CHECK admits only stored, missing and corrupt, and no migration was allowed. A restore
+   and a checkpoint rewrite replay them (`store.replay_holds`). Imagined records keep lane S's rule.
+7. **Restore.** The live tombstones are read with the other forgets; `_replay` removes those artifacts (and what was
+   made from or contained in them) from the archive's copy; the restored copy gets its own sidecar
+   (`<dest stem>.artifacts.sqlite`) holding the bytes, text layers and specifications its remaining rows name, copied
+   from the live sidecar; rows whose bytes are not there are marked `missing`, anything no row names is swept. A copy
+   with no artifact gets no sidecar and its restore result no new key. `reconcile` does the same check on the live
+   store (sweeping only rows older than an hour, so an add in flight is not swept) and runs at `nsf artifact list`.
+8. **Settings** (owner, instance): `artifact_max_bytes` (64 MiB; 1 KiB to 1 GiB), `artifact_store_max_bytes`
+   (2 GiB; 0 to 1 TiB), `artifact_adapters` (`[]`: the external adapters, by entry-point name, the owner approves;
+   a change acts on the next call, and an approval withdrawn unloads the adapter). Checked on set and on load (a
+   damaged value reads as the default, an adapter list as none), named by `setting_problems`, carried by a restore.
+   `CARRIED_SETTINGS` is now tested equal to `_SETTABLE` (audit Hazard 6).
+9. **Owner surface.** `nsf artifact add FILE… | list | show ID | facts ID | export ID PATH | forget ID | gaps |
+   adapters`, plain words or `--json`. `facts` re-decodes the verified bytes and prints measurements (counts, sizes,
+   ranges, means and standard deviations of numeric columns, duration, bounds), each with how it was computed; no
+   interpretation. `export` never overwrites and writes 0600, published only after the hash matched.
+10. **Default.** Nothing stores an artifact unless the owner asks: no background activity, no route, no model path.
+    With no artifact held, a forget of a partner or camera costs one indexed read more; a restore, nothing.
+
+## What the forget scan cannot find
+
+Text drawn as pixels (no OCR exists here); a name split by a format's own structure (a PDF text operator per letter,
+a word broken across XML runs, unless an adapter's text layer joins it); encodings it does not undo (UTF-32,
+quoted-printable, percent-encoding, HTML or XML character references, base64 broken across lines, LZW, an encrypted
+or password-protected member); a compressed stream the scan does not find by a signature or a container header (a
+bare zlib stream elsewhere than a PNG text chunk or after a PDF `stream` keyword, a raw deflate stream outside a zip);
+anything past the decompressed-size budget; case variants (the match is exact, as governance's scrubber is). A root
+forgotten as a side effect of another forget (its last evidence expired, or was forgotten by event or epoch) scrubs
+the text tables but does not scan artifacts: only the owner's forget of the partner or camera does.
+
+## Contracts (audit-cognition §(c))
+
+C1 append-only migration: yes (schema 20, IF NOT EXISTS). C2 one owner module: `artifacts/store.py` writes the five
+tables. C3 provenance declared: given = EVIDENCE as reported, made = MADE (decision 3). C4 never evidence: decision 4.
+C5 forget: decision 6. C6 lineage of imagined records: not applicable (no imagined record derives from an artifact
+in this wave; adding the kind needs a rebuild of `imagined_refs`'s CHECK). C7 restore replay: decision 7. C8 settings:
+decision 8. C9 background: none. C10 writes pass `store.require_write_allowed`. C11 vocabularies tied to types: the new
+tables' CHECKs are the store's constants. C12 model-facing content: no model path; `text_for_model` refuses flagged
+text. C13 labels: decision 3. C14 the memory envelope: not exposed through `memory.retrieve` in this wave.
+
+## Consequences
+
+- An owner can hand files over and get them back byte for byte, see what was established about each, and forget
+  them, with the forget reaching bytes outside the instance file, their compressed copies and restored archives.
+- Lanes B1/B2 (decoders) fill the index and the text layer through the registry without touching the store; lanes
+  G1/G2 store what they make with `add_made`. Their tests must not register adapters globally without the fixture
+  pattern of `tests/artifacts`.
+- Cost (`docs/quality/evidence/omnimind_a.json`, 10,000 synthetic artifacts, 2 GiB, a loaded aarch64 host, two runs):
+  adding about 31 ms per 210 KiB artifact (p95 42 ms); listing all 10,000 0.15 s; the live reconcile 0.02 s; the
+  forget of a root scans every stored byte once, about 11 s for 2 GiB, OUTSIDE the write transaction, and holds the
+  instance's write lock about 15 ms for the removal; a restore copies the 2 GiB its index still names into the copy's
+  sidecar in about 8 s. The scan grows with the stored bytes: an owner with a far larger store waits longer for a
+  partner forget, but nothing else waits on it.
+- Rollback: `artifact_adapters` back to `[]` stops any external adapter on the next call; the store can be emptied
+  with `nsf artifact forget`; the schema stays (forward-only), and software before schema 20 refuses the file (a
+  rollback is the owner's own copy taken before the upgrade, or `nsf archive unpack` of a pre-upgrade checkpoint with the old software, as for every schema change: a restore by the new build yields the new schema; MIGRATIONS.md section 2).
+
+## ADR-071, integration: the store with the real adapters and generators
+
+- A made artifact keeps the media type its generator declared (detection cannot tell lane G2's explorable document,
+  `application/vnd.neuroscifi.explorable+html` with its one pinned script, from a plain HTML page, whose validator
+  refuses every script).
+- `export` to a folder writes `<id><ext>`; a name without an extension gets its media type's (`store.extension_for`;
+  the explorable type exports as .html, APNG as .png).
+- A decode a SIZE bound stopped (`Refused` with reason "too_large": an honest 60 MiB stereo WAV needs more than the
+  256 MiB decode budget in lane B2's accounting) is kept with the bound that stopped it; every other refusal (pickle,
+  a polyglot, a DTD, nesting, resources) still keeps nothing. Header-only files keep their facts in the index and
+  their words in the text layer (ADR-072, integration).
+- Measured: `add` per family at the size limits, one fresh process each (`scripts/omnimind_int_add_cost.py`,
+  `docs/quality/evidence/omnimind_int.json`): at most 3.2 s; peak RSS above the RSS before the add at most 345 MiB (a
+  1.2 M-row CSV, partial at the element bound) and 340 MiB (a 400k-element XML), above the 256 MiB decode budget
+  because lane B1's per-cell and per-element charges are below the real cost of Python's objects (stated, not
+  changed). Two peaks found outside any decoder were cut: `Raster.describe()` and `facts_of` no longer copy every
+  sample to float64 (a 16 MP picture: 427 -> 198 MiB) and `Mesh.closed()` keys edges as one int64 each (1.2 M
+  triangles: 397 -> 285 MiB).
+
+# ADR-072 Artifact detection, the adapter registry and the native representations (OMNIMIND kernel)
+
+Status: built. OMNIMIND Wave O-0, lane K. No schema change, no setting. Nothing existing imports
+`neuroscifi.artifacts`, so with every setting at its default every existing output is byte-identical. The one visible
+addition is the command `nsf inspect FILE [--json]`. Roll back by removing `neuroscifi.artifacts.inspect_cli` from
+`cli.COMMAND_MODULES` (the command goes away) or by reverting the package (nothing else refers to it).
+
+## Context
+
+The Phase I audit found that NeuroSciFi takes in documents only from the web by URL, speech as text, and one-bit
+readings. It has no file intake, and the only decoders on the default path are the standard library, numpy and
+zstandard. The directive (§5.1, §5.3) asks for a capability-resolution workflow: Detect → Inspect → Identify → Resolve
+→ Decode → Validate → Represent → Integrate. It also asks for adapters that can be added without touching the core,
+and for an unknown format to get a reasoned answer instead of a generic failure or an invented interpretation. §16
+lists the attack surface this opens: malformed and adversarial files, archive bombs, unsafe deserialisation, path
+traversal, untrusted executable content, prompt injection in documents, and excessive resource use.
+
+## Decision
+
+1. **Representations** (`artifacts/types.py`): frozen dataclasses for what can be decoded. These are Table and Column,
+   Signal, Raster, Frames, Drawing and Shape, Mesh, Features and Feature, Tree and Node, Graph with GNode and Edge,
+   Document and Block, Bundle and Member, and Opaque for what nothing decodes. Each top-level representation has
+   `describe()`, `shape()` and `text()`. `describe()` gives structure and measurements only. It is JSON with NaN and
+   infinities as null, and at most 32 KiB however large the content (the rest is shrunk and marked `truncated`).
+   `shape()` gives a `ContentShape` for the form planner, with no reference to the bytes. `text()` gives the
+   artifact's own words, at most 1 Mi characters. Those words are untrusted and must pass
+   `webcortex.safety.scan_injection` before they reach a model. Construction checks each type's stated invariants
+   (dtype, dimensions, ranges, closed vocabularies) and raises `Malformed` if one fails. Classes that hold arrays
+   compare by identity.
+2. **Detection** (`artifacts/detect.py`). `detect(head, name=, declared=, size=)` sees at most 64 KiB and never
+   raises. It tries, in order:
+   - Signatures, each confirmed by whatever else the prefix shows: a RIFF form type, an ISO BMFF brand, an EBML
+     DocType, the first Ogg packet, ZIP member names or a stored `mimetype`, OLE stream names, a tar header checksum,
+     three consecutive MPEG frames, the 84 + 50·n size rule for binary STL.
+   - Structure, on the prefix decoded as text.
+   - The declared type and the extension. These are **hints**. A hint that contradicts the bytes loses, and the
+     reasons say so. A hint may only refine a generic answer it is consistent with: text named `.yaml`, or a ZIP named
+     `.docx` whose members were not seen. Even then `basis` is `"declared"`.
+
+   Prefixes under 32 bytes of an input known to be longer get no structure verdict. Pickle is identified so that it
+   can be refused.
+3. **The chain and the registry** (`artifacts/adapters/__init__.py`). `decode(data, name=, declared=, limits=)` runs
+   these steps in order:
+   1. Refuse oversize input and depth below zero.
+   2. Detect the format, and refuse pickle.
+   3. Resolve an adapter. The latest registered available adapter for the format wins, so a lane's specific adapter
+      takes over from the kernel's general one.
+   4. Run the adapter under the limits.
+   5. Check that it returned a valid `Decoded`.
+
+   Nothing decodable gives an `Opaque` from `inspect_unknown`, never an exception for "unknown". Adapter failures are
+   named `ArtifactError`s. Any other exception becomes `Malformed`, and the message names only the exception's type,
+   never the content. `on_gap(callback)` is called with `(detected, "opaque" | "unsupported")` for every gap, so lane A
+   can count missing formats (directive §10.5).
+4. **Unknown bytes** (`artifacts/unknown.py`). The findings are measurements:
+   - size, entropy, printable and zero shares;
+   - runs of text, given as counts, lengths and offsets only, never their content;
+   - embedded signatures at offsets;
+   - record periodicity by autocorrelation;
+   - float layouts.
+
+   Candidates are worded as **consistent with**, each with its reason. Needs name what would have to exist.
+5. **External adapters.** They are discovered through the entry-point group `neuroscifi.artifact_adapters`, from
+   metadata only (nothing is imported). They are loaded only by `load_external(approved_names)`, which lane A calls
+   with the owner's `artifact_adapters` list. Discovered but unnamed adapters appear in `catalog()` as "found, not
+   approved". An external adapter runs under the same limits and the same chain.
+6. **`catalog()` is the only source for the word "supported."** Each row gives name, formats, families, available,
+   reason and source, and the refused formats are listed with their reason. A format that is detected but has no
+   available adapter is "identified, not decoded here", never "supported". `make.catalog()` and `check.catalog()` play
+   the same role for generators and validators.
+7. **Limits** (`types.Limits`; every decoder honours them, and nested decodes get what is left):
+
+   | Limit | Value | Why |
+   |---|---|---|
+   | `max_bytes` | 64 MiB | The owner's `artifact_max_bytes`. It is larger than any document the web path keeps (5 MB), and small enough that a whole file in memory is safe on this host. |
+   | `max_decoded_bytes` | 256 MiB | The total any decode may materialise, shared down the nesting. |
+   | `max_ratio` | 200 per stream, never below 1 MiB | Real text compresses 3–10 times. 200 leaves room for repetitive logs and sparse arrays while stopping bombs. The 1 MiB floor keeps tiny repetitive streams legitimate at harmless cost. |
+   | `max_members` | 4096 | Checked from the ZIP end-of-central-directory record before the directory is parsed. |
+   | `max_depth` | 4 | Containers in containers (gzip in tar in zip is three). |
+   | `max_elements` | 5 000 000 | Cells, nodes or vertices. For JSON an upper bound is counted from structural characters before parsing. |
+   | `max_seconds` | 20 s | Checked cooperatively in decoder loops. |
+
+8. **Shared safety** (`artifacts/safe.py`):
+   - A file reader that refuses links, devices, pipes and oversize files.
+   - Deadlines and budgets.
+   - gzip, zlib, bzip2 and xz inflated in chunks that can never pass the cap. zstd is fed small enough pieces that
+     even RLE blocks cannot pass the cap by more than one block, and a truncated frame is `Malformed`, where the
+     library would silently return nothing.
+   - `SafeZip`: in memory, member names never used as paths, CRC verified, encryption and unknown methods
+     `Unsupported`.
+   - `parse_xml`: expat with every DOCTYPE and entity declaration refused, as `webcortex.safety.safe_xml_parse` does,
+     plus bounds on element count, depth and character data.
+   - Cell parsing that never guesses. Times are ISO 8601 only, numbers are plain or grouped by three, and one cell
+     that does not parse keeps a column as text.
+9. **Specifications** (`artifacts/spec.py`): the envelope of DESIGN §6, validated with `inference/jsonschema.py` and
+   a form's registered schemas before anything is made. Bounds: 256 KiB without data arrays, 32 MiB total, depth 16,
+   4096 characters per string. Form names are a lower-case word with at most one dot ("timeline", "chart.line").
+
+   No string is ever interpreted. Generators escape every string they write, and validators prove the output carries
+   no active content. A string may therefore contain text that mentions markup, a URL or a path: "p < 0.05",
+   "src/neuroscifi/cli.py" as a node label, a source's address listed as text, "<script>" in a code lesson. The
+   content rule refuses only three things, in every string and key:
+   - control characters other than tab, carriage return and newline;
+   - bidirectional override and isolate characters, which make displayed text differ from stored text;
+   - over-long strings and keys.
+
+   This was the main session's ruling after the first contract commit. The broader first rule refused ordinary
+   content.
+
+   Generator and validator registries (`artifacts/make`, `artifacts/check`) are empty here. `make` validates first
+   and records the generator that really made the bytes. `check` decides `ok` from technical findings only, and bytes
+   no validator covers are not ok.
+10. **Three pattern adapters** for the other lanes to copy:
+    - Plain text → Document (encoding by BOM or validity; no guessed code page).
+    - JSON → Tree, plus `as_table()` for an array of flat records.
+    - gzip, zstd, bzip2 and xz → Bundle of one member, decoded again through the chain with `nested(limits, used,
+      elapsed)`.
+
+## Honest boundaries
+
+- `detect` identifies about a hundred formats. Lane K decodes **three families**: UTF text, JSON and the four
+  compression streams. Everything else is identified and reported as Opaque with "an adapter for X" needed until
+  another lane registers one. `catalog()` says which.
+- Pixels of JPEG, WebP, TIFF and HEIC, the samples of MP3, AAC, Opus and FLAC, and the frames of any video are not
+  decoded on this host, because no decoder is installed.
+- The detection corpus is hand-assembled by the same lane that wrote the detector, from the formats' published layouts
+  (`tests/artifacts/detect_corpus.py`). Files from the wild are **unverified**. Real files may carry variants the corpus
+  lacks: an MP3 without ID3 and with a damaged first frame, or a ZIP whose first members are not the telling ones.
+- Evidence: `docs/quality/evidence/omnimind_k.json`, regenerated by `scripts/omnimind_k_evidence.py` (`--check` is a
+  test). It covers 125 corpus items across 99 formats, all identified as constructed; 31 conflicting-hint and
+  adversarial items, all as expected; and 2750 truncated prefixes with 0 false identifications. Of 20 000 seeded random
+  inputs of 1–4095 bytes, 19 997 are unknown and 3 are called text: they are 1–2 bytes of printable ASCII, which is
+  valid text.
+- Project manifests (`pyproject`, `requirements`, `package-json`, for lane B1) are named only when the exact file name
+  AND the bytes agree (TOML that parses, requirement-specifier lines, a JSON object). The name alone never decides.
+
+## ADR-072, lane B1: documents, tables, trees, code, notebooks, archives and databases
+
+Lane B1's adapters read the following formats, with the standard library and numpy on the default path (pypdf
+optional and lazy):
+- delimited text and NDJSON into `Table`, by stated rules for delimiters, headers, units, missing cells and column
+  kinds;
+- XLSX and ODS into a `Bundle` of `Table`s, never evaluating formulas (cached values are used and counted);
+- Markdown, HTML, DOCX, ODT, PPTX/ODP (slides as headed sections with speaker notes) and EPUB (spine order) into
+  `Document`, with tables as `Table` and embedded media as figure blocks naming their member;
+- RTF as text and paragraphs only;
+- PDF as its text layer through pypdf under a deadline guard that really stops it, or `Unsupported(needs=pypdf)`
+  with the header facts;
+- XML, XML property lists, TOML and INI into `Tree`, with YAML only as its JSON subset;
+- Python through `ast` into a `Graph` of modules, classes, functions, imports and name-resolved calls (never
+  imported or run);
+- JavaScript, C and shell as a stated surface reading;
+- dependency manifests into dependency graphs;
+- notebooks into `Document` without execution;
+- ZIP and TAR (also compressed) into `Bundle` with in-memory recursive decoding under nested limits;
+- SQLite into a `Bundle` of sampled `Table`s, through an in-memory, defensive, query-only, authorizer-limited
+  connection with untrusted schema and a deadline, where views and triggers are never evaluated.
+
+The following are identified and answered `Unsupported` with what would be needed: 7z, RAR, binary plists, YAML
+beyond JSON. Nothing is extracted to disk. Member names are data. DTDs and entities are refused; a plist's DOCTYPE
+that only names Apple's DTD is accepted and never loaded. Every allocation is charged to `Limits` before or as it is
+made. What is not recovered is said in each result's notes: layout, formulas' evaluation, hidden or scripted content,
+scanned pages, embedded media's content, and calls that need type inference.
+
+## ADR-072, lane B2: images, sound, video containers, meshes, maps and arrays
+
+Lane B2 adds decoders for images, sound, video containers, meshes, maps and arrays, written in Python and numpy
+only. A format is either decoded to a representation, with a test that recovers a reference built byte by byte
+(PNG/APNG, GIF, BMP with RLE, ICO, NetPBM, farbfeld, QOI, baseline TIFF, uncompressed DICOM, FITS 8/16, SVG,
+WAV/AIFF/AU, MIDI, OBJ/STL/PLY/OFF, glTF/GLB, GeoJSON/GPX/KML/KMZ/WKT, .npy/.npz), or identified and read for its
+header only and answered with `HeaderOnly`, an `Unsupported` that carries the header facts, the plain-text
+metadata as untrusted words, and the missing decoder (JPEG, WebP, HEIF, PSD, compressed TIFF, MP3, AAC, FLAC, Ogg,
+M4A). Video containers are read for their structure and tracks; no frame is decoded. Every size is checked against
+the limits before memory is committed, including the measured cost of Python's parser objects; streams are
+inflated to at most their declared size; XML with a DTD is refused; nothing is fetched, executed or unpickled.
+Measurements on decoded content (image statistics, signal spectra and onsets, mesh topology, geographic lengths)
+are named functions with stated methods; none of them claims what an image depicts or what a sound is.
+
+## ADR-072, integration: one registry, one set of helpers, and the three deviations of lane B2
+
+Status: built by the integration lane. No setting, no schema change.
+
+1. **One registry.** The registry's built-ins are the kernel's generic adapters (plain text, JSON tree, compressed
+   streams), then lane B1's, then lane B2's (whose registration also installs B2's detection). `resolve` takes the
+   most recently registered available adapter, so the specific ones win (B1's notebook and B2's GeoJSON over the
+   kernel's JSON tree). `make` and `check` import lane G2's generators and validators as their built-ins. A test
+   (`tests/artifacts/test_capability_catalog.py`) pins all three catalogs (names, formats, what each reads,
+   availability), so a capability can neither vanish nor appear silently; `nsf artifact adapters` and
+   `nsf artifact forms` print them in plain words. Each adapter now states how far it gets (`reads`: "content",
+   "content or header", "header", "structure", "identity"), so the catalog never lists a header reader as a
+   decoder: JPEG, WebP, HEIF, PSD, MP3, AAC, FLAC, Ogg and M4A are "header", the video containers "structure", 7z and
+   RAR "identity".
+2. **A detector added by a lane may state its basis.** B2's structure test (glTF JSON, OFF, WKT, bare GeoJSON
+   geometries) runs through `detect.SIGNATURES`, whose answers were all labelled "signature"; a fourth element now
+   names the basis, so these say "structure", as their reasons always did.
+3. **One set of helpers.** General helpers live in `safe.py`: `local` (was in both lane modules) and
+   `injection_notes` (B1's `injection_notes` and B2's `screen_words` were the same note in two wordings; one wording
+   now, with B2's guard for a failing screen). `SafeZip` names a multi-disk archive (zipfile's `NotImplementedError`)
+   as `Malformed`, so B2's `open_zip` wrapper is gone. What stays in `safe_b1.py` and `safe_b2.py` is lane-specific,
+   each with its reason in the module's docstring: B1's two-quantity `DecodeBudget` (stops early and reports partial
+   where `safe.Budget` can only refuse), `ZipReader` (partial listings, unix modes for link refusal, per-member
+   encryption), the plist DOCTYPE rule and XML node costs; B2's declared-size `inflate`, bounded `Reader` and the
+   one-shot `need`/`count`/`members` checks. The kernel's `jsontree.as_table` builds its table with B1's
+   `tables.table_from_records`, so a JSON array of records reads by the same rules as NDJSON. `adapters.
+   unload_external(approved)` is public; the store no longer reaches into the registry's private state.
+4. **Lane B2's three deviations, decided.**
+   - *Representation subclasses carrying `words`* (`repr_b2.Raster`, `Signal`, `Mesh`, `Tree`, `Frames`, `Table`):
+     **blessed where they are.** They are subclasses, so `isinstance` holds, and the words reach every consumer
+     through the one interface the contract already has, `text()`. Adding a field to the base classes would change
+     every kernel constructor for no consumer's benefit.
+   - *`HeaderOnly(Unsupported)` carrying header facts and words*: **moved into `types.py`** as an addition to
+     DESIGN §2. It is an outcome every consumer must recognise without importing a lane's helper module: the store
+     keeps its facts in the index's error record and its words in the text layer (never the index), `nsf artifact
+     facts` lists the header facts, and `nsf inspect` prints them and exits 0 (the file was read, its content was
+     not decoded).
+   - *One representation per `Decoded`, with helpers for a second view* (`video_containers.tracks_table`,
+     `gltf.scene_graph`, `jsontree.as_table`, `shapes_b1.content_shapes`): **blessed.** DESIGN's `Decoded` has one
+     representation; a second view is derived on demand from the first (or from the bytes) by a named function.
+5. **Every representation's words reach the store's text layer and its forget-by-text scan**, proven per family by
+   `tests/artifacts/test_integration_words.py`: a PNG text chunk, a WAV LIST chunk, a DOCX paragraph, an XLSX cell, a
+   ZIP member, and an Exif description in a JPEG that is only identified (before this, a header-only file kept no
+   words at all).
+6. **Files from real producers** (`tests/artifacts/test_integration_reality.py`; each test skips with a plain reason
+   where its tool is absent, as in CI). This host's LibreOffice 26.8, ImageMagick 7.1 and ffmpeg 9 made DOCX, ODT,
+   PDF, XLSX, ODS, PPTX, ODP, PNG (8-bit, 16-bit, interlaced, palette), GIF, BMP, TIFF (none, Deflate, LZW) and WAV
+   (16- and 24-bit stereo) from content the test writes (a report with two headings, two sentences and a table; a
+   three-row table; two slides; a gray gradient; a two-tone sine). The tools only make test inputs; product code
+   never calls them. Recovered exactly: headings, paragraphs and table cells of DOCX and ODT; the PDF's text layer
+   and title; every cell of XLSX and ODS; slide texts in order; every pixel of the PNGs, BMP and uncompressed and
+   Deflate TIFFs; a palette PNG's and a GIF's pixels as ImageMagick itself reads them back (it quantizes the gradient
+   to 256 colours); every WAV sample within 1.5 quantization steps.
+   - Found and fixed: LibreOffice writes a heading that carries a page style as `text:p` with an automatic style
+     whose parent is "Heading_20_1"; lane B1's ODT reader took only `text:h` as headings, so the document's first
+     heading was read as a paragraph. A paragraph whose style (or a style it inherits from) has
+     `style:default-outline-level` or is named "Heading N" is now a heading of that level.
+   - Limits, as the owner meets them: an LZW-compressed TIFF is identified and its header read, never its pixels;
+     `nsf inspect` says "Read as: its header only (the content is not decoded here)", lists width, height,
+     compression and mode, and "What would be needed: a TIFF LZW decoder". Slides made without title placeholders
+     are headed "Slide 1", "Slide 2" (the files hold no title, and none is invented).
+7. **Defects the benchmark's development run found** (the run itself: `docs/quality/evidence/
+   omnimind_int_development.json`; each fix has a test in `tests/artifacts/test_integration_fixes.py` unless named):
+   - a polyglot (bytes identified as one format that are also a readable ZIP archive: a PDF or PNG with a ZIP
+     directory) is `Refused(rule="polyglot")` before any adapter reads it one way; ZIP-based formats and archives
+     are exempt;
+   - a member nested past `max_depth` is refused by the chain's own rule (B1 said "not decoded");
+   - an animated GIF is RGB unless a composed pixel is transparent (it claimed an alpha channel its file lacks);
+   - a Python `import` node states the module its statement names (`attrs["module"]`).
+8. **One rule for a representation's shape.** Lane B2's `content_shape` held rules that consumers calling `shape()`
+   never saw; they now live in `shape()`: a track with timestamps is a map and a timeline (`Features.shape`), a MIDI
+   file's notes are `repr_b2.NotesTable` (a sequence and timeline), word-carrying representations count their words.
+   `nsf form plan --content` hands the planner each file's shape and an archive's members' shapes
+   (`shapes_b1.content_shapes`); feasibility is `make.catalog()`.
+9. **An archive with an unsafe member is refused as a whole** (the main session's ruling on three disputed hostile
+   truths of the benchmark's development split, 2026-11-26; this CHANGES lane B1's per-member policy). Lane B1 refused
+   an unsafe member and decoded its siblings, so the benign `readme.txt` beside a `../../` member was answered, which
+   the examination (written before the mechanism) scores as wrong. Ruled: such a member is an attack on whoever
+   extracts the archive, and the stricter reading is to read nothing of it. Now a ZIP or TAR (also inside gzip, zstd,
+   bzip2 or xz) with a member whose name is absolute or holds `..` or NUL, or a member that is a symbolic or hard
+   link, a device, FIFO or other special entry, raises `Refused(rule="unsafe_member_name")` whose message names the
+   first offending member JSON-escaped (as data) and says nothing inside was decoded; it carries the listing of member
+   names and sizes as `findings` (inspection, never content). The TAR check is a first pass over headers only. The
+   store keeps the owner's file with that refusal and listing (`store.KEPT_REFUSALS`); `nsf inspect` prints the listing
+   and exits 2. Encrypted members stay a per-member refusal (not an attack on the reader); sparse TAR members too.
+   Tests: `tests/artifacts/test_b1_archives.py` (updated), `tests/artifacts/test_integration_fixes.py`.
+
+## ADR-072, fix lane F4: what the guard costs, measured, and the second decode removed where it was waste
+
+Fix lane F1 put every decode of the owner's bytes first in a limited child (`artifacts/guarded.py`) and stated the
+cost as "about twice the decode time". The code review's second pass (N1) measured more on its inputs (a 5,000-file
+zip 0.78 -> 6.0 s, a crafted 135 KiB PNG 13.4 s). Where the time went (`docs/quality/evidence/omnimind_f4.json`):
+the child's start-up is about 0.1 s (interpreter, numpy, the adapters); the rest is the decode itself, done twice
+(once in the child, once in the parent). The zip's decode had itself become slower (2.9 s in-process: 2.5 s of it is
+the injection screen `webcortex.safety.scan_injection` run on each of the 4,096 decoded members by ruling G's
+`refuse_flagged`; the screen is outside this lane's files and unchanged).
+
+Keeping a file needs only its index and its words, so `store.add` now asks the child for them
+(`guarded.summarize`): the child returns, in its JSON verdict (at most 4 MiB, never a pickle), what was detected,
+`describe()`, the notes, `partial`, the text layer (at most 256 KiB) and the formats that ended undecoded, or the
+error it raised; the parent validates every field's type and size, and a malformed verdict is a refusal
+(`guard_unavailable`, the file kept unread). The guard is not weakened: the same child, limits and kill decide; only
+the parent's copy of the same decode is gone. Measured, best of two (aarch64, this host), before -> after:
+`add` of the 5,000-file zip 5.81 -> 2.97 s; of the crafted 7600 x 5500 RGB PNG of 135 KiB 13.19 -> 6.86 s (parent
+peak 304 -> 47 MiB); of a 30 MP photo-like PNG of 47 MiB 1.31 -> 1.02 s (parent peak 328 -> 142 MiB). So: `add`
+costs one decode plus about 0.1 s; a command that needs the content itself (`make`, `facts`, `relate`, the
+console's view) costs two decodes plus about 0.1 s. The child also reports which approved external adapters it
+loaded; when they differ from the parent's, the file is kept unread (`external_unguarded`; security N-new-4).
+Tests: `tests/artifacts/test_f4_guard_once.py` (the same index and words with no decode in the parent; the external
+mismatch; a malformed summary refused).
+
+# ADR-073 The form planner: deciding the form of a result before anything is made, and saying why
+
+Status: built, **not called by anything** (Wave O-0, lane C). No setting, no schema change, no stored state. A pure
+function (`artifacts/forms.py`) and an owner command (`nsf form plan`). The answer path's use of it (`output_forms`
+off/offer/auto) and learning its weights from outcomes are later waves.
+
+## Context
+
+Before OMNIMIND every answer was a list of sentences: nothing chose the form of a result (audit A2, "Answer form
+selection: Unsupported"). The directive (§7) asks for the opposite habit: decide whether to explain, tabulate, chart,
+diagram, step through, simulate, sound out or build, or combine two, and be able to say why. Its two failures are
+equal and opposite and both are measured: too poor (paragraphs where a picture or a table carries what the words
+cannot) and too much (a production where a sentence serves). The examination (lane ZF) contains request pairs with
+the same words and different right answers, so the planner may not be a list of cue words.
+
+## Decision
+
+`forms.plan(request, content, context, adjustments=None) -> FormPlan`, deterministic, no model.
+
+- **Evidence and its strength.** The content's shape (`ContentShape`) is the strong evidence: each kind gives the
+  content's own purposes (a series in time: see change; categories: compare; a network: relation; a model with inputs:
+  try what-if; steps: follow a process; a solid: look at it ...), weight 1.0 shared among its kinds (0.5 for a scalar,
+  records or text, which say little about purpose). The words are weak evidence: a cue gives its purpose weight 0.5
+  (1.5 for hearing, 1.0 for keeping a copy, 0.75 for what-if: these name a sense or an outcome, not a topic); a
+  purpose the content cannot serve is dropped and noted. Strict phrases name a form ("as a table", "make a line
+  chart", "plot it", "read it aloud"); a definite article names content ("in the table" is not a request for one);
+  "no chart" refuses all pictures; wishes for a short answer ("just tell me", "summarise"), a full one ("show me",
+  "in detail") and exact values ("the exact figures") are read.
+- **Forms** are a registry (`FORMS`, `register_form`): prose, spoken summary, table, structured document, data file,
+  line / bar / scatter / histogram / heat map / small-multiples chart, timeline, node-link diagram, tree diagram, flow
+  of steps, step-through, explorable model, animation, sonification, tone, waveform-and-spectrum view, 3D viewer,
+  surface view, picture, animated picture, and every combination of a non-text form with a second form. Each form
+  states the content kinds it can show (a fit), the units it carries without loss (prose about 7 values, 8 steps or
+  3,000 characters; a spoken summary 3 values; a table 20,000 cells in pages of one screen; a line chart 6 series by
+  line style and 2 points per pixel; a bar chart a bar per 12 px and 4 patterns; a node-link diagram about 150 nodes;
+  a flow 20 steps; a sonification 120 tones of 2 voices, the 30-second attention bound), and beyond capacity a floor
+  (what a downsampled or aggregated form still shows) plus the share that fits. Its media, precision, interactivity,
+  base effort, cost class, accessible fallback and generator name (from `make.catalog()`) are declared with it.
+- **Criteria**, each into [0, 1] by a stated rule: clarity (the purpose mix's fit, `PURPOSE_FIT`; a combination
+  serves each purpose with its better form; a predicted problem costs no score: what it loses is counted in carried
+  information (the mean over the content's kinds of fit x coverage; "records" is ignored beside a more specific
+  kind), precision (1 - need x (1 - the form's precision); the need comes from the purposes and rises to 0.8 when
+  exact values are asked for), interactivity fit, effort for the person (base effort plus pages, length, duration,
+  and for words every value or step they must state), feasibility, accessibility, cost (shares of the time and
+  byte budgets). Weights: clarity 0.30, carried 0.26, effort 0.12, precision 0.10, interactivity 0.08, cost 0.08,
+  accessibility 0.06, feasibility 0 (it is a hard constraint).
+- **Hard constraints first**: the device must show every medium of the form (console and Pocket everything; voice
+  speech and sound; the command line and agents text and files); voice only; a screen reader admits a picture only
+  with the text that goes with it; reduced motion removes moving forms; a form with no available generator, or that
+  carries nothing of the content, is removed; budget; forms refused in words or by a preference of -1; a data file
+  only when keeping a copy is a purpose or it is named; the pre-production check rejects a form when the form it
+  would switch to is admitted (a line chart of 19+ series for small multiples), and otherwise adapts it.
+- **Rules over the totals**, in order: an explicit form wins when feasible (the best member of a family named, such
+  as "chart"); when not, the nearest admitted form in kind (`difference`) and the sentence says why. A scalar or a
+  sentence's worth (at most 3 values, or 600 characters) stays words, unless the purpose is to hear a value and a
+  tone can be made. A wish for a short answer is words. When hearing is the main purpose, the best form that is
+  heard. Words that cover less than half of a kind of the content are not chosen while any other form is admitted.
+  The simplest form within 0.03 of the best wins. A non-text form is chosen unasked only when the best beats words
+  by 0.08 (0.03 after "show me"). A combination is admitted only when its first form carries at least half alone,
+  the second adds 0.10 of carried information or (where exact values matter) 0.3 of precision, and the first adds
+  something to the second.
+- **decided_by** compares three runs: the content alone (no words, no context), with the words, with everything. An
+  explicit form decides when named; otherwise the first evidence that changed the choice ("context", then "words",
+  else "content"). The one sentence names it ("A line chart, because there are 365 values in time order and the
+  question is how it changed; a sentence could carry only about 7 of them.").
+- **Divergence and convergence** (`alternatives(plan, n)`): up to n admitted candidates, the choice first, each at
+  least 0.4 apart in kind from those taken (media 0.35, family 0.35, encoding 0.15, interactivity 0.15), so two
+  charts, a timeline and a line chart, or a tree and a node-link diagram never count as different.
+- **Pre-production check** (`foresee(form, shape, context)`): predicted problems from counts (more series than line
+  styles, more bars than fit the width, label overlap from typical label lengths, a sound past the attention bound,
+  a table beyond one screen, points per pixel, nodes past readability ...) and estimated seconds and bytes, all
+  labelled "estimate". Wave O-1 compares them with what validators find.
+- **Learning seam**: `adjustments` maps (content kind, purpose, device), "*" allowed, to criterion weight shifts,
+  at most 256 entries, each criterion's total shift clamped to +-0.10, renormalised; feasibility is never adjustable;
+  `None` or `{}` is the fixed default. Nothing stores or updates it in this wave.
+
+## What it cannot know
+
+Taste; the person's history beyond the preferences handed to it; whether the content is right; how a made form will
+really look (the estimates are arithmetic, not renders); languages other than English in its cue words (other words
+are simply not read: the content still decides). It decides form only, never truth: a plan is made by the system,
+labelled `plan: made by the system, not evidence`, and must never be cited or stored on the evidence side (ADR-049,
+ADR-071).
+
+## Consequences
+
+- Nothing existing calls it: every existing output is byte-identical. Rollback is deleting the module, its command
+  module line in `cli.py` and its tests.
+- On this host today `make.catalog()` is empty until lanes G1/G2 merge, so a real plan chooses words and says
+  "nothing here can make a line chart yet"; `nsf form plan --assume-available` shows the choice once they exist.
+- Choices it makes that are matters of judgment, recorded so they can be argued with: on a voice device a long
+  series is sonified rather than summarised in three spoken values (words that lose most of a series are not chosen
+  while a sound that carries it is admitted); five categories to compare are a bar chart, three are a sentence;
+  steps up to eight are words, more are a flow.
+- Monotonicity (more data never moves the choice toward words) is tested on seeded random shapes at 8 sizes; the
+  rules above were chosen so that it holds by construction for the words-lost rule, and measured elsewhere
+  (`docs/quality/evidence/omnimind_c.json`). It is a measured property, not a proof.
+
+## ADR-073, addendum: rule changes after the development cases
+
+The main session scored commit `8d84f29` blind on the 133 development cases (good 65, good-or-fine 107, bad 26:
+too poor 6, too much 15, unfit 5), then gave lane C the development kit (never the held-out cases). Each failure was
+read as a statement about a rule; no rule names a case's words. Development after the changes: good 113,
+good-or-fine 133, bad 0 (the shape-only reference: good 61, bad 26). These numbers were made by reading the cases
+and are therefore optimistic; the held-out run (the main session's) is the measure.
+
+- **The size of the answer** is read from the question's grammar (`answer_class`): a yes-or-no question (not a polite
+  "can you ..." request), an extreme ("the most", "-est" adjectives), a count ("how many"), one time, person or
+  place ("when did", "who", "where is"), one measurement ("how long is"), or a typical value is answered by a few
+  values picked out of the content, so in words, however large the content, unless the words ask for the whole
+  ("each", "over time", "show me", "how did ... change"). The largest single cause of "too much" was a big content
+  behind a small question.
+- **A sentence's worth** is at most 4 items and 6 values, never a picture, sound, solid, surface or process.
+- **Words and rows carry only measurements** (0.3) of a picture, sound, solid or surface, whatever the counts.
+- **Data heard as tones** (sonification, tone) only when hearing is a purpose or it is named: on a voice device a
+  series is spoken. (This reverses the judgment call above: pitch without values or dates is too poor.)
+- **Cues removed**: "summarise" asks for no less, "figures" for no extra precision.
+- **Explicit forms**: a chart of a few values, named, is honoured ("one bar, their call"); an infeasible one is
+  replaced by the admitted form with the best total less 0.3 x its difference in kind.
+- **Preferences** are followed when the preferred form is admitted.
+- **Budget**: a chart (envelope, keeps 0.6) or a table (rows that fit, keeps 0.3) over the byte budget is cut down
+  instead of removed, when at least 50 points or cells fit.
+- **Screen reader**: any text form may accompany a picture; a table beyond one screen scores 0.3 on accessibility
+  (read cell by cell); with stated needs accessibility weighs three times as much.
+- **Combinations**: only words add carried information to a picture (on kinds it shows poorly); rows add precision.
+- **The caption rule**: a picture, sound or model chosen unasked comes with a sentence on what it shows. It moved 6
+  cases up and 2 down (an explorable model and a 3D viewer the examiner preferred alone).
+- **New capability**: a map form (`map.points`, not built: infeasible on today's catalog, plannable), purposes
+  "decide" and "understand", the accessibility need "no_sound"; code is read to learn how it works and is stepped
+  through only when it runs in steps; a bare hierarchy is outlined by a document at half; an agent keeps data (a
+  file costs it no effort); a picture may be a rendered view of a solid; "the full picture" is an idiom, so a general
+  picture word names a picture only with "a".
+
+Monotonicity still holds by measurement: 0 returns to words in 22,220 checks on 3 x 2000 seeded shapes.
+
+## ADR-073, addendum 2: after the held-out run (final)
+
+The main session's one held-out run of `c5d3230` (138 cases): good 0.659, good-or-fine 0.920, bad 0.080 including
+ONE hard-constraint violation; development had been 0.850, so the last round overfitted (a gap of 0.19); request
+pairs 3/18 (the shape-only table 8/18): reading the words did not help. This round, strictly limited:
+
+- **Hard constraints by construction.** Every form declares a cost floor (seconds, bytes, bytes per value of the
+  content: `COST_FLOORS`, public facts about what any generator of it needs; speech is audio, a table holds every
+  value, a moving picture has frames). Estimates never fall below the floor, admission checks it, and a final gate
+  (`fits`) re-checks every answer, whatever rule chose it, against the media shown and the summed floors; when it
+  fails, the best admitted candidate that fits, else no form. A table is no longer cut down to fit (it would break
+  its floor). A surface view needs interaction (it is turned). Budgets of 0 are accepted. A random search of the
+  benchmark's own rule through the driver found the first violation of `c5d3230` after 11 views (1,140 in 5,000:
+  mostly a spoken summary over a small budget, its cost counted as text instead of audio); after the change 0 in
+  20,000 views on 4 seeds.
+- **Unknown purposes** are any word: one not in PURPOSES is noted and not used (no error).
+- **Rules kept or deleted** (development good 112 -> 107 of 133 after the deletions; bad 0):
+  general and kept: the answer size from the question's grammar; words carry only measurements of pictures and
+  sounds; tones only when hearing is a purpose; a named chart of a few values is honoured; preferences followed;
+  charts cut to fit a budget; screen-reader companions and long tables; only words add carried information to a
+  picture; the map form, decide/understand, no_sound; code is read to learn, stepped only when it runs in steps;
+  characters fall back to items; agents keep data; prepositions before a determiner name content; a picture may
+  render a solid; the cost floors and the gate. Kept, numbers chosen while reading the cases: a sentence's worth of
+  4 items and 6 values, accessibility x3, substitute weight 0.3, stepping/flow/node-link fits for code, a table's
+  fit for places 0.4.
+  deleted as suspected fitting or as word reading that cannot separate request pairs: all topic purpose cues
+  (only hearing and keeping a copy remain, which name a sense or an outcome); the richness wish ("show me");
+  the caption rule (adopted from the development sets' statistics, and against this ADR's own combination rule);
+  the "full picture" idiom rule (one case); the process exclusion from a sentence's worth (one case, no effect);
+  the document-outline rule (one case, no effect).
+- **Still words-driven, and a known risk on request pairs:** the answer-size rule reads only the words, so when the
+  shared words of a pair trigger it, both members get words and at most one can be right. It is kept because it is
+  grammar, not topic, and removing it on development turned 14 good cases into too-much or fine; the held-out pair
+  result may be partly its doing, and nothing here can show whether.
+
+## ADR-073, record: the planner's one held-out run and its verdict (as the main session's handoff states them)
+
+The rule, written BEFORE the run (2026-11-26 16:05 EST; fields of `forms.score(..., "held_out")`). References on
+held-out: shape_only good 0.500 / good-or-fine 0.804; always-prose good 0.442 / good-or-fine 0.739; the second
+reader's first choice good 0.877.
+1. "Beats the references" iff planner good.share >= 0.600 (shape_only + 0.10) AND bad.share <= shape_only's
+   bad.share AND bad.too_much.k <= shape_only's too_much.k AND hard_constraints_violated.k == 0.
+2. "Overfit to development" iff development good.share - held-out good.share > 0.15; reported whatever (1) says.
+3. "Learned from the words" iff on the slice cue == "words" the planner's good_share exceeds shape_only's by >= 0.15
+   AND the pairs and twins both-good shares exceed shape_only's.
+One run, by the main session, at c5d3230 + omni-zf's cases; no retuning on held-out after it; a later planner version
+gets a NEW held-out only from the withheld lane.
+
+THE ONE HELD-OUT RUN (16:10; c5d3230, in a throwaway worktree omni-blind = c5d3230 + omni-zf):
+- held-out (138): planner good 91 (0.659), good-or-fine 0.920, bad 0.080 (too poor 4, too much 5, unfit 1,
+  violation 1); explicit feasible honoured 10/11, infeasible handled 4/5; cue slices good: content 57/81, words
+  16/34, conflict 4/7, explicit 14/16; pairs both good 3/18, twins 2/10.
+- shape_only: good 0.500, good-or-fine 0.804, bad 0.196 (too much 20), explicit 3/11; words 14/34; pairs 8/18,
+  twins 0/10. Today (always prose): good 0.442, good-or-fine 0.739, bad 0.261 (too poor 28).
+- development (133): planner good 0.850, good-or-fine 1.000, bad 0.
+
+Verdict by the rule written before the run: (1) "beats the references": NO: good >= 0.600 yes, bad <= reference
+yes, too much <= reference yes, BUT hard_constraints_violated = 1 (must be 0). (2) "overfit to development": YES
+(0.850 - 0.659 = 0.190 > 0.15). (3) "learned from the words": NO (words slice 0.471 vs 0.412: +0.059 < 0.15;
+request pairs 3/18 against the shape table's 8/18).
+Honest reading: better than always-prose and the shape table on good (+0.22, +0.16) and on wrong choices (0.08 vs
+0.26 / 0.20; "too much" 5 vs 20), honours explicit requests; but one hard-constraint violation, a development-to-
+held-out gap of 0.19, and no evidence that it reads the request's words (pairs worse than the table). Unmapped
+held-out purposes: 3 names the planner does not know (passed as None).
+After the run (addendum 2 above), the frozen planner 4388f4d is judged once more only on the WITHHELD forms cases
+(lane ZW). On the integrated tree it is a subject of the forms family (`neuroscifi.acceptance.omni.subject:
+choose_form`, the main session's name mapping); its development score there is good 107/133, good-or-fine 133,
+bad 0, hard-constraint violations 0 (`docs/quality/evidence/omnimind_int_development.json`). The second reader's
+labels and agreement are `docs/quality/evidence/omnimind_forms_second_reader.json` (both readers are models of one
+family, not people).
+
+## ADR-073, addition (2026-11-27, documentation lane 2, after the measurement review's L2 and P1): where the references beat the planner on held-out
+
+The text above stays as written. Two facts of the one held-out run (`docs/quality/evidence/omnimind_heldout/final_c5d3230.json`,
+the `slices` and `pairs` fields) were left out of it:
+
+| held-out slice (138 cases) | the planner (`c5d3230`) | always-prose (today's system) | the shape-only table |
+|---|---:|---:|---:|
+| the words decide the form (`cue == "words"`) | 16 of 34 good | **17 of 34** | 14 of 34 |
+| the words and the content conflict (`cue == "conflict"`) | 4 of 7 | **7 of 7** | 1 of 7 |
+| request pairs, both members good | 3 of 18 | 0 of 18 | **8 of 18** |
+| twins, both members good | **2 of 10** | 0 of 10 | 0 of 10 |
+
+So on the cases where the request's words, not the content, decide the right form, the planner did not do better than
+answering every request in sentences, and on request pairs (the same words, different right answers) the table that
+reads only the content's shape did better than the planner. Nothing here is evidence that the planner reads the
+request's words. The planner's better overall figure (good 0.659 against 0.442 and 0.500) comes from the content
+slice (57 of 81 against 35 and 49) and from explicit requests (14 of 16 against 2 and 5).
+
+**P1, a sentence the planner says.** When the context decided, the planner's reason ends "...; it is the best form this
+situation allows." (`artifacts/forms.py:2048`). Nothing measures that the form is the best: the sentence overstates.
+The planner is frozen for the withheld forms look, and changing a string changes the frozen file (its examination
+commit), though not a choice. The plan: leave it unchanged until the withheld forms look is taken, then reword it to
+say what was measured ("the form the planner ranks first among those this situation admits"), in a commit of its own
+that states it changes no choice.
+
+## ADR-073, addition (2026-11-27, documentation lane 2): the frozen planner's withheld look
+
+Taken once by the main session on `55f89be` (the look rule and the driver pins committed there), through
+`choose_form`, with form learning off, on lane ZW's 150 withheld forms cases (`docs/quality/evidence/omnimind_looks/`,
+`summary.json`). The earlier text above stays as written.
+
+| subject | good | good or fine | bad | words slice good | pairs both good | twins both good |
+|---|---:|---:|---|---|---|---|
+| the planner `4388f4d` | 0.687 | 0.927 | 0.073 (too poor 3, too much 4, unfit 4); 0 violations | 35 of 52 | 20 of 40 | 11 of 25 |
+| shape-only table | 0.480 | 0.773 | 0.227 (too much 22) | 18 of 52 | 14 of 40 | 0 of 25 |
+| always prose | 0.440 | 0.820 | 0.180 (too poor 21) | 27 of 52 | | |
+
+Verdict by the committed rule: **supported on unseen cases** (good 0.687 >= 0.480 + 0.10; 0 violations; bad and too
+much below the shape-only table's); explicit forms honoured 6 of 7; no unmapped name. **"Reads the request's words"
+holds on these cases** (words slice 0.673 against 0.346 + 0.15 and 0.519; pairs 20 against 14), where on held-out the
+tuned planner `c5d3230` showed no evidence of it, before the fitted rules were deleted. Caveats: one model-written
+examiner's labels; no second reader on these cases; about 30 of 150 close calls by the examiner's own count; the
+oracle control `first_good` could not be run through `final`. The P1 sentence ("the best form this situation allows")
+may now be reworded in its own commit that changes no choice. Nothing of this reaches the answer path.
+
+## ADR-073, correction (2026-11-27, the main session's, after the measurement review's third pass, finding 2)
+
+The withheld-look addition above stays as written. By the letter of the committed rule a control that was not run
+voids that family's look, and two controls of the forms and learn looks were not run: the forms oracle `first_good`
+(`scripts/bench_omni_forms.py` refuses it as a `final` subject, although the committed rule said it could run) and
+"every reference run twice gives identical figures"; the statement that the oracle's absence was "stated before the
+product looks" cannot be verified (a refused `final` writes no ledger line). The verdict is therefore: **VOID by the
+rule (two controls were not run); the figures are reported as measured and establish nothing under the rule.** The
+figures above are kept exactly as measured.
+
+# ADR-074 Things the system makes: specifications instead of generated markup, a reading contract, and checks that never ask the maker
+
+Status: built (OMNIMIND Wave O-0, lane G1: pictures, documents and data files; lane G2 appends its section below).
+No schema change, no setting: nothing runs unless `make.make` or `check.check` is called, and nothing existing calls
+them yet. Rollback: do not import `artifacts/make/_g1.py` and `artifacts/check/_g1.py` (or revert the lane's commits);
+nothing else depends on them.
+
+## Context
+
+The answer path produces sentences. DESIGN §6 of OMNIMIND asks for pictures, documents and data files, and the
+directive (§8.3, §8.4, §11, §16) for quality that is checked by something other than the maker, with a broad attack
+surface kept narrow. The precedent is the Presence scene specification (`presence/scene_spec.py`): a typed, bounded,
+versioned description validated before use, never markup or code from outside.
+
+## Decision
+
+**1. A specification, never markup.** Every made thing starts as a `spec.Spec` (form, title, description, data,
+options, sources, made_by) whose `data` and `options` are checked against the form's JSON schema
+(`inference/jsonschema.py`) before a generator sees them. No string in a spec is interpreted: titles, labels, names,
+addresses and code are text, escaped on output (XML/HTML escaping in SVG and HTML; Markdown escaping that drops
+leading white space and escapes inline markers and line-start markers; CSV quoting, and a one-apostrophe formula
+guard only when `options.formula_guard` asks for it, since strings are otherwise written exactly). The spec is the artifact's editable source and is embedded in made SVG once, as JSON in `<metadata>`.
+Form names (dotted, as the brief names them; `spec.FORM_NAME` allows one dot): `chart.line`, `chart.bar` (grouped,
+stacked), `chart.scatter`, `chart.histogram`, `chart.heatmap`, `chart.small_multiples`, `timeline`, `graph.nodelink`,
+`graph.tree`, `flow.steps`, `table.html`, `document.html`, `document.md`, `data.csv`, `data.json`, `animation.svg`.
+
+**2. The reading contract** (what a reader, human or program, can rely on to recover the data from the picture
+alone, from geometry and tick labels, never from an echo of the input). The benchmark examiner's reading rules for
+made artifacts are taken as the contract wherever DESIGN §6 leaves a point open (diagrams, timelines, the palette, CSV):
+- Charts: one `<g class="plot">` holds the marks (small multiples: one per `<g class="panel" data-name>`; animation:
+  one per `<g class="frame" data-label>`); each axis is `<g class="axis x|y">` (heatmap ramp: `axis z`, ticks with a
+  `rect.swatch` whose gray is the value's) holding `<g class="tick" transform="translate(X,Y)">` with a `<text>` that
+  is a plain decimal number, an ISO 8601 date or time ("2026-03-01", "2026-03-01T06:00Z"), or a category label (always
+  the full label: a reader reads the category from the tick's text, so long labels rotate and the picture grows; only
+  `options.abbreviate`, asked for explicitly, cuts them, with the full label in a `<title>` child); a continuous axis holds a `<line class="domain">` along the
+  plot. Marks: `<polyline class="series">` (lines), `<circle class="mark">` (points, timeline events; the circle's
+  centre IS the value, other marker shapes are drawn around it as `glyph`), `<rect class="mark">` (bars from their
+  baseline; stacked segments from the running total; histogram bins `[left, right)`, the last closed; heatmap cells),
+  each series inside `<g class="series" data-name>`. Missing values draw nothing.
+- Diagrams: a node is `<g class="node" transform="translate(cx,cy)">`; its label is its `<text>` (the full label,
+  never cut: the node grows); its position is the centre of the first circle, ellipse or rect inside it, which the
+  generator centres on the group's origin (a decision diamond is a polygon, so its position is the origin itself). An
+  edge is an element of class `edge` (the generator draws a `<polyline class="edge">`; a reader also takes `line` and
+  `path` of M/L/H/V/C/Q commands) running from the source node's centre to the target node's centre, drawn under the
+  nodes, so each end attaches to the nearest node without doubt; its group `<g class="link">` holds the arrowhead
+  `<path class="arrow">` (at the target's outline, when directed) and the `<text class="edge-label">`. Edge kinds by
+  dash, listed as `<g class="key edge-kind" data-name>`; node kinds as `<g class="key node-kind">`. The default
+  (untyped) kind is drawn plainly and has no legend entry; with every edge untyped there is no edge legend. An
+  outline (`graph.tree`) reads depth-first from the node no edge points to, siblings by position across the
+  direction the tree grows; the tidy layout places siblings in the source's order, so the outline reads in it.
+- Timelines: read as a chart: an x axis of ISO 8601 dates (dates and times for short ranges; the end labels are kept
+  on the canvas), lanes as the y axis's category ticks, one `<circle class="mark">` per event; spans are
+  `<rect class="mark">` below the lane line (both x edges carry the start and the end).
+- Documents: one `<h1>` (the title), sections from h2 without skipped levels, an element of class `made-by` saying
+  "Made by NeuroSciFi" and "not evidence" (Markdown: a quoted line), a "What this is based on" section, figures as
+  inline SVG with a `<figcaption>`, tables with a caption and scoped headers ("Name (unit)"), references as links to
+  ids of the same document only; no script, no external reference (a CSP meta says so too).
+- Data files: the dialects stated in `make/datafiles.py` ("neuroscifi.csv/1", "neuroscifi.table/1"); the CSV header
+  is the column names exactly (units are in the JSON file and the HTML table) and every string is written exactly.
+
+**3. Make and check are independent.** `artifacts/make/` turns a validated spec into bytes; `artifacts/check/`
+re-reads bytes with its own readers: a bounded expat SVG parser (no DTD, entity or processing instruction; bytes,
+elements and depth bounded while parsing), an HTML tree reader over `html.parser`, a Markdown line reader, an RFC 4180
+reader that keeps quoting, a JSON reader refusing duplicate keys and NaN. No module under `check/` imports from
+`make/` (a test parses every check module's imports); checks are written from the formats and this contract, with
+their own constants (the text width estimate, tolerances, the colour resolution). With a spec they measure **carried
+information**: each axis is fitted from its ticks (linear, log10, ISO time; categories by position when the form says
+so, because "08" looks numeric), every mark is mapped back to values, and the share of source values recovered
+within the stated tolerance (0.5 % of an axis's tick span; heatmap 1 % of the ramp; tables and data files exactly, or
+to stated decimals) is reported with every mark that maps to no source value. `Verdict.ok` is decided by technical
+findings: safety, recovery, legibility where it destroys reading (substantial text overlap, text off the canvas,
+marks outside the plot, look-alike series, contrast below 4.5:1 for text and 3:1 for marks in light AND dark), the
+palette, title and description. Small overlaps, crowded ticks and more points than pixels are style findings.
+
+**4. Determinism.** The same spec gives the same bytes in any process on any host: no time, no random id (ids are a
+hash of the spec), fixed number formatting, layouts by stated rules (layered: longest-path layers, barycentre
+ordering with input-order ties; force: framed Fruchterman-Reingold from a circle, 300 iterations, sums taken in a
+fixed order, positions rounded each step; tree: leaves in depth-first order). Golden digests of one spec per form are
+a test (recorded on aarch64, Python 3.12; another process with another hash seed must agree).
+
+**5. The palette rule.** Gray on `currentColor`, with CSS variables for light and dark (`prefers-color-scheme`);
+series told apart by dash, marker shape and fill pattern (six styles; more series is a technical finding whose repair
+is small multiples); hue only for marks the spec flags `warning` (amber) or `danger` (red), only on elements carrying,
+or inside, the class `warn` or `danger`, and on no more marks than the spec flags values (finding
+`hue_on_flagged_only`); the two hue variables are defined only in style rules whose selectors name those classes
+(`#id .warn{--nsf-warn:…}`), so a hue cannot resolve anywhere else; grays have exactly equal channels; never green
+(a check of its own). Heatmaps encode values in gray levels with a swatch
+legend and print values in black or white, whichever contrasts more.
+
+**6. Bounded repair.** `make/repair.py`: named rules from failed findings to changes of options or form (rotate, then a
+wider picture: labels are never cut by a repair; a larger canvas; thinner ticks; small multiples; min-max aggregation stated in the description; bars back
+to zero), recorded in `options.history`, at most three rounds, never a change of the data. No model takes part.
+
+## What is not made, and why
+
+- Raster images, sound, solids and the interactive runtime: lane G2 (below).
+- Video: not in Wave O-0 (DESIGN §8); animation is declarative animated SVG with a still last frame for reduced motion.
+- Typeset mathematics (equations are shown as their source text), maps, and anything needing a font file, the network
+  or a browser to be valid.
+- No hue beyond the two flags, no script in anything G1 makes, no link out of a made document (addresses are text).
+
+## Evidence
+
+`docs/quality/evidence/omnimind_g1.json` (`scripts/omni_g1_evidence.py`): five specs per form, 80 of 80 pass their
+independent check, carried information 1.0 on every form, 482 of 482 deliberately wrong artifacts caught (mutations
+written by this lane, stated as such in the file, with what its first run found, and what the run after the
+reading-contract alignment found: a checker defect in reading the growth direction of wide trees, fixed).
+Tests: `tests/artifacts/test_g1_*.py`.
+
+## What stays open
+
+- The text width model is an estimate: a font far wider than common sans faces can still overlap; the check uses its
+  own narrower estimate and would not see that either. A rendered-pixel check (Chromium, optional) is not built.
+- Golden digests are recorded on aarch64 only; x86_64 is **unverified**.
+- G1's validators answer for G1's forms; for bytes of another form with a spec they give no verdict; without a spec
+  they judge any SVG, HTML, Markdown, CSV or JSON by G1's rules (a script in HTML fails), which G2's interactive
+  documents must be told apart from at the merge.
+- `make.repair` is the module `make/repair.py`; DESIGN names a function `make.repair(spec, verdict)`: the registry
+  should re-export `repair` at the merge.
+- Points of the examiner's reading that no generator can settle alone, to be ruled on: a stacked bar segment's
+  "edge away from zero" is the running total, not the segment's value (the segment's value is its height); small
+  multiples and animations hold one `<g class="plot">` per panel or frame, not one per picture; a node's position at
+  "the first rect" is taken as the rect's centre (a reader taking its corner would be off by half the node's size);
+  heatmap cells are `rect.mark` whose value is their gray, not an edge.
+
+## Consequences
+
+Anything made is checked by code that never asked the maker; a chart either gives back its numbers or says how many
+it lost. Specs stay small, typed and editable; nothing a model writes is ever rendered as markup.
+
+## ADR-074, lane G2's section: sound, solids, raster images and explorable models
+**Decision.** Lane G2's forms follow the same rule as G1's: a typed spec, a fixed generator, an independent check
+that re-reads the bytes. Each form states a reading contract the check re-derives from the spec alone:
+- *Sound*: 16-bit PCM WAV; a series is equal-length tones, pitch linear in the value between two stated frequencies
+  over a stated range (default: the series' extremes), optional reference tones at the axis ends, a missing value a
+  rest; fades and headroom stated; a listening guide in words in the file. The check reads the pitch of every tone by
+  FFT and maps it back (tolerance 1 % of the frequency span).
+- *Solids*: binary STL or OBJ, outward normals, the unit written in the file, watertight where the form is a solid;
+  the tessellation is part of the contract (revolve rings at 2*pi*j/n from +x; grid cells split along a stated
+  diagonal), so the check can compute the analytic volume of the faceted solid exactly. Impossible geometry is
+  refused, never repaired.
+- *Raster*: whole square cells, a linear gray ramp over a stated range, transparency for missing values, an amber
+  outline as the only hue on flagged cells; the scale in words in iTXt because nothing here can draw text.
+- *Explorable*: one self-contained document whose only script is the fixed runtime and whose only style is the fixed
+  stylesheet, both admitted by hash in a `default-src 'none'` policy; the spec is data; the runtime parses a small
+  expression language into a tree (no eval), and the same language in Python computes the no-script fallback and
+  the check's expectations; a test proves the two implementations agree. The same runtime file mounts into a host
+  element under a first-party policy (Wave O-1) with no frame and no inline code.
+**Media types.** `audio/wav`, `model/stl`, `model/obj`, `image/png`, `image/apng`, and a vendor type
+`application/vnd.neuroscifi.explorable+html` so that the plain-document validator (no script allowed) and the
+explorable validator (exactly one pinned script required) never judge each other's documents.
+**Determinism.** Same spec, same bytes: no time, no randomness; the sine is built from IEEE basic operations; PNG uses
+fixed zlib settings (a different zlib implementation may produce other valid bytes).
+**Repair.** Named and bounded: a sonified series over its duration bound is resampled by bucket means with the rule
+written into the description and `options.history`; nothing else is repaired (a mesh that cannot be watertight is
+refused).
+**Not made, and why.** GLB (STL/OBJ suffice for now); video (DESIGN §8); text drawn into pixels (no font); browser
+rendering on the default path (the Chromium run is an explicit, optional check of the system's own output).
+**Consequences.** Made artifacts are labelled as made by the system in every file and are never evidence; checks
+never import generators (enforced by a test); the runtime and stylesheet hashes are constants the check knows, so
+any change to either requires updating the constants (a test fails otherwise).
+
+## ADR-074, fix lane F4: the check sees only what a person would see
+
+The measurement review's second pass (R2-1, R2-2) showed product-made charts that the check passed although a person
+could not read them: the plot hidden by `visibility`, a `<style>` rule (`display:none`, `opacity:0`), a zero-size clip,
+tick text at font size zero, scatter circles without a radius, an opaque rectangle painted over the plot, a root of
+zero width. `check/visible.py` (written from the SVG and CSS rules, not from the benchmark's reader) adds the technical
+finding `visible_to_a_person` to every SVG check: the plot, each mark and series, each axis and each tick's text must
+be displayed, visible, not fully transparent, not clipped to nothing, not painted only in the background's colour or
+not at all (light and dark schemes, CSS custom properties and `currentColor` resolved), inside the canvas, and not
+covered by a later opaque shape; the root must have an area; a hiding style rule this check cannot match is itself a
+finding. An animated picture's frame counts as seen when some keyframe shows it. Tests:
+`tests/artifacts/test_f4_visible.py` (16 hidings on line, bar and scatter fail; the untouched charts pass); the
+generators' golden outputs and lane G1's and G2's evidence scripts give the same results as before.
+
+# ADR-075 The OMNIMIND benchmark: an examination written before the mechanisms (lane Z's section)
+
+Status: built and recorded (lane Z, from `omnimind` = main `8f68beb`). No schema change, no setting, no product code
+touched; the benchmark lives in `src/neuroscifi/acceptance/omni/` and `scripts/bench_omni.py`. Lane ZW/ZF appends
+its own section for the withheld split. Full description: `docs/quality/OMNIMIND_BENCHMARK.md`.
+
+## Context
+
+OMNIMIND adds file intake, detection, decoders, a form planner, generators and validators (DESIGN.md). The Phase I
+audits found that today's system takes in documents only by URL and makes nothing but sentences. The directive
+(§11, §14) asks for reproducible baseline and post-implementation measurements, independent validators and withheld
+sets, and forbids self-grading. The benchmark must exist and be frozen before the mechanisms, so that no lane can
+shape the examination to its answers.
+
+## Decision
+
+- **Truth by construction.** Every file is assembled by the benchmark's own encoders (`enc.py`) from values the
+  family's generator chose; the truths are those values. Compression and containers (deflate stored/fixed/dynamic,
+  zlib, gzip, zip, zstd frames) are written out by hand so that bytes, and the frozen hashes, do not depend on the
+  host's zlib; one dynamic-Huffman block shape gives ~1000:1 bombs that are small on disk.
+- **Questions are measurements, scoring is comparison.** A fixed vocabulary (`subject.MEASURES`) that a thin driver
+  reads off a representation; exact comparison within a stated tolerance. No model, no judgment.
+- **Three outcomes plus failure, fabrication separate.** Right, abstained, wrong (fabrication, never averaged away),
+  and failed (crash, hang, memory, escape, unreadable, unsafe, nondeterministic). Every summary states its
+  abstention floor (what "cannot" to everything scores).
+- **Made artifacts are read, not echoed.** The benchmark's readers recover values from geometry and tick labels,
+  pitches, vertices, pixels and cells (DESIGN §6's reading contract); `<metadata>` is never read. Carried
+  information is the share of source values recovered within tolerance.
+- **Hostile inputs run one process per task** with an address-space cap, traced peak memory, a kill timer and a
+  check of the filesystem afterwards, so a crash or a hang is a result.
+- **Independence.** Generators and readers import no product code (a test checks the import graph); only
+  `subject.py`, the thin driver, imports product modules, lazily. Generators are checked by a test-only oracle built
+  on the standard library and parsers written in the tests; readers by hand-made right and deliberately wrong
+  references; the made judge by a reference maker and eight deliberate flaws; the driver by a stand-in package
+  written from DESIGN §2.
+- **Splits.** Development and held-out are separately written case tables with disjoint seed ranges, frozen by
+  `cases.py`'s SHA-256 and per-family task digests pinned in the tests. The withheld split (seeds 9100-9599) is
+  another lane's, never opened by anyone else, looked at once per mechanism after a committed pass rule.
+
+## Alternatives rejected
+
+- A model (or the generator) judging its own output: forbidden (directive §11, COMMON "No self-grading").
+- Validators that read data echoed into the artifact (attributes on marks, `<metadata>`): recovery would be an echo.
+- `zlib.compress`/`zipfile` for the encoders: the bytes would change with the host's zlib and the freeze would fail
+  on another machine; hostile shapes (overlapping entries, lying sizes, traversal names) need a hand-written writer.
+- Running hostile tasks in the harness's own process: one crash or hang would end the run instead of being scored.
+- One split, or two splits drawn from one table: a mechanism fitted to the development files would not show a gap.
+
+## Consequences
+
+- The baseline (`docs/quality/evidence/omnimind_baseline.json`, at `23b5e50`): today's system is right on 55 of 524
+  development and 55 of 528 held-out tasks, 52 of which per split are the abstention floor; it makes nothing,
+  identifies nothing, crashes on an `.npy` header declaring terabytes and answers about a PDF that is also a ZIP.
+  (Correction, 2026-11-27, documentation lane 2, the earlier text kept: "52 of which per split are the abstention
+  floor" is wrong. Of today's 55 per split, 25 are real intake answers and 30 are right abstentions (20 honest and 9
+  unknown "cannot", 1 hostile refusal; the baseline file). 52 is the floor itself: what a subject that refuses
+  everything scores; one that says "cannot" to everything scores 29.)
+- Points DESIGN.md leaves open are stated as the benchmark's reading, to be ruled on by the main session: the
+  diagram and timeline reading, the `warn`/`danger` class for permitted hue, the sonification domain in the request,
+  how an array, a JSON tree, an XLSX and a JSON record list may be represented, and the request-to-spec mapping
+  (`subject._spec`, `FORM_NAMES`), which is the one place a generator lane adjusts the driver.
+- A numpy upgrade that changed `default_rng` streams would fail the freeze test; that is to be reported, not
+  re-pinned silently.
+
+## ADR-075, lane ZF's section: the forms, cross and learn families
+
+The OMNIMIND benchmark's second half (lane ZF) examines three capabilities before they exist.
+
+**forms.** Is the chosen form of a result right? It has 271 hand-written cases in frozen development and held-out
+splits. Each case has the examiner's good, fine, too-poor, too-much and unfit sets with a reason for each. Hard
+constraints are decided from the context and must be violated zero times. Prose is the right answer in at least
+40% of cases. To stop rules over request wording from passing, the tables hold 36 cue pairs and 19 twins, and the
+words-only and words-blind statistics are stated.
+
+**cross.** It asks questions that need two artifacts of different kinds. There are 72 generated pairs. In each pair,
+the matching and non-matching twins differ in one value, so always "consistent" scores exactly 0.5, and today's
+system scores "cannot".
+
+**learn.** SIMULATED people with hidden preferences react to choices, and the share of choices they keep is measured
+against a non-learner, a per-key majority learner and an oracle. It is reported with the gain needed to be visible
+above the spread of seeds.
+
+**Decisions.**
+- The benchmark keeps its own form vocabulary and readers, and imports nothing from product code.
+- Each table is committed and SHA-256-pinned before its scorer.
+- A planner counts as learning from the words only if it beats "content shape only" on held-out. A learner counts
+  as better only if it beats the per-key majority by the visible gain.
+
+**Rejected alternatives.**
+- Generating requests from templates or verb lists: the planner's author would learn the generator.
+- A single blended score.
+- Judging a chart by its embedded data.
+- Calling the simulated learning results evidence of benefit to people.
+
+**At integration.** The planner is the forms family's product subject (`choose_form` in the thin driver). No `relate`
+subject exists for the cross family: no mechanism relates two artifacts yet, so the cross family's answer stays
+"cannot". No learner exists for the learn family (learning form choices from outcomes is a later wave).
+
+## ADR-075, lane ZW's section: the withheld examination (counts only)
+
+Written by a lane that read no product code and no lane report of B1, B2, C, G1 or G2; nothing here reveals a case.
+- Forms: 150 cases; prose or spoken good in 78 (52%), prose alone in 66 (44%); 40 cue pairs (80 cases) and 25 twins
+  (50 cases); 51 budget or access cases, 42 of them where the shape-only reference's pick is a hard violation; 17
+  cases with a purpose word in no earlier case (16 distinct words); 12 explicit requests (7 feasible, 5 infeasible,
+  3 asking for less); all 18 content kinds; devices console 72, pocket 62, voice 5, cli 7, agent 4. About 30 close
+  calls by the author's own count. Words per request: mean 11.29; cue-word purity at most 0.833; a words-only chooser
+  is good on 48/150 (0.32), below always-prose (0.44).
+- Lane Z's seven families: 172 cases (seeds 9101-9581), 652 tasks: intake 358, honest 55, unknown 111, compound 66,
+  hostile 35 (27 new constructions of earlier classes and 8 of 7 classes neither earlier split has), made 16,
+  transform 11. Abstention floor: honest 20, unknown 21, hostile 35.
+- Cross: 39 pairs (78 cases), 4 pairs of each of the six earlier kinds and 5 of each of 3 new kinds of pairing.
+  Learn: 6 SIMULATED people (seeds 9590-9599), none with an earlier person's full preference map.
+- The look machinery: `scripts/bench_omni.py final` and `scripts/bench_omni_forms.py final` refuse a missing or blank
+  note, an output inside the checkout, a dirty tree and a changed withheld file (SHA-256 pinned); the ledger line
+  (`docs/quality/evidence/omnimind_final_uses.jsonl`) is written BEFORE anything is loaded or scored; output is
+  summaries only; `run --split withheld` is refused; only `acceptance/omni/final.py` imports a withheld module.
+- Machinery checks (references only; no product subject has looked): today on lane Z's families: intake 29 / 358
+  right, 0 wrong; honest 20 / 55; unknown 21 / 111; compound 0 / 66; hostile 2 right, 28 abstained, 2 wrong, 3 failed
+  of 35; made 0 / 16; transform 0 / 11. Forms: today good 66 (0.44), shape_only good 72 (0.48), richest 13 (0.087),
+  random 20.8 (0.139); 0 hard-constraint violations for all four. Cross: today 0 / 78 answered. Learn: today late kept
+  0.384 (sd 0.028).
+
+
+
+# ADR-076 The production pipeline: from files and a request to a made, checked, stored result with a visible "why" (OMNIMIND Wave O-1, lane P)
+
+**Status.** Accepted for Wave O-1 (lane P). No migration, no setting: everything runs only when the owner types
+`nsf artifact make | remake` (or a caller calls `artifacts.produce.produce`).
+
+**Context.** Wave O-0 left the parts unconnected: adapters decode, the frozen planner (ADR-073) decides a form,
+generators make a spec into bytes and independent checks read the bytes back (ADR-074), the store keeps made artifacts
+as never-evidence (ADR-071). Nothing went from "here are my files, this is what I want to know" to a kept result.
+
+**Decision.** `artifacts/produce.py` runs Interpret -> Conceptualize -> Explore -> Choose -> Plan -> Generate -> Render
+-> Evaluate -> Repair -> Converge -> Finalize, each a named function; what went in and came out of each is recorded in
+a production record (`neuroscifi.production/1`, at most 14 KiB of JSON, labelled "made by the system, not evidence"),
+kept in the made artifact's index (`index.production`, at most 16 KiB; `store.add_made(..., production=)`).
+- *Interpret.* Every source is decoded again from its bytes under the instance's `Limits`. Not used as content, and
+  said so in the record: a flagged artifact (its text looked like instructions to an AI), a refusal, a format nothing
+  reads, a header-only file, a partial decode. Stated readings: an archive holding Python files is read as its package
+  (the combined graph lane B1 builds); an archive or stream holding exactly one decoded file is read as that file; a
+  JSON array of flat records is read as a table (the adapter's own `as_table`); several Python files given together
+  are read as one package. A table whose columns the request names is read as those columns and its first column of
+  times: the content planned for is what was asked about (a column the request does not name is not used, not even
+  the rows' names: "calls for each who" names both; no model reads a request more finely here).
+- *Conceptualize.* `forms.plan` decides (unchanged, called through its public API). `--form` takes a planner form or
+  alias (the planner's explicit path: honoured when feasible, else its stated nearest form) or a generator form the
+  planner has no form for (`solid.mesh`): that is made as named and the planner's own plan is recorded beside it.
+  `forms.foresee` runs for each candidate before anything is made.
+- *Proportion.* When the plan's form is words (prose or spoken), nothing is made and nothing is stored: the measured
+  facts (`store.facts_of`) are given as sentences with the plan's reason. Given files are stored only when something
+  will be made.
+- *Explore, choose, converge.* `--alternatives N` (at most 4) takes `forms.alternatives` (candidates that differ in
+  kind, the plan's choice first); each is built, made, checked and repaired. Convergence: the technical verdict first
+  (a candidate whose technical checks failed is never kept), then carried information (the share of source values
+  the check read back), then the planner's total, then the simpler form. The losers stay in the record as their
+  spec's envelope (form, title, description, options, SHA-256 and size of the data): `remake --form` makes any of them
+  again from the sources; `--keep` stores those that passed as made artifacts too.
+- *Plan: specification builders* (`artifacts/produce_builders.py`, a registry keyed by planner form, plus `solid.mesh`).
+  Rules every builder keeps: every value comes from the representation; titles, axis labels and units come from the
+  content (column names, declared units, file labels) or are fixed words saying what a thing is ("row number",
+  "frequency (Hz)"); what a form cannot show is left out by a stated rule written into the spec's description and the
+  record (the first 2000 rows; the 6 series with the widest spread; columns ten times smaller than the largest are not
+  drawn on its axis; module-level only for a code graph over 40 nodes; the mean of k x k pixel blocks); a column named
+  in the request is chosen ("A against/versus/by/over B" names y and x); a bar chart refuses repeated category names
+  rather than summing; an explorable model is made only from an explicit model file. Coverage (representation kind x
+  builder, builds or the reason it cannot) is in `docs/quality/evidence/omnimind_p.json`.
+  Several sources: each is planned on its own (same words and context) and placed in one `document.html` under its
+  own heading with a sentence of what it is, its figure (an SVG form), table, or measured facts; a form that cannot sit
+  inside a document (sound, solid, picture, explorable) falls back to the planner form's stated fallback, said so. A
+  planned combination (a chart with its table, a diagram with sentences) is one document with both.
+- *Generate, render, evaluate, repair.* `make.make` (bytes over the context's byte budget are refused), the bytes as a
+  file (media type, size, export extension, SHA-256), `check.check` with the spec, then at most three rounds of the
+  generators' own named repairs (lane G1's `make.repair` for charts, lane G2's resampling of a sonification over its
+  duration bound), each round recorded; the best round is kept (technical pass first, then fewer findings).
+- *Finalize.* `store.add_made` with the spec as editable source, `derived_from` links to every source, the check's
+  verdict and the record. `nsf artifact show ID --why` prints it in plain words; `nsf artifact remake ID --form F`
+  runs the production again on the same sources and request; `--option k=v` edits the stored spec's options and makes,
+  checks and repairs it again (a new artifact; the old one stays; the record names `remade_from`).
+- *Foresight against outcome.* Each estimate (bytes, seconds, over budget) and each foreseen problem some check can
+  observe (label overlap, too many categories or series, points per pixel, too many nodes, a sound too long) is paired
+  with what the first made bytes and their check (or the generator's refusal) showed, for the made forms whose check
+  always looks for that problem: numbers right within a factor of two, problems right / false alarm / missed, others
+  "not observable here". The pairs go into the record and, as a SIMULATION record (ADR-049:
+  NOT_EVIDENCE, quarantined) in the imagined store: payload = the predictions (numbers, booleans, form names; no
+  content), outcome slot = the observation. The imagined store's references cannot name an artifact (schema; no
+  migration here), so the record names the simulation and `store._remove` deletes it (tombstoned) whenever the made
+  artifact is removed (forget, root forget, a source's forget, restore replay).
+- *Budgets and stops.* The context's seconds and bytes are the planner's budget and are enforced here: a deadline
+  checked before every step (`ProductionStopped`, nothing stored), made bytes over the byte budget refused. Any stop
+  (Ctrl-C, the deadline, an error) and any result that failed its technical check leaves nothing: given files this
+  production stored are forgotten again and the simulation record is purged. A failure ends "could not make this
+  well" with the findings in plain words and the next candidate form.
+
+**The model file** (`artifacts/adapters/model_file.py`, format `neuroscifi.model/1`, media type
+`application/vnd.neuroscifi.model+json`): a JSON object with `"format": "neuroscifi.model/1"`, optional `title` and
+`description`, and exactly the data of lane G2's `explorable.model` form: `parameters` (1-12: name, label, min, max,
+step, value, unit), `quantities` (expressions in `artifacts/expr.py`'s language), optional `dynamics` (state,
+initial and update expressions, steps, dt) and `views` (plot, table, bars). Detected by structure (the marker in the
+first 4 KiB; the file name is never used); checked with the form's schema and `expr.model_problems` (a file that
+cannot run is Malformed with its reasons; at most 256 KiB); represented as `ModelFile`, a `Tree` of the JSON that also
+carries the checked model, whose shape is a process with parameters counted by the states its sliders can take
+(product of (max - min) / step + 1, at most 1,000,000). Expressions are parsed into trees, never run as code.
+
+**`solid.mesh`** (lane G2's generator and check modules): given vertices and triangles written as they are (only the
+vertices a face uses; a closed mesh turned outward; an open one with its given winding); a face without area, an
+index out of range, an edge of more than two faces or faces wound against each other is refused by name. The check
+re-derives closedness, triangle count, bounds and volume from the spec and reads every used vertex back.
+
+**The benchmark.** `ArtifactsSubject._transform` states the structured request in the owner's words with a named form
+and calls `produce.produce` with no individual (nothing stored); `FORM_NAMES["mesh"] = "solid.mesh"`. Development
+(artifacts subject): made 13/14 -> 14/14, transform 6/8 -> 8/8, 0 wrong; all families 509 -> 512 of 524 right.
+
+**Not done, and why.** No model reads the request (column names and a few prepositions only); no relation between
+sources is drawn (lane R); the planner's weights are not learned here (lane L); playing back a given recording, maps,
+step-throughs from data, animation from data and surface views of given meshes have no builder; the viewer does not
+simplify meshes over 20,000 vertices; durable (resumable) production jobs and progress reporting are not built: a
+production runs in the owner's command and either finishes or leaves nothing.
+
+**Consequences.** Nothing runs unasked; with no command typed, every existing output is unchanged. Rollback: revert
+lane P's commits (the index key `production` is ignored by older code; no stored state changes shape).
+
+**Proposed held-out rule (for the main session, written before any held-out run).** Run `bench_omni.py run --split
+held_out --subject artifacts --family made --family transform` once on lane P's final commit. Fields: each task's
+outcome as the benchmark's own `judge` gives it (readers recover the values from the bytes; no product code judges).
+Supported when, on held-out, transform has 0 wrong and 0 failed and at least as many right as at `c1f5f2f` on the
+same split, and made has 0 wrong and 0 failed; a transform "abstained" because the frozen planner says a form cannot
+carry the content counts as abstained, not as right.
+
+**A known error of the planner's cost model (Wave O-1 integration, measured; not corrected).** `forms.foresee`'s
+seconds are 5 to 560 times what generating, rendering, checking and repairing the made form took on this host (183
+productions of lane P's evidence corpus, each plan's own choice and each planner form named where its builder takes
+the content, three runs each; median ratio 102; never an underestimate). Per made form, median predicted / observed:
+explorable 560, solid viewer 559, node-link 334, data file 250, tree diagram 134, table 125, image 116, document 100,
+scatter 95, bar 83, small multiples 80, histogram 59, line chart 39, waveform-and-spectrum 15, timeline 9,
+sonification 5 (`docs/quality/evidence/omnimind_int2.json`, `scripts/omnimind_int2_evidence.py`; the record keeps
+seconds to four decimals, so ratios above about 500 are bounded by that rounding). What the error can and cannot do:
+it enters the planner's cost criterion and its budget test, so it can only make the planner more cautious about slow
+forms (a form that would have fit a small time budget lowered or excluded); it can never let a production exceed a
+budget, because the pipeline enforces the budget on the clock between steps. The planner is frozen (examined on
+held-out, to be examined on the withheld cases); correcting its estimates is a planner revision that needs its own
+examination, and is left for it.
+
+**Wave O-1 integration (the three lanes wired together).** With `form_learning` record or apply, the plan goes
+through `learn.plan` (a learned habit may decide among the forms the planner admits; the "why" then carries lane L's
+sentence, "Learned: You ... (from the content alone it would be ...)", beside the planner's reason) and every stored
+made artifact gets its check verdict as an outcome row under `learn.key_of`'s key; with off (the default) the planner
+is called as before and no row is written. `nsf artifact feedback` on a made artifact that no row names finds its key
+from the production record. With two or more sources, each pair is related by `relate.compare` (at most 6 pairs, no
+pair started after 10 s; without a question: the request says what to make, not which facts to compare) and the made
+document gets a section "How the sources relate" (both values where they disagree, where each comes from, what could
+not be compared; nothing resolved); the links are recorded as `nsf artifact relate` records them. A unit a document
+among the sources states for a table's column (`relate.transfer_units`) reaches axis labels and table headers with
+where it was read ("degC, from README.md"). Every made SVG scales to its container (`max-width:100%;height:auto` on
+the scoped root; the viewBox and user units unchanged): 328 px wide inside a 360 px phone's margins in Chromium.
+
+## ADR-076, addition (2026-11-27, documentation lane 2, after the measurement review's L3): the held-out rule that was applied
+
+The "Proposed held-out rule" above is lane P's proposal. It is not the rule the made and transform held-out run was
+judged by. The main session wrote its own rule in its log before the one run (`omnimind` `505b55b`), quoted verbatim in
+`docs/quality/evidence/omnimind_heldout/README.md` ("made, transform, once, at `505b55b`"):
+
+1. no fabrication, no crash: wrong == 0 and failed == 0;
+2. generalizes: right/n not more than 0.05 below development's (made 14/14, transform 8/8), so a single miss in either
+   family already fails it; `transform` carries lane P's disclosure (lane P once saw the held-out transform rows).
+
+| family | held-out result (`made.json`, `transform.json`) | the applied rule | lane P's proposal (for comparison) |
+|---|---|---|---|
+| made | 13 right / 1 cannot / 0 wrong / 0 failed of 14 | (1) holds; (2) **does not hold**: 0.929 against 1.000, a drop over 0.05. Reported as "one held-out making task the product could not do", **not a pass** | would have passed (0 wrong, 0 failed) |
+| transform | 8 / 0 / 0 / 0 of 8 | (1) and (2) hold, **with lane P's disclosure**: this result proves less than the others | would have passed |
+
+The stricter rule is the one that counts. Since that run, fix lanes F1 and F3 changed the pipeline (builder
+fall-through, `--partial`, stated reductions of large sources, the SIMULATION record only when `imagine_scenarios` is on)
+and fix lane F2 made the benchmark's reader of made pictures stricter (only what a person would see is read): the
+held-out figures above are of `505b55b`, and the next measure of making is the withheld look (rule: `docs/quality/OMNIMIND_BENCHMARK.md`,
+"The rule for the withheld looks").
+
+# ADR-077 Relating artifacts of different kinds: what one measures against what the other states or shows
+
+Status: built, called only by the owner's command `nsf artifact relate` and the benchmark's `relate` subject (Wave
+O-1, lane R). No setting, no schema change (links go in lane A's `artifact_links`), nothing automatic.
+
+## Context
+
+The directive (§6.2, §6.3, §10.2) asks for relationships between modalities "through shared entities, timing,
+causality, context and provenance" that keep meaning, provenance and uncertainty. No model here sees or hears. The
+honest version is: two artifacts are related when a quantity or a structure that can be MEASURED in one is STATED or
+SHOWN in the other, and the two can be compared. The cross family of the benchmark (ADR-075) has six kinds of pair
+and a withheld split with kinds of pairing neither public split has: a matcher per kind would answer "cannot" there,
+one that guesses would score half, and a wrong "consistent" is this mechanism's fabrication.
+
+## Decision
+
+`artifacts/relate.py` (with the reader `relate_read.py`), deterministic, standard library and numpy.
+
+- **What an artifact measures** (`quantities`): counts with the nouns they count (rows, columns, tones, vertices,
+  functions, members, features, events), a table's column aggregates (sum, mean, median, min, max, first, last,
+  range) and series keyed by its label column, a sound's duration, rate and, when it is made of steady tones, their
+  number and pitches (`tone_segments`: quiet gaps and pitch steps, otherwise no tone count is claimed), a mesh's
+  size, box, volume and area (in the unit the file's own comment states, if any), a graph's edge pairs by kind, a
+  raster's or drawing's size, a track's length and time span. Each has `how`.
+- **What an artifact states or shows** (`statements`): a document's numbers with units, nearby words, aggregate
+  words, approximations and bounds; sizes (`120 x 40 x 60 mm`, `200 mm wide, ...`), per-axis ranges, ranges, counts
+  (the word right after a whole number); ordered steps (lists, lines, sentences); a log's timestamped events; a
+  chart's series read back through the reading contract by the independent reader `check/svg_read.py` (never its
+  `<metadata>`) and the aggregates it shows; a JSON trace's name pairs (records with two string fields, an object
+  and the objects in its lists); a text file's comment lines. Sentences are kept as provenance, cleaned, untrusted.
+- **Matching** (`compare`): candidate pairs by kind of fact (number with number, count with count, size with size,
+  series with series, steps with events, pairs with pairs), compatible units (dimension tables, no exchange rates)
+  and names (shared words of the subject; one candidate column with a stated aggregate; a tie is ambiguous and
+  weak). Tolerances are stated: half a unit of the last written digit, wider for "about"; a chart's 0.5 % of its
+  tick span (in decades on a log axis); exact for counts. Two measurements are compared only when the question names
+  what each counts or shows (or two series carry one name). A mesh without a unit is compared as if in the stated
+  unit only when the numbers are equal; when one scale factor would make them agree the answer is "cannot".
+- **The overall answer.** If the question names an aggregate, only comparisons of that aggregate decide; if it asks
+  about a count (counting words and a count's noun), only that count; else the comparisons the question's words
+  focus on; else every strong comparison. False when one deciding comparison disagrees, True when all agree, None
+  otherwise. Agreement is not claimed while a number statement tied to the other artifact went uncompared.
+- **Binding** (`relate_cli.py`): `consistent_with` / `contradicts` (confidence 0.8), `describes` (one names the
+  other's file, 0.6), `same_subject` (a shared name, 0.3), `how` = the machine-readable basis. Labelled "the system's
+  claim from measuring both artifacts; not evidence" wherever shown; removed with either end and by a restore's
+  replay; a shared name that is a forgotten root is not used; no knowledge table is written.
+- **Timing** reports spans, overlap and offset of two clocks; **transfer** applies a unit to a CSV column only when
+  one line of a document names exactly that column and exactly one unit (rates and date formats are not units; a
+  column's own unit wins and the conflict is reported); the provenance rides in `Transfer.describe()["units_from"]`
+  and reaches a made chart's axis label through the spec's unit.
+
+## Measured (`docs/quality/evidence/omnimind_r.json`, `scripts/omnimind_r_evidence.py`)
+
+- Cross family, development split: 72 / 72 right, 0 cannot, 0 wrong (every kind 12 / 12; both twins right 36 / 36);
+  always-consistent and always-inconsistent 36 / 72; today 0 / 72 answered. Held-out and withheld not run by lane R.
+- Own pairs of 14 kinds the public splits lack (development: defects were fixed against them): 28 / 28 right;
+  6 unrelated pairs: 6 cannot. Fresh pairs of 12 more kinds, written after the mechanism was frozen (677cf22) and
+  looked at once: 20 right, 4 cannot, 0 wrong of 24; unrelated 4 / 4 cannot; after one fix (a log's own format
+  words) 22 / 24, the remaining cannot is "sampled at 16 kHz" against a sample rate (no morphology beyond plurals).
+- Own variants from the cross generators with knobs drawn here: 630 / 630 right (seeds 9100-10729 at first, partly
+  inside the range reserved for the withheld lane; moved by fix lane F2 to 20100-25329, `LANE_R_SWEEP_SEEDS`, review
+  B3; still 630 / 630).
+- Transfer, own 12 cases, 29 columns: 14 right units, 14 rightly without a unit, 1 absent, 0 wrong.
+
+## Not done, and why
+
+- No meaning of an image or a sound is read: "cross-modal" here is measurement against statement. A chart is read
+  only when it follows the reading contract; a photograph, a spoken recording or a melody's identity is not related
+  to anything.
+- Words: plural folding only; no stemming of verbs ("sampled"), no synonyms beyond the stated vocabularies, no
+  coreference across sentences. A model could read requests and statements more finely; none is called.
+- Causality is not inferred; time is aligned only where both sides carry timestamps (or the log's order).
+- Static call graphs only: a trace call made through a callback or `getattr` is reported as not in the code.
+
+## Rejected alternatives
+
+- A matcher per kind of pair: it fits the public kinds and answers nothing (or guesses) elsewhere.
+- Answering from whatever agrees when the question's subject cannot be compared: it turns "cannot" into a wrong
+  "consistent".
+- Reading a chart's `<metadata>`: an echo of the data, not what the picture shows (DESIGN §6).
+
+## Rollback
+
+Revert lane R's commits: the new modules, the `relate` subcommand, `store.decoded_held`, the labelled link lines of
+`nsf artifact show` for the four claim relations and the driver's `relate`. Links already recorded stay readable
+by the old code (the relations were already in `store.RELATIONS`) and can be removed by forgetting either end.
+
+## ADR-077, addition (2026-11-27, documentation lane 2, after the measurement review's L5): what the cross figures depend on
+
+The text above stays as written. Four facts belong beside its figures:
+
+- **The relater needs the question to name the comparison.** On the development split, with the benchmark's question:
+  72 right / 0 cannot / 0 wrong. Without the question: 58 right / 14 cannot / 0 wrong (lane R's report and the main
+  session's log). It relates what the question tells it to compare; it does not find on its own which facts of two
+  artifacts belong together.
+- **The fresh pairs and the own variants are lane R's own.** The 12 fresh kinds (20 right, 4 cannot, 0 wrong of 24 at
+  the one look) and the 630 own variants were written by the lane that wrote the relater. They are development
+  evidence, not an independent examination.
+- **Held-out, once, at `7d9038c`** (`docs/quality/evidence/omnimind_heldout/cross-relate.json`): 66 right / 6 cannot /
+  0 wrong of 72; correct of answered 66 of 66; both twins right 33 of 36. By kind, right of 12: chart_series 12,
+  tones_rows 12, mesh_bbox 12, code_trace 12, timeline_log 12, **report_total 6** (the other 6 "cannot"; all 12 right on
+  development). Verdict by the rule written before the run: supported (wrong 0 of at most 2; 1.00 of at least 0.95; 66
+  of at least 54; twins 33 of at least 24; no kind with a wrong). The weakness: the statement reader did not carry over
+  to half of the held-out reports' wording. Always-consistent and always-inconsistent score 36 of 72.
+- **The relater changed after that run.** Fix lane F3 (`ba56b08`) changed how a file's or table's name counts and when
+  "in" is inches (calls.csv's rows are no longer counted as "calls"; "520 in total" is no longer 520 inches).
+  Development stayed 72 / 72 and lane R's own sets byte-identical; the held-out figure above is of the relater before
+  that change, and the next measure is the withheld cross look.
+
+## ADR-077, addition (2026-11-27, documentation lane 2): the relater's withheld look, not supported
+
+Taken once by the main session on `55f89be` on lane ZW's 78 withheld cross cases (`docs/quality/evidence/omnimind_looks/`,
+`summary.json`). The earlier text above stays as written.
+- **48 right, 24 cannot, 6 wrong**; correct of answered 0.889; both twins 21 of 39. Verdict by the committed rule:
+  **not supported** (6 wrong, more than 2; 0.889 below 0.95; 48 below 58.5; twins 21 below 26; one kind with 5 wrong).
+- By kind: chart_series, mesh_bbox, code_trace, timeline_log 8 of 8 each; tones_rows 6 right, 2 cannot; report_total
+  5 right, **1 wrong**, 2 cannot. Of the three kinds only this split has, route_stops and archive_manifest were
+  answered "cannot" throughout (not exercised), and **image_caption was answered all 10 times and right on 5: no
+  better than a coin**. That is the failure the Context above names ("one that guesses would score half, and a wrong
+  'consistent' is this mechanism's fabrication"): an image's meaning is not read, yet a verdict was given.
+- Always-consistent scored 39 of 78 with 0 twins. A "not supported" is never retried on these cases: the weakness is
+  known now; any fix is to be examined on NEW withheld cases.
+
+# ADR-078 Learning the form of a result from outcomes: a per-key majority, because nothing tried beat it
+
+Status: built, off by default (OMNIMIND Wave O-1, lane L). Schema 21 (`form_outcomes`), one owner setting
+(`form_learning`: "off" | "record" | "apply", default "off"), `artifacts/learn.py`, the commands `nsf artifact feedback
+ID kept|dismissed|replaced:FORM`, `nsf artifact feedback --reset`, `nsf form learned`, `nsf artifact gaps --report` and
+`nsf config --form-learning`. Nothing calls it yet but the owner's commands: the production pipeline (lane P) is the
+caller that will record a check verdict when it makes an artifact (`learn.record_outcome`) and plan through what was
+learned (`learn.plan`, or `learn.adjustments_for` and `Learned.context`). The planner (ADR-073) is unchanged.
+
+## Context
+
+DESIGN §5 asks for the planner's weights to be adjusted per (content kind, purpose, device) from outcomes that come
+from outside the system, never from the planner's opinion of its own plan; bounded, reversible, off by default. This
+project has several learning mechanisms that showed no gain when measured honestly (RECURSIVE_KNOWLEDGE_ASSESSMENT.md);
+the brief therefore set the bar before anything was built: on the benchmark's `learn` family (SIMULATED people with
+hidden, stable preferences; OMNIMIND_BENCHMARK_FORMS.md), a learner that does not clear the visibility margins over the
+per-key majority is "no better than a majority rule", and then the majority rule ships.
+
+## What was measured (development split only; SIMULATED people; `docs/quality/evidence/omnimind_l.json`)
+
+Kept share, mean (sd over 10 seeds), late = cycles 5-8; "rejected early" = choices dismissed or replaced in cycles 1-4
+(of 2,400). Every product row goes through the frozen planner; the driver maps names only and passes the case's
+candidates as what can be made here.
+
+| subject | late kept | all kept | rejected early |
+|---|---|---|---|
+| today (always prose) | 0.403 (0.022) | 0.409 (0.015) | 1406 |
+| never_learns (reference) | 0.581 (0.017) | 0.579 (0.018) | 1017 |
+| person_majority (reference) | 0.757 (0.029) | 0.738 (0.021) | 675 |
+| key_majority (reference, chooses directly) | 0.859 (0.027) | 0.794 (0.025) | 650 |
+| oracle (reference bound) | 0.907 (0.025) | 0.902 (0.022) | 245 |
+| the planner alone (form_learning "record") | 0.587 (0.026) | 0.584 (0.016) | 1005 |
+| **shipped: per-key majority through the planner** | **0.816 (0.024)** | **0.762 (0.018)** | 702 |
+| not shipped: the planner's weights through `adjustments` | 0.618 (0.022) | 0.601 (0.019) | 997 |
+| not shipped: per-key majority backed off to the person | 0.826 (0.029) | 0.797 (0.020) | 558 |
+| bound: the hidden preference handed to the planner | 0.855 (0.022) | 0.854 (0.020) | 350 |
+
+- **The weight seam moves almost nothing.** Shifting the planner's criterion weights within its clamps (±0.10 each)
+  reaches the person's wanted form on few keys: a learner of those weights gains +0.036 late over never_learns, below
+  the visible margin (0.063). On most keys no weight table within the clamps changes the planner's choice at all.
+- **The shipped rule** gains +0.235 late / +0.183 overall over never_learns (visible above 0.068 / 0.051) and is BELOW
+  the benchmark's own per-key majority (−0.043 late, −0.033 overall): the planner keeps its hard constraints and its
+  proportion rules (a single value stays a sentence; data heard as tones only when hearing is the purpose; forms the
+  planner does not admit for the content), which the reference, choosing a form directly, ignores.
+- **No learner through the frozen planner can clear the margin over the per-key majority here**: the bound (the
+  hidden preference itself handed to the planner) reaches 0.855 late and 0.854 overall, below key_majority plus the
+  margin (0.937 and 0.865). The back-off learner, the one attempt to generalise across keys, gains +0.010 late and
+  +0.035 overall over the shipped rule (margins 0.081 and 0.056): **no better than a majority rule**. So the majority
+  rule ships.
+
+## Decision
+
+- **Signals.** Only from outside the system: the owner's reaction to a made artifact (kept, dismissed, replaced by a
+  named form; the latest reaction to an artifact counts) and the independent check's verdict on its bytes at make time.
+  The planner's scores are never a reward; they are not even read.
+- **The rule.** Per key, a tally: +1 kept, −1 dismissed, −1 replaced and +1 the form named, −1 a failed check, 0 a
+  passed check. Evidence: 1 per reaction, 2 per replacement, 1 per failed check; below MIN_EVIDENCE = 2 the key is
+  "not enough yet" and nothing changes (development: minimum 1 gives the same late share, 0.816; minimum 3 gives
+  0.792). Each form with a positive tally becomes a preference tally / highest tally, in (0, 1], handed to the planner
+  through `Context.preferences` (DESIGN §5's "the person's recorded preferences"); `adjustments` stays None.
+- **Out of its reach, by construction and by test.** A learned value is never 0 or below, so nothing learned removes a
+  form; the planner follows a preference only among the forms it admitted and after its proportion rules; the owner's
+  stated preferences win (any positive one stated: nothing learned is added; a form whose name, family or medium the
+  owner named: nothing learned for it). Lane C's own property tests (hard constraints, a sentence's worth stays words,
+  an explicit form is honoured, cost floors) pass with a random learned policy and random weight adjustments on every
+  plan (600 to 3,000 plans each; 0 violations); monotonicity holds under learned preferences that name no words form.
+  A learned preference FOR words is the stated exception: a person who keeps sentences gets sentences.
+- **What is and is not learned** (directive §10.4). Stored examples: the made artifacts and their specifications (the
+  artifact store; not copied). Procedural policy: the per-key tally, computed on read from `form_outcomes`. No model
+  weight is updated anywhere; no model is called. `nsf form learned` says this, and per key what was observed and
+  what it changes.
+- **Storage.** Schema 21: `form_outcomes` (artifact id, key, form, outcome, the form named, source, time), words of
+  the planner's vocabularies only (CHECK constraints), on the artifact side (no evidence-side column may name an
+  artifact: ADR-071), a row only for a made artifact the individual holds (trigger), never rewritten (trigger), bounded
+  to 100,000 rows (the oldest go first).
+- **Forget, restore, quiet, scopes.** A row goes with its artifact by trigger (`AFTER DELETE ON artifacts`), so every
+  path that removes an artifact takes its outcomes: the owner's forget of it, a root forget's cascade, a restore's or
+  rewrite's replay. `nsf artifact feedback --reset` deletes every row and writes one deletion_log row (kind
+  `form_outcomes`, with the state version) that `checkpoints._replay` applies to any older copy, as Wave 4's own-text
+  forget; archives holding rows become stale and are rewritten in place (`REWRITABLE_KINDS`). Nothing runs unasked, so
+  quiet has nothing to hold. Owner scope only: every function refuses a family or agent viewer.
+- **Reversible in one command.** `nsf config --form-learning off` (or `record`) stops applying at the next call;
+  `nsf artifact feedback --reset` removes what was learned.
+- **A habit that decided says so** (the main session's condition on the preferences path). Whenever the learned
+  preference changed which form was chosen (the plan with it differs from the plan without it), the `Learned` that
+  `learn.plan` returns carries `decided`: one plain sentence naming what was observed ("You kept a table 3 of 4 times
+  it was made and asked for a table 1 time instead of another form for categories on the console: that habit, not
+  the content, decided this form (from the content alone it would be a bar chart)."). It is None whenever the choice
+  is the planner's own. `nsf form plan --db FILE` prints it as "Learned: …" (and `"learned"` in `--json`); without
+  `--db` the command reads no individual, as before. Lane P's "why" shows it.
+- **The planner's examinations are taken with form_learning off.** The forms family (development, held-out and the
+  withheld examination) judges the planner alone: its subject (`acceptance/omni/subject:choose_form`) never calls
+  `artifacts/learn.py`, and nothing learned may be present or applied when the withheld look is taken. Only the
+  `learn` family measures the learner.
+- **Gap detection** (directive §10.5): `nsf artifact gaps --report`, read-only, each line with its count and evidence
+  ids: formats nothing decodes (lane A's gap counts, with the given artifacts that ended so), made artifacts whose
+  independent check failed (by generator, with the failed rules), repairs that recur (from the stored specifications'
+  repair history), answers in words where the content was of a kind another form carries fully (from the make-time
+  rows), artifacts linked as contradicting each other. Productions that ended "could not make this well" are not
+  recorded anywhere on this branch; the report says so. No action follows from it.
+
+## Rejected alternatives
+
+- **Learning the planner's weights** (DESIGN §5's literal reading): measured, it moves almost no choice (above).
+- **A learned −1** (to stop offering a form the person keeps dismissing): that is the planner's hard exclusion; only
+  the owner states one.
+- **Choosing the majority form directly, bypassing the planner** (what the reference does, and what would score
+  higher): it would override the hard constraints and the proportion rules the brief requires the learner never to
+  reach.
+- **The back-off learner**: no visible gain over the majority rule; more to explain to the owner.
+- **Counting a passed check as a keep**: that the system could make a form is the system's own success, not the
+  person's choice.
+
+## Consequences and limits
+
+- This measures adaptation to SIMULATED, stable preferences from simulated, honest-but-noisy feedback, not benefit to a
+  person. Real people seldom give feedback; with the minimum of 2, a key changes only after two reactions to it.
+- The planner's sentence for a learned choice would credit "the preferences you have stated"; `learn.plan` replaces it
+  with one that says the choice was learned, and notes what the planner alone would have chosen.
+- Held-out has not been run (it is the main session's). The rule I propose for it: run `bench_omni_forms.py run
+  --family learn --split held_out --subject neuroscifi.acceptance.omni.subject:make_learner` once; report late_kept and
+  all_kept (mean, sd over seeds, per person); "supported" = the shipped rule beats never_learns by more than the
+  held-out visible gain (0.058 late, 0.067 overall, the benchmark's own); it is NOT claimed to beat key_majority, and
+  "better than a majority rule" is claimed only if it beats key_majority by more than 0.068 / 0.067 (not expected: the
+  development bound says it cannot).
+
+Schema rollback (stated by OMNIMIND fix lane F1 after code review M1): schema 21 is forward-only. An upgraded
+file cannot be opened by an older build; a restore made by this build yields schema 21; the only way back is the
+owner's own copy of the file taken before the upgrade, or `nsf archive unpack` of a pre-upgrade checkpoint run with
+the old software, and either brings back whatever was forgotten since (MIGRATIONS.md section 2,
+`tests/instance/test_migrations.py::test_rollback_facts`).
+
+## ADR-078, addition (2026-11-27, documentation lane 2, after the measurement review's item 6): the pipeline calls it, and the held-out result
+
+- **The caller exists now.** Since the Wave O-1 integration (`adae698`, lane int2) `nsf artifact make` plans through
+  `learn.plan` and records each made artifact's check verdict, when `form_learning` is `record` or `apply`. With `off`
+  (the default) the planner is called exactly as before and no row is written (11 productions compared byte for byte,
+  lane int2). A failed check cannot be recorded as an outcome without a migration (`form_outcomes` needs a held made
+  artifact; fix lane F3 pinned this with a test). `form_learning` stays off by default.
+- **Held-out, once, at `7d9038c`**, SIMULATED people (`docs/quality/evidence/omnimind_heldout/learn-make_learner.json`,
+  `learn-make_planner_only.json`; mean over 10 seeds, sd in brackets):
+
+  | subject | late kept | all kept |
+  |---|---:|---:|
+  | the shipped per-key majority through the planner | 0.710 (0.032) | 0.656 (0.019) |
+  | the planner alone (the product's never-learns) | 0.450 (0.024) | 0.454 (0.025) |
+  | key_majority (the benchmark's reference) | 0.802 | 0.727 |
+  | person_majority (reference) | 0.715 | 0.695 |
+  | never_learns (reference) | 0.433 | 0.429 |
+  | today's system | 0.393 | 0.396 |
+  | oracle | 0.880 | 0.878 |
+
+  Verdict by the rule written before the run: supported (gains +0.260 late and +0.203 all, over the margins 0.058 and
+  0.067). Beside it: the shipped rule is **0.092 below the reference key_majority** late, at the level of
+  person_majority. "Better than a majority rule" is not claimed. Every number is of simulated people with hidden,
+  stable preferences; none measures benefit to a real person.
+
+## ADR-078, addition (2026-11-27, documentation lane 2): the learner's withheld look
+
+Taken once by the main session on `55f89be` with lane ZW's simulated people (`docs/quality/evidence/omnimind_looks/`,
+`summary.json`); SIMULATED people only. Shipped per-key majority through the planner: late / all kept 0.713 / 0.656;
+the planner alone 0.440 / 0.448; gains 0.273 and 0.208 against the rule's thresholds (2 x sqrt 2 x the larger sd) 0.088
+and 0.039: **supported on unseen simulated people**. References: never learns 0.444 / 0.454, key_majority 0.831 /
+0.756, oracle 0.891 / 0.894. The shipped rule is **0.118 below key_majority** late: "better than a majority rule" is not
+claimed. `form_learning` stays off by default; nothing here measures benefit to a real person.
+
+## ADR-078, correction (2026-11-27, the main session's, after the measurement review's third pass, finding 2)
+
+The withheld-look addition above stays as written. By the letter of the committed rule a control that was not run
+voids that family's look, and two controls of the forms and learn looks were not run: the forms oracle `first_good`
+(`scripts/bench_omni_forms.py` refuses it as a `final` subject, although the committed rule said it could run) and
+"every reference run twice gives identical figures"; the statement that the oracle's absence was "stated before the
+product looks" cannot be verified (a refused `final` writes no ledger line). The verdict is therefore: **VOID by the
+rule (two controls were not run); the figures are reported as measured and establish nothing under the rule.** The
+figures above are kept exactly as measured.
+
+## ADR-079: the owner console shows, makes and keeps artifacts (OMNIMIND Wave O-1, lane U)
+
+**Status.** Accepted for the integration branch (lane U, 2026-11-26). No migration (schema stays 21).
+
+**Context.** What the owner kept (`nsf artifact add`) and what NeuroSciFi made (`nsf artifact make`) could be seen only
+from the command line. DESIGN §8 and the outputs audit (§4) state what the console's policy allows: SVG built with DOM
+calls, same-origin images, Web Audio fed from fetched bytes, first-party module scripts; and what it blocks: frames,
+blob and data images, an audio element, inline script and style. The policy is not to be loosened.
+
+**Decision.** A view "Made and kept" in the console's navigation (`console/artifacts.py`, `console/web/artifacts.mjs`),
+with the Presence entity on its stage like the research and voice views.
+- *Not one character of any security header changes.* The console's `HEADERS` (and so its Content-Security-Policy)
+  are as before; every new route replies with them (`tests/console/test_console_artifacts.py` pins every header string
+  byte for byte, written out in the test, on every new route and asset).
+- *Routes* (owner scope: the console's bearer token, Host and Origin checks, exactly as every other route): a paged list
+  in plain words ("a table of 365 rows and 2 columns", "a recording of 3.5 seconds", "a bar chart"), the detail (how
+  to show it, facts, the production record's "why" in plain words, lane R's relations each labelled as the system's
+  claim, made-from and made-into), the bytes (`application/octet-stream`, streamed in 64 KiB pieces with an exact
+  Content-Length), forget, feedback, make and upload. Ids are matched by pattern and used as lookup keys; no route takes
+  a path or a file name (an uploaded file's name is only its label).
+- *Pictures*: the SVG text is fetched through the authenticated API, parsed as XML (inert) and rebuilt element by
+  element through an allow-list that is exactly lane G1's safety check (`check/svg_safety.py`): event attributes,
+  links, other namespaces, `foreignObject`, `script`, `style` attributes and any `url()` that names something outside
+  the picture are dropped and the owner is told what was left out; ids are renamed per picture. Never `innerHTML`.
+  The picture's own `<style>` is replaced by console tokens (`.art-svg` sets `--nsf-ink`, `--nsf-paper`,
+  `--nsf-warn`, `--nsf-danger` from the theme), so a made chart follows light and dark.
+- *Tables and documents*: built with DOM calls from JSON. A document NeuroSciFi made is shown from its stored
+  specification's blocks (so "How the sources relate" and its figures appear); its figures are read from the stored
+  file and rebuilt through the same allow-list.
+- *Sound*: fetched bytes decoded by `decodeAudioData` and played by a buffer source; Play and Stop; a description in
+  words; no `<audio>` element (the console's policy has no `media-src`, and keeps none).
+- *Explorable models and step-throughs*: lane G2's runtime served as a first-party module (`/artifacts/explorable.mjs`,
+  with `/artifacts/explorable.css`; the same bytes the check pins by hash), mounted into the pane with the stored spec
+  and unmounted when the owner leaves the view.
+- *Raster pictures*: an `<img>` cannot send the bearer header and the policy admits no `blob:` or `data:` image, so the
+  server mints an address `/artifact-image/<token>` per view: 256 random bits, one artifact, 120 seconds, valid only in
+  the console process that minted it and only under the session token it was minted under (a restart, or another
+  console, cannot use it), PNG only and checked to be PNG, never logged (the console logs no request).
+- *Make*: lane P's pipeline as the owner's request, run in one thread per production (one at a time per console,
+  bounded by the pipeline's own 60 s and 16 MiB budgets); the page polls `/api/artifacts/jobs/<id>`; the Presence
+  entity shows it through the in-flight record (`activity.track("generating", subsystem="artifacts")`: types only;
+  the aggregator gives these entries their own words and never counts them as a model call). When words suffice the
+  page says "No picture was made because …" with the words. Not background work: the quiet switch does not hold it,
+  as it does not hold `nsf artifact make`.
+- *Feedback* (Keep, Not useful, I wanted a …) records lane L's outcomes and is shown only while `form_learning` is
+  `record` or `apply`. *Forget* is behind the console's confirmation dialog and does what `nsf artifact forget` does.
+- *Upload*: a new way for bytes to enter, so off by default. When on: start (name and size, at most
+  `artifact_max_bytes`), raw chunks of at most 1 MiB in order (the one route whose body is bytes; every other route
+  keeps its JSON body limit), finish through `store.add` (which decodes under limits and screens text); a refusal says
+  why in words. Chunks live in memory (at most two unfinished uploads, ten minutes each); nothing is written to disk
+  outside the store.
+- *Heat map*: the Graphs view's weight matrix no longer hard-codes white, blue and rust: darkness is magnitude (ink at
+  an opacity over the paper), a slash marks a negative weight, every paint is a theme token. `tests/console/
+  test_palette_rule.py` fails on any green, or any hue outside warning, danger, the entity's flairs and the wordmark's
+  tints, in the stylesheets the console loads, its scripts and page, the explorable stylesheet and the made pictures'
+  palette.
+
+**Settings.** `console_artifacts` (instance, default on: it shows what already exists and makes only on the owner's
+click); `console_artifact_upload` (instance, default off). `nsf config --console-artifacts on|off`,
+`--console-artifact-upload on|off`; a damaged value reads as the default; both are carried by a restore and switched
+off by the Wave 0 equivalence test; `tests/uat/test_uat_rollback.py::test_console_artifacts_and_upload` rolls both back.
+
+**Consequences.** The console can show every made form but meshes outside a viewer (an STL/OBJ file is described and
+its export command given), animated PNG frames beyond the first (the browser shows the animation itself), and pictures
+in formats other than PNG (JPEG, WebP and others: their pixels are not decoded on this host, and the browser's
+decoder is not offered untrusted bytes here). Pocket does not show artifacts (its policy differs: `media-src 'self'
+blob:`; it would need family-scoped routes, a family's own artifacts, signed replies and the phone's byte limits).
+Rollback: `nsf config --console-artifacts off` (the view answers 409 on the next call), or revert lane U's commits;
+nothing stored changes shape.
+
+# ADR-080 What the withheld looks found, fixed by class: identification, complete refusal, a relater that does not guess
+
+Status: built by lane FX (OMNIMIND Wave O-2), 2026-11-27, on branch `omni-fx`; decision 4 by lane FX2 (branch
+`omni-fx2`), the same day. No setting, no migration, no new
+format, form or command; `artifacts/forms.py` and the benchmark's drivers unchanged. Nothing outside the artifact
+package changes: the offline digest is equal in both regimes and the sentence guard differential is 0 different.
+**Unverified on unseen cases**: the fixes are judged once on NEW withheld cases written by another lane.
+
+## Context
+
+The withheld looks (`docs/quality/evidence/omnimind_looks/summary.json`) found, as counts only: `unknown` 3 wrong of
+111 (disguised or unknown files answered falsely), `hostile` 3 of 35 answered instead of refused, the relater 6 wrong
+of 78 and, on a kind no earlier split had (an image against its caption), 10 answered and 5 right. Nobody knows which
+tasks failed, and those cases are never retried. Lane FX reasoned about classes of wrong answer, wrote its own
+adversarial corpora (seeds 40000-43999; development evidence by the lane that wrote the fixes, not an independent
+examination) and ran them through the benchmark's own driver.
+
+## Decision
+
+1. **A name or a declared type alone never identifies a file** (`detect.py`, `adapters/__init__.py`).
+   - Bytes that show no signature or structure are "unknown" when the hint names a binary format: every such format has
+     a signature test here, so the bytes contradict the hint. A text format (`detect.TEXT_FORMATS`) is named on a hint
+     only when the bytes read as single-byte text, and its reader must then confirm it by decoding; otherwise the answer
+     is "unknown" (an `Opaque`), never the hinted name. A pickle name still refuses (`REFUSED_ON_HINT`).
+   - The hinted binary format's reader is still run (`_probe_hinted`): a refusal it finds (a lying count) is kept; what
+     it reads or states (header facts from a coincidence) is never used.
+   - A ZIP or OLE file seen whole is not refined by its name (a plain ZIP named `.docx` is "zip"); for a longer one the
+     office reader must confirm, else the archive reader reads it. Text refinements keep their reader's verdict.
+   - Weak signatures: `%PDF-` needs an indirect object after it, or (at offset 0) a line of its own not followed by
+     prose; the PLY magic line must end; text STL needs numeric `facet normal` and `vertex` lines; `bplist00` is named.
+   - Readers report only from valid structure: PSD header fields must lie in the format's ranges; a NetPBM image followed
+     by bytes that are neither another image, white space nor comments is malformed.
+2. **One table decides which refusals refuse the whole file** (`outcome.PART_ONLY_RULES`, `outcome.refuses_whole`).
+   Only `encrypted`, `sparse_member` and `max_decoded_bytes` concern the part they were met in. Any other refusal met
+   anywhere inside a container or compound file refuses the whole file, with the listing kept as findings (extending
+   the ruling for unsafe member names, ADR-072 integration item 9):
+   - archives: a bomb-like member (the ratio rule, or a small member that would need more than the budget), nesting past
+     `max_depth`, a member's own refusal (entity, DTD, external reference, injection), a damaged stored member, a member
+     that inflates to another size than its directory states (`lying_size`), a TAR member cut short;
+   - every part of a ZIP-based compound file (office, EPUB, KMZ, JAR, NPZ) is read before its reader answers
+     (`_compound_check`): unsafe names, links, special entries, bomb-like, lying or damaged parts, and an entity, a DTD
+     or an XInclude in any markup part (a DOCTYPE that only names a well-known public DTD stays readable);
+   - markup-shaped bytes with an entity declaration, an inline or system DTD, or an XInclude are refused whichever
+     reader would read them (`_markup_check`, `safe.markup_hazard`): no XML refusal is answered as text or HTML;
+     `parse_xml` refuses XInclude. (Lane FX also refused an SVG that links an outside file; lane FX2 withdrew that:
+     decision 4 below.)
+3. **The relater answers only what the question names, and never what an image depicts** (`relate.py`).
+   - A raster, an animation or a sound states nothing (`statements()`): it contributes measurements only.
+   - With a question, a comparison decides only when the question names its aggregate, its count, its subject's words
+     (words that name artifacts, `ARTIFACT_WORDS`, never focus one) or its kind (`KIND_CUES`); otherwise "cannot". A
+     question about what an image depicts or a sound says (`DEPICTION_CUES`) against pixels or samples is "cannot",
+     with the reason. Without a question the earlier behaviour stands.
+   - A disagreement between a bare number and a stated unit that a unit's scale factor explains is not a disagreement;
+     a column named like `weight_g` states its unit.
+
+4. **References and active content never refuse by themselves** (lane FX2, 2026-11-27, after the security
+   reviewer's third pass, finding F3-1: this record said "an external reference in any part refuses the whole file"
+   while only SVG did; the main session ruled on principle). One table, `artifacts/outcome.py` (its comment, and
+   `outcome.outside` / `outcome.active` for the one wording of the notes). Its three rows are the rules 1, 2 and 3
+   that the code and the tests cite as "ADR-080 rule N":
+
+   | what the file holds | outcome for the whole file | what is said | what is "cannot" |
+   |---|---|---|---|
+   | a parser-level attack: an entity, a DTD, an XInclude or external entity (rule `external_reference`), a bomb, a lying size, overlap, an unsafe name or link, damage, depth past the limit, words addressed to an AI agent | **refused**, the whole file (only `encrypted`, `sparse_member`, `max_decoded_bytes` concern a part alone) | the refusal and its rule; the listing as findings | everything |
+   | a reference to something outside the file: a glTF buffer or image, an OOXML relationship with `TargetMode="External"` (a remote template, a linked workbook, a sheet, a link address, an image), a KML `href` (a NetworkLink), an OBJ material library, an SVG image, `use` target or link, a PDF `/URI`, `/GoToR`, `/GoToE` | **answered**: never followed, nothing fetched; everything inside read as before | a note: "the file refers to a file or address outside itself: not fetched (what refers, counted; never the address)" | what only the outside thing holds: a glTF whose placed geometry is in an outside buffer is read as its header only (`HeaderOnly`: counts, the buffers by index, names), so its vertices and triangles are "cannot", never 0; a sheet outside the workbook is not a member ("its cells cannot be known here"); a formula cell with no cached value is left empty and the note says what it holds cannot be known here |
+   | embedded active content: a macro project (`vbaProject.bin`, ODF `Basic/`), a PDF script (`/JavaScript`, `/JS`), auto-run action (an `/OpenAction` that is an action, `/AA`), launch action, embedded file; an SVG script, `foreignObject` or event attribute | **answered**: never run; the document's own content read as before | a note: "the file holds a macro project / a script / an auto-run action ...: not run" (SVG keeps lane FX's "refused and not kept: N x script") | nothing more |
+
+   Not found (unverified as complete): a PDF action inside a compressed stream other than the catalog pypdf reads;
+   without pypdf a PDF is header facts only and names none. The reviewer's files are rebuilt as tests
+   (`tests/artifacts/test_fx2_references.py`): each is answered with its note, no address appears in any note, no
+   connection, process or open of a named path happens while it is read, and the parser-level attack beside each is
+   refused. The answers are not a cell-level "cannot" in the table representation: a cell with no cached value is an
+   empty cell there, and only the note says it is not known (a per-cell marker would be a new representation field).
+
+## What each rule turns away (honest inputs), measured
+
+Lane FX's honest edge corpus (19 files, truth = the earlier answer): 15 unchanged, and turned away: an empty file
+named `.png` (now "unknown"), a two-frame MP3 without an ID3 tag (now "unknown"; identified before by its name only),
+a ZIP whose XML tutorial member declares a DTD (the whole ZIP refused), an SVG that links an outside image (refused by
+lane FX; read again, with its note, since lane FX2).
+Known cost, accepted (the reviewer's third pass, LOW): a plain-text note that quotes the bytes `PK\x03\x04` (control
+characters inside text) is left "unknown, opaque": it starts with the ZIP signature, which no ZIP reader confirms,
+and its control characters keep it from being read as text; no reader answers from it, and an honest note is left
+unread. Nothing was changed for it.
+Also by rule, not measured on real files: a ZIP with any damaged member is refused as a whole; a ZIP nested deeper than
+`max_depth` is refused as a whole; a question to the relater that names no measurable comparison ("Was this made from
+that?") is "cannot" where an unrelated agreement used to answer it. Development: 512 / 12 / 0 / 0 of 524 and cross
+72 of 72, unchanged; lane R's evidence sets byte-identical.
+
+## Measured (`docs/quality/evidence/omnimind_fx.json`)
+
+| corpus (lane FX's own) | n | before (wrong) | after (wrong) |
+|---|---|---|---|
+| identification: disguises and near-misses | 3,669 | 344 | 0 |
+| refusal: a hostile part, the honest part asked | 168 | 132 answered | 0 answered |
+| relater: twin pairs in 12 kinds | 144 | 24 | 0 (84 right, 60 cannot) |
+
+The corpora are committed as generators (`scripts/omnimind_fx/`, fixed seeds, no file stored; `run_corpus.py` and
+`corpus_cross.py` recompute the figures; `tests/artifacts/test_fx_corpora.py` pins their sizes). At lane FX2 the
+refusal corpus gives 165 refused and 3 answered: its class of an SVG linking an outside image, answered with its note
+by rule 2 (decision 4) as ruled (lane FX's truth for it says refused); the other figures are unchanged (section `lane_fx2`).
+
+## Rollback
+
+Revert lane FX's commits on `omni-fx` (and lane FX2's on `omni-fx2` for rule 4 alone); nothing stored changes shape (no migration), and kept artifacts are re-read with
+whatever code is present.
+
+## ADR-080, addition (2026-11-27, documentation lane 2): the look at the second withheld split, not supported
+
+The earlier text stays as written. The fixes were examined once on lane ZW2's second withheld split, on `ae6120f`,
+under the rule committed there before the look (`docs/quality/OMNIMIND_BENCHMARK.md`; evidence
+`docs/quality/evidence/omnimind_looks2/summary.json`). Preconditions and controls held (every control run twice,
+identical, equal to the rule's table).
+- **unknown**: 158 right, 8 "cannot", **5 wrong**, 0 failed of 171: **not supported** (the rule requires 0 wrong).
+- **hostile**: 51 refused, **11 answered instead of refused** of 62: **not supported**; "hostile inputs refused" does
+  not hold. The look's output has no per-class breakdown, so the classes with a wrong answer cannot be named.
+- **cross**: 65 right of 98; 48 answered, 1 wrong (0.979); "cannot" on all 18 undecidable cases; no kind with more than
+  1 wrong; but 47 right of 80 decidable (needs 60) and both twins on 23 of 40 decidable pairs (needs 27): **not
+  supported**. diagram_text, archive_checksums and audio_cues: 0 answered of 8 each, not exercised. The relater stopped
+  guessing and declines too much to count as working.
+- Reading: the fixes closed the classes lane FX named (its own corpora) and did not generalise to new constructions
+  (wrong answers 3 to 5 for unknown files, 3 to 11 for hostile files; different splits and sizes, 111 and 35 cases then,
+  171 and 62 now: not like for like). Decision 4's rule (an outside reference or embedded active content is named,
+  never followed or run, and refuses nothing by itself) was made on principle before the look and may account for part
+  of the hostile count; this is not known, because no task is opened. Both withheld splits are spent for these
+  families; a further fix needs a third set of unseen cases written first. The owner's merge condition is not met.

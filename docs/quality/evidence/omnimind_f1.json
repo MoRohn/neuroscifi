@@ -1,0 +1,282 @@
+{
+ "guard": {
+  "child_address_space_after_imports_kib": 112000,
+  "child_startup_s": 0.1,
+  "cost": "every decode runs twice: once in the child (0.1 s start-up plus the decode), then here; a cooperative timeout in the child is not repeated here",
+  "note": "measured with OPENBLAS_NUM_THREADS=1; without it numpy reserves about 890 MiB of address space",
+  "rlimit_as": "256 MiB + 2 x input + 2 x max_decoded_bytes (896 MiB at the defaults with a 64 MiB input)",
+  "rlimit_cpu_s": "max_seconds + 5 (+2 hard)",
+  "wall_kill_s": "max_seconds + 5",
+  "what": "artifacts/guarded.py: every owner-given decode first runs in a clean child under limits"
+ },
+ "host": "aarch64, Linux, shared and loaded (about 20 GiB free, swap in use); single runs, no variance measured",
+ "lane": "OMNIMIND fix lane F1 (rulings A-I of the main session, after reviews S, C, M of omnimind @ 505b55b)",
+ "large_honest_inputs": {
+  "before_f1_from_code_review": {
+   "png_20mp_add_mib": 696,
+   "png_20mp_make_mib": 929,
+   "png_30mp_add_mib": 1054,
+   "png_30mp_make_mib": 1339
+  },
+  "how": "nsf artifact add / make in a fresh individual each; peak = max RSS of the nsf process and its descendants (the guarded child included); 1 run each",
+  "results": [
+   {
+    "file": "big.csv",
+    "result": "4.7 593 0 ['Kept artifact-dc6194a50ddaa4543f80ad4927ce99fe  big.csv  (csv, 39.8 MiB; given by the owner)']",
+    "step": "add"
+   },
+   {
+    "file": "big.csv",
+    "result": "4.52 593 1 ['Asked: show me y against x', \"Source big.csv was not used: a limit stopped its decoding early: delimiter ',': 3 fields on 100% of the first lines; stopped after 534124 rows: the element or byte limit was reached; header row: the first row is text above a typed column.\"]",
+    "step": "make"
+   },
+   {
+    "file": "p20mp.png",
+    "result": "5.88 264 0 ['Kept artifact-bd964d8a8f8cabc478f9de146b95c9de  p20mp.png  (png, 37.8 MiB; given by the owner)']",
+    "step": "add"
+   },
+   {
+    "file": "p20mp.png",
+    "result": "6.1 934 0 ['Made artifact-68e49bd53c2b817e1478b2cd1d834c06: Light in p20mp.png (image.raster, 38.4 KiB; made by the system, not evidence).', 'Why this form: A picture, because you asked for one.']",
+    "step": "make"
+   },
+   {
+    "file": "p30mp.png",
+    "result": "9.31 366 0 ['Kept artifact-0665fcf89e537c94602d99422a867d0a  p30mp.png  (png, 59.9 MiB; given by the owner)']",
+    "step": "add"
+   },
+   {
+    "file": "p30mp.png",
+    "result": "9.29 1368 0 ['Made artifact-a5628e09dbfd5ea87461d17fbd0e228d: Light in p30mp.png (image.raster, 37.8 KiB; made by the system, not evidence).', 'Why this form: A picture, because you asked for one.']",
+    "step": "make"
+   },
+   {
+    "file": "big.wav",
+    "result": "0.55 180 0 ['Kept artifact-87b7908725b48b8d0dc5973916f74493  big.wav  (wav, 60.6 MiB; given by the owner)', '  Could not read it: the decoded samples would need 317520000 bytes, over the limit of 268435456']",
+    "step": "add"
+   },
+   {
+    "file": "big.wav",
+    "result": "0.4 181 1 ['Asked: show me the sound', 'Source big.wav was not used: too_large: the decoded samples would need 317520000 bytes, over the limit of 268435456.']",
+    "step": "make"
+   },
+   {
+    "file": "big.stl",
+    "result": "2.08 344 0 ['Kept artifact-58faaea6c2c3b4f8c5cb028d8b2c4cfa  big.stl  (stl, 47.7 MiB; given by the owner)']",
+    "step": "add"
+   },
+   {
+    "file": "big.stl",
+    "result": "2.27 343 1 ['Asked: show me the shape', 'Source big.stl: stl, read as decoded; measured as surface with 3000000 items.']",
+    "step": "make"
+   },
+   {
+    "file": "many.zip",
+    "result": "0.59 64 0 ['Kept artifact-1607f9b3126c941bc159728ee97b8ba4  many.zip  (zip, 516.5 KiB; given by the owner)']",
+    "step": "add"
+   },
+   {
+    "file": "many.zip",
+    "result": "0.57 64 1 ['Asked: what files are in it', 'Source many.zip was not used: a limit stopped its decoding early: 4096 member(s): 4096 decoded, 0 listed only, 0 refused, 0 failed; the archive declares more than 4096 members: the first 4096 are listed; nothing was extracted to disk; member names are data ",
+    "step": "make"
+   }
+  ]
+ },
+ "probes_after_f1": [
+  {
+   "file": "gen_printf_small.sqlite",
+   "outcome": "OK sqlite bundle partial=False",
+   "peak_mib_child": 41,
+   "peak_mib_parent": 40,
+   "seconds": 0.13
+  },
+  {
+   "file": "gen_printf.sqlite",
+   "outcome": "OK sqlite bundle partial=False",
+   "peak_mib_child": 40,
+   "peak_mib_parent": 40,
+   "seconds": 0.13
+  },
+  {
+   "file": "gen_hex.sqlite",
+   "outcome": "OK sqlite bundle partial=False",
+   "peak_mib_child": 40,
+   "peak_mib_parent": 41,
+   "seconds": 0.15
+  },
+  {
+   "file": "gen_cpu.sqlite",
+   "outcome": "OK sqlite bundle partial=False",
+   "peak_mib_child": 41,
+   "peak_mib_parent": 41,
+   "seconds": 0.13
+  },
+  {
+   "file": "ods_100k.ods",
+   "outcome": "OK ods bundle partial=True",
+   "peak_mib_child": 39,
+   "peak_mib_parent": 40,
+   "seconds": 0.13
+  },
+  {
+   "file": "ods_5k.ods",
+   "outcome": "OK ods bundle partial=True",
+   "peak_mib_child": 39,
+   "peak_mib_parent": 39,
+   "seconds": 0.13
+  },
+  {
+   "file": "xlsx_sst_amp.xlsx",
+   "outcome": "Refused[max_decoded_bytes] decoding would materialise more than 268435456 bytes",
+   "peak_mib_child": 191,
+   "peak_mib_parent": 191,
+   "seconds": 1.09
+  },
+  {
+   "file": "gif_huge_decl.gif",
+   "outcome": "Refused[max_decoded_bytes] the GIF screen would need 34358689800 bytes, over the limit of 268435456",
+   "peak_mib_child": 40,
+   "peak_mib_parent": 39,
+   "seconds": 0.09
+  },
+  {
+   "file": "overlap.zip",
+   "outcome": "Refused[overlapping_members] two members of the archive share the same stored bytes (overlapping entries): an honest archive never does this, so it is not read",
+   "peak_mib_child": 41,
+   "peak_mib_parent": 41,
+   "seconds": 0.13
+  },
+  {
+   "file": "xml_deep.xml",
+   "outcome": "Refused[unconfirmed_structure] the file is named as xml, its first 64 KiB do not show that structure, and it is longer than what was examined: it is not read as",
+   "peak_mib_child": 41,
+   "peak_mib_parent": 41,
+   "seconds": 0.14
+  },
+  {
+   "file": "pbm_comments.pbm",
+   "outcome": "Refused[unconfirmed_structure] the file is named as pbm, its first 64 KiB do not show that structure, and it is longer than what was examined: it is not read as",
+   "peak_mib_child": 159,
+   "peak_mib_parent": 159,
+   "seconds": 0.16
+  },
+  {
+   "file": "ini_sections_4M.ini",
+   "outcome": "Refused[max_decoded_bytes] parsing this ini file would need about 819 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 47,
+   "peak_mib_parent": 47,
+   "seconds": 0.11
+  },
+  {
+   "file": "toml_array_4M.toml",
+   "outcome": "Refused[max_decoded_bytes] parsing this toml file would need about 640 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 47,
+   "peak_mib_parent": 47,
+   "seconds": 0.1
+  },
+  {
+   "file": "toml_tables_16M.toml",
+   "outcome": "Refused[max_decoded_bytes] parsing this toml file would need about 1535 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 71,
+   "peak_mib_parent": 71,
+   "seconds": 0.15
+  },
+  {
+   "file": "requirements_4M.txt",
+   "outcome": "OK requirements graph partial=False",
+   "peak_mib_child": 266,
+   "peak_mib_parent": 266,
+   "seconds": 2.69
+  },
+  {
+   "file": "js_lines_4M.js",
+   "outcome": "OK javascript graph partial=False",
+   "peak_mib_child": 248,
+   "peak_mib_parent": 248,
+   "seconds": 3.45
+  },
+  {
+   "file": "html_attrs_4M.html",
+   "outcome": "Refused[max_decoded_bytes] parsing this html file would need about 261 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 45,
+   "peak_mib_parent": 45,
+   "seconds": 0.14
+  },
+  {
+   "file": "md_lines_4M.md",
+   "outcome": "OK markdown document partial=False",
+   "peak_mib_child": 214,
+   "peak_mib_parent": 212,
+   "seconds": 6.66
+  },
+  {
+   "file": "ndjson_4M.ndjson",
+   "outcome": "Refused[max_decoded_bytes] parsing this ndjson file would need about 272 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 46,
+   "peak_mib_parent": 46,
+   "seconds": 0.13
+  },
+  {
+   "file": "md_lines_16M.md",
+   "outcome": "Refused[max_decoded_bytes] parsing this markdown file would need about 704 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 71,
+   "peak_mib_parent": 71,
+   "seconds": 0.15
+  },
+  {
+   "file": "gltf_manymeshes.gltf",
+   "outcome": "Refused[max_decoded_bytes] parsing this gltf file would need about 924 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 166,
+   "peak_mib_parent": 166,
+   "seconds": 0.21
+  },
+  {
+   "file": "obj_longface.obj",
+   "outcome": "Refused[max_decoded_bytes] parsing this obj file would need about 896 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 102,
+   "peak_mib_parent": 102,
+   "seconds": 0.15
+  },
+  {
+   "file": "geojson_coords.geojson",
+   "outcome": "Refused[max_decoded_bytes] parsing this geojson file would need about 1152 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 135,
+   "peak_mib_parent": 135,
+   "seconds": 0.21
+  },
+  {
+   "file": "csv_rows.csv",
+   "outcome": "OK csv table partial=True",
+   "peak_mib_child": 604,
+   "peak_mib_parent": 605,
+   "seconds": 4.03
+  },
+  {
+   "file": "ini_sections.ini",
+   "outcome": "Refused[max_decoded_bytes] parsing this ini file would need about 8192 MiB, over the limit of 256 MiB",
+   "peak_mib_child": 124,
+   "peak_mib_parent": 124,
+   "seconds": 0.16
+  },
+  {
+   "file": "json_floats_60M.json",
+   "outcome": "Refused[max_elements] the JSON may hold up to 15728642 values, more than the limit of 5000000",
+   "peak_mib_child": 159,
+   "peak_mib_parent": 159,
+   "seconds": 0.34
+  }
+ ],
+ "structure_cost_bytes_per_mark": {
+  "geojson": "72 per ','",
+  "gltf": "240 per '{'",
+  "how": "peak RSS of the reviewer's 4 MiB (and 32-64 MiB) inputs minus about 45 MiB of interpreter, divided by the count of the mark; charged against max_decoded_bytes before the parser runs",
+  "html": "720 per '='",
+  "ini": "2048 per line",
+  "javascript": "800 per line",
+  "markdown": "176 per line",
+  "ndjson": "544 per line",
+  "obj": "56 per space",
+  "requirements": "800 per line",
+  "toml": "1024 per '[', 320 per ',' or '='"
+ }
+}
