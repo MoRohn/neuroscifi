@@ -13,7 +13,7 @@
 ![Acceptance](https://img.shields.io/badge/acceptance-7%2F7-3A3437)
 ![Reproduction](https://img.shields.io/badge/reproduction-8%2F8%20bit--exact-3A3437)
 
-**[Overview](#overview)** · **[See it](#see-it-in-action)** · **[Architecture](#architecture)** · **[Requirements](#requirements)** · **[Quick start](#quick-start)** · **[Optional services](#optional-services)** · **[Privacy & trust](#privacy-security-and-trust)** · **[Testing](#testing-and-verification)** · **[Docs](#documentation)** · **[Limitations](#known-limitations)**
+**[Overview](#overview)** · **[See it](#see-it-in-action)** · **[Architecture](#architecture)** · **[Requirements](#requirements)** · **[Quick start](#quick-start)** · **[Optional services](#optional-services)** · **[Privacy & trust](#privacy-security-and-trust)** · **[Testing](#testing-and-verification)** · **[Docs](#documentation)** · **[OMNIMIND](#project-omnimind)**
 
 </div>
 
@@ -615,6 +615,8 @@ python scripts/guard_differential.py compare   # the answer guard against its at
 
 CI runs the quality gate, the simulated milestones and the browser tests with an accessibility check on every push and pull request. Verified on the reference host without root: the units' sandbox enforced by the kernel ([hardening](docs/operations/HARDENING_VERIFICATION.md)), Pocket's TLS chain with negative controls ([TLS](docs/operations/TLS.md#3-verified-on-the-reference-host-2026-11-22)), LUKS2 storage and zram swap, a 7-day accelerated autonomy soak ([soak](docs/autonomy/RESEARCH_POLICY.md#9-soak-results)), a live remote-inference contract ([remote inference](docs/architecture/COGNITIVE_INFERENCE.md#8-remote-providers-live-contract-2026-11-22)) and push through Google's FCM.
 
+Release status: [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md). All simulated results specify their hidden variables, source graphs and assumptions in code; the reference model, the sensory front end and the graph benchmark are separate components, and their results do not amount to an integrated human-level system.
+
 <details>
 <summary><b>Repository layout</b></summary>
 
@@ -658,44 +660,31 @@ neuroscifi/
 | **Operations** | [Runbook](docs/operations/RUNBOOK.md) · [Pocket guide](mobile/README.md) · [TLS for Pocket](docs/operations/TLS.md) · [Environment](docs/operations/ENVIRONMENT.md) · [Migrations](docs/operations/MIGRATIONS.md) · [Hardening verification](docs/operations/HARDENING_VERIFICATION.md) · [Testing](docs/operations/TESTING.md) |
 | **Engineering review** | [Overview](docs/acceleration/README.md) · [Engineering plan](docs/acceleration/ENGINEERING_PLAN.md) · [Performance](docs/acceleration/PERFORMANCE.md) · [Regression report](docs/acceleration/REGRESSION_REPORT.md) · [Verification report](docs/acceleration/VERIFICATION_REPORT.md) · [NVIDIA assessment](docs/acceleration/NVIDIA_ASSESSMENT.md) |
 | **Cognitive Genesis** | [Overview](docs/genesis/README.md) · [Architecture audit](docs/genesis/COGNITIVE_ARCHITECTURE_AUDIT.md) · [Research assessment](docs/genesis/RESEARCH_ASSESSMENT.md) · [Gap matrix](docs/genesis/COGNITIVE_GAP_MATRIX.md) · [Roadmap](docs/genesis/IMPLEMENTATION_ROADMAP.md) · [Wave 0](docs/genesis/WAVE0.md) · [Cognitive benchmark](docs/quality/COGNITIVE_BENCHMARK.md) |
-| **Project OMNIMIND** (branch `omnimind`, not merged) | [Overview](docs/omnimind/README.md) · [Capability audit](docs/omnimind/CAPABILITY_AUDIT.md) · [Architecture](docs/omnimind/ARTIFACT_ARCHITECTURE.md) · [Benchmarks](docs/omnimind/BENCHMARKS.md) · [Runbook](docs/omnimind/RUNBOOK.md) · [Final report](docs/omnimind/FINAL_REPORT.md) |
-| **QA and research** | [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md) · [Release decisions](docs/qa/RELEASE_DECISIONS.md) · [Acceptance criteria](docs/quality/ACCEPTANCE_CRITERIA.md) · [Research workflow](research/README.md) |
+| **Project OMNIMIND** | [Overview](docs/omnimind/README.md) · [Capability audit](docs/omnimind/CAPABILITY_AUDIT.md) · [Architecture](docs/omnimind/ARTIFACT_ARCHITECTURE.md) · [Benchmarks](docs/omnimind/BENCHMARKS.md) · [Runbook](docs/omnimind/RUNBOOK.md) · [Final report](docs/omnimind/FINAL_REPORT.md) |
+| **QA and research** | [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md) · [Release decisions](docs/qa/RELEASE_DECISIONS.md) · [Known limitations](docs/qa/KNOWN_LIMITATIONS.md) · [Acceptance criteria](docs/quality/ACCEPTANCE_CRITERIA.md) · [Research workflow](research/README.md) |
 
-## Project OMNIMIND (on a branch, not merged)
+## Project OMNIMIND
 
-**Status: branch `omnimind` (schema 21 there), not merged into `main` (pushed as far as `06a6b30`, carried by the draft
-pull request #9, which stays unmerged until the owner decides after the third look); nothing below is part of
-0.7.0.** On that branch the owner can hand NeuroSciFi a file (`nsf inspect`, `nsf artifact add`): it is
-identified by its content, decoded within limits in a guarded child process, and kept beside the individual where
-forget and restore reach it. `nsf artifact make` decides the form of a result (a chart, a diagram, a document, a table,
-a sound, a solid, an explorable model or words), makes it, checks it with an independent reader of its bytes and keeps
-it marked "made by the system, not evidence"; `nsf artifact relate` compares what one file measures with what another
-states. Measured on synthetic files: 510 of 528 held-out tasks right with 0 wrong, but on the withheld split, which no
-lane tuned against, it gave 6 wrong answers in 652 (3 disguised or unknown files answered falsely, 3 hostile files
-answered instead of refused) and the relater 6 wrong in 78: those three looks are not supported. The form planner's
-and the learner's withheld looks are void by the rule (two controls were not run). Nothing decodes JPEG, MP3 or video frames;
-no model sees or hears; answers in conversation are still sentences. A fix wave was then examined once on a second withheld split and none of the three fixed
-mechanisms earned "supported" (5 wrong of 171 unknown files; 11 of 62 hostile files answered instead of refused; the
-relater right on 47 of 80 decidable cases): the condition for merging is not met. Then, by the owner's decision, the two used withheld sets were opened for
-those three families and fixed by class (Wave O-3); the relater's three new comparisons were built three times and
-each version was broken by a fresh reviewer (24 of 27, 30 of 56, 31 of 63 new pairs answered wrongly), so they are
-withdrawn, every relater verdict is shown and never stored, and the relater is not supported. One look at a third
-unseen set, for unknown and hostile files only, is ruled and not yet taken. Details:
-[docs/omnimind/README.md](docs/omnimind/README.md).
+Project OMNIMIND lets NeuroSciFi take in files and make results that are not only text. It is built on the branch `omnimind` (draft pull request #9, schema 21 there) and is not part of 0.7.0: whether it merges is the owner's decision, after one more test on unseen files.
 
-## Known limitations
+- **Take in a file** (`nsf inspect`, `nsf artifact add`). The file is identified by its content, decoded within limits in a guarded child process (66 readers: tables, documents, trees, code, notebooks, archives, SQLite, lossless images, uncompressed sound, MIDI, meshes, maps, arrays) and kept beside the individual, where forget and restore reach it.
+- **Make a result** (`nsf artifact make`). The form is decided first (a chart, a diagram, a document, a table, a sound, a solid, an explorable model or words), the result is made, checked by an independent reader of its bytes, and kept marked "made by the system, not evidence".
+- **Relate two files** (`nsf artifact relate`). What one file measures is compared with what the other states. The answer is shown and never stored.
+- **Stay safe with hostile files.** An attack on the reader refuses the whole file. A file that points outside itself, or carries a macro or script, is read with a plain note; nothing is ever fetched or run.
 
-- **The guard is lexical, not semantic.** It compares words, not meaning: a faithful paraphrase is refused, and some changes of meaning still pass (a bound of time, one name swapped for another in a fused sentence). A hostile page can have its own weak claim shown word for word with the code's hedge, or a faithful sentence refused. In right-to-left text, a line with direction marks is read but never cited. Open items: [Engineering plan](docs/acceleration/ENGINEERING_PLAN.md).
-- **Contradictions in other words** were found for 45 of 50 on a fresh held-out set, values in other units and stated aliases included, with 1 false pair of 28. Found pairs are asked, never decided. Four bare digits ("5000 residents") are read as a year, and numbers written as words are not read.
-- **News and sources.** A news page that needs more than 100 sub-requests renders incomplete, and answers about current events are usually single-source. DOI records all resolve through doi.org, so distinct papers fetched that way count as one source group.
-- **Voice on real hardware rests on the owner's Voice check.** Public corpora gave a Whisper WER of 2.1 % on clean speech and 18.6 % on accented conversational English; echo, rooms and phones were simulated. Barge-in favours a reliable spoken "stop" over false stops from loud music; without browser echo cancellation NeuroSciFi's own voice interrupts it; commands are English only ([voice validation](docs/voice/VOICE_VALIDATION.md)).
-- **General discovery is thin without a Brave key**, and Brave has offline tests only. Browser impersonation will not be enabled.
-- **PersonaPlex is not real-time** on GB10 (99–152 ms per 80 ms frame) and stays an opt-in experiment that never answers a question.
-- **Owner-side checks not run here:** root-only hardening and systemd/polkit acting on the installed units; the CA, Pocket and push on physical phones; a real remote provider; days of wall-clock autonomy; a person using a screen reader. Calibration's evidence is simulated: no individual has settled predictions yet.
-- **Wave 1's cognitive mechanisms are measured on synthetic, offline worlds only.** No answer confidence is shown (not enough development data); predictive regulation is a simulated-plant result; nothing was measured on the open web, a live model or real hardware ([Wave 1](docs/genesis/WAVE1.md), "What stays open").
-- **No worker federation.** Nodes submit, own and hand off research, but the Spark that runs `nsf web work` is the only executing node.
+Every examination was written before the code it tests, on synthetic files. Each unseen set is looked at once, under a rule committed beforehand.
 
-Release status: [0.7.0 release acceptance](docs/qa/V0.7.0_RELEASE_ACCEPTANCE.md). All simulated results specify their hidden variables, source graphs and assumptions in code; the reference model, the sensory front end and the graph benchmark are separate components, and their results do not amount to an integrated human-level system.
+| Measured | Result | Standing |
+|---|---|---|
+| Intake, honest "cannot", compound files, made results, transforms | First unseen set, all seven families: 629 right, 17 "cannot", 6 wrong, 0 failed of 652. None of the 6 wrong were in these five | **Supported** on unseen cases |
+| Disguised or unknown files | First unseen set: 3 answered falsely. Second, after a fix: 158 right, 8 "cannot", 5 wrong of 171 | **Not supported.** Since fixed by class of failure; a third unseen set is written and its one look is not yet taken |
+| Hostile files | First unseen set: 3 answered instead of refused. Second, after a fix: 51 of 62 refused, 11 answered | **Not supported.** Since fixed by class of failure; the same third look decides |
+| Relating two files | First unseen set: 6 wrong of 78. Second: right on 47 of 80 decidable cases. Three new comparisons were then built three times and each was broken by a fresh reviewer (24 of 27, 30 of 56 and 31 of 63 new pairs wrong) | **Not supported.** The three comparisons are withdrawn; every answer is shown only |
+| Form planner, learner | Looked at once, but two controls were not run | **Void** by the rule: establishes nothing |
+
+After the fixes, the two used sets give 170 of 171 right with 0 wrong (disguised files) and 62 of 62 refused (hostile files). Those sets were opened to make the fixes, so the figures are practice results and prove nothing about new files. The third look is passed only with at least 190 of 207 right and 0 wrong for disguised files, and at least 66 of 72 refused with 0 wrong for hostile files; "hostile files are refused" is claimed only at 72 of 72.
+
+Not built: nothing decodes JPEG, MP3 or video frames, no model sees or hears, answers in conversation are still sentences, and nothing is on by default except viewing in the console. Details: [overview](docs/omnimind/README.md) · [benchmark and rules](docs/quality/OMNIMIND_BENCHMARK.md) · [final report](docs/omnimind/FINAL_REPORT.md).
 
 ## License
 
